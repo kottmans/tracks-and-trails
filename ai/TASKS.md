@@ -546,6 +546,33 @@ already passes, and `T-289`'s own Risk line is "High to fix wrongly".)*
 **This also closes `T-238`'s outstanding real-session step**, which is the same measurement from the
 other end.
 
+**The instrument is built and waiting for the maintainer to drive it**: `tools/t289_session_watch.py`.
+It runs the real entry point and **changes nothing in the product** — no `src/` file is touched and
+the application reads no flag; the wrapper *is* the flag, so an ordinary `python -m tracks_and_trails`
+is unaffected. It records three things: every widget destroyed on a thread that is not the GUI
+thread, **the Python stack of that thread at that moment** — which is what the core dump could not
+give — and every cyclic collection with the thread it ran on, so a destruction inside one can be
+told from a destruction beside one.
+
+**It observes and does not steer.** No `DEBUG_SAVEALL`, no forced collection: parking every collected
+object for a whole session would change the memory behaviour of the thing being measured.
+
+**Its positive control runs offscreen in a second, and must be run first.**
+`--self-test` builds the measured arm — Python subclass, unparented, cyclic, collected on a pool
+thread — and requires the watch to report it. *A clean session is worth exactly as much as that
+check passing beforehand*, and three instruments in this family have reported confidently about
+nothing.
+
+    .venv/bin/python tools/t289_session_watch.py --self-test
+    env -u QT_QPA_PLATFORM .venv/bin/python tools/t289_session_watch.py \
+        --report reports/t289-session.txt
+
+Then **Settings → yt-dlp → Update**, let it finish, use the window for a minute, and close it.
+
+**A clean run is a result**, and the report says how many widgets were watched and for how long so
+the absence can be read. **The bound is stated in the tool**: a widget created and destroyed between
+two 250 ms scans is not seen.
+
 **Criterion 5: the three lines are Qt refusing to open an editor, and the route is identified.**
 `QAbstractItemView.edit(index)` prints exactly `edit: editing failed` when the index is not
 editable — reproduced directly. The product calls it from `RowDelegate.editorEvent` on a click
