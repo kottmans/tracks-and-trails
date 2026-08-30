@@ -12378,7 +12378,40 @@ preset, the other leaves it following.
 
 **Neither is implied by the ruling, so neither was written.** The dropdown entry has no width
 constraint — the popup is as wide as it needs to be — so the shapes rejected for the *control* are
-all still available to it. What the entry should say is the question this task now waits on.
+all still available to it. What the entry should say was the question this task waited on, and it
+is answered below.
+
+#### Ruled 2026-08-30: the entry carries the value **and** the relation — for the dropdown
+
+**The maintainer chose the first of three shapes offered.** The `None` entry reads the painted
+value followed by the relation — *"Best video up to 1080p (MP4) — following the batch"* — so:
+
+- **Nothing changes at the click.** The closed control and the open editor agree on the *value*,
+  which is what the relation-only shape could not do and why this task did not build on 2026-08-28.
+- **It cannot be confused with the preset of the same name** one line below it, which pins that
+  preset to this row rather than leaving the row following.
+- **It is the row's own vocabulary.** The detail line already reads *"Download as: Best video up to
+  1080p (MP4) — following the batch"*, so this is the same sentence in a second place rather than a
+  new phrasing to keep consistent.
+- **The popup has no width constraint**, which is the whole reason a shape rejected for the 165 px
+  control is available here.
+
+*(The rejected two, recorded so they are not re-proposed as new: **relation only** — keep *"Same as
+all"* or *"Follow the batch"* as the entry, cheapest and never stale, but the label the user clicked
+is not the entry they then see selected; and **drop the entry entirely**, moving *follow the batch*
+into the `⋮` menu beside the per-row verbs, which is `UX-011` option *E*'s own principle taken
+further and removes the look-alike outright, at the cost of a `docs/UX_SPEC.md` amendment and a new
+route back for a row that has overridden.)*
+
+**The entry's text tracks the batch preset**, so it is recomputed when that changes rather than
+built once — the one maintenance cost this shape has and the relation-only shape does not.
+
+#### What both rulings need that does not exist yet
+
+**The batch preset's name is not reachable from the delegate.** `PRESET_INHERITABLE_ROLE` answers
+`True` and nothing more (`add_dialog.py:1127`), and `PRESET_ROLE` is `None` on exactly the rows this
+is about. Both the painted label and the dropdown entry need the name, so a role that carries it is
+the first piece of work here, not an implementation detail of one of them.
 
 #### Ruled 2026-08-28: the preset's name alone — for the control
 
