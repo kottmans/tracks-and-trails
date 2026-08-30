@@ -561,6 +561,11 @@ told from a destruction beside one.
 **It observes and does not steer.** No `DEBUG_SAVEALL`, no forced collection: parking every collected
 object for a whole session would change the memory behaviour of the thing being measured.
 
+**What it costs is not fully known, and the record says so** (`T289-R11`). The filter re-reads each
+widget's ownership on every event — a synthetic measurement puts that at roughly **10.7 µs per
+event**, and nobody has generalised it to a live session's event rate. If it proves visible,
+sampling instead of every-event refresh is the obvious next shape.
+
 **Three corrections, and each was a way for it to have lied** (`T289-R6`…`R8`):
 
 - **It discovers widgets through an application-wide event filter, never by enumerating them**
@@ -618,13 +623,14 @@ trap anyone adding a signal handler to a Qt program walks into.
 
 **Its positive control runs offscreen in a second, and must be run first.**
 `--self-test` goes through `arm()` — the real event filter and the real `gc` callback, not a
-hand-wired handler (`T289-R7`) — and drives **four directions**: the measured arm collected on a
+hand-wired handler (`T289-R7`) — and drives **five directions**: the measured arm collected on a
 pool thread, which must be reported **by the subject's own name** rather than by any off-thread
 destruction happening to occur; a second candidate collected on the **GUI** thread, which must be
 **named** as a near miss; and a Python subclass **with a Qt parent**, which must **not** be named,
 because it is owned by C++ and releasing its wrapper destroys nothing; and a child released by
 `setParent(None)` and collected **immediately**, with no event in between, which must be named — the
-case both cached versions lost (`T289-R6`). *A clean session is worth exactly as much as that
+case both cached versions lost; and one whose **first** observed event *is* that reparent, which the
+version after those two still lost (`T289-R6`). *A clean session is worth exactly as much as that
 check passing beforehand*, and three instruments in this family have reported confidently about
 nothing.
 

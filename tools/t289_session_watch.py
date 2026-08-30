@@ -27,10 +27,19 @@ watch observes; it does not steer.
 
 ## What it costs, stated because it runs on a machine somebody is using
 
-An application-wide event filter sees each widget's first event and connects `destroyed` to it: one
-comparison per event and one connection per widget, unmeasurable against a UI. A 200 ms heartbeat
-timer does nothing except let the interpreter run pending signal handlers, so the session can be
-ended and still write a verdict.
+An application-wide event filter sees each widget's first event and connects `destroyed` to it. On
+every later event it also **re-reads that widget's ownership** — `shiboken6.isValid` plus
+`ownedByPython`, or `parent()` when the event is a `ParentChange` — because a flag cached once goes
+stale the moment a widget is reparented.
+
+**That is more than a comparison, and its real-session cost is not measured.** A synthetic review
+measured roughly **10.7 µs of additional work per event**, which nobody has generalised to a live
+session's event rate; a UI moving the pointer generates a great many events. If it proves visible,
+sampling rather than every-event refresh is the obvious next shape. The honest statement is that the
+figure exists, the rate does not, and this has only ever run offscreen.
+
+A 200 ms heartbeat timer does nothing except let the interpreter run pending signal handlers, so the
+session can be ended and still write a verdict.
 
 **Nothing enumerates live widgets** (`T289-R8`), which is deliberate: `T238-R1` recorded
 `QApplication.allWidgets()` killing a process with SIGSEGV while deletions were queued, and an
@@ -167,7 +176,7 @@ class Watch(QObject):
             if thread != self.gui_thread and freed:
                 self.say(f"gc collection on {thread!r} freed {freed} objects")
 
-    def watch(self, widget: QWidget) -> None:
+    def watch(self, widget: QWidget, *, reparenting: bool = False) -> None:
         tag = f"{type(widget).__name__}({widget.objectName() or 'unnamed'})"
         module = type(widget).__module__
         # **The type is fixed; the ownership is not, so only the type is cached** (`T289-R6`).
@@ -180,11 +189,12 @@ class Watch(QObject):
         # every event, which still loses the race, because the reparent's own `ParentChange` arrives
         # *before* shiboken has moved the ownership.
         #
-        # So ownership is read **at the destruction**, from the wrapper — not from the C++ object,
-        # which is what would be unsafe. The cached type is what makes that read cheap enough to do
-        # there.
+        # So ownership is recorded **while the widget is alive** — at discovery and on every later
+        # event — because it cannot be read at destruction at all: there Qt hands over an object
+        # that raises `TypeError` from `ownedByPython` and `AttributeError` from `parent()`. The
+        # cached type is what keeps that refresh cheap.
         defined_in_python = not module.startswith("PySide6")
-        state = {"owned": defined_in_python and python_owns_it(widget)}
+        state = {"owned": defined_in_python and python_owns_it(widget, reparenting=reparenting)}
 
         def destroyed(*_args: object) -> None:
             thread = threading.current_thread().name
@@ -245,15 +255,20 @@ class Watch(QObject):
         """
         if isinstance(watched, QWidget):
             known = watched.__dict__.get(WATCHED)
+            reparenting = event.type() == QEvent.Type.ParentChange
             if known is None:
-                self.watch(watched)
+                # **Discovery can itself be a `ParentChange`, and then it must read the parent
+                # too.** A widget whose *first* observed event is its reparent was cached from the
+                # stale ownership flag — real ownership `True`, cached `False`, no candidate after
+                # an immediate collection. The same hole as the refresh had, one call earlier.
+                self.watch(watched, reparenting=reparenting)
             else:
                 # **Refreshed on every event, and a `ParentChange` is read differently** — see
                 # `python_owns_it`. The reparent is the transition a cached flag loses, and it is
                 # the one moment the parent is correct while the ownership flag is not.
                 state, defined_in_python = known
                 state["owned"] = defined_in_python and python_owns_it(
-                    watched, reparenting=event.type() == QEvent.Type.ParentChange
+                    watched, reparenting=reparenting
                 )
         return False
 
@@ -520,6 +535,20 @@ def self_test() -> int:
     gc.collect()  # immediately, with no event in between
     QCoreApplication.processEvents()
 
+    # **The fifth direction**: a widget whose **first** observed event is its own reparent. Nothing
+    # is shown and no events are pumped before `setParent(None)`, so discovery happens *inside* the
+    # `ParentChange` — where the ownership flag is still stale. The submitted version cached `False`
+    # there and named nothing after an immediate collection.
+    hidden_parent = Derived()
+    hidden_parent.setObjectName("t289-self-test-hidden-parent")
+    newborn = Derived(hidden_parent)
+    newborn.setObjectName("t289-self-test-newborn")
+    newborn.setParent(None)
+    Cycle(newborn)
+    del newborn
+    gc.collect()
+    QCoreApplication.processEvents()
+
     if watch.note_a_collection in gc.callbacks:
         gc.callbacks.remove(watch.note_a_collection)
     application.removeEventFilter(watch)
@@ -562,10 +591,18 @@ def self_test() -> int:
             "that the reparent outran, which is T289-R6."
         )
         return 2
+    if "Derived(t289-self-test-newborn)" not in watch.candidates_collected:
+        print(
+            "SELF-TEST FAILED: a widget first seen *during* its own reparent was not named. "
+            f"Named: {watch.candidates_collected}. Discovery is caching the stale ownership flag, "
+            "which is T289-R6's last shape."
+        )
+        return 2
     print(
         "SELF-TEST PASSED: the filter discovered the widgets, the callback saw the collections, "
         "the off-GUI destruction was reported by name, the GUI-thread candidate was named, a "
-        "Qt-owned child was not, and a widget released by setParent(None) was."
+        "Qt-owned child was not, a widget released by setParent(None) was, and so was one first "
+        "seen during its own reparent."
     )
     return 0
 
