@@ -572,9 +572,16 @@ object for a whole session would change the memory behaviour of the thing being 
   destruction* and *no collection that could have caused one* are otherwise the same report.
   GUI-thread destructions are counted for the same reason.
 - **It refuses to call a session clean unless the route ran** (`T289-R7`). `install_latest_version`
-  is wrapped **in this process** to record the update starting and returning, and the Settings screen
-  is noticed through the same discovery the widgets use. A session that never opened Settings now
-  reports `NOT A RESULT` rather than a clean bill for a route nobody drove.
+  is wrapped **in this process**, and the Settings screen is noticed through the same discovery the
+  widgets use. A session that never opened Settings reports `NOT A RESULT` rather than a clean bill
+  for a route nobody drove.
+  **Finished means finished**: the call hands its work to a `QThreadPool` and returns at once, so the
+  first version marked the route complete before the install had begun. Completion now comes from the
+  service's own `reported`/`failed` signals — the same ones the screen listens to.
+- **It names the near misses, not just counts them** (`T289-R6`). A Python-typed widget the collector
+  destroys **on the GUI thread** is the tree that would have been destroyed in place had the
+  collector fired on a pool thread, and the first version recorded it as a number with no name. Those
+  names are what a correction can be aimed at, and the verdict prints them.
 
 **Killed sessions say so too.** `SIGTERM` writes the summary and verdict before quitting — and the
 handler needs a heartbeat timer to run at all, because Python executes signal handlers between
@@ -584,9 +591,10 @@ trap anyone adding a signal handler to a Qt program walks into.
 
 **Its positive control runs offscreen in a second, and must be run first.**
 `--self-test` goes through `arm()` — the real event filter and the real `gc` callback, not a
-hand-wired handler (`T289-R7`) — then builds the measured arm: Python subclass, unparented, cyclic,
-collected on a pool thread. It requires the filter to have discovered the widget, the callback to
-have seen the collection, and the watch to have reported the destruction. *A clean session is worth exactly as much as that
+hand-wired handler (`T289-R7`) — and drives **both directions**: the measured arm collected on a
+pool thread, which must be reported **by the subject's own name** rather than by any off-thread
+destruction happening to occur (`T289-R7`), and a second candidate collected on the **GUI** thread,
+which must be **named** as a near miss (`T289-R6`). *A clean session is worth exactly as much as that
 check passing beforehand*, and three instruments in this family have reported confidently about
 nothing.
 
@@ -596,9 +604,13 @@ nothing.
 
 Then **Settings → yt-dlp → Update**, let it finish, use the window for a minute, and close it.
 
-**A clean run is a result**, and the report says how many widgets were watched and for how long so
-the absence can be read. **The bound is stated in the tool**: a widget created and destroyed between
-two 250 ms scans is not seen.
+**A clean run is a result and it is not a closure.** The report says how many widgets were watched,
+for how long, how many collections ran on which threads, and **which Python-typed widgets the
+collector destroyed on the GUI thread** — the near misses, named, because those are the trees that
+would have been destroyed in place had the collector fired on a pool thread instead (`T289-R6`).
+**The bound is stated in the tool**: a widget that never receives an event is never discovered.
+**One null session cannot close criterion 2**, which the reviewer said plainly and the verdict text
+now says too.
 
 **Criterion 5: the three lines are Qt refusing to open an editor, and the route is identified.**
 `QAbstractItemView.edit(index)` prints exactly `edit: editing failed` when the index is not

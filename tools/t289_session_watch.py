@@ -27,10 +27,17 @@ watch observes; it does not steer.
 
 ## What it costs, stated because it runs on a machine somebody is using
 
-A `QTimer` scans `QApplication.allWidgets()` every 250 ms and connects `destroyed` on widgets it has
-not seen. A few hundred widgets and one connection each: unmeasurable against a UI. **A widget
-created and destroyed entirely between two scans is missed**, which is the honest bound — the tree
-this is hunting was on screen.
+An application-wide event filter sees each widget's first event and connects `destroyed` to it: one
+comparison per event and one connection per widget, unmeasurable against a UI. A 200 ms heartbeat
+timer does nothing except let the interpreter run pending signal handlers, so the session can be
+ended and still write a verdict.
+
+**Nothing enumerates live widgets** (`T289-R8`), which is deliberate: `T238-R1` recorded
+`QApplication.allWidgets()` killing a process with SIGSEGV while deletions were queued, and an
+instrument for memory corruption must not be a plausible cause of it.
+
+**The bound is a widget that receives no event at all** — never polished, shown or laid out. Such a
+widget is invisible here, and it is also not one a user interacted with.
 
 ## Running it — the route the crash came from
 
@@ -89,6 +96,10 @@ class Watch(QObject):
         self.gui_thread = gui_thread
         self.widgets_seen = 0
         self.off_gui_destructions = 0
+        self.off_gui_tags: list[str] = []
+        #: Python-typed widgets the collector destroyed **on the GUI thread** — near misses, and
+        #: the names criterion 2 needs even when the session never goes wrong (`T289-R6`).
+        self.candidates_collected: list[str] = []
         self.gui_destructions = 0
         self.gui_destructions_in_a_collection = 0
         self.collected_objects = 0
@@ -131,20 +142,36 @@ class Watch(QObject):
     def watch(self, widget: QWidget) -> None:
         tag = f"{type(widget).__name__}({widget.objectName() or 'unnamed'})"
         module = type(widget).__module__
+        # **Read now, while the widget is certainly alive.** At `destroyed` time the C++ half is
+        # going and asking shiboken anything about it is a question about a corpse. A type defined
+        # in Python is the property that makes destruction happen *in place* rather than being
+        # marshalled — measured 2026-08-30 — so a widget with one is a candidate whichever thread
+        # ends up destroying it.
+        candidate = not module.startswith("PySide6")
 
         def destroyed(*_args: object) -> None:
             thread = threading.current_thread().name
             inside = thread in self.collecting
             if thread == self.gui_thread:
-                # **Counted, not ignored** (`T289-R6`). A widget destroyed *by a collection* on the
-                # GUI thread is the safe half of the same event, and it is the evidence that the
-                # route this is hunting is live at all: if no widget is ever collected anywhere, a
-                # null off-GUI result is about the session, not about the application.
+                # **Counted, and the candidates are named** (`T289-R6`). A widget destroyed *by a
+                # collection* on the GUI thread is the same event with the safe thread underneath —
+                # and if its type is defined in Python, it is **the tree that would have been
+                # destroyed in place had the collector fired on a pool thread instead**. That is the
+                # most useful thing this instrument can find short of the crash, and the first
+                # version recorded it as a number with no name.
                 self.gui_destructions += 1
                 if inside:
                     self.gui_destructions_in_a_collection += 1
+                    if candidate:
+                        self.candidates_collected.append(tag)
+                        self.say(
+                            f"~~ {tag} from {module} was collected on the GUI thread. Its type is "
+                            "defined in Python, so the same collection on a pool thread would have "
+                            "run its destructor there — this is T-289's tree, on the safe thread."
+                        )
                 return
             self.off_gui_destructions += 1
+            self.off_gui_tags.append(tag)
             where = "inside a gc collection" if inside else "outside any gc collection"
             self.say(f"!! {tag} from {module} destroyed on {thread!r} — NOT the GUI thread")
             self.say(f"   {where} on that thread")
@@ -181,6 +208,13 @@ class Watch(QObject):
             self.settings_opened = True
             self.say("route: the Settings screen opened")
 
+    def finish_the_update(self, outcome: str) -> None:
+        """The update actually completed — the service said so, on the GUI thread (`T289-R7`)."""
+        if self.update_finished:
+            return
+        self.update_finished = True
+        self.say(f"route: yt-dlp update finished — {outcome}")
+
     def the_route_ran(self) -> bool:
         """Whether this session actually drove Settings → yt-dlp → Update, start to finish."""
         return self.settings_opened and self.update_started and self.update_finished
@@ -193,6 +227,7 @@ class Watch(QObject):
             f"{self.collected_objects} objects freed; widget destructions: "
             f"{self.off_gui_destructions} off the GUI thread, {self.gui_destructions} on it "
             f"({self.gui_destructions_in_a_collection} of those inside a collection); "
+            f"candidates collected on the GUI thread: {len(self.candidates_collected)}; "
             f"route: settings={self.settings_opened} update_started={self.update_started} "
             f"update_finished={self.update_finished}"
         )
@@ -221,11 +256,21 @@ class Watch(QObject):
                 "widget on any thread, so there was nothing for it to get wrong. A clean answer "
                 "needs the collector to have handled widgets at all."
             )
+        if self.candidates_collected:
+            named = ", ".join(sorted(set(self.candidates_collected)))
+            return (
+                "NOTHING OFF THE GUI THREAD, and the near misses are named. The collector "
+                f"destroyed {len(self.candidates_collected)} Python-typed widget(s) on the GUI "
+                f"thread during this route: {named}. **Those are the trees that would have been "
+                "destroyed in place had the collector fired on a pool thread instead** — which is "
+                "what criterion 2 needs identified. One clean session does not close it; the "
+                "candidate list is what a correction can be aimed at."
+            )
         return (
             "NOTHING OFF THE GUI THREAD, over a route that ran start to finish while the collector "
-            f"destroyed {self.gui_destructions_in_a_collection} widget(s) on the GUI thread. That "
-            "is evidence about this route in this session; a tree destroyed between events is not "
-            "seen, and the crash is intermittent."
+            f"destroyed {self.gui_destructions_in_a_collection} widget(s) on the GUI thread — none "
+            "of them a Python-typed one. That is evidence about this route in this session; a tree "
+            "destroyed between events is not seen, and the crash is intermittent."
         )
 
 
@@ -270,11 +315,23 @@ def watch_the_update_route(watch: Watch) -> None:
     def install_latest_version(self: YtdlpService) -> None:
         watch.update_started = True
         watch.say(f"route: yt-dlp update started on {threading.current_thread().name!r}")
-        try:
-            original(self)
-        finally:
-            watch.update_finished = True
-            watch.say("route: yt-dlp update call returned (its work runs on the pool)")
+
+        # **The call returning is not the update finishing** (`T289-R7`). `install_latest_version`
+        # hands its work to a `QThreadPool` and returns at once, so the first version marked the
+        # route complete before the install had begun — and a session could then be called clean
+        # for a route whose pool work never ran. The service says when it is really done, through
+        # the same signals the screen listens to: `reported` after the child says which yt-dlp now
+        # imports, or `failed`. Connected once, on first use, because the wrapper has no other
+        # handle on the instance.
+        if not getattr(self, "_t289_connected", False):
+            self._t289_connected = True  # type: ignore[attr-defined]
+            self.reported.connect(
+                lambda resolution: watch.finish_the_update(f"reported {resolution}")
+            )
+            self.failed.connect(lambda why: watch.finish_the_update(f"failed: {why}"))
+
+        original(self)
+        watch.say("route: the update call returned; its work is on the pool")
 
     YtdlpService.install_latest_version = install_latest_version  # type: ignore[method-assign]
 
@@ -318,7 +375,12 @@ def self_test() -> int:
     # callback entirely — it would have passed with the event filter never installed.
     arm(watch)
 
+    # **Named, so the assertions can be about *this* widget** (`T289-R7`). The first version
+    # asserted only that *something* was destroyed off the GUI thread, which the subject's handler
+    # being disconnected would not have disturbed — any other off-thread destruction satisfied it.
     subject = Derived()
+    subject.setObjectName("t289-self-test-subject")
+    expected = "Derived(t289-self-test-subject)"
     subject.show()  # any event will do; this is what the filter discovers it by
     QCoreApplication.processEvents()
     if WATCHED not in subject.__dict__:
@@ -342,26 +404,47 @@ def self_test() -> int:
     finally:
         gc.enable()
 
+    # **The other direction** (`T289-R6`): a candidate collected on the *GUI* thread must be named,
+    # not merely counted. That is the near miss a real session is most likely to produce, and the
+    # reviewed version reported it as an empty transcript and a clean verdict.
+    near_miss = Derived()
+    near_miss.setObjectName("t289-self-test-near-miss")
+    near_miss.show()
+    QCoreApplication.processEvents()
+    near_miss.hide()
+    QCoreApplication.processEvents()
+    Cycle(near_miss)
+    del near_miss
+    gc.collect()  # on this thread, which is the GUI thread
+    QCoreApplication.processEvents()
+
     if watch.note_a_collection in gc.callbacks:
         gc.callbacks.remove(watch.note_a_collection)
     application.removeEventFilter(watch)
 
     print(transcript.getvalue(), end="")
-    if watch.off_gui_destructions and watch.collections:
-        print(
-            "SELF-TEST PASSED: the event filter discovered the widget, the gc callback saw the "
-            "collection, and the watch reported the destruction off the GUI thread."
-        )
-        return 0
     if not watch.collections:
         print("SELF-TEST FAILED: the gc callback recorded no collection, so nothing was tracked.")
         return 2
+    if expected not in watch.off_gui_tags:
+        print(
+            f"SELF-TEST FAILED: {expected} was not reported destroyed off the GUI thread. "
+            f"Reported instead: {watch.off_gui_tags or 'nothing'}. A pass on somebody else's "
+            "destruction would say nothing about this widget's handler."
+        )
+        return 2
+    if "Derived(t289-self-test-near-miss)" not in watch.candidates_collected:
+        print(
+            "SELF-TEST FAILED: a Python-typed widget collected on the GUI thread was not named. "
+            f"Named instead: {watch.candidates_collected or 'nothing'}. A real session's most "
+            "likely finding would go unrecorded."
+        )
+        return 2
     print(
-        "SELF-TEST FAILED: a widget built to be destroyed on a pool thread was not reported. "
-        "A clean session from this instrument would mean nothing — do not run the real route "
-        "until this passes."
+        "SELF-TEST PASSED: the filter discovered both widgets, the callback saw the collections, "
+        "the off-GUI destruction was reported by name, and the GUI-thread candidate was named."
     )
-    return 2
+    return 0
 
 
 def finish_on_a_signal(watch: Watch) -> None:
