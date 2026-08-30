@@ -21618,3 +21618,72 @@ obtained.
 
 The Reviewer changed only this append-only record. No reviewed source, task/status file, evidence,
 workflow, untracked probe, push or remote state was changed.
+
+---
+
+## 2026-08-29 — T268-R5 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `6d70a0d10db516d2d34c1a694501ad640e327891`
+**Correction head:** `cb6b0ea6578d6e4206ca6fc2780c0fd5c0d59734`
+**Verdict:** **Approved. T268-R5 is Resolved.** The correction names the wait-reason field at every
+current-reading site, discharges the completed machine-inspection dependency, and annotates the
+historical suspended-process candidate without erasing the reasoning. No significant issue remains
+in this focused scope. `T-268` itself remains Blocked on obtaining a stack and is not marked
+Complete by this verdict.
+
+### T268-R5 disposition
+
+| Required correction | Result |
+|---|---|
+| Correct the field | `process_tree.py` and the task annotation now say `ThreadState=5` is Waiting and non-discriminating; all seven specimens report it. They identify suspended values as wait reasons 5 and 12 and distinguish them from observed reason 37. |
+| Synchronize current dependency | The four-part machine-local checklist marks capture and recording Done, keeps preservation Standing, and retains identity revalidation before any termination. `Depends on:` names a stack from one blocked thread rather than another read-only inspection of PIDs 3400/6924. |
+| Disposition stale candidates | Both historical suspended-process arguments and candidate 3 are explicitly marked refuted/weakened by the 2026-08-29 measurement. They remain readable as historical reasoning but no longer present suspension as the current answer. |
+| Keep containment unchanged | The only `src/` change is within the module docstring. No executable statement, test, workflow or product behavior changed. |
+
+### Enum verification
+
+The widened edits to `ai/STATUS.md`, the evidence file, and the task's earlier ambiguous sentence
+are accepted. They are additional instances of the same field-name defect, not scope expansion.
+Microsoft's thread-performance table identifies `ThreadState=5` as Wait and wait reasons 5 and 12
+as suspended conditions. Microsoft's `KernelWaitReason` table identifies 5 as `Suspended`, 12 as
+`WrSuspended`, and 37 as `WrAlertByThreadId`. The corrected four-row account agrees with those
+tables and with the raw report's seven state-5/reason-37 rows.
+
+### Review judgments
+
+- **Defender/debugger wording is not an elimination.** The candidate annotation labels those two
+  clauses reasoned rather than measured and says only that the evidence no longer points to the
+  class. That is appropriately weaker than the measured refutation of suspension.
+- **`T-092` is precedent/administrative territory, not this diagnosis's owner.** The task keeps
+  that distinction. One operational caveat does not block this record correction: T-092's existing
+  WER `LocalDumps` configuration writes a dump when `python.exe` dies abnormally; arming it alone
+  does not capture a live blocked thread. The actionable route already named by T-268 is an attached
+  debugger (or another deliberate live-dump mechanism). Resolve that acquisition detail when the
+  maintainer chooses to pursue the stack; no additional review round is required for T268-R5.
+- **Preservation still stands.** All seven specimens remain the only live evidence from which that
+  stack could be obtained. This verdict grants no authority to terminate or modify them.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | Exactly one commit, `6d70a0d..cb6b0ea`; four files changed: three records and the `process_tree.py` docstring. |
+| Enum values | Microsoft thread-performance and kernel-wait tables agree with the corrected state/reason mapping. |
+| Residue sweep | Every current `ThreadState=5`, `ThreadWaitReason=5/37`, `WrSuspended` and suspended-candidate occurrence in the four records was inspected. No retained current sentence repeats the state/reason error. |
+| Diff/static | `git diff --check`: clean; Ruff: passed; format: **215 files**; `mypy src`: **56 files**; bare and Win32 mypy: **155 files** each. |
+| Placement | `tests/unit/test_task_placement.py`: **15 passed**. |
+| Commit record | `tools/commit_message_check.py --range 6d70a0d..cb6b0ea`: one commit checked, clean. |
+| Broader suites | The implementer reports **3,378 passed / 21 skipped** unit+UI. Integration remains **445 passed** at `d5f1010`; it was not repeated because this correction changes prose only. |
+
+### Readiness
+
+T268-R5 is Resolved and the correction at `cb6b0ea` is Approved. The post-approval review chain has
+no remaining open finding. T-298 remains Complete, T-289 remains Proposed, and T-268 remains
+Blocked on a stack by project choice rather than by this review.
+
+Before this review commit, `origin/main..cb6b0ea` contained **seven** local commits, not the six
+stated in the handoff. The discrepancy is only in the gitignored handoff/current conversation and
+does not alter the reviewed boundary. The Reviewer changed only this append-only record and did not
+read or modify `tools/t287_minimize_probe.py`, modify either untracked item, push, or change remote
+state.
