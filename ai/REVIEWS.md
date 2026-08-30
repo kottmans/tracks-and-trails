@@ -22402,3 +22402,63 @@ are ruled; they are not invitations for another redesign.
 
 The Reviewer changed only this append-only review record. No reviewed source, test, task/status
 text, instrumentation, handoff, push, CI run or remote state was changed.
+
+---
+
+## 2026-08-30 — T-289 instrument integrity re-review 5
+
+**Reviewer:** Codex (Reviewer)
+**Boundary:** `004714f4b3a15cfe1c159a27c115f614109bc345..dd1a4d121b70e4f0efcfa422583d68643f8452a7`
+**Commit:** `dd1a4d1` (focused instrument correction)
+**Verdict:** **Approved for the required real-display measurement. `T289-R6` and `T289-R11` are
+Resolved; no significant instrument issue remains.** This approves the diagnostic for execution,
+not T-289's criterion 2 or task completion: the real route has not been run and one null session
+cannot close it. `T289-R12` records non-blocking classifier-control debt and does not hold the
+session.
+
+### Finding dispositions
+
+| Finding | Disposition | Independent verification |
+|---|---|---|
+| **T289-R6** | **Resolved.** Discovery and refresh now use the same event-sensitive ownership reading. A child created with a Qt parent after arming was genuinely undiscovered before release. Its first observed event was `setParent(None)`'s `ParentChange`; after the call, actual and cached ownership were both true, and immediate GUI-thread collection named it. The fifth arm kills ignoring reparenting at discovery, while the fourth independently kills ignoring it on refresh. The already-parented arm still rejects C++ ownership. | Exact replay: before release **watched=false, owned=false, parent present**; after release **watched=true, owned=true, parent absent, cached=true**; candidate list contained `Derived(first-event-release)`. Discovery-reparent and refresh-reparent mutations each exited 2 at their own arm. Removing ownership from both sites exited 2 on the parent-owned child. |
+| **T289-R7** | **Remains Resolved.** Actual-plugin identity and offscreen control containment are unchanged. | Focused diff inspection. |
+| **T289-R8…R10** | **Remain Resolved.** No live-widget enumeration, collection-cost, polling-prose or duplicated-arming regression returned. | Focused diff inspection. |
+| **T289-R11** | **Resolved.** The source now says ownership is recorded while the wrapper is alive, and the cost paragraph names the per-event Shiboken work, the synthetic ~10.7 µs result, and the missing live-session rate. | Direct source and TASKS inspection. |
+| **T289-R12** | **Medium, Blocks measurement approval: No — permanent classifier-control debt.** The outside-collection verdict arm explicitly retained in the prior readiness instruction is still absent. `self_test()` creates five directions but never creates an off-GUI destruction outside collection and never calls `verdict()`. Replacing the aggregate's `if self.off_gui_in_a_collection` with `if self.off_gui_destructions` therefore still prints **SELF-TEST PASSED** and exits 0, even though it restores the earlier false T-289 verdict. Current submitted behavior is correct in a direct replay, so this does not invalidate or delay the imminent measurement. Add the last-reference/outside-GC direction and require `OFF-GUI DESTRUCTION, BUT NOT T-289` before treating the task's instrument controls as complete. | Current replay: three off-GUI destructions, zero inside collection, verdict correctly **OFF-GUI DESTRUCTION, BUT NOT T-289**. Aggregate-condition mutation: all five submitted arms passed, exit 0. |
+
+### Rulings on the remaining questions
+
+- **The per-event cost remains an observer-effect bound, not a blocker.** The diagnostic is cleared
+  for a session with the recorded uncertainty. “Sampling” is not pre-approved as a correction: any
+  optimization must preserve the immediate ownership transitions this review chain found.
+- **`parent() is None` remains accepted at `QWidget.ParentChange` for this product route.** The
+  focused correction supplies the missing discovery use; no new parentless C++-ownership seam was
+  introduced or found.
+- **Offscreen is the right platform for all destructive self-test directions.** The real session's
+  selected platform is recorded independently, so the control need not endanger the live desktop.
+- **The discovery-only ownership mutation is correctly classified as ineffective, not a surviving
+  requirement mutation.** A later event refresh repairs that isolated change before collection;
+  removing ownership from both discovery and refresh changes behavior and is killed.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | One commit, two files, no `src/` or tests; `git diff --check 004714f..dd1a4d1` is clean. |
+| Submitted self-test | Offscreen **passed all five directions**. |
+| First-event premise | Before release the fresh child had no `WATCHED` state; after first-event release it had cached ownership true and was named on immediate collection. |
+| Effective mutations | Discovery ignores reparent: exit **2**, newborn absent. Refresh ignores reparent: exit **2**, released child absent. Ownership ignored at both sites: exit **2**, parent-owned child falsely named. |
+| Ineffective mutation | Ownership ignored at discovery alone: exit **0**; later refresh restored the submitted state, confirming the implementer's diagnosis rather than exposing a vacuous child assertion. |
+| Outside classifier | Current direct replay distinguished **3 outside / 0 in collection** correctly; the aggregate-condition regression still passed the submitted self-test, supporting R12. |
+| Static/types | Ruff and format pass on the tool; direct mypy passes with `MYPYPATH=src`; placement **15 passed**. |
+| Broader evidence | The implementer reports ruff/format, host and Win32 mypy, unit+UI **3,389 passed / 21 skipped**, and placement **15**. No product code changed. |
+
+### Readiness
+
+The maintainer may now run the documented real-display Settings → yt-dlp → Update session. Read
+the report under its own bounds: a positive result can name the route; a clean single session is
+evidence, not criterion-2 closure. Keep T-289 In Review until that output is reviewed. R12 should be
+folded into the next record/instrument cleanup, but it does not warrant a seventh pre-session round.
+
+The Reviewer changed only this append-only review record. No reviewed source, test, task/status
+text, instrumentation, handoff, push, CI run, display session or remote state was changed.
