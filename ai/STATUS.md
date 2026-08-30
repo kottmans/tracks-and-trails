@@ -5,10 +5,44 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-30 — **`T-289`'s mechanism is identified: shiboken destroys a widget in
+place, instead of marshalling it to the GUI thread, when the widget's type is defined in Python.**
+`ai/evidence/2026-08-30-T289-pool-thread-destruction.md`. `T-289` stays **Proposed** — this is a
+diagnosis, not a fix. Read this section first.
+
+**The discriminator is one line of code.** Collected on a pool thread, eight runs a subject: a plain
+`QWidget` tree marshalled **8/8**; the same tree rooted in a **one-line Python subclass** — no
+behaviour, no connections, never shown — ran its C++ destructor on the pool thread **5/8 and
+crashed the other 3**; the application's own screens did it **8/8**. `--shown` was measured
+separately and changes nothing, so the variable is the type, not the platform window.
+
+**Which matters because every widget this project defines is a Python subclass.** The marshalling
+that made the first probe's null result look reassuring does not apply to any widget we own. The
+precondition is the default here; what has kept the crash rare is only how seldom such a tree
+becomes collectable on a pool thread's allocation.
+
+**The crash stack is the other half of the mechanism.** The *main* thread in `_Py_HandlePending` →
+`make_pending_calls` → shiboken **`runDeletionInMainThread()`**, immediately after the pool thread
+was recorded running `~QObject`. Read together that is a **double deletion**, which is what
+`double free or corruption (!prev)` is. Stated as the reading, not as proof: nothing dumped the
+pointer.
+
+**`T-289`'s criterion 4 is still unmet and is no longer waiting on a mystery.** It asks for a test
+that forces the collector on a pool thread while a tree is collectable; that state now takes about
+ten lines and no application. **The maintainer's call is whether to schedule the fix** — it is the
+only open item that can block Phase 4's exit.
+
+**`T-284` is Complete**, approved at `f0b9c80`, and `T-238`'s criterion-4 round is reviewed and
+pushed. Gates for this session's work: `ruff check .`, `ruff format --check .` **217 files**,
+`mypy src` **56**, `mypy` and `--platform win32` **156** each, unit+UI **3,383 passed, 21 skipped**,
+integration **445 passed**, placement **15**.
+
+---
+
 **Last updated:** 2026-08-30 — **`T-238`'s criterion 4 is sharper, and the collector-runs-a-Qt-
 destructor route is reproducible on demand for the first time.** Three arms, each deterministic;
 `ai/evidence/2026-08-30-T238-criterion-4-widget-collection.md`. `T-238` stays **Ready** — criterion
-4 is not met. Read this section first.
+4 is not met. *(“Read this section first” stood here until the block above replaced it.)*
 
 **No widget the application's own routes opened was parked while its Qt widget was still alive.**
 That is the invariant in all three arms. The arithmetic is not: arms A and B release 64 of the 159

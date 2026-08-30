@@ -23,10 +23,31 @@ proves nothing the precondition does not, and an instrument that aborts its own 
 report. If the abort happens anyway, the exit status says so and that is a stronger finding than the
 one this was built to look for.
 
-    QT_QPA_PLATFORM=offscreen .venv/bin/python tools/t289_pool_gc_probe.py
+    QT_QPA_PLATFORM=offscreen .venv/bin/python tools/t289_pool_gc_probe.py [flags]
 
 Exit status is 0 when the probe ran, whatever it found — the finding is the report (`T-291`'s
-lesson, one file over).
+lesson, one file over). **Unless the release aborts the process, which is itself an observation**;
+every event is printed and flushed as it happens, so a crash costs the crash rather than the run.
+
+## Two variables, added 2026-08-30, and why
+
+The first version measured a **never-shown synthetic** tree and found shiboken **marshalling**: the
+decref happened on `Dummy-1`, the destructor on `MainThread`, and the crash's precondition was not
+reproduced. `T-238`'s criterion-4 run then found the missing variable by accident. Releasing a
+**shown** widget on the *main* thread ran `~QDialog` → `hide_helper()` → the platform plugin and
+**aborted** — a destructor that does far more work than an unshown one, because it has a platform
+window to take down.
+
+So the two things that differ between this probe's null result and the dump are now flags:
+
+- **`--shown`** realises the tree before collecting. One variable, isolated: does shiboken still
+  marshal when the widget has a window to close?
+- **`--real-screens`** builds the application's own screens through `tests/ui/surfaces.py` — the
+  same five `tests/ui/conftest.py` audits — instead of the synthetic tree. Product shapes, with the
+  signal and closure graph a bare `QWidget` does not have.
+
+**Neither flag changes what is measured**, only what is measured *on*: the finalisation thread and
+the destruction thread, from the same two callbacks.
 """
 
 from __future__ import annotations
@@ -36,6 +57,7 @@ import json
 import sys
 import threading
 import weakref
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QCoreApplication, QRunnable, Qt, QThreadPool, QTimer
@@ -64,14 +86,68 @@ class _Cycle:
         self.myself = self
 
 
-def _build_a_collectable_tree() -> None:
+def _watch(root: QWidget) -> None:
+    """Record both threads, and print each event as it arrives.
+
+    **Printed from inside the handlers, flushed** (2026-08-30): releasing a shown widget has been
+    seen to abort the process, and a finding held in a list until the end is a finding lost when
+    that happens.
+    """
+
+    def finalised() -> None:
+        name = threading.current_thread().name
+        FINALISED_ON.append(name)
+        print(f"    · last Python reference dropped on {name!r}", flush=True)
+
+    def destroyed(*_args: object) -> None:
+        name = threading.current_thread().name
+        DESTROYED_ON.append(name)
+        print(f"    · C++ ~QObject ran on {name!r}", flush=True)
+
+    weakref.finalize(root, finalised)
+    # `DirectConnection` so the handler runs on the destroying thread rather than being queued to
+    # the receiver's. Queued would answer a different question and always say "main".
+    root.destroyed.connect(destroyed, Qt.ConnectionType.DirectConnection)
+
+
+def _build_the_real_screens(shown: bool) -> None:
+    """The application's own screens, held only by a cycle (`T-238`'s inventory, reused).
+
+    `tests/ui/surfaces.py` is the one list of these, read by `tests/ui/conftest.py`'s accessibility
+    sweep and by `T-238`'s criterion-4 probe. Built parentless there, which is exactly the ownership
+    this needs: Python owns the C++ objects, so the collector releasing a wrapper is what destroys
+    the widget.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from tests.ui.surfaces import screens_below_the_add_dialog
+
+    for _label, widget in screens_below_the_add_dialog():
+        if shown:
+            widget.show()
+        _watch(widget)
+        _Cycle(widget)
+    QCoreApplication.processEvents()
+
+
+class _DerivedWidget(QWidget):
+    """A trivial Python subclass of `QWidget`, and the point is that it *is* one.
+
+    **The `--subclass` variable** (2026-08-30). `--real-screens` reproduced the off-GUI destructor
+    where the synthetic tree marshalled, and the screens differ from that tree in several ways at
+    once: they are the product's classes, they carry signal connections and closures, and every one
+    of them is **defined in Python**. This isolates the last of those — nothing here has behaviour,
+    a connection or a closure; it is a `QWidget` whose type happens to live in Python.
+    """
+
+
+def _build_a_collectable_tree(shown: bool = False, derived: bool = False) -> None:
     """A parented tree whose only Python reference is inside a cycle.
 
     Shaped after the dump: a `QLabel` with `setBuddy`, because the GUI-thread stack was inside
     `QLabel::setBuddy` clearing itself as its buddy was destroyed, and nested children, because the
     pool-thread stack was five `deleteChildren` levels down.
     """
-    root = QWidget()
+    root = _DerivedWidget() if derived else QWidget()
     layout = QVBoxLayout(root)
     inner = QWidget(root)
     deeper = QWidget(inner)
@@ -81,13 +157,14 @@ def _build_a_collectable_tree() -> None:
     label = QLabel("&Name", deeper)
     label.setBuddy(field)
 
-    weakref.finalize(root, lambda: FINALISED_ON.append(threading.current_thread().name))
-    # `DirectConnection` so the handler runs on the destroying thread rather than being queued to
-    # the receiver's. Queued would answer a different question and always say "main".
-    root.destroyed.connect(
-        lambda *_: DESTROYED_ON.append(threading.current_thread().name),
-        Qt.ConnectionType.DirectConnection,
-    )
+    if shown:
+        # **A widget with a platform window destroys far more than one without**, which is the
+        # variable `T-238`'s run turned up: `~QWidget` then runs `hide_helper()` into the platform
+        # plugin. Realised here rather than assumed, and drained so the show completes.
+        root.show()
+        QCoreApplication.processEvents()
+
+    _watch(root)
     _Cycle(root)  # the only reference, and it refers to itself
 
 
@@ -110,12 +187,31 @@ def main() -> int:
     # identical collection on the GUI thread has to produce the *other* answer before the first
     # one means anything — `ai/TESTING.md`'s rule about instruments that report confidently.
     control = "--on-the-gui-thread" in sys.argv
+    shown = "--shown" in sys.argv
+    real = "--real-screens" in sys.argv
+    derived = "--subclass" in sys.argv
 
     application = QApplication([sys.argv[0]])
     gui_thread = threading.current_thread().name
 
-    _build_a_collectable_tree()
+    subject = (
+        f"the application's own screens, {'shown' if shown else 'never shown'}"
+        if real
+        else (
+            f"a synthetic parented tree rooted in "
+            f"{'a Python subclass' if derived else 'a plain QWidget'}, "
+            f"{'shown' if shown else 'never shown'}"
+        )
+    )
+    where = "the GUI thread (control)" if control else "a pool thread"
+    print(f"T-289 criterion 4 — collecting {subject}\n                    on {where}\n", flush=True)
+
+    if real:
+        _build_the_real_screens(shown)
+    else:
+        _build_a_collectable_tree(shown, derived)
     gc.disable()  # so the collection that matters is the one on the pool thread, not an earlier one
+    print("  releasing now — if this is the last line, the release aborted the process", flush=True)
 
     task = _CollectOnThePool()
     task.setAutoDelete(False)
@@ -144,6 +240,7 @@ def main() -> int:
     destroyed = DESTROYED_ON[0] if DESTROYED_ON else None
     report: dict[str, Any] = {
         "mode": "control: collected on the GUI thread" if control else "collected on a pool thread",
+        "subject": subject,
         "gui_thread": gui_thread,
         "pool_thread": task.thread_name,
         "objects_collected": task.collected,

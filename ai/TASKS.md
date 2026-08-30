@@ -12705,8 +12705,13 @@ in whatever this records; it is real, and it is smaller than the two defects abo
 
 ### T-289 — A pool thread's garbage collection destroys widgets while the GUI thread frees them
 
-**Status:** Proposed — **filed 2026-08-27 by `T-212`'s checklist run.** The maintainer updated
-yt-dlp from the Settings screen and the process **aborted**: `double free or corruption (!prev)`,
+**Status:** Proposed — **filed 2026-08-27 by `T-212`'s checklist run**, and **its mechanism is
+identified as of 2026-08-30**: shiboken destroys in place, rather than marshalling to the GUI
+thread, when the widget's type is **defined in Python** — which every widget this application owns
+is. See *Answered 2026-08-30* below. **Still Proposed: this is a diagnosis, not a fix.**
+
+*(Filed from this.)* The maintainer updated yt-dlp from the Settings screen and the process
+**aborted**: `double free or corruption (!prev)`,
 core dumped. **The core dump was recovered and is recorded at
 `ai/evidence/2026-08-27-T212-ytdlp-update-double-free.md`**, because `systemd-coredump` rotates and
 the evidence had to outlive it.
@@ -12815,9 +12820,45 @@ live; the same test passed alone and the correctly activated full rerun passed 3
 this entry — it is written down because it is the nearest live specimen to compare a fix against,
 not because it is evidence for the fix. `ai/REVIEWS.md`, 2026-08-29.
 
-**Criterion 4 is therefore not met.** A test that fails on the uncorrected tree still does not
-exist, and the instrument that would judge a fix does not yet arrange the state a fix would have to
-survive.
+#### Answered 2026-08-30: it destroys in place when the type is defined in Python
+
+`ai/evidence/2026-08-30-T289-pool-thread-destruction.md`. The open question above — *what makes
+shiboken destroy in place rather than marshal* — **is none of the three candidates this entry
+listed.** Eight runs a subject, collected on a `QThreadPool` thread:
+
+| Subject | crashed | destructor **off** the GUI thread | marshalled |
+|---|---:|---:|---:|
+| A plain `QWidget` tree | 0/8 | 0/8 | **8/8** |
+| The same tree rooted in a **one-line Python subclass** | **3/8** | **5/8** | 0/8 |
+| The application's own screens (`tests/ui/surfaces.py`) | 0/8 | **8/8** | 0/8 |
+
+**The subclass has no behaviour, no connections, no closures, and is never shown.** Its body is a
+docstring. Being a Python-derived type is the entire difference from the row above it, and
+`--shown` was measured separately: a realised plain `QWidget` still marshals, so the variable is the
+type and not the platform window.
+
+**Every widget this application defines is a Python subclass**, so the marshalling that made the
+first probe's null result look reassuring **does not apply to any widget this project owns**. The
+precondition is the default here; what has kept the crash rare is only how seldom one of those trees
+becomes collectable on a pool thread's allocation.
+
+**Three of the eight subclass runs died, and the stack is the second half of the mechanism**: the
+*main* thread in `_Py_HandlePending` → `make_pending_calls` → shiboken
+**`runDeletionInMainThread()`** → `QtWidgets`, immediately after the probe recorded `~QObject`
+running on `Dummy-1`. Read together that is a **double deletion** — the pool thread destroyed the
+object in place while shiboken had also queued a main-thread deletion for it — which is
+`double free or corruption (!prev)`. **Stated as the reading rather than as proof**: nothing here
+dumped the pointer, so *the same object* is the obvious explanation and not a measured one.
+
+**Criterion 4 is still not met, and is no longer blocked on a mystery.** A tool is not a test. But
+the state the criterion describes — *"force the collector on a pool thread while a tree is
+collectable"* — can now be arranged in about ten lines with no application involved, which is what
+this entry has been missing since it was filed.
+
+**What this does not change.** The fix directions already named are untouched: a widget with a C++
+parent is owned by that parent, so dropping its wrapper destroys nothing, and disposal through the
+GUI thread is unaffected. **This is a diagnosis, not a fix, and `T-289` stays Proposed** until the
+maintainer schedules one.
 
 #### Acceptance criteria
 
