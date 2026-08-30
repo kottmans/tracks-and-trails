@@ -5,9 +5,41 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-30 — **`T-238`'s criterion 4 is sharper, and the collector-runs-a-Qt-
+destructor route is reproducible on demand for the first time.** Three arms, each deterministic;
+`ai/evidence/2026-08-30-T238-criterion-4-widget-collection.md`. `T-238` stays **Ready** — criterion
+4 is not met. Read this section first.
+
+**No widget the application's own routes opened takes the collector's route.** Of the 159 that the
+main window, add dialog, settings and about screens put on screen, the 64 that were released went
+by refcount, on the thread that dropped them. That is the same answer in all three arms.
+
+**The route itself now reproduces, and demonstrating it aborts the process.** With Python owning
+five parentless screens and only the collector freeing them, 24 wrappers are parked **with their Qt
+widgets still alive**, and releasing them dies: `gc_collect_main` → `_Py_Dealloc` → shiboken →
+`~QDialog` → the offscreen plugin → `QCursor::pos`, SIGSEGV, 3 of 3. **The upper half is `T-238`'s
+retained stack and `T-289`'s dump.** The lower half is not — main thread, offscreen plugin — so it
+is **not** `T-238`'s crash, and the widgets are the test helper's rather than the product's.
+
+**I got this wrong once and the review caught it** (`T238-R7`). The first version reported 17
+`OptionsDialog` widgets as *"freed by the cyclic collector"* and called that the precondition. All
+seventeen were **already-dead wrappers** — the probe had deleted the widgets itself first, so the
+collector was only clearing Python halves. The probe now reads `shiboken6.isValid` while the parked
+wrappers are still there, which is the difference between a wrapper being collected and a widget
+being destroyed. **The 95 survivors were also over-read** (`T238-R8`): they are `T-273`'s documented
+baseline for product shutdown alone, and applying its owner step leaves **zero**.
+
+**Gates:** `ruff check .`, `ruff format --check .` **216 files**, `mypy src` **56**, `mypy` and
+`--platform win32` **156** each, unit+UI **3,378 passed, 21 skipped**, placement **15**, the four
+`every_surface` consumers **149 / 1 skipped**. CI run `33286635518` at `317c469` is **green in every
+job**, Windows included.
+
+---
+
 **Last updated:** 2026-08-29 — **`T-298` is Complete, approved at `a93a53b`, and every remaining
 finding from that review is folded in.** `T-268` stays Blocked and `T-289` stays Proposed; nothing
-else is open from the 2026-08-29 review. Read this section first.
+else is open from the 2026-08-29 review. *(“Read this section first” stood here until the
+block above replaced it.)*
 
 **`T-298`: the frozen gate now runs in a profile it owns, and its first attempt took CI down.**
 `efa0ce5` declared the per-run profile in a job-level `env:` using `${{ runner.temp }}`. That

@@ -11261,13 +11261,13 @@ being necessary.)*
 
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 
-**Status:** **Ready — the guard is Approved at `9e5feae`, and the task stays open against
-criterion 4, which is now half answered rather than unanswered.** The second of its two named steps
-ran on 2026-08-30 and **reported** instead of refusing: of the 159 widgets the application's own
-routes open, the **64 that were released all went by refcount** — none took the collector's route —
-and the other **95 are the `MainWindow` tree, still alive after its own shutdown**, which is why
-they cannot be classified at all. See *Criterion 4, 2026-08-30* below. The remaining step is the
-real-session probe, not further repetition.
+**Status:** **Ready — the guard is Approved at `9e5feae`, and criterion 4 is sharper rather than
+met.** The second of its two named steps ran on 2026-08-30, in three arms. **No widget the
+application's own routes opened takes the collector's route**; the 95 that survive product shutdown
+are `T-273`'s documented baseline and go when its owner step is applied. **The collector-runs-a-Qt-
+destructor route is now reproducible on demand** — and doing it aborts the process — but only for
+widgets the test helper owns parentless, and on the main thread, so it is **not this task's crash**.
+See *Criterion 4, 2026-08-30* below. The remaining step is the real-session probe.
 
 **30 *additional* contended runs, 2026-08-20: zero crashes. The cumulative record is 90 runs, 50 of
 them contended.** 40 idle, **12 under 20 busy loops**, **8 beside an `-n auto` integration batch**
@@ -11731,65 +11731,67 @@ read as a bound.
 **`T-238` stays `Ready`.** This narrows the question and does not close it, and the entry is not
 moving to `Complete` on a measurement that argues the opposite of the deliverable it already has.
 
-#### Criterion 4, 2026-08-30: the run reports, and the retention is what stops it finishing
+#### Criterion 4, 2026-08-30: the collector's route is reproduced, and it is not this crash
 
-`ai/evidence/2026-08-30-T238-criterion-4-widget-collection.md`. Deterministic across two runs.
-**All four of `T238-R5`'s reasons the 2026-08-20 counts reached no conclusion are answered rather
-than noted**: the retention root is released, every widget is tracked by identity, the collection
-happens after the release and inside the measurement window, and the five uncovered screens are
-covered through `tests/ui/surfaces.py` — the same inventory `tests/ui/conftest.py` audits, imported
-rather than restated, because two lists of them would drift.
+`ai/evidence/2026-08-30-T238-criterion-4-widget-collection.md`. Three arms, each deterministic.
+Census in all three: **364** widgets — 159 opened by the application's own routes, 205 constructed
+by `tests/ui/surfaces.py`, the same inventory `tests/ui/conftest.py` audits (imported rather than
+restated, because two lists of them would drift).
 
-| | |
-|---|---|
-| Censused with every surface open | **364** — 159 route-opened, 205 constructed |
-| **Freed by the cyclic collector** | **17**, all constructed, all one `OptionsDialog` tree |
-| Freed by refcount | 252 |
-| Still alive after the release | **95**, all the `MainWindow` tree, **1** top-level |
-| Wrappers among those whose C++ half is gone | **0** |
+| Arm | Constructed screens | Window | Parked | **Live when parked** | Survivors | Outcome |
+|---|---|---|---:|---:|---:|---|
+| **A** | closed + `deleteLater` | product shutdown alone | 17 | **0** | 95 | no live destruction |
+| **B** | **dropped for the collector** | product shutdown alone | 24 | **24** | 122 | **release → SIGSEGV** |
+| **C** | closed + `deleteLater` | **+ `T-273`'s owner step** | 67 | **0** | **0** | no live destruction |
 
-**No widget opened by a route was freed by the collector.** The 64 route-opened widgets that were
-released went by refcount, on the thread that dropped them, so for those the harness reading stands.
+**The first version of this section was wrong and is withdrawn** (`T238-R7`). It reported arm A's
+17 as *"widgets freed by the cyclic collector"* and called them the crash's precondition. **All
+seventeen were already-dead wrappers**: the probe had `deleteLater`'d and flushed `DeferredDelete`
+first, so Qt destroyed the C++ widgets and the collector parked the Python halves. Clearing a dead
+wrapper runs no destructor and reaches no deletion path. The reviewer's replay — `shiboken6.isValid`
+read while `gc.garbage` was still populated — is what separated the number from the claim, and the
+probe now reads validity there itself. *"They are in cycles"* was also stronger than the predicate:
+`DEBUG_SAVEALL` parks what a collection frees, and an object can be there because its only referents
+were cyclic.
 
-**The other 95 could not be classified, and why is the finding.** They are the `MainWindow` tree,
-**alive after `composition.shutdown.begin()` completed and after the probe dropped everything it
-held**. A live graph is never classified by the collector, so this is not *unmeasured*; it is
-*unmeasurable while retained*. The root's referrers are **6 bound methods and 3 closure cells** —
-`T-273`'s mechanism, on a tree that task was meant to have released. Whether that is `T-273`
-incomplete or a second instance is not established here and is not guessed at.
+**No widget the application's own routes opened takes the collector's route.** Of the 159, the 64
+that were released went by refcount. That is the same answer in every arm.
 
-**The `OptionsDialog` tree is cyclic and that is worth less than it looks.** All 17 collected
-widgets are its. Nothing but the collector could free them, so they are in cycles — but
-`tests/ui/surfaces.py` builds them **parentless**, so Python owned a C++ object the product would
-have parented. The destruction measured is the helper's ownership. **Not the crash's precondition**;
-a place to look for one.
+**Arm B reproduces the mechanism on demand, and demonstrating it aborts the process.** With Python
+owning the C++ objects and only the collector freeing them, 24 wrappers park **with their widgets
+still alive**, and the release dies: `gc_collect_main` → `_Py_Dealloc` → shiboken → `~QDialog` →
+`hide_helper()` → the offscreen plugin → `QCursor::pos` → **SIGSEGV, 3 of 3 runs**. The upper half
+is `T-238`'s retained stack and `T-289`'s dump — **the cyclic collector running a Qt widget
+destructor** — and the lower half is not: this is the main thread and the offscreen plugin, where
+`T-238` is `~QAbstractItemView` under Shiboken's cross-thread deletion. **It is not this task's
+crash.** It is the first time the route has been made to happen on demand.
 
-**The first version of this run reported a false positive, and the guard against it is now proved.**
-It printed *"1 QListView freed by the collector — PRODUCT BRANCH"*, and the widget was the probe's
-**own positive control** surviving into the census. Identity is what exposed it — the description
-read `QListView (parentless)`, which this application never builds — and a residue check now
-refuses (exit 2) when a parentless `QListView` outlives the self-test. **Forced deliberately to
-prove the refusal fires**, and the false positive reproduced deliberately with the guard disabled.
-**Three instruments in this family have now reported confidently about nothing**, and the class name
-alone would not have caught this one.
+**Those widgets are the helper's, and that bound is the whole reason arm B is not the answer.**
+`tests/ui/surfaces.py` builds the five **parentless**, so Python owns C++ objects the product would
+have parented. In the product they have a parent, and dropping a wrapper then destroys nothing.
 
-**Two method corrections, either of which would have changed the answer.** `processEvents()` does
-not run a `deleteLater()` — Qt delivers `DeferredDelete` only from an event loop, so a version that
-merely pumped events reported the constructed screens as retained, which was a fact about the pump.
-And automatic collection is **off** for the measured phase, because a widget freed by a generational
-collection during teardown would be gone before `DEBUG_SAVEALL` was armed and would be filed under
-*freed by refcount* — the exact event being measured, misclassified.
+**The 95 survivors are `T-273`'s documented baseline** (`T238-R8`), and the previous section's
+*"a tree that task was meant to have released"* is withdrawn with its incomplete-or-second-instance
+speculation. `T-273` ruled that `shutdown.begin()` does **not** own the window's lifetime — the
+`composed` fixture does, with `window.deleteLater()` and a **receiver-scoped** `DeferredDelete`
+flush. **Arm C applies that step and every censused widget goes: 0 survivors.** Arms A and B omit
+it, which is why the tree stands there.
+
+**Two method corrections, either of which changes the answer.** `processEvents()` does not run a
+`deleteLater()` — Qt delivers `DeferredDelete` only from an event loop. And automatic collection is
+**off** for the measured phase: a widget freed by a generational collection during teardown would
+be gone before `DEBUG_SAVEALL` was armed and would be filed under *freed by refcount*, which is the
+exact event being measured. The run is therefore not natural teardown timing, deliberately.
+
+**The instrument refuses rather than reporting when it cannot see.** Three controls run first: a
+widget reachable only from a cycle is parked by its own tag **and valid at that moment**; a
+refcount-freed widget is not named; and a parentless `QListView` outliving the self-test makes the
+probe refuse — because the first version censused its own positive control and reported it as a
+product finding. **Three instruments in this family have now reported confidently about nothing.**
 
 **What criterion 4 still needs**: the real-session probe — the application on a display with the
-thumbnail pool working — and, for the 95, whatever releases the `MainWindow` tree so it can be
-classified at all. This run does not reproduce the segfault and does not claim to.
-
-**Two criteria moved, and neither moved quietly.** Criterion 6 was **replaced** — a soak beating
-60 clean runs is a machine committed for a night (`ai/TESTING.md`: a host performing a measurement
-is committed for the duration) to produce a number that cannot tell *the guard worked* from *the
-crash was always this rare*; the mutation evidence discriminates and costs seconds. Criterion 4 is
-**retained and open**, which is what keeps this entry from closing on the deliverable it happened
-to produce rather than on the question it was filed to answer.
+thumbnail pool working — and a widget the *product* owns from Python reaching the collector. Arm B
+shows what happens when one does; nothing here shows the product holding one.
 
 ---
 
