@@ -81,8 +81,9 @@ and silent with it.
 **Gates, this checkout, 2026-08-29:** `ruff check .` **all checks passed**, `ruff format --check .`
 **215 files already formatted**, `mypy src` **56 files**, `mypy` and `mypy --platform win32` **155
 files each**, `pytest -q -n auto tests/unit tests/ui` **3,378 passed, 21 skipped**, and the six
-`T-298` workflow mutations re-run and killed. **Not pushed.** `tools/t287_minimize_probe.py` remains
-untracked and untouched.
+`T-298` workflow mutations re-run and killed. *(Pushed later the same day, `afe116a..51c1d36`, on
+the maintainer's instruction; `tools/t287_minimize_probe.py` was deleted rather than committed —
+`T-287` carries why, and what to build in its place.)*
 
 ---
 

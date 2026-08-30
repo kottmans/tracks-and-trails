@@ -12460,6 +12460,25 @@ difference is the defect.
 minimizes is three lines and is the wrong thing to write before knowing which of those two worlds
 this is.
 
+**Take the measurement in a nested compositor, and this is the one piece of the design that was
+learned the expensive way.** A first probe existed as an uncommitted `tools/t287_minimize_probe.py`
+between 2026-08-27 and 2026-08-29 and was deleted rather than fixed. Two defects, and the second is
+why it could not simply be cleaned up:
+
+- **It captured the whole screen.** On Wayland a client cannot read the compositor's stacking, so a
+  capture is the only honest witness to *"is the dialog still on screen"* — and the only capture
+  that answers it is of the whole output. Run against the maintainer's live session it photographed
+  their desktop, personal content included. `QWidget.grab()` is not the fix: it renders the widget
+  whether or not the compositor is showing it, which is the wrong question.
+- **`showMinimized()` is not a taskbar click**, and the report came from the taskbar. Whether KWin
+  distinguishes them is exactly what the probe existed to settle, so a probe that cannot make the
+  distinction settles nothing.
+
+**A nested `kwin_wayland` answers both.** Nothing is on that output but the probe's two windows, so
+a full capture is safe by construction, and the minimize can be driven the way a panel drives it
+rather than by the client asking itself. **State the nested-versus-session difference as a limit**
+in whatever this records; it is real, and it is smaller than the two defects above.
+
 #### If it turns out to be ours to work around, the decision is not obvious
 
 - **Hide the dialogs with the parent and restore them with it.** Matches what a user means by
