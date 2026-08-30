@@ -578,10 +578,24 @@ object for a whole session would change the memory behaviour of the thing being 
   **Finished means finished**: the call hands its work to a `QThreadPool` and returns at once, so the
   first version marked the route complete before the install had begun. Completion now comes from the
   service's own `reported`/`failed` signals — the same ones the screen listens to.
-- **It names the near misses, not just counts them** (`T289-R6`). A Python-typed widget the collector
-  destroys **on the GUI thread** is the tree that would have been destroyed in place had the
-  collector fired on a pool thread, and the first version recorded it as a number with no name. Those
-  names are what a correction can be aimed at, and the verdict prints them.
+- **It names the near misses, not just counts them** (`T289-R6`). A candidate the collector destroys
+  **on the GUI thread** is the tree that would have been destroyed in place had the collector fired
+  on a pool thread, and the first version recorded it as a number with no name. Those names are what
+  a correction can be aimed at, and the verdict prints them.
+  **A candidate is Python-typed *and* `ownedByPython`** — both, because a Python subclass with a Qt
+  parent belongs to C++ and releasing its wrapper destroys nothing. Testing the type alone named one
+  of those, which would have sent a correction after the wrong tree. Ownership is re-read on every
+  event, because reparenting moves it.
+- **An off-GUI destruction with no collection running is reported as a different defect** (`T289-R6`).
+  Qt still forbids it and it deserves its own entry, but this task is about the *collector* doing it,
+  and a verdict that called both `T-289` would have closed this task on someone else's bug.
+
+**The report carries its own proof and its own identity** (`T289-R7`). Before the application
+starts, the session runs `--self-test` **in a subprocess and writes the result into the same file**,
+refusing to start if it fails — a null result is worth exactly what the positive control is worth,
+and asking for it as a separate command leaves it somewhere else or untaken. The header records the
+tree (marked dirty when it is), the host, the Python, PySide6 and Qt versions, and the platform
+plugin, so the file can be placed a month later without asking anybody.
 
 **Killed sessions say so too.** `SIGTERM` writes the summary and verdict before quitting — and the
 handler needs a heartbeat timer to run at all, because Python executes signal handlers between
@@ -591,10 +605,11 @@ trap anyone adding a signal handler to a Qt program walks into.
 
 **Its positive control runs offscreen in a second, and must be run first.**
 `--self-test` goes through `arm()` — the real event filter and the real `gc` callback, not a
-hand-wired handler (`T289-R7`) — and drives **both directions**: the measured arm collected on a
+hand-wired handler (`T289-R7`) — and drives **three directions**: the measured arm collected on a
 pool thread, which must be reported **by the subject's own name** rather than by any off-thread
-destruction happening to occur (`T289-R7`), and a second candidate collected on the **GUI** thread,
-which must be **named** as a near miss (`T289-R6`). *A clean session is worth exactly as much as that
+destruction happening to occur; a second candidate collected on the **GUI** thread, which must be
+**named** as a near miss; and a Python subclass **with a Qt parent**, which must **not** be named,
+because it is owned by C++ and releasing its wrapper destroys nothing (`T289-R6`). *A clean session is worth exactly as much as that
 check passing beforehand*, and three instruments in this family have reported confidently about
 nothing.
 

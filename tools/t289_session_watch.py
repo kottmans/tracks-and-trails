@@ -66,6 +66,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import os
 import signal
 import sys
 import threading
@@ -96,6 +97,7 @@ class Watch(QObject):
         self.gui_thread = gui_thread
         self.widgets_seen = 0
         self.off_gui_destructions = 0
+        self.off_gui_in_a_collection = 0
         self.off_gui_tags: list[str] = []
         #: Python-typed widgets the collector destroyed **on the GUI thread** — near misses, and
         #: the names criterion 2 needs even when the session never goes wrong (`T289-R6`).
@@ -142,12 +144,18 @@ class Watch(QObject):
     def watch(self, widget: QWidget) -> None:
         tag = f"{type(widget).__name__}({widget.objectName() or 'unnamed'})"
         module = type(widget).__module__
-        # **Read now, while the widget is certainly alive.** At `destroyed` time the C++ half is
-        # going and asking shiboken anything about it is a question about a corpse. A type defined
-        # in Python is the property that makes destruction happen *in place* rather than being
-        # marshalled — measured 2026-08-30 — so a widget with one is a candidate whichever thread
-        # ends up destroying it.
-        candidate = not module.startswith("PySide6")
+        # **Two properties, not one** (`T289-R6`). A type defined in Python is what makes
+        # destruction happen *in place* rather than being marshalled, and `ownedByPython` is what
+        # makes the wrapper's release destroy anything at all. A Python subclass **with a Qt
+        # parent** is owned by C++: dropping its wrapper destroys nothing, and the first version
+        # named one of those as `T-289`'s tree.
+        #
+        # **Kept in a cell and refreshed as the widget lives**, because ownership changes: a widget
+        # reparented after this first sees it would otherwise carry a stale verdict. The filter
+        # updates it on every later event, which is cheap and is the only moment the widget is
+        # certainly alive — at `destroyed` time the C++ half is going and asking shiboken anything
+        # then is a question about a corpse.
+        state = {"candidate": self.is_a_candidate(widget)}
 
         def destroyed(*_args: object) -> None:
             thread = threading.current_thread().name
@@ -162,7 +170,7 @@ class Watch(QObject):
                 self.gui_destructions += 1
                 if inside:
                     self.gui_destructions_in_a_collection += 1
-                    if candidate:
+                    if state["candidate"]:
                         self.candidates_collected.append(tag)
                         self.say(
                             f"~~ {tag} from {module} was collected on the GUI thread. Its type is "
@@ -172,17 +180,39 @@ class Watch(QObject):
                 return
             self.off_gui_destructions += 1
             self.off_gui_tags.append(tag)
-            where = "inside a gc collection" if inside else "outside any gc collection"
+            if inside:
+                self.off_gui_in_a_collection += 1
+            where = "inside a gc collection" if inside else "OUTSIDE any gc collection"
             self.say(f"!! {tag} from {module} destroyed on {thread!r} — NOT the GUI thread")
             self.say(f"   {where} on that thread")
+            if not inside:
+                self.say(
+                    "   NOT T-289's mechanism: this task is the *collector* destroying a widget on "
+                    "the wrong thread. A destruction off the GUI thread with no collection running "
+                    "is a different defect and wants its own entry."
+                )
             self.say("   Python stack of that thread:")
             for frame in traceback.extract_stack()[:-1][-12:]:
                 self.say(f"     {frame.filename}:{frame.lineno} in {frame.name}")
 
         widget.destroyed.connect(destroyed, Qt.ConnectionType.DirectConnection)
-        widget.__dict__[WATCHED] = True
+        widget.__dict__[WATCHED] = state
         self.widgets_seen += 1
         self.note_the_settings_screen(widget)
+
+    @staticmethod
+    def is_a_candidate(widget: QWidget) -> bool:
+        """Whether releasing this widget's wrapper would destroy a Qt widget in place (`T289-R6`).
+
+        Both halves are required and each excludes a real state: a **PySide type** is marshalled to
+        the GUI thread and destroys nothing dangerous wherever its wrapper goes, and a widget **not
+        owned by Python** belongs to its Qt parent, which is what destroys it.
+        """
+        import shiboken6
+
+        if type(widget).__module__.startswith("PySide6"):
+            return False
+        return bool(shiboken6.isValid(widget) and shiboken6.ownedByPython(widget))
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt's name
         """Discover widgets as Qt sends them events. **Never enumerates live widgets** (`T289-R8`).
@@ -198,8 +228,14 @@ class Watch(QObject):
         window, because a widget that was never polished, shown or laid out is not one a user
         interacted with.
         """
-        if isinstance(watched, QWidget) and WATCHED not in watched.__dict__:
-            self.watch(watched)
+        if isinstance(watched, QWidget):
+            state = watched.__dict__.get(WATCHED)
+            if state is None:
+                self.watch(watched)
+            else:
+                # **Refreshed, because ownership moves** (`T289-R6`). A widget parented after it was
+                # first seen stops being a candidate, and one released from its parent becomes one.
+                state["candidate"] = self.is_a_candidate(watched)
         return False
 
     def note_the_settings_screen(self, widget: QWidget) -> None:
@@ -225,7 +261,8 @@ class Watch(QObject):
             f"watched {self.widgets_seen} widgets over {minutes:.1f} minutes; "
             f"collections by thread: {self.collections or 'none observed'}, "
             f"{self.collected_objects} objects freed; widget destructions: "
-            f"{self.off_gui_destructions} off the GUI thread, {self.gui_destructions} on it "
+            f"{self.off_gui_destructions} off the GUI thread "
+            f"({self.off_gui_in_a_collection} inside a collection), {self.gui_destructions} on it "
             f"({self.gui_destructions_in_a_collection} of those inside a collection); "
             f"candidates collected on the GUI thread: {len(self.candidates_collected)}; "
             f"route: settings={self.settings_opened} update_started={self.update_started} "
@@ -239,10 +276,18 @@ class Watch(QObject):
         clean without knowing whether Settings had ever been opened. A session that never ran the
         update proves nothing about the update.
         """
+        if self.off_gui_in_a_collection:
+            return (
+                f"T-289 OBSERVED — {self.off_gui_in_a_collection} widget(s) destroyed off the GUI "
+                "thread *inside a cyclic collection*, each with its thread and stack above. That "
+                "is this task's precondition in the product."
+            )
         if self.off_gui_destructions:
             return (
-                f"OFF-GUI DESTRUCTION OBSERVED — {self.off_gui_destructions} of them, each with "
-                "its thread and stack above. That is T-289's precondition in the product."
+                f"OFF-GUI DESTRUCTION, BUT NOT T-289 — {self.off_gui_destructions} widget(s) were "
+                "destroyed off the GUI thread with **no collection running on that thread**. Qt "
+                "still forbids it and it is worth an entry of its own, but this task is about the "
+                "*collector* doing it, and the collector did not (`T289-R6`)."
             )
         if not self.the_route_ran():
             return (
@@ -418,6 +463,22 @@ def self_test() -> int:
     gc.collect()  # on this thread, which is the GUI thread
     QCoreApplication.processEvents()
 
+    # **The third direction** (`T289-R6`): a Python subclass **with a Qt parent** is owned by C++,
+    # so releasing its wrapper destroys nothing and it is not this task's tree. The reviewed version
+    # named one, because it tested the type and not the ownership.
+    owner = Derived()
+    owner.setObjectName("t289-self-test-owner")
+    child = Derived(owner)
+    child.setObjectName("t289-self-test-child")
+    owner.show()
+    QCoreApplication.processEvents()
+    owner.hide()
+    QCoreApplication.processEvents()
+    Cycle(owner)
+    del owner, child
+    gc.collect()
+    QCoreApplication.processEvents()
+
     if watch.note_a_collection in gc.callbacks:
         gc.callbacks.remove(watch.note_a_collection)
     application.removeEventFilter(watch)
@@ -440,11 +501,100 @@ def self_test() -> int:
             "likely finding would go unrecorded."
         )
         return 2
+    if "Derived(t289-self-test-child)" in watch.candidates_collected:
+        print(
+            "SELF-TEST FAILED: a Python subclass owned by its Qt parent was named as a candidate. "
+            "Releasing its wrapper destroys nothing, so naming it would send a correction after "
+            "the wrong tree."
+        )
+        return 2
+    if "Derived(t289-self-test-owner)" not in watch.candidates_collected:
+        print(
+            "SELF-TEST FAILED: the parentless owner was not named, so the ownership test is now "
+            f"rejecting real candidates. Named: {watch.candidates_collected}."
+        )
+        return 2
     print(
-        "SELF-TEST PASSED: the filter discovered both widgets, the callback saw the collections, "
-        "the off-GUI destruction was reported by name, and the GUI-thread candidate was named."
+        "SELF-TEST PASSED: the filter discovered the widgets, the callback saw the collections, "
+        "the off-GUI destruction was reported by name, the GUI-thread candidate was named, and a "
+        "Qt-owned child was not."
     )
     return 0
+
+
+def identity() -> list[str]:
+    """What produced this report, so a reader a month from now can place it (`T289-R7`).
+
+    **A measurement that does not say which tree, which machine and which Qt it came from is not
+    evidence a month later** — `T-148`'s rule, and `tools/soak_a_test.py` carries the same one. A
+    dirty tree is recorded as dirty rather than rounded to the commit it is nearest.
+    """
+    import platform
+    import shutil
+    import subprocess
+
+    from PySide6 import __version__ as pyside_version
+    from PySide6.QtCore import qVersion
+
+    git_binary = shutil.which("git")
+
+    def git(*arguments: str) -> str:
+        if git_binary is None:
+            return "unknown"
+        try:
+            # S603/S607 answered rather than suppressed blindly: the executable is resolved by
+            # `which` above and every argument is a literal from this function.
+            done = subprocess.run(  # noqa: S603
+                [git_binary, *arguments],
+                cwd=Path(__file__).resolve().parents[1],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except OSError:  # pragma: no cover - git absent is not this tool's problem
+            return "unknown"
+        return done.stdout.strip() or "unknown"
+
+    head = git("rev-parse", "--short", "HEAD")
+    dirty = " (tree dirty)" if git("status", "--porcelain") not in {"", "unknown"} else ""
+    return [
+        f"tree: {head}{dirty}",
+        f"host: {platform.node()}  {platform.platform()}",
+        f"python: {platform.python_version()}  PySide6 {pyside_version}  Qt {qVersion()}",
+        f"QT_QPA_PLATFORM: {os.environ.get('QT_QPA_PLATFORM') or '(unset — Qt chooses)'}",
+    ]
+
+
+def prove_the_instrument_first(watch: Watch) -> bool:
+    """Run `--self-test` in a subprocess and put its result in the report (`T289-R7`).
+
+    **A session's null result is worth exactly what the positive control is worth**, and asking the
+    maintainer to run a second command leaves the proof somewhere else — or not taken at all. This
+    puts it in the same file, above the session it vouches for.
+
+    **A subprocess, because the control needs its own `QApplication`** and this process is about to
+    hand that job to `app.run`. It costs about a second.
+    """
+    import subprocess
+
+    watch.say("running the positive control before the session…")
+    # S603 answered: the interpreter is this process's own and the script is this file.
+    done = subprocess.run(  # noqa: S603
+        [sys.executable, str(Path(__file__).resolve()), "--self-test"],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    for line in done.stdout.strip().splitlines()[-3:]:
+        watch.say(f"  control | {line}")
+    if done.returncode == 0:
+        watch.say("positive control PASSED — this instrument reports what it is built to report")
+        return True
+    watch.say(
+        "positive control FAILED — nothing this session reports may be believed, and a clean "
+        "result would be meaningless. Not starting the application."
+    )
+    return False
 
 
 def finish_on_a_signal(watch: Watch) -> None:
@@ -506,15 +656,17 @@ def main() -> int:
         watch = Watch(report, threading.current_thread().name)
         watch.say(f"T-289 session watch — GUI thread is {watch.gui_thread!r}")
         watch.say("route to drive: Settings -> yt-dlp -> Update")
+        for line in identity():
+            watch.say(line)
         watch.say(
             "a report with no VERDICT line at the end is an incomplete session and says nothing"
         )
+        if not prove_the_instrument_first(watch):
+            watch.say("VERDICT: NOT A RESULT — the positive control failed; no session was run.")
+            print("positive control failed; see the report", file=sys.stderr)
+            return 2
         finish_on_a_signal(watch)
 
-        # **Armed once the application exists, from the GUI thread.** `app.run` constructs the
-        # `QApplication` itself, so there is nothing to attach to until it has; a zero-delay timer
-        # posted before `exec()` runs as soon as the loop starts, which is the first moment the
-        # widgets exist and the first moment a `QTimer` may be created.
         # **Armed once the application exists, on the GUI thread.** `app.run` constructs the
         # `QApplication` itself, so there is nothing to install a filter on until it has; a
         # zero-delay timer posted before `exec()` runs as soon as the loop starts.
