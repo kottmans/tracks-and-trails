@@ -494,6 +494,18 @@ def main() -> int:
     print(f"    with their Qt widget STILL ALIVE:           {len(live_when_collected)}")
     print(f"    with their Qt widget already destroyed:     {len(dead_when_collected)}")
     print(f"  gone by refcount:                             {gone_by_refcount}")
+    # **Split by origin, because the arms do not release the same widgets** (`T238-R9`). Arms A and
+    # B leave the window tree standing, so only 64 route-opened widgets are released; arm C applies
+    # `T-273`'s owner step and releases all 159. A record that quotes one arm's split for all three
+    # is quoting a number the run did not produce.
+    for group in ("route", "constructed"):
+        tags = {tag for tag, origin in census.origin.items() if origin == group}
+        parked_here = len(tags & censused.keys())
+        alive_here = len(tags & still_alive.keys())
+        print(
+            f"    {group:12s} parked {parked_here:4d} | refcount "
+            f"{len(tags) - parked_here - alive_here:4d} | still alive {alive_here:4d}"
+        )
     print(f"  still alive after the release:                {len(still_alive)}")
     print(f"  objects the collector parked in this window:  {total_parked}")
 

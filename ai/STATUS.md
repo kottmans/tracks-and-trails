@@ -10,16 +10,19 @@ destructor route is reproducible on demand for the first time.** Three arms, eac
 `ai/evidence/2026-08-30-T238-criterion-4-widget-collection.md`. `T-238` stays **Ready** — criterion
 4 is not met. Read this section first.
 
-**No widget the application's own routes opened takes the collector's route.** Of the 159 that the
-main window, add dialog, settings and about screens put on screen, the 64 that were released went
-by refcount, on the thread that dropped them. That is the same answer in all three arms.
+**No widget the application's own routes opened was parked while its Qt widget was still alive.**
+That is the invariant in all three arms. The arithmetic is not: arms A and B release 64 of the 159
+by refcount and leave 95 standing, while arm C — with `T-273`'s owner step — releases 109 by
+refcount and parks the other 50, **all of them already destroyed** by that step (`T238-R9`).
 
 **The route itself now reproduces, and demonstrating it aborts the process.** With Python owning
 five parentless screens and only the collector freeing them, 24 wrappers are parked **with their Qt
 widgets still alive**, and releasing them dies: `gc_collect_main` → `_Py_Dealloc` → shiboken →
-`~QDialog` → the offscreen plugin → `QCursor::pos`, SIGSEGV, 3 of 3. **The upper half is `T-238`'s
-retained stack and `T-289`'s dump.** The lower half is not — main thread, offscreen plugin — so it
-is **not** `T-238`'s crash, and the widgets are the test helper's rather than the product's.
+`~QDialog` → the offscreen plugin → `QCursor::pos`, SIGSEGV, 3 of 3. **It is `T-289`'s stack
+exactly** — same frames, same order. **Its relation to `T-238`'s own crash is analogous, not
+identical** (`T238-R10`): that one is `~QAbstractItemView` under Shiboken's *queued cross-thread*
+path, which arm B never enters. Main thread, offscreen plugin, helper-owned widgets — so **not**
+`T-238`'s crash.
 
 **I got this wrong once and the review caught it** (`T238-R7`). The first version reported 17
 `OptionsDialog` widgets as *"freed by the cyclic collector"* and called that the precondition. All

@@ -11754,17 +11754,33 @@ probe now reads validity there itself. *"They are in cycles"* was also stronger 
 `DEBUG_SAVEALL` parks what a collection frees, and an object can be there because its only referents
 were cyclic.
 
-**No widget the application's own routes opened takes the collector's route.** Of the 159, the 64
-that were released went by refcount. That is the same answer in every arm.
+**No widget the application's own routes opened was parked while its Qt widget was still alive.**
+That is the invariant across all three arms — **not** the same arithmetic in each, which is what
+this said and was wrong (`T238-R9`). The arms do not release the same widgets:
+
+| Route-opened widgets, 159 | parked | by refcount | still alive |
+|---|---:|---:|---:|
+| Arms A and B — window left to product shutdown | 0 | 64 | 95 |
+| Arm C — `T-273`'s owner step applied | **50** | **109** | 0 |
+
+Arm C parks 50 of them, and **all 50 are already-destroyed wrappers**: the owner's `deleteLater`
+ran their destructors before the collector saw them. The claim survives the correction; the number
+64 belongs to two arms of the three. The probe now prints the split per origin, because a record
+quoting one arm's arithmetic for all three is quoting a number no run produced.
 
 **Arm B reproduces the mechanism on demand, and demonstrating it aborts the process.** With Python
 owning the C++ objects and only the collector freeing them, 24 wrappers park **with their widgets
 still alive**, and the release dies: `gc_collect_main` → `_Py_Dealloc` → shiboken → `~QDialog` →
 `hide_helper()` → the offscreen plugin → `QCursor::pos` → **SIGSEGV, 3 of 3 runs**. The upper half
 is `T-238`'s retained stack and `T-289`'s dump — **the cyclic collector running a Qt widget
-destructor** — and the lower half is not: this is the main thread and the offscreen plugin, where
-`T-238` is `~QAbstractItemView` under Shiboken's cross-thread deletion. **It is not this task's
-crash.** It is the first time the route has been made to happen on demand.
+destructor**. **It is `T-289`'s stack exactly** — that dump's pool thread runs
+`_Py_HandlePending` → `gc_collect_main` → `_Py_Dealloc` → shiboken → `QWidget::~QWidget`, the same
+frames in the same order. **Its relation to `T-238`'s own crash is analogous rather than
+identical** (`T238-R10`): the retained stack here is `~QAbstractItemView` under
+`runDeletionInMainThread`, Shiboken's **queued cross-thread** path, which arm B never enters. Both
+are the collector running a Qt destructor; only one of them is this task's. **Arm B is not this
+task's crash** — main thread, offscreen plugin, helper-owned widgets — and it is the first time the
+route has been made to happen on demand.
 
 **Those widgets are the helper's, and that bound is the whole reason arm B is not the answer.**
 `tests/ui/surfaces.py` builds the five **parentless**, so Python owns C++ objects the product would

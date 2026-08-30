@@ -35,9 +35,20 @@ by `tests/ui/surfaces.py`.
 
 ## What each arm answers
 
-**A — no widget the application's routes opened takes the collector's route.** Of the 159, the 64
-released went by refcount. The 17 parked were all dead wrappers of the helper's screens. **This is
-the arm the first version reported, and it establishes nothing about live destruction.**
+**A — no widget the application's routes opened was parked while its widget was alive.** Of the
+159, 64 went by refcount and 95 were never released at all. The 17 parked were dead wrappers of the
+helper's screens. **This is the arm the first version reported, and it establishes nothing about
+live destruction.**
+
+**That split is arm A's and arm B's, not arm C's** (`T238-R9`):
+
+| Route-opened widgets, 159 | parked | by refcount | still alive |
+|---|---:|---:|---:|
+| Arms A and B | 0 | 64 | 95 |
+| Arm C | **50** | **109** | 0 |
+
+Arm C's 50 are **all already-destroyed** — the owner's `deleteLater` ran first. So the invariant is
+*no route-opened widget was parked while alive*, in every arm; the number 64 is not.
 
 **B — the mechanism is real, and demonstrating it aborts the process.** When Python owns the C++
 objects and only the collector frees them, 24 wrappers are parked **with their widgets still
@@ -57,12 +68,22 @@ alive**, and releasing them dies:
 #10 gc_collect_main                                 libpython3.14
 ```
 
-SIGSEGV, main thread, **3 of 3 runs**. `gc_collect_main` → `_Py_Dealloc` → shiboken →
-`~QDialog` is the same upper stack as `T-238`'s retained crash and as `T-289`'s dump: **the cyclic
-collector running a Qt widget destructor.** The lower half is different — this one dies in the
-*offscreen* platform plugin asking for a cursor position while hiding a still-visible dialog, on the
-main thread, where `T-238`'s dies in `~QAbstractItemView` under Shiboken's cross-thread deletion.
-**So this is not `T-238`'s crash**, and it is the first time this project has reproduced the
+SIGSEGV, main thread, **3 of 3 runs**.
+
+**It is `T-289`'s stack exactly**, and the match is worth stating precisely (`T238-R10`). That
+dump's pool thread runs `_Py_HandlePending` → `gc_collect_main` → `_Py_Dealloc` → shiboken →
+`QWidget::~QWidget` → `QObjectPrivate::deleteChildren`; arm B runs `gc_collect_main` →
+`_Py_Dealloc` → shiboken → `~QDialog`. Same frames, same order, same mechanism.
+
+**Its relation to `T-238`'s own crash is analogous, not identical.** This task's retained stack is
+`~QAbstractItemView` under `Shiboken::BindingManager::runDeletionInMainThread` — the **queued
+cross-thread** deletion path, entered when the decref happened on another thread. Arm B never
+enters it: the collector is on the main thread, so shiboken destroys in place. Both are the
+collector running a Qt destructor; only one of them is `T-238`'s.
+
+Arm B also dies in the **offscreen** platform plugin, asking for a cursor position while hiding a
+still-visible dialog — a proximate fault a real display may not have at all. **So this is not
+`T-238`'s crash**, and it is the first time this project has reproduced the
 collector-destroys-a-Qt-widget route on demand.
 
 **C — the 95 survivors are `T-273`'s documented baseline, not a new leak** (`T238-R8`). `T-273`
