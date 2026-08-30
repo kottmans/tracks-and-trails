@@ -30,8 +30,19 @@ that gap and is not built.
 standing — something outside the interpreter — is refuted by measurement.** The *state* does not
 discriminate: `5` there is `Waiting`, which a suspended thread reports too. `37` is
 `WrAlertByThreadId`, the wait behind `WaitOnAddress`, SRW locks and modern critical sections: they
-are blocked on an in-process lock. Which lock, and why it was never released, still needs a stack,
-which is `T-092`'s territory.
+are blocked on an in-process lock. Which lock, and why it was never released, still needs a stack.
+
+**That correction was itself wrong once, and the review caught it.** `T268-R5`: it named
+`ThreadState=5` as the absent suspended value, two paragraphs under its own measured line saying all
+seven report it. The discriminating field is the **wait reason** — suspended is `5` there, and the
+seven report `37`; the state is `Waiting`, which a suspended thread reports too. Fixed at `cb6b0ea`,
+approved at `b41433d`, and the same ambiguity swept out of the task, the evidence and this file.
+
+**The stack `T-268` now waits on is not `T-092`'s mechanism.** WER `LocalDumps` fires when a process
+**dies abnormally**; these seven are alive and blocked, so arming it captures nothing from them —
+the reviewer's caveat, folded in here before anybody spends the machine change on it. A live dump,
+from an attached debugger or an equivalent, is the route, and it has to leave the process running
+because the specimen is the evidence.
 
 **`T268-R2` was that measurement not reaching the source.** `downloader/process_tree.py` still ended
 its orphan account on the refuted candidate two commits after the run refuted it. Corrected: the

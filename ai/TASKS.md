@@ -13187,8 +13187,17 @@ on, non-destructively, on the machine* — **has been satisfied**, and it did no
 machine after all: a self-hosted runner is code running there. Read-only run **`33267794308`**,
 `ai/evidence/2026-08-29-T268-orphan-wait-reasons.md`. All seven are preserved.
 
-**What it is blocked on now is a stack, which is genuinely `T-092`'s territory** — a dump needs WER
-configured or a debugger attached, and both change how the machine behaves in a way a job must not.
+**What it is blocked on now is a stack, and `T-092` is the precedent for the dependency rather than
+the supplier of the mechanism.** `T-092` arms WER `LocalDumps`, which writes a dump when
+`python.exe` **dies abnormally**. These seven are alive and blocked, so arming it captures nothing
+from them — `T268-R5`'s review is where that was caught, before anybody spent the machine change on
+it. What would work is a **live** dump: an attached debugger, or an equivalent deliberate mechanism.
+Either way it is still an administrative act on a machine nobody is at.
+
+**Whatever is used has to leave the process running**, because the specimen *is* the evidence and
+there are no others. A debugger that is killed rather than detached takes its debuggee with it.
+Stated as the constraint on the acquisition, not as a procedure verified on that machine.
+
 **The question that stack would answer is much narrower than before: which lock, not whether a
 lock.**
 
@@ -13286,9 +13295,10 @@ be the wrong one. The *fix* is unaffected; the *understanding* is what is missin
 **Phase:** Phase 4 maintenance. **It gates nothing in the centre column** — restated because
 `T-258`'s record sat beside this one for a day and the proximity invited reading it as a
 dependency, which `T258-R10`'s review ruled it is not
-**Depends on:** since 2026-08-29, **a stack from one blocked thread** — which needs WER armed or a
-debugger attached, an administrative change to how `STARBASE` behaves, so a person and `T-092`'s
-territory. **Looking at `3400` and `6924` is no longer the dependency**: a self-hosted runner is
+**Depends on:** since 2026-08-29, **a live stack from one blocked thread** — an attached debugger or
+an equivalent live-dump mechanism, **not** `T-092`'s WER `LocalDumps`, which only fires on abnormal
+termination and so captures nothing from a process that is alive and stuck. An administrative act on
+`STARBASE` either way, so a person, with `T-092` as the precedent rather than the owner. **Looking at `3400` and `6924` is no longer the dependency**: a self-hosted runner is
 code running on that machine, and read-only run `33267794308` did it. `T-258`'s seam and `T-266`'s
 instrument already existed. *(This said **"a person at `STARBASE`… anybody able to look at `3400`
 and `6924`"** since 2026-08-19, and stood for one commit after the run that looked — `T268-R5`.

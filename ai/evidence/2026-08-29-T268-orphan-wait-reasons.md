@@ -81,7 +81,11 @@ second.
 
 ## What would settle it
 
-A stack for one blocked thread. That *is* `T-092`'s territory — a dump needs WER or an attached
-debugger, which is an administrative change to the machine — so the next step is genuinely the one
-`T-268` has been blocked on, but the question it would answer is now much narrower: **which lock,
-not whether a lock.**
+A stack for one blocked thread. That is an administrative act on the machine, so it is the kind of
+step `T-268` has been blocked on all along — but the question it would answer is now much narrower:
+**which lock, not whether a lock.**
+
+*(**This said a dump "needs WER or an attached debugger", and the WER half is wrong for these
+processes** — `T268-R5`'s review. `T-092`'s WER `LocalDumps` writes a dump when `python.exe` *dies
+abnormally*; the seven are alive and blocked, so it would never fire for them. A **live** dump is
+the route, and it must leave the process running, because these are the only specimens.)*
