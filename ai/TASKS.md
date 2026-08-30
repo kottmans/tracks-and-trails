@@ -11262,7 +11262,12 @@ being necessary.)*
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 
 **Status:** **Ready — the guard is Approved at `9e5feae`, and the task stays open against
-criterion 4, whose next step is the real-session probe below rather than any further repetition.**
+criterion 4, which is now half answered rather than unanswered.** The second of its two named steps
+ran on 2026-08-30 and **reported** instead of refusing: of the 159 widgets the application's own
+routes open, the **64 that were released all went by refcount** — none took the collector's route —
+and the other **95 are the `MainWindow` tree, still alive after its own shutdown**, which is why
+they cannot be classified at all. See *Criterion 4, 2026-08-30* below. The remaining step is the
+real-session probe, not further repetition.
 
 **30 *additional* contended runs, 2026-08-20: zero crashes. The cumulative record is 90 runs, 50 of
 them contended.** 40 idle, **12 under 20 busy loops**, **8 beside an `-n auto` integration batch**
@@ -11725,6 +11730,59 @@ read as a bound.
 
 **`T-238` stays `Ready`.** This narrows the question and does not close it, and the entry is not
 moving to `Complete` on a measurement that argues the opposite of the deliverable it already has.
+
+#### Criterion 4, 2026-08-30: the run reports, and the retention is what stops it finishing
+
+`ai/evidence/2026-08-30-T238-criterion-4-widget-collection.md`. Deterministic across two runs.
+**All four of `T238-R5`'s reasons the 2026-08-20 counts reached no conclusion are answered rather
+than noted**: the retention root is released, every widget is tracked by identity, the collection
+happens after the release and inside the measurement window, and the five uncovered screens are
+covered through `tests/ui/surfaces.py` — the same inventory `tests/ui/conftest.py` audits, imported
+rather than restated, because two lists of them would drift.
+
+| | |
+|---|---|
+| Censused with every surface open | **364** — 159 route-opened, 205 constructed |
+| **Freed by the cyclic collector** | **17**, all constructed, all one `OptionsDialog` tree |
+| Freed by refcount | 252 |
+| Still alive after the release | **95**, all the `MainWindow` tree, **1** top-level |
+| Wrappers among those whose C++ half is gone | **0** |
+
+**No widget opened by a route was freed by the collector.** The 64 route-opened widgets that were
+released went by refcount, on the thread that dropped them, so for those the harness reading stands.
+
+**The other 95 could not be classified, and why is the finding.** They are the `MainWindow` tree,
+**alive after `composition.shutdown.begin()` completed and after the probe dropped everything it
+held**. A live graph is never classified by the collector, so this is not *unmeasured*; it is
+*unmeasurable while retained*. The root's referrers are **6 bound methods and 3 closure cells** —
+`T-273`'s mechanism, on a tree that task was meant to have released. Whether that is `T-273`
+incomplete or a second instance is not established here and is not guessed at.
+
+**The `OptionsDialog` tree is cyclic and that is worth less than it looks.** All 17 collected
+widgets are its. Nothing but the collector could free them, so they are in cycles — but
+`tests/ui/surfaces.py` builds them **parentless**, so Python owned a C++ object the product would
+have parented. The destruction measured is the helper's ownership. **Not the crash's precondition**;
+a place to look for one.
+
+**The first version of this run reported a false positive, and the guard against it is now proved.**
+It printed *"1 QListView freed by the collector — PRODUCT BRANCH"*, and the widget was the probe's
+**own positive control** surviving into the census. Identity is what exposed it — the description
+read `QListView (parentless)`, which this application never builds — and a residue check now
+refuses (exit 2) when a parentless `QListView` outlives the self-test. **Forced deliberately to
+prove the refusal fires**, and the false positive reproduced deliberately with the guard disabled.
+**Three instruments in this family have now reported confidently about nothing**, and the class name
+alone would not have caught this one.
+
+**Two method corrections, either of which would have changed the answer.** `processEvents()` does
+not run a `deleteLater()` — Qt delivers `DeferredDelete` only from an event loop, so a version that
+merely pumped events reported the constructed screens as retained, which was a fact about the pump.
+And automatic collection is **off** for the measured phase, because a widget freed by a generational
+collection during teardown would be gone before `DEBUG_SAVEALL` was armed and would be filed under
+*freed by refcount* — the exact event being measured, misclassified.
+
+**What criterion 4 still needs**: the real-session probe — the application on a display with the
+thumbnail pool working — and, for the 95, whatever releases the `MainWindow` tree so it can be
+classified at all. This run does not reproduce the segfault and does not claim to.
 
 **Two criteria moved, and neither moved quietly.** Criterion 6 was **replaced** — a soak beating
 60 clean runs is a machine committed for a night (`ai/TESTING.md`: a host performing a measurement

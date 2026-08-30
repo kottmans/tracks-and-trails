@@ -390,14 +390,7 @@ def every_surface(composed: MainWindow, qapp: QApplication) -> Iterator[list[Sur
     `test_tab_order_follows_visual_order_on_every_surface` compares, and an unrealised widget has
     none worth comparing.
     """
-    from tracks_and_trails.core.models import FormatInfo
-    from tracks_and_trails.core.presets import BUILT_IN_PRESETS
-    from tracks_and_trails.core.settings import Settings
-    from tracks_and_trails.ui.format_table import FormatTable
-    from tracks_and_trails.ui.options_dialog import OptionsDialog
-    from tracks_and_trails.ui.playlist_picker import PlaylistPicker
-    from tracks_and_trails.ui.preset_manager import PresetManager
-    from tracks_and_trails.ui.template_editor import TemplateEditor
+    from tests.ui.surfaces import screens_below_the_add_dialog
 
     inventory: list[Surface] = [
         Surface(
@@ -424,15 +417,11 @@ def every_surface(composed: MainWindow, qapp: QApplication) -> Iterator[list[Sur
     qapp.processEvents()
     inventory.append(Surface("about", about, opened_through_its_route=True))
 
-    built: list[tuple[str, QWidget]] = [
-        # **With a row in it.** An empty table publishes no operable control, and a sweep over
-        # nothing is what `T-227`'s gate did the moment it succeeded.
-        ("format table", FormatTable([FormatInfo(format_id="137", extension="mp4", height=1080)])),
-        ("template editor", TemplateEditor("%(title)s.%(ext)s")),
-        ("playlist picker", PlaylistPicker()),
-        ("options dialog", OptionsDialog(preset=BUILT_IN_PRESETS[0])),
-        ("preset manager", PresetManager(Settings(), save=lambda _settings: None)),
-    ]
+    # **The list moved to `tests/ui/surfaces.py` and did not become a second one** (`T238-R5`).
+    # `tools/t238_widget_cycle_probe.py` needs the same five for `T-238`'s criterion 4, which asks
+    # about *any* application widget; two lists of them would drift, and the drift would be
+    # invisible to both readers.
+    built: list[tuple[str, QWidget]] = screens_below_the_add_dialog()
     for label, widget in built:
         widget.show()
         inventory.append(Surface(label, widget, opened_through_its_route=False))
