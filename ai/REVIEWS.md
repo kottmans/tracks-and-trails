@@ -22339,3 +22339,66 @@ current review under the convergence rule. R10 needs no further work.
 
 The Reviewer changed only this append-only review record. No reviewed source, test, task/status
 text, instrumentation, handoff, push, CI run or remote state was changed.
+
+---
+
+## 2026-08-30 — T-289 instrument integrity re-review 4
+
+**Reviewer:** Codex (Reviewer)
+**Focused boundary:** `37c38100f6fd2359c82772adc7f82261f592f063..d1c56d9fa26d2c8407d065b77465f0e737aec800`
+**Commit:** `d1c56d9` (instrument correction; `fff2c2a` was dispositioned in the preceding review)
+**Verdict:** **Changes requested. `T289-R6` remains High and blocking; `T289-R7` is
+Resolved.** The correction handles the ownership transition for a widget the filter already knows,
+and its mutations are now discriminating. The same transition is still missed when `ParentChange`
+is the widget's first observed event: discovery records Shiboken's stale flag and immediate
+collection produces no candidate. Keep the real-display session on hold. There is one focused
+instrument correction left; no product change is requested.
+
+### Finding dispositions
+
+| Finding | Disposition | Independent verification |
+|---|---|---|
+| **T289-R6** | **Partially corrected; remains Open (High, Blocks approval: Yes).** For an already-discovered widget, reading `parent() is None` during `ParentChange` correctly bridges the point where `ownedByPython` is stale. The new arm kills removing all refresh, removing only the `ParentChange` special case, and removing ownership discrimination. It does not exercise first-event discovery. A child constructed with a Qt parent after arming had no `WATCHED` state. Its first observed event was `setParent(None)`'s `ParentChange`; `eventFilter` entered the `known is None` branch, and `watch()` read stale `ownedByPython=False` without knowing the event was a reparent. When the call returned, actual ownership was true while cached ownership stayed false; immediate GUI-thread collection left `candidates_collected=[]`. This can make a route report say that no Python-owned candidate was collected when one was. Apply the reparent reading on both discovery and refresh, and make the arm assert the child is undiscovered immediately before release so it cannot silently regress to the submitted, easier case. The previously required permanent outside-collection classifier arm is also still absent: the four-arm self-test never calls `verdict()`. Current behavior was independently verified in the prior pass, so that omission is not the reason this finding remains High, but retain it in the focused correction rather than leaving the classifier unguarded. | Exact replay: after construction **watched=false, actual ownership=false**; after release **watched=true, actual=true, cached=false**; after collection **no candidate**. A throwaway correction that applied the special reading in the discovery branch changed cached ownership to true and named `Derived(first-event-release)`. Submitted baseline passed; no-refresh and ordinary-refresh-only mutations each failed on the released widget, and an ownership-free mutation failed on the C++-owned child. |
+| **T289-R7** | **Resolved.** The normal report now distinguishes the environment request from the platform Qt actually selected after `QApplication` exists. The embedded destructive control is explicitly forced to `offscreen`, records that containment and its limitation, and cannot change the parent session's plugin. | An isolated parent run requested `minimal`; its report recorded **requested `minimal`**, **positive control PASSED offscreen**, and **selected by Qt: `minimal`**, then correctly ended `NOT A RESULT` because the route was not driven. |
+| **T289-R8** | **Remains Resolved.** No live-widget enumeration returned. | Direct diff inspection. |
+| **T289-R9** | **Remains Resolved.** The collection-cost record is unchanged. | Direct diff inspection. |
+| **T289-R10** | **Remains Resolved.** The earlier stale polling and duplicated-arming prose remain corrected. | Direct diff inspection. |
+| **T289-R11** | **Low, Blocks approval: No — source-prose cleanup.** The corrected helper and TASKS record say ownership cannot be queried at destruction and must be recorded while alive, but the comment at `tools/t289_session_watch.py:183-185` still says it is read **at the destruction**. The module cost paragraph also calls the event filter “one comparison per event” and “unmeasurable” even though it now performs `isValid` plus `ownedByPython` on ordinary widget events, and the submission correctly says real-session event cost was not measured. Make those two passages describe the submitted implementation and preserve that uncertainty. | Direct source inspection; the prior synthetic review measured about 10.7 µs additional work per event and explicitly did not generalize it to a live-session rate. |
+
+### Rulings on the submitted questions
+
+- **`parent() is None` is accepted for this product's `QWidget` reparent transition.** At rest the
+  instrument still asks Shiboken directly. During `ParentChange`, the new QObject parent is already
+  installed, and the product route uses ordinary parent/layout/central-widget ownership; no
+  `QGraphicsProxyWidget`, explicit Shiboken ownership transfer, or other parentless C++-ownership
+  seam was found. The remaining defect is that first-event discovery does not use that accepted
+  reading.
+- **Per-event refresh does not independently block the diagnostic.** The prior synthetic measurement
+  remains enough to permit the run with an observer-effect bound; it is not enough to call the work
+  “one comparison” or its cost unmeasurable.
+- **Keeping all control directions offscreen is correct containment.** Those arms test Shiboken,
+  discovery and GC correlation while deliberately performing forbidden destruction. The actual
+  product session separately records its selected real plugin.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | One focused commit, two files, no `src/` or tests; `git diff --check 37c3810..d1c56d9` is clean. |
+| Submitted self-test | Passed offscreen and named the pool subject, GUI near miss, parentless owner and released child while rejecting the parent-owned child. |
+| Submitted mutations | Removing refresh: exit **2**, released widget absent. Keeping ordinary refresh but removing the `ParentChange` reading: exit **2**, released widget absent. Ignoring ownership: exit **2**, parent-owned child falsely named. |
+| First-event release | Submitted tree: **false/false** at construction (watched/actual), then **true/true/false** after release (watched/actual/cached), and no candidate after immediate collection. Throwaway discovery-branch correction: cached true and candidate named. |
+| Platform/control binding | Isolated `minimal` parent session: request `minimal`, embedded control `offscreen`, Qt selection `minimal`, final route verdict `NOT A RESULT`. No real-display route was run. |
+| Static/types | Ruff and format pass on the tool; direct mypy passes with `MYPYPATH=src`; placement **15 passed**. |
+| Broader evidence | The implementer reports ruff/format, host and Win32 mypy, unit+UI **3,389 passed / 21 skipped**, and placement **15**. No product code changed. |
+
+### Readiness
+
+Do not run the maintainer's real-display session yet. In one focused correction, apply the
+`ParentChange` reading when the event is also first discovery, make that exact timing a permanent
+arm, retain the already-parented and outside-collection controls, and correct R11's two prose
+claims. `T289-R7` needs no further work. The parentless-ownership rule and offscreen-control choice
+are ruled; they are not invitations for another redesign.
+
+The Reviewer changed only this append-only review record. No reviewed source, test, task/status
+text, instrumentation, handoff, push, CI run or remote state was changed.
