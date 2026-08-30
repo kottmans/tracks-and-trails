@@ -254,8 +254,10 @@ teardown** (`T289-R2`), and the one exemption fails closed (`T289-R4`). Three de
 prove it, each run in a subprocess and required to fail with this guard's message.
 
 **Criterion 2 is NOT met** (`T289-R3`): the released crash route is unidentified and uncorrected,
-and the previous claim that the rule *"holds in the product today"* is withdrawn. **The maintainer's
-ruling is owed** — see *Where each criterion stands*.
+and the previous claim that the rule *"holds in the product today"* is withdrawn. **The maintainer
+ruled on 2026-08-30 to instrument the real route rather than re-scope this task** — see *Where each
+criterion stands*. *(This said the ruling was still owed, in the same commit that recorded it —
+`T289-R5`.)*
 
 *(Filed from this.)* The maintainer updated yt-dlp from the Settings screen and the process
 **aborted**: `double free or corruption (!prev)`,
@@ -456,11 +458,18 @@ rather than a repair to a site nobody has identified.
 **The rule, stated where rules live**: `ai/TESTING.md` §7's mandatory-coverage table, with the
 measurement under it — the one boolean, what turns it off, and the two narrowings.
 
-**The guard, at the boundary that names the culprit**:
-`qt_lifecycle.assert_no_widget_would_be_destroyed_by_the_collector`, wired into `tests/ui`'s autouse
-fixture beside `T-238`'s orphan check. It collects with `DEBUG_SAVEALL`, which parks rather than
-frees, and fails on any parked widget that is **valid**, **`ownedByPython`**, and **not a PySide
-type**.
+**The guard, at the boundary that names the culprit**: `qt_lifecycle`'s
+`watch_for_collectable_widgets` arms `DEBUG_SAVEALL` **around the whole test**,
+`widgets_the_collector_would_destroy` reads what it parked and clears it, and
+`raise_for_collectable_widgets` fails on any parked widget that is **valid**, **`ownedByPython`**,
+and **not a PySide type**. Wired into `tests/ui`'s autouse fixture beside `T-238`'s orphan check.
+
+**Three calls rather than one, and `T289-R2` is why each split happened.** Arming has to span the
+test, because a collection inside it otherwise frees the evidence — and has to span the *inspection*
+too, because the first correction lowered the flag at the end of the body and a collection in that
+gap did the same thing one layer in. Reading has to clear unconditionally, because skipping the
+clear for the exempt node left its widget parked into the next test. And the flag has exactly one
+owner, because two of them turned an incoming `33` into `1`.
 
 **Two narrowings, each of which the first version got wrong and a run corrected:**
 
@@ -485,10 +494,12 @@ because `T-238`'s drain is proved by the *next* test finding it gone. It now car
 is exempt from the rule; one file is exempt from being *failed at a boundary* for a state its
 sibling test asserts is cleared a moment later.
 
-**Cost, measured rather than waved at**: unit+UI goes from **39 s to 58 s** — one extra collection
-per UI test. The redundant third collection was removed once measured. That is the price of finding
-the state at the test that produced it rather than at whatever a pool thread reaches next, and it is
-the maintainer's to reject.
+**Cost, measured rather than waved at, and the correction made it nearly free**: unit+UI is
+**35–38 s against a 39 s baseline**, two runs. The `T289-R2` rework is why. The submitted version
+armed the parking at the boundary and collected there *in addition to* the drain — three collections
+a test, and 58 s. Arming for the whole test replaces those collections rather than adding to them:
+the collector parks as it goes, and the boundary reads what is already there. **The guard costs
+`DEBUG_SAVEALL` bookkeeping and no extra collection.**
 
 #### Where each criterion stands — 2026-08-30
 

@@ -16,11 +16,15 @@ whichever thread it fires on. A Qt parent turns the property off, which is why t
 ownership rather than threading discipline. Three deliberate violations prove it fails, each in a
 subprocess and required to fail with the guard's own message.
 
-**The review found two ways past it and both are closed.** `T289-R2`: the first version sampled at
-teardown, so a test that produced the state and collected it itself **passed** — the parking is now
-armed for the whole test. `T289-R4`: the one exemption used an **inherited** marker, so a
-module-level spelling suppressed the guard for everything under it — it now requires the allowlisted
-node id *and* a marker on the function. Both mutations are killed by the regressions that found them.
+**The review found three ways past it and all are closed.** `T289-R2`, twice: the first version sampled at
+teardown, so a test that produced the state and collected it itself **passed**; the first correction
+then lowered the parking before the inspection it was protecting, and a collection in that gap did
+the same thing one layer in. The parking is now armed for the whole test *including* the inspection,
+the parked list is cleared for every test rather than only the failing ones, and the debug flags
+have one owner that restores them exactly. `T289-R4`: the one exemption used an **inherited**
+marker, so a module-level spelling suppressed the guard for everything under it — it now requires
+the allowlisted node id *and* a marker on the function. Every one of those mutations is killed by a
+regression.
 
 **Criterion 2 is NOT met, and the claim that it was is withdrawn** (`T289-R3`). `T-238`'s offscreen
 inventory and a passing suite are samplers; the released crash route is still unidentified and
@@ -30,7 +34,9 @@ naming every Python-owned widget the collector frees and the thread that freed i
 declined the alternative, which was to re-scope this task and accept the released risk elsewhere.
 That measurement is the next work, and it also closes `T-238`'s outstanding real-session step.
 
-**Cost of the guard, measured:** unit+UI **39 s → 58 s**, one extra collection per UI test.
+**Cost of the guard, measured:** unit+UI **35–38 s against a 39 s baseline**. The correction made it
+nearly free — arming the parking for the whole test *replaces* the collections the first version
+added, so what remains is `DEBUG_SAVEALL` bookkeeping.
 
 ---
 

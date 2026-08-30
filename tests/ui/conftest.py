@@ -130,6 +130,17 @@ def _no_orphaned_views(qapp: QApplication, request: pytest.FixtureRequest) -> It
     # asked what was garbage *then*, and any earlier collection had already answered by freeing it.
     with qt_lifecycle.watch_for_collectable_widgets():
         yield
+        # **Inside the watch, not after it** (`T289-R2`). The first version closed the context
+        # manager at the end of the body, so the parking was down for everything below and a
+        # collection in that gap released the evidence rather than parking it.
+        #
+        # **`widgets_the_collector_would_destroy` clears `gc.garbage` whatever the verdict**, which
+        # is why it is called unconditionally: skipping it for the exempt test left that parking in
+        # place, and the next test — the control asserting the boundary cleared it — failed on
+        # garbage this fixture had kept alive.
+        dangerous = qt_lifecycle.widgets_the_collector_would_destroy(qapp)
+        if dangerous and not _is_the_one_exempt_test(request):
+            qt_lifecycle.raise_for_collectable_widgets(dangerous)
     # **`T-289`'s rule, and it must run BEFORE the drain.** A widget owned by Python alone and
     # reachable only through a cycle is destroyed by the collector wherever it next runs — on a
     # `QThreadPool` thread that is a `~QWidget` off the GUI thread and the double free `T-289` was
@@ -142,14 +153,12 @@ def _no_orphaned_views(qapp: QApplication, request: pytest.FixtureRequest) -> It
     # violation written to fail it. The check does its own collection with `DEBUG_SAVEALL`, which
     # parks rather than frees, and clears the garbage afterwards — so the drain below still sees an
     # ordinary interpreter and the tree is still released on this thread.
-    # **This one runs before the drain, and the check above it must not** — the two look at
-    # different things. `T238-R1` swapped the *orphan* assertion ahead of the drain and the helper
-    # subprocess died with SIGSEGV, deterministically, because enumerating live widgets while
-    # deletions are queued walks a list Qt is about to change. This walks `gc.garbage`, which is a
-    # list of objects the collector has already set aside and nothing else is touching, and it has
-    # to run first because the drain's own `gc.collect()` would release the evidence.
-    if not _is_the_one_exempt_test(request):
-        qt_lifecycle.assert_no_widget_would_be_destroyed_by_the_collector(qapp)
+    # **The collectable-widget check ran above, before the drain, and the orphan check below must
+    # not** — the two look at different things. `T238-R1` swapped the *orphan* assertion ahead of
+    # the drain and the helper subprocess died with SIGSEGV, deterministically, because enumerating
+    # live widgets while deletions are queued walks a list Qt is about to change. The other one
+    # walks `gc.garbage`, which the collector has already set aside, and must run first because the
+    # drain's own `gc.collect()` would release its evidence.
     qt_lifecycle.settle_deferred_deletions(qapp)
     qt_lifecycle.assert_no_orphaned_views(qapp)
 

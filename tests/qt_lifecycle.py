@@ -351,7 +351,15 @@ def widgets_the_collector_would_destroy(app: QCoreApplication) -> list[str]:
 
     import shiboken6
 
-    gc.set_debug(gc.get_debug() | gc.DEBUG_SAVEALL)
+    # **No flag is touched here** (`T289-R2`). `watch_for_collectable_widgets` owns the debug state
+    # for the whole test and this runs inside it; a second owner is how the previous version
+    # restored `33` as `1` and lowered the parking before the inspection it was protecting.
+    if not gc.get_debug() & gc.DEBUG_SAVEALL:
+        raise AssertionError(
+            "the collectable-widget check ran with DEBUG_SAVEALL down, so a collection during the "
+            "test released its evidence instead of parking it. This must run inside "
+            "watch_for_collectable_widgets() — see T289-R2."
+        )
     try:
         gc.collect()
         # `isValid` first: a parked wrapper whose C++ half is already gone destroys nothing when it
@@ -365,13 +373,15 @@ def widgets_the_collector_would_destroy(app: QCoreApplication) -> list[str]:
             and not type(obj).__module__.startswith("PySide6")
         ]
     finally:
+        # **Always cleared, including for the exempt test** (`T289-R2`). Skipping the clear left
+        # `T-238`'s diagnostic parking its widget forever, and the *next* test — the control that
+        # asserts the boundary cleared it — then failed on garbage the fixture had kept alive.
+        # Clearing is the boundary's job; asserting is the caller's.
         gc.garbage.clear()
-        gc.set_debug(gc.get_debug() & ~gc.DEBUG_SAVEALL)
-    # **No third collection here.** Clearing `gc.garbage` drops the references, and the caller's
-    # next step is `settle_deferred_deletions`, whose own `gc.collect()` releases whatever that
-    # left. Collecting again would make this three full collections per test where the suite used
-    # to pay one — measured at roughly a second per hundred UI tests, which is what a guard gets
-    # deleted for.
+    # **No further collection here.** Clearing `gc.garbage` drops the references, and the caller's
+    # next step is `settle_deferred_deletions`, whose own `gc.collect()` runs outside the watch and
+    # releases whatever that left. Collecting again would make this three full collections per test
+    # where the suite used to pay one.
     return dangerous
 
 
@@ -388,9 +398,13 @@ def watch_for_collectable_widgets() -> Iterator[None]:
     `DEBUG_SAVEALL` makes every collection during the test *park* its garbage in `gc.garbage`
     instead of releasing it, so nothing that happens inside the test can lose the evidence.
 
-    **The previous debug flags are restored rather than zeroed**: a caller that had its own flags
-    set is entitled to keep them, and `gc.set_debug(0)` is how a fixture silently disables somebody
-    else's diagnostic.
+    **The previous debug flags are restored exactly**, and this is the only place that touches
+    them (`T289-R2`). A caller that had its own flags set is entitled to keep them: the first
+    version had two owners, and between them a process that entered with `33` left with `1`.
+
+    **Everything the boundary does must happen inside this**, inspection included. The first version
+    wrapped only the test body, so the parking came down before the check that depended on it and a
+    collection in that gap freed the evidence — the same hole one layer in.
     """
     previous = gc.get_debug()
     gc.set_debug(previous | gc.DEBUG_SAVEALL)
@@ -400,16 +414,20 @@ def watch_for_collectable_widgets() -> Iterator[None]:
         gc.set_debug(previous)
 
 
-def assert_no_widget_would_be_destroyed_by_the_collector(app: QCoreApplication) -> None:
-    """Fail where a widget tree is left owned by Python alone and collectable (`T-289`).
+def raise_for_collectable_widgets(dangerous: list[str]) -> None:
+    """Fail for the widgets `widgets_the_collector_would_destroy` named (`T-289`).
+
+    **The reading and the raising are separate calls, and `T289-R2` is why.** Reading also *clears*
+    the parked garbage, which every test needs — including the one exempt from being failed. A
+    single function that did both meant skipping the failure skipped the clearing, and `T-238`'s
+    diagnostic then leaked its parked widget into the control test that asserts the boundary cleared
+    it.
 
     **This is the rule stated as a check rather than as a comment**, which is the difference the
     entry was filed over: *"a comment in one file is what this project already had."* What it
     catches is the state, not the crash — the crash needs the collector to fire on a pool thread at
-    that moment, which is why waiting for it is not a method and why `T-289` went unexplained for
-    three days.
+    that moment, which is why waiting for it is not a method.
     """
-    dangerous = widgets_the_collector_would_destroy(app)
     if not dangerous:
         return
     raise AssertionError(

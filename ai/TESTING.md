@@ -182,13 +182,25 @@ destroys nothing, on any thread.
 **Two narrowings, both measured rather than assumed.** A *plain* `QWidget` is marshalled to the GUI
 thread and is therefore not the hazard — only a type **defined in Python** is destroyed in place,
 which is every widget this project owns. And only a widget reachable *solely through a cycle* is
-collected at all. `tests/qt_lifecycle.assert_no_widget_would_be_destroyed_by_the_collector` is the
-check; `tests/ui/_leaks_a_collectable_widget.py` is the deliberate violation that proves it fails.
+collected at all. `tests/qt_lifecycle`'s `watch_for_collectable_widgets`,
+`widgets_the_collector_would_destroy` and `raise_for_collectable_widgets` are the check; three
+files under `tests/ui/` are the deliberate violations that prove it fails, one per way past it.
 
-**Order matters and cost it something to learn**: the check must run **before**
-`settle_deferred_deletions`, whose own `gc.collect()` destroys exactly the state it looks for —
-harmlessly, on the GUI thread, and invisibly. Wired after it, the guard passed the violation written
-to fail it.
+**The parking must be armed for the whole test, inspection included** (`T289-R2`). `DEBUG_SAVEALL`
+makes each collection *park* its garbage instead of releasing it; without that the check asks what
+is garbage at teardown, and any collection during the test — including an automatic one — has
+already answered by freeing it. Two versions of this guard were defeated by exactly that, the second
+by a gap of a few lines between lowering the flag and inspecting.
+
+**Two consequences worth stating, because each was a defect**: the parked list is **cleared for
+every test**, including one exempt from being failed, or the exempt test's garbage lands in the next
+one; and the debug flags have **one owner** that restores them exactly, or a process that entered
+with `DEBUG_SAVEALL | DEBUG_STATS` leaves with `DEBUG_STATS`.
+
+**Order against the drain**: the check runs **before** `settle_deferred_deletions`, whose own
+`gc.collect()` would release the evidence. The *orphan* check must stay after it — `T238-R1`
+recorded a deterministic SIGSEGV from enumerating live widgets while deletions were queued. The two
+look at different things: `gc.garbage` the collector has set aside, versus `allWidgets()`.
 
 **The migrations rule gained its first exception on 2026-08-06**, and the shape of the exception is
 the part to copy. `0009` deletes a user's completion records on an explicit maintainer ruling
