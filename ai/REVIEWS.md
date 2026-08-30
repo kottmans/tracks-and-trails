@@ -21879,3 +21879,72 @@ correction re-review remains within the ordinary review budget.
 
 The Reviewer changed only this append-only record. No reviewed source, test, task/status file,
 documentation, handoff, push or remote state was changed.
+
+---
+
+## 2026-08-30 — T-284 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Review commit:** `e74cdc416adb5a970852e082a703ce15b9cf8e76`
+**Correction:** `f0b9c80364db9334324ece7935b2ebb2b95d3f3c`
+**Verdict:** **Approved. `T284-R1`, `T284-R2`, and `T284-R3` are Resolved.** The inherited value
+role now names the batch on every staging row, the maintainer's revised elision ruling is
+implemented through Qt's real label field and reaches the rendered pixels, and a live editor
+refreshes that name when the batch changes. No significant issue remains. `T-284` may move to
+Complete after the non-blocking current-truth cleanup below; no further review round is required.
+
+### Finding dispositions
+
+| Finding | Disposition | Independent verification |
+|---|---|---|
+| **T284-R1** | **Resolved** | `StagingModel.data(PRESET_INHERITED_ROLE)` returns `selected_preset.name`, independently of `row.preset`. The regression deliberately separates a Video batch from an Audio override, verifies the reopened `None` entry names Video, selects it, proves the override is cleared, and proves `preset_for(row)` is the value the entry named. That is the same `preset_for()` passed into `to_request()` on commit. |
+| **T284-R2** | **Resolved by correction plus maintainer ruling** | The 2026-08-30 ruling keeps the chosen name-only shape and 190 px control, explicitly accepts truncation, and requires a right ellipsis because the detail line carries the full value. `_label_field()` asks `SC_ComboBoxEditField` through the shifted T-283 label option; `_paint_control()` elides to that width before `CE_ComboBoxLabel`. The regression first proves a built-in name really overflows, then compares the complete rendered control against the pre-elided string. It passed under the native test style and independently under both product themes, so the shared helper does not let a computed-but-unused elision pass. |
+| **T284-R3** | **Resolved** | `setEditorData()` finds the `None` item and rebuilds it from the current inherited-value role before restoring the selection. The real-dialog regression keeps the editor live while changing the batch from *Best video up to 1080p (MP4)* to *Best video available* and observes the new name in that same editor. |
+
+### Non-blocking correction cleanup
+
+| ID | Severity | Blocks approval | Finding | Required action | Status |
+|---|---|---:|---|---|---|
+| **T284-R4** | **Low** | No | The executable geometry is correctly style-derived, but the correction records one environment's **146 px** as though it were universal in `docs/UX_SPEC.md` and the task. The widget-bound production dark style measured **148 px** in the initial review; both widths produce the same overflow/ruling, so behavior is unaffected. The active task Risk still calls the control “~165 px” while the implementation distinguishes a 190 px outer control, 174 px post-menu combo, and style-dependent label field. `test_row_delegate.py` also still describes `RENDER_WIDTH` as wide enough that nothing under test elides, immediately before adding a test whose subject is elision at that width. | During T-284's ordinary completion sync, describe the label field as style-dependent (or qualify 146 as the current offscreen/no-widget measurement), reconcile the active ~165 px risk wording, and update the `RENDER_WIDTH` comment to exempt the intentional elision case. No code change, new task, or re-review is required. | **Open; ordinary completion cleanup** |
+
+### Review judgments
+
+- **The two-role design remains approved.** The correction changes only the producer semantics
+  that R1 found wrong; capability and displayed batch value stay separate, and the queue continues
+  to offer no `None` entry.
+- **The revised R2 ruling is accepted rather than treated as a workaround.** Measurement refuted
+  the 2026-08-28 “never elides” premise, including for the default preset. The maintainer explicitly
+  chose the documented trade: keep the value-first shape and row width, render a legible ellipsis,
+  and retain the full name on the detail line. The alternatives and their costs are recorded.
+- **The shared helper is not circular evidence by itself.** Code inspection establishes that it
+  returns Qt's `SC_ComboBoxEditField`; the pixel equality establishes that the paint pass actually
+  uses the pre-elided text. Returning the old outer rectangle makes the overflow precondition fail,
+  while omitting the paint-time elision makes the image comparison fail.
+- **The real editor's exact truncation algorithm does not reopen T-283.** T-283's approved contract
+  is the label's x-inset at the click boundary, and its pixel regression remains green. T-284's
+  editor entry deliberately adds the relation and its popup is unconstrained; this correction does
+  not claim pixel-identical truncation between those semantically different strings.
+- **The interrupted mutation campaign left no review-state ambiguity.** The implementer discarded
+  that run, restored the timed-out mutation by hash, reran each mutation against its killer, and
+  the reviewed worktree is clean. No result from the interrupted run is relied upon here.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | One correction commit, six files, exactly as handed off; `git diff --check e74cdc4..f0b9c80` is clean. Before this review record, the branch was **four** commits ahead of `origin/main`, not the three stated in the handoff: `ceed77c`, `db9b0e2`, `e74cdc4`, and `f0b9c80`. The discrepancy is transient handoff arithmetic only. |
+| Finding regressions | The three direct R1/R2/R3 tests: **3 passed**. |
+| Sibling UI slice | T-283 inset, inherited paint/entry, corrected elision, staging role, R1, R3, and queue isolation: **8 passed**. |
+| Product-theme render replay | The R2 rendered-pixel regression passed under the native test style and after applying both the product light and dark themes: **3 passed**. The temporary wrapper test was removed. |
+| Static/types | Ruff passed on all four changed Python files; format reports all four formatted; `mypy src` passed **56 files**. |
+| Records/gates | Task placement: **15 passed**. The correction commit passes `tools/commit_message_check.py --range e74cdc4..f0b9c80`. |
+| Broader evidence | The implementer reports unit/UI **3,383 passed / 21 skipped**, integration **445 passed**, bare and Win32 mypy **156 files** each, and all nine mutations killed at the correction head. CI has not seen the local T-284 chain. |
+
+### Readiness
+
+The behavior and its focused evidence are approved at `f0b9c80`. Fold T284-R4 into the ordinary
+task/STATUS completion sync, move T-284 to Complete, and push only when the maintainer authorizes
+it. No additional focused re-review is requested.
+
+The Reviewer changed only this append-only review record. No reviewed source, test, task/status
+text, documentation, handoff, push, CI run or remote state was changed.
