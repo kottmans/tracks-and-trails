@@ -358,7 +358,7 @@ PRESET_INHERITED_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 25
 #:
 #: **The entry carries the value *and* the relation, and the reason is the click.** The painted
 #: control shows the preset's name alone — ruled 2026-08-28, because the relation already lives on
-#: the row's detail line and a 165 px box that has to hold both elides. If the entry then said only
+#: the row's detail line and a control that has to hold both elides sooner. If the entry said only
 #: the relation, the label the user clicked would not be the entry they see selected: the value
 #: would turn into a relation at the moment of the click, which is the defect class `T-283` was
 #: built to close. With the value in both, only the suffix appears, and the entry cannot be
@@ -1058,9 +1058,13 @@ class RowDelegate(QStyledItemDelegate):
         """The rectangle `CE_ComboBoxLabel` actually paints text into (`T284-R2`).
 
         **Not the control's rect, and not the rect with the `⋮` zone removed** — those are 190 and
-        174 px at the row geometry the regressions use, and Qt paints into **146**. The frame, the
-        arrow and `T-283`'s inset all come out of it, which is why this asks the style through the
-        same `_label_box` the paint pass uses rather than doing the arithmetic a second way.
+        174 px at the row geometry the regressions use, and Qt paints into roughly 146. The frame,
+        the arrow and `T-283`'s inset all come out of it, which is why this asks the style through
+        the same `_label_box` the paint pass uses rather than doing the arithmetic a second way.
+
+        **The number is the style's, not this module's** (`T284-R4`): ~146 px offscreen with no
+        widget, 148 through the production dark sheet on a real one. Callers must ask rather than
+        assume, which is the point of this existing at all.
 
         The first version of `T-284`'s elision regression measured the outer rectangle and so
         passed while the shipped label truncated.
@@ -1570,7 +1574,8 @@ class RowDelegate(QStyledItemDelegate):
             # **The preset's name, not the relation** (`UX-004`, `T-284`, ruled 2026-08-28). A row
             # following the batch is downloading with something, and the control's job is to say
             # what. The relation is on the row's detail line — *"… — following the batch"* — where
-            # it does not have to fit in 165 px with the `⋮` zone carved out of it.
+            # it does not have to fit the label field left after the frame, the arrow and the
+            # `⋮` zone — ~146 px at this geometry, and style-dependent (`T284-R4`).
             inherited = index.data(PRESET_INHERITED_ROLE)
             label = inherited if isinstance(inherited, str) and inherited else ""
 
@@ -1604,11 +1609,17 @@ class RowDelegate(QStyledItemDelegate):
         # both routes rather than asserting a number.
         # **Elided, because the ruled shape does not always fit** (`T284-R2`, ruled 2026-08-30).
         # The 2026-08-28 ruling chose the preset's name partly because it was *"the only one of the
-        # three that never elides"*, and measurement refuted that: the field is **146 px** at this
-        # geometry and two of the five built-in names are wider — including the default,
-        # *Best video up to 1080p (MP4)* at 164 px. The maintainer's answer was to keep the shape
-        # and the width and let it end in an ellipsis, because the full value is on the row's
-        # detail line either way. Without this the style clips mid-glyph instead.
+        # three that never elides"*, and measurement refuted that: two of the five built-in names
+        # are wider than the field, including the default, *Best video up to 1080p (MP4)* at 164 px.
+        #
+        # **The field is style-dependent and no number here is universal** (`T284-R4`): ~146 px
+        # offscreen with no widget bound, 148 px measured through the production dark sheet on a
+        # real widget. Both overflow the same two names, which is why the ruling does not turn on
+        # which. Nothing reads a constant — the width comes from `_label_field()` at paint time.
+        #
+        # The maintainer's answer was to keep the shape and the width and let it end in an ellipsis,
+        # because the full value is on the row's detail line either way. Without this the style
+        # clips mid-glyph instead.
         shifted = self._label_box(box, style, widget)
         shifted.currentText = option.fontMetrics.elidedText(
             box.currentText,

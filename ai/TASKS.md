@@ -244,12 +244,22 @@ Phase 0 is formally exited (2026-07-26).
 *Implementation is finished and a verdict has not been recorded. **The entries below are the
 contents; this preface does not list them.***
 
+*(Empty since 2026-08-30, when `T-284` was approved at `f0b9c80` and moved to `## Complete`. The
+heading stays because the section is part of the map, and one that disappears when it empties is one
+nobody notices coming back — `## Proposed — Phase 0` carries the same note for the same reason.)*
+
+---
+
+## Complete
+
 ### T-284 — *Same as all* names the relation and drops the value the spec asks for
 
-**Status:** **In Review — corrected 2026-08-30 after `T284-R1`…`R3`.** The control names the preset
-the row would follow; the editor's `None` entry names it too, with *— following the batch*
-appended. `INHERITED_TEXT`'s *"Same as all"* is gone from both sites and from the codebase.
-**Nine mutations, all killed.**
+**Status:** **Complete — Approved at `f0b9c80` on 2026-08-30**, after three findings and their
+corrections. The control names the preset the row would follow; the editor's `None` entry names it
+too, with *— following the batch* appended. `INHERITED_TEXT`'s *"Same as all"* is gone from both sites and from the codebase.
+**Nine mutations, all killed.** `T284-R4`'s cleanup — qualifying the style-dependent label-field
+figures, retiring the stale *"~165 px"* wording, and exempting the deliberate elision case from
+`RENDER_WIDTH`'s comment — is folded in here; the reviewer required no re-review for it.
 
 #### The three corrections, 2026-08-30
 
@@ -267,8 +277,13 @@ batch and override values and follows the choice through to `preset_for(row)`.)*
 **`T284-R2` (High) — the elision regression measured the wrong rectangle**, so it passed at exactly
 the width where the label could not fit. `_control_of` minus `_menu_zone_of` is **190 → 174 px**;
 Qt paints into `SC_ComboBoxEditField` after the frame, the arrow and `T-283`'s inset, which is
-**146 px**. Measured against that, **two of the five built-in names overflow** — *Video with
+**~146 px**. Measured against that, **two of the five built-in names overflow** — *Video with
 embedded subtitles* at 174 px and, worse, the **default** *Best video up to 1080p (MP4)* at 164 px.
+
+**No figure here is a constant, and `T284-R4` is why that is said out loud.** The field is the
+style's: **146 px** offscreen with no widget bound, **148 px** through the production dark sheet on
+a real widget. Both overflow the same two names, so the ruling does not turn on which — and nothing
+in the code reads either number, because `_label_field()` asks the style at paint time.
 
 > **Ruled 2026-08-30 by the maintainer: keep the shape and the width, and elide with an ellipsis.**
 > The 2026-08-28 ruling had chosen this shape partly because it was *"the only one of the three that
@@ -333,7 +348,8 @@ which is the criterion about the spec never having been brought to the wording c
 and `_paint_control`; `T118-R4`, which chose a name over a blank; `T126-R4`, which is why the
 queue must **not** inherit whatever this becomes
 **Affected surfaces:** `ui/row_delegate.py`, its tests, `docs/PHASE_4_CHECKLIST.md` row 5.2
-**Risk:** Medium — the control is ~165 px wide with the `⋮` zone carved out of it, so a longer
+**Risk:** Medium — the control is a **190 px** slot, **174 px** once the `⋮` zone is carved out and
+a style-dependent **~146 px** of label field inside that, so a longer
 label elides; and `T126-R4` is the record of one label leaking onto a surface it was false on
 
 #### What is wrong
@@ -387,7 +403,7 @@ value followed by the relation — *"Best video up to 1080p (MP4) — following 
 - **It is the row's own vocabulary.** The detail line already reads *"Download as: Best video up to
   1080p (MP4) — following the batch"*, so this is the same sentence in a second place rather than a
   new phrasing to keep consistent.
-- **The popup has no width constraint**, which is the whole reason a shape rejected for the 165 px
+- **The popup has no width constraint**, which is the whole reason a shape rejected for the
   control is available here.
 
 *(The rejected two, recorded so they are not re-proposed as new: **relation only** — keep *"Same as
@@ -412,7 +428,9 @@ the first piece of work here, not an implementation detail of one of them.
 The maintainer chose the first of three shapes offered: **the control shows the preset's name and
 nothing else.** The relation stays where it already is — the row's detail line reads *"Download as:
 Best video up to 1080p (MP4) — following the batch"* — so both facts are on the row and neither is
-crowded into a 165 px box. It is also the only one of the three that never elides.
+crowded into a box whose label field is ~146 px. It is also the last of the three to elide.
+*(This read **"the only one of the three that never elides"**, which `T284-R2` measured false: at
+that width all three truncate. The ruling stands on the first reason; the tiebreak was wrong.)*
 
 *(The rejected two, recorded so they are not re-proposed as new: the name behind a leading `↳` or in
 the muted role, which keeps both facts in the space one fits in; and the name followed by
@@ -435,8 +453,6 @@ the muted role, which keeps both facts in the space one fits in; and the name fo
 - The control's contents rule — presets and nothing else (`UX-011` option *E*, built by `T-203`)
 
 ---
-
-## Complete
 
 ### T-298 — Frozen probes must not read a runner's user-managed yt-dlp
 

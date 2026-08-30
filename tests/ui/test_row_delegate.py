@@ -107,7 +107,13 @@ REPO_ROOT: Final = Path(__file__).resolve().parents[2]
 #: rather than committing a second PNG: the claim is that Qt decoded *something* into a pixmap.
 IMAGE_SOURCE: Final = REPO_ROOT / "src" / "tracks_and_trails" / "resources" / "icons" / "icon.png"
 
-#: The width a row is rendered at here. Wide enough that nothing under test is elided.
+#: The width a row is rendered at here. Wide enough that no row *text* under test is elided.
+#:
+#: **The `Download as` control is the exception, and it is deliberate** (`T-284`, `T284-R4`). The
+#: control's width does not scale with this: it is a fixed slot, and the label field left inside it
+#: after the frame, the arrow and the `⋮` zone is ~146 px whatever `RENDER_WIDTH` is. Two built-in
+#: preset names are wider than that, so `test_a_name_too_wide_for_the_field_is_elided_rather_than_
+#: clipped` has elision as its subject at this very width.
 RENDER_WIDTH: Final = 700
 
 #: Every built-in preset's name, which is what the control has to fit (`T-284`).

@@ -186,7 +186,8 @@ resolved.
   preset's name and nothing else**, and **the editor's inherited entry shows that name followed by
   *— following the batch***. The relation lives on the row's detail line — *"Download as: … —
   following the batch"* — so both facts are on the row without crowding a control whose label field
-  measures **146 px** once the frame, the arrow and the `⋮` zone are taken out of it. **The name
+  measures **around 146 px** once the frame, the arrow and the `⋮` zone are taken out of it — the
+  exact figure is the style's, 146 offscreen and 148 through the production dark sheet. **The name
   alone does not always fit that field** — two of the five built-in presets are wider, the default
   among them — so the control **elides with an ellipsis** and the row's detail line carries the
   value in full (*ruled 2026-08-30; the 2026-08-28 ruling had assumed this shape never elided, and
