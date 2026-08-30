@@ -84,6 +84,32 @@ from PySide6.QtWidgets import QApplication, QWidget
 WATCHED = "_t289_watched"
 
 
+def python_owns_it(widget: QWidget, *, reparenting: bool = False) -> bool:
+    """Whether releasing this wrapper would destroy the C++ widget (`T289-R6`).
+
+    **Two readings, because neither is right at both moments — measured, not assumed.**
+
+    At rest, `shiboken6.ownedByPython` is the answer. **At a `ParentChange` it is stale**:
+    `setParent(None)` sends the event *before* shiboken moves the flag, so a refresh there reads
+    `False` for a widget Python now owns — and a collection on the next line then goes unnamed,
+    which is what `T289-R6` found twice.
+
+    **The parent is already correct at that moment.** Measured 2026-08-30: inside the
+    `ParentChange` handler `parent()` is `None` while `ownedByPython` still says `False`, and the
+    flag flips as soon as `setParent` returns. So a reparent is read from the parent and everything
+    else from the ownership flag.
+
+    **Neither can be read at destruction**, which is why this is recorded while the widget is alive.
+    In a `destroyed` handler the object Qt hands over is not a usable wrapper: `ownedByPython`
+    raises `TypeError` and `parent()` raises `AttributeError`, both measured.
+    """
+    import shiboken6
+
+    if reparenting:
+        return widget.parent() is None
+    return bool(shiboken6.isValid(widget) and shiboken6.ownedByPython(widget))
+
+
 class Watch(QObject):
     """One session's observations, written as they happen.
 
@@ -144,18 +170,21 @@ class Watch(QObject):
     def watch(self, widget: QWidget) -> None:
         tag = f"{type(widget).__name__}({widget.objectName() or 'unnamed'})"
         module = type(widget).__module__
-        # **Two properties, not one** (`T289-R6`). A type defined in Python is what makes
-        # destruction happen *in place* rather than being marshalled, and `ownedByPython` is what
-        # makes the wrapper's release destroy anything at all. A Python subclass **with a Qt
-        # parent** is owned by C++: dropping its wrapper destroys nothing, and the first version
-        # named one of those as `T-289`'s tree.
+        # **The type is fixed; the ownership is not, so only the type is cached** (`T289-R6`).
         #
-        # **Kept in a cell and refreshed as the widget lives**, because ownership changes: a widget
-        # reparented after this first sees it would otherwise carry a stale verdict. The filter
-        # updates it on every later event, which is cheap and is the only moment the widget is
-        # certainly alive — at `destroyed` time the C++ half is going and asking shiboken anything
-        # then is a question about a corpse.
-        state = {"candidate": self.is_a_candidate(widget)}
+        # A type defined in Python is what makes destruction happen *in place* rather than being
+        # marshalled, and it cannot change. `ownedByPython` decides whether releasing the wrapper
+        # destroys anything at all — and it moves: `setParent(None)` hands ownership back to Python,
+        # and a collection immediately afterwards is the case a cached flag misses entirely. Two
+        # versions of this cached it. The first refreshed only at discovery; the second refreshed on
+        # every event, which still loses the race, because the reparent's own `ParentChange` arrives
+        # *before* shiboken has moved the ownership.
+        #
+        # So ownership is read **at the destruction**, from the wrapper — not from the C++ object,
+        # which is what would be unsafe. The cached type is what makes that read cheap enough to do
+        # there.
+        defined_in_python = not module.startswith("PySide6")
+        state = {"owned": defined_in_python and python_owns_it(widget)}
 
         def destroyed(*_args: object) -> None:
             thread = threading.current_thread().name
@@ -170,7 +199,7 @@ class Watch(QObject):
                 self.gui_destructions += 1
                 if inside:
                     self.gui_destructions_in_a_collection += 1
-                    if state["candidate"]:
+                    if state["owned"]:
                         self.candidates_collected.append(tag)
                         self.say(
                             f"~~ {tag} from {module} was collected on the GUI thread. Its type is "
@@ -196,23 +225,9 @@ class Watch(QObject):
                 self.say(f"     {frame.filename}:{frame.lineno} in {frame.name}")
 
         widget.destroyed.connect(destroyed, Qt.ConnectionType.DirectConnection)
-        widget.__dict__[WATCHED] = state
+        widget.__dict__[WATCHED] = (state, defined_in_python)
         self.widgets_seen += 1
         self.note_the_settings_screen(widget)
-
-    @staticmethod
-    def is_a_candidate(widget: QWidget) -> bool:
-        """Whether releasing this widget's wrapper would destroy a Qt widget in place (`T289-R6`).
-
-        Both halves are required and each excludes a real state: a **PySide type** is marshalled to
-        the GUI thread and destroys nothing dangerous wherever its wrapper goes, and a widget **not
-        owned by Python** belongs to its Qt parent, which is what destroys it.
-        """
-        import shiboken6
-
-        if type(widget).__module__.startswith("PySide6"):
-            return False
-        return bool(shiboken6.isValid(widget) and shiboken6.ownedByPython(widget))
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt's name
         """Discover widgets as Qt sends them events. **Never enumerates live widgets** (`T289-R8`).
@@ -229,13 +244,17 @@ class Watch(QObject):
         interacted with.
         """
         if isinstance(watched, QWidget):
-            state = watched.__dict__.get(WATCHED)
-            if state is None:
+            known = watched.__dict__.get(WATCHED)
+            if known is None:
                 self.watch(watched)
             else:
-                # **Refreshed, because ownership moves** (`T289-R6`). A widget parented after it was
-                # first seen stops being a candidate, and one released from its parent becomes one.
-                state["candidate"] = self.is_a_candidate(watched)
+                # **Refreshed on every event, and a `ParentChange` is read differently** — see
+                # `python_owns_it`. The reparent is the transition a cached flag loses, and it is
+                # the one moment the parent is correct while the ownership flag is not.
+                state, defined_in_python = known
+                state["owned"] = defined_in_python and python_owns_it(
+                    watched, reparenting=event.type() == QEvent.Type.ParentChange
+                )
         return False
 
     def note_the_settings_screen(self, widget: QWidget) -> None:
@@ -328,6 +347,10 @@ def arm(watch: Watch) -> None:
     """
     application = QApplication.instance()
     assert isinstance(application, QApplication), "arm() runs after the application exists"
+    # **What Qt actually chose, which is not what the environment asked for** (`T289-R7`). The
+    # header records the request; only the running application can say what was selected, and a
+    # report that names the wrong plugin is a report about the wrong platform.
+    watch.say(f"platform plugin selected by Qt: {application.platformName()!r}")
     application.installEventFilter(watch)
     gc.callbacks.append(watch.note_a_collection)
     watch_the_update_route(watch)
@@ -479,6 +502,24 @@ def self_test() -> int:
     gc.collect()
     QCoreApplication.processEvents()
 
+    # **The fourth direction** (`T289-R6`): ownership that moves. `setParent(None)` hands the child
+    # back to Python and a collection *immediately* afterwards must still name it. Both cached
+    # versions of this failed here — the second refreshed on every event, and the reparent's own
+    # `ParentChange` arrives before shiboken has moved the flag, so the refresh read the old value.
+    keeper = Derived()
+    keeper.setObjectName("t289-self-test-keeper")
+    released = Derived(keeper)
+    released.setObjectName("t289-self-test-released")
+    keeper.show()
+    QCoreApplication.processEvents()
+    keeper.hide()
+    QCoreApplication.processEvents()
+    released.setParent(None)
+    Cycle(released)
+    del released
+    gc.collect()  # immediately, with no event in between
+    QCoreApplication.processEvents()
+
     if watch.note_a_collection in gc.callbacks:
         gc.callbacks.remove(watch.note_a_collection)
     application.removeEventFilter(watch)
@@ -514,10 +555,17 @@ def self_test() -> int:
             f"rejecting real candidates. Named: {watch.candidates_collected}."
         )
         return 2
+    if "Derived(t289-self-test-released)" not in watch.candidates_collected:
+        print(
+            "SELF-TEST FAILED: a widget released by setParent(None) and collected immediately was "
+            f"not named. Named: {watch.candidates_collected}. Ownership is being read from a cache "
+            "that the reparent outran, which is T289-R6."
+        )
+        return 2
     print(
         "SELF-TEST PASSED: the filter discovered the widgets, the callback saw the collections, "
-        "the off-GUI destruction was reported by name, the GUI-thread candidate was named, and a "
-        "Qt-owned child was not."
+        "the off-GUI destruction was reported by name, the GUI-thread candidate was named, a "
+        "Qt-owned child was not, and a widget released by setParent(None) was."
     )
     return 0
 
@@ -561,7 +609,7 @@ def identity() -> list[str]:
         f"tree: {head}{dirty}",
         f"host: {platform.node()}  {platform.platform()}",
         f"python: {platform.python_version()}  PySide6 {pyside_version}  Qt {qVersion()}",
-        f"QT_QPA_PLATFORM: {os.environ.get('QT_QPA_PLATFORM') or '(unset — Qt chooses)'}",
+        f"QT_QPA_PLATFORM requested: {os.environ.get('QT_QPA_PLATFORM') or '(unset)'}",
     ]
 
 
@@ -577,18 +625,29 @@ def prove_the_instrument_first(watch: Watch) -> bool:
     """
     import subprocess
 
-    watch.say("running the positive control before the session…")
+    watch.say("running the positive control offscreen before the session…")
+    # **Offscreen, deliberately** (`T289-R7`). The control's job is to *destroy a widget off the GUI
+    # thread on purpose*, and doing that through the maintainer's real platform plugin would be
+    # running the hazard against a live desktop to prove an instrument. Offscreen exercises the same
+    # shiboken and collector paths — which is where the mechanism lives — without asking a
+    # compositor to survive it. The session itself runs on the real plugin; only this does not.
+    environment = {**os.environ, "QT_QPA_PLATFORM": "offscreen"}
     # S603 answered: the interpreter is this process's own and the script is this file.
     done = subprocess.run(  # noqa: S603
         [sys.executable, str(Path(__file__).resolve()), "--self-test"],
         capture_output=True,
         text=True,
         timeout=300,
+        env=environment,
     )
     for line in done.stdout.strip().splitlines()[-3:]:
         watch.say(f"  control | {line}")
     if done.returncode == 0:
-        watch.say("positive control PASSED — this instrument reports what it is built to report")
+        watch.say(
+            "positive control PASSED offscreen — this instrument reports what it is built to "
+            "report. What offscreen does not prove is the platform plugin the session below runs "
+            "on; the mechanism it exercises is shiboken's and the collector's, not the plugin's."
+        )
         return True
     watch.say(
         "positive control FAILED — nothing this session reports may be believed, and a clean "

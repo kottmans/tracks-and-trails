@@ -582,10 +582,17 @@ object for a whole session would change the memory behaviour of the thing being 
   **on the GUI thread** is the tree that would have been destroyed in place had the collector fired
   on a pool thread, and the first version recorded it as a number with no name. Those names are what
   a correction can be aimed at, and the verdict prints them.
-  **A candidate is Python-typed *and* `ownedByPython`** — both, because a Python subclass with a Qt
+  **A candidate is Python-typed *and* owned by Python** — both, because a Python subclass with a Qt
   parent belongs to C++ and releasing its wrapper destroys nothing. Testing the type alone named one
-  of those, which would have sent a correction after the wrong tree. Ownership is re-read on every
-  event, because reparenting moves it.
+  of those, which would have sent a correction after the wrong tree.
+  **Ownership is read two ways, and measurement chose which where** (`T289-R6`, twice). At rest it is
+  `shiboken6.ownedByPython`. **At a `ParentChange` that flag is stale** — `setParent(None)` sends the
+  event before shiboken moves it — so the reparent is read from `parent()`, which is already correct
+  at that instant. Measured: inside the handler `parent()` is `None` while `ownedByPython` still says
+  `False`. Neither can be read at destruction: there Qt hands over an object that raises `TypeError`
+  from `ownedByPython` and `AttributeError` from `parent()`, so the answer is recorded while the
+  widget is alive. **A cached flag refreshed only on events lost the immediate-collection case**, and
+  that is what the fourth self-test direction now holds.
 - **An off-GUI destruction with no collection running is reported as a different defect** (`T289-R6`).
   Qt still forbids it and it deserves its own entry, but this task is about the *collector* doing it,
   and a verdict that called both `T-289` would have closed this task on someone else's bug.
@@ -594,8 +601,14 @@ object for a whole session would change the memory behaviour of the thing being 
 starts, the session runs `--self-test` **in a subprocess and writes the result into the same file**,
 refusing to start if it fails — a null result is worth exactly what the positive control is worth,
 and asking for it as a separate command leaves it somewhere else or untaken. The header records the
-tree (marked dirty when it is), the host, the Python, PySide6 and Qt versions, and the platform
-plugin, so the file can be placed a month later without asking anybody.
+tree (marked dirty when it is), the host, and the Python, PySide6 and Qt versions, and the session
+records **the plugin Qt actually selected** rather than the one the environment requested — a report
+naming the wrong platform is a report about the wrong platform (`T289-R7`).
+
+**The control runs offscreen even when the session does not** (`T289-R7`). Its job is to destroy a
+widget off the GUI thread *on purpose*, and doing that through the maintainer's real plugin would
+run the hazard against a live desktop to prove an instrument. Offscreen exercises the same shiboken
+and collector paths, which is where the mechanism lives; the report says what that does not cover.
 
 **Killed sessions say so too.** `SIGTERM` writes the summary and verdict before quitting — and the
 handler needs a heartbeat timer to run at all, because Python executes signal handlers between
@@ -605,11 +618,13 @@ trap anyone adding a signal handler to a Qt program walks into.
 
 **Its positive control runs offscreen in a second, and must be run first.**
 `--self-test` goes through `arm()` — the real event filter and the real `gc` callback, not a
-hand-wired handler (`T289-R7`) — and drives **three directions**: the measured arm collected on a
+hand-wired handler (`T289-R7`) — and drives **four directions**: the measured arm collected on a
 pool thread, which must be reported **by the subject's own name** rather than by any off-thread
 destruction happening to occur; a second candidate collected on the **GUI** thread, which must be
 **named** as a near miss; and a Python subclass **with a Qt parent**, which must **not** be named,
-because it is owned by C++ and releasing its wrapper destroys nothing (`T289-R6`). *A clean session is worth exactly as much as that
+because it is owned by C++ and releasing its wrapper destroys nothing; and a child released by
+`setParent(None)` and collected **immediately**, with no event in between, which must be named — the
+case both cached versions lost (`T289-R6`). *A clean session is worth exactly as much as that
 check passing beforehand*, and three instruments in this family have reported confidently about
 nothing.
 
