@@ -45,10 +45,12 @@ from PySide6.QtWidgets import (
     QStyle,
     QStyleOptionComboBox,
     QStyleOptionViewItem,
+    QWidget,
 )
 
 from tracks_and_trails.core.models import MediaKind
 from tracks_and_trails.core.paths import thumbnail_cache_directory, thumbnail_cache_path
+from tracks_and_trails.core.presets import BUILT_IN_PRESETS
 from tracks_and_trails.ui import row_delegate, theme
 from tracks_and_trails.ui.row_delegate import (
     ACTION_ROLE,
@@ -62,7 +64,6 @@ from tracks_and_trails.ui.row_delegate import (
     HEADLINE_ROLE,
     HUE_ROLE,
     INDENT,
-    INHERITED_TEXT,
     JOB_ID_ROLE,
     MEDIA_KIND_ROLE,
     MENU_ZONE_INSET,
@@ -72,6 +73,8 @@ from tracks_and_trails.ui.row_delegate import (
     MIN_FRACTION_BAR,
     PADDING,
     PRESET_CHOICES_ROLE,
+    PRESET_INHERITABLE_ROLE,
+    PRESET_INHERITED_ROLE,
     PRESET_ROLE,
     PROGRESS_ROLE,
     ROW_HEIGHT,
@@ -90,6 +93,7 @@ from tracks_and_trails.ui.row_delegate import (
     SegmentState,
     _merge,
     _text_lines,
+    inherited_entry_text,
     minimum_row_width,
     segment_blocks,
     segment_span,
@@ -498,7 +502,7 @@ def test_the_painted_control_insets_its_text_where_the_editor_does(qapp: QApplic
     works: changing the padding means re-measuring both routes here, deliberately.
     """
     editor = QComboBox()
-    editor.addItem(INHERITED_TEXT)
+    editor.addItem(inherited_entry_text("Best video up to 1080p (MP4)"))
     editor.setStyleSheet(theme.stylesheet(theme.DARK))
     editor.setGeometry(QRect(0, 0, EDITOR_WIDTH, ROW_HEIGHT))
     editor.show()
@@ -550,6 +554,112 @@ def test_the_control_shows_the_rows_own_choice(qapp: QApplication) -> None:
     assert paint_rows(inherited, delegate, 0).copy(slot) != paint_rows(
         overridden, delegate, 0
     ).copy(slot), "an inherited row and an overridden row drew the same control"
+
+
+def test_an_unoverridden_row_draws_the_preset_it_would_follow(qapp: QApplication) -> None:
+    """`UX-004`, `T-284`: the control names the preset, not the relation.
+
+    **Two comparisons, because either alone passes on the wrong thing.** A row following
+    *Audio only* must draw what a row *overridden to* `Audio only` draws — that is the claim, and a
+    fixed word like *"Same as all"* fails it. And it must draw something different from a row
+    following *Best video*, which is what fails if the label is any constant at all, including a
+    blank.
+    """
+    delegate = RowDelegate()
+    blank: dict[int, Any] = {HEADLINE_ROLE: "", DETAIL_ROLE: "", STATE_ROLE: "", HUE_ROLE: 0}
+    choices = ("Best video", "Audio only")
+
+    def row(roles: dict[int, Any]) -> RowsModel:
+        return RowsModel([{**blank, PRESET_CHOICES_ROLE: choices, **roles}])
+
+    following_audio = row({PRESET_INHERITABLE_ROLE: True, PRESET_INHERITED_ROLE: "Audio only"})
+    overridden_to_audio = row({PRESET_ROLE: "Audio only"})
+    following_video = row({PRESET_INHERITABLE_ROLE: True, PRESET_INHERITED_ROLE: "Best video"})
+
+    slot = QRect(
+        RENDER_WIDTH - PADDING - EDITOR_WIDTH, PADDING, EDITOR_WIDTH, ROW_HEIGHT - 2 * PADDING
+    )
+    inherited_pixels = paint_rows(following_audio, delegate, 0).copy(slot)
+    assert inherited_pixels == paint_rows(overridden_to_audio, delegate, 0).copy(slot), (
+        "a row following Audio only drew something other than the preset's name, so the control "
+        "is still saying the relation rather than the value"
+    )
+    assert inherited_pixels != paint_rows(following_video, delegate, 0).copy(slot), (
+        "two rows following different presets drew the same control, so the label is a constant"
+    )
+
+
+def test_the_inherited_entry_carries_the_value_and_the_relation(qapp: QApplication) -> None:
+    """`T-284`, ruled 2026-08-30. The entry the user opens onto must not rename what they clicked.
+
+    The closed control shows *Audio only*; the `None` entry must therefore show *Audio only* too,
+    with the relation appended — and must not be mistakable for the plain `Audio only` entry one
+    line below it, which pins that preset to this row instead of leaving it following.
+    """
+    delegate = RowDelegate()
+    model = RowsModel(
+        [
+            {
+                HEADLINE_ROLE: "",
+                DETAIL_ROLE: "",
+                STATE_ROLE: "",
+                HUE_ROLE: 0,
+                PRESET_CHOICES_ROLE: ("Best video", "Audio only"),
+                PRESET_INHERITABLE_ROLE: True,
+                PRESET_INHERITED_ROLE: "Audio only",
+            }
+        ]
+    )
+    index = model.index(0, 0)
+
+    # **The parent is held in a local deliberately.** `createEditor(QWidget(), …)` parents the
+    # combo to a temporary, which Qt destroys at the end of that expression and takes the editor
+    # with it — the read below then raises *"Internal C++ object already deleted"*. Which is
+    # `T-238`'s subject in miniature, met while writing a `T-284` test.
+    parent = QWidget()
+    editor = delegate.createEditor(parent, _selectable_row_option(), index)
+    assert isinstance(editor, QComboBox)
+    entries = [(editor.itemText(row), editor.itemData(row)) for row in range(editor.count())]
+
+    assert entries[0] == ("Audio only — following the batch", None), (
+        f"the inherited entry does not carry the value and the relation: {entries}"
+    )
+    assert ("Audio only", "Audio only") in entries, "the preset itself is no longer offered"
+    assert entries[0][0] not in [text for text, data in entries[1:]], (
+        "the inherited entry reads exactly like a preset entry, so two entries in this list look "
+        "identical and mean opposite things"
+    )
+
+
+def test_the_ruled_label_fits_the_control_and_the_rejected_one_does_not(
+    qapp: QApplication,
+) -> None:
+    """The elision claim behind the 2026-08-28 ruling, measured at the real width (`T-284`).
+
+    **The width is the delegate's own, with the `⋮` zone removed**, not a convenient number: the
+    zone is carved out of the control's rect (`T-203`), so a measurement against the slot alone
+    would give the label ~16 px it does not have. The ruling rested on the name alone being *"the
+    only one of the three that never elides"*; this is that, measured, against the longest built-in
+    preset name and against the shape that was rejected for the control.
+    """
+    delegate = RowDelegate()
+    model = _row_with_a_control()
+    option = _selectable_row_option()
+    index = model.index(0, 0)
+    available = (
+        delegate._control_of(option, index).width() - delegate._menu_zone_of(option, index).width()
+    )
+    metrics = QFontMetrics(option.font)
+    longest = max((preset.name for preset in BUILT_IN_PRESETS), key=metrics.horizontalAdvance)
+
+    assert metrics.horizontalAdvance(longest) <= available, (
+        f"{longest!r} does not fit the control's {available} px, so the ruled shape elides after "
+        "all and the ruling rested on a claim this measurement does not support"
+    )
+    assert metrics.horizontalAdvance(f"{longest} — same as all") > available, (
+        "the rejected shape fits too, so this measurement discriminates nothing — either the "
+        "control grew or the font shrank, and the ruling should be re-taken against the new width"
+    )
 
 
 # --- 2. no fetch for a row the view never asked to paint ---------------------------------------

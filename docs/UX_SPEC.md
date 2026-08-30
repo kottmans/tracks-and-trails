@@ -182,6 +182,15 @@ resolved.
 - **[T]** `UX-004`: every row carries a **visible** *Download as* control showing what it will be
   downloaded with, and a row that has not been overridden shows the batch preset explicitly as
   inherited — never blank, which reads as *none* rather than *the one above*.
+- **[T]** `UX-004`, *shape ruled 2026-08-30 by the maintainer (`T-284`)*: **the control shows the
+  preset's name and nothing else**, and **the editor's inherited entry shows that name followed by
+  *— following the batch***. The relation lives on the row's detail line — *"Download as: … —
+  following the batch"* — so both facts are on the row without crowding a 165 px control that has
+  the `⋮` zone carved out of it, and the name alone is the only shape measured not to elide there.
+  The entry carries the value as well because the closed control and the open editor must agree on
+  it: a relation-only entry renames what the user clicked at the moment of the click. *This
+  replaces `Same as all`, which delivered the relation and dropped the value the line above asks
+  for.*
 - **[T]** *(amended 2026-08-09 by `UX-011`; the combo half is built by `T-203`)* **The control
   holds presets, full stop** — every entry in it is a value that sticks, and no entry opens a
   window. The four commands it had accumulated by Phase 3's end — `Choose specific formats…`,

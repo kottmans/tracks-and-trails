@@ -121,7 +121,6 @@ from tracks_and_trails.ui.row_delegate import (
     EXPANDED_ROLE,
     GAP,
     HEADLINE_ROLE,
-    INHERITED_TEXT,
     MANAGE_PRESETS_DATA,
     MANAGE_PRESETS_TEXT,
     MENU_ZONE_WIDTH,
@@ -129,6 +128,7 @@ from tracks_and_trails.ui.row_delegate import (
     OPTIONS_TEXT,
     PADDING,
     PRESET_CHOICES_ROLE,
+    PRESET_INHERITED_ROLE,
     PRESET_ROLE,
     ROW_HEIGHT,
     ROW_PRESET_NAME,
@@ -1822,10 +1822,13 @@ def test_every_resolved_row_offers_its_download_as_control(
         assert model.data(cell, PRESET_CHOICES_ROLE), f"row {index} offers no format choices"
         assert cell.flags() & Qt.ItemFlag.ItemIsEditable, f"row {index} is not editable"
 
-    # Spelled out rather than blank (`T118-R4`): a row following the batch reads as the inherited
-    # entry, which is what the control draws when the row has no preset of its own.
+    # Spelled out rather than blank (`T118-R4`), and **spelled out as the preset** (`UX-004`,
+    # `T-284`): a row following the batch is downloading with something, and the control says what.
     assert role_values(dialog, PRESET_ROLE) == [None, None]
-    assert INHERITED_TEXT.strip(), "the inherited entry has no words for the control to draw"
+    inherited = role_values(dialog, PRESET_INHERITED_ROLE)
+    assert inherited == [dialog.selected_preset.name] * 2, (
+        f"an unoverridden row does not name the batch preset it would follow: {inherited}"
+    )
 
 
 def test_clicking_a_rows_control_opens_it_without_selecting_first(

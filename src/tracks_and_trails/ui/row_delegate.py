@@ -341,10 +341,47 @@ CHIP_RADIUS: Final = 3
 #: Absent means no, which is how a model that never heard of this role gets the honest answer.
 PRESET_INHERITABLE_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 12
 
-#: What the editor's inherited entry says, where there is one (`UX-004`). Named rather than blank:
-#: a row that follows the batch has made a choice — the same one as everything else — and a blank
-#: reads as no format at all rather than as the one below it (`T118-R4`).
-INHERITED_TEXT: Final = "Same as all"
+#: The name of the preset an unoverridden row would follow, where the surface has one (`UX-004`).
+#:
+#: **Separate from `PRESET_INHERITABLE_ROLE`, because they answer different questions.** That role
+#: says *may this row follow anything* — the gate that keeps the queue, which has no batch, from
+#: offering an entry that would do nothing (`T126-R4`). This one says *what it would follow*, and
+#: only a surface with a batch can answer it. Folding the name into the gate would make a preset
+#: named with an empty string read as "cannot follow".
+#:
+#: **Absent means the surface has no batch**, which is how a model that never heard of this role
+#: gets the honest answer.
+PRESET_INHERITED_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 25
+
+#: What the editor's inherited entry appends to that name (`UX-004`, ruled 2026-08-30 by the
+#: maintainer).
+#:
+#: **The entry carries the value *and* the relation, and the reason is the click.** The painted
+#: control shows the preset's name alone — ruled 2026-08-28, because the relation already lives on
+#: the row's detail line and a 165 px box that has to hold both elides. If the entry then said only
+#: the relation, the label the user clicked would not be the entry they see selected: the value
+#: would turn into a relation at the moment of the click, which is the defect class `T-283` was
+#: built to close. With the value in both, only the suffix appears, and the entry cannot be
+#: confused with the preset of the same name one line below it — which pins that preset to this row
+#: rather than leaving the row following.
+#:
+#: The popup has no width constraint, which is why a shape rejected for the control is available
+#: here. The wording is the row's own: the detail line already reads *"Download as: … — following
+#: the batch"*.
+#:
+#: *(This was `INHERITED_TEXT = "Same as all"`, in both places, until `T-284`. The maintainer's
+#: report was that it *"doesn't make any intuitive sense"*, and it was also a defect against
+#: `UX-004` as written, which asks for the preset **and** that it is inherited: the old text
+#: delivered the relation and dropped the value. `T118-R4`'s reasoning — never blank, because a
+#: blank reads as no format at all — is untouched and is why this is a suffix rather than a
+#: replacement.)*
+INHERITED_SUFFIX: Final = " — following the batch"
+
+
+def inherited_entry_text(name: str) -> str:
+    """What the editor's `None` entry reads, for the preset `name` the row would follow."""
+    return f"{name}{INHERITED_SUFFIX}"
+
 
 #: The editor's object name. Shared by every row deliberately: they are one control reused, and a
 #: test asserting the keyboard surface counts them rather than naming twenty of them.
@@ -1511,7 +1548,12 @@ class RowDelegate(QStyledItemDelegate):
         elif isinstance(placeholder, str) and placeholder:
             label = placeholder
         else:
-            label = INHERITED_TEXT if index.data(PRESET_INHERITABLE_ROLE) else ""
+            # **The preset's name, not the relation** (`UX-004`, `T-284`, ruled 2026-08-28). A row
+            # following the batch is downloading with something, and the control's job is to say
+            # what. The relation is on the row's detail line — *"… — following the batch"* — where
+            # it does not have to fit in 165 px with the `⋮` zone carved out of it.
+            inherited = index.data(PRESET_INHERITED_ROLE)
+            label = inherited if isinstance(inherited, str) and inherited else ""
 
         # **The combo stops where the `⋮` zone begins** (`T-203`, `UX-011` option *E*). The zone
         # is carved from the control's own rect rather than laid out beside it, so the row's
@@ -2162,7 +2204,17 @@ class RowDelegate(QStyledItemDelegate):
             else "Choose the format this download will use."
         )
         if inheritable:
-            choice.addItem(INHERITED_TEXT, None)
+            # **The same value the closed control showed, plus the relation** (`T-284`). Falls back
+            # to the relation alone only where the surface says a row may follow and then cannot
+            # name what — which no model does today, and which would otherwise put a bare suffix in
+            # the list.
+            inherited = index.data(PRESET_INHERITED_ROLE)
+            choice.addItem(
+                inherited_entry_text(inherited)
+                if isinstance(inherited, str) and inherited
+                else INHERITED_SUFFIX.strip(" —"),
+                None,
+            )
         offered = [str(name) for name in index.data(PRESET_CHOICES_ROLE) or ()]
         for name in offered:
             choice.addItem(name, name)

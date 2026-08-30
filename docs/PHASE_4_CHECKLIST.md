@@ -107,7 +107,7 @@ everything else runs offline. §8's arranged failures say how to arrange each on
 | # | What to look for | Task |
 |---|---|---|
 | 5.1 | Paste one URL: the box keeps a **capped height** and the staged row appears below with title, channel and thumbnail after its probe *(network)* | `T-210`, `UX-003` |
-| 5.2 | The row's **Download as control holds presets and nothing else** — no entry opens a window, and an unoverridden row shows the inherited preset **by name**, never blank | `UX-011`, `T-203` |
+| 5.2 | The row's **Download as control holds presets and nothing else** — no entry opens a window, and an unoverridden row shows the inherited preset **by name**, never blank. Opened, its first entry reads that name followed by *— following the batch* | `UX-011`, `T-203`, `T-284` |
 | 5.3 | The **⋮ zone is drawn as a button** — border, hover, pressed — and opens the row menu; right-click, the Menu key and `Shift+F10` open **the same menu**, anchored to that row | `T-224`, `UX-012` |
 | 5.4 | The menu's *Just this item* group holds `Choose specific formats…`, `Options…`, `Naming and folders…`; a playlist row's Remove reads **`Remove this playlist (N items)`** with the real count | `UX-011`, `UX-012` |
 | 5.5 | `Manage presets…` is in the **dialog footer**, not on any row | `UX-009` |

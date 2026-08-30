@@ -244,11 +244,159 @@ Phase 0 is formally exited (2026-07-26).
 *Implementation is finished and a verdict has not been recorded. **The entries below are the
 contents; this preface does not list them.***
 
-*(Empty since 2026-08-29, when `T-298` was approved at `a93a53b` and moved to `## Complete`. It was
-empty earlier the same day too, after the `T-212` batch — `T-281`, `T-283`, `T-285`, `T-288`,
-`T-291`, `T-292` and `T-293` — was approved at `0332a68`. The heading stays because the section is
-part of the map, and one that disappears when it empties is one nobody notices coming back —
-`## Proposed — Phase 0` carries the same note for the same reason.)*
+### T-284 — *Same as all* names the relation and drops the value the spec asks for
+
+**Status:** **In Review — built 2026-08-30, and no review has run.** The control names the preset
+the row would follow; the editor's `None` entry names it too, with *— following the batch*
+appended. `INHERITED_TEXT`'s *"Same as all"* is gone from both sites and from the codebase.
+**Five mutations, all killed** — blanking the painted label, dropping the relation from the entry,
+dropping the value from it, offering the entry on every surface, and making the model stop naming
+what the row follows.
+
+*(Filed 2026-08-27 by `T-212`'s checklist run. The maintainer's report: *"'Same as all' doesn't
+make any intuitive sense here. That needs to be changed."* **It was also a defect against
+`docs/UX_SPEC.md` §2 as written**, which is why it was filed rather than left as a wording
+preference.)*
+
+#### What was built — 2026-08-30
+
+**A role, because the name was not reachable.** `PRESET_INHERITED_ROLE` carries the name of the
+preset an unoverridden row would follow. It is **separate from `PRESET_INHERITABLE_ROLE`** on
+purpose: that one gates *may this row follow anything*, which is what keeps the queue — with no
+batch at all — from offering an entry its model refuses (`T126-R4`), and folding the name into it
+would make a preset named with an empty string read as *cannot follow*. `AddUrlDialog`'s model
+answers with `effective.name`, which is already the row's own preset if it has one and the batch's
+otherwise; a row with its own never draws this label, so the name is the batch's exactly when it is
+read. **Absent means the surface has no batch**, which is how the queue answers honestly by never
+having heard of the role.
+
+**Both call sites.** The painted label at `_paint_control` and the `None` entry at `createEditor`.
+The entry falls back to the relation alone only where a surface says a row may follow and then
+cannot name what — which no model does today, and which would otherwise put a bare suffix in the
+list.
+
+**The elision claim is measured rather than asserted.**
+`test_the_ruled_label_fits_the_control_and_the_rejected_one_does_not` takes the width from the
+delegate's own `_control_of` **minus `_menu_zone_of`**, not from a convenient constant, and checks
+both directions: the longest built-in preset name fits, and the rejected *"… — same as all"* shape
+does not. If the control ever grows enough for the rejected shape to fit, that test fails and says
+the ruling should be re-taken against the new width.
+
+**The queue test now asserts the property rather than a string.** It was `findText(INHERITED_TEXT)
+== -1`, which would have passed the moment the wording moved. It now requires that no entry carries
+the suffix **and** that no entry's data is `None` — the value `QueueModel.setData` refuses.
+
+**`docs/UX_SPEC.md` §2 carries the ruled shape** and `docs/PHASE_4_CHECKLIST.md` row 5.2 matches it,
+which is the criterion about the spec never having been brought to the wording chosen in a task.
+**Owner:** Implementer
+**Priority:** Medium — it is the control `UX-004` exists for, and the run photographed it saying
+*"same as all"* on a dialog holding **one** row, where there is no "all" to be the same as
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing. `T-283` moves the same label 5 px and does not change it
+**Relevant context:** `docs/UX_SPEC.md` §2's `UX-004` line; `ui/row_delegate.py` `INHERITED_TEXT`
+and `_paint_control`; `T118-R4`, which chose a name over a blank; `T126-R4`, which is why the
+queue must **not** inherit whatever this becomes
+**Affected surfaces:** `ui/row_delegate.py`, its tests, `docs/PHASE_4_CHECKLIST.md` row 5.2
+**Risk:** Medium — the control is ~165 px wide with the `⋮` zone carved out of it, so a longer
+label elides; and `T126-R4` is the record of one label leaking onto a surface it was false on
+
+#### What is wrong
+
+`UX-004`, in `docs/UX_SPEC.md` §2:
+
+> every row carries a **visible** *Download as* control showing what it will be downloaded with,
+> and a row that has not been overridden shows the **batch preset explicitly as inherited** —
+> never blank, which reads as *none* rather than *the one above*.
+
+The sentence asks for two things: **the preset**, and **that it is inherited**. `INHERITED_TEXT`
+delivers the second and drops the first. `T118-R4` is why it is not blank, and that reasoning is
+still right — a blank reads as *no format*; it just did not go the rest of the way to the value.
+
+`docs/PHASE_4_CHECKLIST.md` row 5.2 transcribed the spec rather than the code and so states the
+stricter reading: *"an unoverridden row shows the inherited preset **by name**, never blank."*
+Run against today's build that row fails.
+
+**The row already knows how to say it.** The detail line under the title reads *"Download as: Best
+video up to 1080p (MP4) — following the batch"*, so the value and the relation are both on the row
+in words; only the control disagrees.
+
+#### **Not built 2026-08-28, and the reason is a second decision nobody has taken**
+
+**`INHERITED_TEXT` is two things, and the ruling settles one of them.** It is the label
+`_paint_control` draws on an unoverridden row (`row_delegate.py:1514`) — which is what the
+maintainer was looking at and what the ruling below covers — and it is also a **selectable entry in
+the editor's dropdown**, `choice.addItem(INHERITED_TEXT, None)` at `:2165`, whose `None` data is
+what *means* "follow the batch".
+
+Changing only the painted label leaves the closed editor reading *Same as all* while the affordance
+beside it reads *Best video up to 1080p (MP4)* — **so the text would change at the moment of the
+click**, which is the exact defect class `T-283` was just built to close. Changing both puts two
+entries in the list that read identically and mean opposite things: one overrides the row with that
+preset, the other leaves it following.
+
+**Neither is implied by the ruling, so neither was written.** The dropdown entry has no width
+constraint — the popup is as wide as it needs to be — so the shapes rejected for the *control* are
+all still available to it. What the entry should say was the question this task waited on, and it
+is answered below.
+
+#### Ruled 2026-08-30: the entry carries the value **and** the relation — for the dropdown
+
+**The maintainer chose the first of three shapes offered.** The `None` entry reads the painted
+value followed by the relation — *"Best video up to 1080p (MP4) — following the batch"* — so:
+
+- **Nothing changes at the click.** The closed control and the open editor agree on the *value*,
+  which is what the relation-only shape could not do and why this task did not build on 2026-08-28.
+- **It cannot be confused with the preset of the same name** one line below it, which pins that
+  preset to this row rather than leaving the row following.
+- **It is the row's own vocabulary.** The detail line already reads *"Download as: Best video up to
+  1080p (MP4) — following the batch"*, so this is the same sentence in a second place rather than a
+  new phrasing to keep consistent.
+- **The popup has no width constraint**, which is the whole reason a shape rejected for the 165 px
+  control is available here.
+
+*(The rejected two, recorded so they are not re-proposed as new: **relation only** — keep *"Same as
+all"* or *"Follow the batch"* as the entry, cheapest and never stale, but the label the user clicked
+is not the entry they then see selected; and **drop the entry entirely**, moving *follow the batch*
+into the `⋮` menu beside the per-row verbs, which is `UX-011` option *E*'s own principle taken
+further and removes the look-alike outright, at the cost of a `docs/UX_SPEC.md` amendment and a new
+route back for a row that has overridden.)*
+
+**The entry's text tracks the batch preset**, so it is recomputed when that changes rather than
+built once — the one maintenance cost this shape has and the relation-only shape does not.
+
+#### What both rulings need that does not exist yet
+
+**The batch preset's name is not reachable from the delegate.** `PRESET_INHERITABLE_ROLE` answers
+`True` and nothing more (`add_dialog.py:1127`), and `PRESET_ROLE` is `None` on exactly the rows this
+is about. Both the painted label and the dropdown entry need the name, so a role that carries it is
+the first piece of work here, not an implementation detail of one of them.
+
+#### Ruled 2026-08-28: the preset's name alone — for the control
+
+The maintainer chose the first of three shapes offered: **the control shows the preset's name and
+nothing else.** The relation stays where it already is — the row's detail line reads *"Download as:
+Best video up to 1080p (MP4) — following the batch"* — so both facts are on the row and neither is
+crowded into a 165 px box. It is also the only one of the three that never elides.
+
+*(The rejected two, recorded so they are not re-proposed as new: the name behind a leading `↳` or in
+the muted role, which keeps both facts in the space one fits in; and the name followed by
+`— same as all`, which is the most explicit and the first to truncate.)*
+
+#### Acceptance criteria
+
+- **The unoverridden control names the preset the row would actually use**, satisfying `UX-004`
+- **Whichever shape is ruled, it is recorded in `docs/UX_SPEC.md`** rather than only in the code —
+  the current wording was chosen in a task entry and the spec was never brought to it
+- **The queue keeps its own answer** (`T126-R4`): a durable job has no batch, `PRESET_INHERITABLE_ROLE`
+  is what separates them, and nothing here may make the queue draw an inherited label again
+- **Elision is measured at the control's real width** with the `⋮` zone removed, not at a
+  convenient one
+- **`docs/PHASE_4_CHECKLIST.md` row 5.2 matches whatever is ruled**
+
+#### Out of scope
+
+- The 5 px inset (`T-283`)
+- The control's contents rule — presets and nothing else (`UX-011` option *E*, built by `T-203`)
 
 ---
 
@@ -12323,122 +12471,6 @@ choice, and their tests
   about what gets written, not about a new surface for reading it
 - **Changing what is redacted.** `T-018`'s empty allowlist stands
 - **Retention or rotation policy** beyond what the handler already does
-
-### T-284 — *Same as all* names the relation and drops the value the spec asks for
-
-**Status:** Proposed — **filed 2026-08-27 by `T-212`'s checklist run.** The maintainer's report:
-*"'Same as all' doesn't make any intuitive sense here. That needs to be changed."* **It is also a
-defect against `docs/UX_SPEC.md` §2 as written**, which is why this is filed rather than left as a
-wording preference.
-**Owner:** Implementer
-**Priority:** Medium — it is the control `UX-004` exists for, and the run photographed it saying
-*"same as all"* on a dialog holding **one** row, where there is no "all" to be the same as
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing. `T-283` moves the same label 5 px and does not change it
-**Relevant context:** `docs/UX_SPEC.md` §2's `UX-004` line; `ui/row_delegate.py` `INHERITED_TEXT`
-and `_paint_control`; `T118-R4`, which chose a name over a blank; `T126-R4`, which is why the
-queue must **not** inherit whatever this becomes
-**Affected surfaces:** `ui/row_delegate.py`, its tests, `docs/PHASE_4_CHECKLIST.md` row 5.2
-**Risk:** Medium — the control is ~165 px wide with the `⋮` zone carved out of it, so a longer
-label elides; and `T126-R4` is the record of one label leaking onto a surface it was false on
-
-#### What is wrong
-
-`UX-004`, in `docs/UX_SPEC.md` §2:
-
-> every row carries a **visible** *Download as* control showing what it will be downloaded with,
-> and a row that has not been overridden shows the **batch preset explicitly as inherited** —
-> never blank, which reads as *none* rather than *the one above*.
-
-The sentence asks for two things: **the preset**, and **that it is inherited**. `INHERITED_TEXT`
-delivers the second and drops the first. `T118-R4` is why it is not blank, and that reasoning is
-still right — a blank reads as *no format*; it just did not go the rest of the way to the value.
-
-`docs/PHASE_4_CHECKLIST.md` row 5.2 transcribed the spec rather than the code and so states the
-stricter reading: *"an unoverridden row shows the inherited preset **by name**, never blank."*
-Run against today's build that row fails.
-
-**The row already knows how to say it.** The detail line under the title reads *"Download as: Best
-video up to 1080p (MP4) — following the batch"*, so the value and the relation are both on the row
-in words; only the control disagrees.
-
-#### **Not built 2026-08-28, and the reason is a second decision nobody has taken**
-
-**`INHERITED_TEXT` is two things, and the ruling settles one of them.** It is the label
-`_paint_control` draws on an unoverridden row (`row_delegate.py:1514`) — which is what the
-maintainer was looking at and what the ruling below covers — and it is also a **selectable entry in
-the editor's dropdown**, `choice.addItem(INHERITED_TEXT, None)` at `:2165`, whose `None` data is
-what *means* "follow the batch".
-
-Changing only the painted label leaves the closed editor reading *Same as all* while the affordance
-beside it reads *Best video up to 1080p (MP4)* — **so the text would change at the moment of the
-click**, which is the exact defect class `T-283` was just built to close. Changing both puts two
-entries in the list that read identically and mean opposite things: one overrides the row with that
-preset, the other leaves it following.
-
-**Neither is implied by the ruling, so neither was written.** The dropdown entry has no width
-constraint — the popup is as wide as it needs to be — so the shapes rejected for the *control* are
-all still available to it. What the entry should say was the question this task waited on, and it
-is answered below.
-
-#### Ruled 2026-08-30: the entry carries the value **and** the relation — for the dropdown
-
-**The maintainer chose the first of three shapes offered.** The `None` entry reads the painted
-value followed by the relation — *"Best video up to 1080p (MP4) — following the batch"* — so:
-
-- **Nothing changes at the click.** The closed control and the open editor agree on the *value*,
-  which is what the relation-only shape could not do and why this task did not build on 2026-08-28.
-- **It cannot be confused with the preset of the same name** one line below it, which pins that
-  preset to this row rather than leaving the row following.
-- **It is the row's own vocabulary.** The detail line already reads *"Download as: Best video up to
-  1080p (MP4) — following the batch"*, so this is the same sentence in a second place rather than a
-  new phrasing to keep consistent.
-- **The popup has no width constraint**, which is the whole reason a shape rejected for the 165 px
-  control is available here.
-
-*(The rejected two, recorded so they are not re-proposed as new: **relation only** — keep *"Same as
-all"* or *"Follow the batch"* as the entry, cheapest and never stale, but the label the user clicked
-is not the entry they then see selected; and **drop the entry entirely**, moving *follow the batch*
-into the `⋮` menu beside the per-row verbs, which is `UX-011` option *E*'s own principle taken
-further and removes the look-alike outright, at the cost of a `docs/UX_SPEC.md` amendment and a new
-route back for a row that has overridden.)*
-
-**The entry's text tracks the batch preset**, so it is recomputed when that changes rather than
-built once — the one maintenance cost this shape has and the relation-only shape does not.
-
-#### What both rulings need that does not exist yet
-
-**The batch preset's name is not reachable from the delegate.** `PRESET_INHERITABLE_ROLE` answers
-`True` and nothing more (`add_dialog.py:1127`), and `PRESET_ROLE` is `None` on exactly the rows this
-is about. Both the painted label and the dropdown entry need the name, so a role that carries it is
-the first piece of work here, not an implementation detail of one of them.
-
-#### Ruled 2026-08-28: the preset's name alone — for the control
-
-The maintainer chose the first of three shapes offered: **the control shows the preset's name and
-nothing else.** The relation stays where it already is — the row's detail line reads *"Download as:
-Best video up to 1080p (MP4) — following the batch"* — so both facts are on the row and neither is
-crowded into a 165 px box. It is also the only one of the three that never elides.
-
-*(The rejected two, recorded so they are not re-proposed as new: the name behind a leading `↳` or in
-the muted role, which keeps both facts in the space one fits in; and the name followed by
-`— same as all`, which is the most explicit and the first to truncate.)*
-
-#### Acceptance criteria
-
-- **The unoverridden control names the preset the row would actually use**, satisfying `UX-004`
-- **Whichever shape is ruled, it is recorded in `docs/UX_SPEC.md`** rather than only in the code —
-  the current wording was chosen in a task entry and the spec was never brought to it
-- **The queue keeps its own answer** (`T126-R4`): a durable job has no batch, `PRESET_INHERITABLE_ROLE`
-  is what separates them, and nothing here may make the queue draw an inherited label again
-- **Elision is measured at the control's real width** with the `⋮` zone removed, not at a
-  convenient one
-- **`docs/PHASE_4_CHECKLIST.md` row 5.2 matches whatever is ruled**
-
-#### Out of scope
-
-- The 5 px inset (`T-283`)
-- The control's contents rule — presets and nothing else (`UX-011` option *E*, built by `T-203`)
 
 ### T-286 — The container section says what recode costs and never what it is for
 

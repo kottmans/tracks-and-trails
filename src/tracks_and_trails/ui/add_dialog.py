@@ -154,7 +154,7 @@ from tracks_and_trails.ui.row_delegate import (
     FORMATS_AVAILABLE_ROLE,
     HEADLINE_ROLE,
     HUE_ROLE,
-    INHERITED_TEXT,
+    INHERITED_SUFFIX,
     JOB_ID_ROLE,
     MANAGE_PRESETS_DATA,
     MANAGE_PRESETS_TEXT,
@@ -164,6 +164,7 @@ from tracks_and_trails.ui.row_delegate import (
     OPTIONS_TEXT,
     PRESET_CHOICES_ROLE,
     PRESET_INHERITABLE_ROLE,
+    PRESET_INHERITED_ROLE,
     PRESET_ROLE,
     PRESETS_MANAGEABLE_ROLE,
     ROW_PRESET_NAME,
@@ -195,7 +196,7 @@ from tracks_and_trails.ui.thumbnails import (
 #: Re-exported so the loader seam keeps its name at this dialog's boundary even though the
 #: implementation moved to `ui/thumbnails.py` with the cache it feeds.
 __all__ = [
-    "INHERITED_TEXT",
+    "INHERITED_SUFFIX",
     "ROW_PRESET_NAME",
     "THUMBNAIL_SIZE",
     "AddUrlDialog",
@@ -1124,6 +1125,12 @@ class StagingModel(QAbstractListModel):
             # lookup `T016-R1` established, which finds the row that *owns* the id rather than one
             # at a remembered position (`T118-R14`).
             return row.job_id
+        if role == PRESET_INHERITED_ROLE:
+            # **What this row would be committed as while it follows the batch** (`UX-004`,
+            # `T-284`). `effective` is already the answer — the row's own preset if it has one, the
+            # batch's otherwise — and a row with its own is not drawing this label at all, so the
+            # name is the batch's exactly when it is read.
+            return effective.name
         if role == PRESET_INHERITABLE_ROLE:
             # **This surface has an "all" to be the same as** (`UX-004`, `T126-R4`): the paste
             # carries one format and a row may defer to it, which is what `PRESET_ROLE`'s `None`

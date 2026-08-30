@@ -42,7 +42,7 @@ from tracks_and_trails.ui.main_window import (
 from tracks_and_trails.ui.queue_view import PROGRESS_COLUMN
 from tracks_and_trails.ui.row_delegate import (
     DETAIL_ROLE,
-    INHERITED_TEXT,
+    INHERITED_SUFFIX,
     PADDING,
     PRESET_CHOICES_ROLE,
     PRESET_ROLE,
@@ -1244,9 +1244,17 @@ def test_a_queue_editor_does_not_offer_an_inapplicable_group_default(
 
     editor = _open_the_format_editor(view, "job-1")
 
-    assert editor.findText(INHERITED_TEXT) == -1, (
-        f"the queue offers {INHERITED_TEXT!r}, but it has no group default to restore and its "
-        "model refuses the entry's value"
+    # **By the suffix, not by a fixed string** (`T-284`). The entry now reads the batch preset's
+    # name followed by the relation, so an assertion against one spelling would pass the moment the
+    # wording moved. Every entry the queue offers must be a preset, and no preset says this.
+    offered = [editor.itemText(position) for position in range(editor.count())]
+    assert not [text for text in offered if INHERITED_SUFFIX in text], (
+        f"the queue offers an inherited entry — {offered} — but it has no group default to "
+        "restore and its model refuses the entry's value"
+    )
+    assert all(editor.itemData(position) is not None for position in range(editor.count())), (
+        "the queue offers an entry whose data is None, which is what *follow the batch* means and "
+        "which QueueModel.setData refuses"
     )
 
 
