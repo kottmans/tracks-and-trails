@@ -22141,3 +22141,72 @@ verification continue under the convergence rule.
 
 The Reviewer changed only this append-only review record. No reviewed source, test, task/status
 text, instrumentation, report, handoff, push, CI run or remote state was changed.
+
+---
+
+## 2026-08-30 — T-289 instrument integrity re-review
+
+**Reviewer:** Codex (Reviewer)
+**Boundary:** `e56487d3648feb2bf308f5ebc9fa6cc791f3a0a4..71c797dca015c2494194d2bf586f8d8fa6f05e8e`
+**Commit:** `71c797d` (instrument correction)
+**Verdict:** **Changes requested. `T289-R8` and `T289-R9` are Resolved; `T289-R6` and
+`T289-R7` remain High and blocking.** The event filter removes the crash-capable live-widget
+enumeration and sees both its positive-control widget and the real Settings surface. The collection
+phase accounting and undriven-route refusal are also real improvements. The instrument can still
+call the route clean without naming the Python-owned widget that the GUI collector destroyed, and
+it calls an asynchronous update finished when its scheduling method returns rather than when the
+service emits a terminal result. Do not spend the real-display session on this head.
+
+### Finding dispositions
+
+| Finding | Disposition | Independent verification |
+|---|---|---|
+| **T289-R6** | **Partially corrected; remains Open (High, Blocks approval: Yes).** Collection start and stop are now tracked per thread, and GUI-thread destructions are counted. The count is not the required candidate record: `watch()` captures a type label but no `ownedByPython` state, and its GUI branch returns without writing even that label. Through the real `arm()` path, a shown, parentless, Python-defined cyclic `Derived(QWidget)` collected on `MainThread` produced **9 GUI destructions inside collection, an empty transcript, and `NOTHING OFF THE GUI THREAD`**. That is the exact safe-thread candidate R6 required the instrument to name, and it is evidence of a Python-owned tree reaching the collector—not a clean outcome. Off-GUI destructions inside and outside collection also share one counter, so the verdict calls both T-289 despite the module contract saying the latter is a different finding. The required GUI/pool/outside positive controls were not added. Record candidate ownership/type and the tag, thread and in-collection state on both threads; classify GUI candidate collection as a candidate finding, distinguish an off-GUI destruction outside collection, and add all three controls. | The safe-thread replay used the application event filter and GC callback, set the actual subject name to `review-positive-control`, and received no event line for it. Static inspection confirms the tool never imports or calls `shiboken6.ownedByPython` and has only the pool control. |
+| **T289-R7** | **Partially corrected; remains Open (High, Blocks approval: Yes).** An unopened route now correctly reports `NOT A RESULT`, the Settings milestone is real, and the self-test enters through `arm()`. `update_finished` is nevertheless assigned in the wrapper's `finally` immediately after `install_latest_version()` returns. The real method only schedules `_Task` on the shared pool; terminal success or failure arrives later through `reported` or `failed`. A deterministic scheduler-only stand-in therefore set `started=True`, `finished=True` and produced the clean verdict without emitting any terminal signal. The positive control is aggregate rather than subject-specific too: after leaving the `Derived` widget discovered but disconnecting only its destruction handler, two incidental `PySide6.QtWidgets.QWidget` destructions still made `--self-test` print **SELF-TEST PASSED** and exit 0. Finally, a normal report records no application, Python, Qt/PySide, platform or instrument identity and no proof that the separately invoked self-test passed, despite those being explicit parts of R7's required correction. Observe `reported`/`failed` (or the authoritative `busy=False` edge) rather than method return, make the control require the named subject and expected in-collection classification, and bind the control plus environment/version identity into the session report before permitting any null-route conclusion. | The scheduler-only replay produced `update_started=True update_finished=True` at return and, with the other current predicates true, emitted `NOTHING OFF THE GUI THREAD`. The subject-handler mutation passed while its transcript named only two plain `QWidget` objects. `rg` finds no environment/version identity in the tool. |
+| **T289-R8** | **Resolved.** No executable path calls `QApplication.allWidgets()`. Application-wide event-filter discovery sees the pool positive control, a normal wrapped application (43 widgets in a three-second offscreen run), and an actual shown `SettingsDialog` (milestone true; 620 widgets observed). A widget that receives no event remains an explicit limitation, but the on-screen route this instrument targets is exercised by the filter. | Offscreen probes used the submitted `arm()` path; the normal wrapper exited through its new SIGTERM path and wrote `NOT A RESULT`. The actual Settings class emitted `route: the Settings screen opened`. |
+| **T289-R9** | **Resolved.** TASKS and STATUS now say one additional explicit collection remains and limit the timing conclusion to no measured wall-clock regression. | The corrected text matches the two collection sites identified in the prior review. |
+| **T289-R10** | **Low, Blocks approval: No — current-truth cleanup in the next correction.** The tool's module documentation still says a timer scans `allWidgets()` every 250 ms (`tools/t289_session_watch.py:30-33`), and TASKS still states the removed “between two 250 ms scans” bound (`ai/TASKS.md:599-600`). Those passages describe the unsafe R8 implementation this commit removed. Replace them with the event-filter/no-event bound; also collapse the duplicated arming comment at tool lines 431-437. | Direct source inspection; runtime `rg` confirms `allWidgets` survives only in prose. |
+
+### Rulings on the submitted open questions
+
+- **Event-filter coverage is adequate for this route**, subject to its stated no-event limitation.
+  It directly observed the real Settings type after installation; no unsafe initial inventory is
+  needed to approve R8.
+- **The 200 ms heartbeat is not independently blocking for a diagnostic that reports positive
+  candidates or an inconclusive null.** It does add regular Python execution on the GUI thread—the
+  exact thread-selection experiment cares about—so its latency being imperceptible is not the
+  relevant measurement. Keep that observer effect disclosed, and do not use one null session to
+  close criterion 2. Removing the custom signal handlers and treating a report without `VERDICT`
+  as interrupted remains the lower-perturbation alternative.
+- **There is no defensible clean state in the current four-state model.** A Python-owned Python
+  widget destroyed by GUI-thread GC identifies the unsafe ownership state and is a candidate
+  finding; one destroyed off-GUI inside GC reproduces T-289; one destroyed off-GUI outside GC is a
+  different invariant violation. A completed route with no candidate observed is bounded null
+  evidence, not proof of “never.” Criterion 2 remains open after such a run unless the maintainer
+  explicitly accepts that evidence as the risk bound.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | One commit, three files, no `src/` or tests; `git diff --check e56487d..71c797d` is clean. |
+| Submitted self-test | Passed offscreen and reported the intended `Derived` on `Dummy-1` inside collection, but also reported two plain `QWidget` objects. |
+| Subject-specific mutation | Keeping `Derived` discovery but removing only its destruction connection still yielded **SELF-TEST PASSED**, exit 0. |
+| GUI candidate replay | Real filter and GC callback, Python-owned cyclic `Derived`, `MainThread` collection: **9 GUI destructions in collection, empty transcript, clean verdict**. |
+| Route-terminal replay | A method that only schedules and returns was recorded as both started and finished; with the remaining predicates true, the verdict was clean. |
+| Undriven normal wrapper | Isolated offscreen app, three seconds, SIGTERM: **43 widgets**, 4 MainThread collections, route false, `NOT A RESULT`; the signal exit wrote a final verdict. |
+| Real Settings discovery | Actual shown `SettingsDialog`: `settings_opened=True`, **620 widgets** observed. |
+| Static/types | Ruff and format pass on the tool; direct mypy passes with `MYPYPATH=src`; the submitted commit-message gate passes. |
+| Broader evidence | The implementer reports ruff/format, host and Win32 mypy, unit+UI **3,389 passed / 21 skipped**, placement **15**. No product code changed; integration remains **445 passed** at the earlier product head. |
+
+### Readiness
+
+Do not run the maintainer's real-display session yet. Finish R6 and R7 as one focused instrument
+correction: subject-specific GUI/pool/outside controls, candidate identity/ownership in every
+collector-destruction record, an authoritative update terminal edge, and report-bound control and
+environment identity. R8 and R9 need no further substantive work; R10 is mechanical current-truth
+cleanup in that same correction. Because the unresolved findings remain High continuations, the
+focused correction stays inside the current review under the convergence rule.
+
+The Reviewer changed only this append-only review record. No reviewed source, test, task/status
+text, instrumentation, handoff, push, CI run or remote state was changed.
