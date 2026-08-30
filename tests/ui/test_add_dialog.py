@@ -121,6 +121,7 @@ from tracks_and_trails.ui.row_delegate import (
     EXPANDED_ROLE,
     GAP,
     HEADLINE_ROLE,
+    INHERITED_SUFFIX,
     MANAGE_PRESETS_DATA,
     MANAGE_PRESETS_TEXT,
     MENU_ZONE_WIDTH,
@@ -1828,6 +1829,85 @@ def test_every_resolved_row_offers_its_download_as_control(
     inherited = role_values(dialog, PRESET_INHERITED_ROLE)
     assert inherited == [dialog.selected_preset.name] * 2, (
         f"an unoverridden row does not name the batch preset it would follow: {inherited}"
+    )
+
+
+def test_the_inherited_entry_names_the_batch_even_on_an_overridden_row(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T284-R1`, the Critical.** The entry must name the preset choosing it would produce.
+
+    The `None` entry means *clear this row's override and follow the batch*. Its label was built
+    from the row's **effective** preset, which on an overridden row is the row's own — so a row
+    overridden to Audio under a Video batch offered *"Audio only (MP3) — following the batch"*, and
+    choosing it built the **Video** request. The control said one format and the queue got another.
+
+    **The batch and the override are deliberately different values**, because with one preset in
+    play every wrong implementation passes: `effective.name` and the batch's name are the same
+    string on an unoverridden row, which is the only state the delegate-level test could reach.
+    """
+    dialog, _manager = resolved(dialogs, managers, spin, SINGLE_ITEM)
+    choose_preset(dialog, "Best video up to 1080p (MP4)")
+    QApplication.processEvents()
+    row = dialog.rows[0]
+
+    control = open_row_editor(dialog, 0)
+    choose_in_editor(dialog, control, "Audio only (MP3)")
+    # Read into a local rather than narrowing `row.preset` itself: the attribute is mutable, and a
+    # narrowing that survives the choice below makes mypy call the assertion after it unreachable.
+    override = row.preset
+    assert isinstance(override, Preset) and override.name == "Audio only (MP3)", (
+        f"the row was not overridden, so this test measures the unoverridden case: {override}"
+    )
+
+    reopened = open_row_editor(dialog, 0)
+    entry = reopened.findData(None)
+    assert entry != -1, "the overridden row no longer offers a way back to the batch"
+    named = reopened.itemText(entry)
+    assert named == "Best video up to 1080p (MP4) — following the batch", (
+        f"the entry reads {named!r}, which is not the preset the row would follow"
+    )
+
+    choose_in_editor(dialog, reopened, None)
+    assert row.preset is None, "choosing the inherited entry did not clear the override"
+    followed = dialog.preset_for(row).name
+    assert f"{followed}{INHERITED_SUFFIX}" == named, (
+        f"the entry said {named!r}, but choosing it made the row follow {followed!r}"
+    )
+
+
+def test_an_open_editors_inherited_entry_follows_a_batch_change(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T284-R3`.** The ruled shape is recomputed when the batch moves, including while open.
+
+    `StagingModel.refresh()` deliberately keeps an open editor alive across a value-only
+    `dataChanged` (`T126-R1`), so an entry built once at `createEditor` goes stale in place: the
+    live control kept naming *Best video up to 1080p (MP4)* after the batch became *Best video
+    available*, and choosing it would then have produced a preset the entry did not name — `R1`'s
+    defect arriving by a second route.
+    """
+    dialog, _manager = resolved(dialogs, managers, spin, SINGLE_ITEM)
+    choose_preset(dialog, "Best video up to 1080p (MP4)")
+    QApplication.processEvents()
+
+    control = open_row_editor(dialog, 0)
+    before = control.itemText(control.findData(None))
+    assert before == "Best video up to 1080p (MP4) — following the batch", before
+
+    choose_preset(dialog, "Best video available")
+    QApplication.processEvents()
+
+    live = staging_list(dialog).findChildren(QComboBox, ROW_PRESET_NAME)
+    assert len(live) == 1, "the batch change closed the editor; this test is then measuring nothing"
+    after = live[0].itemText(live[0].findData(None))
+    assert after == "Best video available — following the batch", (
+        f"the open editor still offers {after!r} after the batch became "
+        f"{dialog.selected_preset.name!r}"
     )
 
 

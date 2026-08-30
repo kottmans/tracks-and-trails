@@ -1126,11 +1126,18 @@ class StagingModel(QAbstractListModel):
             # at a remembered position (`T118-R14`).
             return row.job_id
         if role == PRESET_INHERITED_ROLE:
-            # **What this row would be committed as while it follows the batch** (`UX-004`,
-            # `T-284`). `effective` is already the answer — the row's own preset if it has one, the
-            # batch's otherwise — and a row with its own is not drawing this label at all, so the
-            # name is the batch's exactly when it is read.
-            return effective.name
+            # **The batch's preset, whatever this row currently is** (`UX-004`, `T-284`).
+            #
+            # **Not `effective.name`, and `T284-R1` is why that was Critical.** `effective` is the
+            # row's *own* preset when it has one, and the entry this role labels does the opposite
+            # of showing it: choosing it **clears the override** and returns the row to the batch.
+            # So an Audio-overridden row under a Video batch offered *"Audio only (MP3) — following
+            # the batch"* and, when chosen, built the Video request. The control told the user one
+            # format and the queue got another.
+            #
+            # The role's meaning is fixed by the entry it labels: **what this row would follow**,
+            # which is the batch's and never the row's.
+            return self._dialog.selected_preset.name
         if role == PRESET_INHERITABLE_ROLE:
             # **This surface has an "all" to be the same as** (`UX-004`, `T126-R4`): the paste
             # carries one format and a row may defer to it, which is what `PRESET_ROLE`'s `None`

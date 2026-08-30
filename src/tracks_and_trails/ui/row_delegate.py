@@ -1053,6 +1053,25 @@ class RowDelegate(QStyledItemDelegate):
         shifted.rect = box.rect.adjusted(wanted - field.x(), 0, 0, 0)
         return shifted
 
+    @staticmethod
+    def _label_field(box: QStyleOptionComboBox, style: QStyle, widget: QWidget | None) -> QRect:
+        """The rectangle `CE_ComboBoxLabel` actually paints text into (`T284-R2`).
+
+        **Not the control's rect, and not the rect with the `⋮` zone removed** — those are 190 and
+        174 px at the row geometry the regressions use, and Qt paints into **146**. The frame, the
+        arrow and `T-283`'s inset all come out of it, which is why this asks the style through the
+        same `_label_box` the paint pass uses rather than doing the arithmetic a second way.
+
+        The first version of `T-284`'s elision regression measured the outer rectangle and so
+        passed while the shipped label truncated.
+        """
+        return style.subControlRect(
+            QStyle.ComplexControl.CC_ComboBox,
+            RowDelegate._label_box(box, style, widget),
+            QStyle.SubControl.SC_ComboBoxEditField,
+            widget,
+        )
+
     def _menu_zone_of(
         self, option: QStyleOptionViewItem, index: QModelIndex | _PersistentIndex
     ) -> QRect:
@@ -1583,12 +1602,20 @@ class RowDelegate(QStyledItemDelegate):
         # The frame width comes from the style and the padding from `theme`, so neither is a
         # second opinion: changing the sheet's padding moves this, and the regression measures
         # both routes rather than asserting a number.
-        style.drawControl(
-            QStyle.ControlElement.CE_ComboBoxLabel,
-            self._label_box(box, style, widget),
-            painter,
-            widget,
+        # **Elided, because the ruled shape does not always fit** (`T284-R2`, ruled 2026-08-30).
+        # The 2026-08-28 ruling chose the preset's name partly because it was *"the only one of the
+        # three that never elides"*, and measurement refuted that: the field is **146 px** at this
+        # geometry and two of the five built-in names are wider — including the default,
+        # *Best video up to 1080p (MP4)* at 164 px. The maintainer's answer was to keep the shape
+        # and the width and let it end in an ellipsis, because the full value is on the row's
+        # detail line either way. Without this the style clips mid-glyph instead.
+        shifted = self._label_box(box, style, widget)
+        shifted.currentText = option.fontMetrics.elidedText(
+            box.currentText,
+            Qt.TextElideMode.ElideRight,
+            self._label_field(box, style, widget).width(),
         )
+        style.drawControl(QStyle.ControlElement.CE_ComboBoxLabel, shifted, painter, widget)
 
         # **The menu's painted door, drawn as a door** (`UX-011`, `UX-012`, `T-224`). Still an
         # affordance with no accessibility node — acceptable on the disclosure triangle's
@@ -2310,6 +2337,14 @@ class RowDelegate(QStyledItemDelegate):
         """
         if not isinstance(editor, QComboBox):
             return
+        # **The inherited entry is rebuilt here, not only at `createEditor`** (`T284-R3`). The batch
+        # preset can change while this editor is open — `StagingModel.refresh()` deliberately keeps
+        # it alive across a value-only `dataChanged` — and an entry built once then names a preset
+        # the row would no longer follow. Same shape as the label it mirrors: read the role now.
+        inherited = index.data(PRESET_INHERITED_ROLE)
+        entry = editor.findData(None)
+        if entry != -1 and isinstance(inherited, str) and inherited:
+            editor.setItemText(entry, inherited_entry_text(inherited))
         current = index.data(PRESET_ROLE)
         editor.setCurrentIndex(editor.findData(current if isinstance(current, str) else None))
 

@@ -110,6 +110,9 @@ IMAGE_SOURCE: Final = REPO_ROOT / "src" / "tracks_and_trails" / "resources" / "i
 #: The width a row is rendered at here. Wide enough that nothing under test is elided.
 RENDER_WIDTH: Final = 700
 
+#: Every built-in preset's name, which is what the control has to fit (`T-284`).
+DEFAULT_PRESET_NAMES: Final = tuple(preset.name for preset in BUILT_IN_PRESETS)
+
 #: The widths every layout claim is swept across, one pixel at a time (`T-155`, `T-167`).
 #:
 #: **Swept rather than sampled, and that is `T-155`'s lesson rather than a preference.** Its blocks
@@ -631,34 +634,64 @@ def test_the_inherited_entry_carries_the_value_and_the_relation(qapp: QApplicati
     )
 
 
-def test_the_ruled_label_fits_the_control_and_the_rejected_one_does_not(
-    qapp: QApplication,
-) -> None:
-    """The elision claim behind the 2026-08-28 ruling, measured at the real width (`T-284`).
+def test_a_name_too_wide_for_the_field_is_elided_rather_than_clipped(qapp: QApplication) -> None:
+    """`T284-R2`, ruled 2026-08-30: the ruled shape truncates, and it must do so legibly.
 
-    **The width is the delegate's own, with the `⋮` zone removed**, not a convenient number: the
-    zone is carved out of the control's rect (`T-203`), so a measurement against the slot alone
-    would give the label ~16 px it does not have. The ruling rested on the name alone being *"the
-    only one of the three that never elides"*; this is that, measured, against the longest built-in
-    preset name and against the shape that was rejected for the control.
+    **The first version of this measured the wrong rectangle and so proved nothing.** It called
+    `_control_of` minus `_menu_zone_of` — 190 px minus 16 — *"available"*, and compared names
+    against 174 px. Qt paints into `SC_ComboBoxEditField` after the frame, the arrow and `T-283`'s
+    inset: **146 px** here. The longest built-in name is 174 px, so the regression passed at exactly
+    the width where the shipped label could not fit.
+
+    Two assertions, and the pixel one is the load-bearing half: a row whose name overflows must
+    paint what a row named with the *pre-elided* string paints, which is only true if the delegate
+    elided. Asserting the string alone would pass with the elision computed and thrown away.
     """
     delegate = RowDelegate()
     model = _row_with_a_control()
     option = _selectable_row_option()
     index = model.index(0, 0)
-    available = (
-        delegate._control_of(option, index).width() - delegate._menu_zone_of(option, index).width()
+    style = QApplication.style()
+    box = QStyleOptionComboBox()
+    box.rect = delegate._control_of(option, index).adjusted(
+        0, 0, -delegate._menu_zone_of(option, index).width(), 0
     )
-    metrics = QFontMetrics(option.font)
-    longest = max((preset.name for preset in BUILT_IN_PRESETS), key=metrics.horizontalAdvance)
+    field = delegate._label_field(box, style, None).width()
 
-    assert metrics.horizontalAdvance(longest) <= available, (
-        f"{longest!r} does not fit the control's {available} px, so the ruled shape elides after "
-        "all and the ruling rested on a claim this measurement does not support"
+    assert field < box.rect.width(), (
+        f"the label field ({field}) is not narrower than the combo it sits in "
+        f"({box.rect.width()}), so this is measuring the outer rectangle again"
     )
-    assert metrics.horizontalAdvance(f"{longest} — same as all") > available, (
-        "the rejected shape fits too, so this measurement discriminates nothing — either the "
-        "control grew or the font shrank, and the ruling should be re-taken against the new width"
+
+    metrics = QFontMetrics(option.font)
+    overflowing = [name for name in DEFAULT_PRESET_NAMES if metrics.horizontalAdvance(name) > field]
+    assert overflowing, (
+        f"no built-in preset name exceeds {field} px any more, so this test no longer exercises "
+        "elision — if the control grew or the names shrank, re-take the 2026-08-30 ruling"
+    )
+
+    widest = max(overflowing, key=metrics.horizontalAdvance)
+    elided = metrics.elidedText(widest, Qt.TextElideMode.ElideRight, field)
+    assert elided != widest and elided.endswith("…"), f"nothing was elided from {widest!r}"
+
+    blank: dict[int, Any] = {HEADLINE_ROLE: "", DETAIL_ROLE: "", STATE_ROLE: "", HUE_ROLE: 0}
+
+    def painted(name: str) -> QImage:
+        rows = RowsModel([{**blank, PRESET_CHOICES_ROLE: (name,), PRESET_ROLE: name}])
+        slot = QRect(
+            RENDER_WIDTH - PADDING - EDITOR_WIDTH, PADDING, EDITOR_WIDTH, ROW_HEIGHT - 2 * PADDING
+        )
+        return paint_rows(rows, delegate, 0).copy(slot)
+
+    assert painted(widest) == painted(elided), (
+        f"{widest!r} was not painted as {elided!r}, so the label is clipped mid-glyph rather than "
+        "elided — which is what the maintainer ruled against on 2026-08-30"
+    )
+    shortest = min(DEFAULT_PRESET_NAMES, key=metrics.horizontalAdvance)
+    assert metrics.horizontalAdvance(shortest) <= field
+    assert painted(shortest) != painted(f"{shortest[:-2]}…"), (
+        "a name that fits was painted the same as an elided one, so this comparison cannot tell "
+        "elision from anything else"
     )
 
 

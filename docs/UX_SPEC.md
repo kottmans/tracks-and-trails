@@ -185,8 +185,12 @@ resolved.
 - **[T]** `UX-004`, *shape ruled 2026-08-30 by the maintainer (`T-284`)*: **the control shows the
   preset's name and nothing else**, and **the editor's inherited entry shows that name followed by
   *— following the batch***. The relation lives on the row's detail line — *"Download as: … —
-  following the batch"* — so both facts are on the row without crowding a 165 px control that has
-  the `⋮` zone carved out of it, and the name alone is the only shape measured not to elide there.
+  following the batch"* — so both facts are on the row without crowding a control whose label field
+  measures **146 px** once the frame, the arrow and the `⋮` zone are taken out of it. **The name
+  alone does not always fit that field** — two of the five built-in presets are wider, the default
+  among them — so the control **elides with an ellipsis** and the row's detail line carries the
+  value in full (*ruled 2026-08-30; the 2026-08-28 ruling had assumed this shape never elided, and
+  measurement refuted that*).
   The entry carries the value as well because the closed control and the open editor must agree on
   it: a relation-only entry renames what the user clicked at the moment of the click. *This
   replaces `Same as all`, which delivered the relation and dropped the value the line above asks

@@ -246,12 +246,47 @@ contents; this preface does not list them.***
 
 ### T-284 — *Same as all* names the relation and drops the value the spec asks for
 
-**Status:** **In Review — built 2026-08-30, and no review has run.** The control names the preset
+**Status:** **In Review — corrected 2026-08-30 after `T284-R1`…`R3`.** The control names the preset
 the row would follow; the editor's `None` entry names it too, with *— following the batch*
 appended. `INHERITED_TEXT`'s *"Same as all"* is gone from both sites and from the codebase.
-**Five mutations, all killed** — blanking the painted label, dropping the relation from the entry,
-dropping the value from it, offering the entry on every surface, and making the model stop naming
-what the row follows.
+**Nine mutations, all killed.**
+
+#### The three corrections, 2026-08-30
+
+**`T284-R1` (Critical) — the entry named the wrong preset, and choosing it proved it.** The value
+role answered `effective.name`, which on an **overridden** row is the row's own preset. The entry it
+labels does the opposite of showing that: choosing it **clears the override and returns the row to
+the batch**. So a row overridden to *Audio only (MP3)* under a *Best video up to 1080p (MP4)* batch
+offered *"Audio only (MP3) — following the batch"*, and choosing it built the **Video** request.
+**The control told the user one format and the queue got another.** The role now answers
+`self._dialog.selected_preset.name` — what the row *would follow*, which is the batch's and never
+the row's. *(The delegate-level test could not have caught it: a synthetic model with one name makes
+`effective.name` and the batch's name the same string. The regression uses deliberately different
+batch and override values and follows the choice through to `preset_for(row)`.)*
+
+**`T284-R2` (High) — the elision regression measured the wrong rectangle**, so it passed at exactly
+the width where the label could not fit. `_control_of` minus `_menu_zone_of` is **190 → 174 px**;
+Qt paints into `SC_ComboBoxEditField` after the frame, the arrow and `T-283`'s inset, which is
+**146 px**. Measured against that, **two of the five built-in names overflow** — *Video with
+embedded subtitles* at 174 px and, worse, the **default** *Best video up to 1080p (MP4)* at 164 px.
+
+> **Ruled 2026-08-30 by the maintainer: keep the shape and the width, and elide with an ellipsis.**
+> The 2026-08-28 ruling had chosen this shape partly because it was *"the only one of the three that
+> never elides"*, and that premise is now measured false — at 146 px all three truncate, and the
+> name alone merely truncates last. What still decides it is unchanged: the value belongs on the
+> control and the relation is already on the detail line, which carries the name in full either way.
+> The rejected alternatives are recorded: **widening the control** to ~218 px, which takes ~28 px
+> from every row's text area for two preset names; and **renaming the built-in presets** to fit,
+> which changes names users have already learned, everywhere they appear.
+
+`_label_field()` is the one place that asks the style for that rectangle, and both the paint pass and
+the regression read it from there rather than doing the arithmetic twice.
+
+**`T284-R3` (Medium) — an open editor kept a stale name.** `createEditor` built the entry text once
+and `StagingModel.refresh()` deliberately keeps an editor alive across a value-only `dataChanged`
+(`T126-R1`), so changing the batch left the live control offering the preset the row *used* to
+follow — `R1`'s defect arriving by a second route. `setEditorData` now rebuilds the entry's text
+from the role each time it runs.
 
 *(Filed 2026-08-27 by `T-212`'s checklist run. The maintainer's report: *"'Same as all' doesn't
 make any intuitive sense here. That needs to be changed."* **It was also a defect against
@@ -275,12 +310,13 @@ The entry falls back to the relation alone only where a surface says a row may f
 cannot name what — which no model does today, and which would otherwise put a bare suffix in the
 list.
 
-**The elision claim is measured rather than asserted.**
-`test_the_ruled_label_fits_the_control_and_the_rejected_one_does_not` takes the width from the
-delegate's own `_control_of` **minus `_menu_zone_of`**, not from a convenient constant, and checks
-both directions: the longest built-in preset name fits, and the rejected *"… — same as all"* shape
-does not. If the control ever grows enough for the rejected shape to fit, that test fails and says
-the ruling should be re-taken against the new width.
+**The elision claim is measured at the field Qt paints into**, after `T284-R2` found the first
+version measuring the outer rectangle. `test_a_name_too_wide_for_the_field_is_elided_rather_than_
+clipped` reads the width from `_label_field()` — the same call the paint pass makes — asserts it is
+narrower than the combo around it, and then compares **pixels**: a row whose name overflows must
+paint what a row named with the pre-elided string paints. Asserting the string alone would pass with
+the elision computed and thrown away. If no built-in name overflows any more, the test fails and
+says to re-take the ruling rather than quietly stopping to exercise anything.
 
 **The queue test now asserts the property rather than a string.** It was `findText(INHERITED_TEXT)
 == -1`, which would have passed the moment the wording moved. It now requires that no entry carries
