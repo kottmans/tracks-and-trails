@@ -22012,3 +22012,63 @@ be folded into that task/status sync.
 
 The Reviewer changed only this append-only review record. No reviewed source, test, task/status
 text, documentation, handoff, push, CI run or remote state was changed.
+
+---
+
+## 2026-08-30 — T-289 guard focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Review commit:** `7538ff21c9ce2b86406f2ba818abe79f471f757b`
+**Correction:** `5e15dff34b3272eddd418726a125232e2851cc2d`
+**Verdict:** **Changes requested. `T289-R4` is Resolved; `T289-R2` remains Open.** The correction
+does catch collection inside an ordinary test and confines the exemption to one function-marked
+node. The lifetime watch is lowered before its evidence is inspected, however, and the exempt path
+does not consume garbage parked while the watch was active. Both are deterministic survivors of
+the same R2 lifecycle. `T289-R3` is now honestly retained as open product work, so T-289 remains In
+Review regardless of the guard correction.
+
+### Finding dispositions
+
+| Finding | Disposition | Independent verification |
+|---|---|---|
+| **T289-R2** | **Partially corrected; remains Open (High, blocking).** Arming `DEBUG_SAVEALL` around the test fixes the original in-body replay, but the context exits and restores the old flags **before** `assert_no_widget_would_be_destroyed_by_the_collector()` re-arms them. A deterministic scheduling replay held the cycle until that lowering call, released it and collected in the gap, and the unmarked test **passed**. This models the pool-thread scheduling window the guard exists to remove. The single exempt node has the inverse lifecycle bug: if `gc.collect()` runs while its watch is armed, the tree is parked in `gc.garbage`; skipping the assertion also skips the clear, so the drain cannot release it. Forcing that call made the first T-238 test pass and its next control fail with `t238-cycle-root` still alive, followed by the guard blaming the second test. Keep the watch armed through inspection, restore flags in a `finally`, and always consume/clear the parked list before the drain—even for the exempt node. Add both sibling regressions. The inspection helper must restore its exact incoming debug flags too: with `DEBUG_SAVEALL | DEBUG_STATS` pre-set, the reviewed sequence ended at `DEBUG_STATS` only (**33 → 1**) despite the new restoration promise. |
+| **T289-R3** | **Correctly retained Open (High, blocking final task approval).** The task and STATUS withdraw product-compliance and criterion-2 claims, keep the released route unidentified, and specify the real-display Settings → yt-dlp → Update measurement. That is the required disposition; it is not yet the measurement or product correction. |
+| **T289-R4** | **Resolved.** The bypass now requires both the exact allowlisted node id and a marker in `request.node.own_markers`. The module-level sibling is rejected. Replacing this with the submitted inherited lookup made that deliberate violation pass, so the new regression is discriminating. |
+| **T289-R5** | **Substantively corrected; Low current-truth cleanup remains.** STATUS now says the task is scheduled, the guard is corrected, and criterion 2 is open. The task's opening still says **“the maintainer's ruling is owed”** (`ai/TASKS.md:257-258`), while its later section and STATUS say the maintainer already ruled and declined re-scope (`ai/TASKS.md:517-531`; `ai/STATUS.md:27-30`). Reconcile those mutually exclusive claims in the next correction: if a maintainer decision exists, remove “owed”; otherwise record this as the reviewer's required next evidence and stop attributing the risk decision to the maintainer. This Low wording issue does not independently block. |
+
+### Accepted parts of the correction
+
+- `_collects_before_teardown.py` is the right regression shape for the original R2 bypass. Removing
+  the whole-test watch made that file pass; the isolation parent therefore kills the mutation.
+- `_marks_a_sibling_exempt.py` uses the widest inherited spelling and proves that marker scope, not
+  only the current source spelling. The exact node-id plus `own_markers` conjunction is fail-closed.
+- The pre-drain safety distinction is sound: this check walks already-parked `gc.garbage`, not
+  `QApplication.allWidgets()`. It does not repeat T238-R1's unsafe live-widget enumeration.
+- R3's rejected re-scope is described concretely, and the bounded T-238 inventory is no longer
+  presented as proof that the released product complies.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | One correction commit after the review record; seven files, no `src/`. `git diff --check 7538ff2..5e15dff` is clean. |
+| Submitted correction suite | Isolation plus task placement: **22 passed**. The unchanged T-238 ordered control: **2 passed**. |
+| R2 submitted mutation | Removing the whole-test watch made `_collects_before_teardown.py` **pass 1/1**, which is the failure its isolation parent detects. The mutation was restored. |
+| R4 submitted mutation | Restoring `get_closest_marker()` made the module-marked sibling **pass 1/1**. The mutation was restored. |
+| R2 boundary-gap replay | A temporary unmarked real-file test retained the dangerous cycle until the watch restored its prior flags, then released and collected it at that point. It **passed 1/1**. The temporary file was removed. |
+| R2 exempt-path replay | A temporary `gc.collect()` in the exact allowlisted T-238 test parked its cycle. The ordered pair produced **1 passed, 1 failed, 1 teardown error**: the second test saw the previous root and was then blamed for it. The edit was restored. |
+| GC-state replay | Starting with debug flags `DEBUG_SAVEALL | DEBUG_STATS` (**33**), running the watch plus a clean inspection left flags at **1**, proving the helper removes a caller's pre-existing SAVEALL flag. |
+| Static/types | Ruff and format passed on the five changed Python files; bare and Win32 mypy passed **159 files** each. The correction commit-message gate passes. |
+| Broader evidence | The implementer reports unit/UI **3,386 passed / 21 skipped**, task placement **15**, and suite isolation **7 passed**. |
+
+### Readiness and next measurement
+
+Close the full parking lifecycle before instrumenting the real route: keep the watch armed through
+inspection, clear its parked objects on both ordinary and exempt paths, and restore the exact prior
+GC state. Then build the flagged real-display instrument and an exact one-shot command for the
+maintainer to run through Settings → yt-dlp → Update; the reviewer should inspect that instrument
+and the resulting evidence rather than drive an uninstrumented UI session. Because R2 remains High,
+its focused correction continues under the convergence rule without needing a new ordinary pass.
+
+The Reviewer changed only this append-only review record. No reviewed source, test, task/status
+text, documentation, handoff, push, CI run or remote state was changed.
