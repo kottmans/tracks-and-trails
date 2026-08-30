@@ -22272,3 +22272,70 @@ under the convergence rule.
 
 The Reviewer changed only this append-only review record. No reviewed source, test, task/status
 text, instrumentation, handoff, push, CI run or remote state was changed.
+
+---
+
+## 2026-08-30 — T-289 instrument integrity re-review 3
+
+**Reviewer:** Codex (Reviewer)
+**Boundary:** `91b5ca623dd90131bca81096f5c1108f99caae8a..fff2c2a09a2f2c20d95a5fc8c56a762bcc95b81e`
+**Commit:** `fff2c2a` (instrument correction)
+**Verdict:** **Changes requested. `T289-R6` and `T289-R7` remain High and blocking;
+`T289-R10` is Resolved.** Steady-state ownership and the outside-collection verdict are corrected,
+and the normal report now contains its passing control plus most identity fields. Ownership refresh
+is mistimed when a widget is released from its Qt parent, so an immediately collectable real
+candidate remains invisible. The report also records the requested override rather than the
+platform plugin Qt selected, while the embedded positive control will exercise an unverified real
+plugin and deliberately destroy widgets off-thread before the actual session starts. Keep the
+display session on hold.
+
+### Finding dispositions
+
+| Finding | Disposition | Independent verification |
+|---|---|---|
+| **T289-R6** | **Partially corrected; remains Open (High, Blocks approval: Yes).** `is_a_candidate()` now uses both Python-defined type and `ownedByPython`; an already-parented Python child is correctly excluded, a parentless owner is included, and invalid wrappers correctly return false because no C++ widget remains to destroy. The outside-collection event and aggregate verdict are now correctly separated from T-289 too. The ownership refresh does not cover the transition it was added for. Starting with a watched, parentless `Derived`, `setParent(owner)` changed actual/cached ownership to **False / False**. `setParent(None)` then changed actual ownership back to **True** while the cached candidate remained **False**: `ParentChange` reaches the application filter before Shiboken completes the ownership transfer, and no later event is guaranteed. Cycling and immediately collecting that released widget produced **no candidate tag and an empty transcript**. The submitted third arm constructs its child already parented, so replacing the whole refresh branch with no refresh still made `--self-test` pass. Refresh after the ownership transition (without retaining the widget into the measurement), and make the control drive unparented → parented → released plus immediate collection. Add the already verified outside-collection arm to the permanent classifier control as previously required. | The exact replay printed `unparented=True/True`, `parented=False/False`, `unparented-again=True/False`; immediate GUI collection left `candidates_collected=[]`. A no-refresh mutation still passed all submitted self-test assertions. The prior C++-owned-child and last-reference/outside-GC replays now classify correctly. |
+| **T289-R7** | **Partially corrected; remains Open (High, Blocks approval: Yes).** The session now runs the subject-specific positive control in a subprocess, refuses startup on nonzero, and writes the control result into the same report. Tree/dirty state, host/OS, Python, PySide and Qt versions are present. The claimed platform-plugin identity is not: `identity()` runs before `QApplication` exists and records only `QT_QPA_PLATFORM`. With the documented real-session command that line is **`(unset — Qt chooses)`**, so it cannot distinguish Wayland, XCB, Windows or a fallback; log `QGuiApplication.platformName()` after application creation. The child inherits that unset environment too. Its control deliberately destroys a shown Python widget off the GUI thread—the native failure being investigated—through the real platform plugin, while every accepted control run so far used offscreen. A child abort is treated only as control failure and prevents the session. Keep the control deterministic/contained by explicitly running its subprocess offscreen (and record that fact), or independently demonstrate the real-plugin control before asking for the route session. | An isolated normal offscreen wrapper report contains identity, the same-file control pass and the final `NOT A RESULT`, proving the new binding. Static inspection and `rg` find no `platformName()` call; the only plugin line is the environment variable. The real-plugin child was deliberately not run while the display session is held. |
+| **T289-R8** | **Remains Resolved.** Event-filter discovery and its no-enumeration design are unchanged. | Direct diff inspection. |
+| **T289-R9** | **Remains Resolved.** The collection-cost record is unchanged. | Direct diff inspection. |
+| **T289-R10** | **Resolved.** The module and TASKS now state the event-filter/no-event bound, and the duplicate arming paragraph is gone. | Direct source inspection. |
+
+### Rulings on the submitted questions
+
+- **Returning false for an invalid wrapper is correct.** `shiboken6.isValid=False` means the C++
+  half has already gone; collecting that Python wrapper cannot destroy the widget T-289 concerns.
+- **Per-event ownership refresh is not rejected for measured UI cost.** A synthetic 100,000-event
+  replay took **1.524 s** with the submitted refresh versus **0.451 s** without it, about 10.7 µs
+  extra per event. That is not a real-session event-rate measurement and the additional GUI-thread
+  Python work remains observer effect, but it does not independently block a diagnostic whose null
+  is explicitly bounded. The reason to change the shape is correctness: even every-event refresh
+  reads the ownership transition too early.
+- **The positive control should not inherit the real platform by accident.** It proves the
+  instrument's discovery/correlation wiring and intentionally performs forbidden destruction;
+  offscreen isolation is the repeatable, lower-risk control. The product session must separately
+  record the actual plugin Qt selected.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | One commit, two files, no `src/` or tests; `git diff --check 91b5ca6..fff2c2a` is clean. |
+| Submitted self-test | Passed offscreen; named the pool subject, named the parentless GUI candidate and rejected the already-parented child. |
+| Ownership transitions | Actual/cached candidate states were **True/True → False/False → True/False**; immediate collection after release was silent. |
+| Refresh mutation | Removing all post-discovery refresh still yielded **SELF-TEST PASSED**, exit 0. |
+| Outside-collection replay | Last-reference destruction on `Dummy-1` was logged `NOT T-289`; the final verdict was `OFF-GUI DESTRUCTION, BUT NOT T-289`. |
+| Same-file control/report | Isolated offscreen wrapper: identity plus **positive control PASSED**, 43 watched widgets, 4 MainThread collections, route false and final `NOT A RESULT`. |
+| Refresh cost probe | 100,000 synthetic events: **0.451 s** without refresh, **1.524 s** submitted; no live-session event-rate claim. |
+| Invalid-wrapper probe | Candidate was true while valid and false after `shiboken6.delete`; accepted. |
+| Static/types | Ruff and format pass on the tool; direct mypy passes with `MYPYPATH=src`; the submitted commit-message gate passes. |
+| Broader evidence | The implementer reports ruff/format, host and Win32 mypy, unit+UI **3,389 passed / 21 skipped**, placement **15**. No product code changed; integration remains **445 passed** at the earlier product head. |
+
+### Readiness
+
+Do not run the maintainer's real-display session yet. Correct the released-from-parent ownership
+edge with a discriminating control, retain the already-parented and outside-collection controls,
+record the actual application platform after Qt exists, and isolate the embedded positive control
+to its known offscreen platform. Those are direct R6/R7 High continuations and remain inside the
+current review under the convergence rule. R10 needs no further work.
+
+The Reviewer changed only this append-only review record. No reviewed source, test, task/status
+text, instrumentation, handoff, push, CI run or remote state was changed.
