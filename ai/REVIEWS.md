@@ -22072,3 +22072,72 @@ its focused correction continues under the convergence rule without needing a ne
 
 The Reviewer changed only this append-only review record. No reviewed source, test, task/status
 text, documentation, handoff, push, CI run or remote state was changed.
+
+---
+
+## 2026-08-30 — T-289 R2 closure and real-session instrument review
+
+**Reviewer:** Codex (Reviewer)
+**Boundary:** `448a566d892bc479fd558f43227cedfc465e009f..f39a25a51acfb12861493ce812b4a1c59e82e368`
+**Commits:** `9ba4757` (R2/R5 correction), `f39a25a` (instrument)
+**Verdict:** **Changes requested. `T289-R2` and `T289-R5` are Resolved.** The test guard now keeps
+parking armed through inspection, clears parked garbage on ordinary and exempt paths, and restores
+the exact incoming GC flags. The real-session instrument is not ready to spend the maintainer's
+session on: it omits the safe-thread observations most likely to identify an intermittent
+candidate, its controls do not prove the real wiring or route, and its polling repeats a widget
+enumeration this project already proved can segfault while deletions are queued. Criterion 2 and
+`T289-R3` remain open.
+
+### Prior finding dispositions
+
+| Finding | Disposition | Independent verification |
+|---|---|---|
+| **T289-R2** | **Resolved.** Inspection now executes inside `watch_for_collectable_widgets`; the reader refuses to run without `DEBUG_SAVEALL`; reading and raising are separate so every path clears `gc.garbage`; and the watch is the sole owner of the exact previous flags. The three focused regressions pass, as does T-238's own ordered control. Moving the inspection outside the watch fails loudly, removing the clear breaks T-238's next-test assertion, and restoring flags to zero breaks the 33→33 regression. |
+| **T289-R3** | **Open.** The instrument remains preparation, not criterion-2 evidence. The task and STATUS preserve that distinction. |
+| **T289-R4** | **Remains Resolved.** The exact-node plus function-owned-marker conjunction is unchanged. |
+| **T289-R5** | **Resolved.** The task now consistently records the 2026-08-30 direction to instrument the real route rather than simultaneously saying the ruling is owed. |
+
+### Instrument findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T289-R6** | **High** | **Yes** | The instrument does not measure the event the task says the real run needs. `destroyed()` immediately returns on the GUI thread, so when the GUI thread wins the intermittent collection race it records no widget name at all. A direct replay watched the same Python-owned cyclic `Derived(QWidget)`, collected it on `MainThread`, and produced **`off_gui=0`, empty transcript**. That safe-thread outcome is the likely way a single clean run can identify the candidate tree. The GC hook also records only `start`, never `stop` or an active per-thread phase, so the report cannot support its claim that destruction *inside* a collection can be distinguished from destruction merely after an earlier collection. | Track collection start **and stop** per thread and record every watched candidate destroyed while that thread is in a collection, including the GUI thread; keep the off-GUI case as the invariant violation. Record enough ownership/type state to say why a widget is a T-289 candidate. Add positive controls for both GUI- and pool-thread collections and for a destruction outside collection. | **Open; blocking** |
+| **T289-R7** | **High** | **Yes** | Neither control proves that a clean report exercised what it claims. `--self-test` calls `watch.watch(subject)` directly and never uses `arm()`, the 250 ms scan, or `gc.callbacks`; replacing both `Watch.scan` and `arm` with a function that raises still yielded **SELF-TEST PASSED, exit 0**. On the negative side, a normal offscreen run was closed after one second without opening Settings or invoking Update; it watched 57 widgets, saw 18 main-thread collections, and nevertheless wrote **“NOTHING OFF THE GUI THREAD. That is a result about this session and this route.”** The report contains an instruction to drive the route, not evidence that it started or completed. Startup refusal or an early clean close can receive the same conclusion. | Make the positive control use the same discovery and GC-correlation wiring as the real run. Instrument the actual `YtdlpService.install_latest_version` start and its resolved/failed completion (or an equally authoritative seam), record those events, and refuse a clean-route conclusion unless the update started, reached a terminal signal, the Settings surface was watched, and the watch's positive controls passed. Include environment/version identity needed to bind the report to the run. | **Open; blocking** |
+| **T289-R8** | **High** | **Yes** | The observer scans `QApplication.allWidgets()` and touches/connects every wrapper every 250 ms. T238-R1 already established in this repository that enumerating `allWidgets()` before queued deletions are drained kills its helper with **SIGSEGV (-11), deterministically**; that is why the permanent orphan scan is ordered after the drain. The instrument performs the same live enumeration continuously, precisely while the real application's deletions are allowed to proceed. It can therefore create a native crash in a run intended to attribute one, and the direct-watch self-test never exercises this risk. | Replace repeated live-tree polling with event-driven discovery that does not walk the list while deletions may be queued (for example, an application event filter plus one demonstrably safe initial inventory). Prove the real discovery path sees the on-screen Settings/update tree and the positive-control widget without recreating T238-R1's unsafe ordering. | **Open; blocking** |
+| **T289-R9** | **Low** | No | The new 35–38 s wall-clock measurements may be accurate, but the explanation that the correction removed the added collections is not. `widgets_the_collector_would_destroy()` still calls `gc.collect()` and `settle_deferred_deletions()` still calls it again; before T-289 the boundary had only the latter. The correction changed when `DEBUG_SAVEALL` is armed and how garbage is consumed, not the number of explicit collection calls. Peak retained garbage/allocation behavior was not measured. | Record the honest result: no wall-clock regression was observed in two runs, while one additional explicit full collection per UI test remains and the memory cost of per-test `DEBUG_SAVEALL` is unmeasured. Do not causally attribute the timing to a collection removal that did not occur. | **Open; ordinary record correction** |
+
+### Accepted instrument choices
+
+- The signal callback closes over the precomputed tag/module and `Watch`, not the widget. The pool
+  self-test proves that connecting it does not prevent the measured cyclic subject from being
+  collected; no retention path was found.
+- Keeping `DEBUG_SAVEALL` and forced collection out of the real session is correct. Those would
+  steer the lifetime and allocation behavior being measured.
+- `env -u QT_QPA_PLATFORM` is the correct Linux command to remove an inherited offscreen override,
+  and `reports/` is gitignored. The wrapper-as-flag keeps ordinary product startup unchanged.
+- Flushing each event is appropriate for a process that may abort. The report destination is opened
+  before the app starts, so observations already written survive that abort.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | Two commits, seven files, no `src/`, matching the request; `git diff --check 448a566..f39a25a` is clean. |
+| R2 focused suite | `test_qt_lifecycle.py`, suite isolation and task placement: **26 passed**. T-238's ordered carry-over pair: **2 passed**. |
+| Submitted self-test | Offscreen self-test passed and reported `Derived` destroyed on `Dummy-1`, with the pool `run` frame. |
+| Positive-control mutation | With both `Watch.scan` and `arm` replaced by a raising function, `self_test()` still reported the off-GUI destruction and exited **0**. |
+| Safe-thread replay | A watched Python-defined cyclic widget collected on `MainThread` produced no transcript and no counted destruction. |
+| Normal-wrapper replay | With isolated config/data/cache roots, the normal wrapper armed successfully. A graceful one-second offscreen run watched **57 widgets**, counted **18 MainThread collections**, exercised no Settings/update route, and still emitted the clean-route conclusion. |
+| Static/types | Ruff and format passed on the four changed Python/tool files. Bare and Win32 mypy passed **159 files** each; the instrument itself passes when checked directly with `MYPYPATH=src`. Both commit messages pass the gate. |
+| Broader evidence | The implementer reports unit/UI **3,389 passed / 21 skipped** and the same focused gates. Integration remains **445 passed** at the unchanged product head. |
+
+### Readiness
+
+Do not run the maintainer's real-display session yet. Correct R6–R8 as one instrument-integrity
+batch, correct R9's record, and then rerun the self-test through the same path the real session uses.
+The eventual report must prove the route started and finished before a null observation is called a
+result. These are direct continuations of the still-High `T289-R3`, so focused correction and
+verification continue under the convergence rule.
+
+The Reviewer changed only this append-only review record. No reviewed source, test, task/status
+text, instrumentation, report, handoff, push, CI run or remote state was changed.
