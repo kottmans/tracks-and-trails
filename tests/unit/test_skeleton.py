@@ -59,6 +59,41 @@ def test_entry_point_import_does_not_pull_in_qt() -> None:
     assert result.stdout.strip() == "False", "importing __main__ pulled in Qt"
 
 
+def test_the_root_conftest_does_not_pull_in_qt() -> None:
+    """The root `conftest.py` is imported before every suite, including the Qt-free one.
+
+    `ai/TESTING.md` §1 makes `tests/unit/` headless and Qt-free on purpose, and that file's own
+    docstring claims the property — which its pool fixture then quietly retired by importing both
+    Qt-bearing pool modules for every test in the repository just to reset two module globals
+    (`T289-R23`). `sys.modules` answers the same question without loading anything.
+
+    **In a subprocess, and entering the fixture rather than only importing the file**, for the
+    reason `test_entry_point_import_does_not_pull_in_qt` gives one step further: this pytest
+    session already has Qt loaded through its own plugins, so nothing measured inside it could
+    distinguish the fixture's imports from the session's. The fixture is driven directly as the
+    generator it is.
+    """
+    code = (
+        "import sys; sys.path.insert(0, '.'); import tests.conftest as root; "
+        "loaded = lambda: any(m.startswith(('PySide6', 'shiboken6')) for m in sys.modules); "
+        "assert not loaded(), 'importing tests/conftest.py pulled in Qt'; "
+        "step = root._pools_are_not_shared_between_tests.__wrapped__(); "
+        "next(step); "
+        "assert not loaded(), 'entering the pool fixture pulled in Qt'; "
+        "next(step, None); "
+        "print(loaded())"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        cwd=Path(__file__).resolve().parents[2],
+        check=True,
+    )
+    assert result.stdout.strip() == "False", f"the fixture pulled in Qt: {result.stdout}"
+
+
 def test_layout_matches_architecture() -> None:
     """The four layers named in ARCHITECTURE.md §4 exist as packages."""
     pkg_root = Path(tracks_and_trails.__file__).parent

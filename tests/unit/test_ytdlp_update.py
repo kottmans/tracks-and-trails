@@ -22,7 +22,9 @@ from typing import IO, Any
 
 import pytest
 
+from tracks_and_trails.downloader.cancellation import OperationCancelledError
 from tracks_and_trails.downloader.ytdlp_update import (
+    _CHUNK_BYTES,
     MAXIMUM_WHEEL_BYTES,
     PYPI_INDEX,
     Release,
@@ -55,13 +57,19 @@ def _index(version: str = "2026.9.1", digest: str = "", *, wheel: bool = True) -
     return {"info": {"version": version}, "urls": urls}
 
 
-def _wheel_bytes(version: str = "2026.9.1", *, contents: bool = True) -> bytes:
-    """A minimal but structurally real wheel: a zip whose top level is what site-packages gets."""
+def _wheel_bytes(version: str = "2026.9.1", *, contents: bool = True, padding: int = 0) -> bytes:
+    """A minimal but structurally real wheel: a zip whose top level is what site-packages gets.
+
+    `padding` adds a stored (uncompressed) member of that size, for the one test that needs the
+    download to span several chunks rather than arrive in one read.
+    """
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         if contents:
             archive.writestr("yt_dlp/__init__.py", "")
             archive.writestr("yt_dlp/version.py", f"__version__ = {version!r}\n")
+        if padding:
+            archive.writestr("yt_dlp/padding.bin", b"\0" * padding)
         archive.writestr(f"yt_dlp-{version}.dist-info/METADATA", f"Version: {version}\n")
     return buffer.getvalue()
 
@@ -344,6 +352,91 @@ def test_an_oversized_download_is_cut_off_and_keeps_the_copy(installed: Path) ->
         install_latest(installed, _serving(body=b"\0" * (MAXIMUM_WHEEL_BYTES + 1)))
 
     assert _still_intact(installed)
+
+
+# --- stopping an install that is already running (`T289-R21`) ---------------------------------
+
+
+def test_a_download_stopped_between_chunks_keeps_the_copy_and_stages_nothing(
+    installed: Path,
+) -> None:
+    """Cancellation must reach an install that has already begun, not only one still queued.
+
+    Entry-only cancellation was the finding: a task asked once, before its first line, and an
+    update that was mid-download went on downloading, extracting and swapping. The flag here turns
+    true only after bytes have been written, which is a state no entry check can observe.
+
+    **The stream's position is what proves where it stopped.** Asserting the exception alone would
+    pass against a checkpoint moved back to the top of the function — and against one that never
+    ran at all, because the flag would be true by then either way.
+    """
+    payload = _wheel_bytes(padding=4 * _CHUNK_BYTES)
+    served = _serving(body=payload)
+    streams: list[IO[bytes]] = []
+
+    @contextmanager
+    def watching(url: str) -> Iterator[IO[bytes]]:
+        with served(url) as stream:
+            streams.append(stream)
+            yield stream
+
+    asked = 0
+
+    def cancelled() -> bool:
+        nonlocal asked
+        asked += 1
+        # False for the checkpoint after the release lookup and for the first chunk; true once the
+        # download is demonstrably under way.
+        return asked > 2
+
+    with pytest.raises(OperationCancelledError, match="closing"):
+        install_latest(installed, watching, cancelled=cancelled)
+
+    read_so_far = streams[-1].tell()
+    assert 0 < read_so_far < len(payload), (
+        f"the download read {read_so_far} of {len(payload)} bytes; it should have started and then "
+        "stopped part way, which is the only state that distinguishes this checkpoint from an "
+        "entry check"
+    )
+    assert _still_intact(installed), "a stopped update disturbed the copy that was in use"
+    assert not list(installed.parent.glob(f".{installed.name}.staging-*"))
+
+
+def test_a_staged_tree_is_discarded_rather_than_swapped_in_when_the_install_is_stopped(
+    installed: Path,
+) -> None:
+    """The last checkpoint is the transaction's boundary, and it is on the safe side of it.
+
+    Downloading and staging may be abandoned freely — they happen in a sibling workspace the
+    `finally` removes. `_swap_into_place` may not: it displaces the live tree and either completes
+    or rolls back (`T-198`). So a cancellation that arrives after a *fully staged* tree exists must
+    still leave the previous version in place and take the staging with it.
+    """
+    served = _serving()
+    asked = 0
+
+    def cancelled() -> bool:
+        nonlocal asked
+        asked += 1
+        # The lookup checkpoint, the single chunk, the post-download checkpoint, then this one:
+        # the last thing before the swap, with a complete tree already unpacked beside the live one.
+        return asked > 3
+
+    with pytest.raises(OperationCancelledError, match="closing"):
+        install_latest(installed, served, cancelled=cancelled)
+
+    assert asked > 3, "the run never reached the checkpoint before the swap"
+    assert _still_intact(installed), "a stopped update replaced the copy that was in use"
+    assert not list(installed.parent.glob(f".{installed.name}.staging-*"))
+
+
+def test_an_install_nobody_stops_is_unaffected_by_the_checkpoints(installed: Path) -> None:
+    """The positive control: the default answer is *no*, and a plain install still installs."""
+    release = install_latest(installed, _serving("2026.10.2"))
+
+    assert release.version == "2026.10.2"
+    assert (installed / "yt_dlp" / "version.py").is_file()
+    assert not _still_intact(installed), "the new tree did not replace the old one"
 
 
 def test_a_failure_at_the_final_placement_puts_the_previous_copy_back(

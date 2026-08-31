@@ -1209,10 +1209,15 @@ def compose(
     )
 
 
-#: How long the `aboutToQuit` bypass waits for a pool, per pool. Long enough for a decode or a
-#: sweep, short enough not to read as a hang; an update that is mid-install is the case this cannot
-#: help, and it is bounded rather than unbounded for that reason.
-_POOL_EXIT_WAIT_MS: Final = 3000
+#: How long a pool may take on the `aboutToQuit` bypass before the run says so in the log.
+#:
+#: **A reporting threshold, not a deadline** (`T289-R21`, third pass). It was the latter, and that
+#: was the finding: expiring it authorised `_leave()` — and therefore Qt's widget teardown — with a
+#: pool thread still running Python, which is the exact configuration `T-289` exists to remove. The
+#: wait continues past this point; what changes at it is that the run stops being silent about an
+#: exit that is taking longer than a user would expect. Long enough for a decode or a sweep, short
+#: enough that a genuinely stuck install is reported rather than waited on in silence.
+_POOL_EXIT_REPORT_AFTER_MS: Final = 3000
 
 
 class OrderlyShutdown:
@@ -1312,11 +1317,15 @@ class OrderlyShutdown:
         Reached from `aboutToQuit`, which Qt emits for every quit — including ones that never
         touched the window. The ordinary path has already finished by then and this does nothing.
 
-        When it has not, the choice is between a bounded wait and `SIGABRT`: Qt aborts the
-        process when a running `QThread` is destroyed, which is `exit -6` and a warning on
-        stderr instead of a clean exit. `T013-R2`'s rule is that a *lifecycle* is not implemented
-        as a wait, and it is not — `begin()` still returns immediately. This is the process
-        leaving, where there is no interaction left to block.
+        When it has not, the choice is between waiting and `SIGABRT`: Qt aborts the process when a
+        running `QThread` is destroyed, which is `exit -6` and a warning on stderr instead of a
+        clean exit. `T013-R2`'s rule is that a *lifecycle* is not implemented as a wait, and it is
+        not — `begin()` still returns immediately. This is the process leaving, where there is no
+        interaction left to block.
+
+        **The wait has a reporting threshold and no deadline** (`T289-R21`, third pass). Every pool
+        is waited to actual emptiness before this returns, because returning is what lets Qt
+        destroy the widget tree.
 
         **It cannot reap a worker.** Killing a process tree needs timer ticks and there is no
         event loop left here, so a quit that bypasses the window can still strand a worker. The
@@ -1330,27 +1339,36 @@ class OrderlyShutdown:
             pool.seal()
         self._writer.close()
         self._writer.wait_for_close()
-        # **Bounded and blocking, for the same reason the writer's wait is** (`T289-R21`). The
-        # asynchronous barrier cannot complete on this path: `drained` arrives through a queued
-        # connection and there is no event loop left to deliver it. Waiting here is what stops the
-        # process tearing its widgets down with a pool thread still running Python, which is the
-        # configuration `T-289`'s core dump shows.
-        # **The answer is honoured, not discarded** (`T289-R21`, second pass). The first version
-        # waited and then recorded a drain unconditionally, so a pool that timed out was quit over
-        # exactly as if it had emptied — the state said drained while a thread was still running,
-        # which is the claim this whole task exists to stop being made.
-        emptied = all(pool.wait_bounded(_POOL_EXIT_WAIT_MS) for pool in self._pools)
-        self._pools_drained = emptied
-        self._writes_finished = True
-        if not emptied:
-            # **There is no third option here.** This path is `aboutToQuit`: refusing to leave
-            # hangs the exit, and waiting without a bound is the same thing more slowly. What can
-            # be done is to say so, and to leave the state truthful for anything that reads it.
+        # **Blocking, for the same reason the writer's wait is** (`T289-R21`). The asynchronous
+        # barrier cannot complete on this path: `drained` arrives through a queued connection and
+        # there is no event loop left to deliver it. Waiting here is what stops the process tearing
+        # its widgets down with a pool thread still running Python, which is the configuration
+        # `T-289`'s core dump shows.
+        #
+        # **Every pool, and to actual completion** (`T289-R21`, third pass). Two defects lived in
+        # the one line this replaces. It was `all(...)` over a generator, so the first pool that
+        # overran short-circuited the aggregation and **the second pool was never waited at all** —
+        # a probe recorded the waits as `[1, 0]`. And expiring the bound was treated as permission
+        # to go on: it recorded `_pools_drained = False`, logged, and called `_leave()` anyway,
+        # which quit and closed the connection at `active=1`. Truthful bookkeeping describes the
+        # race; it does not sequence teardown. So the threshold now buys a diagnostic and nothing
+        # else, and the loop is a statement rather than an expression because every pool must be
+        # visited whatever the previous one answered.
+        for pool in self._pools:
+            if pool.wait_bounded(_POOL_EXIT_REPORT_AFTER_MS):
+                continue
             logging.getLogger("tracksandtrails.app").warning(
-                "Leaving with pool work still running after %d ms; the window's own close is the "
-                "path that waits properly.",
-                _POOL_EXIT_WAIT_MS,
+                "A thread pool is still working %d ms into shutdown; the exit is waiting for it. "
+                "The window's own close is the path that does this without blocking.",
+                _POOL_EXIT_REPORT_AFTER_MS,
             )
+            # Qt would wait for this pool anyway, in `~QThreadPool`, in the middle of destroying
+            # the widget tree — or abort. Waiting here is waiting at the point where the widgets
+            # are still standing. An absolute exit deadline would need work that can be killed
+            # rather than asked, which is a design change and not this line's to make.
+            pool.wait_until_empty()
+        self._pools_drained = True
+        self._writes_finished = True
         self._leave()
 
     def _writes_are_finished(self) -> None:

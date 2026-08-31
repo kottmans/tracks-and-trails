@@ -56,6 +56,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Any, Final
 
+from tracks_and_trails.downloader.cancellation import Cancelled, not_cancelled, stop_if_cancelled
+
 #: PyPI's JSON API for yt-dlp. Not configurable: an index URL a user can set is an index URL a
 #: user can be *told* to set, which turns the update action into an arbitrary code-execution
 #: surface pointed at an attacker's host. `OPS-002` already calls this a supply-chain surface.
@@ -191,17 +193,29 @@ def latest_release(open_url: UrlOpener | None = None) -> Release:
     )
 
 
-def _download_wheel(release: Release, destination: Path, open_url: UrlOpener) -> None:
+def _download_wheel(
+    release: Release,
+    destination: Path,
+    open_url: UrlOpener,
+    cancelled: Cancelled = not_cancelled,
+) -> None:
     """Stream the wheel to `destination` and refuse it unless its bytes match `release.digest`.
 
     Hashing happens **while** writing rather than by re-reading the finished file: one pass, and
     no window in which the file on disk differs from the bytes that were checked.
+
+    **Asked between chunks** (`T289-R21`). A download is the longest thing an update does and the
+    one place where "stop" costs nothing: `destination` is inside the staging workspace, which
+    `install_latest`'s `finally` removes, so a partial file is discarded by the same code that
+    discards it after any other failure. An individual read is not interrupted — the next boundary
+    declines to continue, which is what cooperative cancellation is.
     """
     digest = hashlib.sha256()
     written = 0
     try:
         with open_url(release.url) as stream, destination.open("wb") as sink:
             while chunk := stream.read(_CHUNK_BYTES):
+                stop_if_cancelled(cancelled)
                 written += len(chunk)
                 if written > MAXIMUM_WHEEL_BYTES:
                     raise UpdateError(
@@ -300,6 +314,7 @@ def install_latest(
     directory: Path,
     open_url: UrlOpener | None = None,
     release: Release | None = None,
+    cancelled: Cancelled = not_cancelled,
 ) -> Release:
     """Download, verify and install the newest yt-dlp wheel into `directory`.
 
@@ -309,9 +324,20 @@ def install_latest(
     `release` is injectable so a caller that has already looked the index up (to show the user
     what they are about to install) does not look it up twice and risk installing a different
     version from the one it named.
+
+    **Cancellable up to the swap, and not through it** (`T289-R21`). `cancelled` is asked after the
+    release lookup, between download chunks, after the download and after the staged tree exists —
+    every one of those points leaves the live directory untouched and the workspace to be removed
+    by the `finally` below. `_swap_into_place` is the one interval that must not be stopped: it
+    displaces the live tree and either completes or rolls back, which is `T-198`'s transaction and
+    the reason a checkpoint inside it would be a way to lose a working yt-dlp rather than a way to
+    exit tidily.
     """
     opener = _open_url if open_url is None else open_url
     chosen = latest_release(opener) if release is None else release
+    # **After the lookup, before anything is written.** The index read is network time with no
+    # local effect at all, so stopping on the far side of it costs nothing and skips the download.
+    stop_if_cancelled(cancelled)
 
     directory.parent.mkdir(parents=True, exist_ok=True)
     # Staged as a sibling so the final step is a rename within one filesystem. A temp directory
@@ -326,9 +352,15 @@ def install_latest(
         wheel = workspace / "downloaded.whl"
         unpacked = workspace / "tree"
         unpacked.mkdir()
-        _download_wheel(chosen, wheel, opener)
+        _download_wheel(chosen, wheel, opener, cancelled)
+        # **After the download, before the extraction.** Everything so far lives in `workspace`.
+        stop_if_cancelled(cancelled)
         _extract_wheel(wheel, unpacked)
         wheel.unlink(missing_ok=True)
+        # **The last one, and it is the boundary of the transaction.** A fully staged tree beside
+        # the live one is still nothing the user can see; the next line is where that stops being
+        # true, so this is the last moment stopping is free.
+        stop_if_cancelled(cancelled)
         _swap_into_place(unpacked, directory)
     finally:
         shutil.rmtree(workspace, ignore_errors=True)

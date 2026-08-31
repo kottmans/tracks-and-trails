@@ -166,6 +166,44 @@ def test_a_test_that_leaks_a_view_is_the_test_that_fails() -> None:
     )
 
 
+#: `T289-R23`'s deliberate violation. A test that ends with work still running on a real pool.
+LEAVES_A_POOL_THREAD_RUNNING = (
+    "tests/ui/_leaves_a_pool_thread_running.py::test_leaves_a_pool_thread_running"
+)
+
+
+def test_a_test_that_leaves_a_pool_thread_running_is_the_test_that_fails() -> None:
+    """The root fixture drains what a test created before it drops it, and says who left it.
+
+    **The fixture used not to ask.** It replaced both pool singletons around every test and
+    discarded whatever the test had made, busy or not — and a `QThreadPool` released with runnables
+    in flight is destroyed by whichever thread collects it, where its destructor waits or aborts.
+    That segfaulted this suite once inside a test that constructs no pool at all, which is
+    `ai/TESTING.md` §13's shape exactly: the useful signal is the one at the cause.
+
+    **Two assertions, for the reason the view guard gives.** The run must fail, *and* it must fail
+    with this fixture's message — a renamed node id or a fixture reduced to a no-op would otherwise
+    leave a collection error looking like a caught leak.
+    """
+    finished = subprocess.run(
+        [sys.executable, "-m", "pytest", "-p", "no:randomly", "-q", LEAVES_A_POOL_THREAD_RUNNING],
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parents[2],
+        timeout=600,
+    )
+
+    assert finished.returncode != 0, (
+        "a test that ended with a pool thread still running passed. The fixture is dropping busy "
+        f"thread pools again, so the next segfault lands in somebody else's test.\n\n"
+        f"{finished.stdout}"
+    )
+    assert "left with pool work still running" in finished.stdout, (
+        "the run failed for some other reason than the undrained pool, so this asserts nothing "
+        f"about the fixture.\n\n{finished.stdout}\n{finished.stderr}"
+    )
+
+
 #: `T-289`'s deliberate violation. A Python-subclass widget, unparented, held only by a cycle.
 LEAKS_A_COLLECTABLE_WIDGET = (
     "tests/ui/_leaks_a_collectable_widget.py::test_leaks_a_collectable_widget"

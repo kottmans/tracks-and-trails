@@ -12,18 +12,21 @@ would prove the barrier can be written, not that it is wired to the thing that r
 
 from __future__ import annotations
 
+import hashlib
+import io
 import logging
 import threading
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import IO, TYPE_CHECKING, Any, cast
 
 import pytest
 from PySide6.QtCore import QObject, QRunnable, Signal
 
 from tracks_and_trails import app as application
 from tracks_and_trails.app import OrderlyShutdown, compose
-from tracks_and_trails.downloader import ytdlp_service
+from tracks_and_trails.downloader import ytdlp_service, ytdlp_update
 from tracks_and_trails.ui import thumbnails
 
 if TYPE_CHECKING:
@@ -48,6 +51,26 @@ class _Blocking(QRunnable):
     def run(self) -> None:
         self.started.set()
         self._release.wait(timeout=30)
+
+
+class _HoldsBriefly(QRunnable):
+    """A task that occupies its pool for a fixed span **measured from when it starts running**.
+
+    `T118-R10`'s rule, applied to a control rather than to a product bound: a test that arms a
+    `threading.Timer` before scheduling its tasks measures its headroom against the runner's setup
+    speed, and on a loaded machine the release can land before the thing it was meant to outlast.
+    Holding from `run()` puts the whole margin between the task starting and the test's next three
+    statements, which is the interval the test actually controls.
+    """
+
+    def __init__(self, seconds: float) -> None:
+        super().__init__()
+        self.started = threading.Event()
+        self._seconds = seconds
+
+    def run(self) -> None:
+        self.started.set()
+        threading.Event().wait(timeout=self._seconds)
 
 
 class _Manager(QObject):
@@ -271,37 +294,101 @@ def test_the_barrier_does_not_believe_the_count_over_the_pool(
     assert gate.is_empty()
 
 
-def test_a_sweep_already_running_stops_when_the_pools_are_sealed(
-    qapp: QApplication, tmp_path: Path
+def test_the_barrier_asks_the_pool_and_not_a_second_predicate_of_its_own(
+    qapp: QApplication, release: threading.Event
 ) -> None:
-    """Cancellation has to reach work that is **already running**, not only work still queued.
+    """`when_all_drained` must consume the same authoritative predicate the gate itself waits for.
 
-    The first version checked only at the task's entry, which a running sweep is already past. This
-    runs the real `_SweepTask` over a directory of cache files with the pool already sealed, and
-    the loop's own check is the only thing that can stop it.
+    The first version asked `sealed and not outstanding`, which is strictly weaker than the gate's
+    `is_empty()`: a runnable started on the underlying pool is one the gate never counted, so
+    `outstanding` reads zero while the pool is plainly busy. A reviewer probe built exactly that
+    state and the barrier released the quit in it — `active=1`, connection closed — while the
+    gate's own `drained` correctly withheld. Two predicates for one question is one too many.
+    """
+    gate = thumbnails.pool()
+    blocker = _Blocking(release)
+    gate.pool.start(blocker)
+    assert blocker.started.wait(timeout=10)
+    assert gate.outstanding == 0, "the gate should not have counted a task started behind it"
+
+    shutdown, app, _manager, writer = _shutdown((gate,))
+    shutdown.begin()
+    writer.wait_for_close()  # the database side is finished; the pool is not
+
+    assert app.quits == 0, "the barrier released the quit over a busy pool it had not counted"
+    assert not shutdown.finished
+
+    release.set()
+    assert _pump(qapp, lambda: app.quits == 1), "the quit never came after the pool emptied"
+    assert shutdown.finished
+
+
+def test_a_sweep_that_has_already_begun_stops_when_the_seal_lands(
+    qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cancellation has to reach work **already running**, and this control has to be able to tell.
+
+    **The earlier version of this test could not** (`T289-R21`, third pass). It sealed the pool and
+    *then* called `run()`, so the task was cancelled before its first line — moving the checkpoint
+    back to the task's entry would have left every assertion green, and the control therefore said
+    nothing about the distinction it was written for.
+
+    So the sweep is started on a thread of its own and blocked **inside its first unlink**; the
+    seal lands from the test thread while it is in that call; then it is released. The one file it
+    was already deleting goes, and the checkpoint at the top of the next iteration has to stop the
+    other forty-nine. Removing exactly one is what proves both halves: the sweep really does
+    delete, and it really did stop.
     """
     directory = tmp_path / "thumbnails"
     directory.mkdir()
     for index in range(50):
         (directory / f"{index:02d}.jpg").write_bytes(b"x")
 
+    inside_the_first_unlink = threading.Event()
+    sealed = threading.Event()
+    real_unlink = Path.unlink
+
+    def blocking_unlink(self: Path, *args: Any, **kwargs: Any) -> None:
+        # Only this directory's files, and only the first of them: everything else in the process
+        # — the temp-directory fixtures included — must go on deleting normally.
+        if self.parent == directory and not inside_the_first_unlink.is_set():
+            inside_the_first_unlink.set()
+            sealed.wait(timeout=30)
+        real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", blocking_unlink)
+
     gate = thumbnails.pool()
-    gate.seal()
+    sweep = thumbnails._SweepTask(thumbnails._Sink(), directory, set())
+    sweeping = threading.Thread(target=sweep.run)
+    sweeping.start()
+    try:
+        assert inside_the_first_unlink.wait(timeout=10), "the sweep never reached a file to delete"
+        gate.seal()
+    finally:
+        sealed.set()
+        sweeping.join(timeout=30)
+    assert not sweeping.is_alive(), "the sweep never finished"
 
-    sink = thumbnails._Sink()
-    thumbnails._SweepTask(sink, directory, set()).run()
+    survivors = sorted(entry.name for entry in directory.iterdir())
+    assert len(survivors) == 49, (
+        f"the sweep removed {50 - len(survivors)} files. It should have removed exactly the one it "
+        "was already inside when the seal landed: fewer means the sweep never deletes anything and "
+        "this control proves nothing, more means cancellation did not reach a running sweep."
+    )
 
-    survivors = list(directory.iterdir())
-    assert len(survivors) == 50, f"a sealed sweep deleted {50 - len(survivors)} files anyway"
 
-
-def test_a_decode_does_not_publish_a_picture_after_the_seal(
-    qapp: QApplication, tmp_path: Path
+def test_a_decode_that_has_already_begun_declines_to_publish(
+    qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The decode's own checkpoint: decoding is uninterruptible, publishing is a choice.
+    """The decode's own checkpoint, asserted from the transition rather than from a sealed start.
 
-    A cache the process is leaving is not worth writing into, and the write is the part that
-    touches the disk. Run with the pool sealed, the task must decode and then decline.
+    Decoding is one uninterruptible call; publishing is a choice, and a cache the process is
+    leaving is not worth writing into. **The control is the shape the sweep's is**: the task is
+    started with the pool open, blocked inside the decode, sealed from the test thread while it is
+    in there, and released. The first half of this test is the positive — the same task, left
+    alone, does publish — because a test that only ever asserts an absence cannot tell a working
+    checkpoint from a decode that never wrote anything in the first place.
     """
     from PySide6.QtGui import QImage
 
@@ -312,32 +399,188 @@ def test_a_decode_does_not_publish_a_picture_after_the_seal(
     source = tmp_path / "source.png"
     assert picture.save(str(source))  # format inferred from the .png suffix
     data = source.read_bytes()
+    url = "https://example.invalid/x.jpg"
+
+    published = tmp_path / "cache" / "published.jpg"
+    thumbnails._DecodeAndStore(thumbnails._Sink(), url, data, published).run()
+    assert published.is_file(), "the undisturbed task published nothing, so the control is blind"
+
+    began = threading.Event()
+    sealed = threading.Event()
+
+    class _SlowImage:
+        """`QImage` seen through the two calls the task makes, with the decode held open."""
+
+        def loadFromData(self, data: bytes) -> bool:  # noqa: N802  (Qt's own spelling)
+            began.set()
+            sealed.wait(timeout=30)
+            return True
+
+        def scaled(self, *args: Any) -> _SlowImage:
+            return self
+
+    monkeypatch.setattr(thumbnails, "QImage", _SlowImage)
 
     destination = tmp_path / "cache" / "picture.jpg"
     gate = thumbnails.pool()
+    decoding = threading.Thread(
+        target=thumbnails._DecodeAndStore(thumbnails._Sink(), url, data, destination).run
+    )
+    decoding.start()
+    try:
+        assert began.wait(timeout=10), "the decode never began"
+        gate.seal()
+    finally:
+        sealed.set()
+        decoding.join(timeout=30)
+    assert not decoding.is_alive(), "the decode never finished"
+
+    assert not destination.exists(), "a decode sealed while it was running published anyway"
+
+
+def test_an_update_already_downloading_stops_at_its_next_checkpoint(
+    qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The state the review's probe measured — `cancelled=True`, `completed=False`, `active=1`.
+
+    Entry-only cancellation reaches queued work and nothing that is already running, and an update
+    is the longest-running thing on either pool. This one is **inside its download** when the seal
+    lands: the wheel's second chunk is held until the test has sealed, so the checkpoint between
+    chunks is the only thing that can end it.
+
+    **It runs through `YtdlpService`, not through `install_latest` directly**, because the wiring is
+    the part a mutation removes silently: an install handed no cancellation at all still downloads,
+    still installs, and still passes every test written against the update module. The callable it
+    was handed is asserted by identity.
+    """
+    directory = tmp_path / "ytdlp"
+    (directory / "yt_dlp").mkdir(parents=True)
+    (directory / "yt_dlp" / "sentinel.txt").write_text("the copy that was already here")
+
+    # Not a real wheel: this download never reaches the extraction, and a zip here would only be a
+    # second thing that could be wrong. Big enough to need several chunks.
+    payload = b"\0" * (4 * ytdlp_update._CHUNK_BYTES)
+    chosen = ytdlp_update.Release(
+        version="2026.9.1",
+        url="https://files.pythonhosted.org/yt_dlp-2026.9.1-py3-none-any.whl",
+        digest=hashlib.sha256(payload).hexdigest(),
+        filename="yt_dlp-2026.9.1-py3-none-any.whl",
+    )
+
+    downloading = threading.Event()
+    sealed = threading.Event()
+
+    class _HeldStream(io.BytesIO):
+        """Serves the first chunk, then holds the second until the test has sealed the pool."""
+
+        def read(self, size: int = -1, /) -> bytes:
+            if downloading.is_set():
+                sealed.wait(timeout=30)
+            downloading.set()
+            return super().read(size)
+
+    @contextmanager
+    def opener(url: str) -> Iterator[IO[bytes]]:
+        yield _HeldStream(payload)
+
+    handed: list[Any] = []
+    real_install = ytdlp_update.install_latest
+
+    def install_through_a_fake_index(
+        directory: Path,
+        open_url: Any = None,
+        release: Any = None,
+        cancelled: Any = None,
+    ) -> Any:
+        handed.append(cancelled)
+        return real_install(directory, opener, release, cancelled)
+
+    monkeypatch.setattr(ytdlp_service, "latest_release", lambda: chosen)
+    monkeypatch.setattr(ytdlp_service, "install_latest", install_through_a_fake_index)
+
+    gate = ytdlp_service.pool()
+    service = ytdlp_service.YtdlpService(
+        directory=directory, entry_point=lambda *_args, **_kwargs: None
+    )
+    refusals: list[str] = []
+    service.failed.connect(refusals.append)
+
+    service.install_latest_version()
+    try:
+        assert downloading.wait(timeout=10), "the download never started, so nothing was cancelled"
+        gate.seal()
+    finally:
+        sealed.set()
+
+    assert _pump(qapp, gate.is_empty), "the cancelled update never left the pool"
+    assert _pump(qapp, lambda: bool(refusals)), "the cancelled update reported nothing"
+    assert refusals == ["The application is closing."]
+    assert handed == [ytdlp_service._the_pool_is_closing], (
+        "the service ran an install that had no way to ask whether it should stop"
+    )
+    assert (directory / "yt_dlp" / "sentinel.txt").is_file(), "a stopped update lost the copy"
+    assert not list(tmp_path.glob(f".{directory.name}.staging-*")), "the workspace was left behind"
+    assert not service.busy
+
+
+def test_a_wait_that_empties_the_pool_stops_its_confirmation_poll(
+    qapp: QApplication, release: threading.Event
+) -> None:
+    """A gate waited to empty must not be left holding a live timer (`T-128`).
+
+    `seal()` starts a `QTimer` owned by the gate, and only `_confirm` stops it — which is reached
+    through the event loop. The paths that *wait* are exactly the ones with no event loop left, so
+    a gate waited to empty and then dropped would leave a live timer on an object destroyed by
+    whichever thread collects it. Qt warns and then follows a pointer into freed memory on some
+    later tick; that fault cost an overnight soak and two core dumps to attribute the last time.
+
+    The poll is asserted **running first**, because a test that only checks it is stopped would
+    pass just as well against a seal that never started one.
+    """
+    from PySide6.QtCore import QTimer
+
+    gate = thumbnails.pool()
+    blocker = _Blocking(release)
+    assert gate.start(blocker)
+    assert blocker.started.wait(timeout=10)
+
     gate.seal()
+    polls = gate.findChildren(QTimer)
+    assert len(polls) == 1 and polls[0].isActive(), (
+        "sealing a busy pool started no confirmation poll"
+    )
 
-    sink = thumbnails._Sink()
-    thumbnails._DecodeAndStore(sink, "https://example.invalid/x.jpg", data, destination).run()
+    release.set()
+    assert gate.wait_bounded(10_000), "the blocking task never finished"
 
-    assert not destination.exists(), "a sealed decode published into the cache anyway"
+    assert not polls[0].isActive(), (
+        "the confirmation poll outlived the wait that emptied the pool, so the gate is a live "
+        "timer on an object nothing is going to stop"
+    )
 
 
-def test_the_bypass_does_not_claim_a_drain_it_did_not_get(
+def test_the_bypass_reports_an_overrun_and_goes_on_waiting(
     qapp: QApplication,
     release: threading.Event,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A pool that times out is left recorded as **not** drained, and said out loud.
+    """The threshold buys a diagnostic. It does not buy permission to tear the widgets down.
 
-    There is no third option on this path — refusing to leave hangs the exit, and an unbounded wait
-    is the same thing more slowly — so what is left is to keep the state truthful. A version that
-    recorded a drain unconditionally quit over a running thread while reporting that none existed.
+    **The previous version of this behaviour was the finding** (`T289-R21`, third pass): expiring
+    the bound recorded `_pools_drained = False`, logged, and called `_leave()` anyway — which quit
+    and closed the connection with `activeThreadCount() == 1`. Truthful bookkeeping describes the
+    race; it does not sequence teardown, and returning from here is exactly what permits Qt to
+    destroy the widget tree.
+
+    So the blocker is released well past a 50 ms threshold: the warning must appear, *and* the pool
+    must be empty by the time the bypass returns.
     """
-    monkeypatch.setattr(application, "_POOL_EXIT_WAIT_MS", 50)
+    monkeypatch.setattr(application, "_POOL_EXIT_REPORT_AFTER_MS", 50)
     gate = thumbnails.pool()
-    blocker = _Blocking(release)
+    # Twenty times the threshold, held from the task's own start, so the overrun is a fact about
+    # this run rather than a race between a wall-clock timer and the runner's setup speed.
+    blocker = _HoldsBriefly(1.0)
     assert gate.start(blocker)
     assert blocker.started.wait(timeout=10)
 
@@ -345,17 +588,44 @@ def test_the_bypass_does_not_claim_a_drain_it_did_not_get(
     with caplog.at_level(logging.WARNING, logger="tracksandtrails.app"):
         shutdown.stop_for_exit()
 
-    assert shutdown.finished, "the process must still leave; there is nothing else it can do"
+    assert "the exit is waiting for it" in caplog.text, "an exit that overran said nothing"
+    assert gate.is_empty(), "the bypass returned with a pool task still running"
+    assert gate.pool.activeThreadCount() == 0, "a thread outlived the bypass"
+    assert shutdown._pools_drained, "the pools were drained; the state should say so"
     assert app.quits == 1
-    assert not shutdown._pools_drained, "a timed-out wait was recorded as a drain"
-    assert "still running" in caplog.text, "leaving with work outstanding was not reported"
+    assert shutdown.finished
 
-    # **Released and joined inside the test, not left to a fixture.** This is the one test here
-    # that deliberately ends with a pool thread running, and the autouse fixture that replaces the
-    # pool singletons would then drop a busy `QThreadPool` — whose destructor waits, or aborts, on
-    # whichever thread collects it. That segfaulted the suite once; the task is joined here.
-    release.set()
-    assert gate.wait_bounded(10_000), "the blocking task never finished"
+
+def test_the_bypass_waits_for_every_pool_and_not_only_the_first(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pool that overran must not consume the wait the pool behind it needed.
+
+    The aggregation was `all(pool.wait_bounded(...) for pool in self._pools)` — a generator, so the
+    first false answer ended the expression and **the second pool was never waited at all**. A
+    reviewer probe recorded the calls as `[1, 0]`. Both pools here are held past the threshold and
+    released at different moments, and both must be empty when the bypass returns.
+    """
+    monkeypatch.setattr(application, "_POOL_EXIT_REPORT_AFTER_MS", 50)
+    first, second = ytdlp_service.pool(), thumbnails.pool()
+    # Each hold runs from its own task's start and both are far past the threshold, so the bypass
+    # has to overrun on the first pool and then wait a second time for the one behind it.
+    for gate, seconds in ((first, 1.0), (second, 2.0)):
+        blocker = _HoldsBriefly(seconds)
+        assert gate.start(blocker)
+        assert blocker.started.wait(timeout=10)
+
+    assert not first.is_empty() and not second.is_empty(), (
+        "both pools finished before the bypass was even called, so this run proves nothing about "
+        "the aggregation"
+    )
+    shutdown, app, _manager, _writer = _shutdown((first, second))
+    shutdown.stop_for_exit()
+
+    assert first.is_empty(), "the first pool was left running"
+    assert second.is_empty(), "the second pool was never waited for"
+    assert app.quits == 1
+    assert shutdown.finished
 
 
 def test_the_about_to_quit_bypass_waits_for_the_pools(
@@ -365,7 +635,7 @@ def test_the_about_to_quit_bypass_waits_for_the_pools(
 
     `stop_for_exit` is reached from `aboutToQuit`, where the asynchronous barrier cannot complete:
     `drained` arrives through a queued connection and nothing is left to deliver it. So this path
-    waits, bounded, and the test asserts the pool is empty by the time it returns.
+    waits, and the test asserts the pool is empty by the time it returns.
     """
     pool = thumbnails.pool()
     blocker = _Blocking(release)
@@ -383,6 +653,37 @@ def test_the_about_to_quit_bypass_waits_for_the_pools(
     assert pool.pool.activeThreadCount() == 0, "a thread outlived the bypass"
     assert app.quits == 1
     assert shutdown.finished
+
+
+def test_the_service_hands_its_version_query_the_pools_cancellation(
+    qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The resolution half of the same wiring, which the update test does not cover.
+
+    `resolve_in_a_child` polls its queue in slices against the cancellation it is handed, and a
+    service that hands it none is a version query that goes on waiting up to ninety seconds into a
+    shutdown. The seam is a keyword argument, so removing it is a one-token change that leaves
+    every test of the resolver itself green — which is why it is asserted here by identity.
+    """
+    handed: list[Any] = []
+
+    def recording(
+        directory: Path, *, entry_point: Any = None, cancelled: Any = None
+    ) -> ytdlp_service.Resolution:
+        handed.append(cancelled)
+        return ytdlp_service.Resolution(version="2026.9.1", source="bundled baseline")
+
+    monkeypatch.setattr(ytdlp_service, "resolve_in_a_child", recording)
+    service = ytdlp_service.YtdlpService(directory=tmp_path / "ytdlp")
+    reported: list[Any] = []
+    service.reported.connect(reported.append)
+
+    service.refresh()
+
+    assert _pump(qapp, lambda: bool(reported)), "the version query never reported"
+    assert handed == [ytdlp_service._the_pool_is_closing], (
+        "the service ran a version query that had no way to ask whether it should stop"
+    )
 
 
 def test_composition_hands_the_shutdown_both_real_pools(qapp: QApplication, tmp_path: Path) -> None:

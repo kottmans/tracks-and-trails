@@ -30,6 +30,7 @@ from PySide6.QtWidgets import QApplication
 
 from tracks_and_trails.downloader import process_tree
 from tracks_and_trails.downloader import ytdlp_service as service_module
+from tracks_and_trails.downloader.cancellation import OperationCancelledError
 from tracks_and_trails.downloader.environment import (
     BASELINE_YTDLP_VERSION,
     normalise_version,
@@ -211,6 +212,42 @@ def test_a_child_that_never_answers_is_given_up_on(tmp_path: Path) -> None:
     """
     with pytest.raises(ResolutionUnavailableError, match="took too long"):
         resolve_in_a_child(tmp_path, entry_point=_says_nothing, timeout=1.0)
+
+
+def test_a_resolution_wait_stops_when_the_pool_is_cancelled(tmp_path: Path) -> None:
+    """The ninety-second read could not notice a shutdown; the sliced one can (`T289-R21`).
+
+    The whole of `resolve_in_a_child` is waiting, and one blocking `Queue.get` for the full timeout
+    is a stretch of it in which nothing can be asked. The child here never answers, so the only
+    thing that can end this call early is the checkpoint between slices — and the generous timeout
+    is what makes that unambiguous: a run that ignored the cancellation would sit here for ninety
+    seconds.
+
+    **The flag turns true after several slices, not at once**, so the checkpoint being exercised is
+    one inside the wait rather than the first one before it.
+    """
+    polls = 0
+
+    def cancelled() -> bool:
+        nonlocal polls
+        polls += 1
+        return polls > 3
+
+    started = time.monotonic()
+    with pytest.raises(OperationCancelledError, match="closing"):
+        resolve_in_a_child(
+            tmp_path,
+            entry_point=_says_nothing,
+            timeout=90.0,
+            cancelled=cancelled,
+        )
+    elapsed = time.monotonic() - started
+
+    assert polls > 3, "the wait was never re-asked, so nothing about slicing was proved"
+    assert elapsed < 30.0, (
+        f"the cancelled wait took {elapsed:.1f} s against a 90 s timeout; it was not the "
+        "cancellation that ended it"
+    )
 
 
 def _reports_a_version(queue: Any, *, user_ytdlp_directory: Path | None = None) -> None:

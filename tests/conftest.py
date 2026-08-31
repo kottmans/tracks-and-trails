@@ -15,6 +15,7 @@ import os
 import sys
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -97,15 +98,63 @@ if sys.platform == "win32":
 #
 # The globals are private and reached by name deliberately: an `unseal()` on `SealedPool` would be
 # production API that exists only for tests, and it would weaken the one invariant the gate has.
+#
+# **Two corrections, both `T289-R23`.**
+#
+# 1. **It imported Qt for every test in the suite.** The first version did
+#    `from tracks_and_trails.ui import thumbnails`, unconditionally, from a root `conftest.py` —
+#    which is imported before `tests/unit/` too, and both of these modules import `PySide6`. A
+#    fixture whose whole purpose is isolation retired this file's stated Qt-free property to get
+#    it. `sys.modules` answers the same question without loading anything: a module that was never
+#    imported has no singleton to reset, and one imported *during* the test is found at teardown
+#    because the dictionary is re-read there rather than remembered.
+# 2. **It dropped whatever the test had created without asking whether it was busy.** A
+#    `QThreadPool` released with runnables in flight is destroyed by whichever thread collects it,
+#    and its destructor waits there — or aborts. That segfaulted this suite once, and the test that
+#    caused it had to join its own task to work around a fixture that should have owned this. So a
+#    pool created during a test is now sealed and drained here, and a pool that will not drain
+#    fails the test that left it rather than crashing an unrelated one later.
+_POOL_SINGLETON_MODULES = (
+    "tracks_and_trails.downloader.ytdlp_service",
+    "tracks_and_trails.ui.thumbnails",
+)
+
+#: How long a test's own pool is given to finish before the failure is attributed to it. Generous:
+#: the point is to name the test that left work running, not to police how long its work took.
+_POOL_TEARDOWN_WAIT_MS = 30_000
+
+
 @pytest.fixture(autouse=True)
 def _pools_are_not_shared_between_tests() -> Iterator[None]:
-    from tracks_and_trails.downloader import ytdlp_service
-    from tracks_and_trails.ui import thumbnails
-
-    before = (ytdlp_service._SHARED_POOL, thumbnails._SHARED_POOL)
-    ytdlp_service._SHARED_POOL = None
-    thumbnails._SHARED_POOL = None
+    before: dict[str, Any] = {}
+    for name in _POOL_SINGLETON_MODULES:
+        module = sys.modules.get(name)
+        if module is None:
+            # Not imported yet, so there is no singleton to displace and nothing to import one
+            # for. If the test imports it, teardown below finds it.
+            continue
+        before[name] = module._SHARED_POOL
+        module._SHARED_POOL = None
     try:
         yield
     finally:
-        ytdlp_service._SHARED_POOL, thumbnails._SHARED_POOL = before
+        for name in _POOL_SINGLETON_MODULES:
+            module = sys.modules.get(name)
+            if module is None:
+                continue
+            created = module._SHARED_POOL
+            # `before` may have no entry: the module was first imported by the test itself, and
+            # then the pool to put back is the one that was there before it existed, which is none.
+            module._SHARED_POOL = before.get(name)
+            if created is None:
+                continue
+            # Sealed as well as waited, so anything still queued declines rather than starting a
+            # fresh piece of work into a pool that is being discarded.
+            created.seal()
+            if not created.wait_bounded(_POOL_TEARDOWN_WAIT_MS):
+                raise RuntimeError(
+                    f"{name} was left with pool work still running after "
+                    f"{_POOL_TEARDOWN_WAIT_MS} ms. Dropping a busy QThreadPool destroys it on "
+                    "whichever thread collects it, which is a segfault somewhere else; release "
+                    "whatever this test is blocking before it ends."
+                )

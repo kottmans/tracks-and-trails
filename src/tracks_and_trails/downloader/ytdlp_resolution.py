@@ -13,12 +13,19 @@ unsafe, and one start method everywhere means both platforms exercise the same p
 
 import multiprocessing
 import queue as queue_module
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
 from tracks_and_trails.downloader import process_tree, worker
+from tracks_and_trails.downloader.cancellation import (
+    Cancelled,
+    OperationCancelledError,
+    not_cancelled,
+    stop_if_cancelled,
+)
 from tracks_and_trails.downloader.protocol import ResolutionReport, WorkerFinished
 
 #: How long to wait for a child to import yt-dlp and answer. Generous: `spawn` re-imports the
@@ -26,8 +33,16 @@ from tracks_and_trails.downloader.protocol import ResolutionReport, WorkerFinish
 #: query that has not answered by now is one the user should be told about rather than waited on.
 RESOLUTION_TIMEOUT_SECONDS: Final = 90.0
 
+#: How long one queue read blocks before the loop re-asks whether it should still be waiting.
+#: **The reason this is not simply the whole timeout** (`T289-R21`): a single 90-second read cannot
+#: notice a cancellation, so a shutdown behind a hung child waited a minute and a half for a
+#: process it had already been told to abandon. Short enough that stopping is prompt, long enough
+#: that the loop is not a spin — a slice this size costs about ten wake-ups a second.
+_POLL_SLICE_SECONDS: Final = 0.1
+
 __all__ = [
     "RESOLUTION_TIMEOUT_SECONDS",
+    "OperationCancelledError",
     "Resolution",
     "ResolutionUnavailableError",
     "resolve_in_a_child",
@@ -73,6 +88,7 @@ def resolve_in_a_child(
     *,
     entry_point: Callable[..., Any] | None = None,
     timeout: float = RESOLUTION_TIMEOUT_SECONDS,
+    cancelled: Cancelled = not_cancelled,
 ) -> Resolution:
     """Spawn a child, have it import yt-dlp, and return what it reported.
 
@@ -81,6 +97,12 @@ def resolve_in_a_child(
 
     `spawn` for the reason `ARC-002` gives: forking a process that has created a `QApplication`
     is unsafe, and one start method everywhere means both platforms exercise the same path.
+
+    **The wait is sliced so cancellation can land in it** (`T289-R21`). The whole of this function
+    is waiting: a spawn, an import of a large package, and a queue read that was allowed to be one
+    ninety-second block. `cancelled` is asked before each slice, and a cancellation leaves through
+    the same `finally` that terminates and joins the child — the child is already owned here, so
+    stopping mid-wait strands nothing that finishing would not have cleaned up too.
     """
     target = worker.spawn_resolution if entry_point is None else entry_point
     context = multiprocessing.get_context("spawn")
@@ -110,13 +132,22 @@ def resolve_in_a_child(
         except process_tree.ContainmentUnavailableError as error:
             raise ResolutionUnavailableError(str(error)) from error
         started = True
+        # **One deadline, many reads.** The overall bound is unchanged — a query that has not
+        # answered by `timeout` is still given up on with the same sentence — but it is now
+        # measured against the clock rather than against the length of a single blocking read, so
+        # a slice that returns nothing costs the loop a fraction of a second and not the lot.
+        deadline = time.monotonic() + timeout
         while True:
-            try:
-                message = message_queue.get(timeout=timeout)
-            except queue_module.Empty:
+            stop_if_cancelled(cancelled)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 raise ResolutionUnavailableError(
                     "Checking the yt-dlp version took too long and was stopped."
-                ) from None
+                )
+            try:
+                message = message_queue.get(timeout=min(_POLL_SLICE_SECONDS, remaining))
+            except queue_module.Empty:
+                continue
             if isinstance(message, ResolutionReport):
                 report = message
             if isinstance(message, WorkerFinished):

@@ -35,6 +35,7 @@ from typing import Any, Final, Protocol
 
 from PySide6.QtCore import QObject, QRunnable, Signal
 
+from tracks_and_trails.downloader.cancellation import OperationCancelledError
 from tracks_and_trails.downloader.environment import user_ytdlp_directory
 from tracks_and_trails.downloader.pools import SealedPool
 from tracks_and_trails.downloader.ytdlp_resolution import (
@@ -69,6 +70,16 @@ def pool() -> SealedPool:
     if _SHARED_POOL is None:
         _SHARED_POOL = SealedPool(_POOL_THREADS)
     return _SHARED_POOL
+
+
+def _the_pool_is_closing() -> bool:
+    """What a running operation asks at each of its own checkpoints (`T289-R21`).
+
+    A module-level function rather than a lambda closing over the gate, because the gate is a
+    singleton that `tests/conftest.py` replaces around every test: a callable that captured the
+    object would go on asking the pool a test had already discarded.
+    """
+    return pool().cancelled
 
 
 class WorkerExclusion(Protocol):
@@ -124,14 +135,21 @@ class _Task(QRunnable):
 
     def run(self) -> None:
         # **Cooperative cancellation** (`T289-R21`). A `QRunnable` cannot be interrupted, so the
-        # only safe stop is one it asks for. Before the work starts is the one point where nothing
-        # is half-done — an update that has begun extracting must finish or roll back, which is
-        # `T-198`'s rule, so it is deliberately not checked again inside.
+        # only safe stop is one it asks for. This is the cheapest of those points — nothing has
+        # begun — and it is deliberately **not the only one**: the work itself asks again after the
+        # release lookup, between download chunks, after the download, after staging, and around
+        # every slice of the resolution wait. Entry alone cancels queued work and nothing that is
+        # already running, which is the state a reviewer probe measured as `active=1`. The one
+        # interval with no checkpoint is `_swap_into_place`, which is `T-198`'s transaction.
         if pool().cancelled:
             self._sink.failed.emit("The application is closing.")
             return
         try:
             self._work(self._sink)
+        except OperationCancelledError as stopped:
+            # A checkpoint inside the work said no. Reported exactly like the refusal above,
+            # because to the user they are one event: the application is going away.
+            self._sink.failed.emit(str(stopped))
         except (UpdateError, ResolutionUnavailableError) as error:
             self._sink.failed.emit(str(error))
         # Broad on purpose: a pool thread has nowhere else to report, and an unhandled raise
@@ -223,7 +241,9 @@ class YtdlpService(QObject):
         self._run(lambda sink: sink.resolved.emit(self._resolve()))
 
     def _resolve(self) -> Resolution:
-        return resolve_in_a_child(self._directory, entry_point=self._entry_point)
+        return resolve_in_a_child(
+            self._directory, entry_point=self._entry_point, cancelled=_the_pool_is_closing
+        )
 
     def install_latest_version(self) -> None:
         """Install the newest yt-dlp wheel, then re-ask a child what is now in use.
@@ -234,7 +254,9 @@ class YtdlpService(QObject):
         """
 
         def work(sink: _Sink) -> None:
-            release = install_latest(self._directory, release=latest_release())
+            release = install_latest(
+                self._directory, release=latest_release(), cancelled=_the_pool_is_closing
+            )
             sink.installed.emit(release)
             sink.resolved.emit(self._resolve())
 
@@ -332,6 +354,7 @@ class YtdlpService(QObject):
 
 
 __all__ = [
+    "OperationCancelledError",
     "Release",
     "Resolution",
     "ResolutionUnavailableError",

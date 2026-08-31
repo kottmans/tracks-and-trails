@@ -1046,10 +1046,81 @@ on one pool, and a sealed admission keeping the hold. **A test that ends with a 
 joins it itself**: the autouse fixture would otherwise drop a busy `QThreadPool`, whose destructor
 waits or aborts on whichever thread collects it, and that segfaulted the suite once.
 
+#### `T289-R21`, third pass: the bypass waits, the barrier asks the pool, and running work can stop
+
+**The `aboutToQuit` bypass no longer leaves over live work, and two defects lived in the one line
+that did.** `all(pool.wait_bounded(...) for pool in self._pools)` is a generator, so the first pool
+that overran **short-circuited the aggregation and the second pool was never waited at all** — a
+reviewer probe recorded the calls as `[1, 0]`. And expiring the bound was treated as permission to
+continue: the run recorded `_pools_drained = False`, logged, and called `_leave()` anyway, quitting
+and closing the connection at `activeThreadCount() == 1`. **Truthful bookkeeping describes the
+race; it does not sequence teardown.** The constant is `_POOL_EXIT_REPORT_AFTER_MS` now and buys a
+diagnostic and nothing else: every pool is visited whatever the previous one answered, and one that
+overruns is reported and then waited to actual emptiness through `SealedPool.wait_until_empty()`.
+
+**There was never a choice between waiting and not waiting.** Qt already waits for a `QThreadPool`
+with runnables in flight — in `~QThreadPool`, in the middle of destroying the widget tree — or
+aborts. The choice is *where*, and the answer is: at the point where the widgets are still standing.
+An absolute process-exit deadline would need the work behind a boundary that can genuinely be
+killed, which is a design change and not something an exit path decides for itself.
+
+**The combined barrier asks the pool.** `when_all_drained` carried `sealed and not outstanding`, a
+second predicate and a strictly weaker one than what `drained` itself waits for: a runnable started
+on the underlying pool is one the gate never counted, so `outstanding` reads zero while the pool is
+plainly busy. A probe built exactly that, and `begin()` released the quit in it while the gate's own
+`drained` correctly withheld. It is `pool.sealed and pool.is_empty()` now — one predicate, the
+authoritative one.
+
+**yt-dlp work is cancellable past its entry, and the transaction is still indivisible.** `T-198`
+protects the live-tree replacement; it never made download and staging one operation.
+`install_latest` asks after the release lookup, **between download chunks**, after the download, and
+after the staged tree exists — every one of those leaves the live directory untouched and the
+staging workspace to the `finally` that already removes it. `_swap_into_place` has no checkpoint and
+must not have one: it displaces the live tree and either completes or rolls back.
+`resolve_in_a_child`'s single ninety-second `Queue.get` is 100 ms slices against one deadline, so a
+shutdown behind a child that never answers ends at the next slice rather than a minute and a half
+later, and the cancellation leaves through the same `finally` that terminates and joins the child.
+
+**The seam is a callable in a Qt-free module.** `downloader/cancellation.py` holds
+`OperationCancelledError` and `stop_if_cancelled`. Neither the updater nor the resolver may import
+`pools.py`, which imports `PySide6`, because `_freeze_probe.py` pulls the resolver into a process
+that must inherit no Qt (`ARC-002`). `YtdlpService` passes `_the_pool_is_closing`, and **both call
+sites are asserted by identity**: a keyword argument dropped from either is a one-token change that
+leaves every test of the resolver and of the installer itself green.
+
+**The two running-task controls could not tell what they claimed to.** Both sealed the pool and
+*then* called `run()`, so a checkpoint moved back to the task's entry would have left every
+assertion green — they could not distinguish queued cancellation from cancellation after work
+began, which is the distinction they existed for. They now start the task on a thread of its own,
+block it **inside** its first unlink and **inside** its decode, seal from the test thread while it
+is in there, and release it. The sweep must remove exactly the one file it was already deleting:
+fewer would mean it never deletes anything and the control is blind, more that cancellation never
+reached it. The decode's test runs the undisturbed task first, because a test that only asserts an
+absence cannot tell a working checkpoint from a decode that never wrote anything.
+
+**The root fixture owns the disposal it was asked to own** (`T289-R23`). It imported both
+Qt-bearing pool modules for every test in the repository — from the one `conftest.py` that runs
+before `tests/unit/`, whose Qt-freeness is `ai/TESTING.md` §1's — in order to reset two module
+globals. `sys.modules` answers the same question without loading anything, and re-reading it at
+teardown covers a module the test imported itself. And it dropped whatever the test had created
+without asking whether it was busy, which is how a `QThreadPool` comes to be destroyed by whichever
+thread collects it. It now seals and drains what the test made, and **fails the test that left work
+running** instead of letting the next segfault land in somebody else's.
+`tests/ui/_leaves_a_pool_thread_running.py` is the deliberate violation that proves it, in the shape
+`_leaks_a_view.py` established, and `tests/unit/test_skeleton.py` holds the Qt-free half in a
+subprocess because this pytest session has Qt loaded through its own plugins.
+
+**Seventeen mutations, all killed** — the barrier trusting its count, the threshold authorising
+teardown, only the first pool being waited, the final wait acquiring a deadline, the confirmation
+poll outliving the wait, each of the four install checkpoints, the resolution wait's, both service
+seams, the cancellation branch that reports the closing sentence, the sweep's and the decode's, and
+both halves of the fixture.
+
 **What this does not do.** It does not prove the crash is gone — the dump remains unreproduced, and
 `T-238`'s record is that repetition does not discriminate this fault. What it removes is the
-configuration the reading found: after this, no pool thread survives into the teardown that destroys
-the widgets.
+configuration the reading found: **both** exit paths now establish that no pool thread survives into
+the teardown that destroys the widgets — the window's close through the asynchronous barrier, and
+`aboutToQuit` by waiting every pool to actual emptiness before it returns.
 
 #### Out of scope
 

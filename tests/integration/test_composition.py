@@ -1114,7 +1114,11 @@ def test_a_start_during_an_update_spawns_nothing_until_the_update_has_finished(
     installing = threading.Event()
     let_it_finish = threading.Event()
 
-    def install(directory: Path, *, release: Release) -> Release:
+    def install(directory: Path, *, release: Release, cancelled: Any) -> Release:
+        # `cancelled` is required rather than defaulted (`T289-R21`): the composed service hands
+        # every install the pool's own stop question, and a fake that quietly accepted `**kwargs`
+        # would go on passing if that seam were removed.
+        assert cancelled is not None, "the composed service ran an install it could not stop"
         installing.set()
         assert let_it_finish.wait(timeout=60.0), "the test never released the install"
         return release

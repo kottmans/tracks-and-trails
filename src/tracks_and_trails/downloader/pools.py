@@ -161,22 +161,64 @@ class SealedPool(QObject):
             self._confirming.start()
 
     def wait_bounded(self, milliseconds: int) -> bool:
-        """Block for at most `milliseconds`, for the exit path that has no event loop left.
+        """Block for at most `milliseconds` and say whether the pool emptied.
 
         **Only for `aboutToQuit`.** The asynchronous barrier cannot complete there: `drained`
         arrives through a queued connection and nothing is left to deliver it. `stop_for_exit`
         already makes this argument for the writer — the process is leaving, and there is no
         interaction to block — and the alternative is Qt aborting on a running thread.
+
+        **The answer is a diagnostic, not a permission.** `False` means the pool overran the
+        threshold; it does not mean the caller may stop waiting, and `stop_for_exit` calls
+        `wait_until_empty` after reporting it (`T289-R21`, third pass).
         """
         emptied = bool(self._pool.waitForDone(milliseconds))
         if emptied:
-            # **The count is reconciled from the pool itself, because the signals cannot arrive.**
-            # `outstanding` is decremented through a queued connection, and on this path there is
-            # no event loop left to deliver one — so every completion that happened during the wait
-            # is still in flight and the gate would go on reporting work that has finished. The
-            # pool has just said it has none, and it is the authority.
-            self._outstanding = 0
+            self._settle()
         return emptied
+
+    def wait_until_empty(self) -> None:
+        """Block until the pool really has nothing running, however long that takes.
+
+        **The only honest end to the no-event-loop path** (`T289-R21`, third pass). The bounded
+        wait was allowed to expire and `_leave()` was called anyway, which is the measured
+        `active=1` teardown this whole task exists to remove: truthful bookkeeping and a warning
+        describe the race, they do not sequence it. Returning is what permits Qt to destroy the
+        widget tree, so returning is the thing that may not happen early.
+
+        **It is not an unbounded wait added on top of a bounded one.** Qt already waits here — a
+        `QThreadPool` destroyed with runnables in flight blocks in its destructor, or aborts — so
+        the choice was never *wait* versus *don't*; it was *wait at a point where the widgets are
+        still standing* versus *wait in the middle of tearing them down*. An absolute exit deadline
+        would need the work to sit behind a boundary that can genuinely be killed, which is a
+        design change and not something this call can decide.
+
+        `waitForDone(-1)` has no deadline. The count is reconciled from the pool afterwards for the
+        reason `wait_bounded` gives: the completions are still in flight on a queued connection
+        that nothing is left to deliver.
+        """
+        self._pool.waitForDone(-1)
+        self._settle()
+
+    def _settle(self) -> None:
+        """Bring the gate's own state into line with a pool a wait has just emptied.
+
+        **The count is reconciled from the pool itself, because the signals cannot arrive.**
+        `outstanding` is decremented through a queued connection, and the paths that wait are the
+        ones with no event loop left to deliver one — so every completion that happened during the
+        wait is still in flight and the gate would go on reporting work that has finished. The pool
+        has just said it has none, and it is the authority.
+
+        **And the confirmation poll is stopped here** (`T-128`). `seal()` starts a `QTimer` owned by
+        this object and only `_confirm` stops it, which is reached through the event loop; a gate
+        waited to empty and then dropped would leave a live timer on an object destroyed by
+        whichever thread collects it. That is the orphaned-timer fault the UI suite fails on, and
+        it cost an overnight soak to attribute the last time. `drained` is deliberately **not**
+        emitted from here: a blocking wait is not the asynchronous barrier, and a later completion
+        can still reach `_confirm` through `one_finished` if an event loop does come back.
+        """
+        self._outstanding = 0
+        self._confirming.stop()
 
     def _task_finished(self) -> None:
         self._outstanding = max(self._outstanding - 1, 0)
@@ -197,10 +239,18 @@ def when_all_drained(pools: tuple[SealedPool, ...], then: Callable[[], None]) ->
     The barrier `T289-R21` asks for. It is a function rather than a class because it holds no state
     a caller needs to see: each pool's `drained` is connected once, and the predicate is re-asked on
     every arrival.
+
+    **The predicate is the pool's own `is_empty()`, not a second one written here** (`T289-R21`,
+    third pass). The first version asked `sealed and not outstanding`, which is strictly weaker
+    than what `drained` itself waits for: a runnable started on the underlying pool is one the gate
+    never counted, so `outstanding` reads zero while the pool is plainly busy. A reviewer probe
+    built exactly that and this barrier released the quit at `active=1` — while the gate's own
+    `drained` correctly withheld. Two predicates for one question is one predicate too many, and
+    the authoritative one is the one that asks the pool.
     """
 
     def check() -> None:
-        if all(pool.sealed and not pool.outstanding for pool in pools):
+        if all(pool.sealed and pool.is_empty() for pool in pools):
             then()
 
     for pool in pools:
