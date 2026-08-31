@@ -12,14 +12,17 @@ would prove the barrier can be written, not that it is wired to the thing that r
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Iterator
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from PySide6.QtCore import QObject, QRunnable, Signal
 
-from tracks_and_trails.app import OrderlyShutdown
+from tracks_and_trails import app as application
+from tracks_and_trails.app import OrderlyShutdown, compose
 from tracks_and_trails.downloader import ytdlp_service
 from tracks_and_trails.ui import thumbnails
 
@@ -225,13 +228,134 @@ def test_the_pools_draining_first_does_not_quit_before_the_writer(
     shutdown.begin()
     release.set()
 
-    assert _pump(qapp, lambda: not pool.outstanding), "the pool never emptied"
+    # `is_empty` and not the count: the count reaches zero from inside the task's own `run`, and
+    # the barrier deliberately does not believe it until the pool agrees (`T289-R21`).
+    assert _pump(qapp, pool.is_empty), "the pool never emptied"
     assert app.quits == 0, "quit was called before the writer had finished"
     assert not shutdown.finished
 
     writer.wait_for_close()
-    assert app.quits == 1
+    assert _pump(qapp, lambda: app.quits == 1), "the writer's completion did not release the quit"
     assert shutdown.finished
+
+
+def test_the_barrier_does_not_believe_the_count_over_the_pool(
+    qapp: QApplication, release: threading.Event
+) -> None:
+    """The exact state the review's probe measured: count zero, pool still running.
+
+    `_Counted` reports completion from **inside** the task's own `run`, so the count reaches zero
+    while that thread is still executing and `activeThreadCount()` still reports it. A barrier that
+    believed the count would release the process there — which is the configuration this task
+    exists to prevent, produced by the fix for it.
+
+    The state is built directly rather than raced for: a task started on the underlying pool is one
+    the gate never counted, so `outstanding` is zero throughout while the pool is plainly busy.
+    """
+    gate = thumbnails.pool()
+    blocker = _Blocking(release)
+    gate.pool.start(blocker)
+    assert blocker.started.wait(timeout=10)
+    assert gate.outstanding == 0, "the gate should not have counted a task started behind it"
+
+    drains: list[int] = []
+    gate.drained.connect(lambda: drains.append(1))
+    gate.seal()
+
+    assert not gate.is_empty(), "a busy pool called itself empty"
+    assert _pump(qapp, lambda: False, deadline_ms=200) is False  # let the confirmation poll run
+    assert drains == [], "drained fired while a pool thread was still running"
+
+    release.set()
+    assert _pump(qapp, lambda: drains == [1]), "drained never fired after the thread finished"
+    assert gate.is_empty()
+
+
+def test_a_sweep_already_running_stops_when_the_pools_are_sealed(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """Cancellation has to reach work that is **already running**, not only work still queued.
+
+    The first version checked only at the task's entry, which a running sweep is already past. This
+    runs the real `_SweepTask` over a directory of cache files with the pool already sealed, and
+    the loop's own check is the only thing that can stop it.
+    """
+    directory = tmp_path / "thumbnails"
+    directory.mkdir()
+    for index in range(50):
+        (directory / f"{index:02d}.jpg").write_bytes(b"x")
+
+    gate = thumbnails.pool()
+    gate.seal()
+
+    sink = thumbnails._Sink()
+    thumbnails._SweepTask(sink, directory, set()).run()
+
+    survivors = list(directory.iterdir())
+    assert len(survivors) == 50, f"a sealed sweep deleted {50 - len(survivors)} files anyway"
+
+
+def test_a_decode_does_not_publish_a_picture_after_the_seal(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """The decode's own checkpoint: decoding is uninterruptible, publishing is a choice.
+
+    A cache the process is leaving is not worth writing into, and the write is the part that
+    touches the disk. Run with the pool sealed, the task must decode and then decline.
+    """
+    from PySide6.QtGui import QImage
+
+    # Encoded through a file rather than a `QBuffer`: `QBuffer(QByteArray())` keeps a pointer to a
+    # temporary that Python frees immediately, and saving into it segfaulted this test.
+    picture = QImage(4, 4, QImage.Format.Format_RGB32)
+    picture.fill(0x336699)
+    source = tmp_path / "source.png"
+    assert picture.save(str(source))  # format inferred from the .png suffix
+    data = source.read_bytes()
+
+    destination = tmp_path / "cache" / "picture.jpg"
+    gate = thumbnails.pool()
+    gate.seal()
+
+    sink = thumbnails._Sink()
+    thumbnails._DecodeAndStore(sink, "https://example.invalid/x.jpg", data, destination).run()
+
+    assert not destination.exists(), "a sealed decode published into the cache anyway"
+
+
+def test_the_bypass_does_not_claim_a_drain_it_did_not_get(
+    qapp: QApplication,
+    release: threading.Event,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A pool that times out is left recorded as **not** drained, and said out loud.
+
+    There is no third option on this path — refusing to leave hangs the exit, and an unbounded wait
+    is the same thing more slowly — so what is left is to keep the state truthful. A version that
+    recorded a drain unconditionally quit over a running thread while reporting that none existed.
+    """
+    monkeypatch.setattr(application, "_POOL_EXIT_WAIT_MS", 50)
+    gate = thumbnails.pool()
+    blocker = _Blocking(release)
+    assert gate.start(blocker)
+    assert blocker.started.wait(timeout=10)
+
+    shutdown, app, _manager, _writer = _shutdown((gate,))
+    with caplog.at_level(logging.WARNING, logger="tracksandtrails.app"):
+        shutdown.stop_for_exit()
+
+    assert shutdown.finished, "the process must still leave; there is nothing else it can do"
+    assert app.quits == 1
+    assert not shutdown._pools_drained, "a timed-out wait was recorded as a drain"
+    assert "still running" in caplog.text, "leaving with work outstanding was not reported"
+
+    # **Released and joined inside the test, not left to a fixture.** This is the one test here
+    # that deliberately ends with a pool thread running, and the autouse fixture that replaces the
+    # pool singletons would then drop a busy `QThreadPool` — whose destructor waits, or aborts, on
+    # whichever thread collects it. That segfaulted the suite once; the task is joined here.
+    release.set()
+    assert gate.wait_bounded(10_000), "the blocking task never finished"
 
 
 def test_the_about_to_quit_bypass_waits_for_the_pools(
@@ -259,6 +383,79 @@ def test_the_about_to_quit_bypass_waits_for_the_pools(
     assert pool.pool.activeThreadCount() == 0, "a thread outlived the bypass"
     assert app.quits == 1
     assert shutdown.finished
+
+
+def test_composition_hands_the_shutdown_both_real_pools(qapp: QApplication, tmp_path: Path) -> None:
+    """**The wiring, which every test above would pass without** (`T289-R21`).
+
+    Each pool is asserted independently there, but on a pool the *test* fetched. Replacing the
+    composed thumbnail pool with the yt-dlp one — so the same pool is waited for twice and the
+    thumbnail pool is not waited for at all — left every one of those tests green. The defect this
+    task is about is a pool nothing waits on, so what composition actually hands over has to be
+    asserted by identity, here.
+    """
+    composition = compose(
+        qapp,
+        database=tmp_path / "queue.sqlite3",
+        output_directory=tmp_path / "downloads",
+        geometry_file=tmp_path / "window.toml",
+        settings_file=tmp_path / "settings.toml",
+        cache_directory=tmp_path / "cache",
+        entry_point=lambda *_args, **_kwargs: None,
+    )
+    try:
+        wired = composition.shutdown._pools
+        assert len(wired) == 2, "composition did not hand over two pools"
+        assert any(pool is ytdlp_service.pool() for pool in wired), (
+            "the yt-dlp pool is not waited for"
+        )
+        assert any(pool is thumbnails.pool() for pool in wired), (
+            "the thumbnail pool is not waited for"
+        )
+    finally:
+        composition.window.close()
+        composition.window.deleteLater()
+
+
+def test_an_update_refused_by_the_seal_gives_the_workers_back(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """A refusal must release the hold it was granted (`T289-R21`, the Low correction).
+
+    `_run_holding_the_tree` takes every worker start on the operation's behalf **before** the task
+    is submitted, and a sealed pool refuses it after that. Reporting the refusal by emitting
+    `failed` directly skips `_on_failed`, which is the one place that gives the workers back — so
+    the queue would be left permanently unable to start, by a shutdown that never ran the work.
+    """
+
+    class _Exclusion:
+        def __init__(self) -> None:
+            self.holds = 0
+            self.releases = 0
+
+        def hold_worker_starts(self, reason: str) -> bool:
+            self.holds += 1
+            return True
+
+        def release_worker_starts(self) -> None:
+            self.releases += 1
+
+    exclusion = _Exclusion()
+    service = ytdlp_service.YtdlpService(
+        directory=tmp_path / "ytdlp",
+        exclusion=cast("Any", exclusion),
+        entry_point=lambda *_args, **_kwargs: None,
+    )
+    refusals: list[str] = []
+    service.failed.connect(refusals.append)
+
+    ytdlp_service.pool().seal()
+    service.install_latest_version()
+
+    assert refusals == ["The application is closing."]
+    assert exclusion.holds == 1, "the hold was never taken, so this proves nothing"
+    assert exclusion.releases == 1, "a refused update kept every worker start held"
+    assert not service.busy
 
 
 def test_a_shutdown_with_no_pools_behaves_as_it_did(qapp: QApplication) -> None:

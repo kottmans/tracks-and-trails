@@ -52,9 +52,6 @@ from tracks_and_trails.core import settings as settings_module
 from tracks_and_trails.core.models import NetworkOptions, Preset
 from tracks_and_trails.core.presets import DEFAULT_OUTPUT_TEMPLATE, needs_ffmpeg
 from tracks_and_trails.core.settings import Settings as AppSettings
-from tracks_and_trails.downloader.pools import SealedPool, when_all_drained
-from tracks_and_trails.downloader.ytdlp_service import pool as ytdlp_pool
-from tracks_and_trails.ui.thumbnails import pool as thumbnail_pool
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QApplication
@@ -63,6 +60,7 @@ if TYPE_CHECKING:
     from tracks_and_trails.core.job_state import JobStatus
     from tracks_and_trails.downloader.environment import FfmpegReport
     from tracks_and_trails.downloader.manager import DownloadManager
+    from tracks_and_trails.downloader.pools import SealedPool
     from tracks_and_trails.downloader.ytdlp_service import YtdlpService
     from tracks_and_trails.persistence.repositories import JobRepository
     from tracks_and_trails.persistence.store import PersistentJobStore
@@ -1166,13 +1164,21 @@ def compose(
     # **Both real pools, named here and nowhere else** (`T289-R21`). Composition is the one place
     # that knows the whole graph, and the two pools are module-level singletons rather than
     # anything the shutdown sequence could discover for itself.
+    #
+    # **Imported here rather than at module scope**, with every other Qt import in this file:
+    # `__main__.py` must stay importable without pulling in Qt so `multiprocessing.freeze_support()`
+    # runs first in a frozen build (`REL-001`, `ARCHITECTURE.md` §3), and both of these modules
+    # import `PySide6`. The first version of this put them at the top (`T289-R21`).
+    from tracks_and_trails.downloader.ytdlp_service import pool as ytdlp_pool
+    from tracks_and_trails.ui.thumbnails import pool as thumbnail_pool
+
     shutdown = OrderlyShutdown(
         app,
         manager,
         writer,
         connection,
         instance,
-        pools=(ytdlp_pool(), thumbnail_pool()),
+        pools=(ytdlp_pool(), thumbnail_pool()),  # both real pools; see the import above
     )
     window.closing.connect(shutdown.begin)
     # **Every quit, not only the one through the window.** Qt aborts the process if a `QThread`
@@ -1279,6 +1285,8 @@ class OrderlyShutdown:
         for pool in self._pools:
             pool.seal()
         if self._pools:
+            from tracks_and_trails.downloader.pools import when_all_drained
+
             when_all_drained(self._pools, self._pools_are_empty)
         self._manager.shutdown()
 
@@ -1327,10 +1335,22 @@ class OrderlyShutdown:
         # connection and there is no event loop left to deliver it. Waiting here is what stops the
         # process tearing its widgets down with a pool thread still running Python, which is the
         # configuration `T-289`'s core dump shows.
-        for pool in self._pools:
-            pool.wait_bounded(_POOL_EXIT_WAIT_MS)
-        self._pools_drained = True
+        # **The answer is honoured, not discarded** (`T289-R21`, second pass). The first version
+        # waited and then recorded a drain unconditionally, so a pool that timed out was quit over
+        # exactly as if it had emptied — the state said drained while a thread was still running,
+        # which is the claim this whole task exists to stop being made.
+        emptied = all(pool.wait_bounded(_POOL_EXIT_WAIT_MS) for pool in self._pools)
+        self._pools_drained = emptied
         self._writes_finished = True
+        if not emptied:
+            # **There is no third option here.** This path is `aboutToQuit`: refusing to leave
+            # hangs the exit, and waiting without a bound is the same thing more slowly. What can
+            # be done is to say so, and to leave the state truthful for anything that reads it.
+            logging.getLogger("tracksandtrails.app").warning(
+                "Leaving with pool work still running after %d ms; the window's own close is the "
+                "path that waits properly.",
+                _POOL_EXIT_WAIT_MS,
+            )
         self._leave()
 
     def _writes_are_finished(self) -> None:

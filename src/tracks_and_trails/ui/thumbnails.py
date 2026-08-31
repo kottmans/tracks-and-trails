@@ -258,17 +258,16 @@ class _DecodeAndStore(QRunnable):
         self._path = path
 
     def run(self) -> None:
-        # **Cooperative cancellation** (`T289-R21`): a `QRunnable` cannot be interrupted, so it
-        # asks. Checked here, before the work, which is the one point where stopping leaves
-        # nothing half-written; the sink is still notified so the store's count comes back down.
-        if pool().cancelled:
-            self._sink.task_done.emit()
-            return
         try:
             image = QImage()
             if not image.loadFromData(self._data):
                 # Undecodable bytes and a failed fetch are the same thing to a user: no picture.
                 self._sink.failed.emit(self._url)
+                return
+            # **After the decode and before the write** (`T289-R21`, second pass). The decode is a
+            # single call that cannot be interrupted; the write is what touches the disk, and a
+            # picture nobody will see is not worth publishing into a cache the process is leaving.
+            if pool().cancelled:
                 return
             try:
                 # **Written aside and renamed**, not written in place. `write_bytes` creates the
@@ -328,12 +327,6 @@ class _SweepTask(QRunnable):
         self._keep = keep
 
     def run(self) -> None:
-        # **Cooperative cancellation** (`T289-R21`): a `QRunnable` cannot be interrupted, so it
-        # asks. Checked here, before the work, which is the one point where stopping leaves
-        # nothing half-written; the sink is still notified so the store's count comes back down.
-        if pool().cancelled:
-            self._sink.task_done.emit()
-            return
         removed = 0
         try:
             try:
@@ -343,6 +336,13 @@ class _SweepTask(QRunnable):
                 # nothing worth reporting: the files are regenerable by definition.
                 entries = []
             for entry in entries:
+                # **Asked between files, not only before the first** (`T289-R21`, second pass).
+                # Checking at entry alone cancels queued work and nothing that is already running,
+                # and this loop is the one task here whose duration is unbounded — a full cache of
+                # pictures to unlink. Stopping between two files leaves nothing half-done: what has
+                # been removed is removed, and a sweep is regenerable by definition.
+                if pool().cancelled:
+                    break
                 if entry.name in self._keep or not entry.is_file():
                     continue
                 try:

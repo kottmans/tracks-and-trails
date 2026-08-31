@@ -1012,6 +1012,40 @@ seal, and a bypass that does not wait.
 reverse, `core/` may not import Qt (`ARCHITECTURE.md` §4), so it is the only layer both users can
 legally share.
 
+**Five corrections after the first build, and two of them made the barrier a lie** (`T289-R21`,
+second pass).
+
+- **`drained` fired while a pool thread was still running.** `_Counted` reports completion from
+  **inside** the task's own `run`, so the count reaches zero with that thread still executing — a
+  reviewer probe measured `activeThreadCount() == 1` at the moment the barrier released. The
+  completion signal is now a *hint*: `is_empty()` asks the pool through `waitForDone(0)`, and a
+  10 ms poll started by `seal()` re-asks until it agrees. **`activeThreadCount()` was checked too
+  and is gone**: `waitForDone(0)` is already false whenever it is non-zero, so no mutation of it
+  could fail — `T289-R20`'s unfalsifiable-term ruling applied to my own fix.
+- **The bypass ignored its own answer.** It waited bounded and then recorded a drain unconditionally,
+  so a pool that timed out was quit over as though it had emptied. The result is honoured now, the
+  state stays false, and the run says so in the log. There is no third option on that path:
+  refusing to leave hangs the exit and an unbounded wait is the same thing more slowly.
+- **Cancellation reached only queued work.** Each task asked once, at entry, which a running task is
+  already past. The sweep now asks **between files** — the one task here of unbounded duration — and
+  the decode asks **after decoding and before publishing**. Their entry checks were removed rather
+  than kept: a check the task can never reach past is one no test can aim at, which is exactly how
+  the sweep's guard came to be unexercised.
+- **Nothing asserted what composition wires.** Replacing the composed thumbnail pool with the yt-dlp
+  one — so one pool is waited for twice and the other not at all — left all 80 relevant tests green.
+  The pools are now asserted by identity out of `compose()`.
+- **Two Low corrections.** `app.py`'s new imports were at module scope, which breaks the rule that
+  `__main__` stays importable without Qt (`REL-001`); they are inside the functions now, with every
+  other Qt import in that file. And a sealed admission emitted `failed` directly, skipping the one
+  place that releases the worker hold `_run_holding_the_tree` had already taken — a refused update
+  would have left the queue permanently unable to start.
+
+**Thirteen tests, and every mutation of the six edges is killed** — the barrier trusting the count,
+the sweep and decode ignoring cancellation, the bypass claiming a drain, composition waiting twice
+on one pool, and a sealed admission keeping the hold. **A test that ends with a pool thread running
+joins it itself**: the autouse fixture would otherwise drop a busy `QThreadPool`, whose destructor
+waits or aborts on whichever thread collects it, and that segfaulted the suite once.
+
 **What this does not do.** It does not prove the crash is gone — the dump remains unreproduced, and
 `T-238`'s record is that repetition does not discriminate this fault. What it removes is the
 configuration the reading found: after this, no pool thread survives into the teardown that destroys

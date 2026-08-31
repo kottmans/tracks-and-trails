@@ -297,9 +297,12 @@ class YtdlpService(QObject):
         sink.failed.connect(self._on_failed)
         task = _Task(sink, work)
         if not pool().start(task):
-            # Sealed: the application is going down and this work will never run. Saying so is
-            # better than a screen left waiting for a signal that cannot arrive.
-            self.failed.emit("The application is closing.")
+            # Sealed: the application is going down and this work will never run. **Reported
+            # through `_on_failed`, not by emitting `failed` here** (`T289-R21`): a refusal that
+            # emits the signal directly skips the release, and `_run_holding_the_tree` may already
+            # be holding every worker start on this operation's behalf. Nothing takes a hold that
+            # is not given back.
+            self._on_failed("The application is closing.")
             return
         self._set_busy(True)
         self._running = task

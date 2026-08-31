@@ -30,12 +30,18 @@ description of this rule in a slightly odd place beats two descriptions in tidy 
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+
+#: How often a sealed pool re-asks whether it has really emptied. Short enough that shutdown does
+#: not visibly wait on the poll, long enough not to spin: the thing being waited for is a thread
+#: leaving `run`, which takes microseconds once the work is done.
+_CONFIRM_EVERY_MS: Final = 10
 
 
 class _Counted(QRunnable):
@@ -56,8 +62,12 @@ class _Counted(QRunnable):
         try:
             self._inner.run()
         finally:
-            # Emitted from a pool thread. The connection is queued because the gate lives on the
-            # GUI thread, so the count is only ever touched there.
+            # Emitted from a pool thread, and **from inside `run`** — which is the reason the
+            # count alone cannot end the barrier (`T289-R21`, second pass). At this line the
+            # thread is still executing this method and `activeThreadCount()` still reports it, so
+            # a `drained` emitted on the strength of the count fires while a pool thread is still
+            # live: a probe measured exactly that. This is a *hint* that the pool may now be
+            # empty; `_confirm` asks the pool itself whether it is.
             self._gate.one_finished.emit()
 
 
@@ -80,6 +90,13 @@ class SealedPool(QObject):
         self._outstanding = 0
         self._sealed = False
         self._cancelled = False
+        self._drained_reported = False
+        #: Re-asks the pool whether it is really empty. Started by `seal()`, stopped once it is.
+        #: **A poll and not only a signal**, because the completion signal is emitted from inside
+        #: the task's own `run` and therefore always arrives while that thread is still live.
+        self._confirming = QTimer(self)
+        self._confirming.setInterval(_CONFIRM_EVERY_MS)
+        self._confirming.timeout.connect(self._confirm)
         self.one_finished.connect(self._task_finished)
 
     @property
@@ -114,6 +131,20 @@ class SealedPool(QObject):
         self._pool.start(_Counted(self, task))
         return True
 
+    def is_empty(self) -> bool:
+        """Whether the pool has no runnable left, **asked of the pool** rather than of the count.
+
+        `waitForDone(0)` returns immediately with the pool's own answer. The count is checked too,
+        so a task that was started and whose completion has not been delivered yet cannot be
+        mistaken for an empty pool.
+
+        **`activeThreadCount()` was checked here as well and is not any more**: `waitForDone(0)` is
+        already false whenever it is non-zero, so no mutation of it could fail a test — the same
+        unfalsifiable-term problem `T289-R20` ruled on. One condition that decides beats two where
+        only one can be wrong.
+        """
+        return not self._outstanding and bool(self._pool.waitForDone(0))
+
     def seal(self, *, cancel: bool = True) -> None:
         """Refuse new work, ask running work to stop, and report when the last one has.
 
@@ -125,8 +156,9 @@ class SealedPool(QObject):
         self._sealed = True
         if cancel:
             self._cancelled = True
-        if not self._outstanding:
-            self.drained.emit()
+        self._confirm()
+        if not self._drained_reported:
+            self._confirming.start()
 
     def wait_bounded(self, milliseconds: int) -> bool:
         """Block for at most `milliseconds`, for the exit path that has no event loop left.
@@ -148,8 +180,15 @@ class SealedPool(QObject):
 
     def _task_finished(self) -> None:
         self._outstanding = max(self._outstanding - 1, 0)
-        if self._sealed and not self._outstanding:
-            self.drained.emit()
+        self._confirm()
+
+    def _confirm(self) -> None:
+        """Emit `drained` once — and only once the pool itself says it has nothing running."""
+        if self._drained_reported or not self._sealed or not self.is_empty():
+            return
+        self._drained_reported = True
+        self._confirming.stop()
+        self.drained.emit()
 
 
 def when_all_drained(pools: tuple[SealedPool, ...], then: Callable[[], None]) -> None:
