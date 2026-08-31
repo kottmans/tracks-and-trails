@@ -23402,3 +23402,85 @@ Python work. No live-display rerun is required.
 The Reviewer appended only this record and used offscreen read-only/failure-injection probes plus
 focused gates. No reviewed source, submitted test, TASKS/STATUS text, handoff, branch, push, CI
 run, live display or remote state was changed.
+
+---
+
+## 2026-08-31 — T-289 R21 pool-drain third focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-289`
+**Correction boundary:** `deedcea1da369095e2d8a19d5f19b40496276ff1..194316cb7ed32ed564d174657efd3ccd4113fecc`
+**Platform verified:** Spock, Qt/PySide6 6.11.1, offscreen
+**Verdict:** **Approved.** High `T289-R21` is Resolved. Both product exit paths now establish
+underlying-pool emptiness before `_leave()`, and running update/resolution work has checkpoints on
+the safe side of the live-tree transaction. `T289-R22` and `T289-R24` remain Resolved. The remaining
+fixture-order defect under Low `T289-R23` and one stale docstring under Low `T289-R25` do not block
+the product correction or require another behavioral review pass.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Result | Required disposition | Status |
+|---|---|---:|---|---|---|
+| `T289-R21` | **High** | **No — resolved** | `stop_for_exit()` visits every pool, treats the finite wait only as a reporting threshold, and follows an overrun with `waitForDone(-1)` before setting `_pools_drained` or calling `_leave()`. `when_all_drained()` now consumes `is_empty()`. The update checks after release lookup, between chunks, after download and after extraction; cancellation before `_swap_into_place()` leaves the live tree untouched and the existing `finally` removes staging. Resolution polls cancellation between 100 ms queue slices against one overall deadline and exits through child cleanup. Start-then-seal thumbnail controls now distinguish running cancellation from an entry-only check. | None. | **Resolved** |
+| `T289-R22` | **Medium** | **No — remains resolved** | Production composition still supplies the two distinct pool identities and the regression remains. | None. | **Resolved** |
+| `T289-R23` | **Low** | **No** | The fixture is Qt-lazy and discovers modules imported during a test, but it restores `module._SHARED_POOL` **before** sealing and draining the test-created gate. Product task checkpoints call `pool().cancelled` dynamically. In the reviewer control, the created gate read `cancelled=True`, but the running task read the restored `None`, created a fresh singleton, observed no cancellation and overran fixture teardown. The fresh singleton was not among the fixture's captured objects. On timeout the fixture also raises before establishing actual drain and before cleaning later modules. | Keep each test-created gate installed while sealing and draining it, then restore the previous singleton. Treat the finite wait as the point at which failure is recorded, not permission to discard a busy pool; establish actual emptiness before releasing it. Clean/restore every listed module before raising an accumulated teardown failure, including any unexpected replacement. Correct `TASKS.md`'s claim that the fixture already owns this disposal. This is test-only completion cleanup and needs no further behavioral pass unless it changes product behavior. | **Partially resolved — Qt import half resolved; disposal ordering Open** |
+| `T289-R24` | **Low** | **No — remains resolved** | Sealed admission still releases the worker-start hold through `_on_failed`. | None. | **Resolved** |
+| `T289-R25` | **Low** | **No** | `OrderlyShutdown.stop_for_exit()`'s first docstring line still says **“Bounded, and blocks”**, while the corrected implementation and the rest of the same docstring state that the wait has no deadline. | Replace the stale opening phrase during the ordinary completion sync. | **Open — wording only** |
+
+### Independent product verification
+
+The deterministic states that kept R21 open now give the required answers:
+
+- **Combined barrier:** with `outstanding == 0` and an uncounted underlying runnable active, the
+  pre-release state was `(quits=0, finished=False, active=1, connection_closed=False)`. After the
+  runnable returned and Qt delivered the gate callback it became `(1, True, 0, True)`.
+- **Bypass overrun:** with the reporting threshold reduced to 1 ms and the task released after
+  200 ms, `stop_for_exit()` took **0.201 s** and returned only at
+  `quits=1 finished=True drained=True active=0 connection_closed=True`.
+- **Every pool:** two fakes both overran. Bounded calls were `[1, 1]`, final unbounded calls were
+  `[1, 1]`, and quit followed afterward. The former `[1, 0]` short circuit is gone.
+- **Running work:** the submitted update control enters its second wheel read before sealing and
+  leaves the previous installed tree and no staging workspace; the resolution control asks
+  cancellation after several queue slices. Both service call sites assert the callback by
+  identity. The sweep deletes exactly the file whose unlink was already entered; the decode's
+  positive arm publishes while its start-then-seal arm does not.
+- **Layering:** the new cancellation vocabulary imports no Qt. Linux and Windows-target mypy both
+  analyse all **58** source files cleanly.
+
+### Independent fixture probe
+
+A real yt-dlp `SealedPool` ran a task that repeatedly asked the production
+`_the_pool_is_closing()` callback. Driving the root fixture directly with a 100 ms diagnostic
+threshold produced:
+
+```text
+created_cancelled=True task_saw_cancel=False replacement_created=True
+```
+
+The fixture then failed with *“ytdlp_service was left with pool work still running after 100 ms.”*
+This proves both the useful half—the leak is attributed to its test—and the remaining ordering
+defect: the fixture's seal did not reach a task using the product cancellation seam, and that task
+created state outside the fixture's cleanup set.
+
+### Checks
+
+| Check | Result |
+|---|---|
+| Focused shutdown/suite-isolation/yt-dlp/update/skeleton/placement/composition set | **164 passed in 65.54 s**. |
+| Product lifecycle probes | Combined barrier withheld at active 1; bypass returned at active 0; both pool waits exercised. |
+| Fixture-order probe | Deterministically reproduced the restored-singleton cancellation miss and uncaptured replacement above. |
+| Ruff / format | Passed; **163 files** checked for formatting. |
+| mypy Linux / Windows target | Both clean in **58 source files**. |
+| Diff / placement / commit gate | Diff check clean; placement **15 passed**; **1 commit** checked in `deedcea..194316c`. |
+| Submitted broader evidence | Implementer reports full suite **3,873 passed / 21 skipped** and **17/17** mutations killed. The full suite and mutation campaign were not repeated. |
+
+### Readiness
+
+The product correction is approved at `194316c`; `T289-R21` needs no display run and no further
+behavioral correction pass. Do not keep T-289 In Review solely for the two Low cleanup items.
+Correct `T289-R23`'s fixture teardown ordering and `T289-R25`'s stale opening sentence in the
+ordinary completion sync. Nothing is pushed.
+
+The Reviewer appended only this record and used offscreen read-only/failure-injection probes plus
+focused gates. No reviewed source, submitted test, TASKS/STATUS text, handoff, branch, push, CI
+run, live display or remote state was changed.
