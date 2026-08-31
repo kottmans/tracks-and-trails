@@ -920,6 +920,49 @@ product constructs neither. `T-238`'s crash is a **test** crash whose retained s
 the harness creates the state and the product does not is consistent across both tasks, and it is
 the difference between them.
 
+#### The teardown reading, 2026-08-31: nothing joins either pool, and the process exits with one running
+
+**Read, then measured twice, and neither measurement forces anything.** This is the first result in
+this task that names a mechanism in the product rather than a property of an instrument.
+
+**Neither `QThreadPool` is ever joined.** `ytdlp_service` and `ui/thumbnails` each hold a
+module-global pool, and **there is no `waitForDone` call anywhere in `src/`** — the only mention is
+`thumbnails.py:509`, a comment recording one that was *removed* because it blocked the GUI thread
+from the add dialog. `OrderlyShutdown` sequences the manager, the writer, the connection and the
+instance lock, and then calls `app.quit()`. **It never mentions either pool**: it waits for the
+worker *process* and the writer *thread*, which are not these.
+
+**So `exec()` can return with pool work in flight, and it does.** Measured offscreen: click Update,
+close the window 50 ms later, and after `run()` returns —
+
+| After `run()` returned | Observed |
+|---|---|
+| `ytdlp_service` pool active threads | **1** |
+| `MainWindow` still tracked | yes |
+| its C++ object | **valid** |
+| owned by Python | **yes** |
+| freed by a main-thread `gc.collect()` | **no** — nothing deletes the window, so it is not garbage |
+
+**The window is not cyclic garbage at that point, and that matters**: it is alive because nothing
+ever deletes it. `T-273` already ruled that `shutdown.begin()` does not own the window's lifetime.
+Qt destroys the widget tree later, during process teardown, **on the GUI thread** — which is what
+the core dump's GUI thread is doing: `QLabel::setBuddy` → `disconnectImpl` → `free`.
+
+**That is the configuration the dump shows, with both halves now measured rather than inferred**: a
+pool thread still alive and able to run Python — where a collection runs `gc_collect_main` →
+`_Py_Dealloc` → shiboken → `~QWidget` — while the GUI thread destroys the same widget tree at exit.
+**Nothing sequences those two.** What remains an inference is that the two threads freed the *same*
+graph, which `T212-R4` already required this entry to say.
+
+**The proposed correction, not built**: drain both pools with a bounded `waitForDone` as a step in
+`OrderlyShutdown`, before `app.quit()`, so no pool thread survives into the teardown that destroys
+the widgets. **It is a maintainer's decision and not a small one.** `T-013`'s rule is that shutdown
+steps do not block the GUI thread, and `thumbnails.py` removed exactly this call for exactly that
+reason — a bounded wait *once, at exit* is a different proposition from one *per request*, but it is
+the same call and the same rule, and the bound's value is a judgement about how long a user should
+wait for a process that is already leaving. **An alternative worth ruling on together with it**: end
+the pools' work rather than wait for it, which needs the tasks to be cancellable and they are not.
+
 #### Out of scope
 
 - **The leaked semaphores.** Three `/mp-*` objects survived, which is what an aborted process
