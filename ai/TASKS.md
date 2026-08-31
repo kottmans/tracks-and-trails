@@ -869,6 +869,57 @@ threshold, because forcing it on the live desktop would turn the measurement int
 collector a widget.** Criterion 2 stays open, and what it now lacks is not a display or a route but
 the tree itself.
 
+#### The ownership audit, 2026-08-31: one Python-owned widget in the product, and it is the window
+
+`tools/t289_ownership_audit.py`, plus a runtime survey of `QApplication.topLevelWidgets()`.
+
+**Why a reading rather than a sixth measurement.** Every probe so far has asked *"is there a
+collectable product widget at this instant?"* and answered no — 60 isolated sessions, two
+real-display runs, and a forced collection at two sampled moments. That question has a regress in
+it: another null sample cannot separate *there is none* from *we sampled the wrong instant*, and
+`T289-R14`…`R20` were all found in the instruments rather than in the product. **A widget can only
+be owned by Python if the product leaves it without a Qt parent**, so the set of places where this
+defect is even possible is finite and can be enumerated instead of sampled.
+
+**162 widget constructions in `src/`. Four have no Qt parent, and zero calls anywhere hand a
+parented widget back** — no `setParent(None)`, no `takeWidget()`, no `removeWidget()`, no
+`takeAt()`.
+
+| Site | What becomes of it | Python-owned in the product? |
+|---|---|---|
+| `app.py:979` `MainWindow(...)` | top-level by design; composition holds it for the life of the process | **Yes — the only one** |
+| `ui/queue_view.py:2216` `QueueView(...)` | `main_window.py:666` calls `setCentralWidget`, which reparents it two statements later; strongly referenced throughout | No |
+| `ui/job_detail.py:849` `JobProgressView(...)` | `build_progress_view` is called by **no `src/` code** — only tests | Never constructed |
+| `ui/log_view.py:257` `LogView(...)` | built only inside `JobProgressView.__init__`, which the product never reaches | Never constructed |
+
+**The runtime survey agrees, which is the point of running it.** Offscreen, at two moments — window
+up, and Settings open — `topLevelWidgets()` reports exactly one **PYTHON-OWNED** widget, the
+`MainWindow`. `SettingsDialog` is **Qt-owned**, as `T289-R18`'s weak-reference report already said
+from the other direction. The remaining top-levels are Qt's own `QMenu`s and `QFrame`s, all
+Qt-owned — the widgets a scan of `src/` cannot see, which is why the survey exists.
+
+**So the candidate list for criterion 2 has one entry, and it is strongly referenced.** As the
+product is written there is no site that leaves a widget for the collector to destroy: everything is
+parented at construction or adopted immediately, and the one exception is the window, held by the
+frame running the application. **This does not say the crash did not happen** — it says the tree in
+the dump is not produced by any construction site in `src/` **in the states measured so far**.
+
+**The sharpest remaining hypothesis, proposed and not built: shutdown.** The window is the one
+Python-owned widget, `T-273` records that it is retained across C++ and signal edges `gc` cannot
+traverse, and composition's references to it drop during teardown — while a pool thread may still
+be alive, which is exactly the configuration the dump shows. Every measurement so far has left the
+window open on purpose. Forcing a collection during teardown, with a pool task in flight, is the
+next question worth asking, and it is a **maintainer's call**: it is deliberately provoking a double
+free in a process that is already tearing down.
+
+**A lead for `T-238`, recorded here because this audit is what produced it.** The only parentless
+constructions of product widget classes that actually run are in **tests** — `build_progress_view`
+and `JobProgressView` directly, plus the five parentless screens `tests/ui/surfaces.py` builds. The
+product constructs neither. `T-238`'s crash is a **test** crash whose retained stack is
+`~QAbstractItemView`, and its arm B reproduced the abort using helper-owned parentless widgets. That
+the harness creates the state and the product does not is consistent across both tasks, and it is
+the difference between them.
+
 #### Out of scope
 
 - **The leaked semaphores.** Three `/mp-*` objects survived, which is what an aborted process
