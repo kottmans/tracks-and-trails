@@ -517,7 +517,7 @@ extra is not measurable against run-to-run variation — not that it does not ex
 | # | Criterion | State |
 |---|---|---|
 | 1 | The rule is stated durably **and enforced mechanically** | **Met.** `ai/TESTING.md` §7, and the boundary guard |
-| 2 | No widget tree left owned by Python alone where a pool thread can collect it | **NOT met** (`T289-R3`). Enforced over what the suite exercises. On 2026-08-31 the route was driven 60 times, run twice more on a real display, and then had a collection **forced** off the GUI thread at both of its crash-like moments: no widget was parked at all, because the dialogs are Qt-parented. That is a strong negative about this route, not the identification the criterion asks for |
+| 2 | No widget tree left owned by Python alone where a pool thread can collect it | **NOT met** (`T289-R3`). Enforced over what the suite exercises. On 2026-08-31 the route was driven 60 times, run twice more on a real display, and then had a collection **forced** off the GUI thread at two sampled moments: no widget was parked at either, because the dialogs are Qt-parented. That is a strong negative about those samples, not the identification the criterion asks for |
 | 3 | Not `gc.disable()` on pool threads | **Met.** Not used, and the entry records why it is not needed: the property is ownership, not threading |
 | 4 | A test that fails on the uncorrected tree | **Met.** `_leaks_a_collectable_widget.py`, in a subprocess, required to fail with this guard's message |
 | 5 | The three `edit: editing failed` lines accounted for | **Met — explained**, see below |
@@ -761,7 +761,7 @@ still standing are that the watch discovers widgets by event, so the 965 it name
 received one, and that a timer which opens Settings four seconds after launch and closes the window
 twelve seconds later is not the used session the crash came from.
 
-#### The forced collection, 2026-08-31: the collector is offered the route and there is nothing to take
+#### The forced collection, 2026-08-31: two moments where the collector is offered a widget and finds none
 
 `tools/t289_forced_collection_probe.py`, run through the same isolation as the watch
 (`tools/t289_isolated_session.sh <report> probe`). **The numbers below are the second measurement**;
@@ -776,7 +776,7 @@ GUI thread** at two chosen moments.
 
 | Phase | Moment | Objects parked | Widgets among them |
 |---|---|---:|---:|
-| **A** | the update has reported, Settings still open — the crash's own configuration | 9 in two runs of four, 0 in the others | **0** |
+| **A** | the update has reported, Settings still open — the two facts the crash report also states | 9 in two runs of four, 0 in the others | **0** |
 | **B** | the Settings dialog closed **inside the parking boundary** | 5 | **0** |
 
 **Not zero findings — zero widgets.** The collector had cycles to work with and not one of them

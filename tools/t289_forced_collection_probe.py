@@ -21,7 +21,8 @@ is the whole point: **arm B built its own parentless widgets, and this asks abou
 destructor the collector would have run, on whatever thread it fired on. If its type is defined in
 Python, that destruction happens **in place** on the collecting thread rather than being marshalled
 to the GUI thread, which is `T-289`'s exact shape. Either answer is worth having: it names the tree,
-or it closes the `gc` route for this route with a measurement instead of an absence.
+or it says, of the moments it sampled, that there was nothing there to take — which is a
+measurement rather than an absence, and is not a statement about the route between them.
 
 **Nothing is released off the GUI thread.** `DEBUG_SAVEALL` parks what a collection frees instead
 of freeing it, so the classification happens with every widget still intact; the parked list is then
@@ -164,8 +165,8 @@ def force_a_collection(
 ) -> list[Parked]:
     """Collect on a thread that is not the GUI thread, and report what it would have destroyed.
 
-    **The collection runs off the GUI thread on purpose**: that is the configuration the crash
-    happened in, and a widget parked by it is a widget whose destructor would have run there. The
+    **The collection runs off the GUI thread on purpose**: the core dump's collection ran on a pool
+    thread, and a widget parked by one here is a widget whose destructor would have run there. The
     *classification* afterwards is thread-independent — `isValid` and `ownedByPython` are reads —
     so it happens here, once the collecting thread has been joined.
 
@@ -321,17 +322,20 @@ def deliver_deferred_delete(receiver: QWidget) -> None:
 
 
 def measure_then_quit(note: Note) -> None:
-    """The two moments worth asking about, then the report.
+    """Two sampled moments, then the report.
 
-    **Phase A — the update has just reported, nothing has been closed.** This is the configuration
-    the crash happened in: the maintainer's Settings screen was open and the update had run.
+    **Phase A — the update has reported and nothing has been closed.** The crash report states the
+    same two facts, which is why this moment was picked; it is **not** a reconstruction of that
+    session, and nothing here establishes the two states are the same one (`T289-R18`). This is a
+    timer's session, seconds old, with nothing else done in it.
 
-    **Phase B — the Settings dialog is closed and its deferred deletions have been delivered.**
-    A dialog's teardown is where a widget most plausibly becomes unreachable except through a
-    cycle, and it is the moment the observing watch reported 28 destructions for.
+    **Phase B — the Settings dialog has been closed.** A dialog's teardown is where a widget most
+    plausibly becomes unreachable except through a cycle, and it is where the observing watch
+    reported its destructions.
 
-    The window itself is left open. Product shutdown is `T-273`'s territory and `T-238`'s arm C
-    already measured it.
+    **Two samples, not a route.** Between and around them nothing is being asked, and a widget that
+    becomes collector-reachable at another instant is not seen. The window is left open: product
+    shutdown is `T-273`'s territory and `T-238`'s arm C measured it.
     """
 
     def phase_a() -> None:
@@ -490,8 +494,21 @@ def self_test() -> int:
     # after the phase without being the reason it is still there.
     identity = id(live)
     del live
+    enabled_before = gc.isenabled()
     parked = force_a_collection(note, "control-live")
-    survivor = object_still_tracked(identity, "Derived", "t289-control-live")
+    # **Read before anything else, because everything else disturbs it** (`T289-R19`). Whether the
+    # phase put automatic collection back is a question about the instant it returned; and the
+    # scan below allocates a list of every tracked object, which is itself enough to trigger the
+    # collection it is looking for — so it runs with automatic collection off, restoring whatever
+    # the phase left. A scan that tidies away its own evidence would pass against the defect.
+    restored_enabled = gc.isenabled()
+    restored_debug = gc.get_debug()
+    gc.disable()
+    try:
+        survivor = object_still_tracked(identity, "Derived", "t289-control-live")
+    finally:
+        if restored_enabled:
+            gc.enable()
     named = [widget for widget in parked if widget.name == "t289-control-live"]
     if not named:
         failures.append("arm 1: the collector's parked widget was not seen at all")
@@ -514,6 +531,18 @@ def self_test() -> int:
 
         alive = " and its Qt object is still valid" if shiboken6.isValid(survivor) else ""
         failures.append(f"arm 8: the parked widget is still tracked after the phase{alive}")
+    # **The phase must also give back the state it borrowed.** Draining is only half of the
+    # promise: a phase that never calls `gc.enable()` leaves automatic collection off for the rest
+    # of the process, and one that never restores the debug flags leaves `DEBUG_SAVEALL` parking
+    # every later collection into `gc.garbage`. Neither shows up in the scan above, so a mutation
+    # dropping either would have passed (`T289-R19`).
+    if restored_enabled != enabled_before:
+        failures.append(
+            f"arm 8: automatic collection was {'off' if enabled_before else 'on'} after the phase "
+            f"and {'on' if enabled_before else 'off'} before it"
+        )
+    if restored_debug != 0:
+        failures.append(f"arm 8: the phase left gc debug flags at {restored_debug}")
     if note.sequence[:3] != ["parked", "cleared", "drained"]:
         failures.append(f"arm 8: the phase's steps were {note.sequence[:4]}")
     del survivor
@@ -674,8 +703,9 @@ def verdict(note: Note) -> str:
         return (
             "NO REACHABLE WIDGET — the route ran, a collection was forced off the GUI thread at "
             f"both moments, and across {sum(len(p[2]) for p in note.phases)} parked widget(s) none "
-            "was one the product owns from Python with a type defined in Python. On this route "
-            "the collector has nothing of the product's to destroy in place, forced or not."
+            "was one the product owns from Python with a type defined in Python. At these two "
+            "sampled moments the collector had nothing of the product's to destroy in place; the "
+            "route between and around them was not asked."
         )
     return (
         f"REACHABLE — {len(findings)} widget(s) the product owns from Python, each with a type "
