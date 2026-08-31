@@ -5,9 +5,27 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-31 — **`T-289`'s route has now been driven and measured on a real
-display, and its criterion 2 is deliberately still open.** The rule *no Qt widget is destroyed off the GUI thread* is
-stated in `ai/TESTING.md` §7 and enforced at every `tests/ui` boundary. Read this section first.
+**Last updated:** 2026-08-31 — **Both exit paths now sequence the thread pools before Qt destroys
+the widget tree, and `T-289`'s criterion 2 is still deliberately open.** Read this section and the
+one after it, in that order: this one is what changed in the product, that one is what is still not
+established about the crash.
+
+**What landed** (Approved at `194316c`, `T289-R21`, `R22`, `R24`; the two remaining Low items closed
+at `ff261ea`). `ytdlp_service`'s pool and `ui/thumbnails`' pool sit behind `SealedPool`, and nothing
+joined either of them before this. The window's close seals both and waits for `drained` through an
+asynchronous barrier; `aboutToQuit` — where no event loop is left to deliver that signal — waits
+every pool to actual emptiness, reporting after 3 s rather than giving up at it. Running yt-dlp work
+is cancellable at each point where stopping leaves nothing half-done: after the release lookup,
+between download chunks, after the download, and after staging. `_swap_into_place` deliberately has
+none, because it is `T-198`'s transaction.
+
+**What this does not claim.** It does not fix the crash and it is not evidence about it. What it
+removes is the configuration the teardown reading measured — a pool thread still able to run Python
+while the GUI thread destroys widgets — which is a precondition, not the dump's identified cause.
+The section below is unchanged by it.
+
+**The rule** *no Qt widget is destroyed off the GUI thread* is stated in `ai/TESTING.md` §7 and
+enforced at every `tests/ui` boundary.
 
 **What the guard is.** No widget whose type is defined in Python may be owned by Python *and*
 reachable only through a reference cycle — the state that lets the collector run `~QWidget` on
