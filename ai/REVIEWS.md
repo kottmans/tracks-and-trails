@@ -23063,3 +23063,69 @@ accepted phase-B measurement semantics, so no further nested-KWin or live-displa
 The Reviewer appended only this review record and ran one forced probe in an isolated virtual
 KWin/DBus session, offscreen controls and read-only checks. No reviewed source, submitted test,
 TASKS/STATUS text, handoff, branch, push, CI run, live display or remote state was changed.
+
+---
+
+## 2026-08-31 — T-289 forced-collection probe final focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-289`
+**Correction boundary:** `9febfae665234d8eb340262b749a1a9e457cd389..23dc8fab9fd522890d7547cb04a8eb73763d8e0d`
+**Platform verified:** Spock, Qt/PySide6 6.11.1, isolated KWin/Wayland virtual session
+**Verdict:** **Approved for the forced-collection instrument and its bounded measurement.**
+`T289-R18`, `T289-R19` and `T289-R20` are Resolved; `T289-R17` remains Resolved. The live tool,
+emitted verdict, current-truth heading/table and criterion row now distinguish two sampled moments
+from the route around them. Arm 8 freezes automatic collection before inspecting the cleanup
+effect and checks both enabled-state and debug-flag restoration. Independent in-memory removals of
+the enable restore, debug restore and GUI-thread drain each fail the control for the intended
+reason.
+
+### Findings
+
+None.
+
+### Final dispositions
+
+- **`T289-R18` is Resolved.** Phase A is the timer-driven state after update report with Settings
+  open, explicitly only two facts shared with the crash report and not a reconstruction. Phase B
+  remains inside the parking boundary with receiver-scoped deferred delivery and no strong probe
+  reference. The header, measurement docstring, emitted no-finding verdict, task heading/table and
+  criterion row all bind the result to the two instants; no live text turns them into a statement
+  about the route between or around them.
+- **`T289-R19` is Resolved.** Immediately after the phase, arm 8 captures whether automatic GC and
+  debug flags were restored, disables automatic collection for the identity/type/name scan, then
+  restores the state it observed. With the enable restore removed it reports that collection was
+  off after and on before; with debug restoration removed it finds the still-valid parked widget
+  and reports SAVEALL left active; with the GUI-thread drain removed it finds the same live tracked
+  widget. The normal arm passes.
+- **`T289-R20` remains Resolved.** Phase summaries and the final verdict use the same
+  Python-owned, Python-defined product-widget discriminator, and the Qt-typed control remains a
+  visible non-finding.
+- **`T289-R17` remains Resolved.** The shared wrapper is unchanged in this correction; the
+  implementer's default-watch replay completed with a verdict.
+- This approval accepts the instrument and the result at its stated bounds. It does **not** close
+  T-289 criterion 2: no product-owned widget tree was identified, other instants were not sampled,
+  and the thumbnail pipeline remains outside this probe.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Isolated final probe | Exit **0** in **12.4 s**; Wayland; complete route; phase A **0 objects / 0 widgets**, phase B **5 / 0**; complete bounded `NO REACHABLE WIDGET` verdict; dialog alive, Qt-owned, `MainWindow`-parented, product reference dropped, **0** probe-frame holders. |
+| Baseline controls | Offscreen self-test exit **0**; all semantic shapes and cleanup/state arm passed. |
+| Enable-restore mutation | `gc.enable()` made ineffective in memory → exit **1**, *“automatic collection was off after the phase and on before it.”* |
+| Debug-restore mutation | Restore-to-zero made ineffective in memory → exit **1**, live valid widget still tracked and debug flags **32** reported. |
+| Drain mutation | GUI-thread collection made ineffective in memory → exit **1**, parked widget still tracked and its Qt object still valid. |
+| Static/mechanical gates | Ruff and Ruff format (**1 file**), correction diff and task placement (**15 passed**) clean. Commit-message gate checked **17 commits** successfully. |
+| Submitted broader evidence | Implementer reports probe and default watch exit 0 and unit+UI **3,841 passed / 21 skipped**. The full suite and unchanged watch wrapper were not repeated. |
+
+### Readiness
+
+The forced-collection probe and the measurement/current-truth correction are approved at
+`23dc8fa`. Keep T-289 In Review because criterion 2 remains open for the reason above. No further
+nested-KWin or live-display run is required for these findings. Nothing is pushed.
+
+The Reviewer appended only this approval record and ran one forced probe in an isolated virtual
+KWin/DBus session, baseline offscreen controls, in-memory failure injections and read-only checks.
+No reviewed source, submitted test, TASKS/STATUS text, handoff, branch, push, CI run, live display
+or remote state was changed.
