@@ -22868,3 +22868,67 @@ In Review and T-238 Ready. Nothing is pushed.
 The Reviewer appended only this approval record and ran read-only documentation/mechanical checks.
 No reviewed source, submitted test, TASKS/STATUS text, handoff, branch, push, CI run, display
 session or remote state was changed.
+
+---
+
+## 2026-08-31 — T-289 forced-collection probe initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-289`
+**Boundary:** `28134c7716a8dc520cc1ce2a88c1fd7becb889f0..070c34a80f591af34fd725f1cdcbf3b3f15ef787`
+**Platform verified:** Spock, Qt/PySide6 6.11.1, isolated KWin/Wayland virtual session
+**Verdict:** **Changes requested.** An independent isolated run reproduces the submitted result:
+the full update route completed, phase A parked **9 objects / 0 widgets**, phase B parked **14 / 0**,
+and the report ended `NO REACHABLE WIDGET`. The result is useful and correctly leaves criterion 2
+open. The submitted implementation is not yet a trustworthy reusable instrument, however: it
+breaks the existing default watch command, retains the Settings wrapper during phase B, re-enables
+automatic collection while any positive widget remains collectable, and reports a plain Qt type
+as T-289's tree even though TESTING section 7 says that type is marshalled safely.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Required correction | Status |
+|---|---|---:|---|---|---|---|
+| `T289-R17` | **Medium** | **Yes — the shared wrapper's existing default route no longer starts** | `tools/t289_isolated_session.sh` | The `watch` case stores `tools/t289_session_watch.py --drive` in `tool`, then expands `"$project/$tool"` as one quoted argument. Python therefore looks for a file literally named `t289_session_watch.py --drive`. A fake `dbus-run-session` that executed the generated inner script produced wrapper exit **2**, no report, and `can't open file '.../tools/t289_session_watch.py --drive'`. The new `probe` selector escapes only because its value contains no argument. | Keep the script path and arguments as separate shell words—an array is appropriate under this Bash shebang, or emit separate command branches. Replay both the omitted/default `watch` selector and explicit `probe`; each must reach its own script, and an unknown selector must still fail. | **Open** |
+| `T289-R18` | **Medium** | **Yes — phase B's zero is protected by the probe's own reference** | `tools/t289_forced_collection_probe.py`, phase B and current truth | `phase_b()` assigns the target to local `dialog`, calls `dialog.close()`, and calls `force_a_collection()` before that local goes out of scope. `finished` may make `_forget_settings_dialog` drop the product's reference, but the probe itself still holds the wrapper throughout the collection. Phase B therefore cannot distinguish the submitted `parent=self` ownership from a target that would otherwise have become collector-reachable; this is the same diagnostic-self-retention class that invalidated an earlier T-238 zero. The phase also uses process-wide `sendPostedEvents(None, DeferredDelete)` even though it describes delivering this dialog's deletions, repeating the scope T273-R2 narrowed. Finally, neither chosen instant is while the update worker is running, so *“the crash's own configuration”* and the route-wide `NO REACHABLE WIDGET` conclusion exceed the stated two-instant bound. | Close and flush the identified dialog with receiver scope, then release every probe-owned reference before forcing phase B. Add a control or mutation that proves retaining the target changes the result, so the route cannot return zero on the probe's reference. Re-run the measurement. Limit the report/task conclusion to the two measured instants and the Settings ownership edge actually read; do not call the whole route clean or call post-report phase A the worker's crash moment. | **Open** |
+| `T289-R19` | **Medium** | **Yes — a positive result can re-arm the exact hazard before the promised safe drain** | `force_a_collection` cleanup | `finally` clears `gc.garbage`, restores the old debug flags, and re-enables automatic GC. Clearing the list does **not** free a cycle; the tool's own later comments and explicit `gc.collect()` acknowledge that. A reviewer positive control found the Python-defined widget still GC-tracked and its Qt object still valid after `force_a_collection()` returned, while automatic GC had been restored. The product phases then wait 500 ms before the final GUI-thread collection. If the probe ever finds the widget it exists to find, any allocating foreign thread in that gap may collect it and cause the off-GUI destruction the tool says it prevents. | Keep every parked object protected until a GUI-thread release, or immediately drain it on the GUI thread with `DEBUG_SAVEALL` removed while automatic GC remains disabled; only then restore the incoming GC state. Add a positive cleanup control proving a live candidate is not left valid-and-collectable with automatic GC enabled after the function returns. Re-run because safe cleanup may change phase B's cumulative 14-object count. | **Open** |
+| `T289-R20` | **Medium** | **Yes — the reporting predicate is wider than T-289's measured discriminator** | `Parked.is_a_finding`, controls and verdict | TESTING section 7 says a plain Qt type is marshalled safely and only a type defined in Python is destroyed in place. `is_a_finding` checks `valid`, `owned`, and `not ours`, but not `defined_in_python`. Independently classifying a plain `QWidget` produced `valid=True`, `owned=True`, `defined_in_python=False`, **`is_a_finding=True`**; the verdict would call it *“the tree criterion 2 asks for.”* Arm 6 checks only the type classifier and never lifts the probe tag to ask the reporting predicate, so it cannot catch this false T-289 result. | Require `defined_in_python` for a T-289 finding, or add a separate explicit `REACHABLE, BUT NOT T-289` classification for live Python-owned Qt types. Lift the tag on the Qt-typed control and assert the reporting outcome. **Reviewer ruling on `valid`: drop the redundant predicate term and the impossible hand-written `dead + owned` mutation.** `owned` is constructed as `valid and ownedByPython`, so that mutation violates `Parked`'s invariant and tests no state the tool can emit; retain `valid` as report data, not a second gate. | **Open** |
+
+### Accepted evidence and bounds
+
+- The offscreen self-test completed successfully and visibly exercised live Python-owned,
+  Qt-owned, dead-wrapper and Qt-typed records on non-GUI threads. The three gaps above concern what
+  those records prove after control tags and cleanup are applied, not whether the arms ran.
+- One reviewer-run isolated session at `070c34a` selected `wayland`, completed Settings -> yt-dlp
+  -> Update, and reproduced **9/0** then **14/0** in **12.2 s**. This confirms the submitted raw
+  counts for the current implementation; it does not cure phase B's retained reference.
+- `parent=self` in `MainWindow.open_settings()` and the `finished` connection to
+  `_forget_settings_dialog` are real structural facts. They support the Settings-root ownership
+  explanation once the probe stops retaining that root; they do not establish every widget at
+  every moment of the route.
+- A separate off-GUI `threading.Thread` is sufficient for this probe's reachability question. It
+  does not need to be the yt-dlp `QThreadPool` worker as long as the record says it is a forced
+  non-GUI collection rather than the natural crash-thread timing.
+- Criterion 2 correctly remains open, and the thumbnail-pool bound remains explicit.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Isolated forced probe | Exit **0**, full route, Wayland, controls passed, phase A **9 objects / 0 widgets**, phase B **14 / 0**, verdict `NO REACHABLE WIDGET`. |
+| Default wrapper regression | Generated inner watch command → Python file path ending in ` --drive`; wrapper exit **2**, report absent. |
+| Positive cleanup diagnostic | After a forced positive, automatic GC was restored while the Python-defined widget remained GC-tracked and its Qt object remained valid. It was then collected safely on the diagnostic's GUI thread. |
+| Plain Qt classification | `QWidget`: valid **true**, Python-owned **true**, Python-defined **false**, `is_a_finding` **true**. |
+| Mechanical checks | Correction diff check, Ruff, Ruff format (**222 files**), shell syntax and task placement (**15 passed**) passed. Commit-message gate checked **11 commits** successfully. |
+| Submitted broader evidence | Implementer reports unit+UI **3,841 passed / 21 skipped** and six identical isolated runs. The full suite was not repeated; no `src/` or test file changed. |
+
+### Readiness
+
+Keep T-289 In Review. Correct R17 through R20 in this probe/wrapper, mutation-check the reachable
+branches with realizable states, and return the exact head for focused re-review. The measurement
+must be re-run after the phase-B reference and safe-release changes; no live-display run is needed,
+because the forced probe remains confined to the nested virtual compositor.
+
+The Reviewer appended only this review record and ran one isolated virtual-display probe plus
+offscreen controls and read-only/failure-injection checks. No reviewed source, submitted test,
+TASKS/STATUS text, handoff, branch, push, CI run, live display or remote state was changed.
