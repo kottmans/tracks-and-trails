@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QPlainTextEdit,
     QSpinBox,
     QToolBar,
     QWidget,
@@ -1238,3 +1239,103 @@ def test_only_the_stopped_state_is_emphasised(qapp: QApplication) -> None:
         )
     finally:
         qapp.setStyleSheet(previous)
+
+
+# --- T-287: the window takes its dialogs down with it ------------------------------------------
+
+
+def test_minimizing_hides_the_dialogs_and_restoring_brings_them_back(composed: MainWindow) -> None:
+    """`T-287`, the maintainer's ruling of 2026-08-30.
+
+    **Measured first, on KWin 6.7.3 / Wayland**: a plain `QMainWindow` and a correctly parented
+    `QDialog` — `open()` or `exec()` alike — leave the dialog alone on the output when the window
+    is minimized through KDE's panel-facing protocol. Compositor behaviour, not our parenting, so
+    the ruling was to work around it rather than to fix a bug we do not have.
+
+    Driven with `showMinimized()` here on purpose: the *compositor's* behaviour is settled and is
+    not what this asserts. What this asserts is our `changeEvent` reacting to the state change,
+    which is the same event either route delivers.
+    """
+    dialog = composed.open_add_dialog()
+    QApplication.processEvents()
+    assert dialog.isVisible(), "the add dialog did not open, so this test has no subject"
+
+    composed.showMinimized()
+    QApplication.processEvents()
+
+    assert not dialog.isVisible(), (
+        "the add dialog stayed up while its window was minimized — the state T-287 was filed for, "
+        "where a window-modal dialog outlives the window it is modal to"
+    )
+
+    composed.showNormal()
+    QApplication.processEvents()
+
+    assert dialog.isVisible(), "the add dialog did not come back with its window"
+
+
+def test_a_modal_dialog_comes_back_modal(composed: MainWindow) -> None:
+    """`T-287`'s third criterion: *modality survives the round trip*, asserted rather than observed.
+
+    A dialog that returns without its modality is worse than one that never left — the user gets a
+    window that looks interactive and a dialog that is no longer enforcing anything.
+    """
+    dialog = composed.open_add_dialog()
+    QApplication.processEvents()
+    before = dialog.windowModality()
+    assert before != Qt.WindowModality.NonModal, (
+        "the add dialog is not modal at all, so this test cannot prove modality survives"
+    )
+
+    composed.showMinimized()
+    QApplication.processEvents()
+    composed.showNormal()
+    QApplication.processEvents()
+
+    assert dialog.windowModality() == before, (
+        f"the dialog came back {dialog.windowModality()} having been {before}"
+    )
+    assert dialog.isModal(), "the dialog came back not modal"
+
+
+def test_nothing_typed_is_lost_across_a_minimize(composed: MainWindow) -> None:
+    """`T-287`'s fourth criterion: *nothing is lost*.
+
+    The dialogs are **hidden**, not closed, and this is what that buys. Closing them would be the
+    naive fix the entry's Risk line warns about: it strands whatever the user was part-way through.
+    """
+    dialog = composed.open_add_dialog()
+    QApplication.processEvents()
+    box = dialog.findChild(QPlainTextEdit, "urlInput")
+    assert box is not None, "the add dialog has no URL input under its declared name"
+    box.setPlainText("https://example.invalid/half-typed")
+
+    composed.showMinimized()
+    QApplication.processEvents()
+    composed.showNormal()
+    QApplication.processEvents()
+
+    assert box.toPlainText() == "https://example.invalid/half-typed", (
+        "the paste did not survive the minimize, so the dialogs are being closed rather than hidden"
+    )
+
+
+def test_a_dialog_closed_while_minimized_does_not_come_back(composed: MainWindow) -> None:
+    """Restoring puts back what was taken down — not what the user has since finished with.
+
+    Reachable: the window is minimized with a dialog up, the dialog is dismissed from the taskbar's
+    preview or by a shortcut, and the window is restored. Resurrecting it would be the window
+    inventing a screen the user had closed.
+    """
+    dialog = composed.open_add_dialog()
+    QApplication.processEvents()
+
+    composed.showMinimized()
+    QApplication.processEvents()
+    dialog.close()
+    QApplication.processEvents()
+
+    composed.showNormal()
+    QApplication.processEvents()
+
+    assert not dialog.isVisible(), "a dialog closed while the window was minimized was re-shown"

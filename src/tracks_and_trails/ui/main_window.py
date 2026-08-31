@@ -23,8 +23,9 @@ from functools import partial
 from pathlib import Path
 from typing import Final, cast
 
+import shiboken6
 from platformdirs import user_config_dir
-from PySide6.QtCore import QRect, QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, Signal
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
@@ -34,6 +35,7 @@ from PySide6.QtGui import (
     QKeySequence,
 )
 from PySide6.QtWidgets import (
+    QDialog,
     QLabel,
     QMainWindow,
     QMenu,
@@ -468,6 +470,9 @@ class MainWindow(QMainWindow):
         self._on_theme_chosen = on_theme_chosen
         self._settings_action: QAction | None = None
         self._settings_dialog: SettingsDialog | None = None
+        #: The dialogs this window hid when it was minimized (`T-287`), in the order they
+        #: were up. Empty whenever the window is not minimized.
+        self._hidden_dialogs: list[QDialog] = []
         #: `T-199`: where ffmpeg was told to be, what resolving it said, and the writer. Held so
         #: the Settings screen opens on the truth rather than on the stored string.
         #: `T-197`: the cookies file in force, and the writer. `ui/` holds no settings writer.
@@ -1841,6 +1846,83 @@ class MainWindow(QMainWindow):
             return
         rect = QRect(stored["x"], stored["y"], stored["width"], stored["height"])
         self.setGeometry(moved_onto_a_screen(rect))
+
+    # Qt's override name, hence the camelCase: this is not a project naming choice.
+    def changeEvent(self, event: QEvent) -> None:
+        """Take this window's dialogs down with it, and bring them back (`T-287`).
+
+        **Measured before it was written** (2026-08-30, KWin 6.7.3 / Wayland). A plain
+        `QMainWindow` with a correctly parented `QDialog` — `open()` or `exec()`, it makes no
+        difference — leaves the dialog alone on the output when the main window is minimized
+        through KDE's **panel-facing** protocol, not through `showMinimized()`. So this is
+        compositor behaviour rather than a parenting defect of ours, and the only question was
+        whether to work around it. **The maintainer ruled that we do**: the state it otherwise
+        leaves is unusable — a window-modal dialog with the window it is modal *to* gone.
+
+        **Hidden rather than closed, and that is the whole of "nothing is lost".** A hidden widget
+        keeps everything: a half-typed paste in the add dialog, a preset being edited, a format
+        table's selection. Closing them would be the naive fix that strands the user, which is what
+        this task's Risk line was about.
+
+        **Modality is a property, not a visibility**, so it survives the round trip by construction
+        — `windowModality` is untouched here. `test_a_modal_dialog_comes_back_modal` asserts that
+        rather than trusting it.
+
+        **Only what this window put up, and only what was visible.** `findChildren` reaches the
+        dialogs opened on top of the add dialog too, which is right — they are as stranded as it is
+        — but a dialog the user had already closed must not be resurrected by a restore.
+        """
+        if event.type() == QEvent.Type.WindowStateChange:
+            if self.isMinimized():
+                self._hide_the_dialogs()
+            else:
+                self._restore_the_dialogs()
+        super().changeEvent(event)
+
+    def _hide_the_dialogs(self) -> None:
+        """Remember which of this window's dialogs were up, and take them down."""
+        self._hidden_dialogs = [
+            dialog
+            for dialog in self.findChildren(QDialog)
+            if dialog.isWindow() and dialog.isVisible()
+        ]
+        for dialog in self._hidden_dialogs:
+            # **Watched for a close, so one finished with while the window is down is not
+            # resurrected.** `finished` is no use here, and that was measured rather than assumed:
+            # `close()` on an *already hidden* `QDialog` returns `True` and emits nothing, because
+            # `QDialog` reaches `done()` only through a close event it is visible to receive.
+            #
+            # An event filter rather than a closure over the dialog: nothing here holds a widget,
+            # which is the shape `T-289` is about.
+            dialog.installEventFilter(self)
+            dialog.hide()
+
+    # Qt's override name, hence the camelCase: this is not a project naming choice.
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """Drop a hidden dialog that is closed before the window comes back (`T-287`).
+
+        Reachable without a user: composition's shutdown closes what is up, and a handler can
+        dismiss a screen. Re-showing one of those on restore would be the window putting back a
+        dialog the application had finished with.
+        """
+        if event.type() == QEvent.Type.Close:
+            self._hidden_dialogs = [
+                dialog for dialog in self._hidden_dialogs if dialog is not watched
+            ]
+        return super().eventFilter(watched, event)
+
+    def _restore_the_dialogs(self) -> None:
+        """Put back exactly what `_hide_the_dialogs` took down, and nothing else.
+
+        **Cleared as it goes**, so a second restore cannot re-show anything twice, and
+        `shiboken6.isValid` guards the dialog that was destroyed rather than closed.
+        """
+        restoring, self._hidden_dialogs = self._hidden_dialogs, []
+        for dialog in restoring:
+            if not shiboken6.isValid(dialog):
+                continue
+            dialog.removeEventFilter(self)
+            dialog.show()
 
     # Qt's override name, hence the camelCase: this is not a project naming choice.
     def closeEvent(self, event: QCloseEvent) -> None:

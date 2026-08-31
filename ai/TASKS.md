@@ -244,6 +244,209 @@ Phase 0 is formally exited (2026-07-26).
 *Implementation is finished and a verdict has not been recorded. **The entries below are the
 contents; this preface does not list them.***
 
+### T-287 — Minimizing the main window leaves its dialogs on screen
+
+**Status:** **In Review — built 2026-08-30, and no review has run.** The window takes its dialogs
+down when it is minimized and brings them back when it is restored. **Hidden, never closed**, so a
+half-typed paste, a preset mid-edit and a format table's selection all survive; modality is a
+property and is untouched, asserted rather than assumed. **Five mutations, all killed.**
+
+**The measurement came first and it settled which world this is.** On KWin 6.7.3 / Wayland a plain
+`QMainWindow` with a correctly parented `QDialog` — `open()` or `exec()` alike — leaves the dialog
+alone on the output when the window is minimized through KDE's **panel-facing** protocol rather than
+`showMinimized()`. Compositor behaviour, not our parenting, so this is a work-around by decision.
+
+#### Ruled 2026-08-30: hide them with the window
+
+**The maintainer's decision**, of the three this entry offered: *"hide and restore the dialogs with
+the main window while preserving modality and unsaved state"*. The rejected two are recorded so
+neither returns as new — **leaving it**, which keeps a window-modal dialog on screen with the window
+it is modal to gone, and **refusing the minimize** while a modal dialog is up, which reads as the
+application ignoring the taskbar.
+
+*(Filed 2026-08-27 by `T-212`'s checklist run.* The maintainer's report: *"when minimizing the
+program from the taskbar, only the main window disappears, but the add-urls and options screens
+remain."* Observed on **KDE, Wayland**.)
+**Owner:** Implementer
+**Priority:** Medium — the application is unusable in the state it leaves behind: a window-modal
+dialog is still up, and the window it is modal *to* is gone
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/main_window.py:992` and `:1032` (the add dialog is built with
+`parent=self` and shown with `open()`); `ui/add_dialog.py:2200` (the options dialog is built with
+`parent=self` — the add dialog — and shown with `exec()`); `ui/preset_manager.py:470`
+**Affected surfaces:** `ui/main_window.py`, possibly `ui/add_dialog.py`, and their tests
+**Risk:** Medium — the naive fix strands the user, and the cause is not yet established
+
+#### What is known, and what is not
+
+**The parenting is already correct, so this is not a missing `parent=`.** Verified by reading every
+construction site:
+
+| Dialog | Parent | Shown with | Modality |
+|---|---|---|---|
+| `AddUrlDialog` | the main window | `open()` | window-modal |
+| `OptionsDialog` (from a row) | the add dialog | `exec()` | application-modal |
+| `OptionsDialog` (from the manager) | the preset manager | `exec()` | application-modal |
+
+Every one forwards its `parent` to `super().__init__`, and **no dialog sets a window flag or
+overrides its modality**. Qt therefore has the transient-parent relationship it needs; whether that
+relationship reaches the compositor, and what KWin does with it when the parent is minimized, is
+**not established** and is the first thing this task must find out.
+
+**Nothing in this application handles the minimize.** The only `changeEvent` override is
+`add_dialog.py:612`, on the staging list and for an unrelated reason. There is no window-state
+handling on the main window and no registry of open dialogs to act on — `_settings_dialog` is
+tracked, the add dialog is a local.
+
+#### The first step is a measurement, not a change
+
+The cheapest decisive probe is **two windows and no application logic**: a `QMainWindow` with a
+`QDialog` child opened the same two ways — `open()` and `exec()` — minimized from the taskbar on
+the same KDE/Wayland session. If the plain pair behaves the same way, this is Qt and KWin
+behaviour that this application can only work *around*, and the entry below is a choice about
+whether to. If the plain pair minimizes together, something here differs from it and that
+difference is the defect.
+
+**Do not skip to the fix.** A `changeEvent` that hides every open dialog when the main window
+minimizes is three lines and is the wrong thing to write before knowing which of those two worlds
+this is.
+
+**Take the measurement in a nested compositor, and this is the one piece of the design that was
+learned the expensive way.** A first probe existed as an uncommitted `tools/t287_minimize_probe.py`
+between 2026-08-27 and 2026-08-29 and was deleted rather than fixed. Two defects, and the second is
+why it could not simply be cleaned up:
+
+- **It captured the whole screen.** On Wayland a client cannot read the compositor's stacking, so a
+  capture is the only honest witness to *"is the dialog still on screen"* — and the only capture
+  that answers it is of the whole output. Run against the maintainer's live session it photographed
+  their desktop, personal content included. `QWidget.grab()` is not the fix: it renders the widget
+  whether or not the compositor is showing it, which is the wrong question.
+- **`showMinimized()` is not a taskbar click**, and the report came from the taskbar. Whether KWin
+  distinguishes them is exactly what the probe existed to settle, so a probe that cannot make the
+  distinction settles nothing.
+
+**A nested `kwin_wayland` answers both.** Nothing is on that output but the probe's two windows, so
+a full capture is safe by construction, and the minimize can be driven the way a panel drives it
+rather than by the client asking itself. **State the nested-versus-session difference as a limit**
+in whatever this records; it is real, and it is smaller than the two defects above.
+
+#### Measured: the plain pair reproduces — 2026-08-30
+
+**The nested compositor is real and the capture is safe**, which is the part the deleted probe got
+wrong:
+
+    dbus-run-session -- kwin_wayland --virtual --socket wayland-t287 <client>
+
+- **`--virtual` renders only to a 1024×768 framebuffer.** Nothing reaches the maintainer's screen,
+  so a whole-output capture contains only the probe by construction.
+- **`--socket` is required**: without it the nested compositor tries to take `wayland-0`, which the
+  real session already holds.
+- **The private bus was verified before anything was sent.** The client's
+  `DBUS_SESSION_BUS_ADDRESS` was a private `/tmp/dbus-…` socket while the real session's is
+  `/run/user/1000/bus`, so `org.kde.KWin` resolved to the nested compositor. Reaching the real bus
+  here would have minimized the maintainer's own windows.
+
+**The missing trigger was KWin's permission filter, not a missing shell.** A normal `wayland-info`
+client in the bare compositor does not see `org_kde_plasma_window_management`; KWin's own binary
+names the rejection — the client is not listed in a desktop file's `X-KDE-Wayland-Interfaces` — and
+names the test override `KWIN_WAYLAND_NO_PERMISSION_CHECKS`. Setting that variable **only on the
+disposable nested KWin process** exposes `org_kde_plasma_window_management` version 20. The capture
+API has the parallel `KWIN_SCREENSHOT_NO_PERMISSION_CHECKS` test override, scoped the same way.
+Neither changes the maintainer's live KWin.
+
+The client then sent
+`org_kde_plasma_window.set_state(flags=MINIMIZED, state=MINIMIZED)` — the panel-facing Wayland
+request, not `QWidget.showMinimized()` — after KWin had reported both windows' initial state and the
+dialog's transient parent. KWin's `ScreenShot2.CaptureWorkspace` captured the virtual output before
+the request and 500 ms after KWin reported the main window minimized.
+
+| Plain pair | Modality | Relationship KWin reported | After the panel request | Virtual-output capture |
+|---|---|---|---|---|
+| `QMainWindow` + `QDialog.open()` | window-modal | dialog parent is main | main `minimized=yes`; dialog `minimized=no` | main gone; dialog remains alone |
+| `QMainWindow` + `QDialog.exec()` | application-modal | dialog parent is main | main `minimized=yes`; dialog `minimized=no` | main gone; dialog remains alone |
+
+**Environment:** Fedora 44, KWin **6.7.3**, Wayland protocol
+`org_kde_plasma_window_management` **20**, Qt/PySide **6.11.1**, Qt platform **wayland**. Both before
+captures show the main window and dialog; both after captures show only the dialog, against the
+otherwise black virtual output.
+
+**This settles the first fork.** Correct Qt parenting reaches KWin, and a plain pair behaves exactly
+like the report: minimizing the main window through the route a panel uses does not hide its
+transient dialog. Tracks & Trails is not creating the relationship incorrectly; it can only choose
+whether and how to work around KWin's behaviour.
+
+**Limit:** this is a real KWin Wayland compositor but a nested `--virtual` session with no Plasma
+shell, and the management/capture permission filters were disabled inside that compositor. That is
+not the maintainer's full live session. It is nevertheless the requested panel-protocol operation,
+observed in KWin's own state and output rather than inferred from the client.
+
+**The earlier scripting result remains only a failed route, not evidence about window behaviour.**
+KWin's scripting DBus API accepted `loadScript`, `run()` and `start()` without error in the bare
+session, but no script output or property change appeared. The protocol measurement supersedes the
+need to distinguish script non-execution from a silently refused write.
+
+**XWayland is not a second measurement.** There Qt's `showMinimized()` is `XIconifyWindow`, the same
+operation a pager makes, so it would answer an X11 question rather than the Wayland report.
+
+#### What was built — 2026-08-30
+
+`MainWindow.changeEvent` on `WindowStateChange`: hide every visible top-level `QDialog` beneath this
+window, remember them, and re-show exactly those on restore. `findChildren` reaches the dialogs
+opened *on top of* the add dialog as well, which is right — they are as stranded as it is.
+
+**Three details that are not obvious from the diff:**
+
+- **`finished` is no use for noticing a dialog closed while hidden, and that was measured rather
+  than assumed.** `close()` on an already hidden `QDialog` returns `True` and **emits nothing**,
+  because `QDialog` reaches `done()` only through a close event it is visible to receive. The window
+  installs an **event filter** on each hidden dialog instead and drops the ones that close.
+- **Nothing captures a widget.** The filter is the window itself and the list is cleared on restore;
+  a closure over each dialog would have been one more Python edge holding a widget, which is
+  `T-289`'s subject.
+- **`shiboken6.isValid` guards the restore**, for a dialog destroyed rather than closed.
+
+**Five mutations, all killed**: not hiding, never restoring, closing instead of hiding, restoring a
+dialog that closed while the window was down, and dropping modality on the way back.
+
+**The Windows half is named rather than assumed** (`OPS-003`, this entry's fifth criterion). The
+measurement was KDE/Wayland; whether a Windows taskbar minimize already takes parented dialogs with
+it is **not known**, and the fix is harmless either way — hiding an already-hidden widget is a
+no-op. The pre-release Windows session inherits the check.
+
+#### It is ours to work around if the maintainer chooses; the decision is not obvious
+
+- **Hide the dialogs with the parent and restore them with it.** Matches what a user means by
+  minimizing an application. Hiding a **modal** dialog is the part to be careful with: the state to
+  restore is not just visibility, and a dialog that comes back without its modality is worse than
+  one that never left
+- **Leave it.** A modal dialog outliving its parent's minimize is confusing, but so is a window
+  that vanishes and takes an unsaved paste with it
+- **Refuse the minimize while a modal dialog is up** — the most honest and the most likely to be
+  read as the application ignoring the taskbar
+
+#### Acceptance criteria
+
+- **The behaviour of a plain `QMainWindow` + `QDialog` pair on this session is recorded** in the
+  task before anything is changed, and it names the platform, the compositor and the Qt version
+- **Whatever is decided is decided by the maintainer**, and recorded — this is a window-behaviour
+  choice, not a defect with one correct repair
+- **If dialogs are hidden and restored, modality survives the round trip**, asserted rather than
+  observed once
+- **Nothing is lost.** A paste in the add dialog, a preset half-edited in the options dialog and a
+  format table's selection all survive whatever is done
+- **The Windows half is named rather than assumed** (`OPS-003`): this was seen on KDE/Wayland, and
+  the pre-release Windows session inherits the same check
+
+#### Out of scope
+
+- The settings screen, which is tracked separately (`_settings_dialog`) and was not part of the
+  report — it should be checked, and if it behaves differently that is worth knowing, but this
+  task is not a sweep of every window
+- Session restore, and anything about where windows reopen (`T-027`)
+
+---
+
 ### T-289 — A pool thread's garbage collection destroys widgets while the GUI thread frees them
 
 **Status:** **In Review — corrected 2026-08-30 after `T289-R2`…`R5`.** The rule *no Qt widget is
@@ -13587,170 +13790,6 @@ any other text this application supplies, because an extractor argument can carr
 
 ## Blocked
 
-### T-287 — Minimizing the main window leaves its dialogs on screen
-
-**Status:** **Blocked — measured 2026-08-30; the plain pair reproduces, and the remaining choice is
-the maintainer's.** On KWin 6.7.3 / Wayland, both a window-modal `QDialog.open()` and an
-application-modal `QDialog.exec()` remain alone on the output when their correctly parented main
-window is minimized through KWin's panel-facing protocol. This is compositor behaviour the
-application can only work around, not an application parenting defect. See *Measured: the plain
-pair reproduces* below. Nothing is built and no fix is proposed.
-
-*(Filed 2026-08-27 by `T-212`'s checklist run.* The maintainer's report: *"when minimizing the
-program from the taskbar, only the main window disappears, but the add-urls and options screens
-remain."* Observed on **KDE, Wayland**.)
-**Owner:** Implementer
-**Priority:** Medium — the application is unusable in the state it leaves behind: a window-modal
-dialog is still up, and the window it is modal *to* is gone
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing
-**Relevant context:** `ui/main_window.py:992` and `:1032` (the add dialog is built with
-`parent=self` and shown with `open()`); `ui/add_dialog.py:2200` (the options dialog is built with
-`parent=self` — the add dialog — and shown with `exec()`); `ui/preset_manager.py:470`
-**Affected surfaces:** `ui/main_window.py`, possibly `ui/add_dialog.py`, and their tests
-**Risk:** Medium — the naive fix strands the user, and the cause is not yet established
-
-#### What is known, and what is not
-
-**The parenting is already correct, so this is not a missing `parent=`.** Verified by reading every
-construction site:
-
-| Dialog | Parent | Shown with | Modality |
-|---|---|---|---|
-| `AddUrlDialog` | the main window | `open()` | window-modal |
-| `OptionsDialog` (from a row) | the add dialog | `exec()` | application-modal |
-| `OptionsDialog` (from the manager) | the preset manager | `exec()` | application-modal |
-
-Every one forwards its `parent` to `super().__init__`, and **no dialog sets a window flag or
-overrides its modality**. Qt therefore has the transient-parent relationship it needs; whether that
-relationship reaches the compositor, and what KWin does with it when the parent is minimized, is
-**not established** and is the first thing this task must find out.
-
-**Nothing in this application handles the minimize.** The only `changeEvent` override is
-`add_dialog.py:612`, on the staging list and for an unrelated reason. There is no window-state
-handling on the main window and no registry of open dialogs to act on — `_settings_dialog` is
-tracked, the add dialog is a local.
-
-#### The first step is a measurement, not a change
-
-The cheapest decisive probe is **two windows and no application logic**: a `QMainWindow` with a
-`QDialog` child opened the same two ways — `open()` and `exec()` — minimized from the taskbar on
-the same KDE/Wayland session. If the plain pair behaves the same way, this is Qt and KWin
-behaviour that this application can only work *around*, and the entry below is a choice about
-whether to. If the plain pair minimizes together, something here differs from it and that
-difference is the defect.
-
-**Do not skip to the fix.** A `changeEvent` that hides every open dialog when the main window
-minimizes is three lines and is the wrong thing to write before knowing which of those two worlds
-this is.
-
-**Take the measurement in a nested compositor, and this is the one piece of the design that was
-learned the expensive way.** A first probe existed as an uncommitted `tools/t287_minimize_probe.py`
-between 2026-08-27 and 2026-08-29 and was deleted rather than fixed. Two defects, and the second is
-why it could not simply be cleaned up:
-
-- **It captured the whole screen.** On Wayland a client cannot read the compositor's stacking, so a
-  capture is the only honest witness to *"is the dialog still on screen"* — and the only capture
-  that answers it is of the whole output. Run against the maintainer's live session it photographed
-  their desktop, personal content included. `QWidget.grab()` is not the fix: it renders the widget
-  whether or not the compositor is showing it, which is the wrong question.
-- **`showMinimized()` is not a taskbar click**, and the report came from the taskbar. Whether KWin
-  distinguishes them is exactly what the probe existed to settle, so a probe that cannot make the
-  distinction settles nothing.
-
-**A nested `kwin_wayland` answers both.** Nothing is on that output but the probe's two windows, so
-a full capture is safe by construction, and the minimize can be driven the way a panel drives it
-rather than by the client asking itself. **State the nested-versus-session difference as a limit**
-in whatever this records; it is real, and it is smaller than the two defects above.
-
-#### Measured: the plain pair reproduces — 2026-08-30
-
-**The nested compositor is real and the capture is safe**, which is the part the deleted probe got
-wrong:
-
-    dbus-run-session -- kwin_wayland --virtual --socket wayland-t287 <client>
-
-- **`--virtual` renders only to a 1024×768 framebuffer.** Nothing reaches the maintainer's screen,
-  so a whole-output capture contains only the probe by construction.
-- **`--socket` is required**: without it the nested compositor tries to take `wayland-0`, which the
-  real session already holds.
-- **The private bus was verified before anything was sent.** The client's
-  `DBUS_SESSION_BUS_ADDRESS` was a private `/tmp/dbus-…` socket while the real session's is
-  `/run/user/1000/bus`, so `org.kde.KWin` resolved to the nested compositor. Reaching the real bus
-  here would have minimized the maintainer's own windows.
-
-**The missing trigger was KWin's permission filter, not a missing shell.** A normal `wayland-info`
-client in the bare compositor does not see `org_kde_plasma_window_management`; KWin's own binary
-names the rejection — the client is not listed in a desktop file's `X-KDE-Wayland-Interfaces` — and
-names the test override `KWIN_WAYLAND_NO_PERMISSION_CHECKS`. Setting that variable **only on the
-disposable nested KWin process** exposes `org_kde_plasma_window_management` version 20. The capture
-API has the parallel `KWIN_SCREENSHOT_NO_PERMISSION_CHECKS` test override, scoped the same way.
-Neither changes the maintainer's live KWin.
-
-The client then sent
-`org_kde_plasma_window.set_state(flags=MINIMIZED, state=MINIMIZED)` — the panel-facing Wayland
-request, not `QWidget.showMinimized()` — after KWin had reported both windows' initial state and the
-dialog's transient parent. KWin's `ScreenShot2.CaptureWorkspace` captured the virtual output before
-the request and 500 ms after KWin reported the main window minimized.
-
-| Plain pair | Modality | Relationship KWin reported | After the panel request | Virtual-output capture |
-|---|---|---|---|---|
-| `QMainWindow` + `QDialog.open()` | window-modal | dialog parent is main | main `minimized=yes`; dialog `minimized=no` | main gone; dialog remains alone |
-| `QMainWindow` + `QDialog.exec()` | application-modal | dialog parent is main | main `minimized=yes`; dialog `minimized=no` | main gone; dialog remains alone |
-
-**Environment:** Fedora 44, KWin **6.7.3**, Wayland protocol
-`org_kde_plasma_window_management` **20**, Qt/PySide **6.11.1**, Qt platform **wayland**. Both before
-captures show the main window and dialog; both after captures show only the dialog, against the
-otherwise black virtual output.
-
-**This settles the first fork.** Correct Qt parenting reaches KWin, and a plain pair behaves exactly
-like the report: minimizing the main window through the route a panel uses does not hide its
-transient dialog. Tracks & Trails is not creating the relationship incorrectly; it can only choose
-whether and how to work around KWin's behaviour.
-
-**Limit:** this is a real KWin Wayland compositor but a nested `--virtual` session with no Plasma
-shell, and the management/capture permission filters were disabled inside that compositor. That is
-not the maintainer's full live session. It is nevertheless the requested panel-protocol operation,
-observed in KWin's own state and output rather than inferred from the client.
-
-**The earlier scripting result remains only a failed route, not evidence about window behaviour.**
-KWin's scripting DBus API accepted `loadScript`, `run()` and `start()` without error in the bare
-session, but no script output or property change appeared. The protocol measurement supersedes the
-need to distinguish script non-execution from a silently refused write.
-
-**XWayland is not a second measurement.** There Qt's `showMinimized()` is `XIconifyWindow`, the same
-operation a pager makes, so it would answer an X11 question rather than the Wayland report.
-
-#### It is ours to work around if the maintainer chooses; the decision is not obvious
-
-- **Hide the dialogs with the parent and restore them with it.** Matches what a user means by
-  minimizing an application. Hiding a **modal** dialog is the part to be careful with: the state to
-  restore is not just visibility, and a dialog that comes back without its modality is worse than
-  one that never left
-- **Leave it.** A modal dialog outliving its parent's minimize is confusing, but so is a window
-  that vanishes and takes an unsaved paste with it
-- **Refuse the minimize while a modal dialog is up** — the most honest and the most likely to be
-  read as the application ignoring the taskbar
-
-#### Acceptance criteria
-
-- **The behaviour of a plain `QMainWindow` + `QDialog` pair on this session is recorded** in the
-  task before anything is changed, and it names the platform, the compositor and the Qt version
-- **Whatever is decided is decided by the maintainer**, and recorded — this is a window-behaviour
-  choice, not a defect with one correct repair
-- **If dialogs are hidden and restored, modality survives the round trip**, asserted rather than
-  observed once
-- **Nothing is lost.** A paste in the add dialog, a preset half-edited in the options dialog and a
-  format table's selection all survive whatever is done
-- **The Windows half is named rather than assumed** (`OPS-003`): this was seen on KDE/Wayland, and
-  the pre-release Windows session inherits the same check
-
-#### Out of scope
-
-- The settings screen, which is tracked separately (`_settings_dialog`) and was not part of the
-  report — it should be checked, and if it behaves differently that is worth knowing, but this
-  task is not a sweep of every window
-- Session restore, and anything about where windows reopen (`T-027`)
 
 ---
 
