@@ -23129,3 +23129,95 @@ The Reviewer appended only this approval record and ran one forced probe in an i
 KWin/DBus session, baseline offscreen controls, in-memory failure injections and read-only checks.
 No reviewed source, submitted test, TASKS/STATUS text, handoff, branch, push, CI run, live display
 or remote state was changed.
+
+---
+
+## 2026-08-31 — T-289 teardown reading review and shutdown ruling
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-289`
+**Review boundary:** `de6e5607de93004fce6dc61a060007ad8059df57..6a6209bdd2ff1fd9aaea698cf3bfeda7dca6935f`
+**Platform verified:** source/record inspection on Spock; the submitted offscreen measurement was
+not independently repeated
+**Verdict:** **The documentation change is approved as a bounded diagnosis. T-289 remains Changes
+requested under new High `T289-R21`: shutdown must own both pools' completion before Qt teardown.**
+
+### Review result
+
+The committed reading is supported at the bounds it states. The two module-global pools have no
+shutdown participant, `OrderlyShutdown` reaches `app.quit()` after manager/writer completion only,
+and no executable `waitForDone` exists in `src/`. The submitted unforced run adds the missing
+runtime fact: `run()` can return with the yt-dlp pool active while the Python-owned, valid
+`MainWindow` still exists. Together with the retained dump, that identifies an unsequenced
+teardown configuration in product code rather than another probe defect.
+
+The record also keeps the necessary limit: it does not establish that both threads freed the same
+object graph. Approval of `6a6209b` is approval of the structural reading and its measurement, not
+a claim that criterion 2 or T-289 is complete.
+
+### Finding and design disposition
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| `T289-R21` | **High** | **Yes — the observed native-crash configuration remains possible** | Neither the yt-dlp nor thumbnail pool participates in the application lifecycle. The ordinary close route can therefore release the application composition and enter Qt teardown while a runnable can still execute Python. A positive-duration `waitForDone` inside `OrderlyShutdown` is not an acceptable correction: it is the GUI-thread wait forbidden by `NFR-001`, Architecture §8 and resolved `T013-R2`, and it repeats the exact mechanism removed from `ThumbnailStore.close()`. | Make both work sources cooperatively cancellable **and** add an event-driven drain barrier. `begin()` must seal admission, request cancellation and return inside the interaction budget. Keep the event loop alive and withhold `app.quit()` until the existing manager/writer lifecycle has completed and both pools have acknowledged that all accepted work has actually returned. | **Open** |
+
+**The ruling is cancellable tasks, not a bounded blocking wait.** Cancellation is a request, not
+completion, so cancellation alone is insufficient: the pool-drained condition is the point at
+which teardown becomes legal. Conversely, a wait alone leaves the user hidden behind the
+updater's existing long network/process bounds. The correction needs both halves.
+
+There is deliberately **no positive wait bound** to choose. The numeric bound remains the existing
+approximately 100 ms budget for initiating shutdown on the GUI thread. A watchdog may report that
+cancellation is late, but expiry must not proceed to `app.quit()` with active work; the current
+`QRunnable`s have no safe forced-stop operation. If a hard process-exit deadline is later required,
+the work must move behind a killable boundary rather than converting a timeout into permission for
+the same race.
+
+Implementation may poll a completion predicate on a zero-duration timer or consume completion
+signals; it must not sleep, pump events manually or call a positive-duration `waitForDone` on the
+GUI thread. Seal new yt-dlp submissions and every thumbnail store first. Count queued as well as
+running thumbnail work, and do not treat a task's cancellation request or last result signal as
+proof that `QRunnable.run()` has returned. `QThreadPool.clear()` is not a substitute: Qt documents
+it as removing only work that has not started, while pool destruction and `waitForDone` block for
+running work.
+
+### Required evidence for the correction
+
+- Drive ordinary close once with a real yt-dlp-pool runnable held and once with real thumbnail-pool
+  work held. In each case `begin()` returns inside the interaction budget, `app.quit()` is withheld,
+  and teardown proceeds only after cancellation/completion leaves no accepted work queued or
+  running.
+- Prove admission is sealed: work requested after shutdown starts is refused without adding a
+  runnable. Include every thumbnail-store lifetime the window can create, not only the queue's
+  long-lived store.
+- Mutation-check each side of the fan-in. Removing the yt-dlp completion edge or the thumbnail
+  completion edge must allow the held task to overlap `quit()` and fail the test; treating
+  cancellation-requested as cancellation-complete must fail too.
+- Preserve the updater's install transaction. Cancellation may abandon staging or interrupt
+  bounded reads, but it must not stop between displacing the live tree and completing or rolling
+  back the replacement.
+- Audit the `aboutToQuit` bypass explicitly. The ordinary close path must remain fully
+  event-driven; a bypass must not silently restore the unsafe active-pool teardown.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Submitted diff inspection | One documentation-only commit; **43 insertions**, no source or test change; `git diff --check` clean. |
+| Source lifecycle search | Two module-global `QThreadPool`s; no executable `waitForDone`; `OrderlyShutdown` has no pool participant and calls `quit()` after writer completion. |
+| Requirement/architecture cross-check | `NFR-001`, Architecture §8 and resolved `T013-R2` prohibit a positive-duration GUI-thread wait. |
+| Qt contract cross-check | `QThreadPool` destruction blocks for all runnables; `clear()` removes only not-yet-started work; `waitForDone` is a timed blocking wait. |
+| Task placement | **15 passed in 0.87 s**. |
+| Commit-message gate | **1 commit checked** in `de6e560..6a6209b`. |
+| Submitted broader evidence | Implementer reports **3,841 passed / 21 skipped**, Ruff and Ruff format clean. Not repeated because the reviewed commit changes documentation only. |
+
+### Readiness
+
+The teardown reading is approved at `6a6209b`; it needs no wording correction. Keep T-289 In
+Review and implement `T289-R21` with the cancellation-plus-drain shape above. A correction that
+only adds a bounded `waitForDone`, only sets cancellation flags, or proceeds after a timeout does
+not resolve the finding. Nothing is pushed.
+
+The Reviewer appended only this record and performed read-only source/document inspection plus
+documentation gates. No reviewed source, submitted test, TASKS/STATUS text, handoff, branch, push,
+CI run, display session or remote state was changed.
