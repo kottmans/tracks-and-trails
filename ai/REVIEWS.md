@@ -22819,3 +22819,52 @@ is needed for the remaining correction.
 The Reviewer appended only this review record and ran read-only and failure-injection checks. No
 reviewed source, submitted test, TASKS/STATUS text, handoff, branch, push, CI run, display session
 or remote state was changed.
+
+---
+
+## 2026-08-31 — T-289 driven measurement final focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-289`; `T-238` criterion 4
+**Correction boundary:** `785aeaa318c048ee4e2a1065c24a925a64550ff1..c29e299cec005a32ab31602df5fadc5242862a56`
+**Verdict:** **Approved for the submitted measurement and current-truth corrections.**
+`T289-R14`, `T289-R15` and `T289-R16` are Resolved. The 2026-08-16 request is explicitly dated,
+points at the 2026-08-31 current section, records the real-display execution on both pools, and
+does not turn the 2026-08-30 `DEBUG_SAVEALL` observation into proof of cycle participation.
+
+### Findings
+
+None.
+
+### Final dispositions
+
+- **`T289-R15` is Resolved.** *“What criterion 4 needed next as of 2026-08-16”* is now historical
+  by construction, and the link forward identifies where the present obligation lives.
+- The two historical bullets retain their distinct evidentiary strength: the real-session probe
+  ran on both pools on a real display and remained inconclusive; the three 2026-08-30 arms bear on
+  the widget/cycle question without claiming to answer the stronger cycle predicate.
+- **`Task: T-238` is correct.** The changed paragraph belongs to T-238's entry; `Review: T289-R15`
+  preserves discovery through the cross-task review finding.
+- **`T289-R14` and `T289-R16` remain Resolved.** The stale-report replay and rewritten-history
+  verification from the preceding focused reviews need no repetition for this prose-only commit.
+  `backup/pre-r16-rewrite` remains retained as ruled.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| Exact correction | One commit, one documentation file, **11 insertions / 3 deletions**; no source, tool or test change. |
+| Current truth | The 2026-08-16, 2026-08-30 and 2026-08-31 sections now form an explicit supersession chain without overstating the cycle evidence. |
+| Mechanical checks | Correction diff check, Ruff, Ruff format (**221 files**) and task placement (**15 passed**) passed. Commit-message gate checked **8 commits** successfully before this review record. |
+| Submitted broader evidence | Implementer reports unit+UI **3,841 passed / 21 skipped**. The full suite was not repeated for this documentation-only final pass. |
+
+### Readiness
+
+The submitted T-289 measurement/harness and T-238 current-truth correction range is approved at
+`c29e299`. This approval closes the review findings; it does **not** close T-289 criterion 2 or
+T-238 criterion 4, whose missing product-owned widget remains stated in current truth. Keep T-289
+In Review and T-238 Ready. Nothing is pushed.
+
+The Reviewer appended only this approval record and ran read-only documentation/mechanical checks.
+No reviewed source, submitted test, TASKS/STATUS text, handoff, branch, push, CI run, display
+session or remote state was changed.
