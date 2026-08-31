@@ -22932,3 +22932,71 @@ because the forced probe remains confined to the nested virtual compositor.
 The Reviewer appended only this review record and ran one isolated virtual-display probe plus
 offscreen controls and read-only/failure-injection checks. No reviewed source, submitted test,
 TASKS/STATUS text, handoff, branch, push, CI run, live display or remote state was changed.
+
+---
+
+## 2026-08-31 — T-289 forced-collection probe focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-289`
+**Correction boundary:** `7594218f4de7a0fc0232b696a1893e57c08ce3b8..0c1e8ee0bc894f880a6d721523f44fb73287daa6`
+**Platform verified:** Spock, Qt/PySide6 6.11.1, isolated KWin/Wayland virtual sessions
+**Verdict:** **Changes requested.** `T289-R17` is Resolved. The substantive code changes for
+`T289-R19` and `T289-R20` are also correct: a positive is drained on the GUI thread before
+automatic collection returns, and a Qt-defined type is no longer a T-289 finding. `T289-R18`'s
+self-retention defect is fixed and the re-measurement reproduces **9 objects / 0 widgets** then
+**5 / 0**. Approval remains blocked by narrower instrument defects: phase B is not armed while its
+teardown runs and still flushes process-wide; the required R19 effect control is possible but was
+replaced by an order assertion and a false explanation; and the per-phase R20 summary still omits
+the Python-defined-type discriminator.
+
+### Remaining findings
+
+| ID | Severity | Blocks approval | Area | Finding | Required correction | Status |
+|---|---|---:|---|---|---|---|
+| `T289-R18` | **Medium** | **Yes — phase B can still miss teardown-created garbage and the recorded conclusion exceeds the sample** | `measure_then_quit`, probe description/verdict, `ai/TASKS.md` | The strong local is gone: the independent run reports the surviving dialog as Qt-owned, parented to `MainWindow`, no longer held by the product, and held by **0** probe frames. But `phase_b()` closes it and then calls `processEvents()` plus `sendPostedEvents(None, DeferredDelete)` **before** `force_a_collection()` reaches `gc.disable()` and `DEBUG_SAVEALL`. Automatic GC can therefore consume garbage created during the very teardown this phase says it measures before parking is armed—the exact false-absence path the probe's lines 38–40 say it prevents. The flush also remains process-wide despite R18's receiver-scope requirement; this `SettingsDialog` has no `WA_DeleteOnClose` and survives the flush, so *“its deferred deletions delivered”* is not established. The task still calls post-report phase A *“the crash's own configuration”* and says Qt ownership is why *“this route is clean”*; the verdict still concludes *“On this route … forced or not”*, immediately beyond the admitted two instants. | Put GC disablement and `DEBUG_SAVEALL` around the phase-B transition itself, including close/event delivery, while still releasing the target before the off-thread collection. Deliver a known receiver's deferred delete while that receiver is identified, or remove the deletion claim instead of dispatching every pending delete in the process. Keep the result to the post-report and post-close samples and the observed Settings ownership edge. Retain the useful 1-vs-0 probe-frame mutation and re-run phase B after its parking boundary changes. | **Open — local-reference half resolved; scope, timing and bounds remain** |
+| `T289-R19` | **Medium** | **Yes — the safety fix lacks the required observable postcondition and current truth denies one that works** | `force_a_collection` control; `ai/TASKS.md` | The implementation is now safe in the tested state: it clears the parking list, restores non-SAVEALL flags, collects on the GUI thread, and only then re-enables automatic GC. Arm 8 proves only that those method calls occur in that order. Its explanation that `gc.garbage.clear()` *“frees the cycle by itself here”* is false: `__del__` firing is GC finalization, not proof that the parked cycle or C++ widget was deallocated. The reviewer's original control retained only `id(widget)`, not the wrapper. Replayed at this head, the corrected function returned with automatic GC restored and no widget at that identity tracked; the same cleanup with the drain omitted returned with automatic GC restored while that widget was still tracked and `shiboken6.isValid(...)` was **true**. A weakref is indeed unsuitable, but the required effect control is not impossible. | Replace or supplement the order assertion with that realizable effect check: save only the integer identity, drop the widget, call the phase, immediately disable automatic GC before scanning `gc.get_objects()`, and require no live widget at that identity; restore the prior enabled state afterward. The drain-omitted mutation must leave the live tracked widget and fail. Correct the false `gc.garbage.clear()` explanation in the tool and current truth. | **Open — cleanup code resolved; control and record remain** |
+| `T289-R20` | **Low** | **Yes — one report line still states the wider predicate R20 removed** | `force_a_collection` phase summary | The predicate, lifted-tag control and final verdict now include `defined_in_python`, and the redundant `valid` term/impossible mutation are correctly gone. But lines 196–200 summarize that narrowed `findings` list as *“live widget(s) the product owns from Python”*. A live, product, Python-owned plain `QWidget` now correctly produces zero findings while that line incorrectly says no such widget exists. | Call the count/no-count a T-289 finding, or include all four operative properties in the phase summary: product, live/Python-owned, and Python-defined type. Exercise the zero wording with the Qt-typed arm as well as the predicate. | **Open — predicate and verdict resolved; phase wording remains** |
+
+### Resolved dispositions and accepted evidence
+
+- **`T289-R17` is Resolved.** An independent omitted-selector/default `watch` run completed the
+  isolated route in **19.9 s**, selected Wayland, ended with a complete `INCONCLUSIVE` verdict and
+  returned 0. The implementer's explicit-`watch` replay enters the same corrected branch; an
+  independent unknown selector still returned 2 before starting a session.
+- **`T289-R18`'s original strong-reference defect is resolved.** The helper returns only a name
+  and weak reference, its frame is gone before collection, and the clean run reports zero direct
+  holders in this probe. The submitted deliberate-retention replay reports one. `parent=self` and
+  `_forget_settings_dialog` remain useful structural evidence for this dialog at phase B; they are
+  not route-wide evidence.
+- **`T289-R19`'s cleanup implementation is resolved.** The current positive disappears during the
+  immediate GUI-thread drain before automatic GC is restored. The remaining finding is about the
+  required control and the contrary canonical explanation, not the release order itself.
+- **`T289-R20`'s discriminator and ruling are resolved.** `is_a_finding` is now `owned and
+  defined_in_python and not ours`; the Qt-typed control lifts its tag and is rejected; no
+  impossible `dead + owned` record remains.
+- Criterion 2 correctly remains open. The isolated result is accepted only as the raw result of
+  this corrected head; R18's phase boundary must be corrected before it bears the stated
+  reachability conclusion.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Default isolated watch | Exit **0** in **19.9 s**; Wayland; full Settings → yt-dlp → Update route; complete `INCONCLUSIVE` report. |
+| Corrected forced probe | Exit **0** in **12.4 s**; controls passed; Wayland; phase A **9 objects / 0 widgets**, phase B **5 / 0**; dialog Qt-owned/`MainWindow`-parented/product reference dropped/**0** probe-frame holders. |
+| Positive cleanup effect | Current cleanup: automatic GC restored, target no longer tracked. Drain omitted: automatic GC restored, target still tracked and C++ widget still valid. Only its integer identity crossed the call. |
+| Offscreen controls | Self-test passed all seven semantic arms plus the current order arm. Its raw rows visibly include live Python-owned/Python-defined, Qt-owned, dead-wrapper and Qt-typed states. |
+| Wrapper/static gates | Unknown selector exit **2**; Bash syntax, Ruff, Ruff format (**1 file**), correction diff and task placement (**15 passed**) clean. Commit-message gate checked **13 commits** successfully. |
+| Submitted broader evidence | Implementer reports unit+UI **3,841 passed / 21 skipped**. The full suite was not repeated; no `src/` or test file changed. |
+
+### Readiness
+
+Keep T-289 In Review. Correct the narrowed R18, R19 and R20 items and return the exact head for
+focused re-review. R18 changes the phase-B measurement boundary, so re-run the isolated forced
+probe; no live-display run is needed. R17 needs no further execution.
+
+The Reviewer appended only this review record and ran one default watch plus one forced probe in
+isolated virtual KWin/DBus sessions, offscreen controls and read-only/failure-injection checks. No
+reviewed source, submitted test, TASKS/STATUS text, handoff, branch, push, CI run, live display or
+remote state was changed.
