@@ -22587,3 +22587,122 @@ head and does.
 The Reviewer appended only this review record and ran isolated virtual-display diagnostics. No
 reviewed source, submitted test, task/status text, handoff, commit, push, CI run, live display or
 remote state was changed.
+
+---
+
+## 2026-08-31 — T-289 driven measurement initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-289`; `T-238` criterion 4 and its soak instrument
+**Boundary:** `1386e86ce067e0e15ef4f0b0355dbda69e60c27a..948f837bcc4cb9f3abcd205ca8b7462b56b8407d`
+**Commits reviewed:** `179f73e`, `ad891b0`, `a8afbcc`, `e9b8c5c`, `80e6fca`, `948f837`
+**Platform verified:** Spock, Qt/PySide6 6.11.1, real KWin/Wayland session
+**Verdict:** **Changes requested.** The delayed drive is no longer disarmed, and the requested
+real-display evidence now exists. A real Settings → yt-dlp → Update run completed, and a separate
+real-display composed run staged the recorded Archive.org row, fetched its real thumbnail, decoded
+it on the thumbnail pool and published the pixmap. **Both results are `INCONCLUSIVE`, correctly:**
+neither collector run handled a widget, and no collection began while a thumbnail task was active.
+`T-289` criterion 2 and `T-238` criterion 4 therefore remain open. The submitted isolated wrapper
+can still turn a failed measurement into exit 0, current truth calls a half-condition the crash's
+precondition and contradicts itself about T-238 closure, and the unpushed commit range fails the
+repository's commit-message gate.
+
+The submitted source calls the delayed-timer defect `T289-R13`; this review adopts that identifier
+for the already-corrected defect and starts new findings at R14.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T289-R14` | **Medium** | **Yes — the measurement wrapper does not gate its own result** | `tools/t289_isolated_session.sh` / reproducibility | The wrapper ends the compositor command with `|| true` and checks neither exit status nor the report's required `VERDICT`. A deterministic replay placed a `dbus-run-session` ahead of the real binary that exited 42: the wrapper exited **0** and produced no report. The same branch masks timeout, compositor-start and other non-zero failures; depending on KWin's child-status behavior, it may also mask the native abort this instrument exists to expose. The task then says the single-session command above is the command line for the **60-session aggregate**, but no 60-run invocation or aggregation procedure is recorded after the raw report was deleted. | Preserve cleanup while returning failure. If the compositor cannot propagate the child status reliably, require a completed report and route/verdict postcondition as well. Let a batch caller choose explicitly to continue after one failed sample rather than baking that choice into one session. Record the exact 60-run invocation and how the table was derived, or retain a non-regenerable summary input that makes those aggregate counts auditable. | **Open** |
+| `T289-R15` | **Medium** | **Yes — current truth materially misstates the open criteria** | `ai/TASKS.md`, `ai/STATUS.md` | The new section says **“The precondition reproduces every time”** when its own result is that no widget was in the collected objects. This entry defines the precondition earlier as a Python-owned widget being collected and destroyed on the pool thread; what reproduced was only the collector/thread half—the tool itself calls that “the loaded gun, widget or not.” `TASKS.md` also retains **“This also closes T-238's outstanding real-session step”** while the new T-238 section says only half was taken. The review's real-display runs overtake STATUS's “still owed” sentence but do not close either criterion: the update sample was widget-null, and the thumbnail sample saw no collection on its pool threads. | Call the 60-run observation the collector/thread half, not the precondition. Remove the stale T-238 closure sentence. Sync TASKS and STATUS to the two exact reviewer results below: real display and a working thumbnail pipeline have each now run once; both were inconclusive, so T-289 criterion 2 and T-238 criterion 4 stay open. Preserve the short-session, event-discovery and separate-route bounds. | **Open** |
+| `T289-R16` | **Low** | **Yes — the exact local commits violate repository hard rules while amendment is free** | Commit policy | `tools/commit_message_check.py --range 1386e86..948f837` rejects **all six commits** for missing `Task:` trailers. Four subjects exceed §13's hard 60-character cap: `80e6fca` 66, `e9b8c5c` 70, `a8afbcc` 67 and `ad891b0` 72. The range also uses five commits for T-289 plus one for T-238, while §7 requires one commit per task in serial mode. This is Low by shipped consequence but blocks approval of these unpushed commits for the same reason `T238-R3` did. | Before push, rewrite the unpublished range into the task boundaries the rule requires—normally one T-289 measurement/correction commit and one T-238 soak commit—using imperative subjects at or below 50 characters and valid `Task:` trailers. Keep the corrected final tree plus the R14/R15 correction; do not preserve the intermediate false 40-second and inferred-widget states merely to retain their commits. | **Open** |
+
+### Driven-session results
+
+#### Real Settings → yt-dlp → Update
+
+At clean head `948f837`, with `QT_QPA_PLATFORM` unset and config/data/cache/state redirected to a
+disposable profile, the ordinary instrument selected Qt's real **`wayland`** plugin. Its embedded
+offscreen positive control passed first. The driver opened Settings through `MainWindow`, clicked
+the screen's `ytdlpUpdate`, and received
+`Resolution(version='2026.08.19', source='user-managed copy (OPS-002)')` before closing.
+
+| Observation | Result |
+|---|---|
+| Route | settings **true**, update started **true**, update finished **true** |
+| Widgets watched | **971** |
+| Collections | MainThread **7**, Dummy-1 **1**, Dummy-2 **2** |
+| Objects freed | **9**, by the Dummy-2 collection while the update was in flight |
+| Widget destructions | **0 off GUI**; **28 on GUI**, none inside collection |
+| Near misses | **0** |
+| Verdict | **`INCONCLUSIVE`** — the collector destroyed no widget on any thread |
+
+This discharges the missing *real display rather than virtual output* execution for one bounded
+sample. It does not identify criterion 2's widget tree, and it remains the same short automated
+route rather than the used session in which the report occurred.
+
+#### Real staged-row thumbnail pipeline
+
+A scratch reviewer driver composed the real application with the existing spawned-fixture worker,
+opened `MainWindow.open_add_dialog()`, pasted the recorded Archive.org Big Buck Bunny URL and let
+the dialog's own debounce stage it. The visible delegate started the actual `ThumbnailStore`
+pipeline. Only task start/finish and collector overlap were added around the private runnables; the
+driver did **not** call `gc.collect()` or lower a threshold. The real public JPEG was fetched into a
+disposable cache and became a pixmap.
+
+| Observation | Result |
+|---|---|
+| Staged route | row READY, pending set observed, pixmap published |
+| Pool work | `_ReadFromDisk` on **Dummy-2**, `_DecodeAndStore` on **Dummy-3**, `_SweepTask` on **Dummy-4** |
+| Widgets watched | **647** |
+| Collections | MainThread **12**; **none on a thumbnail task thread** |
+| Widget destructions | **0 off GUI**; **24 on GUI**, none inside collection |
+| Near misses | **0** |
+| Verdict | **`INCONCLUSIVE`** — the thumbnail pool worked, but the collector never ran there |
+
+This is the staged-row route the handoff left open, on the real Wayland display and through a real
+network thumbnail. It does not provide the product-owned widget collected on a thumbnail thread
+that T-238 criterion 4 still asks for. Forcing that collector on the live desktop would turn the
+measurement into the hazard; this review did not do it.
+
+### Other dispositions
+
+- **`T289-R12` is Resolved by the submitted sixth self-test direction.** Both embedded controls in
+  this review required the refcount-only pool-thread drop to classify as *OFF-GUI DESTRUCTION, BUT
+  NOT T-289* before either real session started.
+- **`T289-R13` is Resolved.** Both real-display runs armed from the live event loop and exited on
+  their own. The update route's settings/button timers fired, and its report ended with a verdict;
+  the defect that silently dropped the delayed timer did not recur.
+- **The parallel soak option is coherent and may stay.** It leaves serial behavior as the default,
+  prints the mode, and does not reuse OPS-007's serial probability for `-n`. No additional soak was
+  run: T-238 already records why repetition does not discriminate this fault.
+- **Deleting the regenerable evidence file is acceptable in principle.** The evidence-directory
+  rule prefers a committed reproducer and a durable interpreted result. R14 is the remaining
+  execution/audit gap: the current one-session command and silent-success wrapper do not yet
+  reproduce or gate the recorded 60-run aggregate.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | Six commits, five changed files, **266 insertions / 13 deletions**; `git diff --check 1386e86..948f837` passed. No `src/` or test file changed. |
+| Real update session | Completed in **17.3 s** inside the app at clean `948f837`; positive control passed; Qt selected `wayland`; report ended `INCONCLUSIVE`. |
+| Real thumbnail session | Completed in **11.4 s** at clean `948f837`; positive control passed; all three thumbnail task classes ran and the pixmap was published; report ended `INCONCLUSIVE`. |
+| Failure propagation | Fake `dbus-run-session` exit **42** → wrapper exit **0**, report absent. R14 reproduced. |
+| Static/style | `ruff check .` passed; `ruff format --check .` reported **221 files already formatted**; `bash -n` passed for both changed shell scripts. |
+| Placement | `tests/unit/test_task_placement.py`: **15 passed**. |
+| Commit gate | **Failed:** six of six commits have no `Task:` trailer. Direct subject count found four above the hard cap. |
+
+### Readiness
+
+Keep T-289 In Review and T-238 Ready. Correct R14 and R15 in one focused batch, then rewrite the
+unpublished commits for R16 and return the resulting exact base/head. The focused re-review will
+verify a failing isolated session returns non-zero, a successful session still produces a complete
+report, the current-truth wording matches both real-display outcomes, and the commit gate passes.
+No additional live-display run is needed unless that correction changes the session driver or the
+measurement semantics.
+
+The Reviewer appended only this review record and ran two requested, capture-free real-display
+measurements with disposable profiles plus read-only/failure-injection checks. No reviewed source,
+submitted test, TASKS/STATUS text, handoff, push, CI run or remote state was changed.
