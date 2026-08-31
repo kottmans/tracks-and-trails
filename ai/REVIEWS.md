@@ -22706,3 +22706,64 @@ measurement semantics.
 The Reviewer appended only this review record and ran two requested, capture-free real-display
 measurements with disposable profiles plus read-only/failure-injection checks. No reviewed source,
 submitted test, TASKS/STATUS text, handoff, push, CI run or remote state was changed.
+
+---
+
+## 2026-08-31 — T-289 driven measurement focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-289`; `T-238` criterion 4 and its soak instrument
+**Correction boundary:** `fce6cb9c598b8db435ade4db028281d4fdd190c8..ab99ffb948e8c014530a79e08385dad2f5bcd074`
+**Rewritten delivery boundary:** `1386e86ce067e0e15ef4f0b0355dbda69e60c27a..ab99ffb948e8c014530a79e08385dad2f5bcd074`
+**Verdict:** **Changes requested.** `T289-R16` is Resolved: the rewritten unpublished range now
+has four task-bounded commits and passes the commit-message gate. Most of `T289-R14` and
+`T289-R15` is corrected too: non-zero status propagates, absent and incomplete fresh reports fail,
+a fresh real nested-KWin session still passes, and current truth records both real-display routes
+with their inconclusive bounds. Two focused defects remain. The wrapper can accept a completed
+report left by an earlier run when the current exit-0 session writes nothing, and an earlier
+present-tense T-238 paragraph still says the now-completed real thumbnail session is owed.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T289-R14` | **Medium** | **Yes — the postcondition does not establish that this run produced the report** | `tools/t289_isolated_session.sh` | The correction checks the requested path after the session but never invalidates an existing report first. A deterministic replay reused the prior review's complete real-display report, put an exit-0 `dbus-run-session` ahead of the real binary, and wrote nothing. The wrapper accepted the old completed route and `VERDICT` and exited **0**. This is the same documented one-session path a caller is invited to reuse, so the new postcondition distinguishes an absent first report from success but not a failed later run from success. The other branches are corrected: fake upstream exit 42 returned 42, and exit 0 with an absent report returned 1. | Make freshness part of the contract: remove/truncate the requested report before launch, or write this run to a new temporary report and publish it only after validation. Add the missing replay—seed a valid completed old report, make the session exit 0 without writing, require wrapper exit 1. Preserve the now-correct upstream status behavior and completed-route checks. | **Open — narrowed** |
+| `T289-R15` | **Medium** | **Yes — one current-truth sentence still asks for a route the next section says ran** | `ai/TASKS.md`, T-238 criterion 4 | The new 2026-08-31 section correctly says both real-session halves ran and only the product-owned widget is missing. Immediately before it, the entry still says in present tense: **“What criterion 4 still needs: the real-session probe — the application on a display with the thumbnail pool working — and a widget…”** Those two adjacent answers contradict each other, and the older one preserves the exact stale obligation R15 asked this correction to remove. `ai/STATUS.md`, the T-289 section and the new T-238 section otherwise match the two reviewer measurements. | Rewrite the older sentence as historical state at that measurement, or remove the now-discharged real-session/thumbnail half so present truth says only that a product-owned widget must reach the collector. | **Open — narrowed** |
+
+### Resolved finding and history ruling
+
+- **`T289-R16` is Resolved.** `tools/commit_message_check.py --range 1386e86..HEAD` checked all four
+  commits successfully. All four subjects are 38–41 characters, every commit has the required
+  `Task:` trailer, and the intermediate false states are absent from `main`.
+- The rewrite preserved trees exactly where it matters: `git diff 948f837 42a797e` and
+  `git diff 65b7080 fce6cb9` are both empty. `fce6cb9` also preserves the review commit's message,
+  author and author date. This is the durable old-to-new mapping for the rewritten final
+  implementation and review trees.
+- **Do not drop `backup/pre-r16-rewrite` now.** It is the only current ref containing both
+  `948f837` and `65b7080`, and the prior append-only review names that old boundary and its
+  intermediate commits. A main-only push would not publish this local branch, so before it is ever
+  removed the maintainer should deliberately replace it with whatever durable archival ref the
+  project wants. No separate finding is issued while the exact local ref remains intact.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Fresh real success | Isolated `kwin_wayland --virtual` run at `ab99ffb` completed in **19.98 s**, wrapper exit **0**; **965** widgets, full route, final `INCONCLUSIVE` verdict. No live display or installed yt-dlp was touched. |
+| Upstream failure | Fake `dbus-run-session` exit **42** → wrapper exit **42**. |
+| Fresh missing report | Fake session exit **0**, absent report → wrapper exit **1**. |
+| Stale completed report | Fake session exit **0**, no write, prior complete report retained → wrapper exit **0**. R14 remains open. |
+| Current truth | The T-289 and STATUS rewrites correctly preserve both inconclusive real-display outcomes and the standing event-discovery/short-session bounds. The quoted T-238 sentence is the one remaining contradiction. |
+| Rewritten trees | `948f837` vs `42a797e`: empty diff. `65b7080` vs `fce6cb9`: empty diff. The backup branch is the sole containing ref for both old commits. |
+| Mechanical checks | `git diff --check 1386e86..HEAD`, Ruff, Ruff format (**221 files**), both shell syntax checks and task placement (**15 passed**) passed. Commit-message gate checked **4 commits** successfully. |
+| Submitted broader evidence | Implementer reports unit+UI **3,841 passed / 21 skipped** and all mypy variants clean. No `src/` or test file changed in the rewritten range; the full suite was not repeated in this focused documentation/wrapper pass. |
+
+### Readiness
+
+Keep T-289 In Review and T-238 Ready. Correct the two narrowed sentences of behavior above and
+return the exact head for one more focused pass. Neither correction changes the instrument or its
+measurement semantics, so no further live-display or nested-KWin run is needed.
+
+The Reviewer appended only this review record and ran one isolated virtual-display session plus
+read-only and failure-injection checks. No reviewed source, submitted test, TASKS/STATUS text,
+handoff, branch, push, CI run, live display or remote state was changed.
