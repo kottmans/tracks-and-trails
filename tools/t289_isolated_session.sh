@@ -19,6 +19,17 @@ set -eu
 
 report=${1:?usage: t289_isolated_session.sh <report-path>}
 project=$(cd "$(dirname "$0")/.." && pwd)
+# **The postconditions below must be about *this* run** (`T289-R14`, second pass). A report left at
+# the target path by an earlier session satisfies every one of them without this session having
+# written a byte: seeded with a complete report, a compositor that exits 0 having produced nothing
+# passed. Clearing the path first is what makes "the report says the route ran" a statement about
+# the run that just happened. The two sidecar logs go with it so a failed run cannot be read
+# alongside an earlier run's output.
+if ! rm -f "$report" "${report%.txt}-app.log" "${report%.txt}-compositor.log"; then
+    echo "t289: cannot clear an earlier report at $report" >&2
+    exit 1
+fi
+
 profile=$(mktemp -d -t t289-profile-XXXXXX)
 mkdir -p "$profile"/{data,config,cache}
 

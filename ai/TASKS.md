@@ -12807,9 +12807,14 @@ refcount-freed widget is not named; and a parentless `QListView` outliving the s
 probe refuse — because the first version censused its own positive control and reported it as a
 product finding. **Three instruments in this family have now reported confidently about nothing.**
 
-**What criterion 4 still needs**: the real-session probe — the application on a display with the
-thumbnail pool working — and a widget the *product* owns from Python reaching the collector. Arm B
-shows what happens when one does; nothing here shows the product holding one.
+**What criterion 4 needed as of this section, and how much of it has since been run**: the
+real-session probe — the application on a display with the thumbnail pool working — and a widget the
+*product* owns from Python reaching the collector. Arm B shows what happens when one does; nothing
+in these three arms shows the product holding one. **The probe half ran on 2026-08-31 — both pools,
+on a real display — and the widget half did not happen there either.** This paragraph asked for a
+session that has since been driven, and said so two lines above the section recording it
+(`T289-R15`, second pass); it is kept as the statement of what was owed *then*, and the section
+below is what is owed now.
 
 #### Criterion 4, 2026-08-31: both halves of the real-session step have run, and neither answers it
 
