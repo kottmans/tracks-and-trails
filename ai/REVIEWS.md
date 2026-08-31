@@ -23000,3 +23000,66 @@ The Reviewer appended only this review record and ran one default watch plus one
 isolated virtual KWin/DBus sessions, offscreen controls and read-only/failure-injection checks. No
 reviewed source, submitted test, TASKS/STATUS text, handoff, branch, push, CI run, live display or
 remote state was changed.
+
+---
+
+## 2026-08-31 — T-289 forced-collection probe second focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-289`
+**Correction boundary:** `64f060bff133b791a87cc5c507cda92e29f834ae..ad9b3070fc811fd887c8599bfa3a7c10ee40b330`
+**Platform verified:** Spock, Qt/PySide6 6.11.1, isolated KWin/Wayland virtual session
+**Verdict:** **Changes requested, narrowed to one report/current-truth correction and one control
+hardening.** R18's phase-B implementation is correct now: the transition runs while automatic GC
+is disabled and SAVEALL is active, deferred delivery is receiver-scoped, and no strong target
+reference survives into collection. The independent session reproduces **9 objects / 0 widgets**
+then **5 / 0**. R20 is Resolved. R19's effect check detects the submitted drain-omitted mutant, but
+it scans only after automatic collection has already been restored and does not assert that the
+incoming enabled state was restored; the executable report also still contains the exact
+route-wide and crash-moment claims R18 required removing.
+
+### Remaining findings
+
+| ID | Severity | Blocks approval | Area | Finding | Required correction | Status |
+|---|---|---:|---|---|---|---|
+| `T289-R18` | **Medium** | **Yes — the machine-readable verdict still promotes two samples to the whole route** | Probe description, `measure_then_quit`, `verdict`, `ai/TASKS.md` | The new task paragraph correctly says *“Two samples on one route”* and *“Nothing here is a statement about the application as a whole,”* but the old claims remain around it. The probe header says either answer *“closes the `gc` route for this route”*; `measure_then_quit` still calls post-report phase A *“the configuration the crash happened in”* and still says phase B's deferred deletions were delivered; the final `VERDICT` still says *“On this route the collector has nothing … forced or not.”* The task table still calls phase A *“the crash's own configuration,”* and its section heading still says there is *“nothing to take.”* These are not historical text: they are the tool's live contract, emitted result, and current-truth summary. | Replace each live claim with the exact samples: after update report with Settings open, and after receiver-scoped close with Settings still Qt-owned. State that no T-289 widget was parked **at those two instants**. Remove the deferred-deletion sentence from `measure_then_quit`; receiver-scoped delivery found no scheduled deletion and the dialog survived. No measurement rerun is needed for this text-only completion. | **Open — phase mechanics resolved; bounds not fully applied** |
+| `T289-R19` | **Medium** | **Yes — the effect control observes after restoring the state that can erase its evidence** | `self_test`, arm 8 | Keeping only the integer identity and checking type/name is the right observable effect, and the submitted drain-omitted mutant fails. But the previous review explicitly required disabling automatic GC immediately before `gc.get_objects()`. The correction calls `object_still_tracked()` while `force_a_collection()` has already re-enabled it. Any automatic collection in that gap can free the mutant's cycle and turn the bad cleanup into a passing *not tracked* answer. The arm also never asserts that GC was restored: deleting `gc.enable()` leaves `note.sequence[:3]` unchanged and the drained widget absent, so that state-restoration mutant passes. | Capture `restored_enabled = gc.isenabled()` immediately after the phase, disable GC before scanning, assert the expected incoming-enabled state was restored, perform the identity/type/name lookup, then restore that enabled state after releasing the diagnostic reference. Stronger still, run the post-drain identity check inside `force_a_collection` before it re-enables GC. Retain the current drain-omitted mutation and add the missing-enable mutation. | **Open — effect chosen correctly; observation boundary and state assertion remain** |
+
+### Resolved dispositions and accepted evidence
+
+- **`T289-R18`'s implementation is Resolved.** An independent prepare control observed
+  `gc.isenabled() == False` and SAVEALL active inside the callback; a cyclic widget released there
+  was parked by the following off-thread collection, and the incoming enabled state was restored.
+  The actual phase returns only a name and weak reference, scopes `DeferredDelete` to the dialog,
+  and reports zero direct probe-frame holders. The submitted 1-vs-0 retention mutation remains
+  appropriate.
+- **`T289-R19`'s safety code and core effect are Resolved.** The GUI-thread drain precedes
+  `gc.enable()`, the false `gc.garbage.clear()`/`__del__` explanation is withdrawn, and the
+  identity lookup distinguishes the current implementation from the submitted drain-omitted
+  mutant. The remaining finding is about making that observation immune to the state under test
+  and proving state restoration.
+- **`T289-R20` is Resolved.** Each phase now calls its result a T-289 finding and states product
+  widget, Python ownership and Python-defined type. The Qt-typed arm emits the corrected zero line
+  while its parked row remains visible and rejects the record again with its probe tag lifted.
+- `T289-R17` remains Resolved; the wrapper did not change in this correction. Criterion 2 remains
+  open, as intended.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Isolated corrected probe | Exit **0** in **12.4 s**; Wayland; complete route; phase A **9 objects / 0 widgets**, phase B **5 / 0**; dialog alive, Qt-owned, `MainWindow`-parented, product reference dropped, **0** probe-frame holders. |
+| Prepare boundary | Callback observed automatic GC disabled and SAVEALL active; its released cyclic widget was parked; automatic GC was restored afterward. |
+| Offscreen controls | Current self-test passed and emitted the corrected T-289 summary for all four parked-widget shapes. Submitted drain-omitted mutant failure accepted. |
+| Static/mechanical gates | Ruff and Ruff format (**1 file**), correction diff and task placement (**15 passed**) clean. Commit-message gate checked **15 commits** successfully. |
+| Submitted broader evidence | Implementer reports unit+UI **3,841 passed / 21 skipped** and default watch exit 0. The full suite and unchanged watch wrapper were not repeated. |
+
+### Readiness
+
+Keep T-289 In Review. Apply the bounded wording everywhere the live tool/current truth still makes
+the wider claim, and harden arm 8 around the restored GC state. These corrections do not change the
+accepted phase-B measurement semantics, so no further nested-KWin or live-display run is needed.
+
+The Reviewer appended only this review record and ran one forced probe in an isolated virtual
+KWin/DBus session, offscreen controls and read-only checks. No reviewed source, submitted test,
+TASKS/STATUS text, handoff, branch, push, CI run, live display or remote state was changed.
