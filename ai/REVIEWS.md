@@ -23221,3 +23221,94 @@ not resolve the finding. Nothing is pushed.
 The Reviewer appended only this record and performed read-only source/document inspection plus
 documentation gates. No reviewed source, submitted test, TASKS/STATUS text, handoff, branch, push,
 CI run, display session or remote state was changed.
+
+---
+
+## 2026-08-31 — T-289 R21 pool-drain focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-289`
+**Correction boundary:** `e3527df2ec76cdc7e6933ec5e5ab1e63075e1fa6..a58328f14ec24b325d64b57de03801b3ea381c33`
+**Platform verified:** Spock, Qt/PySide6 6.11.1, offscreen
+**Verdict:** **Changes requested.** The product now seals both submitted pools and fans writer/pool
+completion into one exit decision, but High `T289-R21` remains Open: the ordinary barrier can fire
+before the last wrapper returns, the bypass treats a timed-out wait as success, and a task already
+inside its work has no cancellation checkpoint. The submitted tests all pass while two
+deterministic reviewer probes reproduce the unsafe active-pool teardown state.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Required correction | Status |
+|---|---|---:|---|---|---|---|
+| `T289-R21` | **High** | **Yes — both exit paths can still tear down with an active pool thread** | `SealedPool` completion, `OrderlyShutdown.stop_for_exit`, task cancellation | `_Counted.run()` emits `one_finished` from its `finally` **before the wrapper returns**. The GUI can consume that queued signal, reduce `outstanding` to zero and call `app.quit()` while `QThreadPool.activeThreadCount()` is still 1—the exact distinction the ruling required the correction not to collapse. Independently, `stop_for_exit()` ignores every `wait_bounded()` result, unconditionally sets `_pools_drained = True` and calls `_leave()` after a timeout. With the bound reduced to 1 ms, the reviewer observed `quits=1`, `finished=True`, connection closed and active threads **1**. Finally, each cancellation check is only the first statement of `run()`: sealing a yt-dlp task already inside `work` set `cancelled=True` but left it active and unfinished. A real resolution can remain in `Queue.get(timeout=90)` and network I/O has a 30 s bound, so this is natural draining of running work, not cooperative cancellation of it. | Make ordinary `drained` require both semantic outstanding zero **and confirmation after the wrapper has returned** that the underlying pool has no active work; a later nonblocking event-loop check is sufficient. On the bypass, a false wait result may be diagnostic but may not become `_pools_drained`; because `aboutToQuit` is already in progress, preserve the composition and drain to actual completion before teardown or use another mechanism that genuinely prevents teardown. Add meaningful cancellation checkpoints to running work: poll/terminate the resolution child; check between index, download, staging/extraction and the atomic swap; check download chunks and long thumbnail loops. Keep only the live-tree replacement's irreducible critical section non-cancellable. Add the reviewer's signal-before-return, timed-out-bypass and already-running-task controls. | **Open — admission seal and fan-in shape accepted; completion/cancellation semantics unsafe** |
+| `T289-R22` | **Medium** | **Yes — the claimed two-pool production wiring has no regression** | `compose`, `tests/ui/test_shutdown_pools.py` | The parameterized tests use the real singleton objects but pass each directly to a freshly constructed `OrderlyShutdown`; none reaches `compose()`'s `pools=(ytdlp_pool(), thumbnail_pool())`. Replacing `app.thumbnail_pool` with `app.ytdlp_pool`—removing the thumbnail edge from the product composition—left all **80** submitted shutdown and integration-composition tests green. This is the original defect's seam: a correct barrier that composition omits protects nothing. | Drive `compose()` or assert through its returned shutdown graph, once per independently held real pool. Replacing either composed pool edge with the other or omitting it must fail because the corresponding active task overlaps the attempted exit. | **Open** |
+| `T289-R23` | **Low** | **No** | Import boundaries in `app.py` and `tests/conftest.py` | `app.py` now imports `pools`, `ytdlp_service` and `ui.thumbnails` at module scope, directly contradicting its live lines 34–37 that Qt is imported only inside functions. Separately, the root autouse fixture imports both Qt-bearing modules for **every** test. Invoking that fixture changed a clean interpreter from no `PySide6`/`shiboken6` modules to Qt loaded, so `tests/conftest.py` no longer has the Qt-free property its header and `tests/qt_lifecycle.py` require. The public `unseal()` alternative is not needed. | Keep runtime pool imports local to composition/lifecycle code and use `TYPE_CHECKING` for annotations. Make the fixture inspect/reset modules already present in `sys.modules`, including a module first imported during the test, without importing Qt solely to reset it. Ensure a pool being discarded by test isolation has actually drained. | **Open — correction-local cleanup** |
+| `T289-R24` | **Low** | **No** | `YtdlpService._run_holding_the_tree` refusal | A tree-changing request takes the manager's exclusion before `_run()` asks the sealed pool to start. On refusal, `_run()` emits `self.failed` directly rather than reaching `_on_failed`, so `_holding` stays true and `release_worker_starts()` is never called. This is a post-seal edge during one-way process shutdown, hence Low, but it violates the method's own rule that every acquired exclusion is released on every outcome. | Make rejected admission return through the same release/failure path as task failure, and pin the acquired-then-sealed case. | **Open — correction-local sibling** |
+
+### What the correction does establish
+
+- **Admission sealing is real.** `begin()` seals before manager shutdown, `SealedPool.start()`
+  refuses afterward, and both product task families route submissions through the gate.
+- **The writer/pool fan-in shape is symmetric.** Given a pool whose completion fact is trustworthy,
+  writer-first and pool-first tests correctly withhold exit until the other side arrives. The
+  remaining R21 defect is that the pool fact is currently announced too early.
+- **Task accounting has one owner.** `_Counted.finally` covers normal return, early return and
+  exceptions. Moving the final zero to the GUI thread is sound; equating that signal with return
+  from the wrapper is not.
+- **The bypass does perform the waits.** The submitted positive test proves a task released after
+  200 ms is gone on return. What remains is the timeout branch: it is currently discarded.
+- The record correctly avoids claiming that this proves the unreproduced crash is gone. Its new
+  stronger sentence that no pool thread survives widget teardown is not established until R21's
+  two completion paths are corrected.
+
+### Deterministic reviewer probes
+
+**Signal-before-return.** A direct connection on `one_finished` held the worker inside
+`Signal.emit()` after the gate's queued `_task_finished` event had been posted. The GUI consumed the
+queued event and emitted `drained`; at that exact callback the underlying pool reported
+`activeThreadCount() == 1`. This is not a timing guess: the worker remained blocked until the
+reviewer released it.
+
+**Bypass timeout.** A real `SealedPool` ran a held runnable while the review set the existing wait
+constant to 1 ms. `stop_for_exit()` returned with `app.quits == 1`, `shutdown.finished is True`, the
+connection closed and `activeThreadCount() == 1`. Releasing the test runnable afterward allowed
+the process to clean up.
+
+**Already-running cancellation.** A real yt-dlp `_Task` passed its single cancellation check and
+entered held work. Sealing its real gate produced `cancelled=True` while the work remained
+unfinished and the pool active. Only the reviewer's release ended it.
+
+**Sealed admission after exclusion.** A sealed real yt-dlp gate refused an install after its fake
+manager exclusion had been acquired. The service emitted *“The application is closing”* with
+`holds=1` and `releases=0`, reproducing R24 without reaching network or disk work.
+
+**Composition-edge mutation.** In memory, `app.thumbnail_pool = app.ytdlp_pool` made product
+composition supply the same gate twice. The full submitted shutdown file plus
+`tests/integration/test_composition.py` still passed: **80 passed in 22.77 s**.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Submitted R21 tests | **7 passed in 0.41 s**. |
+| Focused shutdown/yt-dlp/composition/thumbnail/skeleton/layering suite | **522 passed in 39.02 s**. |
+| Signal-before-return probe | `drained active=[1]` — unsafe completion reproduced. |
+| Bypass-timeout probe | `quits=1 finished=True active=1 connection_closed=True` — timeout treated as drain. |
+| Running-cancellation probe | `cancelled=True completed=False active=1` — running work did not respond. |
+| Sealed-exclusion probe | `holds=1 releases=0` with the closing failure emitted — acquired exclusion leaked. |
+| Composition-edge mutation | **80 passed in 22.77 s** after replacing the thumbnail pool edge with the yt-dlp pool edge. |
+| Qt-free fixture/import probes | Root fixture: `before False`, `during True`; importing `tracks_and_trails.app` directly also loaded Qt. |
+| Ruff / format / mypy src | Passed; **225 files** formatted; mypy clean in **57 source files**. |
+| Diff / placement / commit gate | Diff check clean; placement **15 passed**; **1 commit** checked in `e3527df..a58328f`. |
+| Submitted broader evidence | Implementer reports **3,852 passed / 21 skipped** and all source gates clean. The full suite was not repeated. |
+
+### Readiness
+
+Keep T-289 In Review. Correct all four in-scope items together; High R21 continues through focused
+correction and independent verification regardless of the ordinary pass budget. No live-display
+run is required—the failing states are deterministic offscreen lifecycle states, and correcting
+them does not change the earlier measurement's display bounds. Nothing is pushed.
+
+The Reviewer appended only this record and used offscreen read-only/failure-injection probes plus
+the submitted and neighboring tests. No reviewed source, submitted test, TASKS/STATUS text,
+handoff, branch, push, CI run, live display or remote state was changed.
