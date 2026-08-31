@@ -143,15 +143,27 @@ def _pools_are_not_shared_between_tests() -> Iterator[None]:
             if module is None:
                 continue
             created = module._SHARED_POOL
+            # **Drained first, restored second, and the order is the whole of it** (`T289-R23`,
+            # third pass). Restoring the singleton before the wait leaves the module global holding
+            # the *previous* pool — usually `None` — for the entire length of the drain, and a task
+            # still running asks `pool()`, not the object the fixture happens to be holding. So it
+            # was handed a freshly built replacement whose `cancelled` is false: the gate being
+            # drained reported `cancelled=True` while the task on it saw `False`, went on working,
+            # and left an uncaptured second pool behind. Sealing a pool nothing can reach is not
+            # cancelling anything.
+            if created is not None:
+                # Sealed as well as waited, so anything still queued declines rather than starting
+                # a fresh piece of work into a pool that is being discarded.
+                created.seal()
+                drained = created.wait_bounded(_POOL_TEARDOWN_WAIT_MS)
+            else:
+                drained = True
             # `before` may have no entry: the module was first imported by the test itself, and
             # then the pool to put back is the one that was there before it existed, which is none.
+            # Restored before the raise below, so a test that fails here still leaves the next one
+            # a clean module.
             module._SHARED_POOL = before.get(name)
-            if created is None:
-                continue
-            # Sealed as well as waited, so anything still queued declines rather than starting a
-            # fresh piece of work into a pool that is being discarded.
-            created.seal()
-            if not created.wait_bounded(_POOL_TEARDOWN_WAIT_MS):
+            if not drained:
                 raise RuntimeError(
                     f"{name} was left with pool work still running after "
                     f"{_POOL_TEARDOWN_WAIT_MS} ms. Dropping a busy QThreadPool destroys it on "

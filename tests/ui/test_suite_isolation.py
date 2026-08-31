@@ -23,7 +23,20 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+from PySide6.QtCore import QRunnable
+
+from tests import conftest as root_conftest
+from tracks_and_trails.ui import thumbnails
+
+if TYPE_CHECKING:
+    from PySide6.QtWidgets import QApplication
+
+    from tracks_and_trails.downloader.pools import SealedPool
 
 #: The one test in `tests/ui/test_row_delegate.py` that dresses the shared application, and the two
 #: in `tests/ui/test_add_dialog.py` that `T-225` recorded failing after it.
@@ -362,4 +375,73 @@ def test_a_pending_deletion_does_not_reach_the_next_test() -> None:
     assert "2 passed" in finished.stdout, (
         "the ordered pair did not both run, so this asserts nothing about what one test leaves "
         f"for the next.\n\n{finished.stdout}\n{finished.stderr}"
+    )
+
+
+# --- `T289-R23`: sealing a pool nothing can reach cancels nothing ------------------------------
+
+
+class _WatchesForCancellation(QRunnable):
+    """A task that asks `pool()` — as every real task does — whether it should stop.
+
+    **`pool()` and not a captured reference, because that is the finding.** A running task reaches
+    its gate through the module's accessor, so what it observes is whatever the module global holds
+    at that moment. A teardown that restores the previous singleton before draining hands it a
+    freshly built replacement, whose `cancelled` is false.
+    """
+
+    def __init__(self, gate: SealedPool, saw: list[tuple[str, bool]]) -> None:
+        super().__init__()
+        self.started = threading.Event()
+        self._gate = gate
+        self._saw = saw
+
+    def run(self) -> None:
+        self.started.set()
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            reached = thumbnails.pool()
+            if reached.cancelled:
+                self._saw.append(("cancelled", reached is self._gate))
+                return
+            time.sleep(0.005)
+        self._saw.append(("never told to stop", thumbnails.pool() is self._gate))
+
+
+def test_a_task_still_running_at_teardown_is_the_one_that_is_cancelled(
+    qapp: QApplication,
+) -> None:
+    """The fixture must drain the pool it created **before** it puts the previous one back.
+
+    **The order was wrong and the symptom was silent** (`T289-R23`, third pass): the singleton was
+    restored first, so for the whole length of the drain the module global held the *previous* pool
+    — `None`, in a suite — and a task still running asked `pool()` and was handed a freshly built
+    replacement. The reviewer measured the gate reporting `cancelled=True` while the task on it saw
+    `False`; it went on working, and the replacement was left behind uncaptured.
+
+    **The fixture is driven directly rather than through a second test**, because the thing being
+    asserted happens *inside* its teardown: a test observing it from its own body would be
+    observing a moment that has not arrived, and one observing it from the next test would need an
+    ordering `-n auto` does not give. The generator is the fixture, so stepping it is the real
+    thing and not a copy of it.
+    """
+    saw: list[tuple[str, bool]] = []
+    step = root_conftest._pools_are_not_shared_between_tests.__wrapped__()
+    next(step)
+    try:
+        gate = thumbnails.pool()
+        watcher = _WatchesForCancellation(gate, saw)
+        assert gate.start(watcher), "the fresh pool refused the task"
+        assert watcher.started.wait(timeout=10), "the task never began"
+    finally:
+        next(step, None)  # the teardown under test: seal, drain, then restore
+
+    assert saw == [("cancelled", True)], (
+        "the task running at teardown did not see the cancellation of the pool it was running on. "
+        "The fixture restored the singleton before draining, so `pool()` handed the task a "
+        f"replacement instead of the gate being sealed: {saw}"
+    )
+    assert thumbnails._SHARED_POOL is None, (
+        "the teardown left a pool behind — either the previous singleton was not restored, or a "
+        "replacement was built during the drain and never captured"
     )

@@ -1312,7 +1312,7 @@ class OrderlyShutdown:
         self._writer.close()
 
     def stop_for_exit(self) -> None:
-        """Last resort for a quit that did not go through the lifecycle. **Bounded, and blocks.**
+        """Last resort for a quit that did not go through the lifecycle. **It blocks.**
 
         Reached from `aboutToQuit`, which Qt emits for every quit — including ones that never
         touched the window. The ordinary path has already finished by then and this does nothing.

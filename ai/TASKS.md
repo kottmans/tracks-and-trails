@@ -246,9 +246,12 @@ contents; this preface does not list them.***
 
 ### T-289 — A pool thread's garbage collection destroys widgets while the GUI thread frees them
 
-**Status:** **In Review — the measurement round is Approved at `c29e299` on 2026-08-31**
-(`T289-R14`, `R15`, `R16`, after `R2`…`R5` on 2026-08-30). **Criterion 2 is still open, and what it
-lacks has changed**: both pools have now been watched on a real display and neither handed the
+**Status:** **In Review — the measurement round is Approved at `c29e299` and the pool-drain round
+at `194316c`, both on 2026-08-31** (`T289-R14`, `R15`, `R16`; `T289-R21`, `R22`, `R24` resolved,
+after `R2`…`R5` on 2026-08-30). **`T289-R23`'s remaining half and `T289-R25` were non-blocking Low
+and are closed in this entry's completion sync** — see the third-pass section. **What still holds
+the task open is criterion 2, and nothing in the pool work claimed to close it. Criterion 2 is
+still open, and what it lacks has changed**: both pools have now been watched on a real display and neither handed the
 collector a widget, so what is missing is the tree itself rather than a display, a route or another
 session — see *The driven measurement* and *The reviewer's real-display runs*. The rule *no Qt
 widget is destroyed off the GUI thread* is stated in `ai/TESTING.md` §7 and enforced at every
@@ -1110,11 +1113,28 @@ running** instead of letting the next segfault land in somebody else's.
 `_leaks_a_view.py` established, and `tests/unit/test_skeleton.py` holds the Qt-free half in a
 subprocess because this pytest session has Qt loaded through its own plugins.
 
-**Seventeen mutations, all killed** — the barrier trusting its count, the threshold authorising
+**Eighteen mutations, all killed** — the barrier trusting its count, the threshold authorising
 teardown, only the first pool being waited, the final wait acquiring a deadline, the confirmation
 poll outliving the wait, each of the four install checkpoints, the resolution wait's, both service
 seams, the cancellation branch that reports the closing sentence, the sweep's and the decode's, and
-both halves of the fixture.
+all three of the fixture's edges.
+
+**Two Low items closed in the completion sync** (`T289-R23` third pass, `T289-R25`, approved at
+`194316c`).
+
+- **The fixture drained a pool nothing could reach.** It restored the previous singleton *before*
+  the wait, so for the whole length of the drain the module global held `None` — and a task still
+  running asks `pool()`, not whatever object the fixture happens to be holding. It was handed a
+  freshly built replacement whose `cancelled` is false: the gate being drained reported
+  `cancelled=True` while the task on it saw `False`, went on working, and left the replacement
+  behind uncaptured. Seal and drain now come first and the restore second, and the restore still
+  happens on the failing path so a test that leaves work running does not also leave the module
+  dirty. `test_a_task_still_running_at_teardown_is_the_one_that_is_cancelled` drives the fixture
+  generator directly, because what it asserts happens *inside* a teardown: a test watching from its
+  own body would be watching a moment that has not arrived, and one watching from the next test
+  would need an ordering `-n auto` does not give.
+- **`stop_for_exit`'s summary line still said "Bounded, and blocks."** The bound became a reporting
+  threshold in this correction and the first line of the docstring did not follow.
 
 **What this does not do.** It does not prove the crash is gone — the dump remains unreproduced, and
 `T-238`'s record is that repetition does not discriminate this fault. What it removes is the
