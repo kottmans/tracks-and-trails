@@ -26,9 +26,13 @@ report=${1:?usage: t289_isolated_session.sh <report-path> [watch|probe]}
 instrument=${2:-watch}
 project=$(cd "$(dirname "$0")/.." && pwd)
 
+# **The path and its arguments are separate words, and were not** (`T289-R17`). Held as one
+# string, `"$project/$tool"` expanded to a single quoted argument and Python looked for a file
+# named `t289_session_watch.py --drive`: the wrapper's own default mode stopped starting, and only
+# the new selector worked because its value happened to have no argument in it.
 case "$instrument" in
-    watch) tool="tools/t289_session_watch.py --drive" ;;
-    probe) tool="tools/t289_forced_collection_probe.py" ;;
+    watch) tool_path="tools/t289_session_watch.py"; tool_args="--drive" ;;
+    probe) tool_path="tools/t289_forced_collection_probe.py"; tool_args="" ;;
     *) echo "t289: unknown instrument '$instrument' — expected 'watch' or 'probe'" >&2; exit 2 ;;
 esac
 # **The postconditions below must be about *this* run** (`T289-R14`, second pass). A report left at
@@ -54,7 +58,7 @@ cat > "$inside" <<INNER
 export XDG_DATA_HOME="$profile/data"
 export XDG_CONFIG_HOME="$profile/config"
 export XDG_CACHE_HOME="$profile/cache"
-"$project/.venv/bin/python" -u "$project/$tool" --report "$report" \
+"$project/.venv/bin/python" -u "$project/$tool_path" $tool_args --report "$report" \
     >"${report%.txt}-app.log" 2>&1
 INNER
 chmod +x "$inside"

@@ -53,6 +53,7 @@ import os
 import subprocess
 import sys
 import threading
+import weakref
 from pathlib import Path
 from typing import Final, TextIO
 
@@ -93,8 +94,20 @@ class Parked:
 
     @property
     def is_a_finding(self) -> bool:
-        """A live widget the product owns from Python — the thing criterion 2 is looking for."""
-        return self.valid and self.owned and not self.ours
+        """A widget the product owns from Python **whose type is defined in Python**.
+
+        **The type is part of the discriminator, and leaving it out made this wider than the
+        defect** (`T289-R20`). `ai/TESTING.md` §7 turns on the distinction: a plain Qt type is
+        marshalled to the GUI thread by Shiboken and destroyed safely, and only a type defined in
+        Python is destroyed **in place** on whichever thread collected it. A plain `QWidget` that
+        Python owns classified as a finding here and the verdict would have called it *the tree
+        criterion 2 asks for*, which it is not.
+
+        **`valid` is not tested here because `owned` already carries it** — it is computed as
+        *valid and `ownedByPython`*, so a dead wrapper can never arrive owned. Stating it twice
+        added a term no real widget could falsify (ruled 2026-08-31).
+        """
+        return self.owned and self.defined_in_python and not self.ours
 
     def __str__(self) -> str:
         where = "probe-built" if self.ours else "product"
@@ -118,6 +131,9 @@ class Note:
         self.update_finished = False
         self.settings_seen = False
         self.phases: list[tuple[str, str, list[Parked]]] = []
+        #: The steps each phase took, in order, for arm 8. See its comment for why the drain is
+        #: checked as a sequence rather than by its effect.
+        self.sequence: list[str] = []
 
     def say(self, line: str) -> None:
         import time
@@ -170,6 +186,7 @@ def force_a_collection(note: Note, when: str) -> list[Parked]:
         thread.join()
 
         parked = widgets_the_collector_parked()
+        note.sequence.append("parked")
         note.say(
             f"forced a collection on {collector['thread']!r} — {when}: "
             f"{len(gc.garbage)} objects parked, {len(parked)} of them widgets"
@@ -185,12 +202,22 @@ def force_a_collection(note: Note, when: str) -> list[Parked]:
         note.phases.append((when, collector["thread"], parked))
         return parked
     finally:
-        # **Cleared here, on the GUI thread.** Anything live in the list is destroyed by this line,
-        # which is legal on this thread and is not on the one that collected it.
+        # **Drained here, on the GUI thread, before automatic collection is allowed back**
+        # (`T289-R19`). Clearing `gc.garbage` un-parks a cycle rather than freeing one, so the
+        # earlier version returned with a live, Python-owned widget still tracked and still
+        # collectable — and with `gc.enable()` already called. Any allocating code on a pool thread
+        # could then have run that widget's destructor there: the probe would have caused the
+        # defect it came to look for, after reporting that it had not found it. The debug flags go
+        # back first so this collection frees rather than parks, and it runs on this thread, which
+        # is the GUI thread and the one where `~QWidget` is legal.
         gc.garbage.clear()
+        note.sequence.append("cleared")
         gc.set_debug(previous)
+        gc.collect()
+        note.sequence.append("drained")
         if was_enabled:
             gc.enable()
+            note.sequence.append("enabled")
 
 
 def the_main_window() -> QWidget | None:
@@ -212,6 +239,34 @@ def the_settings_dialog() -> QDialog | None:
             return widget
     window = the_main_window()
     return None if window is None else window.findChild(QDialog)
+
+
+def frames_of_this_probe_holding(target: object) -> int:
+    """How many of this file's live frames hold `target`, excluding this one.
+
+    **Because the fix for `T289-R18` is a claim about this file's own frames**, and a claim about
+    the instrument is what `--self-test` cannot reach: phase B exists only in a session. So every
+    run reports it, and a non-zero count means the phase's zero was the probe's doing.
+
+    **The stack is walked rather than asked of `gc`.** The first version used
+    `gc.get_referrers(target)` and filtered for frames — and it answered **0 while a deliberately
+    reintroduced `T289-R18` was holding the dialog**, because CPython does not materialise a frame
+    object until something asks for one, and an unmaterialised frame is not a referrer `gc` can
+    report. Walking `f_back` materialises each frame, which is what makes the locals visible.
+    """
+    holders = 0
+    here = sys._getframe()
+    # **The caller is skipped, and only the caller.** Whoever asks this question is holding the
+    # object in order to ask it, so counting that frame gives a clean run a permanent score of one
+    # — measured, and it reads as the defect rather than as the baseline. Every frame above it is
+    # a real holder: with `T289-R18` deliberately reintroduced this reports 1 and without it 0.
+    frame = here.f_back.f_back if here.f_back is not None else None
+    while frame is not None:
+        mine = frame.f_code.co_filename == __file__ and frame is not here
+        if mine and any(value is target for value in frame.f_locals.values()):
+            holders += 1
+        frame = frame.f_back
+    return holders
 
 
 def flush_deferred_deletions() -> None:
@@ -242,15 +297,63 @@ def measure_then_quit(note: Note) -> None:
         force_a_collection(note, "phase-A-settings-open")
         QTimer.singleShot(500, phase_b)
 
-    def phase_b() -> None:
+    def close_the_settings_dialog() -> tuple[str, object]:
+        """Close it and **keep no reference to it**, which the first version did not (`T289-R18`).
+
+        `phase_b` held the dialog in a local while the collection ran, so the probe's own frame
+        kept the wrapper reachable and phase B could not have found it however the product owned
+        it. That is the self-retention class that invalidated an earlier `T-238` zero, reproduced
+        here by the instrument built after it. The name is returned; the wrapper is not.
+        """
         dialog = the_settings_dialog()
         if dialog is None:
+            return "", None
+        name = type(dialog).__name__
+        # **A weak reference, so the answer can be checked without becoming the reason for it.**
+        # A strong one is what `T289-R18` was.
+        watcher = weakref.ref(dialog)
+        dialog.close()
+        del dialog
+        return name, watcher
+
+    def what_became_of_it(name: str, watcher: object) -> str:
+        """Say why phase B's number is what it is, instead of leaving it to be inferred.
+
+        A zero has two very different causes — *nothing was collectable* and *something held it* —
+        and the second is the defect `T289-R18` found here. The dialog is looked up again through
+        a weak reference **after** the collection, so this reports without participating.
+        """
+        import shiboken6
+
+        window = the_main_window()
+        product_holds_it = getattr(window, "_settings_dialog", "unknown")
+        held = "still" if product_holds_it is not None else "no longer"
+        if not callable(watcher):
+            return f"{name}: the product {held} references it"
+        survivor = watcher()
+        if survivor is None:
+            return f"{name}: its wrapper is gone — the collection or a refcount freed it"
+        ours_hold_it = frames_of_this_probe_holding(survivor)
+        owner = "Python" if shiboken6.ownedByPython(survivor) else "Qt"
+        parent = survivor.parent()
+        parented = type(parent).__name__ if parent is not None else "nothing"
+        state = "alive" if shiboken6.isValid(survivor) else "destroyed"
+        return (
+            f"{name}: wrapper survived, C++ object {state}, owned by {owner}, "
+            f"parented to {parented}; the product {held} references it; "
+            f"frames of this probe holding it: {ours_hold_it}"
+        )
+
+    def phase_b() -> None:
+        closed, watcher = close_the_settings_dialog()
+        if not closed:
             note.say("phase B — no Settings dialog found to close; measuring anyway")
         else:
-            note.say(f"phase B — closing {type(dialog).__name__} and flushing its deletions")
-            dialog.close()
+            note.say(f"phase B — closed {closed} and flushed its deletions, holding no reference")
         flush_deferred_deletions()
         force_a_collection(note, "phase-B-settings-closed")
+        if closed:
+            note.say(f"    after the collection | {what_became_of_it(closed, watcher)}")
         QTimer.singleShot(500, done)
 
     def done() -> None:
@@ -337,9 +440,24 @@ def self_test() -> int:
         failures.append("arm 1: the collector's parked widget was not seen at all")
     elif not (named[0].valid and named[0].owned and named[0].defined_in_python):
         failures.append(f"arm 1: misclassified — {named[0]}")
-    # **Clearing `gc.garbage` un-parks a cycle; it does not free one.** Without this the arm's
-    # widget is still alive and is re-parked by every later arm, which reads as a finding that
-    # belongs to a control that has already been assessed.
+    # Arm 8 — **the phase must drain before it re-enables automatic collection** (`T289-R19`), so
+    # it cannot hand back a live, collectable widget for some pool thread to destroy.
+    #
+    # **This checks the order of the steps, not their effect, and that is a deliberate retreat.**
+    # Two effect-based controls were built first and both were blind. A weak reference reports the
+    # widget dead whichever way the phase ends, because CPython clears weakrefs to unreachable
+    # objects *before* `DEBUG_SAVEALL` parks them — the object sits in `gc.garbage` with its cycle
+    # intact and its weakref already dead. A `__del__` flag reports the destructor ran either way,
+    # because on this Python and PySide6 `gc.garbage.clear()` frees the cycle by itself, so the
+    # explicit drain changes nothing observable **here**. The drain is kept because the review of
+    # 2026-08-31 measured a case where it did matter, and this arm at least fails if the step is
+    # removed. An arm that cannot fail would be worse than saying so.
+    if note.sequence[:3] != ["parked", "cleared", "drained"]:
+        failures.append(f"arm 8: the phase's steps were {note.sequence[:4]}")
+    if "enabled" in note.sequence and note.sequence.index("enabled") < note.sequence.index(
+        "drained"
+    ):
+        failures.append("arm 8: automatic collection came back before the drain")
     gc.collect()
 
     # Arm 2 — the same cycle, but Qt owns the widget because it has a parent.
@@ -412,17 +530,10 @@ def self_test() -> int:
         failures.append("arm 5: a Qt-owned widget would have been reported")
     if would_be_reported(corpse_arm):
         failures.append("arm 5: an already-destroyed wrapper would have been reported")
-    # **The `valid` term needs a record no live run can produce.** `owned` is computed as
-    # *valid and `ownedByPython`*, so a dead wrapper always arrives with `owned` false and the
-    # predicate's `valid` term is never the thing that excluded it — dropping that term changed
-    # nothing and survived every arm above. The contract it states is *a dead wrapper is never
-    # reported however it is flagged*, so it is asked with the flags in the one combination
-    # reality cannot supply.
-    if corpse_arm is not None:
-        corpse_arm.owned = True
-        if would_be_reported(corpse_arm):
-            failures.append("arm 5: a dead wrapper flagged owned would have been reported")
-        corpse_arm.owned = False
+    # *(A hand-built dead-and-owned record used to be asked here, to exercise a `valid` term the
+    # predicate no longer has. Ruled out on 2026-08-31: it violated `Parked`'s own invariant —
+    # `owned` is computed as *valid and `ownedByPython`* — and tested no output the tool can
+    # produce. The term went instead of the test.)*
 
     # Arm 6 — a widget whose type comes from Qt must not be called Python-defined. Nothing above
     # asks this, so a classifier that answered "defined in Python" for everything passed.
@@ -437,6 +548,11 @@ def self_test() -> int:
         failures.append("arm 6: the C++-typed widget was never parked, so nothing was classified")
     elif named[0].defined_in_python:
         failures.append("arm 6: a widget whose type is Qt's was called Python-defined")
+    # **Asked of the predicate too, with the tag lifted** (`T289-R20`). Checking only the type
+    # classifier is what let a plain `QWidget` — Python-owned, marshalled safely by Shiboken, not
+    # this defect — be reported as *the tree criterion 2 asks for*.
+    elif would_be_reported(named[0]):
+        failures.append("arm 6: a Qt-typed widget would have been reported as a T-289 finding")
     gc.collect()
 
     # Arm 7 — **the collection has to happen off the GUI thread**, which is the probe's whole
@@ -453,9 +569,8 @@ def self_test() -> int:
         "SELF-TEST PASSED: a live Python-owned widget was found and named, a Qt-owned child was "
         "not called Python-owned, an already-destroyed wrapper was not called live, nothing the "
         "probe built counted as a product finding, the reporting predicate itself was exercised "
-        "with the tag lifted — including a dead wrapper flagged owned, which no live run can "
-        "produce — a Qt-typed widget was not called Python-defined, and every collection ran off "
-        "the GUI thread."
+        "with the tag lifted for the live, the Qt-owned, the destroyed and the Qt-typed record, "
+        "and every collection ran off the GUI thread."
     )
     return 0
 
@@ -500,15 +615,14 @@ def verdict(note: Note) -> str:
         return (
             "NO REACHABLE WIDGET — the route ran, a collection was forced off the GUI thread at "
             f"both moments, and across {sum(len(p[2]) for p in note.phases)} parked widget(s) none "
-            "was one the product owns from Python while its Qt widget was still alive. On this "
-            "route the collector has nothing of the product's to destroy, forced or not."
+            "was one the product owns from Python with a type defined in Python. On this route "
+            "the collector has nothing of the product's to destroy in place, forced or not."
         )
-    in_place = [widget for widget in findings if widget.defined_in_python]
     return (
-        f"REACHABLE — {len(findings)} live widget(s) the product owns from Python were parked by a "
-        f"collection running off the GUI thread, {len(in_place)} of them with a type defined in "
-        "Python, which is destroyed in place on the collecting thread rather than marshalled. "
-        "This is the tree criterion 2 asks for; the names are above."
+        f"REACHABLE — {len(findings)} widget(s) the product owns from Python, each with a type "
+        "defined in Python, were parked by a collection running off the GUI thread. Shiboken "
+        "destroys those in place on the collecting thread rather than marshalling them, which is "
+        "T-289's mechanism. This is the tree criterion 2 asks for; the names are above."
     )
 
 

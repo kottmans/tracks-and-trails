@@ -764,46 +764,64 @@ twelve seconds later is not the used session the crash came from.
 #### The forced collection, 2026-08-31: the collector is offered the route and there is nothing to take
 
 `tools/t289_forced_collection_probe.py`, run through the same isolation as the watch
-(`tools/t289_isolated_session.sh <report> probe`). **Six runs, identical in every count.**
+(`tools/t289_isolated_session.sh <report> probe`). **The numbers below are the second measurement**;
+the first is withdrawn because `T289-R18`…`R20` each changed what it meant.
 
-**Why a second instrument.** The watch observes and does not steer, by design, and it has now
-answered what it can: on this route the collector fires on the update's own pool thread and never
-holds a widget. *"We watched and nothing happened"* does not separate **the product never hands the
+**Why a second instrument.** The watch observes and does not steer, by design, and it has answered
+what it can: on this route the collector fires on the update's own pool thread and never holds a
+widget. *"We watched and nothing happened"* does not separate **the product never hands the
 collector a widget** from **we did not watch at the moment it did**, and no number of observed
 sessions closes that gap. This probe drives the same route and then **forces a collection off the
-GUI thread** at two chosen moments, which asks the reachability question directly.
+GUI thread** at two chosen moments.
 
 | Phase | Moment | Objects parked | Widgets among them |
 |---|---|---:|---:|
-| **A** | the update has reported, Settings still open — the crash's own configuration | 9 | **0** |
-| **B** | the Settings dialog closed and its deferred deletions delivered | 14 | **0** |
+| **A** | the update has reported, Settings still open — the crash's own configuration | 0, or 9 in one run of four | **0** |
+| **B** | the Settings dialog closed and its deferred deletions delivered | 5 | **0** |
 
-**Not zero findings — zero widgets.** The collector had cycles to work with in both phases and not
-one of them contained a `QWidget` at all, so the classification never had to discriminate.
+**Not zero findings — zero widgets.** The collector had cycles to work with and not one of them
+contained a `QWidget`, so the classifier never had to discriminate on a product object.
 
-**The reason is structural, and it is in `main_window.py`.** `open_settings` builds the dialog with
-`parent=self`, so **Qt owns it**, and the window's own reference is dropped on `finished` by
-`_forget_settings_dialog` while the C++ parent keeps the widget alive and its wrapper reachable.
-A widget in that shape can never be what this task is looking for: dropping its wrapper destroys
-nothing, which is exactly the property `ai/TESTING.md` §7 states and the guard enforces. **The
-product's own ownership discipline is why the route is clean**, rather than luck about timing.
+**Phase B says why, rather than leaving it to be inferred.** After the collection the probe reports
+the dialog through a weak reference: *wrapper survived, C++ object alive, **owned by Qt, parented to
+`MainWindow`**, the product no longer references it, frames of this probe holding it: **0***. So the
+zero is not the product retaining the dialog and not the probe retaining it — the window's own
+reference **is** dropped, by `_forget_settings_dialog` on `finished`. It is Qt ownership:
+`open_settings` builds the dialog with `parent=self`, and dropping a wrapper Qt owns destroys
+nothing. **That property is the one `ai/TESTING.md` §7 states**, and it is why this route is clean.
 
-**What it does not establish.** It asks about reachability **at two instants**; a widget that
-became collector-reachable at some other moment is not seen by either. A forced collection is also
-not a collection the product would have run then — it establishes that such a widget exists to be
-found, or does not. The thumbnail pool is untouched by this probe.
+**What it does not establish.** It asks about reachability **at two instants**; a widget that became
+collector-reachable at another moment is not seen. A forced collection is not one the product would
+have run then. The thumbnail pool is untouched.
 
-**The instrument was mutation-tested, and two of its own arms proved nothing until they were**
-(`ai/TESTING.md` §"An instrument carries its own positive control"). Eight mutations of the
-classifier and its predicate were run against the controls: three survived the first pass. The
-Qt-owned arm never parked its widget at all — a parented child's wrapper stays reachable through
-its parent, so the arm passed by being vacuous; nothing asserted that a Qt-typed widget is not
-called Python-defined; and nothing checked that the collection ran off the GUI thread, so a version
-that collected on it reported identical results and passed. A fourth mutation — dropping `valid`
-from the reporting predicate — survives every arm that uses a real widget, because `owned` is
-computed as *valid and `ownedByPython`* and no live run can produce a dead-but-owned record; it is
-killed by asking the predicate that combination directly. **All eight are killed now**, and the
-seven arms are listed in the tool.
+**Four review findings, and each was the instrument rather than the product** (`T289-R17`…`R20`).
+The shared wrapper's default mode stopped starting, because the tool path and `--drive` were held in
+one string and Python looked for a file with a space in its name. Phase B held the dialog in a local
+across its own collection, so its zero was the probe's doing — the self-retention class that
+invalidated an earlier `T-238` zero, reproduced by the instrument built after it. The cleanup
+re-enabled automatic collection before draining, so a positive result would have left a live
+collectable widget for a pool thread to destroy — the probe causing the defect it came to look for.
+And the reporting predicate omitted `defined_in_python`, so a plain `QWidget` — which Shiboken
+marshals to the GUI thread and destroys safely — classified as a `T-289` finding. **`valid` was
+dropped from that predicate on the same ruling**: `owned` is computed as *valid and
+`ownedByPython`*, so it stated a condition no real widget could falsify.
+
+**Nine mutations of the classifier and its predicate are killed by the controls**, and getting there
+took three passes in which arms that looked like controls were not. The Qt-owned arm never parked
+its widget, so it asserted nothing; nothing checked that a Qt-typed widget is not called
+Python-defined; nothing checked the collection ran off the GUI thread. **Two detectors written for
+`R18` and `R19` were then blind in turn**, and both were caught by testing them against the defect
+they were written for rather than by review: `gc.get_referrers` cannot see a frame CPython has not
+materialised, so the retention check answered *0 frames* while a deliberately reintroduced `R18`
+held the dialog — it walks the stack now, and reports 1 against that same mutant and 0 clean.
+
+**One control is an ordering check and says so.** `R19`'s drain cannot be caught by its effect on
+this Python and PySide6: a weak reference reports the widget dead whichever way the phase ends,
+because CPython clears weakrefs to unreachable objects *before* `DEBUG_SAVEALL` parks them, and a
+`__del__` flag fires either way because `gc.garbage.clear()` frees the cycle by itself here. Both
+were built and measured before settling for a check that the drain step happens before automatic
+collection returns. The drain is kept because the review measured a case where it mattered; the arm
+fails if the step is removed, and it is labelled as what it is rather than as proof of the effect.
 
 #### The reviewer's real-display runs, 2026-08-31: both routes, both inconclusive
 
