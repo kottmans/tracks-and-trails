@@ -23312,3 +23312,93 @@ them does not change the earlier measurement's display bounds. Nothing is pushed
 The Reviewer appended only this record and used offscreen read-only/failure-injection probes plus
 the submitted and neighboring tests. No reviewed source, submitted test, TASKS/STATUS text,
 handoff, branch, push, CI run, live display or remote state was changed.
+
+---
+
+## 2026-08-31 — T-289 R21 pool-drain second focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-289`
+**Correction boundary:** `10cd81a9f2c697b2d580cfe8181898e1bf3c5749..436c1c5d1f4c8abfa1e0b7db8a62b2b3630730c8`
+**Platform verified:** Spock, Qt/PySide6 6.11.1, offscreen
+**Verdict:** **Changes requested.** The ordinary counted-task completion race, production
+composition edge and sealed-admission hold are corrected. High `T289-R21` remains Open because
+the `aboutToQuit` bypass deliberately calls `quit()` with a live pool after its wait expires, and
+an updater already inside its work still has no cancellation checkpoint. The combined barrier
+also retains a second, weaker completion predicate that the submitted underlying-pool control does
+not drive.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Result | Required correction | Status |
+|---|---|---:|---|---|---|
+| `T289-R21` | **High** | **Yes — a supported exit path still permits the measured active-pool/widget-teardown overlap** | `SealedPool._confirm()` now waits for both semantic count zero and `QThreadPool.waitForDone(0)`, so its `drained` signal no longer trusts the callback emitted from inside `run()`. But `stop_for_exit()` sets `_pools_drained` false on timeout and then calls `_leave()` anyway; truthful bookkeeping and a warning do not sequence teardown. Its `all(...)` also short-circuits, so if the first pool times out the second is not waited at all. Separately, `_Task` still checks cancellation only at entry: after held work began, sealing produced `cancelled=True`, `completed=False`, `active=1`. Finally, `when_all_drained()`'s immediate check still uses `sealed and not outstanding` rather than `is_empty()`. With the correction's own uncounted-active state, `OrderlyShutdown.begin()` quit and closed the connection at `active=1`, even though the gate itself correctly withheld `drained`. | A timeout may emit a diagnostic, but it may not authorize Qt teardown. On the no-event-loop bypass, wait every pool to actual completion before returning; a hard exit deadline requires moving the work behind a boundary that can genuinely be terminated. Do not use short-circuit aggregation. Make `when_all_drained()` consume the same authoritative empty predicate as `SealedPool`. Add cancellation inside yt-dlp operations as detailed below and replace the current pre-sealed thumbnail controls with start-then-seal controls. Correct the current-truth claim that no pool thread can survive teardown only after both exit paths establish it. | **Open — ordinary counted completion accepted; bypass and running cancellation remain unsafe** |
+| `T289-R22` | **Medium** | **No — resolved** | `compose()` now supplies two distinct real singleton gates and the regression asserts each by identity. The former one-pool-twice mutation is covered. | None. | **Resolved** |
+| `T289-R23` | **Low** | **No** | Runtime Qt-bearing imports were moved back inside `app.py` functions; a fresh import leaves `PySide6` absent. The root autouse fixture was not corrected: it still imports both Qt-bearing modules for every test and restores their singleton references without establishing that a pool created during the test is empty. The submitted test's manual join—and its recorded suite segfault before that join—demonstrates the disposal risk the original correction requested the fixture to own. | Inspect/reset already loaded modules without importing Qt solely for isolation. On teardown, identify a singleton created during the test and establish it is drained before dropping it; also handle a module first imported during the test. | **Partially resolved — app import fixed; fixture half remains Open** |
+| `T289-R24` | **Low** | **No — resolved** | Rejected sealed admission now routes through `_on_failed`, releases the worker-start hold and clears busy state. The acquired-then-refused regression passes. | None. | **Resolved** |
+
+### Ruling on running yt-dlp cancellation
+
+**More checkpoints are required.** `T-198` protects the live-tree replacement transaction; it
+does not make download and staging one indivisible operation. `install_latest()` downloads and
+extracts into a sibling temporary workspace, and its `finally` removes that workspace. It is safe
+to stop after release lookup, between download chunks, after the download, and after staging
+extraction but before `_swap_into_place()`. Only the interval that starts displacing the live tree
+and ends after successful replacement or rollback must remain non-cancellable.
+
+Resolution needs the same treatment. `resolve_in_a_child()` currently blocks on one queue read for
+up to 90 seconds. Poll the queue in short slices against one overall deadline and the cancellation
+request; on cancellation, terminate and join the already-owned child through the existing cleanup
+path. An individual bounded network read or archive operation need not be force-interrupted, but
+the next safe boundary must decline further work. This keeps the update transaction intact while
+making the cancellation half of the approved design substantive rather than entry-only.
+
+### Evidence and test strength
+
+- **Counted completion is fixed.** Holding the wrapper inside its completion emission no longer
+  releases `drained`; the callback observed `active=[0]` only after the wrapper returned.
+- **The bypass still reproduces the target state.** With a 1 ms bound it returned
+  `quits=1 finished=True drained=False active=1 connection_closed=True`. Recording `False` says
+  what happened but does not prevent it.
+- **Both pools are not necessarily waited.** Two deterministic fake waits returned false then true;
+  observed calls were `[1, 0]`, proving `all()` skipped the second wait.
+- **The combined predicate is weaker than the gate.** A runnable started on the submitted gate's
+  exposed underlying pool held `outstanding == 0` and `active == 1`. `begin()`'s immediate
+  `when_all_drained()` check produced `quits=1 finished=True active=1`; the gate's own corrected
+  `drained` signal did not fire early.
+- **The running-thumbnail tests do not build their stated transition.** Both seal the singleton
+  before calling the task's `run()` directly. Moving the new sweep/decode checkpoint back to entry
+  would still leave every asserted file untouched, so those controls do not distinguish queued
+  cancellation from cancellation after work has started. Block the first operation or decode,
+  seal from the test thread while it is in progress, then release it and assert the later
+  operation/publication is skipped.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Submitted shutdown tests | **13 passed**. |
+| Focused shutdown/yt-dlp/composition/thumbnail/skeleton/layering suite | **528 passed in 67.43 s**. |
+| Counted completion probe | `drained active=[0]` — the original callback-before-return race is corrected. |
+| Combined-barrier probe | `quits=1 finished=True active=1 connection_closed=True` — weaker immediate predicate reproduced. |
+| Bypass timeout probe | `quits=1 finished=True drained=False active=1 connection_closed=True` — unsafe teardown remains. |
+| Bypass aggregation probe | `waits=[1, 0] quits=1` — the second pool was skipped after the first timeout. |
+| Running yt-dlp probe | `cancelled=True completed=False active=1` — no checkpoint after entry. |
+| Qt import probes | Fresh `tracks_and_trails.app` import: `PySide6` absent. Entering the root pool fixture: absent before, present during. |
+| Ruff / format / mypy src | Passed; **161 files** formatted; mypy clean in **57 source files**. |
+| Diff / placement / commit gate | Diff check clean; placement **15 passed**; **1 commit** checked in `10cd81a..436c1c5`. |
+| Submitted broader evidence | Implementer reports **3,858 passed / 21 skipped** and six mutations killed. The full suite was not repeated. |
+
+### Readiness
+
+Keep T-289 In Review. `T289-R21` remains High, so its focused correction and independent
+verification continue despite the ordinary pass budget. The prior ruling already excluded
+proceeding after a timeout: after a diagnostic threshold, continuing to wait is the safe
+last-resort behavior because returning permits the race and Qt's eventual pool destruction waits
+anyway, only at the wrong point in teardown. If an absolute process-exit deadline is required,
+that is a design change to a killable work boundary, not permission to call `_leave()` over live
+Python work. No live-display rerun is required.
+
+The Reviewer appended only this record and used offscreen read-only/failure-injection probes plus
+focused gates. No reviewed source, submitted test, TASKS/STATUS text, handoff, branch, push, CI
+run, live display or remote state was changed.
