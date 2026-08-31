@@ -10,15 +10,27 @@
 # route performs installs into a directory this script created and deletes. That is `T-298`'s
 # isolation applied to a measurement instead of to a build gate.
 #
-#     tools/t289_isolated_session.sh <report-path>
+#     tools/t289_isolated_session.sh <report-path> [watch|probe]
+#
+# **Two instruments, one isolation.** `watch` (the default) observes a driven session; `probe`
+# drives the same route and then forces a collection off the GUI thread. Both need a disposable
+# profile and a compositor of their own, and both end their report with the same route line and a
+# `VERDICT`, so the postcondition below does not care which ran.
 #
 # **One session, and it fails when the session fails.** A batch that wants to keep going after a
 # bad sample says so itself — `... || true` in the caller's loop — rather than having that choice
 # baked in here where the single-session caller cannot see it (`T289-R14`).
 set -eu
 
-report=${1:?usage: t289_isolated_session.sh <report-path>}
+report=${1:?usage: t289_isolated_session.sh <report-path> [watch|probe]}
+instrument=${2:-watch}
 project=$(cd "$(dirname "$0")/.." && pwd)
+
+case "$instrument" in
+    watch) tool="tools/t289_session_watch.py --drive" ;;
+    probe) tool="tools/t289_forced_collection_probe.py" ;;
+    *) echo "t289: unknown instrument '$instrument' — expected 'watch' or 'probe'" >&2; exit 2 ;;
+esac
 # **The postconditions below must be about *this* run** (`T289-R14`, second pass). A report left at
 # the target path by an earlier session satisfies every one of them without this session having
 # written a byte: seeded with a complete report, a compositor that exits 0 having produced nothing
@@ -42,7 +54,7 @@ cat > "$inside" <<INNER
 export XDG_DATA_HOME="$profile/data"
 export XDG_CONFIG_HOME="$profile/config"
 export XDG_CACHE_HOME="$profile/cache"
-"$project/.venv/bin/python" -u "$project/tools/t289_session_watch.py" --drive --report "$report" \
+"$project/.venv/bin/python" -u "$project/$tool" --report "$report" \
     >"${report%.txt}-app.log" 2>&1
 INNER
 chmod +x "$inside"

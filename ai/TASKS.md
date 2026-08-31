@@ -517,7 +517,7 @@ extra is not measurable against run-to-run variation — not that it does not ex
 | # | Criterion | State |
 |---|---|---|
 | 1 | The rule is stated durably **and enforced mechanically** | **Met.** `ai/TESTING.md` §7, and the boundary guard |
-| 2 | No widget tree left owned by Python alone where a pool thread can collect it | **NOT met** (`T289-R3`). Enforced over what the suite exercises. The route was driven 60 times on 2026-08-31 and handed the collector no widget — see *The driven measurement*; that is evidence, not the identification the criterion asks for |
+| 2 | No widget tree left owned by Python alone where a pool thread can collect it | **NOT met** (`T289-R3`). Enforced over what the suite exercises. On 2026-08-31 the route was driven 60 times, run twice more on a real display, and then had a collection **forced** off the GUI thread at both of its crash-like moments: no widget was parked at all, because the dialogs are Qt-parented. That is a strong negative about this route, not the identification the criterion asks for |
 | 3 | Not `gc.disable()` on pool threads | **Met.** Not used, and the entry records why it is not needed: the property is ownership, not threading |
 | 4 | A test that fails on the uncorrected tree | **Met.** `_leaks_a_collectable_widget.py`, in a subprocess, required to fail with this guard's message |
 | 5 | The three `edit: editing failed` lines accounted for | **Met — explained**, see below |
@@ -760,6 +760,50 @@ output** and the untouched **thumbnail pool** were both answered by the reviewer
 still standing are that the watch discovers widgets by event, so the 965 it names are the ones that
 received one, and that a timer which opens Settings four seconds after launch and closes the window
 twelve seconds later is not the used session the crash came from.
+
+#### The forced collection, 2026-08-31: the collector is offered the route and there is nothing to take
+
+`tools/t289_forced_collection_probe.py`, run through the same isolation as the watch
+(`tools/t289_isolated_session.sh <report> probe`). **Six runs, identical in every count.**
+
+**Why a second instrument.** The watch observes and does not steer, by design, and it has now
+answered what it can: on this route the collector fires on the update's own pool thread and never
+holds a widget. *"We watched and nothing happened"* does not separate **the product never hands the
+collector a widget** from **we did not watch at the moment it did**, and no number of observed
+sessions closes that gap. This probe drives the same route and then **forces a collection off the
+GUI thread** at two chosen moments, which asks the reachability question directly.
+
+| Phase | Moment | Objects parked | Widgets among them |
+|---|---|---:|---:|
+| **A** | the update has reported, Settings still open — the crash's own configuration | 9 | **0** |
+| **B** | the Settings dialog closed and its deferred deletions delivered | 14 | **0** |
+
+**Not zero findings — zero widgets.** The collector had cycles to work with in both phases and not
+one of them contained a `QWidget` at all, so the classification never had to discriminate.
+
+**The reason is structural, and it is in `main_window.py`.** `open_settings` builds the dialog with
+`parent=self`, so **Qt owns it**, and the window's own reference is dropped on `finished` by
+`_forget_settings_dialog` while the C++ parent keeps the widget alive and its wrapper reachable.
+A widget in that shape can never be what this task is looking for: dropping its wrapper destroys
+nothing, which is exactly the property `ai/TESTING.md` §7 states and the guard enforces. **The
+product's own ownership discipline is why the route is clean**, rather than luck about timing.
+
+**What it does not establish.** It asks about reachability **at two instants**; a widget that
+became collector-reachable at some other moment is not seen by either. A forced collection is also
+not a collection the product would have run then — it establishes that such a widget exists to be
+found, or does not. The thumbnail pool is untouched by this probe.
+
+**The instrument was mutation-tested, and two of its own arms proved nothing until they were**
+(`ai/TESTING.md` §"An instrument carries its own positive control"). Eight mutations of the
+classifier and its predicate were run against the controls: three survived the first pass. The
+Qt-owned arm never parked its widget at all — a parented child's wrapper stays reachable through
+its parent, so the arm passed by being vacuous; nothing asserted that a Qt-typed widget is not
+called Python-defined; and nothing checked that the collection ran off the GUI thread, so a version
+that collected on it reported identical results and passed. A fourth mutation — dropping `valid`
+from the reporting predicate — survives every arm that uses a real widget, because `owned` is
+computed as *valid and `ownedByPython`* and no live run can produce a dead-but-owned record; it is
+killed by asking the predicate that combination directly. **All eight are killed now**, and the
+seven arms are listed in the tool.
 
 #### The reviewer's real-display runs, 2026-08-31: both routes, both inconclusive
 
