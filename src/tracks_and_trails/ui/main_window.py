@@ -33,6 +33,8 @@ from PySide6.QtGui import (
     QGuiApplication,
     QIcon,
     QKeySequence,
+    QShowEvent,
+    QWindow,
 )
 from PySide6.QtWidgets import (
     QDialog,
@@ -473,6 +475,8 @@ class MainWindow(QMainWindow):
         #: The dialogs this window hid when it was minimized (`T-287`), in the order they
         #: were up. Empty whenever the window is not minimized.
         self._hidden_dialogs: list[QDialog] = []
+        #: The native window this watches for exposure changes (`T287-R1`), once it exists.
+        self._watched_surface: QWindow | None = None
         #: `T-199`: where ffmpeg was told to be, what resolving it said, and the writer. Held so
         #: the Settings screen opens on the truth rather than on the stored string.
         #: `T-197`: the cookies file in force, and the writer. `ui/` holds no settings writer.
@@ -1848,6 +1852,16 @@ class MainWindow(QMainWindow):
         self.setGeometry(moved_onto_a_screen(rect))
 
     # Qt's override name, hence the camelCase: this is not a project naming choice.
+    def showEvent(self, event: QShowEvent) -> None:
+        """Start watching the native window, which does not exist until the widget is shown.
+
+        `windowHandle()` is `None` before that, so the exposure watch in `_watch_the_surface`
+        cannot be installed in `__init__` (`T287-R1`).
+        """
+        super().showEvent(event)
+        self._watch_the_surface()
+
+    # Qt's override name, hence the camelCase: this is not a project naming choice.
     def changeEvent(self, event: QEvent) -> None:
         """Take this window's dialogs down with it, and bring them back (`T-287`).
 
@@ -1873,14 +1887,55 @@ class MainWindow(QMainWindow):
         — but a dialog the user had already closed must not be resurrected by a restore.
         """
         if event.type() == QEvent.Type.WindowStateChange:
-            if self.isMinimized():
-                self._hide_the_dialogs()
-            else:
-                self._restore_the_dialogs()
+            self._the_window_is_on_screen(not self.isMinimized())
         super().changeEvent(event)
 
+    def _watch_the_surface(self) -> None:
+        """Also watch the native window, because Wayland never tells the widget (`T287-R1`).
+
+        **Measured on KWin 6.7.3 / Wayland**: minimized through KDE's panel-facing protocol —
+        `org_kde_plasma_window.set_state(MINIMIZED)`, the route the report came from — the
+        `QMainWindow` receives **no** `WindowStateChange` at all. `isMinimized()` stays false. The
+        first version of this work-around therefore did nothing on the only route it was built for,
+        and its tests passed because `showMinimized()` changes Qt's own widget state and this does
+        not.
+
+        **What the native `QWindow` does receive is `Expose` with `isExposed()` false**, while
+        `windowState()` stays `WindowNoState`. That is the signal, and it is the compositor saying
+        the surface is no longer being shown.
+
+        **Both routes are kept, because they are different platforms rather than alternatives.**
+        Windows and X11 deliver the widget state change; Wayland delivers the exposure. Each calls
+        the same decision below, which is idempotent, so a platform that delivers both is not a
+        problem.
+        """
+        # **`windowHandle()` is typed non-optional and is not.** It returns `None` until the
+        # widget has been shown, which is why this is called from `showEvent` — and why the guard
+        # stays despite PySide's stubs insisting it cannot happen.
+        handle: QWindow | None = self.windowHandle()
+        if handle is None or handle is self._watched_surface:
+            return
+        self._watched_surface = handle
+        handle.installEventFilter(self)
+
+    def _the_window_is_on_screen(self, on_screen: bool) -> None:
+        """Take the dialogs down or bring them back. **Idempotent**, and both routes call it."""
+        if on_screen:
+            self._restore_the_dialogs()
+        else:
+            self._hide_the_dialogs()
+
     def _hide_the_dialogs(self) -> None:
-        """Remember which of this window's dialogs were up, and take them down."""
+        """Remember which of this window's dialogs were up, and take them down.
+
+        **Refuses to run twice** (`T287-R2`). Window state is a set of flags and minimize is not
+        its only transition: a second state change while still minimized called this again, found
+        nothing visible — everything was already hidden — and **replaced the restore set with an
+        empty one**, so the restore put nothing back. Capturing only when the set is empty makes
+        the second call a no-op instead.
+        """
+        if self._hidden_dialogs:
+            return
         self._hidden_dialogs = [
             dialog
             for dialog in self.findChildren(QDialog)
@@ -1909,6 +1964,16 @@ class MainWindow(QMainWindow):
             self._hidden_dialogs = [
                 dialog for dialog in self._hidden_dialogs if dialog is not watched
             ]
+        elif event.type() == QEvent.Type.Expose and watched is self._watched_surface:
+            # **The Wayland route** (`T287-R1`). `isExposed()` false is the compositor no longer
+            # showing this surface, which is what a panel minimize produces and what the widget
+            # never hears about.
+            #
+            # **Not only minimize**, and that is stated rather than hidden: another virtual desktop
+            # or a screen lock can unmap the surface too. Taking the dialogs down with the window
+            # in those cases is the same intent — they are transient to a window that is not on
+            # screen — and the restore is idempotent, so a spurious pair costs a hide and a show.
+            self._the_window_is_on_screen(self._watched_surface.isExposed())
         return super().eventFilter(watched, event)
 
     def _restore_the_dialogs(self) -> None:

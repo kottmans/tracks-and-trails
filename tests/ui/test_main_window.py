@@ -1295,6 +1295,53 @@ def test_a_second_state_change_while_minimized_does_not_forget_the_dialog(
     assert dialog.isVisible(), "a second minimized-state event made the window forget its dialog"
 
 
+def test_the_window_watches_its_native_surface_once_shown(composed: MainWindow) -> None:
+    """`T287-R1`: the Wayland route needs the *native* window, and it only exists after `show()`.
+
+    **The widget hears nothing when KDE's panel minimizes it** — measured on KWin 6.7.3, where
+    `org_kde_plasma_window.set_state(MINIMIZED)` leaves `QMainWindow` with no `WindowStateChange`
+    and `isMinimized()` false. The `QWindow` is what receives `Expose` with `isExposed()` false. So
+    the work-around is only wired at all if the window is watching that object.
+    """
+    handle = composed.windowHandle()
+    assert handle is not None, "the composed window has no native window, so nothing can watch it"
+    assert composed._watched_surface is handle, (
+        "the window is not watching its own native surface, so a panel-driven minimize reaches "
+        "nothing — which is exactly what T287-R1 found"
+    )
+
+
+def test_the_surface_going_off_screen_hides_the_dialogs(composed: MainWindow) -> None:
+    """`T287-R1`: the exposure route hides and restores, without any widget state change.
+
+    **Driven through the real event, not through the decision it reaches.** Hiding the widget makes
+    the offscreen platform deliver `Expose` with `isExposed()` false on the native window — measured
+    — which is the same event KWin delivers on a panel minimize. So this exercises the wiring the
+    reported route uses, rather than a substitute for it.
+
+    **What it is still not** is a panel minimize: this hides the widget, and KWin does not. The
+    end-to-end proof on a real KWin is a maintainer-run measurement and is recorded in the task as
+    outstanding. Saying otherwise is what `T287-R1` was: the previous version asserted
+    `showMinimized()` and the reported defect went untouched.
+    """
+    dialog = composed.open_add_dialog()
+    QApplication.processEvents()
+    assert dialog.isVisible()
+
+    composed.hide()
+    QApplication.processEvents()
+
+    assert not composed.isMinimized(), (
+        "the widget reports itself minimized, so this is not measuring the exposure route — the "
+        "whole point is that Wayland never sets that state"
+    )
+    assert not dialog.isVisible(), "the exposure route did not take the dialog down"
+
+    composed.show()
+    QApplication.processEvents()
+    assert dialog.isVisible(), "the exposure route did not bring the dialog back"
+
+
 def test_a_modal_dialog_comes_back_modal(composed: MainWindow) -> None:
     """`T-287`'s third criterion: *modality survives the round trip*, asserted rather than observed.
 

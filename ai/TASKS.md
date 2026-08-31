@@ -246,8 +246,8 @@ contents; this preface does not list them.***
 
 ### T-287 — Minimizing the main window leaves its dialogs on screen
 
-**Status:** **In Review — built 2026-08-30, and no review has run.** The window takes its dialogs
-down when it is minimized and brings them back when it is restored. **Hidden, never closed**, so a
+**Status:** **In Review — corrected 2026-08-31 after `T287-R1` and `R2`.** The window takes its
+dialogs down when it goes off screen and brings them back when it returns. **Hidden, never closed**, so a
 half-typed paste, a preset mid-edit and a format table's selection all survive; modality is a
 property and is untouched, asserted rather than assumed. **Five mutations, all killed.**
 
@@ -389,6 +389,35 @@ need to distinguish script non-execution from a silently refused write.
 **XWayland is not a second measurement.** There Qt's `showMinimized()` is `XIconifyWindow`, the same
 operation a pager makes, so it would answer an X11 question rather than the Wayland report.
 
+#### Corrected 2026-08-31: the widget never hears the panel
+
+**`T287-R1`, and it made the first build a no-op on the only route it was for.** Minimized through
+KDE's panel-facing protocol the `QMainWindow` receives **no** `WindowStateChange` and
+`isMinimized()` stays false. The work-around keyed on exactly that. **The green tests passed because
+`showMinimized()` changes Qt's own widget state**, which the panel does not — an equivalence this
+entry asserted and the reviewer measured to be false.
+
+**What the native window does receive is `Expose` with `isExposed()` false**, while `windowState()`
+stays `WindowNoState`. The window now watches its own `QWindow` for that, from `showEvent` because
+`windowHandle()` is `None` until then. **Both routes are kept**: Windows and X11 deliver the widget
+state change, Wayland delivers the exposure, and each calls one idempotent decision.
+
+**Not only minimize, and that is written down rather than hidden.** Another virtual desktop or a
+screen lock can unmap the surface too. Taking transient dialogs down with a window that is not on
+screen is the same intent, and the restore is idempotent, so a spurious pair costs a hide and a show.
+
+**`T287-R2`**: a second state change while still minimized called the hide again, found nothing
+visible — everything was already hidden — and replaced the restore set with an empty one. Capturing
+only when the set is empty makes the second call a no-op. The reviewer's regression covers it.
+
+**What is still not proven, and it is why this stays In Review**: the end-to-end behaviour on a real
+KWin panel minimize. The tests drive the *event* the panel delivers — hiding the widget makes the
+offscreen platform deliver the same `Expose` with `isExposed()` false, measured — but hiding a widget
+is not a panel minimize. **That proof is a maintainer-run measurement.** The harness exists in `/tmp`
+from the review's own run and needs the **live** session: `plasma-window-management` is not offered
+to a client under a nested `kwin_wayland --virtual`, measured as *"window-management global not
+available"*.
+
 #### What was built — 2026-08-30
 
 `MainWindow.changeEvent` on `WindowStateChange`: hide every visible top-level `QDialog` beneath this
@@ -406,8 +435,14 @@ opened *on top of* the add dialog as well, which is right — they are as strand
   `T-289`'s subject.
 - **`shiboken6.isValid` guards the restore**, for a dialog destroyed rather than closed.
 
-**Five mutations, all killed**: not hiding, never restoring, closing instead of hiding, restoring a
-dialog that closed while the window was down, and dropping modality on the way back.
+**Nine mutations, all killed**: not hiding, never restoring, closing instead of hiding, restoring a
+dialog that closed while the window was down, dropping modality on the way back, never watching the
+native surface, dropping the exposure route, reading exposure inverted, and dropping the
+widget-state route.
+
+*(One survived first time and the survival was the finding: the exposure test called the decision
+directly, so the wiring from `Expose` to that decision was untested — the same substitution that
+produced `T287-R1`. The test now drives the real event.)*
 
 **The Windows half is named rather than assumed** (`OPS-003`, this entry's fifth criterion). The
 measurement was KDE/Wayland; whether a Windows taskbar minimize already takes parented dialogs with
