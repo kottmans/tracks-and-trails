@@ -5,10 +5,9 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-30 — **`T-289` is scheduled and its guard is built, reviewed and
-corrected; its criterion 2 is deliberately still open.** The rule *no Qt widget is destroyed off the
-GUI thread* is stated in `ai/TESTING.md` §7 and enforced at every `tests/ui` boundary. Read this
-section first.
+**Last updated:** 2026-08-31 — **`T-289`'s route has now been driven and measured, and its
+criterion 2 is deliberately still open.** The rule *no Qt widget is destroyed off the GUI thread* is
+stated in `ai/TESTING.md` §7 and enforced at every `tests/ui` boundary. Read this section first.
 
 **What the guard is.** No widget whose type is defined in Python may be owned by Python *and*
 reachable only through a reference cycle — the state that lets the collector run `~QWidget` on
@@ -32,7 +31,15 @@ uncorrected, and the dump names no Python type. **Ruled 2026-08-30: instrument t
 the application on a real display, driven through Settings → yt-dlp → Update, with a `gc` hook
 naming every Python-owned widget the collector frees and the thread that freed it. The maintainer
 declined the alternative, which was to re-scope this task and accept the released risk elsewhere.
-That measurement is the next work, and it also closes `T-238`'s outstanding real-session step.
+**That measurement was taken on 2026-08-31** — 60 unattended sessions at `179f73e` on a
+nested `kwin_wayland --virtual` compositor, each driving Settings → yt-dlp → Update through the
+product's own controls. **The precondition reproduced in all 60**: the cyclic collector ran on
+`ytdlp_service`'s own pool thread — the thread the core dump names — while the update was in
+flight. **No widget was ever in what it freed**, and there were no near misses. That is evidence
+this route is clean; it is **not** the identification criterion 2 asks for, and 56 of the 60
+sessions were arithmetically identical, so the batch is one deterministic answer rather than sixty
+samples. Still owed: a real display rather than a virtual output, and the **thumbnail pool**, which
+this route never touches — which is also the half of `T-238`'s real-session step that stays open.
 
 **Cost of the guard, measured:** unit+UI **35–38 s against a 39 s baseline**, within run-to-run
 noise. **One extra explicit collection per test remains** — the inspection's, which catches state

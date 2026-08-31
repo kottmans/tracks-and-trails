@@ -257,7 +257,10 @@ prove it, each run in a subprocess and required to fail with this guard's messag
 and the previous claim that the rule *"holds in the product today"* is withdrawn. **The maintainer
 ruled on 2026-08-30 to instrument the real route rather than re-scope this task** — see *Where each
 criterion stands*. *(This said the ruling was still owed, in the same commit that recorded it —
-`T289-R5`.)*
+`T289-R5`.)* **The instrumented run happened on 2026-08-31**: 60 driven sessions on a nested Wayland
+compositor put the collector on the update's own pool thread every time and found no widget in what
+it freed — evidence that this route is clean, and not the identification criterion 2 asks for. See
+*The driven measurement*.
 
 *(Filed from this.)* The maintainer updated yt-dlp from the Settings screen and the process
 **aborted**: `double free or corruption (!prev)`,
@@ -509,7 +512,7 @@ extra is not measurable against run-to-run variation — not that it does not ex
 | # | Criterion | State |
 |---|---|---|
 | 1 | The rule is stated durably **and enforced mechanically** | **Met.** `ai/TESTING.md` §7, and the boundary guard |
-| 2 | No widget tree left owned by Python alone where a pool thread can collect it | **NOT met** (`T289-R3`). Enforced over what the suite exercises; the released crash route is still unidentified and uncorrected — see below |
+| 2 | No widget tree left owned by Python alone where a pool thread can collect it | **NOT met** (`T289-R3`). Enforced over what the suite exercises. The route was driven 60 times on 2026-08-31 and handed the collector no widget — see *The driven measurement*; that is evidence, not the identification the criterion asks for |
 | 3 | Not `gc.disable()` on pool threads | **Met.** Not used, and the entry records why it is not needed: the property is ownership, not threading |
 | 4 | A test that fails on the uncorrected tree | **Met.** `_leaks_a_collectable_widget.py`, in a subprocess, required to fail with this guard's message |
 | 5 | The three `edit: editing failed` lines accounted for | **Met — explained**, see below |
@@ -673,6 +676,65 @@ filing it is the maintainer's or the reviewer's call rather than mine.)*
 line is 97 minutes before the crash. `T-282` is the task for a debug level reachable without editing
 code, and it is Proposed. Adding logging here would be that task done narrowly and in the wrong
 place; what this entry can say is that the gap is owned, named, and unclosed.
+
+#### The driven measurement, 2026-08-31: the gun is loaded on that thread and holds no widget
+
+**60 unattended sessions at `179f73e`**, each the product on a nested `kwin_wayland --virtual`
+compositor — Qt selected the `wayland` plugin in all 60, which the report reads from the running
+application rather than from the environment it was asked for — driven through
+`MainWindow.open_settings()` and a click on the Settings screen's own `ytdlpUpdate` button, which
+composition wires to `YtdlpService.install_latest_version`. **The whole update runs**: the wheel is
+fetched from PyPI, verified and extracted into the session's own disposable `user_data_dir`, and
+every session reported `Resolution(version='2026.08.19', source='user-managed copy (OPS-002)')` —
+the copy its own install had just written.
+
+    tools/t289_isolated_session.sh reports/t289-session.txt   # one session, ~20 s
+
+**There is no file for this under `ai/evidence/`, deliberately**: that directory is for artifacts a
+re-run would not produce, and this is a committed tool driving a deterministic route. Its command
+line is above and its numbers are here, which is what that README asks for.
+
+**The precondition reproduces every time.** In 60 of 60 sessions the cyclic collector ran on the
+update's pool thread — `Dummy-1`, `ytdlp_service`'s own `QThreadPool` — while the update was in
+flight, freeing 9 objects. That is the thread the core dump names — `PyObject_CallNoArgs`, Qt
+calling this task's Python, through `_Py_HandlePending` into `gc_collect_main` — at the moment the
+dump names it.
+
+| Per session | Across the 60 |
+|---|---|
+| Route completed — Settings opened, update started, update finished | **60 / 60** |
+| Widgets watched | 965 (964 in two sessions) |
+| Collections on the GUI thread | 8 (7 in four) |
+| Collections on a pool thread | 2 on `Dummy-1`; four sessions also ran one on a `Dummy-2` |
+| Objects freed by the pool-thread collections | 9, in every session |
+| **Widget destructions off the GUI thread** | **0** (0 inside a collection) |
+| Widget destructions on the GUI thread | 28, **none** inside a collection |
+| **Near misses** — Python-owned widgets the collector destroyed on the GUI thread | **0** |
+| Verdict | `INCONCLUSIVE`, 60 / 60 |
+
+**No widget was ever among what the collector freed** — not on a pool thread, not on the GUI
+thread. The other 28 destructions per session are Qt's own, on the GUI thread and outside any
+collection; **the watch counts them without naming them**, so *which* widgets they are is not
+established here and the obvious reading — the Settings screen and its children — is an inference
+this run does not carry. What it does establish is the classification that matters: none of them
+happened inside a collection, and none happened off the GUI thread. The instrument's positive
+control passed offscreen before each of the 60 sessions, so a clean report is the instrument
+reporting rather than the instrument being blind.
+
+**Criterion 2 stays NOT met, and the size of the batch must not be read as strength.** 56 of the 60
+sessions produced identical arithmetic; the other four differ by a second pool thread and one
+collection. These are not 60 samples of an intermittent event — they are one deterministic route
+measured 60 times, and the reviewer's *"one null session cannot close criterion 2"* applies to
+sixty of them just as it did to one. What the run establishes is that **this route, driven this
+way, hands the collector no widget at all**, and that the instrument said so with its positive
+control passing beforehand each time.
+
+**Four bounds, all of them still open**: it is a real compositor on a **virtual output**, not the
+maintainer's display, which is what the ruling asked for; the **thumbnail pool** — the second pool
+where the same collection can fire — is never touched by this route; the watch discovers widgets by
+event, so the 965 it names are the ones that received one; and a timer that opens Settings four
+seconds after launch and closes the window twelve seconds later is not the used session the crash
+came from.
 
 #### Out of scope
 

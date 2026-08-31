@@ -787,8 +787,109 @@ def finish_on_a_signal(watch: Watch) -> None:
         signal.signal(signum, finish)
 
 
+def drive_the_route(watch: Watch) -> None:
+    """Walk Settings → yt-dlp → Update through the product's own controls, unattended.
+
+    **A real button click, not a method call.** The route is `MainWindow.open_settings()` — the
+    same call the menu makes — and then `click()` on the Settings screen's own `ytdlpUpdate`
+    button. Nothing here reaches into `YtdlpService`; the only synthetic part is that a timer
+    presses the button instead of a hand.
+
+    **Why this is worth having even though a person could click it.** The crash is intermittent,
+    so one attended session is one sample. An unattended session can be repeated thirty times
+    while nobody is awake, and the near-miss list accumulates across all of them.
+
+    **Stated as the bound it is**: a timer's click is not a user's, and nothing here exercises the
+    pointer, the keyboard, or the compositor's input path. What it does exercise is the product's
+    update route on a real window, which is what criterion 2 asks about.
+    """
+    from PySide6.QtWidgets import QPushButton
+
+    # **Nothing here may touch `QApplication` at setup**, because `app.run` has not created it yet:
+    # this is scheduled before `exec()` exactly as `arm()` is, and the first version asserted the
+    # instance existed and died before the window ever appeared.
+    def the_main_window() -> QWidget | None:
+        application = QApplication.instance()
+        if not isinstance(application, QApplication):
+            return None
+        for widget in application.topLevelWidgets():
+            if type(widget).__name__ == "MainWindow":
+                return widget
+        return None
+
+    def open_settings(waited: int = 0) -> None:
+        window = the_main_window()
+        if window is None:
+            if waited > 30_000:
+                watch.say("drive: no MainWindow after 30s; the route cannot start")
+                finish()
+                return
+            QTimer.singleShot(1000, lambda: open_settings(waited + 1000))
+            return
+        watch.say("drive: opening Settings")
+        window.open_settings()  # type: ignore[attr-defined]
+        QTimer.singleShot(2500, press_update)
+
+    def press_update() -> None:
+        window = the_main_window()
+        button = window.findChild(QPushButton, "ytdlpUpdate") if window is not None else None
+        if button is None:
+            watch.say("drive: the Settings screen has no ytdlpUpdate button; route not driven")
+            finish()
+            return
+        watch.say("drive: clicking Update")
+        button.click()
+        QTimer.singleShot(2000, wait_for_the_update)
+
+    def wait_for_the_update(waited: int = 0) -> None:
+        if watch.update_finished:
+            watch.say("drive: the update reported; letting the session settle")
+            QTimer.singleShot(8000, finish)
+            return
+        if waited > 240_000:
+            watch.say("drive: the update never reported; ending the session anyway")
+            finish()
+            return
+        QTimer.singleShot(2000, lambda: wait_for_the_update(waited + 2000))
+
+    def finish() -> None:
+        watch.say("drive: closing the window")
+        window = the_main_window()
+        if window is not None:
+            window.close()
+        application = QApplication.instance()
+        if application is not None:
+            QTimer.singleShot(3000, application.quit)
+
+    QTimer.singleShot(4000, open_settings)
+
+
+def start_the_session(watch: Watch, *, drive: bool) -> None:
+    """Arm the watch and, if asked, start the drive — **both on the GUI thread, after `exec()`**.
+
+    This exists because of the difference between a zero-delay `singleShot` and a delayed one
+    (`T289-R13`). Qt 6 turns the zero-delay form into a queued call, so posting it before the
+    `QApplication` exists is harmless: it runs as soon as the loop starts. A *delayed* one has to
+    `startTimer()` when it is created, and with no event dispatcher on the thread yet Qt prints one
+    line — `QObject::startTimer: current thread's event dispatcher has already been destroyed` — and
+    drops the timer. `drive_the_route` starts with a 4-second timer, so scheduling it from `main`
+    silently disarmed the whole drive: the session armed correctly, then sat on an idle event loop
+    until the outer `timeout` killed it, and reported nothing. Starting the drive from here means
+    it is created by the loop that will run it.
+    """
+    arm(watch)
+    if drive:
+        watch.say("this session drives the route itself; see drive_the_route for the bound")
+        drive_the_route(watch)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the application under T-289's watch.")
+    parser.add_argument(
+        "--drive",
+        action="store_true",
+        help="walk Settings -> yt-dlp -> Update automatically and then close, for unattended runs",
+    )
     parser.add_argument(
         "--self-test",
         action="store_true",
@@ -826,8 +927,9 @@ def main() -> int:
 
         # **Armed once the application exists, on the GUI thread.** `app.run` constructs the
         # `QApplication` itself, so there is nothing to install a filter on until it has; a
-        # zero-delay timer posted before `exec()` runs as soon as the loop starts.
-        QTimer.singleShot(0, lambda: arm(watch))
+        # zero-delay timer posted before `exec()` runs as soon as the loop starts. Everything
+        # with a delay on it belongs inside `start_the_session`, not here — see its docstring.
+        QTimer.singleShot(0, lambda: start_the_session(watch, drive=arguments.drive))
 
         try:
             code = run([sys.argv[0], *rest])
