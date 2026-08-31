@@ -246,8 +246,13 @@ contents; this preface does not list them.***
 
 ### T-289 — A pool thread's garbage collection destroys widgets while the GUI thread frees them
 
-**Status:** **In Review — corrected 2026-08-30 after `T289-R2`…`R5`.** The rule *no Qt widget is
-destroyed off the GUI thread* is stated in `ai/TESTING.md` §7 and enforced at every `tests/ui`
+**Status:** **In Review — the measurement round is Approved at `c29e299` on 2026-08-31**
+(`T289-R14`, `R15`, `R16`, after `R2`…`R5` on 2026-08-30). **Criterion 2 is still open, and what it
+lacks has changed**: both pools have now been watched on a real display and neither handed the
+collector a widget, so what is missing is the tree itself rather than a display, a route or another
+session — see *The driven measurement* and *The reviewer's real-display runs*. The rule *no Qt
+widget is destroyed off the GUI thread* is stated in `ai/TESTING.md` §7 and enforced at every
+`tests/ui`
 boundary: no widget whose type is defined in Python may be owned by Python *and* reachable only
 through a reference cycle. **The parking is armed for the whole test rather than sampled at
 teardown** (`T289-R2`), and the one exemption fails closed (`T289-R4`). Three deliberate violations
