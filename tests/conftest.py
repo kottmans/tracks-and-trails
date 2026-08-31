@@ -82,3 +82,30 @@ def _per_user_directories(tmp_path: Path) -> Iterator[None]:
 if sys.platform == "win32":
     _windows = Path(os.environ.get("WINDIR", r"C:\Windows"))
     os.environ.setdefault("QT_QPA_FONTDIR", str(_windows / "Fonts"))
+
+
+# **The pool gates are process-global, and sealing one is permanent** (`T289-R21`). That is correct
+# in a running application — shutdown happens once — and it leaks in a suite: a test that composes
+# the application and closes it seals the *module's* pool, and every later test in that worker gets
+# a pool that refuses work. Nine tests failed that way, all of them passing alone, and the order
+# that made them fail was the accident of which worker collected them.
+#
+# **Replaced around every test rather than fixed where it showed** — `tests/ui/conftest.py` makes
+# the same argument about theme dressing, for the same reason: a reset aimed at today's failures
+# leaves the next one to be found by accident. The singleton is dropped before each test and the
+# original put back after, so no test can leak a sealed pool and none can be affected by one.
+#
+# The globals are private and reached by name deliberately: an `unseal()` on `SealedPool` would be
+# production API that exists only for tests, and it would weaken the one invariant the gate has.
+@pytest.fixture(autouse=True)
+def _pools_are_not_shared_between_tests() -> Iterator[None]:
+    from tracks_and_trails.downloader import ytdlp_service
+    from tracks_and_trails.ui import thumbnails
+
+    before = (ytdlp_service._SHARED_POOL, thumbnails._SHARED_POOL)
+    ytdlp_service._SHARED_POOL = None
+    thumbnails._SHARED_POOL = None
+    try:
+        yield
+    finally:
+        ytdlp_service._SHARED_POOL, thumbnails._SHARED_POOL = before

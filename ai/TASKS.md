@@ -963,6 +963,60 @@ the same call and the same rule, and the bound's value is a judgement about how 
 wait for a process that is already leaving. **An alternative worth ruling on together with it**: end
 the pools' work rather than wait for it, which needs the tasks to be cancellable and they are not.
 
+#### `T289-R21`, 2026-08-31: the pools are sealed, cancelled, and waited for
+
+**Built to the review's five points.** `src/tracks_and_trails/downloader/pools.py` adds `SealedPool`,
+the gate both `QThreadPool`s now sit behind, and `OrderlyShutdown` gained the barrier.
+
+1. **Sealed when shutdown begins.** `begin()` seals both pools before anything else. A pool still
+   accepting work has no last task, so the barrier would never complete — a thumbnail requested
+   while the window closes would extend it indefinitely.
+2. **Cancelled cooperatively.** A `QRunnable` cannot be interrupted, so `_Task`, `_ReadFromDisk`,
+   `_DecodeAndStore` and `_SweepTask` ask `cancelled` **before their work**, the one point where
+   stopping leaves nothing half-done. An update mid-extract must finish or roll back (`T-198`), so
+   it is deliberately not asked again inside.
+3. **An asynchronous barrier.** `drained` is emitted when the last task finishes, from a callback;
+   `when_all_drained` re-asks the predicate on each arrival. `seal()` returns immediately, which is
+   `T013-R2`'s rule kept.
+4. **`quit()` withheld.** `_writes_are_finished` no longer quits: it records that the database side
+   is done, and whichever of *writes finished* and *pools drained* completes last calls `_leave()`.
+5. **Counting is the gate's job.** Every runnable is wrapped so a task that raises or returns early
+   still decrements exactly once, through a signal delivered on the GUI thread.
+
+**The `aboutToQuit` bypass waits, bounded.** The asynchronous barrier cannot complete there —
+`drained` arrives through a queued connection and no event loop is left to deliver it — so
+`stop_for_exit` seals both pools and waits up to 3 s each. `stop_for_exit` already makes exactly
+this argument for the writer: the process is leaving and there is no interaction to block, and the
+alternative is Qt aborting on a running thread.
+
+**Two defects this found in itself, both by measurement rather than by review.** The gate's
+`outstanding` was decremented through a queued connection, so after the bypass — where nothing
+delivers one — it reported work that had finished; `wait_bounded` now reconciles the count from the
+pool, which is the authority. And **sealing a process-global pool is permanent**, which is right in
+an application and leaks in a suite: nine tests failed, all passing alone, because a test that
+composed the application sealed the module's pool for every test after it in that worker.
+`tests/conftest.py` replaces both singletons around every test, for the reason `tests/ui/conftest.py`
+gives about theme dressing — a reset aimed at today's failures leaves the next one to be found by
+accident.
+
+**Seven tests, each pool separately, and nine mutations killed.** The pools are asserted
+independently — wiring only one would pass a test that took both together and saw the other's
+completion — and the bypass has its own. **One mutation survived the first pass**: *the pool edge
+ignores the writer*, which quits as soon as the pools drain. Nothing tested that direction, though
+the writer's edge was asserted twice; a test now drains the pools first and requires the writer's
+completion before the quit. Also killed: no completion edge, the writer edge ignoring the pools, the
+gate never emitting `drained`, a seal that neither refuses work nor cancels, a `begin` that does not
+seal, and a bypass that does not wait.
+
+**`downloader/pools.py`, and the layering decides that**: `ui/` may import `downloader/` and not the
+reverse, `core/` may not import Qt (`ARCHITECTURE.md` §4), so it is the only layer both users can
+legally share.
+
+**What this does not do.** It does not prove the crash is gone — the dump remains unreproduced, and
+`T-238`'s record is that repetition does not discriminate this fault. What it removes is the
+configuration the reading found: after this, no pool thread survives into the teardown that destroys
+the widgets.
+
 #### Out of scope
 
 - **The leaked semaphores.** Three `/mp-*` objects survived, which is what an aborted process

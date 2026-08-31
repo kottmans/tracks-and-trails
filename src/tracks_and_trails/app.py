@@ -45,13 +45,16 @@ from collections.abc import Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from tracks_and_trails import __version__
 from tracks_and_trails.core import settings as settings_module
 from tracks_and_trails.core.models import NetworkOptions, Preset
 from tracks_and_trails.core.presets import DEFAULT_OUTPUT_TEMPLATE, needs_ffmpeg
 from tracks_and_trails.core.settings import Settings as AppSettings
+from tracks_and_trails.downloader.pools import SealedPool, when_all_drained
+from tracks_and_trails.downloader.ytdlp_service import pool as ytdlp_pool
+from tracks_and_trails.ui.thumbnails import pool as thumbnail_pool
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QApplication
@@ -1160,7 +1163,17 @@ def compose(
     # surface that does not exist is worse than no rule. What becomes of `JobProgressView` is
     # deferred by `UX-005`, so this is a disconnection rather than a deletion.
 
-    shutdown = OrderlyShutdown(app, manager, writer, connection, instance)
+    # **Both real pools, named here and nowhere else** (`T289-R21`). Composition is the one place
+    # that knows the whole graph, and the two pools are module-level singletons rather than
+    # anything the shutdown sequence could discover for itself.
+    shutdown = OrderlyShutdown(
+        app,
+        manager,
+        writer,
+        connection,
+        instance,
+        pools=(ytdlp_pool(), thumbnail_pool()),
+    )
     window.closing.connect(shutdown.begin)
     # **Every quit, not only the one through the window.** Qt aborts the process if a `QThread`
     # is destroyed while running, so a quit that skipped the lifecycle — `QApplication.quit()`
@@ -1190,6 +1203,12 @@ def compose(
     )
 
 
+#: How long the `aboutToQuit` bypass waits for a pool, per pool. Long enough for a decode or a
+#: sweep, short enough not to read as a hang; an update that is mid-install is the case this cannot
+#: help, and it is bounded rather than unbounded for that reason.
+_POOL_EXIT_WAIT_MS: Final = 3000
+
+
 class OrderlyShutdown:
     """Closing the window is a request; quitting is what happens when everything has stopped.
 
@@ -1214,17 +1233,25 @@ class OrderlyShutdown:
         writer: QueueWriter,
         connection: sqlite3.Connection,
         instance: InstanceLock | None = None,
+        pools: tuple[SealedPool, ...] = (),
     ) -> None:
         self._app = app
         self._manager = manager
         self._writer = writer
         self._connection = connection
+        #: The `QThreadPool`s that must be empty before the process may leave (`T289-R21`).
+        #: **Optional and empty by default**, because `T-013`'s tests construct this without an
+        #: application and the pools are composition's to supply; a run with none behaves exactly
+        #: as it did before this existed.
+        self._pools = pools
+        self._pools_drained = not pools
         #: Optional, because `T-013`'s tests construct this without one and the ownership guard is
         #: composition's concern rather than the shutdown sequence's. When present it is released
         #: last — see `_writes_are_finished`.
         self._instance = instance
         self._begun = False
         self._finished = False
+        self._writes_finished = False
         manager.idle.connect(self._workers_are_gone)
         writer.closed.connect(self._writes_are_finished)
 
@@ -1238,11 +1265,30 @@ class OrderlyShutdown:
         return self._finished
 
     def begin(self) -> None:
-        """Ask the manager to stop. **Returns immediately**; the rest happens on signals."""
+        """Ask the manager to stop and seal the pools. **Returns immediately**; the rest is signals.
+
+        **Sealing happens first and at once** (`T289-R21`). Everything else in this sequence waits
+        on a completion signal, and a pool that is still accepting work has no last task to signal
+        about — a thumbnail requested while the window is closing would extend the barrier
+        indefinitely. Sealing also asks running tasks to stop, which they check at the points where
+        stopping leaves nothing half-done.
+        """
         if self._begun:
             return
         self._begun = True
+        for pool in self._pools:
+            pool.seal()
+        if self._pools:
+            when_all_drained(self._pools, self._pools_are_empty)
         self._manager.shutdown()
+
+    def _pools_are_empty(self) -> None:
+        """The last pool task has finished. Quit if the writes were already done."""
+        if self._pools_drained:
+            return
+        self._pools_drained = True
+        if self._writes_finished:
+            self._leave()
 
     def _workers_are_gone(self) -> None:
         # `idle` is emitted whenever the last session is released, not only during shutdown, so
@@ -1272,11 +1318,38 @@ class OrderlyShutdown:
         if self._finished:
             return
         self._manager.shutdown()
+        for pool in self._pools:
+            pool.seal()
         self._writer.close()
         self._writer.wait_for_close()
-        self._writes_are_finished()
+        # **Bounded and blocking, for the same reason the writer's wait is** (`T289-R21`). The
+        # asynchronous barrier cannot complete on this path: `drained` arrives through a queued
+        # connection and there is no event loop left to deliver it. Waiting here is what stops the
+        # process tearing its widgets down with a pool thread still running Python, which is the
+        # configuration `T-289`'s core dump shows.
+        for pool in self._pools:
+            pool.wait_bounded(_POOL_EXIT_WAIT_MS)
+        self._pools_drained = True
+        self._writes_finished = True
+        self._leave()
 
     def _writes_are_finished(self) -> None:
+        """The writer has drained. **Not the end of the sequence any more** (`T289-R21`).
+
+        The database work is finished here, but the process may not leave while a pool thread is
+        still running Python: Qt destroys the widget tree at exit on the GUI thread, and a
+        collection on that pool thread would run `~QWidget` there at the same moment. So this step
+        records that the writes are done and hands the decision to whichever of the two conditions
+        completes last.
+        """
+        if self._finished or self._writes_finished:
+            return
+        self._writes_finished = True
+        if self._pools_drained:
+            self._leave()
+
+    def _leave(self) -> None:
+        """Close the database, release the lock, and quit — once **everything** has stopped."""
         if self._finished:
             return
         self._finished = True

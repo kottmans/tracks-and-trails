@@ -38,6 +38,7 @@ from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, Signal
 from PySide6.QtGui import QImage, QPixmap
 
 from tracks_and_trails.core.paths import thumbnail_cache_directory, thumbnail_cache_path
+from tracks_and_trails.downloader.pools import SealedPool
 
 #: The size a thumbnail is drawn at, and the size it is scaled to before it is ever cached.
 #: 16:9 at the height a row can afford — see `row_delegate.ROW_HEIGHT`.
@@ -62,15 +63,18 @@ _POOL_THREADS: Final = 2
 #: reviewer probe measured 1.008 s of that. Making it module-level moves the only blocking wait to
 #: interpreter teardown, where there is no interaction to hold up — and the application has two
 #: stores (the queue's and the dialog's) whose thumbnail work should share one bound anyway.
-_SHARED_POOL: QThreadPool | None = None
+_SHARED_POOL: SealedPool | None = None
 
 
-def _pool() -> QThreadPool:
-    """The shared decode pool, created once."""
+def pool() -> SealedPool:
+    """The shared thumbnail pool, created once and **behind a shutdown gate** (`T289-R21`).
+
+    The gate is what lets `OrderlyShutdown` know this pool has emptied. Before it, nothing did:
+    a decode or a sweep could still be running when the process began tearing the widgets down.
+    """
     global _SHARED_POOL
     if _SHARED_POOL is None:
-        _SHARED_POOL = QThreadPool()
-        _SHARED_POOL.setMaxThreadCount(_POOL_THREADS)
+        _SHARED_POOL = SealedPool(_POOL_THREADS)
     return _SHARED_POOL
 
 
@@ -218,6 +222,12 @@ class _ReadFromDisk(QRunnable):
         self._path = path
 
     def run(self) -> None:
+        # **Cooperative cancellation** (`T289-R21`): a `QRunnable` cannot be interrupted, so it
+        # asks. Checked here, before the work, which is the one point where stopping leaves
+        # nothing half-written; the sink is still notified so the store's count comes back down.
+        if pool().cancelled:
+            self._sink.task_done.emit()
+            return
         # `finally`, so the store's outstanding count cannot leak on any exit path — a leaked
         # count would leave `close()` waiting for a task that had already finished (`T118-R13`).
         try:
@@ -248,6 +258,12 @@ class _DecodeAndStore(QRunnable):
         self._path = path
 
     def run(self) -> None:
+        # **Cooperative cancellation** (`T289-R21`): a `QRunnable` cannot be interrupted, so it
+        # asks. Checked here, before the work, which is the one point where stopping leaves
+        # nothing half-written; the sink is still notified so the store's count comes back down.
+        if pool().cancelled:
+            self._sink.task_done.emit()
+            return
         try:
             image = QImage()
             if not image.loadFromData(self._data):
@@ -312,6 +328,12 @@ class _SweepTask(QRunnable):
         self._keep = keep
 
     def run(self) -> None:
+        # **Cooperative cancellation** (`T289-R21`): a `QRunnable` cannot be interrupted, so it
+        # asks. Checked here, before the work, which is the one point where stopping leaves
+        # nothing half-written; the sink is still notified so the store's count comes back down.
+        if pool().cancelled:
+            self._sink.task_done.emit()
+            return
         removed = 0
         try:
             try:
@@ -538,8 +560,11 @@ class ThumbnailStore(QObject):
         with its parent, and its destructor waits for its runnables on whichever thread does the
         deleting — the GUI thread (`T118-R13`).
         """
+        if not pool().start(task):
+            # Sealed. Not counted, because `_on_task_done` will never arrive for work that was
+            # never started, and a store waiting on a task that does not exist never closes.
+            return
         self._outstanding += 1
-        _pool().start(task)
 
     def _on_task_done(self) -> None:
         """One pool task finished. The last one after a close completes the shutdown."""
@@ -576,14 +601,14 @@ class ThumbnailStore(QObject):
 
     @property
     def pool(self) -> QThreadPool:
-        """The pool this store schedules on.
+        """The `QThreadPool` this store schedules on, inside its gate (`T289-R21`).
 
         Exposed so a test can block **whatever pool is really in use** rather than the one it
         expects. A regression that reached for the module-level pool by name passed against a
         mutation that gave the store a private child pool again — which is the exact defect
         `T118-R13` is about, so the test has to follow the implementation rather than assume it.
         """
-        return _pool()
+        return pool().pool
 
     @property
     def outstanding(self) -> int:

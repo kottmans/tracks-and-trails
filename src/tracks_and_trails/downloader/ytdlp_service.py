@@ -33,9 +33,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Final, Protocol
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
+from PySide6.QtCore import QObject, QRunnable, Signal
 
 from tracks_and_trails.downloader.environment import user_ytdlp_directory
+from tracks_and_trails.downloader.pools import SealedPool
 from tracks_and_trails.downloader.ytdlp_resolution import (
     Resolution,
     ResolutionUnavailableError,
@@ -54,15 +55,19 @@ from tracks_and_trails.downloader.ytdlp_update import (
 #: for the same directory.
 _POOL_THREADS: Final = 1
 
-_SHARED_POOL: QThreadPool | None = None
+_SHARED_POOL: SealedPool | None = None
 
 
-def _pool() -> QThreadPool:
-    """The shared pool for version queries and installs, created once (`T118-R13`)."""
+def pool() -> SealedPool:
+    """The shared pool for version queries and installs, created once (`T118-R13`).
+
+    **Behind a gate since `T289-R21`**: shutdown seals it, running work is asked to stop, and the
+    last task's completion is what lets the process quit. Before that nothing joined it and
+    `app.quit()` could be called with a thread of it still running Python.
+    """
     global _SHARED_POOL
     if _SHARED_POOL is None:
-        _SHARED_POOL = QThreadPool()
-        _SHARED_POOL.setMaxThreadCount(_POOL_THREADS)
+        _SHARED_POOL = SealedPool(_POOL_THREADS)
     return _SHARED_POOL
 
 
@@ -118,6 +123,13 @@ class _Task(QRunnable):
         self._work = work
 
     def run(self) -> None:
+        # **Cooperative cancellation** (`T289-R21`). A `QRunnable` cannot be interrupted, so the
+        # only safe stop is one it asks for. Before the work starts is the one point where nothing
+        # is half-done — an update that has begun extracting must finish or roll back, which is
+        # `T-198`'s rule, so it is deliberately not checked again inside.
+        if pool().cancelled:
+            self._sink.failed.emit("The application is closing.")
+            return
         try:
             self._work(self._sink)
         except (UpdateError, ResolutionUnavailableError) as error:
@@ -283,10 +295,14 @@ class YtdlpService(QObject):
         sink.installed.connect(self.installed)
         sink.reverted.connect(self.reverted)
         sink.failed.connect(self._on_failed)
-        self._set_busy(True)
         task = _Task(sink, work)
+        if not pool().start(task):
+            # Sealed: the application is going down and this work will never run. Saying so is
+            # better than a screen left waiting for a signal that cannot arrive.
+            self.failed.emit("The application is closing.")
+            return
+        self._set_busy(True)
         self._running = task
-        _pool().start(task)
 
     def _on_resolved(self, resolution: object) -> None:
         self._running = None
