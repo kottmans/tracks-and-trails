@@ -22526,3 +22526,64 @@ preserved nested-dialog state, closes that gap.
 The Reviewer appended this review record and added one failing regression in
 `tests/ui/test_main_window.py`. No reviewed source, task/status text, handoff, commit, push, CI run
 or remote state was changed.
+
+---
+
+## 2026-08-31 — T-287 R1/R2 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-287`
+**Boundary:** `7bf713f624651c2f9890c3a75967530f69fcb7fb..ac1c12e23543cb3e6b2a11568ae6defc1ffb5e16`
+**Verdict:** **Approved. `T287-R1` and `T287-R2` are Resolved.** The corrected production
+`MainWindow` has now run through KWin's actual panel-facing protocol in the isolated virtual
+compositor: minimize removed the main window and both dialogs from the output, and restore returned
+all three with typed and selected state intact. No live desktop was touched. `T287-R3` remains a
+non-blocking maintainer scope disposition; `T287-R5` is completion-record cleanup and needs no
+further review pass if it remains documentation-only.
+
+### Finding dispositions
+
+| Finding | Disposition | Independent verification |
+|---|---|---|
+| **T287-R1** | **Resolved.** `showEvent` installs the main window as an event filter on its native `QWindow` after that handle exists. A native `Expose` event reads `isExposed()` and reaches the same idempotent hide/restore decision as the widget-state route. The submitted offscreen test does exercise that wiring: with only the exposure branch suppressed, `MainWindow.hide()` left the parented dialog visible, so its assertions are not being satisfied by Qt parent visibility. Most importantly, the exact KWin protocol now proves the application reacts. | In a private `dbus-run-session`, `kwin_wayland --virtual` 6.7.3 exposed management protocol v20 using the already recorded `KWIN_WAYLAND_NO_PERMISSION_CHECKS` override. A production `MainWindow`, a window-modal child and an application-modal nested child were visible before the request. After `org_kde_plasma_window.set_state(MINIMIZED)`, KWin reported the main minimized, the application logged native exposure false with both dialogs hidden, and the capture was entirely black. Clearing the minimized state produced exposure true; the restored capture showed all three windows. |
+| **T287-R2** | **Resolved.** `_hide_the_dialogs` refuses to replace a populated restore set. The reviewer's unchanged `WindowMinimized → WindowMinimized|WindowMaximized → WindowNoState` regression passes and the dialog returns. | Complete main-window UI file: **80 passed**. Direct source inspection confirms the second hide returns before recapturing visible dialogs. |
+| **T287-R3** | **Remains Open (Low, Blocks approval: No).** The source still selects every descendant top-level `QDialog`, including the task's explicitly out-of-scope Settings screen. No product failure was found and the generic behavior is coherent, but the current task record still contradicts that scope. | Maintainer disposition at completion: either keep the generic behavior and amend the Settings exclusion, or constrain the source to the named T-287 roots. The first is documentation-only and is the reviewer's recommendation; the second changes approved source and would need review of that diff. |
+| **T287-R4** | **Resolved by the end-to-end replay.** The production window carried a nested application-modal dialog, not only one direct child. A line edit retained `half-typed-T287`; a nested combo retained `preserved-selection`; both dialogs returned visible and modal after the panel restore. A direct-children-only implementation would have left the nested dialog on the otherwise black minimized capture. | Before/minimized/restored captures plus the product-side state transcript; final line `PRODUCT_RESTORED ok=True`. This is stronger route evidence than another helper-level offscreen assertion, though the temporary harness itself is not a default-suite test. |
+| **T287-R5** | **Low, Blocks approval: No — completion-record cleanup.** The corrected tree still contains four claims the new evidence has overtaken: the original test docstring says panel and `showMinimized()` deliver the same event; the task summary says five rather than nine mutations; *What was built* still names only `changeEvent`; and the task says the nested compositor cannot expose window management and therefore requires a live-desktop run. That last claim also contradicts the permission-override measurement earlier in the same entry. | In the ordinary completion sync, state the successful isolated product replay, remove the false live-session blocker, update the mechanism/count, and correct the old test prose. No source behavior change or extra review pass is requested. |
+
+### Exposure breadth ruling
+
+No narrowing is requested. The [Qt `QWindow` contract](https://doc.qt.io/qt-6/qwindow.html#exposeEvent)
+says an exposure loss may also mean the window moved off screen or became totally obscured, with
+platform-dependent behavior. That is broader than the source/task examples of virtual desktops and
+screen lock. For this application the consequence is bounded: dialogs are hidden rather than
+closed, their state and modality survive, and repeated loss/return notifications are idempotent.
+Record the full Qt bound in R5's completion sync so future readers do not mistake exposure for a
+minimize-only signal.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | One focused source/test/task commit; `git diff --check 7bf713f..ac1c12e` passed. No reviewed source was modified by the Reviewer. |
+| Actual panel minimize | Production `MainWindow` under isolated virtual KWin: before capture showed main + direct dialog + nested modal; minimized capture was black; restored capture showed all three. |
+| Preserved state | Product transcript changed `exposed=True/True dialogs → False/False → True/True`; typed text and selected combo value were unchanged; `PRODUCT_RESTORED ok=True`. |
+| Exposure mutation | Runtime suppression of only the native `Expose` branch left the dialog visible after `MainWindow.hide()`, proving the submitted exposure test fails without its subject. |
+| Widget-state mutation | Runtime suppression of only `changeEvent` left the dialog visible after `showMinimized()` while native exposure stayed true, proving the two platform routes are independently required by the submitted tests. |
+| Focused UI | `tests/ui/test_main_window.py`: **80 passed**. |
+| Static/types | Focused Ruff and format passed; `mypy src` passed for **56** files; bare mypy and `--platform win32` passed for **159** files each. |
+| Coordination gates | Task placement **15 passed**; commit-message gate **52 passed**. |
+| Broader submitted evidence | Implementer reports unit+UI **3,396 passed / 21 skipped** and nine effective mutations. Integration remained **445 passed** at the preceding product head; this focused UI change does not touch its layer. |
+| Windows | No exact-head runtime execution. The task deliberately keeps real Windows taskbar behavior in the pre-release session; local Win32 mypy is clean. |
+
+### Readiness
+
+The T-287 source at `ac1c12e` is approved. Keep the two unpushed commits local until the maintainer
+chooses to push. Before moving T-287 to Complete, perform R5's documentation-only completion sync
+and disposition R3. Keeping the generic all-dialog behavior requires only amending the stale
+Settings exclusion and needs no further review; constraining the source creates a new implementation
+head and does.
+
+The Reviewer appended only this review record and ran isolated virtual-display diagnostics. No
+reviewed source, submitted test, task/status text, handoff, commit, push, CI run, live display or
+remote state was changed.
