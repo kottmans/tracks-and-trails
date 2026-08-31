@@ -54,6 +54,7 @@ import subprocess
 import sys
 import threading
 import weakref
+from collections.abc import Callable
 from pathlib import Path
 from typing import Final, TextIO
 
@@ -158,7 +159,9 @@ def widgets_the_collector_parked() -> list[Parked]:
     return [Parked(obj) for obj in gc.garbage if isinstance(obj, QWidget)]
 
 
-def force_a_collection(note: Note, when: str) -> list[Parked]:
+def force_a_collection(
+    note: Note, when: str, prepare: Callable[[], None] | None = None
+) -> list[Parked]:
     """Collect on a thread that is not the GUI thread, and report what it would have destroyed.
 
     **The collection runs off the GUI thread on purpose**: that is the configuration the crash
@@ -175,6 +178,15 @@ def force_a_collection(note: Note, when: str) -> list[Parked]:
     gc.set_debug(gc.DEBUG_SAVEALL)
     try:
         gc.garbage.clear()
+        # **The transition this phase is about happens here, inside the boundary** (`T289-R18`).
+        # Phase B used to close the dialog and deliver its deletion *before* this function armed
+        # anything, so an automatic collection could consume the very teardown garbage the phase
+        # exists to inspect — the false-absence path this file's own header warns about, in the
+        # file that warns about it. `prepare` runs with automatic collection off and parking armed,
+        # and releases its target before returning, so nothing it touched is held during the
+        # collection below.
+        if prepare is not None:
+            prepare()
         collector: dict[str, str] = {}
 
         def collect() -> None:
@@ -194,10 +206,16 @@ def force_a_collection(note: Note, when: str) -> list[Parked]:
         for widget in parked:
             note.say(f"    parked | {widget}")
         findings = [widget for widget in parked if widget.is_a_finding]
+        # **All four operative properties, because the predicate has four** (`T289-R20`). This
+        # line summarised the narrowed list with the wider wording it replaced, so a live,
+        # product, Python-owned plain `QWidget` — correctly not a finding, because Shiboken
+        # marshals it to the GUI thread — would have been reported as *no such widget exists*.
         note.say(
-            f"    -> {len(findings)} live widget(s) the product owns from Python"
+            f"    -> {len(findings)} T-289 finding(s): product widget(s) Python owns whose type "
+            "is defined in Python"
             if findings
-            else "    -> no live widget the product owns from Python"
+            else "    -> no T-289 finding: no product widget that Python owns with a type "
+            "defined in Python"
         )
         note.phases.append((when, collector["thread"], parked))
         return parked
@@ -241,6 +259,28 @@ def the_settings_dialog() -> QDialog | None:
     return None if window is None else window.findChild(QDialog)
 
 
+def object_still_tracked(identity: int, kind: str, name: str) -> object | None:
+    """Find a still-tracked object by **identity alone**, holding nothing across the phase.
+
+    **This is what makes `T289-R19` observable** — the reviewer's own control, adopted. A weak
+    reference cannot do it: CPython clears weakrefs to unreachable objects *before*
+    `DEBUG_SAVEALL` parks them, so it reports dead whichever way the phase ends. A strong
+    reference cannot do it either, because holding one is why the widget would still be there. An
+    `int` holds nothing, and `gc.get_objects()` says afterwards whether anything at that identity
+    is still tracked.
+
+    **Identities are reused**, so the type and object name are checked too: a fresh object landing
+    on a freed address answers for itself rather than for the one being asked about.
+    """
+    for candidate in gc.get_objects():
+        if id(candidate) != identity:
+            continue
+        if type(candidate).__name__ != kind:
+            return None
+        return candidate if getattr(candidate, "objectName", lambda: "")() == name else None
+    return None
+
+
 def frames_of_this_probe_holding(target: object) -> int:
     """How many of this file's live frames hold `target`, excluding this one.
 
@@ -269,12 +309,15 @@ def frames_of_this_probe_holding(target: object) -> int:
     return holders
 
 
-def flush_deferred_deletions() -> None:
-    """`processEvents` does not run a `deleteLater`; Qt delivers `DeferredDelete` from a loop."""
-    application = QApplication.instance()
-    if application is not None:
-        application.processEvents()
-        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+def deliver_deferred_delete(receiver: QWidget) -> None:
+    """Deliver `DeferredDelete` **to one receiver**, the only one this probe may speak for.
+
+    `processEvents` does not run a `deleteLater`; Qt delivers `DeferredDelete` from a loop. The
+    first version passed `None` and flushed every pending delete in the process (`T289-R18`) — a
+    claim about the whole application, made while measuring one dialog, and `T-273`'s
+    receiver-scope rule exists for exactly that.
+    """
+    QCoreApplication.sendPostedEvents(receiver, QEvent.Type.DeferredDelete)
 
 
 def measure_then_quit(note: Note) -> None:
@@ -313,6 +356,11 @@ def measure_then_quit(note: Note) -> None:
         # A strong one is what `T289-R18` was.
         watcher = weakref.ref(dialog)
         dialog.close()
+        # **Its own deferred delete, not the process's.** `SettingsDialog` sets no
+        # `WA_DeleteOnClose`, so this delivers nothing and the widget survives — which is the
+        # finding rather than a step that failed. *"Its deferred deletions delivered"* claimed
+        # something this cannot establish (`T289-R18`).
+        deliver_deferred_delete(dialog)
         del dialog
         return name, watcher
 
@@ -345,15 +393,20 @@ def measure_then_quit(note: Note) -> None:
         )
 
     def phase_b() -> None:
-        closed, watcher = close_the_settings_dialog()
-        if not closed:
-            note.say("phase B — no Settings dialog found to close; measuring anyway")
+        transition: dict[str, object] = {}
+
+        def close_it() -> None:
+            name, watcher = close_the_settings_dialog()
+            transition["name"] = name
+            transition["watcher"] = watcher
+
+        note.say("phase B — closing the Settings dialog with the parking already armed")
+        force_a_collection(note, "phase-B-settings-closed", prepare=close_it)
+        name = str(transition.get("name") or "")
+        if not name:
+            note.say("    no Settings dialog was open to close")
         else:
-            note.say(f"phase B — closed {closed} and flushed its deletions, holding no reference")
-        flush_deferred_deletions()
-        force_a_collection(note, "phase-B-settings-closed")
-        if closed:
-            note.say(f"    after the collection | {what_became_of_it(closed, watcher)}")
+            note.say(f"    after the collection | {what_became_of_it(name, transition['watcher'])}")
         QTimer.singleShot(500, done)
 
     def done() -> None:
@@ -433,31 +486,37 @@ def self_test() -> int:
     # Arm 1 — a live, Python-owned, Python-typed widget reachable only through a cycle.
     live = a_control_widget()
     live.setObjectName("t289-control-live")
+    # **Only the identity survives this line**, which is what lets arm 8 ask about the widget
+    # after the phase without being the reason it is still there.
+    identity = id(live)
     del live
     parked = force_a_collection(note, "control-live")
+    survivor = object_still_tracked(identity, "Derived", "t289-control-live")
     named = [widget for widget in parked if widget.name == "t289-control-live"]
     if not named:
         failures.append("arm 1: the collector's parked widget was not seen at all")
     elif not (named[0].valid and named[0].owned and named[0].defined_in_python):
         failures.append(f"arm 1: misclassified — {named[0]}")
-    # Arm 8 — **the phase must drain before it re-enables automatic collection** (`T289-R19`), so
-    # it cannot hand back a live, collectable widget for some pool thread to destroy.
+    # Arm 8 — **the phase must not hand back a live, collectable widget with automatic collection
+    # switched on again** (`T289-R19`), because an allocation on a pool thread could then run its
+    # destructor there: the probe causing the defect it came to look for.
     #
-    # **This checks the order of the steps, not their effect, and that is a deliberate retreat.**
-    # Two effect-based controls were built first and both were blind. A weak reference reports the
-    # widget dead whichever way the phase ends, because CPython clears weakrefs to unreachable
-    # objects *before* `DEBUG_SAVEALL` parks them — the object sits in `gc.garbage` with its cycle
-    # intact and its weakref already dead. A `__del__` flag reports the destructor ran either way,
-    # because on this Python and PySide6 `gc.garbage.clear()` frees the cycle by itself, so the
-    # explicit drain changes nothing observable **here**. The drain is kept because the review of
-    # 2026-08-31 measured a case where it did matter, and this arm at least fails if the step is
-    # removed. An arm that cannot fail would be worse than saying so.
+    # **Checked by effect, on the object itself.** An earlier version checked only that the clear,
+    # drain and enable happened in that order, on the claim that no effect-based control was
+    # possible here. That claim was wrong and the review supplied the counter-example. Two earlier
+    # attempts had failed for reasons that do not generalise: a weakref reports dead either way,
+    # because CPython clears weakrefs to unreachable objects *before* `DEBUG_SAVEALL` parks them;
+    # and a `__del__` flag fires on **finalization**, which is not proof that the cycle or the C++
+    # widget was deallocated — a claim this file made and now withdraws. An identity holds nothing
+    # and survives both problems.
+    if survivor is not None:
+        import shiboken6
+
+        alive = " and its Qt object is still valid" if shiboken6.isValid(survivor) else ""
+        failures.append(f"arm 8: the parked widget is still tracked after the phase{alive}")
     if note.sequence[:3] != ["parked", "cleared", "drained"]:
         failures.append(f"arm 8: the phase's steps were {note.sequence[:4]}")
-    if "enabled" in note.sequence and note.sequence.index("enabled") < note.sequence.index(
-        "drained"
-    ):
-        failures.append("arm 8: automatic collection came back before the drain")
+    del survivor
     gc.collect()
 
     # Arm 2 — the same cycle, but Qt owns the widget because it has a parent.
@@ -488,7 +547,7 @@ def self_test() -> int:
     corpse = a_control_widget()
     corpse.setObjectName("t289-control-corpse")
     corpse.deleteLater()
-    flush_deferred_deletions()
+    deliver_deferred_delete(corpse)
     del corpse
     parked = force_a_collection(note, "control-corpse")
     named = [widget for widget in parked if widget.kind == "Derived" and not widget.valid]

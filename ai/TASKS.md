@@ -776,23 +776,36 @@ GUI thread** at two chosen moments.
 
 | Phase | Moment | Objects parked | Widgets among them |
 |---|---|---:|---:|
-| **A** | the update has reported, Settings still open — the crash's own configuration | 0, or 9 in one run of four | **0** |
-| **B** | the Settings dialog closed and its deferred deletions delivered | 5 | **0** |
+| **A** | the update has reported, Settings still open — the crash's own configuration | 9 in two runs of four, 0 in the others | **0** |
+| **B** | the Settings dialog closed **inside the parking boundary** | 5 | **0** |
 
 **Not zero findings — zero widgets.** The collector had cycles to work with and not one of them
 contained a `QWidget`, so the classifier never had to discriminate on a product object.
 
-**Phase B says why, rather than leaving it to be inferred.** After the collection the probe reports
-the dialog through a weak reference: *wrapper survived, C++ object alive, **owned by Qt, parented to
+**Phase B closes the dialog inside the parking boundary** (`T289-R18`). It used to close it and
+deliver the deletion *before* the parking was armed, so an automatic collection could consume the
+teardown garbage the phase exists to inspect — the false-absence path the tool's own header warns
+about. The close now runs with automatic collection off and `DEBUG_SAVEALL` on, and releases the
+dialog before the off-thread collection.
+
+**And it says why the number is what it is.** After the collection the probe reports the dialog
+through a weak reference: *wrapper survived, C++ object alive, **owned by Qt, parented to
 `MainWindow`**, the product no longer references it, frames of this probe holding it: **0***. So the
 zero is not the product retaining the dialog and not the probe retaining it — the window's own
 reference **is** dropped, by `_forget_settings_dialog` on `finished`. It is Qt ownership:
 `open_settings` builds the dialog with `parent=self`, and dropping a wrapper Qt owns destroys
-nothing. **That property is the one `ai/TESTING.md` §7 states**, and it is why this route is clean.
+nothing. **That property is the one `ai/TESTING.md` §7 states.**
 
-**What it does not establish.** It asks about reachability **at two instants**; a widget that became
-collector-reachable at another moment is not seen. A forced collection is not one the product would
-have run then. The thumbnail pool is untouched.
+**`SettingsDialog` sets no `WA_DeleteOnClose`, so closing it deletes nothing**, and the probe
+delivers `DeferredDelete` **to that dialog** rather than flushing every pending delete in the
+process. The earlier *"its deferred deletions delivered"* claimed something neither the flush nor
+the close establishes.
+
+**What it does not establish, and the result is kept to it.** Two samples on one route: **after the
+update reported, and after the Settings dialog closed**, plus the ownership edge above. A widget
+that became collector-reachable at any other moment is not seen; a forced collection is not one the
+product would have run then; the thumbnail pool is untouched. Nothing here is a statement about the
+application as a whole.
 
 **Four review findings, and each was the instrument rather than the product** (`T289-R17`…`R20`).
 The shared wrapper's default mode stopped starting, because the tool path and `--drive` were held in
@@ -802,7 +815,9 @@ invalidated an earlier `T-238` zero, reproduced by the instrument built after it
 re-enabled automatic collection before draining, so a positive result would have left a live
 collectable widget for a pool thread to destroy — the probe causing the defect it came to look for.
 And the reporting predicate omitted `defined_in_python`, so a plain `QWidget` — which Shiboken
-marshals to the GUI thread and destroys safely — classified as a `T-289` finding. **`valid` was
+marshals to the GUI thread and destroys safely — classified as a `T-289` finding; the phase summary
+then kept the wider wording for one more round, so a narrowed count was announced in words that
+denied such a widget existed (`T289-R20`). **`valid` was
 dropped from that predicate on the same ruling**: `owned` is computed as *valid and
 `ownedByPython`*, so it stated a condition no real widget could falsify.
 
@@ -815,13 +830,16 @@ they were written for rather than by review: `gc.get_referrers` cannot see a fra
 materialised, so the retention check answered *0 frames* while a deliberately reintroduced `R18`
 held the dialog — it walks the stack now, and reports 1 against that same mutant and 0 clean.
 
-**One control is an ordering check and says so.** `R19`'s drain cannot be caught by its effect on
-this Python and PySide6: a weak reference reports the widget dead whichever way the phase ends,
-because CPython clears weakrefs to unreachable objects *before* `DEBUG_SAVEALL` parks them, and a
-`__del__` flag fires either way because `gc.garbage.clear()` frees the cycle by itself here. Both
-were built and measured before settling for a check that the drain step happens before automatic
-collection returns. The drain is kept because the review measured a case where it mattered; the arm
-fails if the step is removed, and it is labelled as what it is rather than as proof of the effect.
+**The drain has an effect control, and my argument that it could not have one was wrong**
+(`T289-R19`). I built two and both were blind — a weak reference reports the widget dead whichever
+way the phase ends, because CPython clears weakrefs to unreachable objects *before* `DEBUG_SAVEALL`
+parks them; and a `__del__` flag fires either way — and concluded no such control was possible here,
+recording that `gc.garbage.clear()` *"frees the cycle by itself"*. **That is withdrawn.** `__del__`
+firing is finalization, not deallocation. The review's own control keeps **only `id(widget)`**,
+which holds nothing, and asks `gc.get_objects()` afterwards whether anything at that identity is
+still tracked. Replayed here: with the drain the widget is gone; with the drain omitted it is still
+tracked **and `shiboken6.isValid` is true**, with automatic collection already restored. The arm
+now fails on that, not on the order of the calls.
 
 #### The reviewer's real-display runs, 2026-08-31: both routes, both inconclusive
 
