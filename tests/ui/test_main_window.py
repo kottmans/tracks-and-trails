@@ -1252,9 +1252,11 @@ def test_minimizing_hides_the_dialogs_and_restoring_brings_them_back(composed: M
     is minimized through KDE's panel-facing protocol. Compositor behaviour, not our parenting, so
     the ruling was to work around it rather than to fix a bug we do not have.
 
-    Driven with `showMinimized()` here on purpose: the *compositor's* behaviour is settled and is
-    not what this asserts. What this asserts is our `changeEvent` reacting to the state change,
-    which is the same event either route delivers.
+    **This drives `showMinimized()`, which is the *widget-state* route — Windows and X11.** It is
+    not the panel's: KWin's panel minimize delivers no widget state change at all, and this
+    docstring claimed the two were the same event until `T287-R1` measured otherwise. The Wayland
+    route has its own regression, `test_the_surface_going_off_screen_hides_the_dialogs`, and both
+    reach one idempotent decision.
     """
     dialog = composed.open_add_dialog()
     QApplication.processEvents()

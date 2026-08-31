@@ -1969,10 +1969,18 @@ class MainWindow(QMainWindow):
             # showing this surface, which is what a panel minimize produces and what the widget
             # never hears about.
             #
-            # **Not only minimize**, and that is stated rather than hidden: another virtual desktop
-            # or a screen lock can unmap the surface too. Taking the dialogs down with the window
-            # in those cases is the same intent — they are transient to a window that is not on
-            # screen — and the restore is idempotent, so a spurious pair costs a hide and a show.
+            # **Not only minimize, and this is the full bound** (`T287-R5`). Qt documents
+            # `isExposed()` as false whenever the window is not showing on screen, which covers
+            # minimizing, being **completely obscured** by other windows, moving **off-screen**,
+            # and the surface being unmapped for any other reason — another virtual desktop or a
+            # screen lock among them. Only the first is `T-287`'s subject; the rest come with it.
+            #
+            # **Accepted deliberately** rather than narrowed, because no signal on this platform
+            # separates them: the intent is the same — dialogs are transient to a window that is
+            # not on screen — and the decision is idempotent, so a spurious pair costs a hide and a
+            # show. **A window fully obscured by another application would take its dialogs down
+            # with it**, which is the visible cost and is written here so nobody rediscovers it as
+            # a bug.
             self._the_window_is_on_screen(self._watched_surface.isExposed())
         return super().eventFilter(watched, event)
 
