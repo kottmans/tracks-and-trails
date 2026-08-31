@@ -1274,6 +1274,27 @@ def test_minimizing_hides_the_dialogs_and_restoring_brings_them_back(composed: M
     assert dialog.isVisible(), "the add dialog did not come back with its window"
 
 
+def test_a_second_state_change_while_minimized_does_not_forget_the_dialog(
+    composed: MainWindow,
+) -> None:
+    """Window state is a set of flags; minimize is not necessarily its only transition.
+
+    Changing another flag while the minimized bit remains set must not replace the restore set
+    with the now-hidden (and therefore empty) visible-dialog set.
+    """
+    dialog = composed.open_add_dialog()
+    QApplication.processEvents()
+
+    composed.showMinimized()
+    QApplication.processEvents()
+    composed.setWindowState(Qt.WindowState.WindowMinimized | Qt.WindowState.WindowMaximized)
+    QApplication.processEvents()
+    composed.showNormal()
+    QApplication.processEvents()
+
+    assert dialog.isVisible(), "a second minimized-state event made the window forget its dialog"
+
+
 def test_a_modal_dialog_comes_back_modal(composed: MainWindow) -> None:
     """`T-287`'s third criterion: *modality survives the round trip*, asserted rather than observed.
 
