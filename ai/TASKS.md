@@ -12645,14 +12645,22 @@ does not reproduce the crash. It also explains the shape of the evidence better 
 before it: a fault needing `gc` to fire on a pool thread at the moment a widget-bearing cycle is
 garbage is one that appears once on a loaded machine and never again in 60 clean runs.
 
-**What criterion 4 needs next**, and it is no longer "wait for the guard to fire":
+**What criterion 4 needed next as of 2026-08-16**, and it was no longer "wait for the guard to
+fire". **Both items have since been answered in part; see *Criterion 4, 2026-08-31* for what is
+owed now** (`T289-R15`, third pass — this read as a live request for a session that has since been
+driven, which is the same defect dated one section further down):
 
 - **Run the probe against a real session, not the suite** — `tests/integration` cannot answer it
   (a `QCoreApplication` process has no widgets at all, so the probe's own control would fail), so
-  this needs the application driven on a display with the thumbnail pool actually working
+  this needs the application driven on a display with the thumbnail pool actually working.
+  **Run on 2026-08-31, on both pools and on a real display, and inconclusive both times**
 - **Establish whether any `QWidget` in this application participates in a reference cycle.** If
   none does, the `gc` route is closed and the harness reading is back; if one does, criterion 4's
-  *product-reachable* branch is the live one and it wants a deterministic regression, not a guard
+  *product-reachable* branch is the live one and it wants a deterministic regression, not a guard.
+  **The 2026-08-30 arms bear on this without answering it as put**: no widget the application's own
+  routes opened was parked while its Qt widget was still alive, which is the consequence this
+  bullet cares about — *participates in a cycle* is a stronger predicate than `DEBUG_SAVEALL`
+  parking establishes, as that section says of itself
 
 #### The second step, attempted 2026-08-20: the run refused, and criterion 4 is unanswered
 
