@@ -11,6 +11,10 @@
 # isolation applied to a measurement instead of to a build gate.
 #
 #     tools/t289_isolated_session.sh <report-path>
+#
+# **One session, and it fails when the session fails.** A batch that wants to keep going after a
+# bad sample says so itself — `... || true` in the caller's loop — rather than having that choice
+# baked in here where the single-session caller cannot see it (`T289-R14`).
 set -eu
 
 report=${1:?usage: t289_isolated_session.sh <report-path>}
@@ -18,7 +22,7 @@ project=$(cd "$(dirname "$0")/.." && pwd)
 profile=$(mktemp -d -t t289-profile-XXXXXX)
 mkdir -p "$profile"/{data,config,cache}
 
-cleanup() { rm -rf "$profile"; }
+cleanup() { rm -rf "$profile" "${inside:-}"; }
 trap cleanup EXIT
 
 inside=$(mktemp -t t289-inside-XXXXXX.sh)
@@ -35,8 +39,36 @@ chmod +x "$inside"
 # **`--exit-with-session`, not a bare session argument.** With the positional form the compositor
 # outlives the application and the run only ends when `timeout` kills it, which costs ten minutes
 # per session and makes a batch impossible. The timeout stays as the backstop it was meant to be.
+status=0
 timeout 600 dbus-run-session -- env KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 \
     kwin_wayland --virtual --width 1280 --height 800 --socket "wayland-t289-$$" \
     --exit-with-session "$inside" \
-    >"${report%.txt}-compositor.log" 2>&1 || true
-rm -f "$inside"
+    >"${report%.txt}-compositor.log" 2>&1 || status=$?
+
+# **This script used to end that line with `|| true`, and a failed measurement exited 0**
+# (`T289-R14`). A replay that put a `dbus-run-session` exiting 42 ahead of the real binary produced
+# a wrapper exit of 0 and no report at all — so a timeout, a compositor that never started, and
+# plausibly the native abort this instrument exists to expose all arrived looking like a clean
+# session. Cleanup is the `trap`'s job and never needed that branch.
+#
+# **The exit status alone is not enough to trust**, because it comes through `timeout`,
+# `dbus-run-session` and a compositor before it reaches here, and none of them promises to
+# forward the application's. So the report is checked for what a complete session must contain:
+# a `VERDICT` line, and a route that actually ran. An incomplete report is a failed measurement
+# even when every process involved exited 0.
+if [ "$status" -ne 0 ]; then
+    echo "t289: session command failed (exit $status); see ${report%.txt}-compositor.log" >&2
+    exit "$status"
+fi
+if [ ! -s "$report" ]; then
+    echo "t289: no report at $report — the session produced nothing" >&2
+    exit 1
+fi
+if ! grep -q 'VERDICT: ' "$report"; then
+    echo "t289: $report has no VERDICT line — the session did not finish" >&2
+    exit 1
+fi
+if ! grep -q 'route: settings=True update_started=True update_finished=True' "$report"; then
+    echo "t289: $report records an incomplete route — the measurement did not happen" >&2
+    exit 1
+fi

@@ -549,11 +549,15 @@ maintainer declined to accept that risk. A blanket ownership pass over every top
 also considered and rejected — many files changed on a hypothesis, unfalsifiable while the guard
 already passes, and `T-289`'s own Risk line is "High to fix wrongly".)*
 
-**This also closes `T-238`'s outstanding real-session step**, which is the same measurement from the
-other end.
+**This bears on `T-238`'s outstanding real-session step from the other end, and closes neither
+end** (`T289-R15`). Both halves have now run once — the update route here, the staged-row thumbnail
+route in the review of 2026-08-31 — and both were `INCONCLUSIVE`. This sentence previously said the
+measurement *closes* that step, and kept saying it after the section below recorded that only half
+had been taken.
 
-**The instrument is built and waiting for the maintainer to drive it**, corrected after
-`T289-R6`…`R8`: `tools/t289_session_watch.py`.
+**The instrument is built and has now been driven** — 60 isolated sessions on 2026-08-31 and the
+reviewer's own real-display run the same day — corrected after `T289-R6`…`R8`:
+`tools/t289_session_watch.py`.
 It runs the real entry point and **changes nothing in the product** — no `src/` file is touched and
 the application reads no flag; the wrapper *is* the flag, so an ordinary `python -m tracks_and_trails`
 is unaffected. It records three things: every widget destroyed on a thread that is not the GUI
@@ -690,12 +694,29 @@ the copy its own install had just written.
 
     tools/t289_isolated_session.sh reports/t289-session.txt   # one session, ~20 s
 
+**The 60-run aggregate came from this loop, and the batch — not the session — chooses to continue
+past a bad sample** (`T289-R14`):
+
+    for i in $(seq -w 1 60); do
+        tools/t289_isolated_session.sh "$dir/run-$i.txt" || echo "run-$i FAILED" >&2
+    done
+
+**The table below is read from the one summary line each report ends with**, which carries every
+count in it; `grep -h 'widgets over' "$dir"/run-*.txt` prints the 60 lines the columns were counted
+from. A report without a `VERDICT` line and a completed route is not a sample — the wrapper now
+refuses it rather than returning 0, and re-checking the 60 stored reports against that rule passes
+**60/60**, so the counts here are the counts a gated run would have produced.
+
 **There is no file for this under `ai/evidence/`, deliberately**: that directory is for artifacts a
 re-run would not produce, and this is a committed tool driving a deterministic route. Its command
 line is above and its numbers are here, which is what that README asks for.
 
-**The precondition reproduces every time.** In 60 of 60 sessions the cyclic collector ran on the
-update's pool thread — `Dummy-1`, `ytdlp_service`'s own `QThreadPool` — while the update was in
+**The collector-and-thread half of the precondition reproduces every time — and only that half**
+(`T289-R15`). This entry defines the precondition as a Python-owned *widget* being collected and
+destroyed on a pool thread; what these runs reproduce is the collector firing there at all, which
+the tool itself calls *"the loaded gun, widget or not"*. Calling that "the precondition" reads as
+though the crash were one step away, and it is not: the widget half never happened once. In 60 of
+60 sessions the cyclic collector ran on the update's pool thread — `Dummy-1`, `ytdlp_service`'s own `QThreadPool` — while the update was in
 flight, freeing 9 objects. That is the thread the core dump names — `PyObject_CallNoArgs`, Qt
 calling this task's Python, through `_Py_HandlePending` into `gc_collect_main` — at the moment the
 dump names it.
@@ -729,12 +750,39 @@ sixty of them just as it did to one. What the run establishes is that **this rou
 way, hands the collector no widget at all**, and that the instrument said so with its positive
 control passing beforehand each time.
 
-**Four bounds, all of them still open**: it is a real compositor on a **virtual output**, not the
-maintainer's display, which is what the ruling asked for; the **thumbnail pool** — the second pool
-where the same collection can fire — is never touched by this route; the watch discovers widgets by
-event, so the 965 it names are the ones that received one; and a timer that opens Settings four
-seconds after launch and closes the window twelve seconds later is not the used session the crash
-came from.
+**Four bounds. Two of them the review of 2026-08-31 discharged, and two stand**: the **virtual
+output** and the untouched **thumbnail pool** were both answered by the reviewer's own runs below;
+still standing are that the watch discovers widgets by event, so the 965 it names are the ones that
+received one, and that a timer which opens Settings four seconds after launch and closes the window
+twelve seconds later is not the used session the crash came from.
+
+#### The reviewer's real-display runs, 2026-08-31: both routes, both inconclusive
+
+Recorded in `ai/REVIEWS.md` under *Driven-session results*; summarised here because this entry is
+current truth and the numbers change what is still owed. Neither run is mine and neither closes a
+criterion.
+
+**Settings → yt-dlp → Update, on the real display** at clean `948f837`, `QT_QPA_PLATFORM` unset,
+Qt selecting the real `wayland` plugin, profile disposable. Route complete; **971** widgets watched;
+collections `MainThread` 7, `Dummy-1` 1, `Dummy-2` 2; **9 objects freed by the `Dummy-2` collection
+while the update was in flight**; **0** widget destructions off the GUI thread, 28 on it and none
+inside a collection; **0** near misses. **`INCONCLUSIVE`.** This discharges *real display rather
+than virtual output* for one bounded sample. It does not identify criterion 2's widget tree, and it
+is still the short automated route rather than the used session the report came from.
+
+**The staged-row thumbnail pipeline, on the real display.** A reviewer driver composed the real
+application with the spawned-fixture worker, opened `MainWindow.open_add_dialog()`, pasted the
+recorded Archive.org URL and let the dialog's own debounce stage it; the delegate started the real
+`ThumbnailStore` pipeline and the public JPEG became a pixmap. `_ReadFromDisk` ran on `Dummy-2`,
+`_DecodeAndStore` on `Dummy-3`, `_SweepTask` on `Dummy-4`; **647** widgets watched; **12**
+collections on `MainThread` and **none on any thumbnail task thread**; **0** destructions off the
+GUI thread, 24 on it, none inside a collection; **0** near misses. **`INCONCLUSIVE`** — the pool
+worked and the collector never ran there. Nothing was forced: no `gc.collect()`, no lowered
+threshold, because forcing it on the live desktop would turn the measurement into the hazard.
+
+**So the two pools have now each been watched once on a real display, and neither handed the
+collector a widget.** Criterion 2 stays open, and what it now lacks is not a display or a route but
+the tree itself.
 
 #### Out of scope
 
@@ -12217,7 +12265,11 @@ application's own routes opened takes the collector's route**; the 95 that survi
 are `T-273`'s documented baseline and go when its owner step is applied. **The collector-runs-a-Qt-
 destructor route is now reproducible on demand** — and doing it aborts the process — but only for
 widgets the test helper owns parentless, and on the main thread, so it is **not this task's crash**.
-See *Criterion 4, 2026-08-30* below. The remaining step is the real-session probe.
+See *Criterion 4, 2026-08-30* and *2026-08-31* below. **The real-session probe has now run on
+both pools** — the update route 60 times isolated and once on a real display, the staged-row
+thumbnail pipeline once on a real display — and **both were `INCONCLUSIVE`**: the collector never
+handled a widget on any of those threads. What criterion 4 still lacks is a product-owned widget
+reaching the collector, not another session.
 
 **30 *additional* contended runs, 2026-08-20: zero crashes. The cumulative record is 90 runs, 50 of
 them contended.** 40 idle, **12 under 20 busy loops**, **8 beside an `-n auto` integration batch**
@@ -12759,19 +12811,28 @@ product finding. **Three instruments in this family have now reported confidentl
 thumbnail pool working — and a widget the *product* owns from Python reaching the collector. Arm B
 shows what happens when one does; nothing here shows the product holding one.
 
-#### Criterion 4, 2026-08-31: half the real-session step is taken, and it is the other half that matters
+#### Criterion 4, 2026-08-31: both halves of the real-session step have run, and neither answers it
 
-`T-289`'s driven measurement — 60 sessions at `179f73e`, recorded in that entry under *The driven
-measurement* — is the real-session probe for **one** route: the application on a nested
-`kwin_wayland --virtual` compositor with the `wayland` plugin, driven through Settings → yt-dlp →
-Update. It answers the question in the same direction the three arms above did: **no widget the
-product owns reached the collector**, on the very pool thread the crash dump names, in all 60.
+**The update-route half** is `T-289`'s driven measurement — 60 isolated sessions at `179f73e`,
+recorded in that entry under *The driven measurement* — plus the reviewer's own run of the same
+route on a **real display** at `948f837`. Both answer in the direction the three arms above did:
+**no widget the product owns reached the collector**, on the very pool thread the crash dump names.
 
-**Criterion 4 stays open on the half that was not run.** It asks for the application *with the
-thumbnail pool working*; that route touches `ui/thumbnails.py`'s pool not at all. The two pools are
-different threads reached by different work, and a clean answer about one says nothing about the
-other. What has changed is the size of the remaining step: a staged row whose thumbnails are being
-fetched, watched the same way, rather than the whole open-ended *"a real session"*.
+**The thumbnail half ran too, and it is the one this criterion asked for.** In the review of
+2026-08-31 a driver composed the real application with the spawned-fixture worker, staged the
+recorded Archive.org row through the add dialog's own debounce, and let the delegate start the real
+`ThumbnailStore` pipeline; the public JPEG was fetched into a disposable cache and published as a
+pixmap. `_ReadFromDisk`, `_DecodeAndStore` and `_SweepTask` each ran on their own pool thread.
+**647 widgets watched, 12 collections — every one of them on the GUI thread, none on any thumbnail
+task thread**, 0 destructions off the GUI thread, 0 near misses. `INCONCLUSIVE`.
+
+**Criterion 4 stays open, and the reason has moved.** It is no longer *"nobody has run it on a real
+session with the pool working"* — that has now been run. What is missing is the thing the criterion
+is actually about: **a widget the product owns from Python reaching the collector**. The pool did
+its work and the collector never fired on those threads at all, so there was again nothing for it to
+get wrong. **Forcing a collection there was deliberately not done**: on a live desktop that converts
+the measurement into the hazard it is measuring, which is a choice for the maintainer and not a
+thing to slip into a probe.
 
 ---
 
