@@ -22767,3 +22767,55 @@ measurement semantics, so no further live-display or nested-KWin run is needed.
 The Reviewer appended only this review record and ran one isolated virtual-display session plus
 read-only and failure-injection checks. No reviewed source, submitted test, TASKS/STATUS text,
 handoff, branch, push, CI run, live display or remote state was changed.
+
+---
+
+## 2026-08-31 — T-289 driven measurement second focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-289`; `T-238` criterion 4
+**Correction boundary:** `8b69b94c7bdb1a48e156b006a7a50a6abba5dc5f..febe137f252ff3844e89b7323af84ad00d27bdd2`
+**Verdict:** **Changes requested, documentation only.** `T289-R14` is Resolved: the wrapper now
+invalidates the requested report and both sidecars before starting, and the exact stale-complete
+replay exits 1 when the current session writes nothing. The adjacent 2026-08-30 T-238 paragraph is
+also dated correctly. `T289-R15` remains open only because the 2026-08-16 section uses the same
+present-tense historical construction for the same criterion.
+
+### Remaining finding
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T289-R15` | **Medium** | **Yes — the supersession chain should treat the same wording consistently** | `ai/TASKS.md`, T-238 criterion 4 | Under **“Criterion 4, 2026-08-16”**, the entry still says **“What criterion 4 needs next”** and asks for the real display/thumbnail-pool run. That heading is dated and its successor follows, but those are exactly the properties of the 2026-08-30 paragraph just corrected: it too sat under a dated heading immediately before its successor. If present tense made the later paragraph stale, it does the same here. The rest of R15 is now correct. | Date this sentence the same way—what criterion 4 needed next *as of that measurement*—or otherwise state that the later sections supersede it. No measurement or broader rewrite is needed. | **Open — final narrow wording correction** |
+
+### Resolved dispositions
+
+- **`T289-R14` is Resolved.** Clearing happens before the disposable profile is created; failure to
+  remove any requested output is fatal. With a complete stale report and both stale sidecars
+  seeded, an exit-0 fake session wrote nothing and the wrapper returned **1** with *“no report …
+  produced nothing.”* The report and app log remained absent; the compositor redirection created a
+  new empty compositor log for the failed current run.
+- The implementer's real nested-KWin replay over a stale path completed in **20.0 s**, returned 0
+  and produced the current run's complete report. The prior focused review already established the
+  unchanged fresh-success route independently, so it was not repeated for this cleanup-only change.
+- **`T289-R16` remains Resolved.** The commit-message checker passes all six commits in
+  `1386e86..HEAD`. `backup/pre-r16-rewrite` remains intact as ruled.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Seeded stale report | Complete old report + old sidecars, fake session exit 0/no write → wrapper exit **1**. |
+| Output provenance | Old report and app log absent afterward; compositor log newly created at **0 bytes** by this run. |
+| Current truth | The corrected 2026-08-30 paragraph is explicitly historical and points to the current 2026-08-31 section. The 2026-08-16 present-tense sentence is the sole remaining R15 issue. |
+| Mechanical checks | Correction diff check, Ruff, Ruff format (**221 files**), shell syntax and task placement (**15 passed**) passed. Commit-message gate checked **6 commits** successfully. |
+| Submitted broader evidence | Implementer reports unit+UI **3,841 passed / 21 skipped** and a fresh nested-KWin success in **20.0 s**. No `src/` or test file changed; the full suite was not repeated in this prose/wrapper pass. |
+
+### Readiness
+
+Keep T-289 In Review and T-238 Ready. Date the one 2026-08-16 sentence and return the exact head
+for a final text-only check. R14 needs no further execution, and no live-display or nested-KWin run
+is needed for the remaining correction.
+
+The Reviewer appended only this review record and ran read-only and failure-injection checks. No
+reviewed source, submitted test, TASKS/STATUS text, handoff, branch, push, CI run, display session
+or remote state was changed.
