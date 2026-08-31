@@ -11,7 +11,10 @@
 # `Fatal Python error`. Both are recorded: a run that fails tests is a different problem from a run
 # that dies, and collapsing them would hide whichever is rarer.
 #
-#   tools/soak.sh 60 [output-directory]
+#   tools/soak.sh 60 [output-directory] [jobs]
+#
+# `jobs` is passed to `pytest -n`. Omitted, the suite runs serially, which is what every result
+# recorded under this script's name so far measured.
 #
 # Cores are kept by systemd on this machine, so a death is inspectable afterwards with
 # `coredumpctl list` — no `ulimit` change is needed. See `ai/TASKS.md` T-128.
@@ -20,6 +23,13 @@ set -uo pipefail
 
 RUNS="${1:-60}"
 OUT="${2:-$(mktemp -d -t soak-XXXXXX)}"
+# **Serial unless asked, because the two modes measure different crashes and share no baseline.**
+# `OPS-007`'s 0.042 is a serial figure over `T-128`'s 2-in-39; `T-238`'s worker segfault has only
+# ever been seen under `-n auto`, once, on a machine that was also busy, and 37 idle `-n auto` runs
+# since have not reproduced it. Passing a third argument selects the parallel mode and changes what
+# the closing line is allowed to claim. Defaulting it to empty keeps every existing invocation, and
+# every result already recorded under this script's name, meaning exactly what it meant.
+JOBS="${3:-}"
 mkdir -p "$OUT"
 
 # **What the run is evidence about** (`T-148`). This printed a count and a verdict and never the
@@ -34,6 +44,11 @@ fi
 
 echo "soak: $RUNS runs, logs in $OUT"
 echo "soak: head $HEAD_SHA"
+if [ -n "$JOBS" ]; then
+    echo "soak: mode -n $JOBS (parallel; T-238's worker segfault is the one this mode can see)"
+else
+    echo "soak: mode serial (T-128 / OPS-007)"
+fi
 echo "soak: started $(date -Is)"
 
 crashed=0
@@ -42,7 +57,12 @@ passed=0
 
 for i in $(seq 1 "$RUNS"); do
     log="$OUT/run-$(printf '%03d' "$i").log"
-    QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q -p no:randomly >"$log" 2>&1
+    if [ -n "$JOBS" ]; then
+        QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q -p no:randomly \
+            -n "$JOBS" >"$log" 2>&1
+    else
+        QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q -p no:randomly >"$log" 2>&1
+    fi
     code=$?
     case "$code" in
         0) passed=$((passed + 1)); verdict="pass" ;;
@@ -60,5 +80,11 @@ if [ "$crashed" -gt 0 ] || [ "$failed" -gt 0 ]; then
     echo "soak: logs for the runs that did not pass are in $OUT"
     exit 1
 fi
-echo "soak: clean at $HEAD_SHA. Against the 2-in-39 baseline, P(this | rate unchanged) is 0.042"
-echo "soak: at 60 runs. Quote the head with the result; the number alone does not identify a tree."
+if [ -n "$JOBS" ]; then
+    echo "soak: clean at $HEAD_SHA over $RUNS runs at -n $JOBS."
+    echo "soak: OPS-007's 0.042 is a serial figure and says nothing about this mode. What this"
+    echo "soak: mode can speak to is T-238's worker segfault, seen once, on a busy machine."
+else
+    echo "soak: clean at $HEAD_SHA. Against the 2-in-39 baseline, P(this | rate unchanged) is 0.042"
+    echo "soak: at 60 runs. Quote the head with the result; the number alone does not identify a tree."
+fi

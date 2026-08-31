@@ -12759,6 +12759,20 @@ product finding. **Three instruments in this family have now reported confidentl
 thumbnail pool working — and a widget the *product* owns from Python reaching the collector. Arm B
 shows what happens when one does; nothing here shows the product holding one.
 
+#### Criterion 4, 2026-08-31: half the real-session step is taken, and it is the other half that matters
+
+`T-289`'s driven measurement — 60 sessions at `179f73e`, recorded in that entry under *The driven
+measurement* — is the real-session probe for **one** route: the application on a nested
+`kwin_wayland --virtual` compositor with the `wayland` plugin, driven through Settings → yt-dlp →
+Update. It answers the question in the same direction the three arms above did: **no widget the
+product owns reached the collector**, on the very pool thread the crash dump names, in all 60.
+
+**Criterion 4 stays open on the half that was not run.** It asks for the application *with the
+thumbnail pool working*; that route touches `ui/thumbnails.py`'s pool not at all. The two pools are
+different threads reached by different work, and a clean answer about one says nothing about the
+other. What has changed is the size of the remaining step: a staged row whose thumbnails are being
+fetched, watched the same way, rather than the whole open-ended *"a real session"*.
+
 ---
 
 ---
