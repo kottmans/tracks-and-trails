@@ -26,7 +26,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from PySide6.QtCore import QRunnable
 
@@ -426,7 +426,10 @@ def test_a_task_still_running_at_teardown_is_the_one_that_is_cancelled(
     thing and not a copy of it.
     """
     saw: list[tuple[str, bool]] = []
-    step = root_conftest._pools_are_not_shared_between_tests.__wrapped__()
+    # `__wrapped__` is what `@pytest.fixture` stores the undecorated generator on; it is real at
+    # runtime and absent from `FixtureFunctionDefinition`'s type, so the cast is at the seam.
+    fixture = cast("Any", root_conftest._pools_are_not_shared_between_tests)
+    step = fixture.__wrapped__()
     next(step)
     try:
         gate = thumbnails.pool()

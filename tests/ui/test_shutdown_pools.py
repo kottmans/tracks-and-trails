@@ -473,7 +473,9 @@ def test_an_update_already_downloading_stops_at_its_next_checkpoint(
     class _HeldStream(io.BytesIO):
         """Serves the first chunk, then holds the second until the test has sealed the pool."""
 
-        def read(self, size: int = -1, /) -> bytes:
+        # `int | None`, matching `BufferedIOBase.read`: narrowing an override's argument
+        # is a Liskov violation and `mypy` checks tests too.
+        def read(self, size: int | None = -1, /) -> bytes:
             if downloading.is_set():
                 sealed.wait(timeout=30)
             downloading.set()

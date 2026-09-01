@@ -15,7 +15,7 @@ import os
 import sys
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, cast
 
 import pytest
 
@@ -114,6 +114,19 @@ if sys.platform == "win32":
 #    caused it had to join its own task to work around a fixture that should have owned this. So a
 #    pool created during a test is now sealed and drained here, and a pool that will not drain
 #    fails the test that left it rather than crashing an unrelated one later.
+class _PoolModule(Protocol):
+    """The one attribute this fixture touches on either pool module.
+
+    **A `Protocol` rather than a `ModuleType`**, because `sys.modules` is typed as holding plain
+    modules and `mypy` is right that a plain module has no `_SHARED_POOL`. Declaring the shape here
+    says what is being reached for and keeps the check honest; the pool's own type is `Any` on
+    purpose, since naming it would mean importing Qt and that is the whole point of this fixture's
+    `sys.modules` lookup.
+    """
+
+    _SHARED_POOL: Any
+
+
 _POOL_SINGLETON_MODULES = (
     "tracks_and_trails.downloader.ytdlp_service",
     "tracks_and_trails.ui.thumbnails",
@@ -128,7 +141,7 @@ _POOL_TEARDOWN_WAIT_MS = 30_000
 def _pools_are_not_shared_between_tests() -> Iterator[None]:
     before: dict[str, Any] = {}
     for name in _POOL_SINGLETON_MODULES:
-        module = sys.modules.get(name)
+        module = cast("_PoolModule | None", sys.modules.get(name))
         if module is None:
             # Not imported yet, so there is no singleton to displace and nothing to import one
             # for. If the test imports it, teardown below finds it.
@@ -139,7 +152,7 @@ def _pools_are_not_shared_between_tests() -> Iterator[None]:
         yield
     finally:
         for name in _POOL_SINGLETON_MODULES:
-            module = sys.modules.get(name)
+            module = cast("_PoolModule | None", sys.modules.get(name))
             if module is None:
                 continue
             created = module._SHARED_POOL
