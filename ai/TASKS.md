@@ -1177,6 +1177,86 @@ was not taken first.
 
 ---
 
+### T-297 — A thumbnail flickers while the window is resized with a panel open, and the cause is unknown
+
+**Status:** **In Review — reproduced, cause named, fixed 2026-09-01.** **It was not the deferral the
+entry hypothesised.** `QAbstractItemView` keeps `setIndexWidget` widgets in **the same map as item
+editors**, so every `updateGeometries()` pass handed the open row's panel to
+`RowDelegate.updateEditorGeometry` — which applied `_control_of`, the row's *format-combo* slot, to
+it. A 354 px panel became **26 px**. A resize calls `updateGeometries()` once per step, so the panel
+collapsed and was restored once per step, and the view painted the row inside each gap: `paint`
+draws the thumbnail on every row it is given, because an open one is supposed to be covered.
+
+**Measured under a compositor before anything was changed**, which is this task's first criterion —
+`ai/evidence/2026-09-01-T297-panel-collapses-during-resize.md`, with a capture. 110 resize steps:
+**107 collapses to 26 px, 107 paints of the row its panel did not cover**, and 109 of 110 steps
+nevertheless *settling* correctly, which is why the first reading — which sampled after each step —
+saw nothing. After the fix: **0 exposed paints, 110/110 settled**, and the panel's own resize events
+fell from 214 to 9.
+
+**The fix is the guard its two siblings already have.** `setEditorData` and `setModelData` both
+begin `if not isinstance(editor, QComboBox)`; `updateEditorGeometry` did not. Anything that is not
+this delegate's editor now goes to `super()`, which sizes an editor to `option.rect` — exactly right
+for an index widget spanning the row.
+
+**This is what `T-296` was working around, and that is worth stating rather than leaving to be
+rediscovered.** `T-296` reordered `_mount_panel` so `scrollTo` — which calls `updateGeometries()` —
+could not undo the geometry `setGeometry` had just set. The reorder is still correct and still
+tested; the reason a scroll destroyed the geometry was this method, one layer down. **`T-296` is not
+reopened**: it is Complete, approved, and its own regression still passes.
+
+*(Filed 2026-08-28 by `T-212`'s checklist run, deliberately without a cause.* The maintainer's
+report: *"when changing the window size while the naming information is up, the thumbnail cuts in
+and out very rapidly. That shouldn't happen."*)
+**Owner:** Implementer
+**Priority:** Low — it is visual noise during a drag, and it is the least understood thing the run
+found
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/add_dialog.py` `panel_height_for`, which reads the **viewport's** height,
+so every resize step changes the row's size hint; `_mount_panel`'s note that `setIndexWidget`
+defers geometry to `updateEditorGeometries`, which runs on paint; `T-296`
+**Affected surfaces:** `ui/row_delegate.py` (`updateEditorGeometry`), `tests/ui/test_row_delegate.py`;
+the instrument is `tests/ui/_t297_resize_probe.py` and `tools/t297_resize_session.sh`
+**Risk:** Low
+
+#### What was measured, and what it does not show
+
+**It did not reproduce offscreen.** Across eight resize steps with the template panel open:
+
+```
+thumbnail loads : 0        # nothing re-fetches
+cancels         : 0
+```
+
+and the panel's geometry matched the row's `visualRect` at **every** step, from 762 px down to
+430 px and back up. So it is neither the thumbnail being reloaded nor the panel losing coverage in
+any way a headless process can see.
+
+**The plausible mechanism is unproven and is recorded as a hypothesis, not a finding.**
+`panel_height_for` reads `self._list.viewport().height()`, so every resize step changes the row's
+size hint; the panel's re-placement is deferred to paint; and the delegate underneath — which draws
+the thumbnail — is what shows in any gap. That is consistent with `T-108`'s comments and with
+`T-296`, and it is not evidence.
+
+#### Acceptance criteria
+
+- **It is reproduced on a real display first**, with a capture, and the reproduction is recorded in
+  `ai/evidence/` before anything is changed. An offscreen process does not do a continuous resize
+  and its style is not necessarily the session's
+- **The cause is named before the fix**, and if the cause turns out to be `T-296`'s, this task is
+  closed against that one rather than fixed twice
+- **If it proves to be Qt or compositor behaviour** this application can only work around, that is
+  recorded as the finding and the workaround is a separate decision
+
+#### Out of scope
+
+- Guessing. `T-296` is filed with a measured cause; this one is not, and the two should not be
+  merged on the strength of sitting near each other
+
+
+---
+
 ## Complete
 
 ### T-287 — Minimizing the main window leaves its dialogs on screen
@@ -14191,56 +14271,6 @@ it the way out of a site that has broken.
 - **The crash in this path** (`T-289`)
 - **Whether the application itself should self-update**, which `REL-001` leaves open and which the
   amendment names as the condition for reopening `OPS-002`
-
-### T-297 — A thumbnail flickers while the window is resized with a panel open, and the cause is unknown
-
-**Status:** Proposed — **filed 2026-08-28 by `T-212`'s checklist run**, and filed **without a
-cause**, deliberately. The maintainer's report: *"when changing the window size while the naming
-information is up, the thumbnail cuts in and out very rapidly. That shouldn't happen."*
-**Owner:** Implementer
-**Priority:** Low — it is visual noise during a drag, and it is the least understood thing the run
-found
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing
-**Relevant context:** `ui/add_dialog.py` `panel_height_for`, which reads the **viewport's** height,
-so every resize step changes the row's size hint; `_mount_panel`'s note that `setIndexWidget`
-defers geometry to `updateEditorGeometries`, which runs on paint; `T-296`
-**Affected surfaces:** unknown until it is reproduced
-**Risk:** Low
-
-#### What was measured, and what it does not show
-
-**It did not reproduce offscreen.** Across eight resize steps with the template panel open:
-
-```
-thumbnail loads : 0        # nothing re-fetches
-cancels         : 0
-```
-
-and the panel's geometry matched the row's `visualRect` at **every** step, from 762 px down to
-430 px and back up. So it is neither the thumbnail being reloaded nor the panel losing coverage in
-any way a headless process can see.
-
-**The plausible mechanism is unproven and is recorded as a hypothesis, not a finding.**
-`panel_height_for` reads `self._list.viewport().height()`, so every resize step changes the row's
-size hint; the panel's re-placement is deferred to paint; and the delegate underneath — which draws
-the thumbnail — is what shows in any gap. That is consistent with `T-108`'s comments and with
-`T-296`, and it is not evidence.
-
-#### Acceptance criteria
-
-- **It is reproduced on a real display first**, with a capture, and the reproduction is recorded in
-  `ai/evidence/` before anything is changed. An offscreen process does not do a continuous resize
-  and its style is not necessarily the session's
-- **The cause is named before the fix**, and if the cause turns out to be `T-296`'s, this task is
-  closed against that one rather than fixed twice
-- **If it proves to be Qt or compositor behaviour** this application can only work around, that is
-  recorded as the finding and the workaround is a separate decision
-
-#### Out of scope
-
-- Guessing. `T-296` is filed with a measured cause; this one is not, and the two should not be
-  merged on the strength of sitting near each other
 
 ## Proposed — Phase 4.5
 

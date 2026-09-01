@@ -3301,3 +3301,55 @@ def test_a_press_that_wanders_off_the_zone_does_not_leave_it_stuck_down(
     assert _zone_pixels(paint_rows(model, delegate, 0), zone) == at_rest, (
         "the zone is still drawn pressed after a release that landed elsewhere"
     )
+
+
+# --- T-297: Qt keeps index widgets in the same map as item editors ----------------------------
+
+
+def test_the_delegate_leaves_a_widget_that_is_not_its_own_editor_at_the_row_s_size(
+    qapp: QApplication,
+) -> None:
+    """`T-297`: an open row's panel was being sized as if it were the row's format combo.
+
+    `QAbstractItemView` keeps `setIndexWidget` widgets in **the same map as item editors**, so every
+    `updateGeometries()` pass hands this delegate the panel. `updateEditorGeometry` applied
+    `_control_of` to whatever it was given — the small control slot — and a 354 px panel became
+    **26 px**. A resize calls `updateGeometries()` once per step, so the panel collapsed and was
+    restored once per step, and the view painted the row inside each gap: `paint` draws the
+    thumbnail on every row it is given, because an open one is supposed to be covered. Measured
+    under a compositor at `ai/evidence/2026-09-01-T297-panel-collapses-during-resize.md`, where the
+    walk produced 107 collapses in 110 steps.
+
+    **Both branches, because the guard is the fix.** A widget that is not this delegate's editor
+    keeps the row's rectangle; the delegate's own combo box still gets the control slot it is
+    painted in (`T118-R12`), and a fix that skipped both would move the control away from the
+    affordance the user clicked.
+    """
+    delegate = RowDelegate()
+    model = RowsModel([a_row(0)])
+    index = model.index(0, 0)
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, RENDER_WIDTH, 354)
+    option.fontMetrics = QFontMetrics(option.font)
+
+    panel = QWidget()
+    delegate.updateEditorGeometry(panel, option, index)
+
+    assert panel.geometry() == option.rect, (
+        f"the panel was sized to {panel.geometry()} instead of the row's {option.rect}. Qt hands "
+        "index widgets to updateEditorGeometry, and sizing one like the format control collapses "
+        "an open panel to the control slot on every layout pass"
+    )
+
+    # **The parent is held in a local deliberately**, as this file already records one test over:
+    # `createEditor(QWidget(), …)` parents the editor to a temporary Python frees immediately, and
+    # the editor goes with it.
+    parent = QWidget()
+    editor = delegate.createEditor(parent, option, index)
+    delegate.updateEditorGeometry(editor, option, index)
+
+    assert editor.geometry() != option.rect, (
+        "the delegate's own combo box was given the whole row instead of the slot `paint` reserves "
+        "for it, so the control no longer sits where the affordance was drawn"
+    )
+    assert editor.geometry().height() < option.rect.height()

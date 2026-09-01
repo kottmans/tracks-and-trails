@@ -101,11 +101,18 @@ def test_the_open_row_is_never_painted_uncovered(
     from PySide6.QtCore import QEvent, QObject
 
     resizes: list[tuple[int, int]] = []
+    collapses: list[list[str]] = []
 
     class _PanelWatch(QObject):
         def eventFilter(self, obj: Any, event: Any) -> bool:  # noqa: N802
             if event.type() == QEvent.Type.Resize:
                 resizes.append((event.oldSize().height(), event.size().height()))
+                if event.size().height() == 26 and len(collapses) < 3:
+                    import traceback
+
+                    collapses.append(
+                        "".join(traceback.format_stack(limit=8)[:-1]).strip().splitlines()
+                    )
             return False
 
     panel_watch = _PanelWatch()
@@ -130,6 +137,10 @@ def test_the_open_row_is_never_painted_uncovered(
     # rendered, which shows what the row underneath contributes to a frame in that state.
     capture = os.environ.get("T297_CAPTURE")
     if capture:
+        # **Recording stops first.** The reconstruction below collapses the panel deliberately, and
+        # counting that would put the instrument's own action in the measurement — which it did,
+        # for one collapse and two paints, until this line existed.
+        watching["panel"] = None
         index = dialog._index_of(row)
         full = dialog._list.visualRect(index)
         panel.setGeometry(full.x(), full.y(), full.width(), 26)
@@ -144,6 +155,8 @@ def test_the_open_row_is_never_painted_uncovered(
         f"paints of the row   : {sum(1 for r in every if r == watching['target'])}",
         f"EXPOSED paints      : {len(exposed)}",
         f"panel resize events : {len(resizes)}",
+        "who collapses it (Python stack at the first collapse):",
+        *[f"    {line.strip()}" for line in (collapses[0] if collapses else ["<none captured>"])],
         "  first twenty (old h -> new h): "
         + " ".join(f"{old_h}->{new_h}" for old_h, new_h in resizes[:20]),
         f"  resizes TO the 26 px minimum: {sum(1 for _o, n in resizes if n == 26)}",

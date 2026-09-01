@@ -2375,7 +2375,32 @@ class RowDelegate(QStyledItemDelegate):
         option: QStyleOptionViewItem,
         index: QModelIndex | _PersistentIndex,
     ) -> None:
-        """Put the editor in the slot `paint` already reserved for it, on the row it belongs to."""
+        """Put the editor in the slot `paint` already reserved for it, on the row it belongs to.
+
+        **Only this delegate's own editor**, guarded the way `setEditorData` and `setModelData`
+        beside it already guard — and that omission was `T-297` (`T-296` too, see below). Qt keeps
+        `setIndexWidget` widgets in **the same map as item editors**, so every `updateGeometries()`
+        pass hands this method the open row's *panel* and this method sized it as if it were the
+        row's format combo: `_control_of` returns the small control slot, so a 354 px panel was set
+        to **26 px**. A resize calls `updateGeometries()` per step, so the panel collapsed and was
+        restored once per step — 107 collapses in 110 steps — and the view painted the row inside
+        each gap. `RowDelegate.paint` draws the thumbnail on every row it is given because an open
+        one is supposed to be covered by its panel, so what the user saw was the thumbnail cutting
+        in and out for the length of the drag. Measured at
+        `ai/evidence/2026-09-01-T297-panel-collapses-during-resize.md`.
+
+        **`super()` for anything else, rather than leaving it alone**: `QStyledItemDelegate` sizes
+        an editor to `option.rect`, which for an index widget spanning the row is exactly right —
+        so the panel now gets its correct geometry from the same pass that used to shrink it.
+
+        **This is also what `T-296` was working around.** That task reordered `_mount_panel` so
+        `scrollTo` — which calls `updateGeometries()` — could not undo the geometry `setGeometry`
+        had just set. The reorder is still correct and still tested, but the reason the scroll
+        destroyed the geometry was this method, one layer down.
+        """
+        if not isinstance(editor, QComboBox):
+            super().updateEditorGeometry(editor, option, index)
+            return
         # **The same rectangle the affordance was painted in** (`T118-R12`). One definition, so the
         # control does not move at the moment the user clicks it.
         editor.setGeometry(self._control_of(option, index))
