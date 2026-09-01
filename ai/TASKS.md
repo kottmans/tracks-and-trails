@@ -1271,116 +1271,6 @@ the floor, not the label's own hint. Measured, not assumed.
 
 ---
 
-### T-294 — The add dialog's status line is an empty tab stop that draws a full-width focus ring
-
-**Status:** **In Review — built 2026-08-31, not yet reviewed.** **The first candidate was taken:
-focus policy follows the text.** Copy-ability exists exactly when there is something to copy, the
-widget never hides, and it never leaves `focus_chain()` — so the layout does not move and the chain
-stays a single declaration made once at construction, which is the half of `T-060`'s rule that was
-actually protecting something. The ring is untouched (`T202-R1`) and `T-218`'s empty summary is
-untouched.
-
-*(Filed 2026-08-28 by `T-212`'s checklist run, from the maintainer's first report of the sitting:
-*"on the 'add urls' page, this section gets highlighted even if there isn't anything there."*)
-**Owner:** Implementer
-**Priority:** Low — nothing misbehaves; a keyboard user pays one Tab press to reach a control that
-says nothing, and sees a ring around it
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing
-**Relevant context:** `ui/add_dialog.py:1444` and `focus_chain()`; `ui/staging.py` `summarise`;
-`T-218`, which emptied the no-rows summary; `T016-R4` and `T-060`, which is why the chain is
-declared; `ui/theme.py`'s `*:focus` rule, which is `T202-R1` working correctly
-**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
-**Risk:** Low to change, **Medium to change without deciding which rule gives** — each candidate
-fix collides with something `focus_chain()` states in as many words
-
-#### What is wrong
-
-Measured against the built dialog:
-
-```
-text            : ''
-focusPolicy     : 11        # StrongFocus
-in focus_chain  : True
-hasFocus        : True
-height          : 17        # the same empty or full
-```
-
-Two decisions meet here and neither is wrong on its own:
-
-- `add_dialog.py:1444` sets `TextBrowserInteraction` so an extractor's message can be copied into a
-  bug report (`NFR-006`). That flag carries `LinksAccessibleByKeyboard`, and **Qt promotes the
-  label from `NoFocus` to `StrongFocus` as a side effect** — confirmed on a bare `QLabel`
-- **`T-218` made the empty summary the empty string.** Before it, this line always had words in it;
-  the hint moved into the list, where it describes the space it is in
-
-Together: a full-width, 17 px tab stop with nothing in it, which the sheet's `*:focus` rule then
-outlines in accent. **The ring is correct** — for a borderless control it *is* the non-colour
-channel (`T202-R1`) — and the defect is that an empty widget is in the chain at all.
-
-#### Which rule gave, and what it cost
-
-**Decided in `StatusLabel.setText`, not at the eight call sites that write the status.** A
-`_set_status` helper on the dialog would have worked until the ninth writer, and the ninth writer is
-the one that forgets. The text is set *after* the interaction flags in the constructor, because the
-flags are what promote the policy in the first place.
-
-**`focus_chain()`'s rule is restated rather than left contradicted**, which is the criterion. It now
-says the chain is a declaration of *order*, not a claim that every entry is reachable right now —
-two widgets are deliberately unreachable in some states and neither leaves: the retry button is
-disabled when nothing has failed, and the status line is `NoFocus` while it has no message.
-
-**Two tests had to change, and one of them is the Windows job's.**
-`test_the_keyboard_order_is_the_declared_one` compares the reachable set against the declared one
-and a fresh dialog no longer reaches the status line. `test_windows_desktop.py`'s `DIALOG_STATES`
-lists what each state offers, and three of its four states now withhold `statusMessage` — measured
-offscreen at each state rather than reasoned: `''`, `''`, `'Reading 1 URLs — 0 done'`, `''`. **That
-job cannot run on Linux**, so the measurement is what stands behind those subtractions until the
-Windows job says otherwise. The read-in-flight state keeps the label, and it is what stops the
-change being a fix that quietly removed the label from the keyboard for good.
-
-**Both directions are covered.** Mutating the policy to always-`StrongFocus` fails the new test and
-the order test; mutating it to always-`NoFocus` fails the new test on the selectable-message half.
-The second mutant is the cheap wrong fix, and it would have cost `NFR-006` its copyable extractor
-message.
-
-
-#### The three candidates, and what each costs
-
-`focus_chain()`'s docstring is the obstacle, and it is deliberate:
-
-> **Hidden widgets must not be in the chain** (`T-060`), and nothing here hides: the retry button
-> is disabled rather than removed when nothing has failed, so the chain is the same in every state
-> and the layout does not move under the user.
-
-- **Focus policy follows the text** — `NoFocus` while empty, `StrongFocus` when a message lands.
-  Copy-ability exists exactly when there is something to copy. The chain then differs by state,
-  which is what that paragraph argues against, though the widget never hides and `setTabOrder`
-  still resolves
-- **Hide the label when empty** — cleanest to look at, and the layout moves under the user, which
-  the same paragraph rejects outright for the retry button
-- **Give it back a permanent line of text** — undoes `T-218`'s reasoning that a summary of no rows
-  is not a place to teach
-
-#### Acceptance criteria
-
-- **An empty status line is not a tab stop**, however that is achieved
-- **A status line with text is still reachable and still selectable** — `NFR-006`'s copyable
-  extractor message is the reason this label is focusable at all and must survive
-- **`focus_chain()`'s docstring is updated to whichever rule now holds**, rather than left stating
-  one the code no longer follows
-- **The focus ring itself is untouched.** `T202-R1` decided it and it is doing its job
-
-#### Out of scope
-
-- The `*:focus` rule, and any other widget it rings
-- `T-218`'s decision that an empty summary says nothing
-
-
-
-
----
-
 ## Complete
 
 ### T-287 — Minimizing the main window leaves its dialogs on screen
@@ -12891,6 +12781,121 @@ docstring is about one panel slot. But every *different* verb on that row is swa
 
 - Two panels open at once, which `_open_panel`'s docstring rules out and this does not revisit
 - The panel geometry defect (`T-296`)
+
+---
+
+### T-294 — The add dialog's status line is an empty tab stop that draws a full-width focus ring
+
+**Status:** **Complete — Approved at `4d0e65b` on 2026-08-31** (`T-294`, reviewed at `9fa789b`).
+Focus policy follows the text: copy-ability exists exactly when there is something to copy, the
+widget never hides, and it never leaves `focus_chain()` — so the layout does not move and the chain
+stays a single declaration made once at construction. The ring is untouched (`T202-R1`) and
+`T-218`'s empty summary is untouched.
+
+**One check is still owed and is not a formality.** `4d0e65b` edits
+`tests/ui/test_windows_desktop.py`'s `DIALOG_STATES`, whose job **skips at module level on Linux**,
+so nothing that has run so far has executed it. The reviewer's ruling was that a pre-review push was
+unnecessary and that **the Windows desktop job is a required post-push check: any failure there
+reopens this task.** What stands behind the three subtractions until then is an offscreen
+measurement of the status text at each of the four states — `''`, `''`, `'Reading 1 URLs — 0 done'`,
+`''` — and not the job itself.
+
+*(Filed 2026-08-28 by `T-212`'s checklist run, from the maintainer's first report of the sitting:
+*"on the 'add urls' page, this section gets highlighted even if there isn't anything there."*)
+**Owner:** Implementer
+**Priority:** Low — nothing misbehaves; a keyboard user pays one Tab press to reach a control that
+says nothing, and sees a ring around it
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/add_dialog.py:1444` and `focus_chain()`; `ui/staging.py` `summarise`;
+`T-218`, which emptied the no-rows summary; `T016-R4` and `T-060`, which is why the chain is
+declared; `ui/theme.py`'s `*:focus` rule, which is `T202-R1` working correctly
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Low to change, **Medium to change without deciding which rule gives** — each candidate
+fix collides with something `focus_chain()` states in as many words
+
+#### What is wrong
+
+Measured against the built dialog:
+
+```
+text            : ''
+focusPolicy     : 11        # StrongFocus
+in focus_chain  : True
+hasFocus        : True
+height          : 17        # the same empty or full
+```
+
+Two decisions meet here and neither is wrong on its own:
+
+- `add_dialog.py:1444` sets `TextBrowserInteraction` so an extractor's message can be copied into a
+  bug report (`NFR-006`). That flag carries `LinksAccessibleByKeyboard`, and **Qt promotes the
+  label from `NoFocus` to `StrongFocus` as a side effect** — confirmed on a bare `QLabel`
+- **`T-218` made the empty summary the empty string.** Before it, this line always had words in it;
+  the hint moved into the list, where it describes the space it is in
+
+Together: a full-width, 17 px tab stop with nothing in it, which the sheet's `*:focus` rule then
+outlines in accent. **The ring is correct** — for a borderless control it *is* the non-colour
+channel (`T202-R1`) — and the defect is that an empty widget is in the chain at all.
+
+#### Which rule gave, and what it cost
+
+**Decided in `StatusLabel.setText`, not at the eight call sites that write the status.** A
+`_set_status` helper on the dialog would have worked until the ninth writer, and the ninth writer is
+the one that forgets. The text is set *after* the interaction flags in the constructor, because the
+flags are what promote the policy in the first place.
+
+**`focus_chain()`'s rule is restated rather than left contradicted**, which is the criterion. It now
+says the chain is a declaration of *order*, not a claim that every entry is reachable right now —
+two widgets are deliberately unreachable in some states and neither leaves: the retry button is
+disabled when nothing has failed, and the status line is `NoFocus` while it has no message.
+
+**Two tests had to change, and one of them is the Windows job's.**
+`test_the_keyboard_order_is_the_declared_one` compares the reachable set against the declared one
+and a fresh dialog no longer reaches the status line. `test_windows_desktop.py`'s `DIALOG_STATES`
+lists what each state offers, and three of its four states now withhold `statusMessage` — measured
+offscreen at each state rather than reasoned: `''`, `''`, `'Reading 1 URLs — 0 done'`, `''`. **That
+job cannot run on Linux**, so the measurement is what stands behind those subtractions until the
+Windows job says otherwise. The read-in-flight state keeps the label, and it is what stops the
+change being a fix that quietly removed the label from the keyboard for good.
+
+**Both directions are covered.** Mutating the policy to always-`StrongFocus` fails the new test and
+the order test; mutating it to always-`NoFocus` fails the new test on the selectable-message half.
+The second mutant is the cheap wrong fix, and it would have cost `NFR-006` its copyable extractor
+message.
+
+
+#### The three candidates, and what each costs
+
+`focus_chain()`'s docstring is the obstacle, and it is deliberate:
+
+> **Hidden widgets must not be in the chain** (`T-060`), and nothing here hides: the retry button
+> is disabled rather than removed when nothing has failed, so the chain is the same in every state
+> and the layout does not move under the user.
+
+- **Focus policy follows the text** — `NoFocus` while empty, `StrongFocus` when a message lands.
+  Copy-ability exists exactly when there is something to copy. The chain then differs by state,
+  which is what that paragraph argues against, though the widget never hides and `setTabOrder`
+  still resolves
+- **Hide the label when empty** — cleanest to look at, and the layout moves under the user, which
+  the same paragraph rejects outright for the retry button
+- **Give it back a permanent line of text** — undoes `T-218`'s reasoning that a summary of no rows
+  is not a place to teach
+
+#### Acceptance criteria
+
+- **An empty status line is not a tab stop**, however that is achieved
+- **A status line with text is still reachable and still selectable** — `NFR-006`'s copyable
+  extractor message is the reason this label is focusable at all and must survive
+- **`focus_chain()`'s docstring is updated to whichever rule now holds**, rather than left stating
+  one the code no longer follows
+- **The focus ring itself is untouched.** `T202-R1` decided it and it is doing its job
+
+#### Out of scope
+
+- The `*:focus` rule, and any other widget it rings
+- `T-218`'s decision that an empty summary says nothing
+
 
 
 ## Ready
