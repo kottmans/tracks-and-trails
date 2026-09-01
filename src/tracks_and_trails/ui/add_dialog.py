@@ -1962,17 +1962,30 @@ class AddUrlDialog(QDialog):
         # is `T107-R2`'s collapse arriving from the mounting side rather than the widget's.
         self._model.dataChanged.emit(index, index, [Qt.ItemDataRole.SizeHintRole])
         self._list.setIndexWidget(index, panel)
-        # **Placed here, not left to the view's next paint** (`T-108`). `setIndexWidget` registers
-        # the widget and defers its geometry to `updateEditorGeometries`, which runs on paint — so
-        # until something repaints, the panel keeps its own minimum. Measured: **190x26 inside a row
-        # whose `visualRect` was already 485x366**, which left the table zero pixels tall. That is
-        # `T107-R2`'s collapse arriving from the mounting side, and the widget's own layout contract
-        # cannot prevent it, because the widget was never given the size.
+        # **The geometry is placed here, not left to the view's next paint** (`T-108`).
+        # `setIndexWidget` registers the widget and defers its geometry to
+        # `updateEditorGeometries`, which runs on paint — so until something repaints, the panel
+        # keeps its own minimum. Measured: **190x26 inside a row whose `visualRect` was already
+        # 485x366**, which left the table zero pixels tall. That is `T107-R2`'s collapse arriving
+        # from the mounting side, and the widget's own layout contract cannot prevent it, because
+        # the widget was never given the size.
         #
         # Qt keeps ownership afterwards: scrolling and resizing re-place it through the same pass.
         # This only makes the *first* geometry true immediately rather than one paint later.
-        panel.setGeometry(self._list.visualRect(index))
+        #
+        # **Scrolled first and given its geometry second, which is `T-296`.** The other order was
+        # here and it undid itself: `setGeometry` landed the right rectangle — measured 322 px, the
+        # height the row had just been sized to — and `scrollTo` then put the panel straight back
+        # to **26**, its unmounted minimum, because a row taller than the viewport makes the scroll
+        # a real one and the view re-places its index widget as part of it. The panel's layout then
+        # drove its children to *negative* heights, which is the "crushed" the report describes. At
+        # a window tall enough to hold the row, `scrollTo` moves nothing and the geometry survived,
+        # which is why the defect read as size-dependent rather than as an ordering.
+        #
+        # Scrolling first costs nothing: the scroll is computed from the *row's* size hint, which
+        # the `dataChanged` above has already made true, and not from the widget's geometry.
         self._list.scrollTo(index, QAbstractItemView.ScrollHint.EnsureVisible)
+        panel.setGeometry(self._list.visualRect(index))
         for earlier, later in pairwise(panel.focus_chain()):
             self.setTabOrder(earlier, later)
         # **Focus lands where the panel says**, rather than on whatever this method knows how to

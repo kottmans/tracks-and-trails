@@ -5866,3 +5866,78 @@ def test_the_disclosure_swaps_a_panel_it_did_not_open_and_still_closes_its_own(
     dialog.toggle_playlist(str(row.job_id))
     QApplication.processEvents()
     assert dialog.open_panel is None, "the disclosure no longer closes the panel it opened"
+
+
+# --- T-296: the mount set the right geometry and then scrolled it away ------------------------
+
+#: A dialog short enough that an open panel cannot fit in the list's viewport. The report's own
+#: size: *"if the playlist is not expanded the naming and folders screen is crushed"*, at 712x500.
+_TOO_SHORT_FOR_A_PANEL = (712, 500)
+
+#: A dialog tall enough to hold the same panel whole — the control, because the defect was
+#: invisible here and that is exactly what made it read as size-dependent.
+_TALL_ENOUGH_FOR_A_PANEL = (712, 762)
+
+
+@pytest.mark.parametrize(
+    ("size", "fits"),
+    [
+        pytest.param(_TOO_SHORT_FOR_A_PANEL, False, id="a viewport shorter than the panel"),
+        pytest.param(_TALL_ENOUGH_FOR_A_PANEL, True, id="a viewport that holds it whole"),
+    ],
+)
+def test_a_panel_keeps_the_height_its_row_was_sized_to_when_it_is_mounted(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+    size: tuple[int, int],
+    fits: bool,
+) -> None:
+    """`T-296`: the mount placed the right rectangle and then `scrollTo` took it away.
+
+    A row taller than the viewport makes the scroll a real one, and the view re-places its index
+    widget as part of it — so the panel went back to **26 px**, its unmounted minimum, and its
+    layout drove the children to negative heights. That is the report's *"crushed"*. At a window
+    tall enough to hold the row the scroll moved nothing and the geometry survived, which is why it
+    presented as a size problem rather than an ordering one.
+
+    **Both sizes, because the tall one is the control.** It passed before the fix and must go on
+    passing; only the short one discriminates.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    dialog.resize(*size)
+    dialog.show()
+    qapp.processEvents()
+
+    caught: list[tuple[int, int]] = []
+    mount = dialog._mount_panel
+
+    def watched() -> None:
+        mount()
+        opened = dialog.open_panel
+        if opened is not None:
+            caught.append((opened.height(), dialog.panel_height_for(row)))
+
+    # **Caught inside the mount, not read afterwards.** The geometry is wrong only between the
+    # mount and the view's next paint, so a version of this test that pumped the loop and then read
+    # `panel.height()` read the repaint's repair — and passed against the defect.
+    dialog._mount_panel = watched  # type: ignore[method-assign]
+
+    panel = _open_the_template_editor(dialog, 0)
+    assert caught, "the panel never mounted"
+    mounted, sized_to = caught[-1]
+
+    index = dialog._index_of(row)
+    assert mounted == sized_to == dialog._list.visualRect(index).height(), (
+        f"the panel mounted at {mounted} px on a row sized to {sized_to} px "
+        f"(viewport {dialog._list.viewport().height()} px, panel fits: {fits}). The mount set the "
+        "row's own rectangle and then scrolled the panel back to its unmounted minimum"
+    )
+
+    starved = [
+        (label.text()[:40], label.height())
+        for label in panel.findChildren(QLabel)
+        if label.wordWrap() and label.text() and label.height() < 0
+    ]
+    assert not starved, f"the panel's layout drove wrapped labels to negative heights: {starved}"
