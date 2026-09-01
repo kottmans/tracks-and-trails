@@ -1177,100 +1177,6 @@ was not taken first.
 
 ---
 
-### T-296 — A panel opened in a short list mounts at its 26 px minimum and crushes its contents
-
-**Status:** **In Review — built 2026-08-31, not yet reviewed.** **It was an ordering, not a
-calculation.** `setGeometry` was landing the right rectangle — 322 px, the height the row had just
-been sized to — and the `scrollTo` on the next line put the panel straight back to **26**, its
-unmounted minimum: a row taller than the viewport makes the scroll a real one and the view
-re-places its index widget as part of it. Scrolling first and setting the geometry second fixes it,
-and `panel_height_for`'s three constraints are untouched. **One acceptance criterion is not met and
-is recorded below rather than claimed** — see *What is left*.
-
-*(Filed 2026-08-28 by `T-212`'s checklist run.* The maintainer's report: *"if the playlist is not
-expanded the naming and folders screen is crushed."*)
-**Owner:** Implementer
-**Priority:** Medium — the panel is unusable at that size, and the size is an ordinary window on a
-laptop
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing
-**Relevant context:** `ui/add_dialog.py` `panel_height_for` and `_mount_panel`; `T-108`, whose
-comment measures **190×26** as the geometry a panel keeps when `setIndexWidget` is not given a
-laid-out rectangle; `T-210`, `T193-R1`
-**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
-**Risk:** Medium — the height calculation has three constraints already and `T193-R1` is the record
-of one being fixed by breaking another
-
-#### What is wrong
-
-Reproduced at a 712×500 dialog, opening *Naming and folders…*:
-
-```
-viewport h        : 144
-panel_height_for  : 322     # the floor: never below minimumSizeHint
-panel actual h    : 26      # what was actually mounted
-  wrapped 'The Art of War …'      h=  -1 needs=  85 CLIPPED=True
-  wrapped 'Fields you can use: …' h=  -4 needs= 204 CLIPPED=True
-  wrapped 'The extension is not…' h=  -4 needs=  85 CLIPPED=True
-```
-
-**26 px is the panel's unmounted minimum** — the very number `_mount_panel`'s comment records
-`T-108` fixing from the mounting side: *"Measured: 190x26 inside a row whose `visualRect` was
-already 485x366."* When the wanted height exceeds the viewport, `setGeometry(visualRect(index))`
-does not land it, the widget keeps its own minimum, and the layout drives its children to
-**negative** heights. At 712×762 the same panel opens correctly at 339 px, which is why it reads as
-size-dependent rather than broken.
-
-#### Acceptance criteria
-
-- **A panel opened in a viewport shorter than it is still mounted at the height the row was sized
-  to**, and its children get the heights they ask for
-- **The test asserts the mounted geometry against the row's own `visualRect`** at a window size
-  where the panel does not fit — the case that reproduces, not a comfortable one
-- **A wrapped label never receives a negative height**, which is a cheap assertion and catches the
-  whole family
-- **`T-210`'s way out stays reachable**: whatever the panel does when it is taller than the
-  viewport, the top of it — the disclosure and the summary — must be on screen, because
-  `setIndexWidget` covers the row's own disclosure
-- **`panel_height_for`'s three existing constraints are re-stated in its docstring** if any of them
-  moves: the panel's own hint, what the list can show, and the floor that keeps *Done* reachable
-
-#### What is left, measured rather than claimed
-
-**The criterion *"its children get the heights they ask for"* is not met at the reproducing size,
-and the reason is not the mount.** With the ordering fixed, at 712×500:
-
-```
-viewport h        : 144
-panel sizeHint    : 339
-panel minimum     : 322     # what the floor holds it to
-panel mounted     : 322     # correct: the height the row was sized to
-  'Fields you can use: …'   h=  85  needs= 102     # short by exactly 339 − 322
-```
-
-No child is negative any more — that family is gone with the 26 px mount — but the field-help label
-loses 17 px, which is one line of the list of usable fields.
-
-**It is a different defect and it needs a decision this task should not take.** `panel_height_for`
-compresses the panel to what the list can show (`T-210`), and that rule's stated bargain is that
-**the entry table is the part that gives** — *"the summary says which row this is and Done is the
-way out, so neither may be the thing that shrinks."* **A template panel has no entry table**, so the
-compression lands on the field help instead. Raising the floor to `sizeHint` would satisfy the
-children and defeat `T-210`'s cap outright, which is `T193-R1`'s shape exactly: one constraint fixed
-by breaking another. What gives in a panel with nothing compressible is a question for whoever owns
-that rule.
-
-**A `setHeightForWidth` size policy on the label was tried and changes nothing**: the shortfall is
-the floor, not the label's own hint. Measured, not assumed.
-
-
-#### Out of scope
-
-- The scroll behaviour of the list itself (`T-210` settled per-pixel scrolling)
-- `T-297`'s flicker, which may or may not be the same mechanism
-
----
-
 ## Complete
 
 ### T-287 — Minimizing the main window leaves its dialogs on screen
@@ -15701,6 +15607,140 @@ Assert, on `windows-latest`:
 - Upgrade-over-existing-install and downgrade paths — real, but a separate task once the
   versioning story exists
 - Any non-Windows packaging
+
+---
+
+### T-296 — A panel opened in a short list mounts at its 26 px minimum and crushes its contents
+
+**Status:** **Blocked on `T296-R1` (High), awaiting a maintainer ruling** (reviewed at `9fa789b`).
+**The mount-order half is corrected and the review says so**: `setGeometry` was landing the right
+rectangle — 322 px, the height the row had just been sized to — and `scrollTo` on the next line put
+the panel back to **26**, its unmounted minimum. Scrolling first and setting the geometry second
+fixes that, and `panel_height_for`'s three constraints are untouched.
+
+**What blocks it is a conflict between two contracts, and neither is mine to pick.** `T-296`'s
+criterion says a panel's children get the heights they ask for; `T-210` says the panel is
+compressed to what the list can show and **the entry table is the region allowed to give**. A
+`TemplatePanel` has no entry table, so the compression lands on the field help — and applying
+`T-210` generically therefore contradicts this task's own criterion. `T193-R1` is this project's
+record of one constraint being fixed by breaking another, which is why the reviewer withheld it
+rather than choosing.
+
+**The measurement, at the reproducing 712×500:**
+
+```
+viewport h        : 144
+panel sizeHint    : 339
+panel minimum     : 322     # the floor `panel_height_for` holds it to
+panel mounted     : 322     # correct: the height the row was sized to
+  'Fields you can use: …'   h=  85  needs= 102     # short by exactly 339 − 322
+```
+
+No child is negative any more — that family went with the 26 px mount — but one line of the list of
+usable fields is lost. **A `setHeightForWidth` size policy on the label was tried and changes
+nothing**: the shortfall is the floor, not the label's own hint. Measured, not assumed.
+
+**The submitted regression is honest about its own reach and the review noted it**: it asserts
+`height() < 0`, so it passes while the field help is still compressed. Whichever ruling lands, that
+assertion is the one that has to change.
+**Owner:** Implementer
+**Priority:** Medium — the panel is unusable at that size, and the size is an ordinary window on a
+laptop
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/add_dialog.py` `panel_height_for` and `_mount_panel`; `T-108`, whose
+comment measures **190×26** as the geometry a panel keeps when `setIndexWidget` is not given a
+laid-out rectangle; `T-210`, `T193-R1`
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Medium — the height calculation has three constraints already and `T193-R1` is the record
+of one being fixed by breaking another
+
+#### What is wrong
+
+Reproduced at a 712×500 dialog, opening *Naming and folders…*:
+
+```
+viewport h        : 144
+panel_height_for  : 322     # the floor: never below minimumSizeHint
+panel actual h    : 26      # what was actually mounted
+  wrapped 'The Art of War …'      h=  -1 needs=  85 CLIPPED=True
+  wrapped 'Fields you can use: …' h=  -4 needs= 204 CLIPPED=True
+  wrapped 'The extension is not…' h=  -4 needs=  85 CLIPPED=True
+```
+
+**26 px is the panel's unmounted minimum** — the very number `_mount_panel`'s comment records
+`T-108` fixing from the mounting side: *"Measured: 190x26 inside a row whose `visualRect` was
+already 485x366."* When the wanted height exceeds the viewport, `setGeometry(visualRect(index))`
+does not land it, the widget keeps its own minimum, and the layout drives its children to
+**negative** heights. At 712×762 the same panel opens correctly at 339 px, which is why it reads as
+size-dependent rather than broken.
+
+#### Acceptance criteria
+
+- **A panel opened in a viewport shorter than it is still mounted at the height the row was sized
+  to**, and its children get the heights they ask for
+- **The test asserts the mounted geometry against the row's own `visualRect`** at a window size
+  where the panel does not fit — the case that reproduces, not a comfortable one
+- **A wrapped label never receives a negative height**, which is a cheap assertion and catches the
+  whole family
+- **`T-210`'s way out stays reachable**: whatever the panel does when it is taller than the
+  viewport, the top of it — the disclosure and the summary — must be on screen, because
+  `setIndexWidget` covers the row's own disclosure
+- **`panel_height_for`'s three existing constraints are re-stated in its docstring** if any of them
+  moves: the panel's own hint, what the list can show, and the floor that keeps *Done* reachable
+
+#### The ruling this needs, and the two options as the review framed them
+
+**The maintainer's to take.** Recorded here so neither answer arrives later as a new idea, and so
+whichever is chosen is chosen deliberately rather than by whoever next edits `panel_height_for`.
+
+1. **`T-210`'s cap governs this panel.** Amend `T-296`'s acceptance criterion and this entry's
+   current truth to accept the measured field-help compression, and **state the actual lower
+   bound** rather than leaving "children get the heights they ask for" standing while it is false.
+   Cheapest, and it makes a real limit explicit instead of aspirational.
+2. **`T-296`'s criterion governs.** Define a template-specific contract: which region of a
+   `TemplatePanel` may compress or scroll, and which may not — keeping the top collapse route
+   visible, since `setIndexWidget` covers the row's own disclosure (`T-210`). Then assert a
+   short-viewport case comparing the affected child's actual height against its requested height,
+   which is the assertion the current regression deliberately does not make.
+
+**Raising the whole panel to `sizeHint()` is one possible implementation of (2), not a third
+option, and not a silent change to `T-210`** — the review says so explicitly.
+
+#### What is left, measured rather than claimed
+
+**The criterion *"its children get the heights they ask for"* is not met at the reproducing size,
+and the reason is not the mount.** With the ordering fixed, at 712×500:
+
+```
+viewport h        : 144
+panel sizeHint    : 339
+panel minimum     : 322     # what the floor holds it to
+panel mounted     : 322     # correct: the height the row was sized to
+  'Fields you can use: …'   h=  85  needs= 102     # short by exactly 339 − 322
+```
+
+No child is negative any more — that family is gone with the 26 px mount — but the field-help label
+loses 17 px, which is one line of the list of usable fields.
+
+**It is a different defect and it needs a decision this task should not take.** `panel_height_for`
+compresses the panel to what the list can show (`T-210`), and that rule's stated bargain is that
+**the entry table is the part that gives** — *"the summary says which row this is and Done is the
+way out, so neither may be the thing that shrinks."* **A template panel has no entry table**, so the
+compression lands on the field help instead. Raising the floor to `sizeHint` would satisfy the
+children and defeat `T-210`'s cap outright, which is `T193-R1`'s shape exactly: one constraint fixed
+by breaking another. What gives in a panel with nothing compressible is a question for whoever owns
+that rule.
+
+**A `setHeightForWidth` size policy on the label was tried and changes nothing**: the shortfall is
+the floor, not the label's own hint. Measured, not assumed.
+
+
+#### Out of scope
+
+- The scroll behaviour of the list itself (`T-210` settled per-pixel scrolling)
+- `T-297`'s flicker, which may or may not be the same mechanism
+
 
 ---
 
