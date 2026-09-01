@@ -23565,3 +23565,70 @@ template panel and preserving T-296's current child-height criterion. Nothing is
 
 The Reviewer changed only `ai/REVIEWS.md`. No reviewed source, submitted test, task/status record,
 decision, handoff, branch, push, CI run, live display or remote state was changed.
+
+---
+
+## 2026-08-31 — T-296 R1 focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-296`
+**Correction boundary:** `9fa789bfe53c2c3de45bf289637f4f5a11bd516e..`
+`8c31d66b5c59d34d93fd5d77afe0c2bd4cc22aab` — four local commits: three coordination commits
+and the criterion/test correction at the head.
+**Platform verified:** Spock, Qt/PySide6 6.11.1, offscreen. No Windows job, push or real display is
+claimed.
+**Verdict:** **Approved. `T296-R1` is Resolved.** The maintainer chose the first option recorded by
+the initial review: T-210's cap governs the template panel. The false all-children-get-their-hint
+criterion is explicitly amended, the short sample exercises a real bounded deficit, and the tall
+sample applies the same rule at a zero deficit. Low `T296-R2` is non-blocking current-truth cleanup
+for contradictory pre-ruling prose that survived the rewrite.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Result | Required disposition | Status |
+|---|---|---:|---|---|---|
+| `T296-R1` | **High** | **No — resolved by the maintainer's scope ruling** | The accepted contract now permits compression while requiring `mounted >= minimumSizeHint()` and total positive wrapped-label shortfall no greater than `sizeHint() − mounted`. At 712×500 the independent sample is panel **322**, hint **339**, deficit **17**; `templateFields` is **85/102**, while the summary and message are **34/34**, for exactly **17 px** total shortfall. At 712×762 the submitted control has zero deficit, so the same inequality permits no shortfall. The short case also asserts `deficit > 0`, preventing it from turning into a comfortable-size duplicate. No production code changed. | None. | **Resolved** |
+| `T296-R2` | **Low** | **No — mechanical current-truth cleanup** | The top of the T-296 entry states that the maintainer chose T-210's cap, but the same live entry still says **“What blocks it is a conflict between two contracts, and neither is mine to pick”** and later **“It is a different defect and it needs a decision this task should not take.”** Those are the superseded pre-ruling state copied forward as present truth. They contradict the new status, amended criterion and ruling section. | In the ordinary completion sync, delete those duplicate paragraphs or date and recast them explicitly as the state before the ruling. Preserve the measurement and the rejected option once, rather than retaining a second live claim that the choice remains open. No further review pass is required. | **Open — non-blocking** |
+
+### Contract and test strength
+
+The amendment records who chose the narrower contract and when; it does not rewrite history as
+though the original criterion had always said this. The test reads each non-empty wrapped label's
+actual height and height-for-width request. Its panel-minimum assertion owns the floor, its sum owns
+the permitted compression, and its explicit short-case deficit owns non-vacuity. The tall control
+uses the identical calculation rather than a separate no-compression branch.
+
+The implementer's floor-removal mutation is appropriately directed: removing
+`max(minimumSizeHint(), …)` makes only the short sample fail. Independent execution at the submitted
+head passed both parameter rows. No change touched `panel_height_for()`, `TemplatePanel`, the mount
+ordering already accepted, or T-210's pointer route.
+
+### Coordination commits
+
+The T-295 move records the exact approved implementation `a406a66`; the T-294 move records
+`4d0e65b` and retains the unexecuted Windows desktop obligation without promoting the offscreen
+status-text measurement into a Windows result. The interim T-296 Blocked entry accurately records
+the choice that existed before the maintainer ruled. Their section moves pass the placement gate.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| T-296 short/tall regression | **2 passed in 1.62 s**. |
+| Short-sample measurement | Panel/minimum **322**, hint **339**, wrapped-label shortfalls **0 + 17 + 0**, exactly the allowed deficit. |
+| Ruff / format | Passed: all checks; **227 files** formatted. |
+| mypy Linux / Windows target | Both clean in **163 source files**. |
+| Diff / placement / commit gate | `git diff --check` clean; placement **15 passed**; **4 commits** checked in `9fa789b..8c31d66`. |
+| Submitted broader evidence | Implementer reports full suite **3,887 passed / 21 skipped** and the floor-removal mutation above. The full suite and mutation were not repeated. |
+| Platform boundary | The T-294 Windows desktop module remains unexecuted locally and is still required after push; this re-review changes none of that verdict. |
+
+### Readiness
+
+T-296 need not remain In Review. Move it to Complete at `8c31d66` while correcting `T296-R2`'s
+duplicate live prose in the same ordinary completion sync. No further behavioral review is needed.
+T-294's first post-push Windows desktop result remains outstanding and a failure still reopens that
+task. Nothing is pushed.
+
+The Reviewer changed only `ai/REVIEWS.md` and used offscreen read-only/runtime probes plus focused
+gates. No reviewed source, submitted test, TASKS/STATUS text, decision, handoff, branch, push, CI
+run, live display or remote state was changed.
