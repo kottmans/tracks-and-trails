@@ -23484,3 +23484,84 @@ ordinary completion sync. Nothing is pushed.
 The Reviewer appended only this record and used offscreen read-only/failure-injection probes plus
 focused gates. No reviewed source, submitted test, TASKS/STATUS text, handoff, branch, push, CI
 run, live display or remote state was changed.
+
+---
+
+## 2026-08-31 — T-294, T-295 and T-296 panel-defect review
+
+**Reviewer:** Codex (Reviewer)
+**Combined boundary:** `87c2ad70ea7e58e31e0c973f6777cf6cb20e3860..`
+`4d0e65b9b02d134a22c7daebcb211ae2a896c6fd` — three local task commits. Each verdict
+below binds its own one-commit boundary; this range is not one approval unit.
+**Platform verified:** Spock, Qt/PySide6 6.11.1, offscreen. The Windows desktop module was
+collected and skipped on Linux; no Windows-native Tab walk, CI run, push or real-display result is
+claimed.
+
+### Verdicts
+
+| Task | Boundary | Verdict |
+|---|---|---|
+| `T-295` | `87c2ad7..a406a66` | **Approved.** The open-panel identity is the row-and-kind pair. All six unlike pairs swap through the shared deferred mount, all three like pairs remain idempotent, and the disclosure route no longer answers for a different panel kind. No findings. |
+| `T-296` | `a406a66..d68425f` | **Blocked.** The mount-order defect is corrected, but `T296-R1` is High and blocking: the current acceptance criterion still requires children to receive the heights they ask for, while the measured field-help label remains 17 px short. Approval now requires the maintainer to resolve the conflict with T-210's compression rule. |
+| `T-294` | `d68425f..4d0e65b` | **Approved.** Empty text produces `NoFocus`, non-empty text restores `StrongFocus`, selectability and the declared order survive, and the focus ring is unchanged. The changed Windows expected-state table may be approved before push on this platform-independent implementation and exact offscreen state evidence; its native Windows execution remains an explicit post-push check. No findings. |
+
+### T-296 — unresolved compression policy
+
+| ID | Severity | Blocks approval | Finding | Required disposition | Status |
+|---|---|---:|---|---|---|
+| `T296-R1` | **High** | **Yes — an explicit acceptance criterion is unmet** | Reordering `_mount_panel()` correctly prevents `scrollTo()` from replacing the just-assigned 322 px geometry with the unmounted 26 px minimum. It does not make the template panel tall enough for its children: at the reproducing 712×500 size the panel asks for 339 px, is mounted at its 322 px minimum, and `templateFields` receives 85 px for a 102 px hint. The submitted regression deliberately checks only `height() < 0`; therefore it passes while one line of supported-field help is still compressed. T-210 says the entry table is the region allowed to give, but `TemplatePanel` has no entry table. Applying that statement generically therefore contradicts T-296's child-height criterion. | The maintainer must choose which contract governs. If T-210's cap governs this panel, amend T-296's acceptance/current truth to accept the measured field-help compression and state the actual lower bound. If T-296's current criterion governs, define a template-specific non-compressible contract (or an explicit alternative region that may compress/scroll), keep the top collapse route visible, and add a short-viewport assertion comparing the affected child's actual height with its requested height. Raising the whole panel to `sizeHint()` is one possible implementation, not a reviewer-authorized silent change to T-210. | **Open — blocked on scope ruling** |
+
+The severity follows the repository rule that an unmet stated acceptance criterion is High. The
+visible consequence is narrower—a clipped line with resizing as a workaround—but that does not
+authorize the review to replace the criterion with the weaker non-negative-height assertion.
+
+### T-295 — panel identity and deferred swap
+
+`_showing(row, kind)` is the single identity predicate used by `_open_panel()` and the playlist
+toggle. `_open_panel()` still closes with `keep=True` and schedules the replacement mount one turn
+later, so the correction does not move `setIndexWidget()` back into Qt's active editor callback.
+The submitted 3×3 matrix distinguishes all six swaps from all three idempotent repeats, and the
+separate disclosure regression covers the sibling guard that the same defect class exposed.
+
+### T-294 — platform-test ruling and residual evidence
+
+`StatusLabel.setText()` decides focus policy after `QLabel` receives the text, and construction
+re-applies the empty state after `TextBrowserInteraction` promotes the label. The route-level test
+starts empty, stages a real resolved row, then proves the non-empty label is reachable and remains
+selectable; the unchanged `focus_chain()` is correctly a declaration of order rather than a claim
+that every member is reachable in every state.
+
+A push before this verdict is **not required**. There is no Windows branch in the production
+change, and the four states behind `DIALOG_STATES` were measured offscreen as empty, empty,
+`Reading 1 URLs — 0 done`, and empty. That is sufficient to review the expected-set subtraction,
+but it is not Windows-native evidence: the next push must let the `windows desktop` job execute the
+actual forward/backward Tab walks, and a failure there reopens T-294.
+
+One reviewer-only widget probe found that changing a focused label from non-empty to empty changes
+its policy to `NoFocus` but does not forcibly move existing focus (`hasFocus()` remained true).
+No product route that empties this label while it owns focus was established—the routes that clear
+the staged state first move focus to the editing/action control—so this is recorded as residual
+context, not as a requested change or a failed tab-stop criterion.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Focused T-294/T-295/T-296/T-210 slice | **15 passed / 1 skipped** in 9.17 s. The skip is the Windows desktop module on Linux. |
+| T-295 behavior | The submitted nine pairings and disclosure swap passed; source inspection confirmed every verb uses the shared row-and-kind predicate and retained deferred mounting. |
+| T-296 behavior | Both short and tall mount controls passed, including equality with `visualRect`; the task's own measured 85/102 px field-help result establishes the admitted remaining criterion failure. |
+| T-294 focus probe | `StrongFocus, hasFocus=True` before emptying; `NoFocus, hasFocus=True` afterward. No product route to that focused-empty transition was found. |
+| Ruff / format | Passed: all checks; **227 files** formatted. |
+| mypy Linux / Windows target | Both clean in **163 source files**. |
+| Diff / placement / commit gate | `git diff --check` clean; placement **15 passed**; **3 commits** checked in `87c2ad7..4d0e65b`. |
+| Submitted broader evidence | Implementer reports **3,887 passed / 21 skipped** and the stated defect mutations killed. The full suite and mutation campaign were not repeated. |
+
+### Readiness
+
+T-295 may move to Complete at `a406a66`; T-294 may move to Complete at `4d0e65b`, with the first
+post-push Windows desktop result read and recorded rather than inferred. Keep T-296 In Review and
+do not begin a correction until the maintainer chooses between preserving T-210's cap for the
+template panel and preserving T-296's current child-height criterion. Nothing is pushed.
+
+The Reviewer changed only `ai/REVIEWS.md`. No reviewed source, submitted test, task/status record,
+decision, handoff, branch, push, CI run, live display or remote state was changed.
