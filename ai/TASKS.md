@@ -1142,6 +1142,31 @@ configuration the reading found: **both** exit paths now establish that no pool 
 the teardown that destroys the widgets — the window's close through the asynchronous barrier, and
 `aboutToQuit` by waiting every pool to actual emptiness before it returns.
 
+#### Ruled 2026-08-31: instrument ownership, not collection
+
+**The maintainer's decision**, of the three this entry offered after the pool work was approved.
+The two rejected are recorded so neither returns as new: **re-scoping criterion 2** to what is
+established, and **accepting the residual risk** so Phase 4 can exit over an unexplained abort.
+
+**What was chosen.** Stop waiting for a collection to catch a widget and go at the state directly:
+whether any widget the product owns from Python is, at real moments in a driven session, reachable
+only through a reference cycle. The argument for it is what the runs already say. Sixty isolated
+sessions, two real-display runs and a forced collection at two sampled moments all put the
+collector on a pool thread and **none of them ever had a widget in what it freed**, with no near
+misses — so the half that is missing is the ownership, and ownership is observable without a
+collection happening at all. Another sixty samples of the half that already reproduces cannot
+discriminate this fault, which is `T-238`'s standing record.
+
+**It covers `T-238`'s criterion 4 as well**, because the two criteria now lack the same thing: a
+product-owned widget reaching the collector. One instrument answers both or neither.
+
+**A negative here is worth more than the negatives so far.** If no product-owned widget is ever in
+that state at any sampled moment, that is a claim about the application rather than about sixty
+runs of one route — and it is the evidence that would justify re-scoping, which is why re-scoping
+was not taken first.
+
+**Not started.** No task entry, no probe, and nothing here claims a result.
+
 #### Out of scope
 
 - **The leaked semaphores.** Three `/mp-*` objects survived, which is what an aborted process
