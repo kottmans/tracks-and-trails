@@ -1177,73 +1177,6 @@ was not taken first.
 
 ---
 
-### T-295 — A row's other verbs are dead while one panel is open on it
-
-**Status:** **In Review — built 2026-08-31, not yet reviewed.** The guard asks which *panel* is
-open rather than which row, in one place both routes share. **The report's own case is fixed and a
-second instance of it was found in the same pass**: `toggle_playlist` keyed on the row too, so `→`
-on a row holding a format panel closed that panel instead of opening the playlist — the toggle
-answering for a panel it is not the toggle of. Nine pairs are asserted, and the three diagonal ones are the idempotence the
-guard was written for: deleting the guard passes the six swaps and fails those three, which is the
-regression worth being unable to write. Verified against the original guard — 6 swaps and the
-disclosure fail, the 3 no-ops pass.
-
-*(Filed 2026-08-28 by `T-212`'s checklist run.* The maintainer's report:
-*"clicking on naming and folders in a playlist that is expanded doesn't seem to do anything at
-all."*)
-**Owner:** Implementer
-**Priority:** Medium — the verb is in the menu, the menu is reachable, and choosing it does nothing
-at all. A control that silently declines is what `UX-005` §5 exists against
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing
-**Relevant context:** `ui/add_dialog.py:1877` (`_open_panel`'s first line), `open_format_table`,
-`open_playlist_picker`, `open_template_editor`; `T-108`, `T-110`, `P-19`
-**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
-**Risk:** Low — but the guard exists for a reason and removing it outright reopens what it stops
-
-#### What is wrong
-
-Reproduced against the built dialog: with a playlist's entry picker open on a row, choosing
-*Naming and folders…* on that same row leaves the picker in place and creates nothing.
-
-```
-panel after picker open : PlaylistPanel
-panel after 'Naming…'   : PlaylistPanel     # unchanged
-template panel exposed  : None
-```
-
-One line does it:
-
-```python
-if self._expanded is row:  # add_dialog.py:1877
-    return
-```
-
-**The guard keys on the row and not on the panel kind.** It is right that re-choosing the *same*
-verb on an open row should not rebuild the panel — that is idempotence, and `_open_panel`'s
-docstring is about one panel slot. But every *different* verb on that row is swallowed with it, so
-`Choose specific formats…` on an expanded playlist is dead the same way. One guard, three verbs.
-
-#### Acceptance criteria
-
-- **A different verb on an open row swaps the panel**, closing the current one keeping its choice —
-  which is what `_open_panel` already does for a different row, and the docstring's *"any other
-  open panel closes first, keeping its choice"* already promises
-- **The same verb on an open row is still a no-op**, so the idempotence the guard was written for
-  survives
-- **The swap goes through one mechanism.** `P-19` — the format table and the picker are *"one
-  mechanism rather than two"* — and a swap written per panel kind would be three
-- **The deferred mount ordering is preserved** (`T108-R2`): the close and the new mount must not
-  put `setIndexWidget` back inside the editor Qt is using
-- **A test drives each of the three verbs onto a row already open on each of the others**
-
-#### Out of scope
-
-- Two panels open at once, which `_open_panel`'s docstring rules out and this does not revisit
-- The panel geometry defect (`T-296`)
-
----
-
 ### T-296 — A panel opened in a short list mounts at its 26 px minimum and crushes its contents
 
 **Status:** **In Review — built 2026-08-31, not yet reviewed.** **It was an ordering, not a
@@ -12891,6 +12824,74 @@ preset with no opinion falls back to — not a second template implementation.
   task builds the application default either way — the default is needed *more*, not less, if the
   per-item control goes
 - Following the OS theme, and window geometry — both excluded by `T-146` and still excluded
+
+---
+
+### T-295 — A row's other verbs are dead while one panel is open on it
+
+**Status:** **Complete — Approved at `a406a66` on 2026-08-31** (`T-295`, reviewed at `9fa789b`).
+The guard asks which *panel* is open rather than which row, in one place both routes share. **A
+second instance was found and fixed in the same pass**: `toggle_playlist` keyed on the row too, so
+`→` on a row holding a format panel closed that panel instead of opening the playlist — the toggle
+answering for a panel it is not the toggle of. Nine pairs are asserted and the three diagonal ones
+are the idempotence the guard was written for: deleting the guard passes the six swaps and fails
+those three. Verified against the original guard — 6 swaps and the disclosure fail, the 3 no-ops
+pass.
+
+*(Filed 2026-08-28 by `T-212`'s checklist run.* The maintainer's report:
+*"clicking on naming and folders in a playlist that is expanded doesn't seem to do anything at
+all."*)
+**Owner:** Implementer
+**Priority:** Medium — the verb is in the menu, the menu is reachable, and choosing it does nothing
+at all. A control that silently declines is what `UX-005` §5 exists against
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/add_dialog.py:1877` (`_open_panel`'s first line), `open_format_table`,
+`open_playlist_picker`, `open_template_editor`; `T-108`, `T-110`, `P-19`
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Low — but the guard exists for a reason and removing it outright reopens what it stops
+
+#### What is wrong
+
+Reproduced against the built dialog: with a playlist's entry picker open on a row, choosing
+*Naming and folders…* on that same row leaves the picker in place and creates nothing.
+
+```
+panel after picker open : PlaylistPanel
+panel after 'Naming…'   : PlaylistPanel     # unchanged
+template panel exposed  : None
+```
+
+One line does it:
+
+```python
+if self._expanded is row:  # add_dialog.py:1877
+    return
+```
+
+**The guard keys on the row and not on the panel kind.** It is right that re-choosing the *same*
+verb on an open row should not rebuild the panel — that is idempotence, and `_open_panel`'s
+docstring is about one panel slot. But every *different* verb on that row is swallowed with it, so
+`Choose specific formats…` on an expanded playlist is dead the same way. One guard, three verbs.
+
+#### Acceptance criteria
+
+- **A different verb on an open row swaps the panel**, closing the current one keeping its choice —
+  which is what `_open_panel` already does for a different row, and the docstring's *"any other
+  open panel closes first, keeping its choice"* already promises
+- **The same verb on an open row is still a no-op**, so the idempotence the guard was written for
+  survives
+- **The swap goes through one mechanism.** `P-19` — the format table and the picker are *"one
+  mechanism rather than two"* — and a swap written per panel kind would be three
+- **The deferred mount ordering is preserved** (`T108-R2`): the close and the new mount must not
+  put `setIndexWidget` back inside the editor Qt is using
+- **A test drives each of the three verbs onto a row already open on each of the others**
+
+#### Out of scope
+
+- Two panels open at once, which `_open_panel`'s docstring rules out and this does not revisit
+- The panel geometry defect (`T-296`)
+
 
 ## Ready
 
