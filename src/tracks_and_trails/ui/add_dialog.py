@@ -1740,7 +1740,7 @@ class AddUrlDialog(QDialog):
 
         # `Esc` puts the row's earlier format back, which is what *"choosing nothing"* means.
         before = row.preset if isinstance(row.preset, Preset) else None
-        self._open_panel(row, build, undo=lambda: setattr(row, "preset", before))
+        self._open_panel(row, build, kind=FormatPanel, undo=lambda: setattr(row, "preset", before))
 
     def open_playlist_picker(self, row: Row) -> None:
         """Open `row` into its playlist's entries (`REQ-004`, `docs/UX_SPEC.md` §7, `T-110`).
@@ -1767,7 +1767,9 @@ class AddUrlDialog(QDialog):
             return panel
 
         before = row.entry_selection
-        self._open_panel(row, build, undo=lambda: setattr(row, "entry_selection", before))
+        self._open_panel(
+            row, build, kind=PlaylistPanel, undo=lambda: setattr(row, "entry_selection", before)
+        )
 
     def open_template_editor(self, row: Row) -> None:
         """Open `row` into `REQ-011`'s template editor and its live preview (`T-112`).
@@ -1807,6 +1809,7 @@ class AddUrlDialog(QDialog):
         self._open_panel(
             row,
             build,
+            kind=TemplatePanel,
             undo=lambda: None,
             commit=lambda: self._commit_template(row, panel_holder),
         )
@@ -1870,26 +1873,51 @@ class AddUrlDialog(QDialog):
         row = self._staging.for_job(job_id)
         if row is None:
             return
-        if row is self._expanded:
+        # **The same guard through another door** (`T-295`). Keyed on the row alone, `→` on a row
+        # holding a *format* panel closed that panel instead of opening the playlist — the toggle
+        # answering for a panel it is not the toggle of. It closes what it opens and swaps
+        # everything else, which is what the menu verbs do.
+        if self._showing(row, PlaylistPanel):
             self.close_panel(keep=True)
             return
         self.open_playlist_picker(row)
+
+    def _showing(self, row: Row, kind: type[RowPanel]) -> bool:
+        """Whether `row` is already open on a panel of `kind` — the question the guards ask.
+
+        **The row alone is not the question, and that was `T-295`** (`UX-005` §5). Every guard here
+        keyed on the row, so with a playlist picker open, *Naming and folders…* on that same row
+        returned early and did nothing at all: the menu offered it, the menu was reachable, and
+        choosing it silently declined. One guard swallowed the other two verbs with the one it was
+        written for.
+
+        **Asked in one place**, because `P-19` says the panels are one mechanism rather than
+        several: a swap written per panel kind would be three of them, and the third would be the
+        one that got forgotten. The kind is the panel's own class, which is what already
+        distinguishes them — `open_format_panel` below reads it exactly this way.
+        """
+        return self._expanded is row and isinstance(self._panel, kind)
 
     def _open_panel(
         self,
         row: Row,
         build: Callable[[], RowPanel],
         *,
+        kind: type[RowPanel],
         undo: Callable[[], None],
         commit: Callable[[], None] = lambda: None,
     ) -> None:
-        """Mount one panel on `row`, closing whatever was open (`T-108`, `T-110`).
+        """Mount one panel on `row`, closing whatever was open (`T-108`, `T-110`, `T-295`).
 
         **Any other open panel closes first, keeping its choice.** Two open panels would be two
         answers to which row is being looked at, and closing without keeping would silently discard
-        a selection the user had already made.
+        a selection the user had already made. A *different* panel on the row that is already open
+        is that same swap and always was — the docstring promised it before the guard allowed it.
+
+        **Re-choosing the panel that is already there is still a no-op**, which is the idempotence
+        the guard was written for and the half of it that was right.
         """
-        if self._expanded is row:
+        if self._showing(row, kind):
             return
         self.close_panel(keep=True)
         index = self._index_of(row)

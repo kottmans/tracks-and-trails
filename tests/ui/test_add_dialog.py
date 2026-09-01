@@ -103,7 +103,9 @@ from tracks_and_trails.ui.add_dialog import (
     UNKNOWN_TEXT,
     AddUrlDialog,
     FormatPanel,
+    PlaylistPanel,
     StagingList,
+    TemplatePanel,
     describe_kind,
     format_duration,
     headline_text,
@@ -5771,3 +5773,96 @@ def test_the_network_options_are_read_when_the_request_is_built(
     assert (first, second) == (1, 5), (
         f"the dialog read the network options once and reused them: {first}, {second}"
     )
+
+
+# --- T-295: one guard keyed on the row and swallowed the other two verbs -----------------------
+
+#: The three verbs that open a panel on a row, and the panel each one must produce.
+#:
+#: **Named by what the user chooses**, so a failure message says *"choosing the template editor on
+#: a row already open on the playlist picker"* rather than naming two methods.
+_PANEL_VERBS: dict[str, tuple[Callable[[AddUrlDialog, Row], None], type[Any]]] = {
+    "the format table": (lambda dialog, row: dialog.open_format_table(row), FormatPanel),
+    "the playlist picker": (lambda dialog, row: dialog.open_playlist_picker(row), PlaylistPanel),
+    "the template editor": (lambda dialog, row: dialog.open_template_editor(row), TemplatePanel),
+}
+
+
+def _choose(dialog: AddUrlDialog, row: Row, verb: str) -> Any:
+    """Choose `verb` on `row` and let the deferred mount run (`T108-R2`'s ordering)."""
+    open_it, _kind = _PANEL_VERBS[verb]
+    open_it(dialog, row)
+    QApplication.processEvents()
+    return dialog.open_panel
+
+
+@pytest.mark.parametrize("already_open", sorted(_PANEL_VERBS))
+@pytest.mark.parametrize("chosen", sorted(_PANEL_VERBS))
+def test_a_verb_chosen_on_a_row_open_on_another_swaps_the_panel(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+    already_open: str,
+    chosen: str,
+) -> None:
+    """`T-295`: every verb on an open row, including the one that must still do nothing.
+
+    The maintainer's report was *"clicking on naming and folders in a playlist that is expanded
+    doesn't seem to do anything at all"*, and one line did it — `if self._expanded is row: return`.
+    **The guard keyed on the row and not on the panel**, so it was right about re-choosing the verb
+    already open and wrong about the other two, which it swallowed with it. A control that silently
+    declines is what `UX-005` §5 exists against.
+
+    **All nine pairs, in one parametrisation, deliberately.** The three diagonal cases are the
+    idempotence the guard was written for and they have to keep passing — a fix that simply deleted
+    the guard would pass the six off-diagonal cases and fail these three, which is exactly the
+    regression worth being unable to write.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    opened = _choose(dialog, row, already_open)
+    _open_it, first_kind = _PANEL_VERBS[already_open]
+    assert isinstance(opened, first_kind), f"the row never opened into {already_open}"
+
+    now = _choose(dialog, row, chosen)
+
+    if chosen == already_open:
+        assert now is opened, (
+            f"re-choosing {chosen} on a row already open on it rebuilt the panel; the idempotence "
+            "the guard was written for is gone"
+        )
+        return
+
+    _open_it, wanted = _PANEL_VERBS[chosen]
+    assert isinstance(now, wanted), (
+        f"choosing {chosen} on a row already open on {already_open} left {type(now).__name__} in "
+        "place. The guard keyed on the row, so every verb but the open one was swallowed"
+    )
+    assert now is not opened, "the panel object survived a swap to a different kind"
+
+
+def test_the_disclosure_swaps_a_panel_it_did_not_open_and_still_closes_its_own(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """The same guard reached through the disclosure rather than the menu (`T-295`).
+
+    `toggle_playlist` is the `→` / `←` half of `docs/UX_SPEC.md` §7 and it keyed on the row too, so
+    on a row holding a **format** panel it closed that panel instead of opening the playlist — the
+    toggle answering for a panel it is not the toggle of. Both halves are asserted here, because
+    the fix has to swap what it did not open *and* still close what it did.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    _choose(dialog, row, "the format table")
+
+    dialog.toggle_playlist(str(row.job_id))
+    QApplication.processEvents()
+    assert isinstance(dialog.open_panel, PlaylistPanel), (
+        "the disclosure closed a format panel instead of opening the playlist it is the toggle for"
+    )
+
+    dialog.toggle_playlist(str(row.job_id))
+    QApplication.processEvents()
+    assert dialog.open_panel is None, "the disclosure no longer closes the panel it opened"
