@@ -5946,6 +5946,37 @@ def test_a_panel_keeps_the_height_its_row_was_sized_to_when_it_is_mounted(
     ]
     assert not starved, f"the panel's layout drove wrapped labels to negative heights: {starved}"
 
+    # **Compression is bounded by the panel's own deficit** (`T296-R1`, ruled 2026-08-31).
+    # `T-210`'s cap governs here, so a child of a panel the list cannot show whole **may** get less
+    # than it asks for — the criterion that said otherwise was aspirational and has been amended.
+    # What is asserted instead is the bound that actually holds, because "a child may be short" with
+    # no ceiling on it is not a contract at all: this test would then pass against a panel that
+    # compressed everything to nothing.
+    #
+    # The tall case is the same rule and not an exception: there the deficit is zero, so the loop
+    # below demands every child get exactly what it asks for.
+    assert mounted >= panel.minimumSizeHint().height(), (
+        f"the panel was mounted at {mounted} px, below its own minimum of "
+        f"{panel.minimumSizeHint().height()} px"
+    )
+    deficit = panel.sizeHint().height() - mounted
+    shortfalls = {
+        label.text()[:40]: label.heightForWidth(max(label.width(), 1)) - label.height()
+        for label in panel.findChildren(QLabel)
+        if label.wordWrap() and label.text()
+    }
+    short = sum(value for value in shortfalls.values() if value > 0)
+    assert short <= deficit, (
+        f"the panel's children are {short} px short between them against a deficit of {deficit} px "
+        f"(mounted {mounted}, wants {panel.sizeHint().height()}): {shortfalls}. Compression is "
+        "bounded by what the panel itself gave up, not by what its layout feels like taking"
+    )
+    if not fits:
+        assert deficit > 0, (
+            "this viewport was supposed to be too short for the panel, and the panel got "
+            "everything it asked for — the case the bound is about is not being exercised"
+        )
+
 
 # --- T-294: an empty status line was a full-width tab stop with nothing in it -------------------
 
