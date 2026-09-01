@@ -1267,6 +1267,38 @@ class StagingModel(QAbstractListModel):
         self._dialog.remount_panel()
 
 
+class StatusLabel(QLabel):
+    """The dialog's status line, which is a tab stop exactly when it has something to say.
+
+    **Two decisions met here and neither was wrong on its own** (`T-294`). The label is given
+    `TextBrowserInteraction` so an extractor's message can be copied into a bug report
+    (`NFR-006`) — and that flag carries `LinksAccessibleByKeyboard`, which makes Qt promote the
+    label from `NoFocus` to `StrongFocus` as a side effect. Then `T-218` made the empty summary the
+    **empty string**, because the hint it used to carry moved into the list. Together they left a
+    full-width 17 px tab stop with nothing in it, which the sheet's `*:focus` rule then outlined in
+    accent: *"this section gets highlighted even if there isn't anything there."*
+
+    **The ring is right and the tab stop is wrong.** For a borderless control the outline *is* the
+    non-colour channel (`T202-R1`), so what had to give is the focusability of a widget with no
+    text — copy-ability that exists exactly when there is something to copy.
+
+    **Decided by the text, in the one place the text is set**, rather than by the eight call sites
+    that set it. A `_set_status` helper on the dialog would work until the ninth writer, and the
+    ninth writer is the one that would forget. The widget never hides and never leaves the chain,
+    so the layout does not move and `focus_chain()` stays a single declaration — which is the half
+    of `T-060`'s rule this keeps.
+    """
+
+    def setText(self, text: str) -> None:
+        """Set the message, and be reachable by keyboard only while there is one."""
+        super().setText(text)
+        # Re-asked on every change rather than only on the empty→non-empty edge: a policy this
+        # cheap to compute has no business being stateful.
+        self.setFocusPolicy(
+            Qt.FocusPolicy.StrongFocus if text else Qt.FocusPolicy.NoFocus,
+        )
+
+
 class AddUrlDialog(QDialog):
     """Paste URLs, watch them resolve, and queue the ones that did (`UX-003`)."""
 
@@ -1449,13 +1481,16 @@ class AddUrlDialog(QDialog):
         # Spare height goes to the rows, which is the half of the dialog that grows with the work.
         layout.setStretchFactor(listing, 1)
 
-        self._status = QLabel(self)
+        self._status = StatusLabel(self)
         self._status.setObjectName("statusMessage")
         self._status.setAccessibleName("Status")
         self._status.setWordWrap(True)
         # Selectable so the user can copy an extractor message into a search or a bug report. A
         # message kept verbatim (`NFR-006`) that cannot be copied is only half of the point.
         self._status.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        # **After the flags, because the flags are what promote the policy** (`T-294`).
+        # `TextBrowserInteraction` carries `LinksAccessibleByKeyboard`, and setting it moves the
+        # label to `StrongFocus`; the text is what decides, so the text is set last.
         self._status.setText(summarise(()))  # empty: the list carries the hint now
         layout.addWidget(self._status)
 
@@ -1660,6 +1695,14 @@ class AddUrlDialog(QDialog):
         **Hidden widgets must not be in the chain** (`T-060`), and nothing here hides: the retry
         button is disabled rather than removed when nothing has failed, so the chain is the same
         in every state and the layout does not move under the user.
+
+        **The chain is a declaration of order, not a claim that every entry is reachable right
+        now** (`T-294`). It was read as the second thing, and that is what put an empty status
+        label in it as a full-width tab stop with nothing to say. Two widgets here are deliberately
+        unreachable in some states and neither leaves: the retry button is *disabled* when nothing
+        has failed, and the status line is `NoFocus` while it has no message — see `StatusLabel`.
+        Both keep their place, so this list is declared once at construction and the layout never
+        moves under the user, which is the property `T-060` was protecting.
 
         `T016-R4`'s lesson survives the rewrite: a control that can hold focus belongs here even
         when it is read-only. The list is focusable — it is how a keyboard reaches a row's menu.

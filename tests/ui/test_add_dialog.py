@@ -1546,9 +1546,13 @@ def test_the_keyboard_order_is_the_declared_one(
     # paste rather than the dialog. They all share one object name and are asserted per row by
     # `test_every_row_carries_its_own_format_control`; what this owns is the fixed surface.
     fixed = [name for name in reachable if name != ROW_PRESET_NAME]
-    assert sorted(fixed) == sorted(EXPECTED_TAB_ORDER), (
-        f"the fixed focusable set is not the declared one: {sorted(fixed)}"
-    )
+    # **The status line is declared and not yet reachable** (`T-294`). A fresh dialog has no
+    # message, and a label with nothing to say is `NoFocus` — see `StatusLabel`. It keeps its place
+    # in the declared order, which is what the second assertion checks;
+    # `test_the_status_line_is_a_tab_stop_only_while_it_has_something_to_say` owns the transition.
+    assert sorted(fixed) == sorted(
+        name for name in EXPECTED_TAB_ORDER if name != "statusMessage"
+    ), f"the fixed focusable set is not the declared one: {sorted(fixed)}"
     assert [widget.objectName() for widget in dialog.focus_chain()] == list(EXPECTED_TAB_ORDER)
 
 
@@ -5941,3 +5945,58 @@ def test_a_panel_keeps_the_height_its_row_was_sized_to_when_it_is_mounted(
         if label.wordWrap() and label.text() and label.height() < 0
     ]
     assert not starved, f"the panel's layout drove wrapped labels to negative heights: {starved}"
+
+
+# --- T-294: an empty status line was a full-width tab stop with nothing in it -------------------
+
+
+def test_the_status_line_is_a_tab_stop_only_while_it_has_something_to_say(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """`T-294`, from the maintainer's report: *"this section gets highlighted even if there isn't
+    anything there."*
+
+    Two correct decisions collided. `TextBrowserInteraction` makes an extractor's message copyable
+    (`NFR-006`) and carries `LinksAccessibleByKeyboard`, which promotes the label to `StrongFocus`;
+    `T-218` then made the empty summary the empty string. The result was a full-width 17 px tab
+    stop with no text, outlined in accent by the sheet's `*:focus` rule — and **the ring is right**,
+    since for a borderless control it is the non-colour channel (`T202-R1`). What gives is the
+    focusability of a label with nothing to copy.
+
+    **Driven by typing a URL, not by setting the text.** The route that puts a summary there is the
+    one a user takes, and a test that called `setText` itself would prove the setter and not the
+    dialog.
+
+    **Both directions and the selectability**, because a fix that simply made the label `NoFocus`
+    forever would pass the first assertion and silently cost `NFR-006` its copyable message.
+    """
+    dialog = dialogs(managers())
+    status = dialog.findChild(QLabel, "statusMessage")
+    assert status is not None
+
+    assert status.text() == "", "this dialog already has a message, so the empty case is untested"
+    assert status.focusPolicy() == Qt.FocusPolicy.NoFocus, (
+        "an empty status line is still a tab stop; a keyboard user pays a Tab press to reach a "
+        "control that says nothing and sees a focus ring around it"
+    )
+    assert status not in focusable_widgets(dialog), "the empty status line is keyboard-reachable"
+
+    type_urls(dialog, "https://example.invalid/one")
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows) and all(row.job_id for row in dialog.rows))
+    QApplication.processEvents()
+
+    assert status.text(), "staging a row put no summary on the status line, so this proves nothing"
+    assert status.focusPolicy() == Qt.FocusPolicy.StrongFocus, (
+        "a status line with a message is not reachable, so an extractor's words cannot be copied"
+    )
+    assert status in focusable_widgets(dialog), "the message is not in the keyboard order"
+    assert status.textInteractionFlags() & Qt.TextInteractionFlag.TextSelectableByMouse, (
+        "the message is no longer selectable, which is what NFR-006 asks the label to be"
+    )
+
+    # The declared order is unchanged by any of this: the widget never leaves the chain.
+    assert [widget.objectName() for widget in dialog.focus_chain()] == list(EXPECTED_TAB_ORDER)

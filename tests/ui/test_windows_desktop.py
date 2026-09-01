@@ -507,6 +507,13 @@ EXPECTED_DIALOG_ORDER = (
 #: What each dialog state makes available, written by hand from what the dialog is *for* rather
 #: than read back from `_refresh_actions` (`ai/TESTING.md` §13).
 #:
+#: **`statusMessage` is now one of the controls a state withholds** (`T-294`). The status line is
+#: `NoFocus` while it has nothing to say, so a keyboard no longer stops on an empty full-width
+#: label — and only the state with a read in flight has a message for it to stop on. Measured
+#: offscreen at each of these states rather than reasoned: `''` / `''` / `'Reading 1 URLs — 0 done'`
+#: / `''`. **This file's job cannot run on Linux**, so that measurement is what stands behind the
+#: three subtractions below until the Windows job says otherwise.
+#:
 #: **All three of the dialog's states, including the one with a probe running** (`T060-R1`). The
 #: first version stopped at the two a bare fixture could reach and recorded the third as a
 #: deliberate gap — but `cancelProbeButton` is enabled in that state and in no other, so leaving
@@ -521,8 +528,10 @@ DIALOG_STATES = (
         "",
         False,
         None,
-        # Nothing has been read, so there is nothing to add and nothing to retry.
-        frozenset(EXPECTED_DIALOG_ORDER) - {"retryFailedButton", "addButton", "audioBitrateChoice"},
+        # Nothing has been read, so there is nothing to add and nothing to retry — and the status
+        # line has said nothing, so there is nothing to stop on either (`T-294`).
+        frozenset(EXPECTED_DIALOG_ORDER)
+        - {"retryFailedButton", "addButton", "audioBitrateChoice", "statusMessage"},
     ),
     (
         "a URL typed and not yet read",
@@ -531,7 +540,9 @@ DIALOG_STATES = (
         None,
         # **Add stays out** (`UX-003`). Typing a URL does not make it addable; being read does.
         # This row was "Probe and Add become available" until `T-118`, which is the whole change.
-        frozenset(EXPECTED_DIALOG_ORDER) - {"retryFailedButton", "addButton", "audioBitrateChoice"},
+        # The summary is still empty until a row resolves, so the status line is still not a stop.
+        frozenset(EXPECTED_DIALOG_ORDER)
+        - {"retryFailedButton", "addButton", "audioBitrateChoice", "statusMessage"},
     ),
     (
         "a read in flight",
@@ -541,6 +552,11 @@ DIALOG_STATES = (
         # Still nothing to add: a row that is being read has not been read. Retry stays out
         # because nothing has failed — it appears only when there is a failure to act on, which
         # keeps the control's meaning exact rather than "press me and see".
+        #
+        # **`statusMessage` stays in, and this is the state that keeps it** (`T-294`): a read in
+        # flight is the first thing that puts words there — *"Reading 1 URLs — 0 done"* — so this
+        # row is what stops the three subtractions above from being a fix that simply removed the
+        # label from the keyboard for good.
         frozenset(EXPECTED_DIALOG_ORDER) - {"retryFailedButton", "addButton", "audioBitrateChoice"},
     ),
     (
@@ -552,7 +568,9 @@ DIALOG_STATES = (
         # state that offers it. Without this row the control would be declared and unreachable in
         # every state the suite walks — a chain asserted over a control no test can ever visit,
         # which is the shape `T060-R1` was.
-        frozenset(EXPECTED_DIALOG_ORDER) - {"retryFailedButton", "addButton"},
+        #
+        # Nothing has been read here either, so the status line is silent (`T-294`).
+        frozenset(EXPECTED_DIALOG_ORDER) - {"retryFailedButton", "addButton", "statusMessage"},
     ),
 )
 
