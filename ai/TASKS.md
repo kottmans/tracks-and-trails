@@ -13544,17 +13544,20 @@ second at all.
 | | constructions | parentless at the call site | of those, classes that **can** own an item view |
 |---|---:|---:|---:|
 | `src/tracks_and_trails` | 162 | 4 | **2** — `MainWindow`, `QueueView` |
-| `tests/` | 92 | **91** | **71** |
+| `tests/` | 92 | **91** | **77** |
 
 **What was wrong, itemised, because the corrections are the useful part:**
 
 - **`parent=None` was counted as a parent.** `is_parented` returned true for any `parent=` keyword
   without looking at its value, so four real sites were hidden. 89 → **91**. Fixed for the keyword
   and the signature-mapped positional form, with a self-test arm for each, both verified by mutation.
-- **The item-view set was chosen by eye and was incomplete.** It named four classes; `PresetManager`
-  and `OptionsDialog` each own a `QListWidget` directly, and ownership is **transitive** — a
-  `MainWindow` reaches a `QListView` through its queue. The set is built structurally now, and the
-  self-test includes a class that owns one only through another class.
+- **The item-view set was chosen by eye and was incomplete — twice.** It named four classes;
+  `PresetManager` and `OptionsDialog` each own a `QListWidget` directly, and ownership is
+  **transitive** — a `MainWindow` reaches a `QListView` through its queue. Rebuilt structurally, it
+  was **still** wrong: seeding only from *constructions* missed a product class that **is** an item
+  view. `EntryTable(QTableView)` constructs nothing and owns nothing, and six `PlaylistPicker` sites
+  reach an item view through it. 71 → **77** (`T238-R11`, second round). The seeding now includes
+  classes transitively derived from an item view, and the self-test pins both routes.
 - **"None in the product" was false.** `src` has **2** parentless sites whose class can own an item
   view, and `build_queue_view()` is reached — `main_window.py` adopts it with `setCentralWidget`
   two statements later. That adoption is exactly the *second* predicate, which this tool does not
@@ -13565,8 +13568,13 @@ its queue only when equipped, so 71 is an **upper bound** on harness sites that 
 `~QAbstractItemView` — not a count of the ones that would. Deciding a given site needs the
 construction's arguments, which an AST reading does not have.
 
+*(The count has been corrected twice under review — 89 → 91 for `parent=None`, 71 → 77 for a class
+that is an item view rather than owning one. Both errors ran in the direction of the conclusion this
+section was drawing, which is the reason it is written up as an argument that has been wrong rather
+than as a finding.)*
+
 **What this establishes.** A real asymmetry in where the *precondition* is written — 91 parentless
-product-widget constructions in the harness against 4 in the product, and 71 against 2 for the
+product-widget constructions in the harness against 4 in the product, and **77** against 2 for the
 item-view-capable subset. Nothing more. It does **not** identify the faulting object (criterion 3),
 it does not establish what remains Python-owned after construction in either tree, and it is a
 static reading blind to widgets Qt itself constructs.
@@ -14518,10 +14526,11 @@ is the writeup to reach for if it recurs, and `tools/orphan_scan.py` still runs 
 costs is stated there rather than glossed** — there is no automatic detection left on the machine
 where these accumulate, which is the property `T-258` built the job for.
 
-**Two things this ruling did not decide, and they are still open.** Whether the seven specimens are
-still preserved now that nobody is pursuing the stack — they are inert, but they are also ~390 MB and
-the only evidence there has ever been — and whether this task should stay Blocked or be closed
-against the writeup. Neither is the Implementer's to take.
+**Both open questions were answered in the review of 2026-09-03, and this said they were open for a
+day afterwards** (`T268-R7`). **The seven specimens stay preserved** — the reviewer ruled it
+explicitly, and `docs/RUNNER_ORPHANS.md` now says the same rather than the opposite. **This task
+stays Blocked**, on a live stack from one of them; retiring the alarm did not retire the question.
+What the ruling covered was the nightly job and nothing else.
 
 **The diagnosis below is unchanged and still Blocked on a person at `STARBASE`, on a narrower
 question since 2026-08-29.** The blocking criterion `T268-R1` set — *capture what `3400` and `6924` are waiting

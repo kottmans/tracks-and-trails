@@ -30,7 +30,7 @@ preserved, and `T-268` is still Blocked on a live stack.
 **`T-238` is unmoved.** A count of where the crash's precondition is written was offered for
 criterion 4 and **was wrong on first publication** — `parent=None` was read as a parent and the
 item-view set was picked by eye. Corrected, it is 91 parentless product-widget constructions in the
-harness against 4 in the product, and 71 against 2 for the item-view-capable subset. It is an
+harness against 4 in the product, and 77 against 2 for the item-view-capable subset. It is an
 argument, not the guard firing, and the 2026-08-13 ruling still governs.
 
 ---
