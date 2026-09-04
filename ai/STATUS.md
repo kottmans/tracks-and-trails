@@ -27,6 +27,15 @@ permanently red over `T-268`'s seven preserved specimens. **The cost is that not
 machine automatically any more**; `docs/RUNNER_ORPHANS.md` is the writeup, the seven are still
 preserved, and `T-268` is still Blocked on a live stack.
 
+**Ruled 2026-09-04, and it changes what Phase 4 is waiting for.** `T-289`'s criterion 2 and
+`T-238`'s criterion 4 are **re-scoped**: both now ask that no widget tree is left owned by Python
+alone where a pool thread can collect it, **established by enumeration**, and neither asks for the
+released crash route to be identified. **The 2026-08-27 abort stays unexplained, deliberately** —
+six null probes and an exhaustive ownership reading are the end of what sampling can establish, and
+the one remaining experiment would have meant defeating the pool gate to recreate a state the fix
+prevents. The guards stay in; a firing on a real test reopens both. **`T-268` is closed** against
+`docs/RUNNER_ORPHANS.md` with its cause unidentified, and its seven specimens are released.
+
 **`T-238` is unmoved.** A count of where the crash's precondition is written was offered for
 criterion 4 and **was wrong on first publication** — `parent=None` was read as a parent and the
 item-view set was picked by eye. Corrected, it is 91 parentless product-widget constructions in the

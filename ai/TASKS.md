@@ -249,11 +249,12 @@ contents; this preface does not list them.***
 **Status:** **In Review — the measurement round is Approved at `c29e299` and the pool-drain round
 at `194316c`, both on 2026-08-31** (`T289-R14`, `R15`, `R16`; `T289-R21`, `R22`, `R24` resolved,
 after `R2`…`R5` on 2026-08-30). **`T289-R23`'s remaining half and `T289-R25` were non-blocking Low
-and are closed in this entry's completion sync** — see the third-pass section. **What still holds
-the task open is criterion 2, and nothing in the pool work claimed to close it. Criterion 2 is
-still open, and what it lacks has changed**: both pools have now been watched on a real display and neither handed the
-collector a widget, so what is missing is the tree itself rather than a display, a route or another
-session — see *The driven measurement* and *The reviewer's real-display runs*. The rule *no Qt
+and are closed in this entry's completion sync** — see the third-pass section.
+
+**Criterion 2 was re-scoped on 2026-09-04 and is met under the new wording** — see *Ruled
+2026-09-04*. It asks that no widget tree is left owned by Python alone where a pool thread can
+collect it, **established by enumeration**, and no longer that the released crash route be
+identified. **The 2026-08-27 abort therefore remains unexplained, deliberately.** The rule *no Qt
 widget is destroyed off the GUI thread* is stated in `ai/TESTING.md` §7 and enforced at every
 `tests/ui`
 boundary: no widget whose type is defined in Python may be owned by Python *and* reachable only
@@ -261,10 +262,12 @@ through a reference cycle. **The parking is armed for the whole test rather than
 teardown** (`T289-R2`), and the one exemption fails closed (`T289-R4`). Three deliberate violations
 prove it, each run in a subprocess and required to fail with this guard's message.
 
-**Criterion 2 is NOT met** (`T289-R3`): the released crash route is unidentified and uncorrected,
-and the previous claim that the rule *"holds in the product today"* is withdrawn. **The maintainer
-ruled on 2026-08-30 to instrument the real route rather than re-scope this task** — see *Where each
-criterion stands*. *(This said the ruling was still owed, in the same commit that recorded it —
+**Criterion 2 was NOT met under its original wording** (`T289-R3`), and that stood from 2026-08-13
+until the re-scope of 2026-09-04: the released crash route is unidentified and uncorrected, and the
+claim that the rule *"holds in the product today"* was withdrawn. **The maintainer ruled on
+2026-08-30 to instrument the real route rather than re-scope this task**, and the instrument was
+built and run before the re-scope was taken — which is what makes it evidence-backed. See *Where
+each criterion stands*. *(This said the ruling was still owed, in the same commit that recorded it —
 `T289-R5`.)* **The instrumented run happened on 2026-08-31**: 60 driven sessions on a nested Wayland
 compositor put the collector on the update's own pool thread every time and found no widget in what
 it freed — evidence that this route is clean, and not the identification criterion 2 asks for. See
@@ -520,7 +523,7 @@ extra is not measurable against run-to-run variation — not that it does not ex
 | # | Criterion | State |
 |---|---|---|
 | 1 | The rule is stated durably **and enforced mechanically** | **Met.** `ai/TESTING.md` §7, and the boundary guard |
-| 2 | No widget tree left owned by Python alone where a pool thread can collect it | **NOT met** (`T289-R3`). Enforced over what the suite exercises. On 2026-08-31 the route was driven 60 times, run twice more on a real display, and then had a collection **forced** off the GUI thread at two sampled moments: no widget was parked at either, because the dialogs are Qt-parented. That is a strong negative about those samples, not the identification the criterion asks for |
+| 2 | **Re-scoped 2026-09-04.** No widget tree left owned by Python alone where a pool thread can collect it — **established by enumeration rather than by identifying the released crash route** | **Met, under the re-scoped wording.** The product has one Python-owned widget, the `MainWindow`, and it is strongly referenced for the life of the process; 162 constructions, 4 parentless, no un-parenting call anywhere (*The ownership audit, 2026-08-31*). The teardown precondition is removed by `T289-R21`'s pool sequencing. **What the criterion no longer asks for is the identification of the dump's route**, which six null probes and this audit together argue is not reachable by sampling — see *Ruled 2026-09-04* |
 | 3 | Not `gc.disable()` on pool threads | **Met.** Not used, and the entry records why it is not needed: the property is ownership, not threading |
 | 4 | A test that fails on the uncorrected tree | **Met.** `_leaks_a_collectable_widget.py`, in a subprocess, required to fail with this guard's message |
 | 5 | The three `edit: editing failed` lines accounted for | **Met — explained**, see below |
@@ -1141,6 +1144,35 @@ all three of the fixture's edges.
 configuration the reading found: **both** exit paths now establish that no pool thread survives into
 the teardown that destroys the widgets — the window's close through the asynchronous barrier, and
 `aboutToQuit` by waiting every pool to actual emptiness before it returns.
+
+#### Ruled 2026-09-04: criterion 2 is re-scoped, and the released route will not be identified
+
+**The maintainer's decision**, of the three this entry offered after the ownership instrument was
+built and run. The rejected two are recorded so neither returns as new: **authorising the shutdown
+experiment** — provoking a collection during teardown with a pool task in flight — and **accepting
+the residual risk** so Phase 4 could exit with the criterion simply unmet.
+
+**Why the experiment was refused rather than deferred.** It is no longer an observation of the
+product. `T289-R21`'s pool sequencing drains both pools before Qt destroys the widget tree, so *"a
+pool thread alive during teardown"* is not reachable in shipped code any more; running it now means
+defeating the gate deliberately to recreate a configuration the fix prevents. That is a controlled
+provocation of a double free, and what it would measure is the instrument's own setup.
+
+**What the criterion asks for now.** That no widget tree is left owned by Python alone where a pool
+thread can collect it — **established by enumeration**. It is: the product owns exactly one widget
+from Python, the `MainWindow`, strongly referenced for the process's life; 162 constructions, 4
+parentless, zero un-parenting calls; and the teardown precondition is gone. **It no longer asks for
+the dump's route to be identified.**
+
+**What that gives up, and it is not small.** The 2026-08-27 abort remains unexplained. Nothing here
+says the crash cannot recur; what it says is that the state which permits it is not written anywhere
+in `src/`, and that six null probes plus an exhaustive reading are the end of what sampling can
+establish. **`T-238`'s criterion 4 is re-scoped with it** — the two lacked the same thing — and its
+guard stays in, so a firing on a real test still reopens both.
+
+*(The 2026-08-31 ruling below chose to instrument ownership over re-scoping. That instrument was
+built, run, and is what makes this re-scope evidence-backed rather than a retreat — the audit is the
+reason the answer changed.)*
 
 #### Ruled 2026-08-31: instrument ownership, not collection
 
@@ -13767,6 +13799,11 @@ block the GUI thread, the pool can drain, and late work does not emit through a 
   from deferred destruction or contamination left by another test
 - The faulting object and lifetime edge are identified before claiming identity with T-074 or
   T-128; stack resemblance alone is not a cause
+- **Re-scoped 2026-09-04** — see `T-289`'s *Ruled 2026-09-04*, which governs both. Product versus
+  test-harness is established **by enumerating where the precondition is written**, not by catching
+  the fault: 91 parentless product-widget constructions in the harness against 4 in the product, and
+  77 against 2 for the item-view-capable subset. The guard stays in, and a firing is still the
+  evidence that would reopen this. *(The original wording follows; it is superseded, not deleted.)*
 - Product behavior versus test-harness behavior is established. A product-reachable fault gets a
   deterministic regression; a harness-only fault gets a guard that fails before a worker dies
 - The original responsiveness, pool-drain, and no-emission-through-deleted-object assertions stay
@@ -14093,6 +14130,9 @@ recorded Archive.org row through the add dialog's own debounce, and let the dele
 pixmap. `_ReadFromDisk`, `_DecodeAndStore` and `_SweepTask` each ran on their own pool thread.
 **647 widgets watched, 12 collections — every one of them on the GUI thread, none on any thumbnail
 task thread**, 0 destructions off the GUI thread, 0 near misses. `INCONCLUSIVE`.
+
+*(**Superseded by the re-scope of 2026-09-04** — see `T-289`'s *Ruled 2026-09-04*, which governs
+both criteria. What follows was true when written.)*
 
 **Criterion 4 stays open, and the reason has moved.** It is no longer *"nobody has run it on a real
 session with the pool working"* — that has now been run. What is missing is the thing the criterion
