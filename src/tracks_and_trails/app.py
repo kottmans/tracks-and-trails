@@ -128,7 +128,12 @@ def _take_log_level(args: list[str]) -> tuple[int | None, list[str], str | None]
     remaining: list[str] = []
     level: int | None = None
     for argument in args:
-        if not argument.startswith(_LOG_LEVEL_FLAG):
+        # **The exact token, or the exact `--log-level=` prefix — and nothing else** (`T282-R1`).
+        # `startswith(_LOG_LEVEL_FLAG)` also matched `--log-levels=DEBUG` and
+        # `--log-level-extra=DEBUG`: misspellings the catch-all below would have rejected, consumed
+        # here instead and launched at level 10. A parser that runs before an unknown-argument check
+        # must not widen what counts as known.
+        if argument != _LOG_LEVEL_FLAG and not argument.startswith(f"{_LOG_LEVEL_FLAG}="):
             remaining.append(argument)
             continue
         _, separator, name = argument.partition("=")

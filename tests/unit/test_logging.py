@@ -1164,3 +1164,24 @@ def test_every_handler_still_redacts_at_debug(tmp_path: Path) -> None:
         assert isinstance(handler.formatter, app_logging.RedactingFormatter), (
             f"{handler!r} formats through {handler.formatter!r}, which does not redact"
         )
+
+
+@pytest.mark.parametrize(
+    "level",
+    [logging.DEBUG, logging.INFO, logging.WARNING],
+    ids=["DEBUG", "INFO", "WARNING"],
+)
+def test_the_level_offered_to_a_worker_is_the_one_this_process_uses(
+    tmp_path: Path, level: int
+) -> None:
+    """`T282-R2`: a worker filters where the application does, not at a hard-coded default.
+
+    **Asserted here and not only through a spawned worker**, because the real-worker control cannot
+    see it: at `INFO` the parent's own handlers drop a worker `DEBUG` record anyway, so carrying
+    `DEBUG` into *every* worker unconditionally produces an identical application log. It would
+    also put every worker `DEBUG` record on the queue on an ordinary run — the volume the default
+    exists to avoid — and this is the assertion that notices.
+    """
+    app_logging.configure_logging(directory=tmp_path / str(level), level=level)
+
+    assert app_logging.worker_log_level() == level

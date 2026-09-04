@@ -13,6 +13,7 @@ stderr rather than anywhere pytest captures by default.
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -62,7 +63,7 @@ sys.exit(run(["tracks-and-trails"]))
 """
 
 
-def run_headless(source: str, tmp_home: str) -> subprocess.CompletedProcess[str]:
+def run_headless(source: str, tmp_home: str, *arguments: str) -> subprocess.CompletedProcess[str]:
     env = {
         **os.environ,
         "QT_QPA_PLATFORM": "offscreen",
@@ -91,7 +92,7 @@ def run_headless(source: str, tmp_home: str) -> subprocess.CompletedProcess[str]
     }
     try:
         return subprocess.run(
-            [sys.executable, "-c", source],
+            [sys.executable, "-c", source, *arguments],
             capture_output=True,
             text=True,
             timeout=120,
@@ -193,6 +194,51 @@ def _cli(argument: str, tmp_path: object) -> subprocess.CompletedProcess[str]:
     )
 
 
+#: `LAUNCH_AND_QUIT`, but the arguments come from the command line so a level can be handed in.
+#: The application log is read back afterwards, from the redirected cache root `run_headless` sets.
+LAUNCH_AND_QUIT_WITH_ARGS = LAUNCH_AND_QUIT.replace(
+    'sys.exit(run(["tracks-and-trails"]))',
+    'sys.exit(run(["tracks-and-trails", *sys.argv[1:]]))',
+)
+
+
+@pytest.mark.parametrize(
+    ("argument", "expected_level"),
+    [
+        pytest.param("--log-level=DEBUG", "DEBUG", id="the level that was asked for"),
+        pytest.param(None, "INFO", id="the default, with no flag at all"),
+    ],
+)
+def test_a_real_launch_configures_the_level_it_was_given(
+    tmp_path: pytest.TempPathFactory, argument: str | None, expected_level: str
+) -> None:
+    """`T282-R3`: nothing invoked `run()` with a *valid* level, so the composition was unguarded.
+
+    The launch tests covered `--help` and two rejections; the logging tests called
+    `configure_logging(level=…)` directly. **Replacing `configure_logging(level=level)` with
+    `configure_logging()` therefore left every one of them green** — the flag was parsed, validated,
+    and then had no proven effect.
+
+    This drives the real auto-quit launch and reads the application log it wrote, so the parse and
+    the configuration are joined. **Both arms**, because asserting only `DEBUG` would pass against
+    a build that ignored the flag and always ran at `DEBUG`.
+    """
+    home = tmp_path if argument is None else Path(str(tmp_path)) / expected_level
+    result = run_headless(
+        LAUNCH_AND_QUIT_WITH_ARGS, str(home), *([] if argument is None else [argument])
+    )
+
+    assert result.returncode == 0, f"exit {result.returncode}\nstderr: {result.stderr}"
+    logs = list(Path(str(home)).rglob("tracks-and-trails.log"))
+    assert logs, f"the launch wrote no application log under {home}"
+    written = logs[0].read_text(encoding="utf-8")
+
+    assert f"logging at {expected_level}" in written, (
+        f"a launch with {argument!r} configured something other than {expected_level}: "
+        f"{written.splitlines()[:3]}"
+    )
+
+
 def test_help_names_the_log_level_flag_and_where_the_log_is(
     tmp_path: pytest.TempPathFactory,
 ) -> None:
@@ -209,6 +255,34 @@ def test_help_names_the_log_level_flag_and_where_the_log_is(
     for name in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
         assert name in result.stdout, f"--help does not name the {name} level"
     assert "tracks-and-trails.log" in result.stdout, "--help does not say where the log is"
+
+
+@pytest.mark.parametrize(
+    "argument",
+    [
+        pytest.param("--log-levels=DEBUG", id="a plural lookalike"),
+        pytest.param("--log-level-extra=DEBUG", id="a longer lookalike"),
+        pytest.param("--log-levelDEBUG", id="the value run into the flag"),
+    ],
+)
+def test_a_lookalike_option_is_rejected_as_unknown(
+    tmp_path: pytest.TempPathFactory, argument: str
+) -> None:
+    """`T282-R1`: a parser that runs before the unknown-argument check must not widen what is known.
+
+    `startswith("--log-level")` matched all three of these. They are **misspellings, not spellings
+    `--help` advertises**, and the catch-all would have rejected every one — but the new parser
+    consumed them first, resolved a level from the text after `=`, and launched the application.
+    Matching only the exact token and the exact `--log-level=` prefix hands them back.
+    """
+    result = _cli(argument, tmp_path)
+
+    assert result.returncode == 2, f"{argument} was accepted: {result.stdout!r}"
+    assert "usage:" in result.stdout, "the unknown-argument path did not print usage"
+    assert "log level" not in result.stderr, (
+        f"{argument} was treated as the log-level flag rather than as an unknown option: "
+        f"{result.stderr!r}"
+    )
 
 
 @pytest.mark.parametrize(

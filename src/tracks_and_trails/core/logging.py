@@ -859,6 +859,25 @@ class _ToWhicheverHandlersWeHaveNow(logging.handlers.QueueListener):
                 queue.close()
 
 
+def worker_log_level() -> int:
+    """The level a worker should filter at: **whatever this process was configured to** (`T282-R2`).
+
+    **Parent decides, and it decides by being asked rather than by being told.** `run()` chose a
+    level and handed it to `configure_logging`; nothing carried it any further, so
+    `worker_logging_handler` fell back to its `INFO` default and a child's `DEBUG` records were
+    dropped before they reached the queue. `--log-level=DEBUG` therefore could not capture the one
+    class of record it is most wanted for — the worker's, including the session-header failure.
+
+    **Read from the logger rather than plumbed from `run()`**, so this stays correct for whatever
+    mechanism the maintainer rules for: a flag, an environment variable and a Settings toggle all
+    end at `configure_logging(level=…)`, and all three are visible here afterwards.
+
+    `getEffectiveLevel` rather than `level`: a root left at `NOTSET` inherits, and inheriting is
+    still an answer.
+    """
+    return logging.getLogger(APP_SLUG).getEffectiveLevel()
+
+
 def worker_log_queue() -> Any:
     """The queue to hand a worker, with a listener already draining it into our handlers.
 

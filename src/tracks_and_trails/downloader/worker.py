@@ -781,7 +781,11 @@ def _exit_when_the_parent_does() -> None:
     threading.Thread(target=watch, name="parent-watchdog", daemon=True).start()
 
 
-def prepare_this_worker(log_queue: Any | None = None, log_job_id: str | None = None) -> bool:
+def prepare_this_worker(
+    log_queue: Any | None = None,
+    log_job_id: str | None = None,
+    log_level: int | None = None,
+) -> bool:
     """Everything a spawned worker must do before it starts working, in the order it must do it.
 
     Named and separate because it is the **contract for being a worker**, not an implementation
@@ -812,7 +816,14 @@ def prepare_this_worker(log_queue: Any | None = None, log_job_id: str | None = N
         # this module is re-imported on every spawn and pays for everything at the top.
         from tracks_and_trails.core.logging import worker_logging_handler
 
-        worker_logging_handler(log_queue, job_id=log_job_id)
+        # **The parent's level, not this handler's default** (`T282-R2`). Left to default this
+        # filtered at `INFO`, so a child's `DEBUG` records were discarded here — before the queue —
+        # and `--log-level=DEBUG` could not capture the worker records it is most wanted for.
+        # `None` keeps the old behaviour for a stand-in worker driven without one.
+        if log_level is None:
+            worker_logging_handler(log_queue, job_id=log_job_id)
+        else:
+            worker_logging_handler(log_queue, job_id=log_job_id, level=log_level)
         if not contained:
             # After the handler, not before: this is the first moment the reason can both be
             # known and reported. A worker that cannot be contained still runs its download —
@@ -863,6 +874,7 @@ def spawn_session(
     cookie_file: Path | None = None,
     log_queue: Any | None = None,
     log_job_id: str | None = None,
+    log_level: int | None = None,
 ) -> None:
     """The `multiprocessing` entry point: run one session, then exit with its code.
 
@@ -886,7 +898,7 @@ def spawn_session(
     can stop, writing to the user's disk after they pressed cancel. A refusal is visible and
     recoverable; that is not.
     """
-    if not prepare_this_worker(log_queue, log_job_id):
+    if not prepare_this_worker(log_queue, log_job_id, log_level):
         _refuse_to_run_uncontained(job_id, queue)
         raise SystemExit(UNCONTAINED_EXIT_CODE)
     raise SystemExit(

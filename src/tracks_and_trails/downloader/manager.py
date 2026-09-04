@@ -1584,6 +1584,10 @@ class DownloadManager(QObject):
                     # rendered — and therefore redacted — by this process's handlers. The job id
                     # travels with them so each line reaches that job's own file (`T038-R2`).
                     "log_queue": app_logging.worker_log_queue(),
+                    # **Asked of this process, per spawn** (`T282-R2`). The level is whatever
+                    # `configure_logging` was given, so a worker filters where the application
+                    # does instead of at a hard-coded `INFO`.
+                    "log_level": app_logging.worker_log_level(),
                     "log_job_id": job_id,
                 },
                 # Belt and braces with the child's own parent watchdog: this covers an orderly

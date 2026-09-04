@@ -1289,9 +1289,16 @@ unmeasured claim — that `New` resolves empty on Windows — which nothing supp
 **Status:** **In Review — built 2026-09-04, not yet reviewed. One criterion is answered with a
 proposal rather than a decision, deliberately.**
 
-**`--log-level=LEVEL`**, taken out of `argv` before the unknown-argument catch-all and passed to
-the `level` `configure_logging` already accepted. `INFO` is still the default and an ordinary run's
-log is unchanged.
+**`--log-level=LEVEL`**, matched as the **exact token or the exact `--log-level=` prefix** and
+taken out of `argv` before the unknown-argument catch-all. `INFO` is still the default, so an
+ordinary run's filtering is unchanged — one announcement line is added at every level, which the
+criterion below asks for.
+
+**The level reaches real workers** (`T282-R2`). `run()` handed it to `configure_logging` and nothing
+carried it further, so `worker_logging_handler` filtered at its `INFO` default and a child's `DEBUG`
+records were dropped **before the queue** — which is the class of record `--log-level=DEBUG` is most
+wanted for. `worker_log_level()` asks this process what it was configured to and the manager passes
+it per spawn, so the answer stays right for whatever mechanism is ruled for.
 
 **The mechanism is proposed, not settled** — the first criterion reserves that choice to the
 maintainer and it has not been made. A flag serves somebody who already runs this from a terminal;
@@ -1341,8 +1348,11 @@ choice, and their tests
   proposed by the implementer and **ruled by the maintainer rather than chosen here** — a flag alongside the
   existing ones in `USAGE`, a setting on the Settings screen, or an environment variable are all
   defensible and they differ in who the feature is for
-- **Met.** **`INFO` remains the default**, so an ordinary run's log is unchanged in volume and
-  content
+- **Met, with the claim corrected** (`T282-R4`). **`INFO` remains the default**, so an ordinary
+  run's **filtering** is unchanged: the same records are admitted and nothing previously written is
+  gone. *(This said "unchanged in volume and content", which is false — `configure_logging` now
+  emits one announcement line on every run, `INFO` included, because the criterion below requires
+  it. The two criteria are compatible and the wording was not.)*
 - **Met.** **Every handler still formats through `RedactingFormatter` at `DEBUG`**, asserted over
   the handlers rather than over the file, because a second handler added later without a redactor is
   how this regresses
@@ -2971,7 +2981,7 @@ just never freed — so the predicate is not met and the suite is honestly green
   An attempt to attribute those to C++ signal connections was **contaminated by the diagnostic's own
   lists** and is withdrawn; what holds the tree is the open question, not a suspected answer.
 
-#### Acceptance criteria, and where each stands
+#### Suggested acceptance criteria
 
 - **What retains the tree is identified**, by measurement rather than by inspection of plausible
   suspects, and written down — including *"it is correct that it is retained"* if that is the answer
@@ -3279,7 +3289,7 @@ checking whether the named parent pids resolve, which is a person at that machin
 gate `T-268` is already blocked on. **It is recorded so the possibility is examined rather than
 inherited**, and because `T-268`'s five specimens are the reason this scanner exists.
 
-#### Acceptance criteria, and where each stands
+#### Suggested acceptance criteria
 
 - **A worker whose parent is a live console-script Python process is not reported**, asserted for
   at least the product's own entry point and a `pytest` wrapper
@@ -3696,7 +3706,7 @@ been reproduced outside Windows. **It has not been.**
   **the parent is gone and took its identity with it**. That is `T-238` criterion 4's question and
   this does not answer it.
 
-#### Acceptance criteria, and where each stands
+#### Suggested acceptance criteria
 
 - **The orphan scan is scheduled on Linux as well as Windows**, or a recorded decision says why one
   platform is enough — the asymmetry is deliberate rather than inherited
@@ -4487,7 +4497,7 @@ into different marks, and the pack authors each artboard. Two options, and the f
   PNG, if the renderer emits one, has to be added there.
 - **The `.ico` carries a 32 px frame**, so `icon.ico` changes as well as `icon-32.png`.
 
-#### Acceptance criteria, and where each stands
+#### Suggested acceptance criteria
 
 - **32 px ships the mid cut, and a check proves it** — one that **fails** when the reduced cut is put
   back at 32 and **fails** when the full mark is. Both directions, as `T274-R3` established

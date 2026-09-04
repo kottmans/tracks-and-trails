@@ -2557,3 +2557,96 @@ def test_a_symlink_planted_during_the_mkdir_is_still_caught(
 
     monkeypatch.undo()
     assert sorted(path.name for path in outside.iterdir()) == ["sentinel.txt"]
+
+
+# --- T282-R2: the application's level has to reach a real worker -------------------------------
+
+#: A parent that configures logging at a level, spawns a **real** worker through
+#: `prepare_this_worker` — the documented contract for being one — and prints what reached the
+#: application log.
+#:
+#: **A file rather than `python -c`**, because `spawn` re-imports the parent's `__main__` in the
+#: child and there is nothing to import from a `-c` string.
+WORKER_LEVEL_PROBE = """
+import logging, multiprocessing, sys
+from pathlib import Path
+
+from tracks_and_trails.core.logging import (
+    configure_logging,
+    stop_listening_for_worker_logs,
+    worker_log_level,
+    worker_log_queue,
+)
+from tracks_and_trails.downloader import worker as worker_module
+
+
+def be_a_worker(queue, level):
+    worker_module.prepare_this_worker(queue, "job-under-test", level)
+    logging.getLogger("tracksandtrails.worker").debug("MARKER-DEBUG")
+    logging.getLogger("tracksandtrails.worker").info("MARKER-INFO")
+
+
+if __name__ == "__main__":
+    chosen = getattr(logging, sys.argv[1])
+    path = configure_logging(directory=Path(sys.argv[2]), level=chosen)
+    queue = worker_log_queue()
+    child = multiprocessing.get_context("spawn").Process(
+        target=be_a_worker, args=(queue, worker_log_level())
+    )
+    child.start()
+    child.join(60)
+    stop_listening_for_worker_logs()
+    print(path.read_text(encoding="utf-8"))
+"""
+
+
+@pytest.mark.parametrize(
+    ("level", "debug_expected"),
+    [
+        pytest.param("DEBUG", True, id="DEBUG reaches the application log"),
+        pytest.param("INFO", False, id="and is absent at the default level"),
+    ],
+)
+def test_the_applications_level_reaches_a_real_worker(
+    tmp_path: Path, level: str, debug_expected: bool
+) -> None:
+    """`T282-R2`: `--log-level=DEBUG` must capture worker records, not only the GUI's.
+
+    **The level stopped at the parent.** `run()` handed it to `configure_logging` and nothing
+    carried it further, so `worker_logging_handler` fell back to `INFO` and a child's `DEBUG`
+    records were dropped **before the queue** — meaning the flag could not capture the one class of
+    record it is most wanted for, including the session-header failure at `worker.py`.
+
+    **A real spawned worker, through `prepare_this_worker`**, because that is the contract every
+    production worker goes through and the discard happened inside it. An in-process call would
+    exercise the handler and not the path.
+
+    **Both directions**, though the `INFO` arm proves less than it looks and the difference is
+    worth stating: at `INFO` the parent's own handlers drop a worker `DEBUG` record regardless, so
+    carrying `DEBUG` into every worker unconditionally produces an identical log here and this test
+    cannot see it. `test_the_level_offered_to_a_worker_is_the_one_this_process_uses` is what
+    notices — the volume on the queue, not the content of the file.
+    """
+    script = tmp_path / "worker_level_probe.py"
+    script.write_text(WORKER_LEVEL_PROBE, encoding="utf-8")
+    logs = tmp_path / "logs"
+
+    finished = subprocess.run(
+        [sys.executable, str(script), level, str(logs)],
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+        cwd=Path(__file__).resolve().parents[2],
+    )
+
+    assert finished.returncode == 0, f"the probe failed: {finished.stderr}"
+    written = finished.stdout
+    assert "MARKER-INFO" in written, (
+        f"no worker record reached the application log at {level}, so this proves nothing about "
+        f"the DEBUG one: {written!r}"
+    )
+    assert ("MARKER-DEBUG" in written) is debug_expected, (
+        f"at {level} the worker's DEBUG record should {'' if debug_expected else 'not '}reach the "
+        f"application log: {written!r}"
+    )
