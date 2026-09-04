@@ -23632,3 +23632,102 @@ task. Nothing is pushed.
 The Reviewer changed only `ai/REVIEWS.md` and used offscreen read-only/runtime probes plus focused
 gates. No reviewed source, submitted test, TASKS/STATUS text, decision, handoff, branch, push, CI
 run, live display or remote state was changed.
+
+---
+
+## 2026-09-03 — T-296 cleanup, T-297, T-268 and T-238 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Combined boundary:** `96fa0ebd82060c9fcdba9155b7608c2db21df7de..`
+`e26a8f9d805eef00c226bf82accdde90a33d5210` — five commits, considered as four
+separate dispositions below rather than one approval unit.
+**Platform verified:** Spock, Qt/PySide6 6.11.1, offscreen and an isolated nested
+KWin/Wayland session. Remote GitHub Actions state was read; no live desktop was used.
+
+### Verdicts
+
+| Task | Boundary | Verdict |
+|---|---|---|
+| `T-296` completion cleanup | `96fa0eb..58630a0` | **Approved.** `T296-R2` is Resolved: the duplicated pre-ruling text is gone and the accepted compression contract remains intact. |
+| `T-297` | evidence `58630a0..331845d`; fix `331845d..cd08c7b` | **Blocked.** The product correction is technically sound and independently reproduces zero uncovered paints, but two explicit acceptance criteria are not met by the durable record and the measurement counts its own reconstruction. |
+| `T-268` detector retirement | `cd08c7b..94b56f0` | **Changes requested; T-268 itself remains Blocked.** The detector is removed under the stated maintainer ruling and its cost is honest, but the absence test is scoped to one workflow and the new reference decides pursuit while the task says that decision is still open. |
+| `T-238` criterion-4 argument | `94b56f0..e26a8f9` | **Changes requested; T-238 remains Ready.** The standing guard-firing bar does not move. The submitted static audit has real false negatives and excludes product/harness item-view owners from its load-bearing comparison. |
+
+### T-297 findings
+
+| ID | Severity | Blocks approval | Finding | Required disposition | Status |
+|---|---|---:|---|---|---|
+| `T297-R1` | **High** | **Yes — explicit acceptance criterion unmet** | The first criterion requires reproduction **on a real display, with a capture, before the change**. The evidence at `331845d` was produced by `kwin_wayland --virtual` against a private framebuffer and empty XDG roots. Its PNG is explicitly a reconstruction made by forcing the panel to 26 px after the measured walk, not a captured frame from the defect. This repository already distinguishes that nested-compositor evidence from the real-display runs recorded for T-238/T-289; it also does not carry the live session's style, which the criterion names. The trace convincingly establishes a compositor-only timing defect, but it is not the evidence the criterion requires. | Either run the pre-fix tree on the real display and retain an actual defect capture, or obtain an explicit maintainer amendment accepting the nested compositor trace and labelled reconstruction in place of the live-display/capture requirement, with the surrendered evidence stated. Do not rewrite the published commits. | **Open — blocked on evidence or maintainer amendment** |
+| `T297-R2` | **High** | **Yes — explicit acceptance criterion unmet** | The second criterion requires the cause to be named before the fix. The only pre-fix durable record, `331845d`, names `_on_list_resized`'s deferred relayout as **“The cause”** and explicitly says it is not T-296's cause. The correct cause—`RowDelegate.updateEditorGeometry` sizing an index widget as a combo, and therefore the layer T-296 worked around—first appears in `cd08c7b`, the same commit that changes source. The current evidence file still carries the disproved cause and opposite T-296 relation. | Add a dated correction to the evidence/current task record that distinguishes the observed gap from the writer that caused the 26 px geometry. Because the required sequence cannot be retroactively created, record that the criterion was missed and obtain the maintainer's explicit exception before moving T-297 to Complete. | **Open — blocked on honest correction and exception** |
+| `T297-R3` | **Medium** | **Yes — the acceptance measurement is contaminated** | The reconstruction is still inside the panel-resize measurement. In the evidence version, even exposed-paint recording remained active, so the published 107/107 count included the instrument's forced 26 px state. `cd08c7b` sets `watching["panel"] = None`, which stops exposed-paint classification but leaves `_PanelWatch` installed. The independent post-fix run therefore reported 9 panel resize events and one resize to 26 px, and its captured stack points directly to `_t297_resize_probe.py:146`, the reconstruction's `panel.setGeometry(...)`. The product walk itself had 0 uncovered paints and 110/110 settled rows; the defect correction is not in doubt, but the exact before/after counts are not measurements of the walk alone. | End both exposure and resize recording before reconstructing the image, add a control that fails if capture changes a reported measurement, and remeasure the pre-fix and fixed trees. Correct the exact evidence/task counts rather than deriving them by subtraction. This can share R1's run. | **Open** |
+
+The delegate implementation itself passes review. `createEditor()` constructs only a `QComboBox`;
+the two current delegates are installed on the staging and queue lists; and the non-combo objects
+handed to this override are index widgets. Calling `QStyledItemDelegate` for those gives the row's
+`option.rect`, while the combo retains `_control_of()`. The direct two-branch regression passed.
+
+**T-296 ruling:** keep the scroll-before-geometry reorder. It remains a small, local guarantee that
+mounting ends with the panel at the current `visualRect`; removing it would make the first correct
+mount depend on Qt invoking a later delegate geometry pass. It is defence in depth, not harmful
+duplication, and T-296 remains Complete.
+
+### T-268 findings and ruling
+
+| ID | Severity | Blocks approval | Finding | Required disposition | Status |
+|---|---|---:|---|---|---|
+| `T268-R6` | **Medium** | **Yes — the gate does not gate the stated invariant** | `test_the_windows_scan_stays_removed()` calls `scanning_jobs()`, which parses only the single constant `CI_WORKFLOW = .../ci.yml`. A scheduled STARBASE scanner added in any second workflow passes it, even though the test and all three records claim that automatic detection on that machine stays absent. The repository already has other workflow files invoking the scanner manually, so the distinction must be by machine and automatic trigger, not by assuming `ci.yml` is the universe. | Enumerate the workflow directory, resolve jobs that invoke `tools/orphan_scan.py`, and reject any automatically triggered STARBASE invocation while allowing the explicitly manual diagnostic routes. Mutation-check by adding a scheduled scanner in a second workflow; the guard must fail. | **Open** |
+| `T268-R7` | **Medium** | **Yes — current truth gives both dispositions** | `ai/TASKS.md` says the task is still Blocked on a live stack, preservation is standing, and whether pursuit/closure ends is undecided. The new `docs/RUNNER_ORPHANS.md` simultaneously says the unknown lock is “written down here rather than pursued further,” labels the condition settled as a reference with nothing outstanding, and says to reap the specimens otherwise. The task also retains the old `~156 MB` preservation argument while the current seven-row inventory totals about 390 MB. Retiring an alarm because its known positives keep it red does not itself close the diagnosis that produced those positives. | Apply the ruling below consistently: keep T-268 Blocked, keep the seven specimens, and make the reference neutral about ending pursuit. Reconcile the 156/390 MB current wording. An explicit maintainer decision to close as accepted risk and authorize individually revalidated termination may replace this ruling, but neither is implied by the detector decision. | **Open** |
+
+**Specimen/task ruling:** preserve all seven and do not close T-268 against the writeup. The latest
+available scan, scheduled run `33744280877` on 2026-09-03, still finds the same seven PIDs, each
+with one thread and the same 42–79 MB RSS values. They are stable and remain the only objects from
+which the unknown live stack can be taken. The ~390 MB cost does not outweigh irreversible loss of
+the evidence while the task still requires that stack. The operational writeup is useful and the
+nightly retirement is reasonable under the maintainer's stated trade, but neither identifies the
+lock or supplies a no-action disposition for the task.
+
+### T-238 finding and criterion-4 ruling
+
+| ID | Severity | Blocks approval | Finding | Required disposition | Status |
+|---|---|---:|---|---|---|
+| `T238-R11` | **Medium** | **Yes — the recorded argument rests on false counts** | `is_parented()` returns true for any `parent=` keyword without examining its value. Two real sites construct `PresetManager(..., parent=None)`, so the reported 89 parentless sites and five `PresetManager` sites are already 91 and seven before considering the interpretation. The “four classes / 30 sites / none in product” item-view subset is also incomplete: both `PresetManager` and `OptionsDialog` directly own `QListWidget`s; seven test `MainWindow` construction sites receive `queue=` and therefore own `QueueView`/`QListView`; and product composition passes `queue=store` to its own parentless `MainWindow`. The product's parentless `build_queue_view()` construction is reached and then adopted by `setCentralWidget`, contrary to the new table's statement that only `MainWindow` is reached. Construction-time parentlessness, eventual Qt adoption, and a parent window destroying an item-view descendant are different predicates; this AST count currently merges or drops them according to which conclusion is being drawn. | Treat literal `None` as no parent for keyword and signature-mapped positional arguments and add self-test arms for both. Rebuild the item-view-owner set structurally or audit it completely, including transitive ownership through an equipped `MainWindow`. State separately what is parentless at construction, what remains Python-owned, and what can destroy an item-view descendant; then rerun and correct the section's counts and conclusions. | **Open** |
+
+The criterion-4 bar does **not** move. Even a corrected construction-site enumeration describes
+where ownership is possible, not whether a test leaves the object in a cycle, whether it reaches a
+collector on a pool thread, or whether the product and harness differ at that lifetime edge. The
+2026-08-13 maintainer ruling remains the disposition: a real guard firing can close criterion 4;
+this static argument cannot. T-238 stays Ready. The enumeration may remain as bounded context once
+its claims are corrected.
+
+### Current-truth cleanup
+
+| ID | Severity | Blocks approval | Finding | Required disposition | Status |
+|---|---|---:|---|---|---|
+| `COORD-R26` | **Low** | **No** | The checkout and remote state have moved beyond the current records. `origin/main` is `cd08c7b`, not the five-commit unpushed state: the T-296 cleanup and both T-297 commits are published. `ai/TASKS.md` still says T-294's Windows job has not run, while push run `33525084577` and the next two scheduled runs all completed `windows desktop` successfully. `ai/STATUS.md` is still headed 2026-08-31 and carries none of T-296's final cleanup, T-297, the T-268 retirement, or the T-238 argument. | During the correction/completion sync, record T-294's satisfied Windows obligation with run `33525084577`, update the current snapshot, and state that only `94b56f0` and `e26a8f9` were local before this review commit. | **Open — mechanical; no extra behavioral pass** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Focused T-296/T-297/orphan/placement set | **42 passed in 4.10 s**. |
+| T-297 isolated compositor probe | **110 steps, 40 row paints, 0 exposed paints, 110/110 settled**. It also reproduced R3: 9 resize events include one forced 26 px reconstruction whose stack names line 146. |
+| Ownership audit | Submitted self-test passed and `--harness` reproduced **92 / 89**. Independent source checks found the two omitted `parent=None` calls, the omitted `PresetManager`/`OptionsDialog` item views, seven queue-equipped test `MainWindow` sites, and the product's queue-equipped `MainWindow`. |
+| Ruff / format | Passed: all checks; **230 files** formatted. |
+| mypy Linux / Windows target | Both clean in **164 source files**, using the bare project command. |
+| Diff / placement / commit gate | `git diff --check` clean; placement included above; **5 commits** checked in `96fa0eb..e26a8f9`. |
+| Pushed-head CI | `cd08c7b`, run `33525084577`: **success**, including `windows desktop`, full suite and both frozen jobs. The 2026-09-03 scheduled run is green in every product job and red only in `STARBASE orphans`, which found the seven preserved specimens. |
+| Submitted broader evidence | Implementer reports full suite **3,888 passed / 21 skipped** and the stated mutations. The full suite and mutation campaigns were not repeated. |
+
+### Readiness
+
+`58630a0` completes the already-approved T-296 cleanup. T-297's source correction appears right,
+but the task may not move to Complete until R1–R3 are dispositioned; R1/R2 need either the evidence
+their criteria require or explicit maintainer amendments. Correct T268-R6/R7 while leaving T-268
+Blocked and its specimens intact. Correct T238-R11 without treating the revised count as a guard
+firing or a closure argument. `COORD-R26` may be folded into that ordinary sync and does not need a
+separate pass.
+
+At review time `origin/main` was `cd08c7b`; `94b56f0` and `e26a8f9` were the two unpushed
+implementation commits. The Reviewer appended and committed only this review record. No reviewed
+source, submitted test, task/status text, evidence, handoff, specimen, branch, push, live display or
+remote state was changed.
