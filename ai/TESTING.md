@@ -327,6 +327,15 @@ nobody runs is worse than one that omits it, because it is read as coverage.
 
 ### Where each job runs (`OPS-012`, 2026-08-05; made exact 2026-08-19 by `T-265`)
 
+**`STARBASE orphans` is not in this table because it no longer exists.** Removed 2026-09-03 on the
+maintainer's ruling: it found `T-268`'s seven preserved specimens every night and failed — correctly
+— which left the board permanently red for a known reason and would have hidden a genuinely new
+orphan behind it. **The cost is that there is no automatic detection on the machine where these
+accumulate**; `docs/RUNNER_ORPHANS.md` is what to read if the condition recurs, and
+`tools/orphan_scan.py` still runs by hand. `Linux orphans` is unaffected and still runs nightly.
+`tests/unit/test_orphan_scan.py::test_the_windows_scan_stays_removed` asserts the absence, so
+putting it back is a decision rather than a tidy-up.
+
 **Every job in every workflow is below.** The previous version of this table was a representative
 list of five legs, which `T262-R4` found saying two things that were not true: that
 `windows desktop` and `frozen windows` are *"selected by `vars.WINDOWS_RUNNER`"* — they are pinned
@@ -362,7 +371,6 @@ read as controlling another job's **destination**.
 | `windows-latest` | `ci.yml` | `fromJSON(vars.WINDOWS_RUNNER \|\| '"windows-latest"')` | **only when `WINDOWS_RUNNER` is unset.** Setting it removes this leg from the matrix rather than redirecting it |
 | `STARBASE coverage` | `ci.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | `if: always()` |
 | `windows desktop` | `ci.yml` | literal `[self-hosted, windows, desktop]` | `vars.STARBASE_AVAILABLE == 'true'` |
-| `STARBASE orphans` | `ci.yml` | literal `[self-hosted, windows, desktop]` | `always() && STARBASE_AVAILABLE == 'true' && (schedule \|\| workflow_dispatch)`, after `needs: windows-desktop` |
 | `Linux orphans` | `ci.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | `always() && vars.LINUX_RUNNER != '' && (schedule \|\| workflow_dispatch)`, after `needs: check` |
 | `frozen linux` | `ci.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | matrix leg, unconditional |
 | `frozen windows` | `ci.yml` | literal `[self-hosted, windows, desktop]` | matrix leg, unconditional |

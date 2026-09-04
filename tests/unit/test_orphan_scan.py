@@ -462,26 +462,13 @@ def scanning_jobs() -> dict[str, dict[str, object]]:
 LINUX_RUNNER_SELECTOR = "vars.LINUX_RUNNER"
 
 
-def the_scanning_job() -> dict[str, object]:
-    """The Windows one, by name.
-
-    **This used to assert that exactly one job in the file ran the scanner**, on the reasoning that
-    two scans could disagree about the same machine. `T-272` is why it no longer does, and the
-    reasoning did not survive contact with it: two scans of *different machines* do not disagree,
-    they cover. What the old assertion actually enforced was the gap — the scanner ran on one of
-    the two platforms this project supports, and the test that would have caught that was the one
-    written to forbid a second job.
-    """
-    return by_platform()["starbase-orphans"]
-
-
 def by_platform() -> dict[str, dict[str, object]]:
-    """Every scanning job, checked to be exactly the two platforms and no duplicates."""
+    """Every scanning job. **One, since 2026-09-03** — see `test_the_windows_scan_stays_removed`."""
     jobs = scanning_jobs()
-    assert sorted(jobs) == ["linux-orphans", "starbase-orphans"], (
-        f"the jobs invoking {SCRIPT} are {sorted(jobs)}, expected one per platform. Two scans of "
-        "the same machine would disagree about it and nobody would know which to believe; one "
-        "scan of one machine is the T-272 gap"
+    assert sorted(jobs) == ["linux-orphans"], (
+        f"the jobs invoking {SCRIPT} are {sorted(jobs)}, expected only the Linux one. The Windows "
+        "job was removed on 2026-09-03 by the maintainer's ruling; `docs/RUNNER_ORPHANS.md` is "
+        "why, and re-adding it is a decision rather than a tidy-up"
     )
     return jobs
 
@@ -604,18 +591,37 @@ def test_something_actually_invokes_the_scanner() -> None:
     )
 
 
-def test_the_scan_runs_on_the_machine_that_accumulates_orphans() -> None:
-    """A hosted runner cannot hold a twelve-day-old orphan; only `STARBASE` can."""
-    job = the_scanning_job()
+def test_the_windows_scan_stays_removed() -> None:
+    """`STARBASE orphans` was removed on 2026-09-03, and the absence is asserted on purpose.
 
-    assert job.get("runs-on") == STARBASE, (
-        f"the scan runs on {job.get('runs-on')!r} rather than {STARBASE!r}. A fresh hosted "
-        "runner has no history, so a clean result there says nothing about the machine where "
-        "five orphans sat for twelve days"
+    **It was not failing because it was wrong.** It found the same seven spawned workers every
+    night and failed, which is exactly what `T-258` built it to do — *"prevention that regresses is
+    silent; this is what would have said so on day one."* Those seven were being kept deliberately
+    as `T-268`'s only specimens, so the board was permanently red for a known reason and a
+    genuinely new orphan would have looked identical to it.
+
+    **The maintainer ruled** that one occurrence in a month of watching is rare enough to trade
+    against that, and that the condition belongs to a runner rather than to the application. The
+    cost was accepted with its name on it: there is now no automatic detection on the machine where
+    these accumulate.
+
+    **This test exists so that re-adding it is a decision.** Without it the removal is a hole
+    somebody closes on a tidy-up, and the reason it was made would have to be rediscovered — which
+    is the shape `T-096` and `T214-R1` both name. `docs/RUNNER_ORPHANS.md` is the writeup.
+    """
+    on_starbase = {
+        job_id for job_id, job in scanning_jobs().items() if job.get("runs-on") == STARBASE
+    }
+
+    assert not on_starbase, (
+        f"{sorted(on_starbase)} runs the scanner on {STARBASE!r} again. That job was removed "
+        "deliberately on 2026-09-03; read docs/RUNNER_ORPHANS.md before putting it back, and "
+        "decide what happens to the seven preserved specimens first — while they are alive it "
+        "will be red every night for a reason nobody needs telling twice"
     )
 
 
-def test_the_scan_runs_on_both_platforms_this_project_supports() -> None:
+def test_the_linux_scan_watches_the_machine_that_can_hold_one() -> None:
     """`T-272`: the scanner is not Windows-specific and was scheduled as though it were.
 
     `tools/orphan_scan.py` is `psutil` with no per-platform path, and it found two orphaned
@@ -642,11 +648,11 @@ def test_the_scan_runs_on_both_platforms_this_project_supports() -> None:
     )
 
 
-def test_neither_scan_can_reap_what_it_finds() -> None:
-    """`T258-R4`, now that there are two of them: reporting is the whole contract.
+def test_no_scan_can_reap_what_it_finds() -> None:
+    """`T258-R4`: reporting is the whole contract.
 
     The `--kill` this tool once had was that round's Critical finding — it cannot prove a match is
-    ours. A second job is a second place for it to come back, so this asks both.
+    ours. Asked of every scanning job there is, so a job added later inherits the rule.
     """
     for job_id, job in by_platform().items():
         command = str(the_scanning_step(job)["run"])

@@ -14535,8 +14535,20 @@ any other text this application supplies, because an extractor argument can carr
 
 ### T-268 — The reproduced parent-death path does not explain the five orphans
 
-**Status:** **Blocked — still on a person at `STARBASE`, but on a narrower question since
-2026-08-29.** The blocking criterion `T268-R1` set — *capture what `3400` and `6924` are waiting
+**Status:** **Blocked — and the nightly that watched for a recurrence was removed on 2026-09-03.**
+**The maintainer ruled** that one occurrence in a month of watching is rare enough, and that this is
+a runner's condition rather than the application's: `STARBASE orphans` is gone, `docs/RUNNER_ORPHANS.md`
+is the writeup to reach for if it recurs, and `tools/orphan_scan.py` still runs by hand. **What that
+costs is stated there rather than glossed** — there is no automatic detection left on the machine
+where these accumulate, which is the property `T-258` built the job for.
+
+**Two things this ruling did not decide, and they are still open.** Whether the seven specimens are
+still preserved now that nobody is pursuing the stack — they are inert, but they are also ~390 MB and
+the only evidence there has ever been — and whether this task should stay Blocked or be closed
+against the writeup. Neither is the Implementer's to take.
+
+**The diagnosis below is unchanged and still Blocked on a person at `STARBASE`, on a narrower
+question since 2026-08-29.** The blocking criterion `T268-R1` set — *capture what `3400` and `6924` are waiting
 on, non-destructively, on the machine* — **has been satisfied**, and it did not need hands on the
 machine after all: a self-hosted runner is code running there. Read-only run **`33267794308`**,
 `ai/evidence/2026-08-29-T268-orphan-wait-reasons.md`. All seven are preserved.
