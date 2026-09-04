@@ -600,6 +600,22 @@ def test_something_actually_invokes_the_scanner() -> None:
     )
 
 
+def _trigger_names(triggers: object) -> set[str]:
+    """Every event name in an `on:` block, whichever of its three forms was written.
+
+    **All three, because two of them evaded this** (`T268-R6`, second round). GitHub accepts a
+    mapping (`on:\n  schedule:`), a list (`on: [push, workflow_dispatch]`) and a bare string
+    (`on: push`). The first version handled the mapping and stringified the other two, so
+    `on: [push, workflow_dispatch]` became the single name `"['push', 'workflow_dispatch']"` and
+    matched nothing — a `STARBASE` scan written that way would have passed the guard.
+    """
+    if isinstance(triggers, dict):
+        return {str(name) for name in triggers}
+    if isinstance(triggers, (list, tuple, set)):
+        return {str(name) for name in triggers}
+    return {str(triggers)} if triggers is not None else set()
+
+
 def automatic_starbase_scans() -> dict[str, str]:
     """Every job in every workflow that runs the scanner on `STARBASE` from an automatic trigger.
 
@@ -611,13 +627,15 @@ def automatic_starbase_scans() -> dict[str, str]:
     that way, and running it by hand is what `docs/RUNNER_ORPHANS.md` tells a reader to do.
     """
     found: dict[str, str] = {}
-    for path in sorted(WORKFLOWS.glob("*.yml")):
+    # **Both extensions.** GitHub reads `.yml` and `.yaml` alike; globbing one is a guard that a
+    # rename walks past (`T268-R6`, second round).
+    for path in sorted(p for suffix in ("*.yml", "*.yaml") for p in WORKFLOWS.glob(suffix)):
         parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
         if not isinstance(parsed, dict):
             continue
-        # `on` is YAML 1.1's boolean true, which is why this looks for both.
-        triggers = parsed.get("on") or parsed.get(True) or {}
-        names = set(triggers) if isinstance(triggers, dict) else {str(triggers)}
+        # `on` is YAML 1.1's boolean true, which is why this looks for both keys.
+        triggers = parsed.get("on", parsed.get(True))
+        names = _trigger_names(triggers)
         if not names & set(AUTOMATIC_TRIGGERS):
             continue
         for job_id, job in (parsed.get("jobs") or {}).items():
