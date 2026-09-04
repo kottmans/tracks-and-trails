@@ -469,6 +469,29 @@ def _file_handler(
     return handler
 
 
+#: The level names `--log-level` accepts, in the order `--help` lists them. Names rather than
+#: numbers: `--log-level=10` is a thing somebody has to look up, and a typo in it is silently a
+#: different level (`T-282`).
+LOG_LEVEL_NAMES: Final = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+
+
+def level_named(name: str) -> int | None:
+    """The logging level `name` stands for, or `None` if it is not one this application offers.
+
+    **`None` rather than a default**, so a caller can refuse a typo instead of silently running at
+    a level the user did not ask for — which for `DEBUG` would mean quietly *not* recording what
+    somebody turned it on to see. Case-insensitive, because `--log-level=debug` is what a person
+    types.
+
+    Deliberately not `logging.getLevelName`, which answers `"Level 5"` for unknown input and maps
+    strings to numbers only as a side effect of its reverse table.
+    """
+    resolved = getattr(logging, name.strip().upper(), None)
+    if name.strip().upper() not in LOG_LEVEL_NAMES or not isinstance(resolved, int):
+        return None
+    return resolved
+
+
 def configure_logging(
     *, directory: Path | None = None, level: int = logging.INFO, stream: Any = None
 ) -> Path:
@@ -493,6 +516,16 @@ def configure_logging(
     # The application's own tree only. Attaching to the root logger would take yt-dlp's and
     # Qt's output too, and this file is a record of what *this* application did.
     root.propagate = False
+    # **Said once, at the top of the run, and emitted at the level in force** (`T-282`). A log
+    # whose level is unknown makes an absent line ambiguous between *"it did not happen"* and
+    # *"it happened and was not recorded"*, which is the difference the whole feature exists for.
+    #
+    # **`root.log(level, …)` and not `root.info`**, which was the first version and was wrong in
+    # the direction that matters: an `INFO` announcement is filtered out at `WARNING` and above, so
+    # the line would be missing from exactly the runs whose level is least obvious. Its severity
+    # therefore tracks the threshold, which is unusual to read and is the only way to be certain it
+    # is there. Emitted here rather than by the caller so a second caller cannot forget it.
+    root.log(level, "logging at %s to %s", logging.getLevelName(level), path)
     return path
 
 

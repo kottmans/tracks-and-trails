@@ -1282,6 +1282,88 @@ unmeasured claim — that `New` resolves empty on Windows — which nothing supp
 - `T-200`'s wider accessibility pass
 - Re-opening `T-270`'s `Ctrl+Q` fallback, which is measured and approved separately
 
+---
+
+### T-282 — A debug level for the application log, reachable without editing code
+
+**Status:** **In Review — built 2026-09-04, not yet reviewed. One criterion is answered with a
+proposal rather than a decision, deliberately.**
+
+**`--log-level=LEVEL`**, taken out of `argv` before the unknown-argument catch-all and passed to
+the `level` `configure_logging` already accepted. `INFO` is still the default and an ordinary run's
+log is unchanged.
+
+**The mechanism is proposed, not settled** — the first criterion reserves that choice to the
+maintainer and it has not been made. A flag serves somebody who already runs this from a terminal;
+an **environment variable** would serve a frozen build with no console, and a **Settings toggle**
+would serve a user who never opens one. They differ in who the feature is for, which is exactly what
+the criterion says. **A flag was built because it is the smallest of the three and the request came
+from somebody running from a terminal**, and because the other two layer onto the same seam without
+unpicking anything: both would resolve a level and hand it to the same `configure_logging(level=…)`.
+
+**A bad value is refused, not defaulted.** Running at `INFO` when somebody asked for `DEBUG` gives
+them a log missing exactly what they turned it on to see, and no way to know.
+**What already exists, so this task is smaller than it sounds.** `configure_logging` installs a
+redacting file handler at `~/.cache/tracksandtrails/tracks-and-trails.log`, one job log per job,
+and a worker queue that feeds both. It **already takes a `level`**. What is missing is any way to
+choose one: `app.py:133` is the only caller and it passes the default, so the application is
+`INFO` and nothing can change it without an edit.
+**Owner:** Implementer
+**Priority:** Medium — it is a diagnostic capability rather than a defect, and every future
+question of the *"why did it do that on the user's machine"* kind is cheaper with it
+**Phase:** **The maintainer's to place.** Filed against Phase 4 because that is where it was asked
+for; it is not a `T-212` finding and not a phase exit criterion, so it is a candidate for deferral
+rather than something the exit waits on
+**Depends on:** nothing. `T-281` writes its line at a level that is already recorded, so neither
+task blocks the other
+**Relevant context:** `core/logging.py` — `configure_logging`, `YtdlpLog` and its `verbose` note;
+`app.py` `USAGE` and its existing flags; `REQ-019`, `REQ-026`, `T-038`
+**Affected surfaces:** `core/logging.py`, `app.py`, whichever of settings or argv carries the
+choice, and their tests
+**Risk:** **Medium, and it is a security risk rather than a functional one** — see below
+
+#### The two things a debug level must not become
+
+- **It must not weaken redaction.** `REQ-026` binds credentials and cookie paths, and
+  `RedactingFormatter` is installed per handler precisely so no call site can opt out. A debug
+  level raises the volume of what is written; it does not change what may be written, and a test
+  should hold that every handler still formats through the redactor at `DEBUG`.
+- **It must not turn on yt-dlp's `verbose`.** `YtdlpLog` records the measurement and the reason:
+  verbose makes yt-dlp dump `params:` and `Proxy map:`, which carry the proxy the user configured.
+  "Debug logging" in this application means *this application's* `DEBUG` records, plus the yt-dlp
+  lines already routed through `YtdlpLog`. Anyone reading this entry as licence to pass
+  `verbose: True` would undo a decision taken deliberately.
+
+#### Acceptance criteria
+
+- **Half met — the level is choosable, the mechanism awaits your ruling.** **The level is
+  choosable at start-up without editing code** via `--log-level=LEVEL`, and the mechanism is
+  proposed by the implementer and **ruled by the maintainer rather than chosen here** — a flag alongside the
+  existing ones in `USAGE`, a setting on the Settings screen, or an environment variable are all
+  defensible and they differ in who the feature is for
+- **Met.** **`INFO` remains the default**, so an ordinary run's log is unchanged in volume and
+  content
+- **Met.** **Every handler still formats through `RedactingFormatter` at `DEBUG`**, asserted over
+  the handlers rather than over the file, because a second handler added later without a redactor is
+  how this regresses
+- **Met.** **yt-dlp's `verbose` stays off at every level**, asserted at all five. Verified by
+  mutation: wiring `verbose: True` alongside the logger fails every one
+- **Met, after the test caught the first version.** **The log says which level it is at**, once,
+  at the top of a run. It was announced at `INFO`, which is **filtered out at `WARNING` and above**
+  — missing from exactly the runs whose level is least obvious. It is emitted at the level in force
+  now, so its severity tracks the threshold
+- **Met.** **Documented where a user would look**: `--help` names the flag, every level, and the
+  resolved path of the log itself — a flag that raises the volume of a file nobody can find is a
+  diagnostic only its author can read
+
+#### Out of scope
+
+- **A log viewer in the application.** `ui/log_view.py` exists for the per-job log; this task is
+  about what gets written, not about a new surface for reading it
+- **Changing what is redacted.** `T-018`'s empty allowlist stands
+- **Retention or rotation policy** beyond what the handler already does
+
+
 
 ---
 
@@ -14619,67 +14701,6 @@ run is the deliverable; the pass is only what it hopefully shows.
 - **The Windows half.** `OPS-003`: there is no Windows machine, so the run is Linux; the
   pre-release Windows session inherits the same checklist, and the gap is named the way the plan's
   screen-reader split names its Narrator gap
-
-### T-282 — A debug level for the application log, reachable without editing code
-
-**Status:** Proposed — **filed 2026-08-27 at the maintainer's request**, during `T-212`'s run and
-prompted by `T-281`: *"if we have a verbose debug log that we can reference, it would be nice to
-print out that the videos were removed in case we ever have to figure out issues with this — that,
-and a debug log could help solve other problems as well."*
-
-**What already exists, so this task is smaller than it sounds.** `configure_logging` installs a
-redacting file handler at `~/.cache/tracksandtrails/tracks-and-trails.log`, one job log per job,
-and a worker queue that feeds both. It **already takes a `level`**. What is missing is any way to
-choose one: `app.py:133` is the only caller and it passes the default, so the application is
-`INFO` and nothing can change it without an edit.
-**Owner:** Implementer
-**Priority:** Medium — it is a diagnostic capability rather than a defect, and every future
-question of the *"why did it do that on the user's machine"* kind is cheaper with it
-**Phase:** **The maintainer's to place.** Filed against Phase 4 because that is where it was asked
-for; it is not a `T-212` finding and not a phase exit criterion, so it is a candidate for deferral
-rather than something the exit waits on
-**Depends on:** nothing. `T-281` writes its line at a level that is already recorded, so neither
-task blocks the other
-**Relevant context:** `core/logging.py` — `configure_logging`, `YtdlpLog` and its `verbose` note;
-`app.py` `USAGE` and its existing flags; `REQ-019`, `REQ-026`, `T-038`
-**Affected surfaces:** `core/logging.py`, `app.py`, whichever of settings or argv carries the
-choice, and their tests
-**Risk:** **Medium, and it is a security risk rather than a functional one** — see below
-
-#### The two things a debug level must not become
-
-- **It must not weaken redaction.** `REQ-026` binds credentials and cookie paths, and
-  `RedactingFormatter` is installed per handler precisely so no call site can opt out. A debug
-  level raises the volume of what is written; it does not change what may be written, and a test
-  should hold that every handler still formats through the redactor at `DEBUG`.
-- **It must not turn on yt-dlp's `verbose`.** `YtdlpLog` records the measurement and the reason:
-  verbose makes yt-dlp dump `params:` and `Proxy map:`, which carry the proxy the user configured.
-  "Debug logging" in this application means *this application's* `DEBUG` records, plus the yt-dlp
-  lines already routed through `YtdlpLog`. Anyone reading this entry as licence to pass
-  `verbose: True` would undo a decision taken deliberately.
-
-#### Acceptance criteria
-
-- **The level is choosable at start-up without editing code**, and the mechanism is proposed by
-  the implementer and ruled by the maintainer rather than chosen here — a flag alongside the
-  existing ones in `USAGE`, a setting on the Settings screen, or an environment variable are all
-  defensible and they differ in who the feature is for
-- **`INFO` remains the default**, so an ordinary run's log is unchanged in volume and content
-- **Every handler still formats through `RedactingFormatter` at `DEBUG`**, asserted rather than
-  assumed
-- **yt-dlp's `verbose` stays off at every level**, asserted by a test that would fail if a later
-  change wired the two together
-- **The log says which level it is at**, once, at the top of a run — a log whose level is unknown
-  makes an absent line ambiguous between "did not happen" and "not recorded"
-- **Whatever the mechanism, it is documented where a user would look for it**, since the point of
-  the feature is that somebody other than the implementer can turn it on
-
-#### Out of scope
-
-- **A log viewer in the application.** `ui/log_view.py` exists for the per-job log; this task is
-  about what gets written, not about a new surface for reading it
-- **Changing what is redacted.** `T-018`'s empty allowlist stands
-- **Retention or rotation policy** beyond what the handler already does
 
 ### T-286 — The container section says what recode costs and never what it is for
 

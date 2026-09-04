@@ -172,3 +172,63 @@ def test_help_exits_zero_without_a_display(tmp_path: pytest.TempPathFactory) -> 
     )
     assert result.returncode == 0, result.stderr
     assert "usage:" in result.stdout
+
+
+# --- T-282: the debug level, reachable without editing code -----------------------------------
+
+
+def _cli(argument: str, tmp_path: object) -> subprocess.CompletedProcess[str]:
+    """Run one argument through `run()` without a display, the way `--help` is exercised above."""
+    source = (
+        "import sys\nfrom tracks_and_trails.app import run\n"
+        f"sys.exit(run(['tracks-and-trails', {argument!r}]))"
+    )
+    return subprocess.run(
+        [sys.executable, "-c", source],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+        env={**os.environ, "QT_QPA_PLATFORM": "definitely-not-a-real-platform-plugin"},
+    )
+
+
+def test_help_names_the_log_level_flag_and_where_the_log_is(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """`T-282`'s last criterion: the point is that somebody other than the implementer can use it.
+
+    A flag nothing documents is an edit to the source by another route, and a flag that raises the
+    volume of a file nobody can find is a diagnostic only its author can read — so `--help` carries
+    both the flag and the resolved log path.
+    """
+    result = _cli("--help", tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    assert "--log-level=LEVEL" in result.stdout, "the flag is not documented where --help looks"
+    for name in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+        assert name in result.stdout, f"--help does not name the {name} level"
+    assert "tracks-and-trails.log" in result.stdout, "--help does not say where the log is"
+
+
+@pytest.mark.parametrize(
+    ("argument", "expected"),
+    [
+        pytest.param("--log-level=chatty", "unknown log level", id="a level that does not exist"),
+        pytest.param("--log-level", "needs a value", id="the flag with no value"),
+    ],
+)
+def test_a_bad_log_level_is_refused_rather_than_defaulted(
+    tmp_path: pytest.TempPathFactory, argument: str, expected: str
+) -> None:
+    """**Refused, not defaulted**, which is the whole reason this is worth a test.
+
+    Falling back to `INFO` when somebody asked for `DEBUG` produces a log missing exactly what they
+    turned it on to see, and they would have no way to know. The complaint goes to stderr so it is
+    not mistaken for the usage text it precedes.
+    """
+    result = _cli(argument, tmp_path)
+
+    assert result.returncode == 2, f"a bad level was accepted: {result.stdout!r}"
+    assert expected in result.stderr, f"the complaint does not say why: {result.stderr!r}"
+    assert "usage:" in result.stdout

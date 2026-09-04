@@ -1084,3 +1084,83 @@ def test_the_same_faults_end_the_stream_once_the_queue_is_closed() -> None:
 
     queue._recv_bytes = closed_recv
     assert listener.dequeue(True) is listener._sentinel  # type: ignore[attr-defined]
+
+
+# --- T-282: a debug level, reachable without editing code -------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("given", "expected"),
+    [
+        pytest.param("DEBUG", logging.DEBUG, id="DEBUG"),
+        pytest.param("debug", logging.DEBUG, id="lower case, which is what a person types"),
+        pytest.param(" Warning ", logging.WARNING, id="surrounding space"),
+        pytest.param("CRITICAL", logging.CRITICAL, id="CRITICAL"),
+    ],
+)
+def test_a_level_name_resolves_to_its_level(given: str, expected: int) -> None:
+    """`--log-level=debug` is what somebody types, so case and stray space cannot decide it."""
+    assert app_logging.level_named(given) == expected
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        pytest.param("chatty", id="not a level"),
+        pytest.param("", id="empty"),
+        pytest.param("10", id="a number, which this deliberately does not accept"),
+        pytest.param("NOTSET", id="a real logging name this application does not offer"),
+        pytest.param("getLogger", id="an attribute of the logging module that is not a level"),
+    ],
+)
+def test_an_unknown_level_name_is_refused_rather_than_defaulted(given: str) -> None:
+    """**`None`, not a fallback.** Silently running at `INFO` when somebody asked for `DEBUG`
+    produces a log missing exactly what they turned it on to see.
+
+    `getLogger` is in here because the resolution is an attribute lookup on the `logging` module:
+    without the name check it would answer a function and pass an `isinstance(int)` test never.
+    `NOTSET` is a real level name and is still refused, because this application does not offer it
+    and a level nothing lists is one nobody can be told about.
+    """
+    assert app_logging.level_named(given) is None
+
+
+def test_the_log_says_which_level_it_is_at(tmp_path: Path) -> None:
+    """`T-282`: a log whose level is unknown makes an absent line ambiguous.
+
+    *"It did not happen"* and *"it happened and was not recorded"* are different answers, and a
+    reader six months later cannot tell them apart without this line.
+
+    **Driven at `WARNING` deliberately.** The first version of the announcement used `root.info`,
+    which is filtered out at `WARNING` and above — so the line was missing from exactly the runs
+    whose level is least obvious, and this test is what said so. It is emitted at the level in
+    force now.
+    """
+    for level, name in ((logging.DEBUG, "DEBUG"), (logging.WARNING, "WARNING")):
+        # A directory each: the handler appends, so a shared one would carry the previous run's
+        # announcement into this one and make the once-only assertion below measure the test.
+        path = app_logging.configure_logging(directory=tmp_path / name, level=level)
+        written = path.read_text(encoding="utf-8")
+
+        assert f"logging at {name}" in written, (
+            f"a run at {name} did not say what level it is at: {written!r}"
+        )
+        assert str(path) in written, "the announcement does not say where the log is"
+        assert written.count("logging at ") == 1, "the level was announced more than once"
+
+
+def test_every_handler_still_redacts_at_debug(tmp_path: Path) -> None:
+    """`REQ-026` is a property of the handlers, and raising the volume must not touch it.
+
+    A debug level changes *how much* is written and never *what may be* written. Asserted over
+    every handler rather than over the file, because a second handler added later without a
+    redactor is the way this regresses.
+    """
+    app_logging.configure_logging(directory=tmp_path, level=logging.DEBUG, stream=sys.stderr)
+    root = logging.getLogger(APP_SLUG)
+
+    assert root.handlers, "no handlers, so this asserts nothing"
+    for handler in root.handlers:
+        assert isinstance(handler.formatter, app_logging.RedactingFormatter), (
+            f"{handler!r} formats through {handler.formatter!r}, which does not redact"
+        )

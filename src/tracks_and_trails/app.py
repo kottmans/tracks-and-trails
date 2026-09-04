@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import sys
 from collections.abc import Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
@@ -67,13 +68,25 @@ if TYPE_CHECKING:
     from tracks_and_trails.persistence.writer import QueueWriter
     from tracks_and_trails.ui.main_window import MainWindow
 
+#: The flag `T-282` adds. A constant because `_take_log_level` matches on its prefix and its
+#: complaints quote it; three spellings of the same string is how one of them drifts.
+_LOG_LEVEL_FLAG: Final = "--log-level"
+
 USAGE = """\
 Tracks & Trails {version} — a desktop GUI for yt-dlp.
 
-usage: tracks-and-trails [--version] [--help] [--spawn-probe] [--ytdlp-probe]
+usage: tracks-and-trails [--version] [--help] [--log-level=LEVEL] [--spawn-probe]
+                         [--ytdlp-probe]
 
   --version      print the version and exit
   --help, -h     print this message and exit
+  --log-level=LEVEL
+                 how much the application log records, one of
+                 DEBUG, INFO, WARNING, ERROR, CRITICAL (default INFO).
+                 DEBUG is for diagnosing a problem after the fact; the log
+                 is redacted at every level and this never turns on
+                 yt-dlp's own verbose output (REQ-026).
+                 The log is at {log_path}
   --spawn-probe  self-test the process model and exit (T-020)
   --ytdlp-probe  self-test the bundled yt-dlp and exit (T-033)
   --ytdlp-update-probe
@@ -81,6 +94,52 @@ usage: tracks-and-trails [--version] [--help] [--spawn-probe] [--ytdlp-probe]
 
 Run with no arguments to open the application window.
 """
+
+
+def _usage() -> str:
+    """`USAGE` with its placeholders filled, so `--help` names the real log path.
+
+    **The path is in `--help` because that is where somebody looks** (`T-282`'s last criterion):
+    a flag that raises the volume of a file nobody can find is a diagnostic only its author can
+    use. Resolved through the same function the handler uses, so the two cannot disagree.
+    """
+    from tracks_and_trails.core.logging import application_log_path
+
+    return USAGE.format(version=__version__, log_path=application_log_path())
+
+
+def _take_log_level(args: list[str]) -> tuple[int | None, list[str], str | None]:
+    """Pull `--log-level=NAME` out of `args`. Returns `(level, remaining, complaint)`.
+
+    **`--log-level=NAME` and not `--log-level NAME`.** One token cannot be half-consumed, so a
+    missing value is a bad value rather than the next flag being eaten — `--log-level --version`
+    would otherwise turn `--version` into a level name and then reject it as an unknown argument,
+    which is a confusing way to say the same thing.
+
+    **The mechanism is a proposal, not a settled decision** (`T-282`'s first criterion reserves it
+    to the maintainer). A flag serves somebody who already runs this from a terminal; an
+    environment variable would serve a frozen build with no console, and a Settings toggle would
+    serve a user who never opens one. Any of those can be layered on top of this by resolving a
+    level here and passing it to the same `configure_logging(level=…)`; none of them requires
+    unpicking what is below.
+    """
+    from tracks_and_trails.core.logging import LOG_LEVEL_NAMES, level_named
+
+    remaining: list[str] = []
+    level: int | None = None
+    for argument in args:
+        if not argument.startswith(_LOG_LEVEL_FLAG):
+            remaining.append(argument)
+            continue
+        _, separator, name = argument.partition("=")
+        if not separator:
+            return None, remaining, f"{_LOG_LEVEL_FLAG} needs a value, as {_LOG_LEVEL_FLAG}=DEBUG"
+        resolved = level_named(name)
+        if resolved is None:
+            offered = ", ".join(LOG_LEVEL_NAMES)
+            return None, remaining, f"unknown log level {name!r}; expected one of {offered}"
+        level = resolved
+    return level, remaining, None
 
 
 def run(argv: Sequence[str]) -> int:
@@ -93,7 +152,7 @@ def run(argv: Sequence[str]) -> int:
         print(__version__)
         return 0
     if "--help" in args or "-h" in args:
-        print(USAGE.format(version=__version__), end="")
+        print(_usage(), end="")
         return 0
     # Before Qt, and before anything else that would make this need a display. The frozen
     # build runs exactly this path in CI to prove that spawning a child does not relaunch the
@@ -120,8 +179,17 @@ def run(argv: Sequence[str]) -> int:
         from tracks_and_trails._freeze_probe import run_ytdlp_update_probe
 
         return run_ytdlp_update_probe()
+    # **Taken out of `args` before the catch-all below**, which rejects anything it does not
+    # recognise. `None` means the flag was absent and the default stands; a bad value is refused
+    # rather than defaulted, because silently running at `INFO` when somebody asked for `DEBUG`
+    # produces a log missing exactly what they turned it on to see (`T-282`).
+    level, args, complaint = _take_log_level(args)
+    if complaint is not None:
+        print(complaint, file=sys.stderr)
+        print(_usage(), end="")
+        return 2
     if args:
-        print(USAGE.format(version=__version__), end="")
+        print(_usage(), end="")
         return 2
 
     # Before Qt, and before anything that might log: a diagnostic emitted while the application
@@ -131,7 +199,12 @@ def run(argv: Sequence[str]) -> int:
     # directory must still print a version.
     from tracks_and_trails.core.logging import configure_logging
 
-    configure_logging()
+    # Two calls rather than a `**kwargs` splat, so the default lives in one place —
+    # `configure_logging`'s own signature — instead of being restated here where it could drift.
+    if level is None:
+        configure_logging()
+    else:
+        configure_logging(level=level)
 
     from PySide6.QtWidgets import QApplication
 

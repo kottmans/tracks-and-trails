@@ -1731,3 +1731,34 @@ def test_the_geo_value_is_the_one_that_actually_disables_it() -> None:
     assert not options["geo_bypass"], "a truthy geo_bypass enables the bypass"
     # The value the application supplies must survive `get_param`'s default, which is `True`.
     assert options.get("geo_bypass", True) is False
+
+
+# --- T-282: a debug level must not reach yt-dlp's `verbose` -----------------------------------
+
+
+@pytest.mark.parametrize(
+    "level",
+    [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL],
+    ids=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+)
+def test_yt_dlp_verbose_stays_off_whatever_this_application_logs_at(level: int) -> None:
+    """`T-282`'s security criterion, and it is a security one rather than a volume one.
+
+    `YtdlpLog` records the measurement: **verbose makes yt-dlp dump `params:` and `Proxy map:`**,
+    which carry the proxy the user configured. "Debug logging" in this application means *this
+    application's* `DEBUG` records plus the yt-dlp lines already routed through `YtdlpLog` — never
+    yt-dlp's own verbose output (`REQ-026`).
+
+    Driven at every level the flag offers, because the way this regresses is somebody wiring the
+    application's level to yt-dlp's on the reasoning that both mean "more logging".
+    """
+    logger = logging.getLogger("tracksandtrails.test.verbose")
+    logger.setLevel(level)
+
+    options = adapter.build_options(request_for(), "%(title)s.%(ext)s", logger=logger)
+
+    assert options.get("verbose") is not True, (
+        "yt-dlp verbose is on, which dumps `params:` and `Proxy map:` into the log — the proxy "
+        "the user configured. REQ-026 binds this and no log level may turn it on"
+    )
+    assert options.get("logger") is logger, "the logger seam is gone, so this asserts nothing"
