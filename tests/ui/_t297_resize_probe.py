@@ -71,6 +71,10 @@ def test_the_open_row_is_never_painted_uncovered(
     real_paint = RowDelegate.paint
 
     def watched(self: Any, painter: Any, option: Any, index: Any) -> None:
+        if not watching.get("recording", True):
+            # Frozen for the capture. Nothing after this point is a measurement of the walk.
+            real_paint(self, painter, option, index)
+            return
         every.append(index.row())
         panel = watching.get("panel")
         if panel is not None and index.row() == watching.get("target"):
@@ -135,31 +139,64 @@ def test_the_open_row_is_never_painted_uncovered(
     # taken during the drag would be a picture of a repaired panel, not of the defect. Instead the
     # panel is put back into the exact geometry the trace above recorded (26 px) and the viewport is
     # rendered, which shows what the row underneath contributes to a frame in that state.
+    # **Every measurement is frozen before the reconstruction touches anything** (`T297-R3`). The
+    # first version stopped only the exposed-paint classification and left `_PanelWatch` installed,
+    # so the published resize counts still contained the instrument's own forced 26 px — one
+    # collapse, and its captured stack pointed at this file. Freezing here, and asserting below
+    # that nothing moved, is what makes the reported numbers measurements of the walk alone.
+    measured = {
+        "paints": len(every),
+        "exposed": len(exposed),
+        "resizes": len(resizes),
+        "collapses": sum(1 for _old_h, new_h in resizes if new_h == 26),
+    }
+
     capture = os.environ.get("T297_CAPTURE")
     if capture:
-        # **Recording stops first.** The reconstruction below collapses the panel deliberately, and
-        # counting that would put the instrument's own action in the measurement — which it did,
-        # for one collapse and two paints, until this line existed.
+        watching["recording"] = False
         watching["panel"] = None
+        panel.removeEventFilter(panel_watch)
         index = dialog._index_of(row)
         full = dialog._list.visualRect(index)
         panel.setGeometry(full.x(), full.y(), full.width(), 26)
         qapp.processEvents()
         dialog._list.viewport().grab().save(capture)
 
+    # **The control the finding asked for**: if the reconstruction moved a reported number, the run
+    # is not a measurement of the product walk and must say so rather than be corrected by
+    # subtraction afterwards.
+    drifted = {
+        key: (was, now)
+        for key, was, now in (
+            ("paints", measured["paints"], len(every)),
+            ("exposed", measured["exposed"], len(exposed)),
+            ("resizes", measured["resizes"], len(resizes)),
+            (
+                "collapses",
+                measured["collapses"],
+                sum(1 for _old_h, new_h in resizes if new_h == 26),
+            ),
+        )
+        if was != now
+    }
+    assert not drifted, (
+        f"the capture changed reported measurements {drifted}. Every number below would then be "
+        "the walk plus the instrument, which is what T297-R3 found"
+    )
+
     report = Path(os.environ.get("T297_REPORT", "")) if os.environ.get("T297_REPORT") else None
     lines = [
         f"platform            : {QApplication.platformName()}",
         f"resize steps        : {len(_HEIGHTS)}",
-        f"delegate paints     : {len(every)} (before the resize: {before})",
+        f"delegate paints     : {measured['paints']} (before the resize: {before})",
         f"paints of the row   : {sum(1 for r in every if r == watching['target'])}",
-        f"EXPOSED paints      : {len(exposed)}",
-        f"panel resize events : {len(resizes)}",
+        f"EXPOSED paints      : {measured['exposed']}",
+        f"panel resize events : {measured['resizes']}",
         "who collapses it (Python stack at the first collapse):",
         *[f"    {line.strip()}" for line in (collapses[0] if collapses else ["<none captured>"])],
         "  first twenty (old h -> new h): "
         + " ".join(f"{old_h}->{new_h}" for old_h, new_h in resizes[:20]),
-        f"  resizes TO the 26 px minimum: {sum(1 for _o, n in resizes if n == 26)}",
+        f"  resizes TO the 26 px minimum: {measured['collapses']}",
         "settled after each step (window h, panel h, row h):",
         "  " + "  ".join(f"{w}:{p}/{r}" for w, p, r in settled[:10]),
         f"  steps where the settled panel matched the row: "

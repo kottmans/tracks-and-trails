@@ -8,7 +8,13 @@ touched.**
 **Runtime:** Python 3.14, PySide6 6.11.1.
 **Instrument:** `tests/ui/_t297_resize_probe.py`.
 
-**Recorded before anything was changed**, which is `T-297`'s first acceptance criterion.
+**Recorded before anything was changed** — but **this does not satisfy `T-297`'s first acceptance
+criterion**, which asks for a real display and a capture (`T297-R1`, 2026-09-03). A nested
+`kwin_wayland --virtual` against a private framebuffer is not the live session, does not carry its
+style, and this repository already distinguishes the two for `T-238` and `T-289`. The PNG is a
+labelled reconstruction, not a captured frame of the defect. **What is below is a sound
+compositor-only timing measurement and nothing more**, and closing that criterion needs either a
+pre-fix run on the real display or the maintainer's explicit amendment naming what is surrendered.
 
 ## The report this answers
 
@@ -42,7 +48,39 @@ VERDICT: REPRODUCED — 107 paints of the open row were not covered by its panel
 given it one — the same number `T-108`'s comment records as `190x26`, and the same one `T-296` was
 about at mount.
 
-## The cause
+## Correction, 2026-09-03: the cause named below is wrong (`T297-R2`, `T297-R3`)
+
+**This file is a historical record and is corrected in place rather than rewritten.** Two things in
+it did not survive review.
+
+**1. "The cause" section below is wrong, and the correct cause was not known when this was
+written.** What it describes — `_on_list_resized` re-measuring the row and `relayout_panel`
+deferring the geometry by an event-loop turn — is a real and correctly observed *gap*. It is not
+what put the panel at 26 px. **The writer was `RowDelegate.updateEditorGeometry`**, which applied
+`_control_of` — the row's *format-combo* slot — to the open row's panel, because
+`QAbstractItemView` keeps `setIndexWidget` widgets in the same map as item editors. That was found
+after this file was committed, and it appears first in `cd08c7b`, the commit that also changes
+source.
+
+**`T-297`'s second criterion asks for the cause to be named before the fix, and it was not.** The
+sequence cannot be created retroactively, so it is recorded as missed rather than papered over, and
+moving `T-297` to Complete needs the maintainer's explicit exception.
+
+**The `T-296` relation below is also backwards.** This file says the mechanism is *not* `T-296`'s.
+It is the layer `T-296` was working around: that task reordered `_mount_panel` so `scrollTo` — which
+calls `updateGeometries()` — could not undo the geometry it had just set, and the reason a scroll
+destroyed it was this method.
+
+**2. The post-fix counts elsewhere were contaminated by the instrument** (`T297-R3`). The
+reconstruction that produces the PNG collapses the panel to 26 px deliberately, and the probe went
+on recording through it. **The pre-fix numbers in this file are unaffected and have been
+re-measured on 2026-09-03 with the corrected probe: 107 exposed paints, 214 panel resize events,
+107 collapses, 109 of 110 steps settling — identical.** The *post-fix* numbers recorded in
+`ai/TASKS.md` were not: the walk alone produces **8** panel resize events and **0** collapses, not
+9 and 1. The probe now freezes every counter before the reconstruction and asserts that none of them
+moved.
+
+## The cause *(superseded — see the correction above)*
 
 **`_on_list_resized` re-measures the row and then defers the panel's geometry by one event-loop
 turn, and the view repaints inside that gap.**
