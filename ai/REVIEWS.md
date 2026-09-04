@@ -23930,3 +23930,71 @@ Before this review commit the checkout was five commits ahead of `origin/main` a
 reviewed commits were unpushed. The Reviewer appended only this record. No reviewed source,
 submitted test, task/status text, handoff, branch, push, CI run, live display or remote state was
 changed.
+
+## 2026-09-04 — T-282 focused correction review
+
+**Reviewer:** Codex (Reviewer)
+**Correction boundary:** `02b48fae6b0ec7e02c2d769c2eef8fca8d154100..`
+`841e6fcd18b98f8289f1482151fc8434276055e6`
+**Platform verified:** Spock, Qt/PySide6 6.11.1, offscreen. No Windows execution, push or live
+display is claimed.
+
+### Verdict
+
+| Task | Verdict |
+|---|---|
+| `T-282` | **Approved at `841e6fc`.** The accepted `--log-level=LEVEL` spelling is now parsed exactly, the selected level reaches the production worker entry point, and the valid launch composition is guarded. The INFO contract now describes unchanged filtering rather than unchanged bytes. No blocking finding remains. |
+
+`T-271` remains **Approved at `7ca8e63`**. Its required first post-push `windows desktop` result is
+still outstanding; this correction commit and review do not supply it.
+
+### Finding resolutions
+
+| ID | Resolution |
+|---|---|
+| `T282-R1` | **Resolved.** `_take_log_level()` now recognizes only the exact no-value token or the exact `--log-level=` prefix. The three submitted route controls send plural, suffixed and run-together lookalikes through the unknown-argument exit-2 path. The independent direct control returned the exact flag as level 10, left all three lookalikes in `remaining`, and retained the missing-value complaint for the bare token. |
+| `T282-R2` | **Resolved.** `worker_log_level()` reads the configured application logger's effective level; `DownloadManager._spawn()` includes that value in every process's keyword arguments; `spawn_session()` passes it to `prepare_this_worker()`; and the worker installs its queue handler at that level. The spawned-worker control wrote DEBUG at DEBUG and omitted it at INFO. Its stated limit is correct: the INFO file alone cannot detect a worker incorrectly fixed at DEBUG, so the separate accessor test supplies the opposite direction. yt-dlp verbose remains untouched. |
+| `T282-R3` | **Resolved.** The real offscreen auto-quit launch now exercises both `--log-level=DEBUG` and the no-flag default, then reads the isolated application log and requires the corresponding announcement. Removing the selected level from `configure_logging()` can no longer pass this route. |
+| `T282-R4` | **Resolved.** The task now says ordinary-run filtering is unchanged and explicitly accounts for the required announcement line. |
+| `COORD-R27` | **Resolved.** The four unrelated T-273/T-279/T-272/T-275 headings are restored to “Suggested acceptance criteria”; `git show 841e6fc` accounts for the restoration explicitly. |
+
+### Evidence boundary worth preserving
+
+The new worker integration test creates a real spawned process and drives the real
+`prepare_this_worker()` handler, but it hands `worker_log_level()` to that process itself. It does
+not compose through `DownloadManager._spawn()`. Consequently it proves the accessor and child
+boundary while the manager's `"log_level"` keyword remains correct by direct inspection rather
+than by that test: deleting only that keyword is not one of the submitted controls. This is a
+**Note**, not a request for another correction pass—the behavior at the approved head is correct,
+and the focused correction supplied the real-worker control R2 required. Do not later describe
+this test as an end-to-end manager test without adding that missing composition.
+
+### Current-truth completion item
+
+| ID | Severity | Blocks approval | Finding | Required disposition | Status |
+|---|---|---:|---|---|---|
+| `COORD-R28` | **Low** | **No — mechanical current truth after the ruling** | The initial review accepted `--log-level=LEVEL`, but T-282's status, mechanism paragraph, first criterion and `_take_log_level()` docstring still say the mechanism is a proposal awaiting a ruling. That was true at `78e02b2` and became stale when the review supplied the reserved decision. | In the ordinary completion sync, record the flag as the accepted mechanism and remove only the claim that the choice remains outstanding. This is wording, not a third implementation pass, and does not reopen the approved behavior. | **Open — completion sync** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| App-launch, logging and new spawned-worker correction set | **86 passed in 13.63 s**. |
+| Existing worker-log integration file | **9 passed in 21.10 s**. |
+| Task placement | **15 passed in 0.28 s**. |
+| Parser control | Exact DEBUG resolved to 10; all three lookalikes remained unknown; the bare exact token retained its missing-value error. |
+| Ruff / format | Passed; **230 files** checked for formatting. |
+| mypy Linux / Windows target | Both bare invocations clean over **164 files**; both `src` invocations clean over **58 files**. |
+| Diff / commit gate | `git diff --check 02b48fa..841e6fc` clean; **1 commit** passed the message gate. |
+| Submitted broader evidence | Implementer reports full suite **3,923 passed / 21 skipped** and seven correction mutations killed. The Reviewer did not repeat the full suite or mutation campaign. |
+
+### Readiness
+
+T-282 may move to Complete at `841e6fc` once its ordinary current-truth completion sync incorporates
+the already-recorded mechanism ruling. `COORD-R28` is non-behavioral and does not require or
+authorize a third correction review. T-271's Windows execution remains a separate post-push debt;
+any failure there reopens T-271 as the initial review states.
+
+Before this review append the checkout was seven commits ahead of `origin/main` at `d570362` and
+the worktree was clean. The Reviewer appended only this record. No reviewed source, submitted test,
+task/status text, handoff, branch, push, CI run, live display or remote state was changed.
