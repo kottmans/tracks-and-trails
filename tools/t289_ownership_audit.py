@@ -140,16 +140,34 @@ def item_view_owners(trees: dict[Path, ast.Module], product: set[str]) -> set[st
     and never *"does own at this site"*. `audit` reports the two separately for that reason.
     """
     builds: dict[str, set[str]] = {}
+    bases: dict[str, list[str]] = {}
     for tree in trees.values():
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef) or node.name not in product:
                 continue
+            bases[node.name] = [b.id for b in node.bases if isinstance(b, ast.Name)] + [
+                b.attr for b in node.bases if isinstance(b, ast.Attribute)
+            ]
             made = builds.setdefault(node.name, set())
             for inner in ast.walk(node):
                 if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name):
                     made.add(inner.func.id)
 
-    owners = {name for name, made in builds.items() if made & ITEM_VIEWS}
+    # **A product class that *is* an item view counts, and this was the whole of `T238-R11`'s
+    # second round.** `EntryTable(QTableView)` constructs nothing and owns nothing — it **is** one,
+    # so collecting it runs `~QAbstractItemView` directly. Seeding only from constructions missed
+    # it, and with it the six `PlaylistPicker` sites that reach an item view through it.
+    # Transitive through the product's own bases, so a subclass of `EntryTable` would count too.
+    derived: set[str] = set()
+    growing = True
+    while growing:
+        growing = False
+        for name, parents in bases.items():
+            if name not in derived and any(p in ITEM_VIEWS or p in derived for p in parents):
+                derived.add(name)
+                growing = True
+
+    owners = derived | {name for name, made in builds.items() if made & (ITEM_VIEWS | derived)}
     growing = True
     while growing:
         growing = False
@@ -209,8 +227,11 @@ def _is_literal_none(node: ast.expr) -> bool:
 
 def audit(
     root: Path, *, vocabulary: Path | None = None
-) -> tuple[list[tuple[str, int, str, str]], int, list[tuple[str, int, str]]]:
-    """Return the parentless construction sites, the total, and any un-parenting calls.
+) -> tuple[list[tuple[str, int, str, str]], int, list[tuple[str, int, str]], set[str]]:
+    """Return the parentless sites, the total, any un-parenting calls, and the item-view owners.
+
+    *(The annotation said three elements and the function has returned four since the item-view
+    report landed — `T238-R12`. `mypy` did not catch it because nothing annotated the call sites.)*
 
     **`vocabulary` asks a different question, and it is `T-238`'s** (`T238-R2`'s criterion 4:
     *"Product behavior versus test-harness behavior is established"*). Given a second tree, the
@@ -257,7 +278,7 @@ def audit(
 
 
 SELF_TEST_SOURCE: Final = """
-from PySide6.QtWidgets import QLabel, QListWidget, QWidget
+from PySide6.QtWidgets import QLabel, QListWidget, QTableView, QWidget
 
 class Panel(QWidget):
     def __init__(self, jobs, parent=None):
@@ -272,6 +293,15 @@ class Screen(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._table = Table(self)
+
+class Grid(QTableView):
+    # Constructs nothing and owns nothing: it *is* an item view (T238-R11, second round).
+    pass
+
+class Holder(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._grid = Grid(self)
 
 def build():
     loose = QLabel("just text")          # parentless: a literal is not a parent
@@ -302,8 +332,8 @@ def self_test() -> int:
         parentless, total, unparenting, _owners = audit(fixture)
     found = {(name, line) for _, line, name, _ in parentless}
     failures: list[str] = []
-    if total != 11:
-        failures.append(f"counted {total} constructions, expected 11")
+    if total != 12:
+        failures.append(f"counted {total} constructions, expected 12")
     if not any(name == "QLabel" for name, _ in found):
         failures.append("the parentless QLabel('just text') was not found")
     if any(name == "QWidget" for name, _ in found):
@@ -332,7 +362,7 @@ def self_test() -> int:
         fixture = Path(directory)
         (fixture / "sample.py").write_text(SELF_TEST_SOURCE)
         _p, _t, _u, owners = audit(fixture)
-    for expected in ("Table", "Screen"):
+    for expected in ("Table", "Screen", "Grid", "Holder"):
         if expected not in owners:
             failures.append(f"{expected} owns an item view and was not classified as one")
     if "Panel" in owners:
