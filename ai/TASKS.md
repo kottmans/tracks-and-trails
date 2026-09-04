@@ -1177,86 +1177,6 @@ was not taken first.
 
 ---
 
-### T-297 — A thumbnail flickers while the window is resized with a panel open, and the cause is unknown
-
-**Status:** **In Review — reproduced, cause named, fixed 2026-09-01.** **It was not the deferral the
-entry hypothesised.** `QAbstractItemView` keeps `setIndexWidget` widgets in **the same map as item
-editors**, so every `updateGeometries()` pass handed the open row's panel to
-`RowDelegate.updateEditorGeometry` — which applied `_control_of`, the row's *format-combo* slot, to
-it. A 354 px panel became **26 px**. A resize calls `updateGeometries()` once per step, so the panel
-collapsed and was restored once per step, and the view painted the row inside each gap: `paint`
-draws the thumbnail on every row it is given, because an open one is supposed to be covered.
-
-**Measured under a compositor before anything was changed**, which is this task's first criterion —
-`ai/evidence/2026-09-01-T297-panel-collapses-during-resize.md`, with a capture. 110 resize steps:
-**107 collapses to 26 px, 107 paints of the row its panel did not cover**, and 109 of 110 steps
-nevertheless *settling* correctly, which is why the first reading — which sampled after each step —
-saw nothing. After the fix: **0 exposed paints, 110/110 settled**, and the panel's own resize events
-fell from 214 to 9.
-
-**The fix is the guard its two siblings already have.** `setEditorData` and `setModelData` both
-begin `if not isinstance(editor, QComboBox)`; `updateEditorGeometry` did not. Anything that is not
-this delegate's editor now goes to `super()`, which sizes an editor to `option.rect` — exactly right
-for an index widget spanning the row.
-
-**This is what `T-296` was working around, and that is worth stating rather than leaving to be
-rediscovered.** `T-296` reordered `_mount_panel` so `scrollTo` — which calls `updateGeometries()` —
-could not undo the geometry `setGeometry` had just set. The reorder is still correct and still
-tested; the reason a scroll destroyed the geometry was this method, one layer down. **`T-296` is not
-reopened**: it is Complete, approved, and its own regression still passes.
-
-*(Filed 2026-08-28 by `T-212`'s checklist run, deliberately without a cause.* The maintainer's
-report: *"when changing the window size while the naming information is up, the thumbnail cuts in
-and out very rapidly. That shouldn't happen."*)
-**Owner:** Implementer
-**Priority:** Low — it is visual noise during a drag, and it is the least understood thing the run
-found
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing
-**Relevant context:** `ui/add_dialog.py` `panel_height_for`, which reads the **viewport's** height,
-so every resize step changes the row's size hint; `_mount_panel`'s note that `setIndexWidget`
-defers geometry to `updateEditorGeometries`, which runs on paint; `T-296`
-**Affected surfaces:** `ui/row_delegate.py` (`updateEditorGeometry`), `tests/ui/test_row_delegate.py`;
-the instrument is `tests/ui/_t297_resize_probe.py` and `tools/t297_resize_session.sh`
-**Risk:** Low
-
-#### What was measured, and what it does not show
-
-**It did not reproduce offscreen.** Across eight resize steps with the template panel open:
-
-```
-thumbnail loads : 0        # nothing re-fetches
-cancels         : 0
-```
-
-and the panel's geometry matched the row's `visualRect` at **every** step, from 762 px down to
-430 px and back up. So it is neither the thumbnail being reloaded nor the panel losing coverage in
-any way a headless process can see.
-
-**The plausible mechanism is unproven and is recorded as a hypothesis, not a finding.**
-`panel_height_for` reads `self._list.viewport().height()`, so every resize step changes the row's
-size hint; the panel's re-placement is deferred to paint; and the delegate underneath — which draws
-the thumbnail — is what shows in any gap. That is consistent with `T-108`'s comments and with
-`T-296`, and it is not evidence.
-
-#### Acceptance criteria
-
-- **It is reproduced on a real display first**, with a capture, and the reproduction is recorded in
-  `ai/evidence/` before anything is changed. An offscreen process does not do a continuous resize
-  and its style is not necessarily the session's
-- **The cause is named before the fix**, and if the cause turns out to be `T-296`'s, this task is
-  closed against that one rather than fixed twice
-- **If it proves to be Qt or compositor behaviour** this application can only work around, that is
-  recorded as the finding and the workaround is a separate decision
-
-#### Out of scope
-
-- Guessing. `T-296` is filed with a measured cause; this one is not, and the two should not be
-  merged on the strength of sitting near each other
-
-
----
-
 ## Complete
 
 ### T-287 — Minimizing the main window leaves its dialogs on screen
@@ -12778,13 +12698,16 @@ widget never hides, and it never leaves `focus_chain()` — so the layout does n
 stays a single declaration made once at construction. The ring is untouched (`T202-R1`) and
 `T-218`'s empty summary is untouched.
 
-**One check is still owed and is not a formality.** `4d0e65b` edits
+**The check this owed has been paid** (`COORD-R26`). `4d0e65b` edits
 `tests/ui/test_windows_desktop.py`'s `DIALOG_STATES`, whose job **skips at module level on Linux**,
-so nothing that has run so far has executed it. The reviewer's ruling was that a pre-review push was
-unnecessary and that **the Windows desktop job is a required post-push check: any failure there
-reopens this task.** What stands behind the three subtractions until then is an offscreen
-measurement of the status text at each of the four states — `''`, `''`, `'Reading 1 URLs — 0 done'`,
-`''` — and not the job itself.
+so no local run could execute it; the reviewer's ruling was that the Windows desktop job is a
+required post-push check and any failure there reopens this task. **Push run `33525084577` completed
+`windows desktop` successfully on 2026-09-01, and the two scheduled runs after it did the same.**
+The three subtractions are executed rather than inferred, and this task stays Complete.
+
+*(This paragraph said the check was still owed for two days after the run that discharged it —
+`COORD-R26`. What stood behind the change until then was an offscreen measurement of the status text
+at each of the four states, `''`, `''`, `'Reading 1 URLs — 0 done'`, `''`, and not the job itself.)*
 
 *(Filed 2026-08-28 by `T-212`'s checklist run, from the maintainer's first report of the sitting:
 *"on the 'add urls' page, this section gets highlighted even if there isn't anything there."*)
@@ -13599,60 +13522,58 @@ session that has since been driven, and said so two lines above the section reco
 (`T289-R15`, second pass); it is kept as the statement of what was owed *then*, and the section
 below is what is owed now.
 
-#### Criterion 4, 2026-09-03: the harness builds this state 89 times and the product builds it once
+#### Criterion 4, 2026-09-03: counted rather than sampled — **and the first count was wrong**
 
-**Criterion 4 asks for product-versus-harness to be *established*, and every attempt so far tried to
-establish it by catching the fault.** Six probes asked *"is a product widget reaching the collector
-right now?"* — 60 isolated sessions, two real-display runs, a forced collection at two sampled
-moments, and the thumbnail pipeline on its own pool threads — and every one answered no. That
-question has the regress `T-289`'s ownership audit already named: another null sample cannot
-separate *there is none* from *we sampled the wrong instant*.
+**Corrected 2026-09-03 after `T238-R11`.** The first version of this section reported *"89
+parentless, 30 item-view sites, none in the product"* and drew an asymmetry from it. **Two of those
+three numbers were wrong and the third was a category error**, so the numbers are restated below and
+the conclusion is not.
 
-**The complementary question has an end, and it had never been asked of the harness.** A widget can
-only be owned by Python if it is left without a Qt parent, so the places where this fault is even
-possible are finite and can be counted. `tools/t289_ownership_audit.py --harness` resolves the
-product's widget classes from `src/` and counts their construction sites in `tests/`:
+**Why count at all.** Six probes asked *"is a product widget reaching the collector right now?"* — 60
+isolated sessions, two real-display runs, a forced collection at two sampled moments, the thumbnail
+pipeline on its own pool threads — and every one answered no. That question has the regress
+`T-289`'s audit named: another null sample cannot separate *there is none* from *we sampled the
+wrong instant*. A widget can only be Python-owned if it is left without a Qt parent, so the sites
+where this is even possible are finite and countable.
 
-| | constructions | **without a Qt parent** |
-|---|---:|---:|
-| `src/tracks_and_trails` | 162 | **4** — and only `MainWindow` is ever reached; the other three are constructed by no product code (`T-289`, 2026-08-31) |
-| `tests/` | 92 | **89** |
+**Three predicates, and merging them is what went wrong.** *Parentless at construction*, *still
+Python-owned afterwards*, and *able to destroy an item-view descendant* are different questions.
+`tools/t289_ownership_audit.py` now reports the first and third separately and does not claim the
+second at all.
 
-**Zero un-parenting calls in either tree** — no `setParent(None)`, `takeWidget()`, `removeWidget()`
-or `takeAt()` anywhere.
+| | constructions | parentless at the call site | of those, classes that **can** own an item view |
+|---|---:|---:|---:|
+| `src/tracks_and_trails` | 162 | 4 | **2** — `MainWindow`, `QueueView` |
+| `tests/` | 92 | **91** | **71** |
 
-**The 89 are 11 product widget classes across 12 files**, led by `MainWindow` (38), `FormatTable`
-(20), `LogView` (8), `PlaylistPicker` (6) and `PresetManager` (5).
+**What was wrong, itemised, because the corrections are the useful part:**
 
-**38 of the 89 are `MainWindow`, and that number is doing less work than it looks.** `MainWindow`
-declares no `parent` parameter at all — it is a top-level window by design, exactly as the
-product's single one is — so those sites are parentless in the literal sense and unremarkable in
-the interesting one. **The headline number is therefore the wrong one to reason from**, and the
-comparison that matters is the subset below, which excludes it.
+- **`parent=None` was counted as a parent.** `is_parented` returned true for any `parent=` keyword
+  without looking at its value, so four real sites were hidden. 89 → **91**. Fixed for the keyword
+  and the signature-mapped positional form, with a self-test arm for each, both verified by mutation.
+- **The item-view set was chosen by eye and was incomplete.** It named four classes; `PresetManager`
+  and `OptionsDialog` each own a `QListWidget` directly, and ownership is **transitive** — a
+  `MainWindow` reaches a `QListView` through its queue. The set is built structurally now, and the
+  self-test includes a class that owns one only through another class.
+- **"None in the product" was false.** `src` has **2** parentless sites whose class can own an item
+  view, and `build_queue_view()` is reached — `main_window.py` adopts it with `setCentralWidget`
+  two statements later. That adoption is exactly the *second* predicate, which this tool does not
+  measure, and stating "none" merged it with the first.
 
-**Four of those classes own an item view, which is what makes this the retained stack rather than a
-statistic.** `FormatTable` (20 sites), `PlaylistPicker` (6), `QueueView` (3) and `AddUrlDialog` (1)
-are `QWidget` containers holding a `QTableView`/`QListView` child — so collecting one parentless
-runs `~QAbstractItemView` on whichever thread the collector fired on, and `~QAbstractItemView` is
-exactly the stack `T-238`'s worker died in. **Exactly 30 sites in the harness; none in the
-product.** This is the load-bearing count, and it is the one to argue with.
+**`can own` is not `does own here`, and the tool now says so in its own output.** `MainWindow` builds
+its queue only when equipped, so 71 is an **upper bound** on harness sites that could run
+`~QAbstractItemView` — not a count of the ones that would. Deciding a given site needs the
+construction's arguments, which an AST reading does not have.
 
-**What this establishes, and what it does not.** It establishes the *asymmetry* the criterion is
-about, by enumeration rather than by sampling: the state that permits this crash is built 89 times
-by the harness and once by the product, and the item-view form of it is built 30 times by the
-harness and never by the product. It does **not** identify the faulting object — that is criterion 3
-and remains open — and it is a static reading, so a widget Qt itself constructs is outside it, which
-is why the runtime survey exists beside it.
+**What this establishes.** A real asymmetry in where the *precondition* is written — 91 parentless
+product-widget constructions in the harness against 4 in the product, and 71 against 2 for the
+item-view-capable subset. Nothing more. It does **not** identify the faulting object (criterion 3),
+it does not establish what remains Python-owned after construction in either tree, and it is a
+static reading blind to widgets Qt itself constructs.
 
-**It does not close this task, and the standing ruling is why.** The maintainer ruled on 2026-08-13
-that *"if the guard ever fires on a real test, that is the evidence criterion 4 asks for and the
-task closes on it; until then the entry stays open."* That bar is a firing, not an argument, and
-this is an argument — a strong one, and the first that is not another null sample. **Whether it
-changes the bar is the maintainer's call**, and it is put here rather than taken.
-
-*(`--harness` is new, and its own self-test covers it: given one fixture as both trees it must count
-the product class and refuse Qt's own. Verified by mutation — removing the narrowing fails the
-self-test on both assertions.)*
+**It does not move criterion 4 and is not offered as doing so.** The maintainer's 2026-08-13 ruling
+sets the bar at the guard firing on a real test. This is an argument, it has now been wrong once,
+and the corrected version is recorded so the next reader inherits the numbers rather than the claim.
 
 #### Criterion 4, 2026-08-31: both halves of the real-session step have run, and neither answers it
 
@@ -14651,8 +14572,9 @@ where each part now stands:
 - **Record what that establishes, or why it still cannot be established.** **Done**:
   `ai/evidence/2026-08-29-T268-orphan-wait-reasons.md`, and *Measured 2026-08-29* below.
 - **Preserve them until then.** **Standing, and now for a reason it did not have before**: the
-  specimens are the only thing a stack could be taken from. ~156 MB on a 32 GB machine does not
-  justify destroying the first inspectable evidence anybody has had.
+  specimens are the only thing a stack could be taken from. **~390 MB** on a 32 GB machine — the
+  seven-row inventory of 2026-09-03, not the five-row ~156 MB this said until then (`T268-R7`) —
+  does not justify destroying the first inspectable evidence anybody has had.
 - **Revalidate before any termination** — pid, create time, command line and parent — and
   terminate only explicitly selected processes. The scanner does not prove project ownership, so
   none of this is authority for a bulk kill, and no destructive scanner mode is to be added.
@@ -15833,6 +15755,108 @@ Assert, on `windows-latest`:
 - Upgrade-over-existing-install and downgrade paths — real, but a separate task once the
   versioning story exists
 - Any non-Windows packaging
+
+---
+
+### T-297 — A thumbnail flickers while the window is resized with a panel open, and the cause is unknown
+
+**Status:** **Blocked on `T297-R1` and `T297-R2`, both High — the product fix is sound and the
+*record* of how it was reached is not** (reviewed at `d44700c`). Corrections landed 2026-09-03; two
+of the three findings need the maintainer rather than more work.
+
+- **`T297-R1` — no real-display capture.** The reproduction was taken on a nested
+  `kwin_wayland --virtual`, and its PNG is a labelled reconstruction rather than a captured frame.
+  The criterion asks for a real display and a capture. **Needs either a pre-fix run on the live
+  session or an explicit amendment** naming what is surrendered. Not mine to take, and not something
+  to run unattended on the maintainer's desktop.
+- **`T297-R2` — the pre-fix record names the wrong cause.** `331845d` says the cause is
+  `_on_list_resized`'s deferred relayout and that it is *not* `T-296`'s; both are wrong, and the
+  real cause first appears in the commit that changes source. **The evidence file now carries a
+  dated correction** saying so and recording that the criterion was missed. Moving this to Complete
+  needs the maintainer's explicit exception; the commits are not rewritten.
+- **`T297-R3` — corrected.** The probe froze only part of itself before the reconstruction, so the
+  post-fix counts included the instrument's own forced 26 px. Every counter is frozen now and a
+  control asserts none moved — **it caught a real drift on the first run** (38 → 40 paints) rather
+  than passing. Both trees were re-measured rather than corrected by subtraction.
+
+**The fix itself was not in doubt in the review and is unchanged.** **It was not the deferral the
+entry hypothesised.** `QAbstractItemView` keeps `setIndexWidget` widgets in **the same map as item
+editors**, so every `updateGeometries()` pass handed the open row's panel to
+`RowDelegate.updateEditorGeometry` — which applied `_control_of`, the row's *format-combo* slot, to
+it. A 354 px panel became **26 px**. A resize calls `updateGeometries()` once per step, so the panel
+collapsed and was restored once per step, and the view painted the row inside each gap: `paint`
+draws the thumbnail on every row it is given, because an open one is supposed to be covered.
+
+**Measured under a compositor before anything was changed**, which is this task's first criterion —
+`ai/evidence/2026-09-01-T297-panel-collapses-during-resize.md`, with a capture. 110 resize steps:
+**107 collapses to 26 px, 107 paints of the row its panel did not cover**, and 109 of 110 steps
+nevertheless *settling* correctly, which is why the first reading — which sampled after each step —
+saw nothing. After the fix, re-measured 2026-09-03 with the corrected probe: **0 exposed paints, 110/110
+settled**, and the panel's own resize events fell from **214 to 8, with 0 collapses to 26 px**. *(This
+read "214 to 9" and one collapse; that ninth event and that collapse were the instrument's own
+reconstruction — `T297-R3`. The pre-fix figures re-measured identically: 107 exposed, 214 resizes,
+107 collapses, 109 of 110 settling.)*
+
+**The fix is the guard its two siblings already have.** `setEditorData` and `setModelData` both
+begin `if not isinstance(editor, QComboBox)`; `updateEditorGeometry` did not. Anything that is not
+this delegate's editor now goes to `super()`, which sizes an editor to `option.rect` — exactly right
+for an index widget spanning the row.
+
+**This is what `T-296` was working around, and that is worth stating rather than leaving to be
+rediscovered.** `T-296` reordered `_mount_panel` so `scrollTo` — which calls `updateGeometries()` —
+could not undo the geometry `setGeometry` had just set. The reorder is still correct and still
+tested; the reason a scroll destroyed the geometry was this method, one layer down. **`T-296` is not
+reopened**: it is Complete, approved, and its own regression still passes.
+
+*(Filed 2026-08-28 by `T-212`'s checklist run, deliberately without a cause.* The maintainer's
+report: *"when changing the window size while the naming information is up, the thumbnail cuts in
+and out very rapidly. That shouldn't happen."*)
+**Owner:** Implementer
+**Priority:** Low — it is visual noise during a drag, and it is the least understood thing the run
+found
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/add_dialog.py` `panel_height_for`, which reads the **viewport's** height,
+so every resize step changes the row's size hint; `_mount_panel`'s note that `setIndexWidget`
+defers geometry to `updateEditorGeometries`, which runs on paint; `T-296`
+**Affected surfaces:** `ui/row_delegate.py` (`updateEditorGeometry`), `tests/ui/test_row_delegate.py`;
+the instrument is `tests/ui/_t297_resize_probe.py` and `tools/t297_resize_session.sh`
+**Risk:** Low
+
+#### What was measured, and what it does not show
+
+**It did not reproduce offscreen.** Across eight resize steps with the template panel open:
+
+```
+thumbnail loads : 0        # nothing re-fetches
+cancels         : 0
+```
+
+and the panel's geometry matched the row's `visualRect` at **every** step, from 762 px down to
+430 px and back up. So it is neither the thumbnail being reloaded nor the panel losing coverage in
+any way a headless process can see.
+
+**The plausible mechanism is unproven and is recorded as a hypothesis, not a finding.**
+`panel_height_for` reads `self._list.viewport().height()`, so every resize step changes the row's
+size hint; the panel's re-placement is deferred to paint; and the delegate underneath — which draws
+the thumbnail — is what shows in any gap. That is consistent with `T-108`'s comments and with
+`T-296`, and it is not evidence.
+
+#### Acceptance criteria
+
+- **It is reproduced on a real display first**, with a capture, and the reproduction is recorded in
+  `ai/evidence/` before anything is changed. An offscreen process does not do a continuous resize
+  and its style is not necessarily the session's
+- **The cause is named before the fix**, and if the cause turns out to be `T-296`'s, this task is
+  closed against that one rather than fixed twice
+- **If it proves to be Qt or compositor behaviour** this application can only work around, that is
+  recorded as the finding and the workaround is a separate decision
+
+#### Out of scope
+
+- Guessing. `T-296` is filed with a measured cause; this one is not, and the two should not be
+  merged on the strength of sitting near each other
+
 
 ---
 

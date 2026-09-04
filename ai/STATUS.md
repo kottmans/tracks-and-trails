@@ -5,7 +5,37 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-31 — **Both exit paths now sequence the thread pools before Qt destroys
+**Last updated:** 2026-09-03 — **Phase 4's panel defects are closed, `T-297`'s fix is in and its
+*record* is what blocks it, and the nightly orphan alarm has been retired.** Read this first, then
+the pool section below it.
+
+**Closed since 2026-08-31.** `T-294` (an empty status line was a full-width tab stop), `T-295` (one
+guard keyed on the row swallowed a row's other verbs), `T-296` (a panel mounted at 26 px in a short
+list — an ordering, and its remaining shortfall is now a stated bound under `T-210`'s cap). All
+three approved. **`T-294`'s owed Windows check is paid**: push run `33525084577` completed
+`windows desktop`, and the two scheduled runs after it did too.
+
+**`T-297` is Blocked on its record, not on its code.** The flicker is reproduced, caused and fixed —
+`RowDelegate.updateEditorGeometry` was sizing an open row's panel like the row's format combo, which
+is also the layer `T-296` was working around. Two High findings are about how that was reached: the
+reproduction was taken on a nested compositor rather than a real display and its image is a labelled
+reconstruction (`T297-R1`), and the pre-fix evidence names the wrong cause (`T297-R2`). Both need a
+maintainer decision — a real-display pre-fix run, or an explicit amendment.
+
+**The nightly `STARBASE orphans` job is gone**, on a maintainer ruling. It was correct and
+permanently red over `T-268`'s seven preserved specimens. **The cost is that nothing watches that
+machine automatically any more**; `docs/RUNNER_ORPHANS.md` is the writeup, the seven are still
+preserved, and `T-268` is still Blocked on a live stack.
+
+**`T-238` is unmoved.** A count of where the crash's precondition is written was offered for
+criterion 4 and **was wrong on first publication** — `parent=None` was read as a parent and the
+item-view set was picked by eye. Corrected, it is 91 parentless product-widget constructions in the
+harness against 4 in the product, and 71 against 2 for the item-view-capable subset. It is an
+argument, not the guard firing, and the 2026-08-13 ruling still governs.
+
+---
+
+**Last updated:** 2026-09-01 — **Both exit paths now sequence the thread pools before Qt destroys
 the widget tree, and `T-289`'s criterion 2 is still deliberately open.** Read this section and the
 one after it, in that order: this one is what changed in the product, that one is what is still not
 established about the crash.
