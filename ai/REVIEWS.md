@@ -23731,3 +23731,85 @@ At review time `origin/main` was `cd08c7b`; `94b56f0` and `e26a8f9` were the two
 implementation commits. The Reviewer appended and committed only this review record. No reviewed
 source, submitted test, task/status text, evidence, handoff, specimen, branch, push, live display or
 remote state was changed.
+
+---
+
+## 2026-09-04 — T-297, T-268 and T-238 focused correction review
+
+**Reviewer:** Codex (Reviewer)
+**Correction boundary:** `d44700c497d4d19235b3f89ebbd919743643d699..`
+`756ca5969e7520937434476e2deb740753eb34b5` — four local correction commits.
+**Platform verified:** Spock, Qt/PySide6 6.11.1, offscreen and an isolated nested
+KWin/Wayland session. No live desktop, push or new CI run is claimed.
+
+### Verdicts
+
+| Subject | Verdict |
+|---|---|
+| `T-297` | **Still Blocked.** `T297-R3` is Resolved and the dated R2 correction repairs the false evidence text, but neither High criterion has its required disposition: R1 still lacks a live-display capture or amendment, and R2 still lacks the explicit exception required for a sequence that cannot now be recreated. |
+| `T-268` detector retirement | **Changes still requested.** The reference now preserves the seven specimens and the 390 MB figure is current, but R6's claimed workflow-wide absence guard has two valid YAML blind spots and R7's current task header still gives the superseded undecided disposition. |
+| `T-238` criterion-4 argument | **Changes still requested.** Literal `None` and the originally omitted concrete owners are corrected, but R11's new “upper bound” omits product item-view subclasses and six parentless `PlaylistPicker` sites. |
+| `COORD-R26` | **Resolved.** T-294's Windows obligation is tied to successful run `33525084577`, and the current snapshot includes the reviewed work and its outstanding High decisions. |
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Result | Required disposition | Status |
+|---|---|---:|---|---|---|
+| `T297-R1` | **High** | **Yes** | Unchanged: the pre-fix run is still nested `kwin_wayland --virtual`, and the image is still a labelled reconstruction. The correction now states that boundary accurately. | Run the pre-fix tree on the live display and retain a real defect capture, or record the maintainer's explicit amendment naming the evidence surrendered. | **Open** |
+| `T297-R2` | **High** | **Yes** | The evidence now correctly retracts `_on_list_resized` as the cause, names `RowDelegate.updateEditorGeometry`, reverses the T-296 relation and admits that the cause-before-fix criterion was missed. That resolves the false-current-record half. It cannot make the correct cause predate `cd08c7b`, and no maintainer exception is recorded. | Obtain the explicit maintainer exception required by the initial finding before moving T-297 to Complete. | **Partially resolved — correction complete; exception Open** |
+| `T297-R3` | **Medium** | **No — resolved** | Every reported paint/exposure/resize count is snapped before reconstruction; paint recording is disabled and the resize filter removed before the forced 26 px image. The drift assertion compares all four counters afterward. The review run reproduced the corrected **0 exposed / 8 resizes / 0 collapses / 110 of 110 settled** result. | None. | **Resolved** |
+| `T268-R6` | **Medium** | **Yes** | The helper now visits every current `*.yml`, but `names = {str(triggers)}` for a YAML sequence makes valid `on: [push, workflow_dispatch]` invisible. An independent STARBASE-scanner fixture in that form returned `{}`. The `*.yml` glob also ignores an otherwise identical `.yaml` workflow, which returned `{}` too. Thus the test still does not gate its stated “every workflow, automatic trigger” invariant. | Normalize mapping, scalar and sequence trigger forms to their event names; inspect both GitHub workflow extensions; add controls that a list-form automatic trigger and a `.yaml` automatic workflow are rejected while a manual-only route remains allowed. | **Open** |
+| `T268-R7` | **Medium** | **Yes** | The new reference is corrected: it keeps T-268 Blocked, preserves all seven, limits reap guidance to a new orphan and uses about 390 MB. But the live task summary at `ai/TASKS.md:14521` still says preservation and closure “are still open”; the next paragraphs say all seven are preserved and the task remains Blocked on a stack. The contradiction therefore moved into current truth rather than disappearing. | Delete that superseded decision request or date it as the pre-review state. Keep one current disposition: preserve all seven and keep T-268 Blocked on the live stack. | **Partially resolved — reference and cost fixed; task summary Open** |
+| `T238-R11` | **Medium** | **Yes** | `parent=None`, signature-mapped positional `None`, `PresetManager`, `OptionsDialog` and equipped `MainWindow` are now handled. The owner closure, however, seeds only classes that **construct** a name in `ITEM_VIEWS`. `EntryTable` is itself a `QTableView`, so it is not seeded; `PlaylistPicker` constructs `EntryTable`, so it is not reached transitively. Six parentless `PlaylistPicker` sites are omitted. Seeding product subclasses of item views changes the current harness subset from **71 to 77** while the product subset remains 2; 71 is therefore not the stated upper bound. The self-test's `Table(QWidget)` exercises only the construction path and cannot catch this. | Seed the closure with product classes transitively derived from an item view, add a self-test arm where a wrapper owns only such a subclass, rerun the counts, and correct TASKS/STATUS. Keep parentlessness, eventual ownership and destructor reach as separate predicates and do not move criterion 4. | **Open** |
+| `T238-R12` | **Low** | **No — mechanical with R11** | `audit()` now returns four values but its annotation and docstring still declare three. Every caller unpacks four. Direct `mypy tools/t289_ownership_audit.py` reports the incompatible return and all five unpack sites, although the configured project mypy scope does not include this tool. | Correct the return type/docstring while repairing R11. No additional behavioral pass is required for this item. | **Open — non-blocking** |
+| `COORD-R26` | **Low** | **No — resolved** | `ai/TASKS.md` records run `33525084577` as the paid T-294 Windows check, and `ai/STATUS.md` now names T-297's two High record blocks, T-268's alarm retirement and standing stack dependency, and T-238's unchanged criterion-4 ruling. | None. | **Resolved** |
+
+### Independent controls
+
+The T-238 subclass control rebuilt the same static closure while seeding product classes whose
+base chain reaches `QAbstractItemView`. It found `EntryTable` and `StagingList` as item-view
+subclasses, then reached `PlaylistPicker` through its `EntryTable(self)` construction. Against the
+submitted parentless list the result was:
+
+```text
+tests: parentless=91  item-view-capable=77  submitted=71  missed=['PlaylistPicker']
+src:   parentless=4   item-view-capable=2   submitted=2
+```
+
+The T-268 control parsed two isolated valid workflow fixtures through the submitted helper. A
+`list-trigger.yml` with `on: [push, workflow_dispatch]` and a STARBASE scanner, and a
+`mapping-trigger.yaml` with `push`, both produced `{}`. Neither would make
+`test_the_windows_scan_stays_removed()` fail.
+
+The corrected T-297 session completed under the private compositor in 4.0 seconds and reported:
+
+```text
+delegate paints 38; EXPOSED 0; panel resizes 8; resizes to 26 px 0; settled 110/110
+VERDICT: NOT REPRODUCED — every paint of the open row was covered by its panel
+```
+
+### Checks
+
+| Check | Result |
+|---|---|
+| Focused orphan/T-297/placement set | **40 passed in 3.75 s**. |
+| Ownership audit | Submitted self-test passed; current runs reproduced **91** parentless harness sites, **4** product sites and the submitted **71 / 2** item-view-capable figures. The subclass control demonstrated the missing six sites above. |
+| T-297 isolated compositor probe | Passed with **0 / 8 / 0, 110/110**; capture completed without counter drift. |
+| R6 failure injection | Both the valid list-trigger `.yml` and automatic `.yaml` scanner escaped the submitted guard. |
+| Ruff / format | Passed; **230 files** checked for formatting. |
+| mypy Linux / Windows target | Both configured project commands passed over **164 source files**. Directly checking the changed ownership tool exposed R12's false return annotation (and pre-existing AST-narrowing errors); that diagnostic is outside the configured scope. |
+| Diff / placement / commit gate | `git diff --check` clean; placement is included in the 40 tests; **4 commits** checked in `d44700c..756ca59`. |
+| Submitted broader evidence | Implementer reports **3,888 passed / 21 skipped** and the stated mutations. The full suite and mutation campaigns were not repeated. |
+
+### Readiness
+
+Keep T-297 Blocked on **both** R1 and R2. R3 needs no further work; the remaining choices are the
+maintainer's evidence/amendment decisions, not another product correction. Keep T-268 Blocked and
+its seven specimens preserved while correcting R6's trigger/file coverage and the current R7
+paragraph. Keep T-238 Ready and criterion 4 unchanged while correcting R11's subclass closure and
+counts. `COORD-R26` is complete.
+
+Before this review commit the checkout was seven commits ahead of `origin/main` at `cd08c7b`; the
+four correction commits were unpushed. The Reviewer appended only this record. No reviewed source,
+submitted test, task/status text, evidence, handoff, specimen, branch, push, live display or remote
+state was changed.
