@@ -67,6 +67,22 @@ NOT_A_WIDGET: Final = frozenset(
     }
 )
 
+#: Qt's item views, whose destructor is the one `T-238`'s worker died in. A widget that owns one —
+#: directly or through another product widget — takes it down when Python collects it.
+ITEM_VIEWS: Final = frozenset(
+    {
+        "QAbstractItemView",
+        "QListView",
+        "QTableView",
+        "QTreeView",
+        "QColumnView",
+        "QListWidget",
+        "QTableWidget",
+        "QTreeWidget",
+        "QUndoView",
+    }
+)
+
 #: The calls that hand a C++ widget back to Python after it was parented.
 UNPARENTING: Final = ("setParent", "takeWidget", "takeItem", "removeWidget", "takeAt")
 
@@ -108,6 +124,42 @@ def product_widget_names(trees: dict[Path, ast.Module], qt: set[str]) -> set[str
     return widgets
 
 
+def item_view_owners(trees: dict[Path, ast.Module], product: set[str]) -> set[str]:
+    """Product widget classes that construct an item view, resolved transitively (`T238-R11`).
+
+    **Structural, and it replaces a hand-picked list.** The first version of this reading named four
+    classes by eye and missed at least two — `PresetManager` and `OptionsDialog` each own a
+    `QListWidget` — which is the failure mode `ai/TESTING.md` §13 is about: a set chosen to fit the
+    conclusion being drawn.
+
+    **Transitive, because ownership is.** A class that constructs another product widget owning an
+    item view owns one too, and that is how a `MainWindow` reaches a `QListView`.
+
+    **What it cannot see is stated rather than discovered**: whether a *given* construction actually
+    builds the view. `MainWindow` builds its queue only when equipped, so this answers *"can own"*
+    and never *"does own at this site"*. `audit` reports the two separately for that reason.
+    """
+    builds: dict[str, set[str]] = {}
+    for tree in trees.values():
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef) or node.name not in product:
+                continue
+            made = builds.setdefault(node.name, set())
+            for inner in ast.walk(node):
+                if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name):
+                    made.add(inner.func.id)
+
+    owners = {name for name, made in builds.items() if made & ITEM_VIEWS}
+    growing = True
+    while growing:
+        growing = False
+        for name, made in builds.items():
+            if name not in owners and made & owners:
+                owners.add(name)
+                growing = True
+    return owners
+
+
 def own_initialisers(trees: dict[Path, ast.Module], product: set[str]) -> dict[str, list[str]]:
     """Each product widget's own `__init__` parameters, when it defines one."""
     signatures: dict[str, list[str]] = {}
@@ -132,12 +184,27 @@ def is_parented(
     literal is never one. For a product class that declares its own `__init__` the question is
     asked exactly, against that signature.
     """
-    if any(keyword.arg == "parent" for keyword in call.keywords):
-        return True
+    given = [keyword.value for keyword in call.keywords if keyword.arg == "parent"]
+    if given:
+        # **`parent=None` is not a parent** (`T238-R11`). This returned `True` for any `parent=`
+        # keyword without looking at its value, so four real sites — a `PresetManager` and three
+        # views written `parent=None` — were counted as parented. The direction of that error is
+        # the dangerous one for this instrument: it hides candidates.
+        return not all(_is_literal_none(value) for value in given)
     if name in product and name in signatures:
         parameters = signatures[name]
-        return "parent" in parameters and len(call.args) > parameters.index("parent")
+        if "parent" not in parameters:
+            return False
+        position = parameters.index("parent")
+        if len(call.args) <= position:
+            return False
+        return not _is_literal_none(call.args[position])
     return bool(call.args) and not isinstance(call.args[-1], ast.Constant)
+
+
+def _is_literal_none(node: ast.expr) -> bool:
+    """Whether this argument is the literal `None`, which owns nothing."""
+    return isinstance(node, ast.Constant) and node.value is None
 
 
 def audit(
@@ -165,6 +232,7 @@ def audit(
     qt = qt_widget_names(defining)
     product = product_widget_names(defining, qt)
     signatures = own_initialisers(defining, product)
+    owners = item_view_owners(defining, product)
     every = qt | product if vocabulary is None else product
 
     parentless: list[tuple[str, int, str, str]] = []
@@ -185,15 +253,25 @@ def audit(
             total += 1
             if not is_parented(node, name, product, signatures):
                 parentless.append((relative, node.lineno, name, lines[node.lineno - 1].strip()))
-    return parentless, total, unparenting
+    return parentless, total, unparenting, owners
 
 
 SELF_TEST_SOURCE: Final = """
-from PySide6.QtWidgets import QLabel, QWidget
+from PySide6.QtWidgets import QLabel, QListWidget, QWidget
 
 class Panel(QWidget):
     def __init__(self, jobs, parent=None):
         super().__init__(parent)
+
+class Table(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._rows = QListWidget(self)
+
+class Screen(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._table = Table(self)
 
 def build():
     loose = QLabel("just text")          # parentless: a literal is not a parent
@@ -201,9 +279,12 @@ def build():
     keyword = QLabel("text", parent=loose)
     orphan = Panel(jobs=None)            # parentless: its own signature says so
     adopted = Panel(None, loose)         # parented: positional lands on `parent`
+    said_none = Panel(None, parent=None) # parentless: `parent=None` owns nothing (T238-R11)
+    passed_none = Panel(None, None)      # parentless: the signature-mapped positional is None
+    view_owner = Table()                 # parentless, and it owns a QListWidget
     inherited = QWidget(loose)
     loose.setParent(None)                # an un-parenting call
-    return titled, keyword, orphan, adopted, inherited
+    return titled, keyword, orphan, adopted, said_none, passed_none, view_owner, inherited
 """
 
 
@@ -218,21 +299,44 @@ def self_test() -> int:
     with tempfile.TemporaryDirectory(prefix="t289-audit-") as directory:
         fixture = Path(directory)
         (fixture / "sample.py").write_text(SELF_TEST_SOURCE)
-        parentless, total, unparenting = audit(fixture)
+        parentless, total, unparenting, _owners = audit(fixture)
     found = {(name, line) for _, line, name, _ in parentless}
     failures: list[str] = []
-    if total != 6:
-        failures.append(f"counted {total} constructions, expected 6")
+    if total != 11:
+        failures.append(f"counted {total} constructions, expected 11")
     if not any(name == "QLabel" for name, _ in found):
         failures.append("the parentless QLabel('just text') was not found")
     if any(name == "QWidget" for name, _ in found):
         failures.append("QWidget(loose) is parented and was reported as parentless")
     if not any(name == "Panel" for name, _ in found):
         failures.append("Panel(jobs=None) is parentless by its own signature and was not found")
-    if len([1 for name, _ in found if name == "Panel"]) != 1:
-        failures.append("Panel(None, loose) is parented and was reported as parentless")
+    # `Panel` is constructed four times and exactly three are parentless, so the `said_none` count
+    # below also asserts that `Panel(None, loose)` — the parented one — stayed out.
     if len(unparenting) != 1:
         failures.append(f"found {len(unparenting)} un-parenting calls, expected 1")
+
+    # **`parent=None` and a positional `None` are not parents** (`T238-R11`). Both arms, because
+    # the two travel through different branches of `is_parented` and the keyword one is what
+    # actually miscounted four sites in `tests/`.
+    said_none = [line for name, line in found if name == "Panel"]
+    if len(said_none) != 3:
+        failures.append(
+            f"found {len(said_none)} parentless Panel constructions, expected 3: the keyword "
+            "`parent=None`, the positional `None`, and the one that names no parent at all"
+        )
+
+    # **Item-view ownership is transitive, and `Screen` never mentions one** (`T238-R11`). It owns
+    # a `Table`, which owns a `QListWidget`; a set built by eye is how `PresetManager` and
+    # `OptionsDialog` were missed.
+    with tempfile.TemporaryDirectory(prefix="t289-owners-") as directory:
+        fixture = Path(directory)
+        (fixture / "sample.py").write_text(SELF_TEST_SOURCE)
+        _p, _t, _u, owners = audit(fixture)
+    for expected in ("Table", "Screen"):
+        if expected not in owners:
+            failures.append(f"{expected} owns an item view and was not classified as one")
+    if "Panel" in owners:
+        failures.append("Panel owns no item view and was classified as one")
 
     # **The vocabulary split, which `--harness` is** (`T-238`). Given the same fixture as both
     # trees, only the *product* class may be counted: a test constructing `QWidget()` as a scratch
@@ -242,7 +346,7 @@ def self_test() -> int:
     with tempfile.TemporaryDirectory() as directory:
         fixture = Path(directory)
         (fixture / "sample.py").write_text(SELF_TEST_SOURCE)
-        split, split_total, _ = audit(fixture, vocabulary=fixture)
+        split, split_total, _unparent, _own = audit(fixture, vocabulary=fixture)
     names = {name for _path, _line, name, _source in split}
     if not names:
         failures.append("the vocabulary split found nothing at all, so --harness measures nothing")
@@ -266,6 +370,26 @@ def self_test() -> int:
     return 0
 
 
+def _report_item_views(parentless: list[tuple[str, int, str, str]], owners: set[str]) -> None:
+    """Report the item-view question as its own predicate, never folded into the count above.
+
+    **Three different things were being merged** (`T238-R11`): parentless at construction, still
+    Python-owned afterwards, and able to destroy an item-view descendant. This prints only the
+    third, and prints it as *"can own"* — whether a given site's widget actually builds its view is
+    not decidable here, and `MainWindow` is the case that proves it: it builds a queue only when
+    equipped.
+    """
+    among = sorted({name for _p, _l, name, _s in parentless if name in owners})
+    sites = [record for record in parentless if record[2] in owners]
+    print(f"\nof those, classes that CAN own an item view (transitively): {len(sites)} sites")
+    print(f"  classes: {', '.join(among) or 'none'}")
+    print(
+        "  **`can own` is not `does own here`** — a construction that does not equip the widget "
+        "builds no view. This number is an upper bound on the sites that could run "
+        "`~QAbstractItemView`, not a count of the ones that would."
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--self-test", action="store_true", help="classify a known fixture, exit")
@@ -279,21 +403,23 @@ def main() -> int:
         return self_test()
 
     if arguments.harness:
-        parentless, total, unparenting = audit(TESTS, vocabulary=SRC)
+        parentless, total, unparenting, owners = audit(TESTS, vocabulary=SRC)
         print(f"product-widget constructions in {TESTS}: {total}")
-        print(f"without a Qt parent: {len(parentless)}\n")
+        print(f"without a Qt parent at the call site: {len(parentless)}\n")
         for path, line, name, source in parentless:
             print(f"  {path}:{line}  {name}\n      {source}")
+        _report_item_views(parentless, owners)
         print(f"\ncalls that could hand a widget back to Python: {len(unparenting)}")
         for path, line, source in unparenting:
             print(f"  {path}:{line}\n      {source}")
         return 0
 
-    parentless, total, unparenting = audit(SRC)
+    parentless, total, unparenting, owners = audit(SRC)
     print(f"widget constructions in {SRC}: {total}")
     print(f"without a Qt parent: {len(parentless)}\n")
     for path, line, name, source in parentless:
         print(f"  {path}:{line}  {name}\n      {source}")
+    _report_item_views(parentless, owners)
     print(f"\ncalls that could hand a widget back to Python: {len(unparenting)}")
     for path, line, source in unparenting:
         print(f"  {path}:{line}\n      {source}")
