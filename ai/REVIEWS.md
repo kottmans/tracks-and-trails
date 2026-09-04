@@ -23813,3 +23813,120 @@ Before this review commit the checkout was seven commits ahead of `origin/main` 
 four correction commits were unpushed. The Reviewer appended only this record. No reviewed source,
 submitted test, task/status text, evidence, handoff, specimen, branch, push, live display or remote
 state was changed.
+
+---
+
+## 2026-09-04 — T-271 and T-282 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Combined boundary:** `b859ebd75d36ecfc0fe142207299b2289637bac9..`
+`78e02b2c37ab4129fa1452bad845d542ab2d7965` — two task commits, considered separately below.
+**Platform verified:** Spock, Qt/PySide6 6.11.1, offscreen. No Windows execution of either
+submitted commit, push or live display is claimed.
+
+### Verdicts
+
+| Task | Boundary | Verdict |
+|---|---|---|
+| `T-271` | `b859ebd..7ca8e63` | **Approved.** The shared resolver rejects both an empty sequence and the measured bare `Qt.Key_Exit`, preserves a usable platform answer, and both actions are wired through it. The sentinel wiring test is the correct substitute for a product mutation that offscreen `StandardKey.New` cannot distinguish. The first post-push `windows desktop` execution remains required and any failure of either action's platform assertion reopens the task. No implementation finding. |
+| `T-282` | `7ca8e63..78e02b2` | **Changes requested.** The command-line flag is accepted as the mechanism and the main-process route works, but a prefix typo is accepted as the real option and the chosen level never reaches spawned workers. The valid flag-to-logger composition also has no regression. |
+
+### T-282 mechanism ruling
+
+**Accept `--log-level=LEVEL`.** The request came from a terminal-driven diagnosis, the flag is
+ephemeral, and it makes a high-volume level a per-run choice rather than durable application state.
+A Settings toggle would make accidentally persistent DEBUG logs the default failure mode; an
+environment variable is less discoverable without gaining anything the current terminal route
+needs. Both remain possible future aliases onto the same `configure_logging(level=…)` seam, but
+neither is required for this task. The accepted spelling is the one documented by the submission:
+one token, `--log-level=NAME`.
+
+This ruling resolves the choice the first acceptance criterion reserved. It does not approve the
+current behavior while the findings below remain open.
+
+### T-282 findings
+
+| ID | Severity | Blocks approval | Finding | Required disposition | Status |
+|---|---|---:|---|---|---|
+| `T282-R1` | **Medium** | **Yes — observable option parsing is wrong** | `_take_log_level()` selects every argument beginning with `--log-level`. Both `--log-levels=DEBUG` and `--log-level-extra=DEBUG` therefore resolve to level 10, are removed from the unknown-argument set and launch the application. They are misspelled options, not alternate spellings advertised by `USAGE`; the existing catch-all would reject them if the new parser did not consume them first. The invalid-value tests cover only the exact flag. | Match only the exact no-value token and the `--log-level=` prefix. Add route tests proving lookalike option names exit 2 through the unknown-argument path while `--log-level` still reports its missing value. | **Open** |
+| `T282-R2` | **Medium** | **Yes — the chosen application level stops at the GUI process** | `run()` passes the level only to the parent's `configure_logging()`. Production calls `prepare_this_worker(log_queue, log_job_id)`, which calls `worker_logging_handler()` without a level; that handler resets the child root and queue handler to its `INFO` default. The independent control measured effective level **20**, a DEBUG record never entering the queue, and the following INFO record entering it. Thus `--log-level=DEBUG` cannot capture this application's worker DEBUG records—including the session-header failure at `worker.py:529`—even though worker records are part of the application log and T-282 explicitly cites that queue/YtdlpLog path. | Carry the selected level into every real worker, or establish an equivalent parent-decides design in which the child queue never discards a level the application handler requested. Add a real worker control proving DEBUG reaches the application log at DEBUG and remains absent at the default INFO level. Keep yt-dlp `verbose` off. | **Open** |
+| `T282-R3` | **Low** | **No — test strength, behavior currently works** | No submitted test invokes `run()` with a valid `--log-level=DEBUG`. The launch tests cover help and two rejection paths; the logging tests call `configure_logging(level=…)` directly. Replacing line 207's `configure_logging(level=level)` with `configure_logging()` therefore leaves every new test green. The reviewer drove the real auto-quit launch and confirmed the current implementation does write a DEBUG announcement, but that composition is unguarded. | Add an isolated positive launch using the existing auto-quit/XDG harness, then read its application log and require the DEBUG header. This can be corrected with R1/R2 and needs no separate review pass. | **Open — non-blocking** |
+| `T282-R4` | **Low** | **No — current-truth wording** | The task and commit say an ordinary INFO run's log is unchanged in “volume and content,” while `configure_logging()` now emits a new INFO announcement on every ordinary run and the new test requires it. The intended compatible contract is clear—the default threshold and all prior operational records stay INFO, with the separately required one-line announcement added—but the literal current claim is false. | Correct the task to distinguish unchanged default filtering from the deliberately added level announcement. No behavior change is requested. | **Open — non-blocking** |
+
+### T-271 assessment
+
+`is_a_usable_accelerator()` is not an `isEmpty()` restatement: the direct control rejects both an
+empty sequence and `Qt.Key_Exit`, while accepting `Ctrl+N`. `resolve_standard_shortcut()` preserves
+an injected usable sequence, and each per-action wrapper supplies the correct standard key and
+fallback. The built-window parametrization asks the same usable predicate of both actions; its
+separate bare-key control prevents weakening that predicate to make the assertion vacuous.
+
+The wiring test earns its place. Replacing either resolver with a sentinel before constructing the
+window proves the action calls that resolver; binding raw `StandardKey.New` again would ignore the
+sentinel and fail even though offscreen Qt's own `Ctrl+N` remains usable. That is the behavior the
+submitted mutation could not expose through the product assertion alone.
+
+The implementation has no Windows-only branch, so approval need not wait for a pre-review push.
+But T-271 was filed because Windows had never executed an assertion on this action. Record the first
+post-push `windows desktop` result; it is the execution that turns “the suite both platforms run”
+into platform evidence.
+
+### Coordination finding
+
+| ID | Severity | Blocks approval | Finding | Required disposition | Status |
+|---|---|---:|---|---|---|
+| `COORD-R27` | **Low** | **No** | The T-271 commit also changes four unrelated task headings—T-273, T-279, T-272 and cancelled T-275—from **“Suggested acceptance criteria”** to **“Acceptance criteria, and where each stands.”** No corresponding dispositions were added, the changes are absent from the commit account, and T-275's cancelled proposal especially cannot be recast as accepted criteria by a shortcut task. | Restore those four headings in the ordinary completion sync, or make any genuinely intended historical/current-truth correction separately and explain it. This does not block T-271's implementation approval. | **Open — mechanical** |
+
+### Independent controls
+
+The exact T-282 main-process route works today. Launching the real application through the existing
+auto-quit harness with `--log-level=DEBUG` exited zero and wrote:
+
+```text
+DEBUG tracksandtrails logging at DEBUG to .../tracks-and-trails.log
+```
+
+The same parser accepted both lookalikes as though they were exact:
+
+```text
+--log-level=DEBUG       -> (10, [], None)
+--log-levels=DEBUG      -> (10, [], None)
+--log-level-extra=DEBUG -> (10, [], None)
+```
+
+Installing the worker handler exactly as production does produced:
+
+```text
+worker effective level 20
+debug queued False
+info queued INFO-SENTINEL
+```
+
+For T-271, the offscreen platform resolved `Quit` to bare `Exit` and `New` to `Ctrl+N`; the submitted
+predicate rejected the first and accepted the second. The focused tests exercised the resolver,
+built actions and sentinel wiring successfully.
+
+### Checks
+
+| Check | Result |
+|---|---|
+| Affected main-window/app-launch/logging/yt-dlp/placement set | **308 passed in 26.03 s**. The first sandboxed run had one infrastructure `PermissionError` opening its hermetic `127.0.0.1` server; the identical set passed outside that socket restriction. |
+| T-282 real launch | Exit **0**; one application log found under isolated XDG roots; first record announced **DEBUG**. |
+| T-282 parser/worker controls | Both misspelled prefixes were accepted; production-shaped worker discarded DEBUG and queued INFO. |
+| T-271 platform probe | `Quit = Exit / NoModifier / unusable`; `New = Ctrl+N / Control / usable`, matching the submitted discriminator. |
+| Ruff / format | Passed; **230 files** checked for formatting. |
+| mypy Linux / Windows target | Both clean over **164 source files**. |
+| Diff / placement / commit gate | `git diff --check` clean; placement included in the 308 tests; **2 commits** checked in `b859ebd..78e02b2`. |
+| Submitted broader evidence | Implementer reports full suite **3,913 passed / 21 skipped** and six mutations killed. The full suite and mutation campaign were not repeated. |
+| Windows boundary | `origin/main` is `d570362`; neither task commit has run there. The submitted base run is not evidence for these changes. |
+
+### Readiness
+
+T-271 may move to Complete at `7ca8e63`, with its first post-push Windows result recorded and a
+failure reopening it. T-282's flag choice is settled, but keep it In Review and correct R1/R2;
+fold R3/R4 into that same correction. `COORD-R27` is mechanical and does not hold T-271 open.
+
+Before this review commit the checkout was five commits ahead of `origin/main` at `d570362`; both
+reviewed commits were unpushed. The Reviewer appended only this record. No reviewed source,
+submitted test, task/status text, handoff, branch, push, CI run, live display or remote state was
+changed.
