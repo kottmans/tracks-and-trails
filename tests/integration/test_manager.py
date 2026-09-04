@@ -20,6 +20,7 @@ the instant it is signalled, and a process inside yt-dlp's download loop does no
 
 import contextlib
 import json
+import logging
 import multiprocessing as mp
 import os
 import subprocess
@@ -39,6 +40,7 @@ import pytest
 from PySide6.QtCore import QCoreApplication
 
 from tests.qt_lifecycle import drain
+from tracks_and_trails.core import logging as app_logging
 from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus, can_transition
@@ -7518,3 +7520,68 @@ def test_a_child_past_the_payload_read_carries_the_five_s_signature(
         "region it bounds them to — and, on Windows without the outer Job, contradicts T-266's "
         "measurement that only the pre-read window closes itself"
     )
+
+
+# --- T-282: the level the manager hands a worker, at the seam production uses ------------------
+
+
+class RecordingContext:
+    """The real spawn context, with the kwargs of every `Process(...)` kept.
+
+    Replaces `DownloadManager._context` the way `BrokenContext` does — the one seam a test can put
+    itself on the far side of without spawning anything.
+    """
+
+    def __init__(self) -> None:
+        self._real = mp.get_context("spawn")
+        self.spawned: list[dict[str, Any]] = []
+
+    def Process(self, *args: Any, **kwargs: Any) -> Any:  # noqa: N802 - matching multiprocessing
+        self.spawned.append(dict(kwargs.get("kwargs") or {}))
+        return self._real.Process(*args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._real, name)
+
+
+@pytest.mark.parametrize(
+    "level",
+    [logging.DEBUG, logging.WARNING],
+    ids=["DEBUG", "WARNING"],
+)
+def test_the_manager_hands_a_worker_the_level_this_process_is_at(
+    manager: Callable[..., DownloadManager],
+    repository: FakeRepository,
+    tmp_path: Path,
+    level: int,
+    spin: Callable[..., bool],
+) -> None:
+    """`T-282`: the spawn kwargs are the production edge, and nothing had asserted them.
+
+    The real-worker control in `tests/integration/test_worker.py` calls `prepare_this_worker`
+    directly, so it proves the *child* honours a level it is given and says nothing about whether
+    `DownloadManager` gives it one. Deleting `"log_level"` from the manager's kwargs left that
+    control green — correct by inspection, unguarded by test, which the review noted.
+
+    **Both levels, because a constant would satisfy one.** The assertion is that the manager passes
+    what *this process* is configured to, not a particular value.
+    """
+    repository.add(make_job("job-level", "https://example.invalid/level", tmp_path))
+    app_logging.configure_logging(directory=tmp_path / str(level), level=level)
+    download = manager(entry_point=child_reporting_a_clean_success)
+    recording = RecordingContext()
+    download._context = recording  # type: ignore[assignment]
+
+    download.start("job-level")
+    try:
+        assert recording.spawned, "the manager spawned nothing, so this asserts nothing"
+        passed = recording.spawned[0]
+        assert passed.get("log_level") == level, (
+            f"the manager handed the worker {passed.get('log_level')!r} while this process is at "
+            f"{logging.getLevelName(level)}; a worker would then filter somewhere the application "
+            "does not"
+        )
+        assert passed.get("log_queue") is not None, "the log queue seam is gone"
+        assert spin(lambda: download.is_idle, timeout=30)
+    finally:
+        download.shutdown()
