@@ -430,6 +430,15 @@ import yaml  # noqa: E402 — the wiring half of this file, deliberately below t
 
 CI_WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
 
+#: Every workflow, because `ci.yml` is not the universe (`T268-R6`). `flake-soak.yml` already runs
+#: the scanner, so a test that assumed one file would have missed a `STARBASE` scan added anywhere
+#: else — while claiming, in three records, that automatic detection on that machine stays absent.
+WORKFLOWS = CI_WORKFLOW.parent
+
+#: Triggers that fire without anybody asking. `workflow_dispatch` is deliberately not one: running
+#: the scanner by hand is the affordance the retirement kept.
+AUTOMATIC_TRIGGERS = ("schedule", "push", "pull_request")
+
 #: The path the step must invoke, not the bare filename — which also matches this test file.
 SCRIPT = "tools/orphan_scan.py"
 
@@ -591,6 +600,35 @@ def test_something_actually_invokes_the_scanner() -> None:
     )
 
 
+def automatic_starbase_scans() -> dict[str, str]:
+    """Every job in every workflow that runs the scanner on `STARBASE` from an automatic trigger.
+
+    **Machine and trigger, not filename** (`T268-R6`). What the retirement claims is that nothing
+    scans that machine *on its own* any more — not that `ci.yml` in particular does not. A job in a
+    second workflow would satisfy the old test and falsify all three records.
+
+    `workflow_dispatch`-only workflows are excluded on purpose: `flake-soak.yml` runs the scanner
+    that way, and running it by hand is what `docs/RUNNER_ORPHANS.md` tells a reader to do.
+    """
+    found: dict[str, str] = {}
+    for path in sorted(WORKFLOWS.glob("*.yml")):
+        parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not isinstance(parsed, dict):
+            continue
+        # `on` is YAML 1.1's boolean true, which is why this looks for both.
+        triggers = parsed.get("on") or parsed.get(True) or {}
+        names = set(triggers) if isinstance(triggers, dict) else {str(triggers)}
+        if not names & set(AUTOMATIC_TRIGGERS):
+            continue
+        for job_id, job in (parsed.get("jobs") or {}).items():
+            if not isinstance(job, dict) or job.get("runs-on") != STARBASE:
+                continue
+            steps = job.get("steps") or []
+            if any(SCRIPT in str(step.get("run", "")) for step in steps):
+                found[f"{path.name}::{job_id}"] = str(sorted(names))
+    return found
+
+
 def test_the_windows_scan_stays_removed() -> None:
     """`STARBASE orphans` was removed on 2026-09-03, and the absence is asserted on purpose.
 
@@ -609,15 +647,14 @@ def test_the_windows_scan_stays_removed() -> None:
     somebody closes on a tidy-up, and the reason it was made would have to be rediscovered — which
     is the shape `T-096` and `T214-R1` both name. `docs/RUNNER_ORPHANS.md` is the writeup.
     """
-    on_starbase = {
-        job_id for job_id, job in scanning_jobs().items() if job.get("runs-on") == STARBASE
-    }
+    automatic = automatic_starbase_scans()
 
-    assert not on_starbase, (
-        f"{sorted(on_starbase)} runs the scanner on {STARBASE!r} again. That job was removed "
-        "deliberately on 2026-09-03; read docs/RUNNER_ORPHANS.md before putting it back, and "
-        "decide what happens to the seven preserved specimens first — while they are alive it "
-        "will be red every night for a reason nobody needs telling twice"
+    assert not automatic, (
+        f"{sorted(automatic)} runs the scanner on {STARBASE!r} from an automatic trigger again. "
+        "That job was removed deliberately on 2026-09-03; read docs/RUNNER_ORPHANS.md before "
+        "putting it back, and decide what happens to the seven preserved specimens first — while "
+        "they are alive it will be red every run for a reason nobody needs telling twice. "
+        "Running the scanner by hand is untouched and is what the writeup points at"
     )
 
 

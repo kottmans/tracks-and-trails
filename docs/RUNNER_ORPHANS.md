@@ -5,6 +5,9 @@ them, and what to do if they appear again.
 **Owner:** Implementer.
 **Status:** Reference. **This is a machine condition, not an application defect** — no `src/` change
 was ever made for it, and none is outstanding.
+**`T-268` is still Blocked and its seven specimens are still preserved.** What was retired on
+2026-09-03 is the *nightly alarm*, not the task and not the evidence. `ai/TASKS.md` `T-268` is
+current truth for the disposition; if this file and that entry ever disagree, the entry is right.
 **Last updated:** 2026-09-03.
 
 ---
@@ -14,8 +17,12 @@ was ever made for it, and none is outstanding.
 Between 2026-08-04 and 2026-08-17, seven `multiprocessing` spawn children on the Windows runner
 outlived the process that created them and never exited. They sit blocked, using no CPU, holding
 about 390 MB between them. **The cause was never identified**, and after a month of measurement the
-remaining question is narrow enough — and the recurrence rare enough — that it is written down here
-rather than pursued further.
+remaining question is narrow — *which* lock, not whether a lock.
+
+**What was decided on 2026-09-03 is about the alarm, not about the question.** The nightly scan was
+retired because it was permanently red over these seven; `T-268` stays Blocked, and **all seven are
+still preserved** because a live stack from one of them is the only thing that would answer it and
+there are no other specimens.
 
 They are not a product fault. Nothing a user runs produces them; they came out of test runs on a
 self-hosted runner.
@@ -94,8 +101,13 @@ from one of the blocked threads — an attached debugger or an equivalent live-d
 3. **If you want the cause**, take a live stack before doing anything else — the specimen is the
    evidence, and a debugger that is killed rather than detached takes its debuggee with it.
 
-4. **Otherwise just reap them.** They are inert. The cost of leaving them is memory and a runner
-   that eventually stops accepting jobs, which is how the first five were found at all.
+4. **Do not reap the seven that are already there.** They are `T-268`'s only specimens and its
+   preservation requirement is standing; reaping them ends that task with the cause unknown, which
+   is a maintainer's decision and not a tidy-up. **A *new* orphan is a different matter** — it is
+   not evidence anybody is keeping, and the guidance above applies to it.
+
+   The cost of leaving the seven is memory and, eventually, a runner that stops accepting jobs —
+   which is how the first five were found at all. That is the trade being made, deliberately.
 
 ## What was removed, and what that costs
 
