@@ -15778,6 +15778,21 @@ of the three findings need the maintainer rather than more work.
   The criterion asks for a real display and a capture. **Needs either a pre-fix run on the live
   session or an explicit amendment** naming what is surrendered. Not mine to take, and not something
   to run unattended on the maintainer's desktop.
+#### Ruled 2026-09-04: the exception is granted, and the capture is being taken
+
+**`T297-R2` — exception granted.** The maintainer accepted that criterion 2 was missed and that the
+sequence cannot be created retroactively. What stands in its place is the dated correction in
+`ai/evidence/2026-09-01-T297-panel-collapses-during-resize.md`, which says the cause section is
+superseded, names the real writer, and records that the `T-296` relation was backwards. **The
+commits are not rewritten.** This finding no longer blocks Complete.
+
+**`T297-R1` — being answered rather than amended.** The maintainer chose to run the pre-fix tree on
+a real display and keep an actual capture, over amending the criterion.
+`tools/t297_prefix_capture.sh` puts that tree on the display from a `git worktree` at `331845d`,
+with `PYTHONPATH` overridden so the editable install cannot serve the fixed code instead. **Until
+that capture exists this task stays Blocked**, and a run that does *not* reproduce is a result to
+record rather than a reason to try again.
+
 - **`T297-R2` — the pre-fix record names the wrong cause.** `331845d` says the cause is
   `_on_list_resized`'s deferred relayout and that it is *not* `T-296`'s; both are wrong, and the
   real cause first appears in the commit that changes source. **The evidence file now carries a
