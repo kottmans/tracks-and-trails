@@ -13599,6 +13599,61 @@ session that has since been driven, and said so two lines above the section reco
 (`T289-R15`, second pass); it is kept as the statement of what was owed *then*, and the section
 below is what is owed now.
 
+#### Criterion 4, 2026-09-03: the harness builds this state 89 times and the product builds it once
+
+**Criterion 4 asks for product-versus-harness to be *established*, and every attempt so far tried to
+establish it by catching the fault.** Six probes asked *"is a product widget reaching the collector
+right now?"* — 60 isolated sessions, two real-display runs, a forced collection at two sampled
+moments, and the thumbnail pipeline on its own pool threads — and every one answered no. That
+question has the regress `T-289`'s ownership audit already named: another null sample cannot
+separate *there is none* from *we sampled the wrong instant*.
+
+**The complementary question has an end, and it had never been asked of the harness.** A widget can
+only be owned by Python if it is left without a Qt parent, so the places where this fault is even
+possible are finite and can be counted. `tools/t289_ownership_audit.py --harness` resolves the
+product's widget classes from `src/` and counts their construction sites in `tests/`:
+
+| | constructions | **without a Qt parent** |
+|---|---:|---:|
+| `src/tracks_and_trails` | 162 | **4** — and only `MainWindow` is ever reached; the other three are constructed by no product code (`T-289`, 2026-08-31) |
+| `tests/` | 92 | **89** |
+
+**Zero un-parenting calls in either tree** — no `setParent(None)`, `takeWidget()`, `removeWidget()`
+or `takeAt()` anywhere.
+
+**The 89 are 11 product widget classes across 12 files**, led by `MainWindow` (38), `FormatTable`
+(20), `LogView` (8), `PlaylistPicker` (6) and `PresetManager` (5).
+
+**38 of the 89 are `MainWindow`, and that number is doing less work than it looks.** `MainWindow`
+declares no `parent` parameter at all — it is a top-level window by design, exactly as the
+product's single one is — so those sites are parentless in the literal sense and unremarkable in
+the interesting one. **The headline number is therefore the wrong one to reason from**, and the
+comparison that matters is the subset below, which excludes it.
+
+**Four of those classes own an item view, which is what makes this the retained stack rather than a
+statistic.** `FormatTable` (20 sites), `PlaylistPicker` (6), `QueueView` (3) and `AddUrlDialog` (1)
+are `QWidget` containers holding a `QTableView`/`QListView` child — so collecting one parentless
+runs `~QAbstractItemView` on whichever thread the collector fired on, and `~QAbstractItemView` is
+exactly the stack `T-238`'s worker died in. **Exactly 30 sites in the harness; none in the
+product.** This is the load-bearing count, and it is the one to argue with.
+
+**What this establishes, and what it does not.** It establishes the *asymmetry* the criterion is
+about, by enumeration rather than by sampling: the state that permits this crash is built 89 times
+by the harness and once by the product, and the item-view form of it is built 30 times by the
+harness and never by the product. It does **not** identify the faulting object — that is criterion 3
+and remains open — and it is a static reading, so a widget Qt itself constructs is outside it, which
+is why the runtime survey exists beside it.
+
+**It does not close this task, and the standing ruling is why.** The maintainer ruled on 2026-08-13
+that *"if the guard ever fires on a real test, that is the evidence criterion 4 asks for and the
+task closes on it; until then the entry stays open."* That bar is a firing, not an argument, and
+this is an argument — a strong one, and the first that is not another null sample. **Whether it
+changes the bar is the maintainer's call**, and it is put here rather than taken.
+
+*(`--harness` is new, and its own self-test covers it: given one fixture as both trees it must count
+the product class and refuse Qt's own. Verified by mutation — removing the narrowing fails the
+self-test on both assertions.)*
+
 #### Criterion 4, 2026-08-31: both halves of the real-session step have run, and neither answers it
 
 **The update-route half** is `T-289`'s driven measurement — 60 isolated sessions at `179f73e`,

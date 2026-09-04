@@ -44,6 +44,9 @@ from typing import Final
 
 SRC: Final = Path("src/tracks_and_trails")
 
+#: The harness, for `--harness`. `T-238`'s crash is a test crash.
+TESTS: Final = Path("tests")
+
 #: Imported from `QtWidgets` but not widgets: nothing here has a parent to be owned by.
 NOT_A_WIDGET: Final = frozenset(
     {
@@ -137,13 +140,32 @@ def is_parented(
     return bool(call.args) and not isinstance(call.args[-1], ast.Constant)
 
 
-def audit(root: Path) -> tuple[list[tuple[str, int, str, str]], int, list[tuple[str, int, str]]]:
-    """Return the parentless construction sites, the total, and any un-parenting calls."""
+def audit(
+    root: Path, *, vocabulary: Path | None = None
+) -> tuple[list[tuple[str, int, str, str]], int, list[tuple[str, int, str]]]:
+    """Return the parentless construction sites, the total, and any un-parenting calls.
+
+    **`vocabulary` asks a different question, and it is `T-238`'s** (`T238-R2`'s criterion 4:
+    *"Product behavior versus test-harness behavior is established"*). Given a second tree, the
+    widget *classes* are resolved from there and the construction *sites* are counted here — so
+    pointing `root` at `tests/` and `vocabulary` at `src/` answers **where the harness builds a
+    product widget without a parent**, which is the state that lets the collector destroy a Qt
+    object off the GUI thread.
+
+    **Qt's own classes are deliberately excluded in that mode.** A test constructing `QWidget()` as
+    a scratch parent is ordinary and says nothing; a test constructing a *product* screen with no
+    parent is the shape `T-238`'s arm B reproduced the abort with.
+    """
     trees = {path: ast.parse(path.read_text()) for path in sorted(root.rglob("*.py"))}
-    qt = qt_widget_names(trees)
-    product = product_widget_names(trees, qt)
-    signatures = own_initialisers(trees, product)
-    every = qt | product
+    defining = (
+        trees
+        if vocabulary is None
+        else {path: ast.parse(path.read_text()) for path in sorted(vocabulary.rglob("*.py"))}
+    )
+    qt = qt_widget_names(defining)
+    product = product_widget_names(defining, qt)
+    signatures = own_initialisers(defining, product)
+    every = qt | product if vocabulary is None else product
 
     parentless: list[tuple[str, int, str, str]] = []
     unparenting: list[tuple[str, int, str]] = []
@@ -211,6 +233,28 @@ def self_test() -> int:
         failures.append("Panel(None, loose) is parented and was reported as parentless")
     if len(unparenting) != 1:
         failures.append(f"found {len(unparenting)} un-parenting calls, expected 1")
+
+    # **The vocabulary split, which `--harness` is** (`T-238`). Given the same fixture as both
+    # trees, only the *product* class may be counted: a test constructing `QWidget()` as a scratch
+    # parent is ordinary and answers nothing. Asserted because a mode that quietly matched nothing
+    # would report a confident "no parentless product widgets in the harness" — the shape
+    # `ai/TESTING.md` §13 is about, and the one this whole tool exists downstream of.
+    with tempfile.TemporaryDirectory() as directory:
+        fixture = Path(directory)
+        (fixture / "sample.py").write_text(SELF_TEST_SOURCE)
+        split, split_total, _ = audit(fixture, vocabulary=fixture)
+    names = {name for _path, _line, name, _source in split}
+    if not names:
+        failures.append("the vocabulary split found nothing at all, so --harness measures nothing")
+    if any(name.startswith("Q") for name in names):
+        failures.append(f"the vocabulary split counted Qt's own classes: {sorted(names)}")
+    if "Panel" not in names:
+        failures.append("the vocabulary split missed the parentless product widget")
+    if split_total >= total:
+        failures.append(
+            f"the split counted {split_total} constructions against {total} unsplit; it is "
+            "supposed to be narrower"
+        )
     for failure in failures:
         print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
     if failures:
@@ -225,9 +269,25 @@ def self_test() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--self-test", action="store_true", help="classify a known fixture, exit")
+    parser.add_argument(
+        "--harness",
+        action="store_true",
+        help="scan tests/ for parentless constructions of product widget classes (T-238)",
+    )
     arguments = parser.parse_args()
     if arguments.self_test:
         return self_test()
+
+    if arguments.harness:
+        parentless, total, unparenting = audit(TESTS, vocabulary=SRC)
+        print(f"product-widget constructions in {TESTS}: {total}")
+        print(f"without a Qt parent: {len(parentless)}\n")
+        for path, line, name, source in parentless:
+            print(f"  {path}:{line}  {name}\n      {source}")
+        print(f"\ncalls that could hand a widget back to Python: {len(unparenting)}")
+        for path, line, source in unparenting:
+            print(f"  {path}:{line}\n      {source}")
+        return 0
 
     parentless, total, unparenting = audit(SRC)
     print(f"widget constructions in {SRC}: {total}")
