@@ -21,7 +21,7 @@ import tomllib
 from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
-from typing import Final, cast
+from typing import Any, Final, cast
 
 import shiboken6
 from platformdirs import user_config_dir
@@ -126,16 +126,83 @@ CLEAR_FINISHED_SHORTCUT: Final = "Ctrl+Shift+C"
 #: the hole the defect came through.
 QUIT_SHORTCUT_FALLBACK: Final = "Ctrl+Q"
 
+#: What `Add URLs…` binds when the platform's `New` is unusable (`T-271`). The same sequence every
+#: measured Linux plugin already answers, so this changes nothing where the theme is sane and is
+#: only reached where it is not.
+ADD_URLS_SHORTCUT_FALLBACK: Final = "Ctrl+N"
 
-def resolve_quit_shortcut(standard: QKeySequence | None = None) -> QKeySequence:
-    """Return the platform's `Quit` sequence, or `QUIT_SHORTCUT_FALLBACK` if it has none.
 
-    `standard` exists so a test can hand in the **empty** sequence Windows produces and drive the
-    fallback on any platform. Left `None`, it asks Qt, which needs a `QGuiApplication` to answer.
+def is_a_usable_accelerator(sequence: QKeySequence) -> bool:
+    """Whether `sequence` is something a user can actually type into a menu (`T-271`).
+
+    **`isEmpty()` is not the question, and that was `T-270`'s trap** — its own entry says so. The
+    headless themes answer `StandardKey.Quit` with a bare **`Qt.Key_Exit`**, which is non-empty,
+    stringifies to `"Exit"`, and is a hardware key no keyboard accelerator can carry. A guard that
+    only refused the empty sequence bound that unusable answer and looked correct.
+
+    **The discriminator is a modifier, and it is measured rather than reasoned.** Offscreen at
+    PySide6 6.11.1: `Quit` → `"Exit"`, `NoModifier`; `Preferences` → `"Settings"`, `NoModifier`;
+    `New` → `Ctrl+N`, `Control`; `Open` → `Ctrl+O`; `Close` → `Ctrl+F4`. The unusable answers are
+    exactly the bare hardware keys, and a menu accelerator without a modifier would in any case
+    swallow a plain keystroke from the rest of the window.
+    """
+    if sequence.isEmpty():
+        return False
+    # Qt 6's `QKeySequence` indexes to a `QKeyCombination` and PySide's stub does not declare it,
+    # the same shape as the `style_option.widget` mismatch `row_delegate.paint` documents. `cast`
+    # states the real contract rather than suppressing the check.
+    combinations = cast("Any", sequence)
+    return all(
+        combinations[position].keyboardModifiers() != Qt.KeyboardModifier.NoModifier
+        for position in range(sequence.count())
+    )
+
+
+def resolve_standard_shortcut(
+    key: QKeySequence.StandardKey, fallback: str, standard: QKeySequence | None = None
+) -> QKeySequence:
+    """The platform's sequence for `key`, or `fallback` when what it answers is unusable.
+
+    **One seam for every standard key this project binds**, which is `T-271`'s second criterion.
+    `T-270` fixed `Quit` with a `Quit`-shaped helper and was forbidden from touching the neighbour
+    twenty-seven lines up; binding a second action the same unguarded way, or guarding it with a
+    second bespoke helper, is how the third one gets missed. **Nothing here is per-action** — the
+    caller supplies the key and what to use instead.
+
+    **A fallback, not a replacement.** `xcb` and `wayland` answer `Ctrl+Q` and `Ctrl+N` and are
+    kept; the platform's opinion is only overridden when it cannot be typed.
+
+    `standard` exists so a test can hand in the empty sequence Windows produces, or the bare
+    `Qt.Key_Exit` the headless themes produce, and drive the fallback on any platform. Left `None`,
+    it asks Qt, which needs a `QGuiApplication` to answer.
     """
     if standard is None:
-        standard = QKeySequence(QKeySequence.StandardKey.Quit)
-    return QKeySequence(QUIT_SHORTCUT_FALLBACK) if standard.isEmpty() else standard
+        standard = QKeySequence(key)
+    return standard if is_a_usable_accelerator(standard) else QKeySequence(fallback)
+
+
+def resolve_quit_shortcut(standard: QKeySequence | None = None) -> QKeySequence:
+    """Return the platform's `Quit` sequence, or `QUIT_SHORTCUT_FALLBACK` if it is unusable.
+
+    `T-270`'s entry point, kept so its contract and its tests survive `T-271` generalising the
+    mechanism underneath it.
+    """
+    return resolve_standard_shortcut(
+        QKeySequence.StandardKey.Quit, QUIT_SHORTCUT_FALLBACK, standard
+    )
+
+
+def resolve_add_urls_shortcut(standard: QKeySequence | None = None) -> QKeySequence:
+    """Return the platform's `New` sequence, or `ADD_URLS_SHORTCUT_FALLBACK` if it is unusable.
+
+    **Filed as a gap in evidence, not as a defect** (`T-271`): `New` resolves to `Ctrl+N` on all
+    four Linux plugins measured, and **nothing has ever asserted it on Windows**. This does not
+    claim Windows answers badly; it removes the class of failure `T-270` measured on the
+    neighbouring line, and the test beside it is what would say so if Windows ever did.
+    """
+    return resolve_standard_shortcut(
+        QKeySequence.StandardKey.New, ADD_URLS_SHORTCUT_FALLBACK, standard
+    )
 
 
 #: The dynamic property the style sheet fills a toolbar's primary button against (`T-132`).
@@ -1468,7 +1535,7 @@ class MainWindow(QMainWindow):
         # has (`ai/TESTING.md` §10), and which mangled the ellipsis to a replacement character on
         # its first run.
         add_action = QAction("&Add URLs...", self)
-        add_action.setShortcut(QKeySequence.StandardKey.New)
+        add_action.setShortcut(resolve_add_urls_shortcut())
         add_action.setMenuRole(QAction.MenuRole.NoRole)
         add_action.setObjectName("actionAddUrls")
         add_action.setEnabled(self.can_add_urls)

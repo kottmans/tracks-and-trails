@@ -1209,6 +1209,82 @@ was not taken first.
 
 ---
 
+### T-271 — `Add URLs...` relies on the same unguarded standard key `T-270` was filed for
+
+**Status:** **In Review — built 2026-09-04, not yet reviewed.** **One seam, not a second bespoke
+helper**, which is the second criterion: `resolve_standard_shortcut(key, fallback)` guards every
+standard key this project binds, and `resolve_quit_shortcut` — `T-270`'s entry point, and its tests
+— now calls into it rather than owning the logic.
+
+**`isEmpty()` is replaced by a measured discriminator.** Offscreen at PySide6 6.11.1, `Quit` answers
+`"Exit"` and `Preferences` answers `"Settings"`, both with **`NoModifier`**, while `New` → `Ctrl+N`,
+`Open` → `Ctrl+O` and `Close` → `Ctrl+F4` all carry `Control`. The unusable answers are exactly the
+bare hardware keys, so `is_a_usable_accelerator` requires a modifier — which is the criterion's
+*"decided against the `Qt.Key_Exit` case, not by `isEmpty()` alone"*. **It strengthens `T-270` as a
+side effect**: headless `Quit` used to bind the untypeable `"Exit"` and now falls back to `Ctrl+Q`,
+matching what `xcb` and `wayland` already answer.
+
+**Nothing here claims Windows answers badly.** `T-271` was filed as a gap in evidence and it is
+closed as one: the class of failure is removed and asserted, and if Windows ever does answer
+unusably the suite both platforms run now says so.
+**Owner:** Planner, to prioritize
+**Priority:** **Low, and the honest reason is that nobody knows.** `T-270`'s defect was High because
+it was *observed* red on `STARBASE`. This one is **not observed broken anywhere**, and it is also
+**not observed working on Windows**, because no test has ever asserted this action's shortcut on any
+platform. It is filed as a *gap in evidence*, not as a defect.
+**Phase:** Phase 4 maintenance
+**Depends on:** nothing. `T-270`'s `resolve_quit_shortcut()` is a `Quit`-shaped helper, not a
+general one; whoever takes this decides whether it generalizes
+**Relevant context:** `ui/main_window.py:1432`, `T-270`, `T-200`, `tests/ui/test_main_window.py`
+**Affected surfaces:** the `Add URLs...` accelerator, and whether this project keeps trusting
+per-platform standard keys anywhere without a test
+**Risk:** Low. The trap is the one `T-270` measured — **`isEmpty()` is not the only failure**. The
+headless themes answer `StandardKey.Quit` with a bare `Qt.Key_Exit`, which is non-empty and
+unusable, so a test that only asserts non-empty can pass over a shortcut no keyboard can type
+
+#### What is known, and what is not
+
+**Known, measured on `kirk` at PySide6 6.11.1 across four plugins** (`T-270`'s probe): `xcb`,
+`wayland`, `minimal` and `offscreen` all resolve `StandardKey.New` to **`Ctrl+N`**. On Linux this
+action is fine.
+
+**Not known: what Windows answers.** `STARBASE` has never run an assertion on it. Run
+`32268124069` reported *1 failed, 32 passed* and the one failure was `Quit` — which says the other
+32 tests passed, **not** that this shortcut resolves, because none of them looks at it.
+
+**Why `T-270` did not simply fix it too.** `AGENTS.md` §7 *Scope*: *"If you find an adjacent
+problem, file a task; don't fix it inline."* `T-270`'s own Out of scope also bounds it to *"this one
+accelerator"*. Fixing a second action on the strength of a resemblance would also have shipped an
+unmeasured claim — that `New` resolves empty on Windows — which nothing supports.
+
+#### Acceptance criteria, and where each stands
+
+- **Met.** **`Add URLs...` carries a usable accelerator on both supported platforms**, asserted
+  rather than assumed — where *usable* is decided against the `Qt.Key_Exit` case, not by
+  `isEmpty()` alone
+- **Met — one seam.** **The decision is made once, for every standard key this project binds**,
+  rather than per action. `resolve_standard_shortcut` is that seam; binding explicitly instead was
+  the alternative and was rejected because `xcb` and `wayland` answer `Ctrl+Q` and `Ctrl+N`
+  correctly, and throwing away every theme's opinion to avoid one bad answer costs more than it
+  saves
+- **Met, and with a caveat worth stating.** **One test fails on Windows if either accelerator
+  regresses**, in the suite both platforms run. **Offscreen cannot distinguish guarded from
+  unguarded for `Add URLs…`** — the headless theme answers a perfectly usable `Ctrl+N`, so reverting
+  the binding to the raw standard key left every product-level assertion green. That is a term no
+  mutation can falsify, which `T289-R20` ruled on, so a **wiring** test asserts each action is bound
+  *through* the seam by replacing the resolver with one answering a sequence Qt would never pick.
+  That fails on any platform the moment either action goes back to binding the standard key
+  directly. Three mutations killed: the unguarded binding, the guard degraded to `isEmpty()`, and
+  the fallback bound unconditionally
+
+#### Out of scope
+
+- `T-200`'s wider accessibility pass
+- Re-opening `T-270`'s `Ctrl+Q` fallback, which is measured and approved separately
+
+
+---
+
 ## Complete
 
 ### T-287 — Minimizing the main window leaves its dialogs on screen
@@ -2813,7 +2889,7 @@ just never freed — so the predicate is not met and the suite is honestly green
   An attempt to attribute those to C++ signal connections was **contaminated by the diagnostic's own
   lists** and is withdrawn; what holds the tree is the open question, not a suspected answer.
 
-#### Suggested acceptance criteria
+#### Acceptance criteria, and where each stands
 
 - **What retains the tree is identified**, by measurement rather than by inspection of plausible
   suspects, and written down — including *"it is correct that it is retained"* if that is the answer
@@ -3121,7 +3197,7 @@ checking whether the named parent pids resolve, which is a person at that machin
 gate `T-268` is already blocked on. **It is recorded so the possibility is examined rather than
 inherited**, and because `T-268`'s five specimens are the reason this scanner exists.
 
-#### Suggested acceptance criteria
+#### Acceptance criteria, and where each stands
 
 - **A worker whose parent is a live console-script Python process is not reported**, asserted for
   at least the product's own entry point and a `pytest` wrapper
@@ -3538,7 +3614,7 @@ been reproduced outside Windows. **It has not been.**
   **the parent is gone and took its identity with it**. That is `T-238` criterion 4's question and
   this does not answer it.
 
-#### Suggested acceptance criteria
+#### Acceptance criteria, and where each stands
 
 - **The orphan scan is scheduled on Linux as well as Windows**, or a recorded decision says why one
   platform is enough — the asymmetry is deliberate rather than inherited
@@ -4329,7 +4405,7 @@ into different marks, and the pack authors each artboard. Two options, and the f
   PNG, if the renderer emits one, has to be added there.
 - **The `.ico` carries a 32 px frame**, so `icon.ico` changes as well as `icon-32.png`.
 
-#### Suggested acceptance criteria
+#### Acceptance criteria, and where each stands
 
 - **32 px ships the mid cut, and a check proves it** — one that **fails** when the reduced cut is put
   back at 32 and **fails** when the full mark is. Both directions, as `T274-R3` established
@@ -14472,58 +14548,6 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 ---
 
 ## Proposed — Phase 4
-
-### T-271 — `Add URLs...` relies on the same unguarded standard key `T-270` was filed for
-
-**Status:** **Proposed — filed 2026-08-19 by `T-270`, which fixed the neighbouring line and is
-forbidden from fixing this one.** `main_window.py:1432` binds `QKeySequence.StandardKey.New`
-exactly as `Quit` bound `StandardKey.Quit` twenty-seven lines below it: the platform theme is asked,
-and whatever it answers — including **nothing** — is bound unexamined.
-**Owner:** Planner, to prioritize
-**Priority:** **Low, and the honest reason is that nobody knows.** `T-270`'s defect was High because
-it was *observed* red on `STARBASE`. This one is **not observed broken anywhere**, and it is also
-**not observed working on Windows**, because no test has ever asserted this action's shortcut on any
-platform. It is filed as a *gap in evidence*, not as a defect.
-**Phase:** Phase 4 maintenance
-**Depends on:** nothing. `T-270`'s `resolve_quit_shortcut()` is a `Quit`-shaped helper, not a
-general one; whoever takes this decides whether it generalizes
-**Relevant context:** `ui/main_window.py:1432`, `T-270`, `T-200`, `tests/ui/test_main_window.py`
-**Affected surfaces:** the `Add URLs...` accelerator, and whether this project keeps trusting
-per-platform standard keys anywhere without a test
-**Risk:** Low. The trap is the one `T-270` measured — **`isEmpty()` is not the only failure**. The
-headless themes answer `StandardKey.Quit` with a bare `Qt.Key_Exit`, which is non-empty and
-unusable, so a test that only asserts non-empty can pass over a shortcut no keyboard can type
-
-#### What is known, and what is not
-
-**Known, measured on `kirk` at PySide6 6.11.1 across four plugins** (`T-270`'s probe): `xcb`,
-`wayland`, `minimal` and `offscreen` all resolve `StandardKey.New` to **`Ctrl+N`**. On Linux this
-action is fine.
-
-**Not known: what Windows answers.** `STARBASE` has never run an assertion on it. Run
-`32268124069` reported *1 failed, 32 passed* and the one failure was `Quit` — which says the other
-32 tests passed, **not** that this shortcut resolves, because none of them looks at it.
-
-**Why `T-270` did not simply fix it too.** `AGENTS.md` §7 *Scope*: *"If you find an adjacent
-problem, file a task; don't fix it inline."* `T-270`'s own Out of scope also bounds it to *"this one
-accelerator"*. Fixing a second action on the strength of a resemblance would also have shipped an
-unmeasured claim — that `New` resolves empty on Windows — which nothing supports.
-
-#### Suggested acceptance criteria
-
-- **`Add URLs...` carries a usable accelerator on both supported platforms**, asserted rather than
-  assumed — where *usable* is decided against the `Qt.Key_Exit` case, not by `isEmpty()` alone
-- **The decision is made once, for every standard key this project binds**, rather than per action:
-  either they are all guarded by one seam, or the two that exist are bound explicitly and the
-  pattern stops being used
-- **One test fails on Windows if either accelerator regresses**, in the suite both platforms run
-
-#### Out of scope
-
-- `T-200`'s wider accessibility pass
-- Re-opening `T-270`'s `Ctrl+Q` fallback, which is measured and approved separately
-
----
 
 ### T-212 — The recorded checklist run: the built window against the agreed flow
 

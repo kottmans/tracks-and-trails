@@ -29,10 +29,11 @@ from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.core.paths import APP_SLUG
 from tracks_and_trails.downloader.manager import DownloadManager
-from tracks_and_trails.ui import theme
+from tracks_and_trails.ui import main_window, theme
 from tracks_and_trails.ui.main_window import (
     _MAX_COORD,
     ACTIONABLE_STATUS_PROPERTY,
+    ADD_URLS_SHORTCUT_FALLBACK,
     APP_NAME,
     CLEAR_FINISHED_SHORTCUT,
     DEFAULT_SIZE,
@@ -43,8 +44,10 @@ from tracks_and_trails.ui.main_window import (
     MainWindow,
     app_icon,
     geometry_path,
+    is_a_usable_accelerator,
     load_geometry,
     moved_onto_a_screen,
+    resolve_add_urls_shortcut,
     resolve_quit_shortcut,
     save_geometry,
 )
@@ -150,15 +153,112 @@ def test_the_queue_verbs_are_on_the_file_menu_as_the_same_actions(qapp: QApplica
 # and this is the gate that fails on any machine when the fallback stops working.
 
 
-def test_the_quit_action_carries_a_shortcut(window: MainWindow) -> None:
-    """The whole point of `T-270`: `Quit` must be reachable from the keyboard.
+@pytest.mark.parametrize(
+    ("name", "verb"),
+    [
+        pytest.param("actionQuit", "Quit", id="Quit (T-270)"),
+        pytest.param("actionAddUrls", "Add URLs…", id="Add URLs (T-271)"),
+    ],
+)
+def test_the_menu_action_carries_a_usable_shortcut(
+    window: MainWindow, name: str, verb: str
+) -> None:
+    """Both standard-key actions must be reachable from a keyboard, on every platform.
 
-    Offscreen this passes on the pre-fix code too — the headless theme answers `Qt.Key_Exit`,
-    which is non-empty — so it is the two resolver tests below that carry the defect. This one
-    holds the product-level claim in the suite every platform runs.
+    **`isEmpty()` is not the assertion, and that is the whole of `T-271`'s first criterion.** The
+    headless themes answer `StandardKey.Quit` with a bare `Qt.Key_Exit` — non-empty, stringifies to
+    `"Exit"`, and untypeable as an accelerator — so the previous version of this passed on the
+    pre-fix code and left the defect to the resolver tests alone. Asking whether the sequence is
+    *usable* makes this bite offscreen too.
+
+    **Both actions, in the suite both platforms run**, which is the third criterion: `T-271` was
+    filed because nothing had ever asserted `Add URLs…`'s accelerator on any platform, so the gap
+    was in the evidence rather than known to be in the behaviour.
     """
     actions = {action.objectName(): action for action in window.findChildren(QAction)}
-    assert not actions["actionQuit"].shortcut().isEmpty(), "Quit has no keyboard shortcut"
+    sequence = actions[name].shortcut()
+
+    assert is_a_usable_accelerator(sequence), (
+        f"{verb} answers {sequence.toString()!r}, which is not something a keyboard can type. A "
+        "bare hardware key like Qt.Key_Exit is non-empty and unusable, which is the case "
+        "isEmpty() misses"
+    )
+
+
+def test_a_bare_hardware_key_is_not_a_usable_accelerator(qapp: QApplication) -> None:
+    """The discriminator `T-271` turns on, driven with the exact sequence that motivated it.
+
+    `Qt.Key_Exit` is what the headless themes answer for `StandardKey.Quit`: non-empty, so an
+    `isEmpty()` guard binds it, and carrying no modifier, so no keyboard produces it. An accelerator
+    without a modifier would also swallow a plain keystroke from the rest of the window.
+
+    Measured offscreen at PySide6 6.11.1 — `Quit` → `"Exit"`, `Preferences` → `"Settings"`, both
+    `NoModifier`; `New` → `Ctrl+N`, `Open` → `Ctrl+O`, both with `Control`.
+    """
+    assert not is_a_usable_accelerator(QKeySequence(Qt.Key.Key_Exit))
+    assert not is_a_usable_accelerator(QKeySequence()), "the empty sequence is still unusable"
+    assert is_a_usable_accelerator(QKeySequence("Ctrl+N")), "a real accelerator was refused"
+
+
+def test_the_add_urls_shortcut_falls_back_when_the_platform_names_nothing_usable(
+    qapp: QApplication,
+) -> None:
+    """`T-271`, the half no runner is needed for: both unusable answers drive the fallback.
+
+    Filed as a gap in evidence rather than an observed defect — `New` resolves to `Ctrl+N` on all
+    four Linux plugins measured and has never been asserted on Windows. This does not claim Windows
+    answers badly; it removes the class of failure `T-270` measured one line over.
+    """
+    assert resolve_add_urls_shortcut(QKeySequence()).toString() == ADD_URLS_SHORTCUT_FALLBACK
+    exit_key = QKeySequence(Qt.Key.Key_Exit)
+    assert resolve_add_urls_shortcut(exit_key).toString() == ADD_URLS_SHORTCUT_FALLBACK
+
+
+@pytest.mark.parametrize(
+    ("name", "seam"),
+    [
+        pytest.param("actionQuit", "resolve_quit_shortcut", id="Quit"),
+        pytest.param("actionAddUrls", "resolve_add_urls_shortcut", id="Add URLs"),
+    ],
+)
+def test_the_action_is_bound_through_the_seam_and_not_to_the_raw_standard_key(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, name: str, seam: str
+) -> None:
+    """The wiring, which every other test here passes without (`T-271`, `T289-R20`'s rule).
+
+    **Offscreen cannot tell guarded from unguarded for `Add URLs…`**, because the headless theme
+    answers `StandardKey.New` with a perfectly usable `Ctrl+N`. Reverting the binding to
+    `setShortcut(QKeySequence.StandardKey.New)` leaves every assertion above green on Linux — the
+    guard only does anything on a platform that answers badly, and none that has been measured
+    does. A term no mutation can falsify is not a gate, which is what `T289-R20` ruled.
+
+    So this asserts the seam is *used*: the resolver is replaced with one answering a sequence Qt
+    would never pick, and the built action has to carry it. That fails the moment either action goes
+    back to binding the standard key directly, on any platform.
+    """
+    sentinel = QKeySequence("Ctrl+Alt+Shift+F11")
+    monkeypatch.setattr(main_window, seam, lambda *_args: sentinel)
+
+    built = MainWindow(concurrency=1)
+    try:
+        actions = {action.objectName(): action for action in built.findChildren(QAction)}
+        assert actions[name].shortcut().toString() == sentinel.toString(), (
+            f"{name} does not go through {seam}(), so nothing decides what happens when the "
+            "platform answers something unusable"
+        )
+    finally:
+        built.close()
+        built.deleteLater()
+
+
+def test_the_add_urls_shortcut_keeps_what_the_platform_answers(qapp: QApplication) -> None:
+    """A fallback, not a replacement — the same half `T-270`'s pair asserts for `Quit`.
+
+    Binding `ADD_URLS_SHORTCUT_FALLBACK` unconditionally would leave the test above green while
+    discarding every theme's opinion, including the `Ctrl+N` the measured plugins already answer.
+    """
+    theirs = QKeySequence("Ctrl+Shift+F8")
+    assert resolve_add_urls_shortcut(theirs).toString() == "Ctrl+Shift+F8"
 
 
 def test_the_quit_shortcut_falls_back_when_the_platform_names_none() -> None:
