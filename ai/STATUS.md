@@ -5,9 +5,43 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-09-06 — **`## In Review` is empty: `T-289` and `T-271` are both Complete,
+and nothing is awaiting a verdict.** Read this first, then the section below it.
+
+**Both were approved before today and neither had been moved.** `T-289` is Complete at
+`194316c`, the pool-drain round of 2026-08-31, with `T289-R23`'s remaining half and `T289-R25`
+closed in its completion sync and **criterion 2 met under the re-scope of 2026-09-04**.
+`T-271` is Complete at `7ca8e63`, no implementation finding.
+
+**`T-271`'s one outstanding condition is paid, and it had gone unrecorded for two days.** The
+initial review made the first post-push `windows desktop` execution a condition of Complete,
+because this action's accelerator had never been asserted on that platform. **Run
+`33897384584` at `c7261e9` is that execution — green, 2026-09-04** — and scheduled runs
+`33958702874` (2026-09-05) and `34026077248` (2026-09-06) repeated it at the same head.
+**Windows answers usably.** The entry's own status line meanwhile still said *"not yet
+reviewed"* two reviews after it was approved, which is this project's most frequently
+rediscovered defect arriving in the field that is supposed to prevent it.
+
+**Nothing here explains the crash, and Complete must not be read as saying so.** `T-289` closes
+on its approval and on the re-scoped criterion. **The 2026-08-27 abort remains unexplained by
+ruling**, the dump remains unreproduced, and **a firing of the guard on a real test reopens it**.
+**Whether Phase 4 may exit over that is a separate decision and still the maintainer's.**
+
+**One CI red that no record mentions, and it is not the product.** Scheduled run `33958702874`
+on 2026-09-05 failed `frozen linux` on
+`getaddrinfo EAI_AGAIN productionresultssa15.blob.core.windows.net` — DNS from `kirk` to
+GitHub's artifact storage, in the runner's own upload step. **Every test job in that run
+passed**, `windows desktop` included, and run `34026077248` on 2026-09-06 is green throughout.
+
+**What Phase 4 is now waiting on is the run and the two tasks in front of it**: `T-297`'s
+pre-fix real-display capture, `T-286` and `T-290`'s wording, then `T-212`'s recorded checklist
+run over all 48 rows at one head, then the exit review.
+
+---
+
 **Last updated:** 2026-09-03 — **Phase 4's panel defects are closed, `T-297`'s fix is in and its
-*record* is what blocks it, and the nightly orphan alarm has been retired.** Read this first, then
-the pool section below it.
+*record* is what blocks it, and the nightly orphan alarm has been retired.** *(“Read this first”
+stood here until the block above replaced it.)*
 
 **Closed since 2026-08-31.** `T-294` (an empty status line was a full-width tab stop), `T-295` (one
 guard keyed on the row swallowed a row's other verbs), `T-296` (a panel mounted at 26 px in a short

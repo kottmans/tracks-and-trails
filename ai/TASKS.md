@@ -244,970 +244,9 @@ Phase 0 is formally exited (2026-07-26).
 *Implementation is finished and a verdict has not been recorded. **The entries below are the
 contents; this preface does not list them.***
 
-### T-289 — A pool thread's garbage collection destroys widgets while the GUI thread frees them
-
-**Status:** **In Review — the measurement round is Approved at `c29e299` and the pool-drain round
-at `194316c`, both on 2026-08-31** (`T289-R14`, `R15`, `R16`; `T289-R21`, `R22`, `R24` resolved,
-after `R2`…`R5` on 2026-08-30). **`T289-R23`'s remaining half and `T289-R25` were non-blocking Low
-and are closed in this entry's completion sync** — see the third-pass section.
-
-**Criterion 2 was re-scoped on 2026-09-04 and is met under the new wording** — see *Ruled
-2026-09-04*. It asks that no widget tree is left owned by Python alone where a pool thread can
-collect it, **established by enumeration**, and no longer that the released crash route be
-identified. **The 2026-08-27 abort therefore remains unexplained, deliberately.** The rule *no Qt
-widget is destroyed off the GUI thread* is stated in `ai/TESTING.md` §7 and enforced at every
-`tests/ui`
-boundary: no widget whose type is defined in Python may be owned by Python *and* reachable only
-through a reference cycle. **The parking is armed for the whole test rather than sampled at
-teardown** (`T289-R2`), and the one exemption fails closed (`T289-R4`). Three deliberate violations
-prove it, each run in a subprocess and required to fail with this guard's message.
-
-**Criterion 2 was NOT met under its original wording** (`T289-R3`), and that stood from 2026-08-13
-until the re-scope of 2026-09-04: the released crash route is unidentified and uncorrected, and the
-claim that the rule *"holds in the product today"* was withdrawn. **The maintainer ruled on
-2026-08-30 to instrument the real route rather than re-scope this task**, and the instrument was
-built and run before the re-scope was taken — which is what makes it evidence-backed. See *Where
-each criterion stands*. *(This said the ruling was still owed, in the same commit that recorded it —
-`T289-R5`.)* **The instrumented run happened on 2026-08-31**: 60 driven sessions on a nested Wayland
-compositor put the collector on the update's own pool thread every time and found no widget in what
-it freed — evidence that this route is clean, and not the identification criterion 2 asks for. See
-*The driven measurement*.
-
-*(Filed from this.)* The maintainer updated yt-dlp from the Settings screen and the process
-**aborted**: `double free or corruption (!prev)`,
-core dumped. **The core dump was recovered and is recorded at
-`ai/evidence/2026-08-27-T212-ytdlp-update-double-free.md`**, because `systemd-coredump` rotates and
-the evidence had to outlive it.
-**Owner:** Implementer
-**Priority:** **Highest of anything open.** It is a native memory-corruption abort in a released
-code path, on the run's own head, and every other finding in this run is cosmetic beside it
-**Phase:** Phase 4 — **this is a phase exit question**, not polish. A phase cannot exit over a
-reproducible-in-principle heap corruption without the maintainer deciding that deliberately
-**Depends on:** nothing
-**Relevant context:** `ai/evidence/2026-08-27-T212-ytdlp-update-double-free.md`;
-`downloader/ytdlp_service.py`, which runs the update on a `QThreadPool`; **`T-273`**, the window
-retained across C++ and signal edges that `gc` cannot traverse; `T-238`, the segfault under `gw7`;
-`ARC-002`
-**Affected surfaces:** `downloader/ytdlp_service.py`, whatever owns the widget tree that was
-collected, and the tests that would hold the rule
-**Risk:** **High to fix wrongly.** The obvious mitigations — disabling `gc` on pool threads, or
-sprinkling `deleteLater` — treat the symptom and leave the rule unstated
-
-#### What the core dump says
-
-Two threads were inside the allocator at once, and one of them was destroying a `QWidget` tree on a
-thread that may not. **That they were freeing the *same* graph is an inference** — `T212-R4`, which
-found this entry and its evidence file both stating it as measured. No object address was recovered
-from either stack and the dump names no Python-side type; the evidence file's own *What is not
-established* section says the collected tree is unknown. The identity is the natural reading of a
-`double free`, and it is what a fix would confirm rather than what this dump proves. **The off-GUI
-destruction and the abort are established, and they are what the acceptance criteria below turn
-on** — none of them needs the two trees to be one.
-
-**The GUI thread**, delivering a posted event:
-`QCoreApplication::exec` → `sendPostedEvents` → `QObject::event` → **`QLabel::setBuddy`** →
-`QObject::disconnectImpl` → `free` → `malloc_printerr` → `abort`. A label is clearing itself
-because its buddy is being destroyed.
-
-**A pool thread**, at the same moment:
-`PyObject_CallNoArgs` (Qt calling this task's Python) → `_PyEval_EvalFrameDefault` →
-`_Py_HandlePending` → **`gc_collect_main`** → `_Py_Dealloc` → **libshiboken6** →
-`QWidget::~QWidget` → `QObjectPrivate::deleteChildren`, **five levels deep**, blocked on the
-allocator lock the GUI thread holds.
-
-**CPython's cyclic collector ran on a pool thread and destroyed a Qt widget tree there.** Qt
-widgets may only be destroyed on the GUI thread. Nothing scheduled this: the collector runs
-wherever an allocation threshold happens to trip, which is exactly why it presents as random.
-
-**The update is the occasion, not the mechanism.** `ytdlp_service.py` runs it on a `QThreadPool`,
-so the update is simply Python executing on a non-GUI thread at a moment when a widget tree had
-become garbage. Any pool work can do this.
-
-#### What this is a second instance of
-
-`T-273` established that this application's windows are held by callables that Qt objects close
-over across C++ parent-child and signal edges — references `gc` cannot traverse. It fixed the
-*retention*. **This is the other half: what happens when such a tree does become collectable and
-the collector is not on the GUI thread.** `T-238`'s segfault belongs to the same family. Three
-crashes, one shape.
-
-#### The precondition is now reproducible on demand, measured 2026-08-29
-
-`tools/t289_pool_gc_probe.py` arranges the dump's situation deliberately instead of waiting for it:
-a parented `QWidget` tree — nested children, and a `QLabel` with `setBuddy`, both shaped after the
-stacks — whose only Python reference is inside a reference cycle, so `gc` is the only thing that can
-release it. `gc` is disabled, then `gc.collect()` is run inside a `QRunnable` on a `QThreadPool`,
-exactly where the dump found it. A `weakref.finalize` callback records the thread that performed the
-last decref, which is `T-238`'s probe's method.
-
-**The first version of this probe measured the wrong thing and its result is withdrawn.** It
-reported which thread ran the widget's `weakref.finalize` — the last **Python** decref — and called
-that destruction. Those are different events, and the difference is the whole of `T-289`:
-`shiboken` can hand the C++ deletion to the GUI thread through
-`BindingManager::runDeletionInMainThread`, and a probe reading only the decref thread cannot tell a
-marshalled deletion from an unmarshalled one.
-
-**Corrected and re-measured, offscreen on `Spock`.** `QObject::destroyed` is emitted inside
-`~QObject`, so a `DirectConnection` handler names the thread actually running the destructor:
-
-| | |
-|---|---|
-| Last Python decref | **`Dummy-1`** — a pool thread |
-| C++ `~QObject` | **`MainThread`** |
-
-**So an off-GUI decref is not sufficient to destroy a widget off the GUI thread.** In this
-configuration `shiboken` marshals, and the crash's precondition is **not** reproduced. That is a
-finding rather than a null result, and it means the mechanism is narrower than this entry supposed:
-something about the real crash defeated a marshalling path that works here.
-
-**The dump is not in doubt** — its pool-thread stack goes `_Py_Dealloc` → `libshiboken6` →
-`QWidget::~QWidget` → `QObjectPrivate::deleteChildren`, which is a destructor running on that
-thread. So the open question is now **what makes shiboken destroy in place rather than marshal**,
-and this probe does not reach that state. Candidates worth separating: whether the object was a
-child destroyed through `deleteChildren` rather than a wrapper shiboken tracks, whether the GUI
-thread being inside `sendPostedEvents` at that moment matters, and whether ownership had already
-passed to C++.
-
-**The `--on-the-gui-thread` control now reports its own conclusion.** It prints that both events
-happened on the GUI thread and that nothing was marshalled, rather than reusing the pool mode's
-marshalling sentence — which claimed a mechanism that run cannot observe (`T289-R1`). The control is
-what makes the pool mode's `Dummy-1` → `MainThread` split evidence about the pool thread rather than
-about the instrument, so it has to be readable as the *other* answer.
-
-**One adjacent crash is recorded here without being fitted to this task.** A local parallel unit/UI
-run lost an xdist worker in
-`test_a_picture_published_while_the_sweep_runs_is_not_counted_as_swept`, with the main thread in
-`settle_deferred_deletions` → `QObject::~QObject` → shiboken `getOverride` and a Qt pooled thread
-live; the same test passed alone and the correctly activated full rerun passed 3,378 / 21 skipped.
-**It is unclassified.** The review that recorded it declined to call it this mechanism, and so does
-this entry — it is written down because it is the nearest live specimen to compare a fix against,
-not because it is evidence for the fix. `ai/REVIEWS.md`, 2026-08-29.
-
-#### Answered 2026-08-30: it destroys in place when the type is defined in Python
-
-`ai/evidence/2026-08-30-T289-pool-thread-destruction.md`. The open question above — *what makes
-shiboken destroy in place rather than marshal* — **is none of the three candidates this entry
-listed.** Eight runs a subject, collected on a `QThreadPool` thread:
-
-| Subject | crashed | destructor **off** the GUI thread | marshalled |
-|---|---:|---:|---:|
-| A plain `QWidget` tree | 0/8 | 0/8 | **8/8** |
-| The same tree rooted in a **one-line Python subclass** | **3/8** | **5/8** | 0/8 |
-| The application's own screens (`tests/ui/surfaces.py`) | 0/8 | **8/8** | 0/8 |
-
-**The subclass has no behaviour, no connections, no closures, and is never shown.** Its body is a
-docstring. Being a Python-derived type is the entire difference from the row above it, and
-`--shown` was measured separately: a realised plain `QWidget` still marshals, so the variable is the
-type and not the platform window.
-
-**Every widget this application defines is a Python subclass**, so the marshalling that made the
-first probe's null result look reassuring **does not apply to any widget this project owns**. The
-precondition is the default here; what has kept the crash rare is only how seldom one of those trees
-becomes collectable on a pool thread's allocation.
-
-**Three of the eight subclass runs died, and the stack is the second half of the mechanism**: the
-*main* thread in `_Py_HandlePending` → `make_pending_calls` → shiboken
-**`runDeletionInMainThread()`** → `QtWidgets`, immediately after the probe recorded `~QObject`
-running on `Dummy-1`. Read together that is a **double deletion** — the pool thread destroyed the
-object in place while shiboken had also queued a main-thread deletion for it — which is
-`double free or corruption (!prev)`. **Stated as the reading rather than as proof**: nothing here
-dumped the pointer, so *the same object* is the obvious explanation and not a measured one.
-
-**Criterion 4 is still not met, and is no longer blocked on a mystery.** A tool is not a test. But
-the state the criterion describes — *"force the collector on a pool thread while a tree is
-collectable"* — can now be arranged in about ten lines with no application involved, which is what
-this entry has been missing since it was filed.
-
-**What this does not change.** The fix directions already named are untouched: a widget with a C++
-parent is owned by that parent, so dropping its wrapper destroys nothing, and disposal through the
-GUI thread is unaffected. **This is a diagnosis, not a fix, and `T-289` stays Proposed** until the
-maintainer schedules one.
-
-#### Acceptance criteria
-
-- **The rule is stated somewhere durable and enforced somewhere mechanical**: no Qt widget is
-  destroyed off the GUI thread. A comment in one file is what this project already had
-- **A widget tree is never left owned by Python alone** where a pool thread can collect it — either
-  it has a Qt parent that owns it in C++, or its disposal goes through the GUI thread explicitly
-- **The fix is not `gc.disable()` on pool threads**, or is that only with the reasoning written
-  down and the leak it trades for measured. Turning off the collector to hide a threading rule is a
-  bigger commitment than it looks
-- **A test that fails on the uncorrected tree exists**, even if it has to force the collector on a
-  pool thread while a tree is collectable — the crash is intermittent by nature and a fix with no
-  failing test is a fix nobody can check
-- **The three `edit: editing failed` lines are accounted for** — explained as part of this, or
-  separated out and filed. They are on the console immediately before the abort
-- **The update path logs what it is doing** (`T-282`), or this entry records why it still does not:
-  the application log's last line is 97 minutes before the crash
-
-#### The fix, and what decides its shape — 2026-08-30
-
-**The precondition has a name in the API, and it is queryable.** `shiboken6.ownedByPython(widget)`
-is exactly the discriminator the mechanism turns on, measured on the same subject three ways:
-
-| Widget | `ownedByPython` | Collected on a pool thread |
-|---|---|---|
-| Python subclass, **parentless** | `True` | **`~QObject` runs on `Dummy-1`** — the precondition |
-| Python subclass, **given a Qt parent** | `False` | nothing is destroyed, and the wrapper is not even finalised |
-| Plain `QWidget`, parentless | `True` | marshalled to the GUI thread |
-
-**So criterion 2's first branch is not a style preference — it is the mechanism switched off.** A Qt
-parent moves ownership into C++, and a wrapper the collector frees on a pool thread then destroys
-nothing at all. Nothing in the fix needs to reason about threads once that holds.
-
-**What this rules out as the fix.** Disabling `gc` on pool threads (criterion 3) would leave the
-rule unstated and trade a leak for it; `deleteLater` sprinkled at call sites (the Risk line's other
-temptation) is the same symptom-treating and cannot be checked. Neither is needed when the property
-is one boolean per widget.
-
-**What is left is enforcement, because the product may already comply and nobody could tell.**
-`T-238`'s criterion-4 run measured every widget the application's own routes open: **none was parked
-by the collector while its C++ half was alive**. That is the rule holding today, unenforced — and
-the crash proves a real session reached a state the offscreen composition does not. So the
-deliverable is a guard that fails when the property breaks, proved against a deliberate violation,
-rather than a repair to a site nobody has identified.
-
-#### What was built — 2026-08-30
-
-**The rule, stated where rules live**: `ai/TESTING.md` §7's mandatory-coverage table, with the
-measurement under it — the one boolean, what turns it off, and the two narrowings.
-
-**The guard, at the boundary that names the culprit**: `qt_lifecycle`'s
-`watch_for_collectable_widgets` arms `DEBUG_SAVEALL` **around the whole test**,
-`widgets_the_collector_would_destroy` reads what it parked and clears it, and
-`raise_for_collectable_widgets` fails on any parked widget that is **valid**, **`ownedByPython`**,
-and **not a PySide type**. Wired into `tests/ui`'s autouse fixture beside `T-238`'s orphan check.
-
-**Three calls rather than one, and `T289-R2` is why each split happened.** Arming has to span the
-test, because a collection inside it otherwise frees the evidence — and has to span the *inspection*
-too, because the first correction lowered the flag at the end of the body and a collection in that
-gap did the same thing one layer in. Reading has to clear unconditionally, because skipping the
-clear for the exempt node left its widget parked into the next test. And the flag has exactly one
-owner, because two of them turned an incoming `33` into `1`.
-
-**Two narrowings, each of which the first version got wrong and a run corrected:**
-
-- **`isValid` first.** A parked wrapper whose C++ half is already gone destroys nothing; counting it
-  would report Python catching up with Qt as a hazard. (`T-238`'s `T238-R7` is the same mistake, one
-  task over.)
-- **Not a PySide type.** The first version failed `tests/ui/test_file_actions.py` immediately, over
-  a plain `QListView` held in a cycle — a real leak, and **not** this hazard, because a built-in
-  type is marshalled to the GUI thread. A per-test guard that cries wolf is one somebody deletes.
-  **This narrowing follows the measurement rather than shiboken's documentation**, and if shiboken
-  ever stops marshalling for built-in types the guard misses it silently. Recorded, not hidden.
-
-**Order, which cost a debugging round.** The check must run **before** `settle_deferred_deletions`.
-That function's own `gc.collect()` destroys exactly the state the check looks for — harmlessly,
-because it happens on the GUI thread, and invisibly, because the widget is gone before the check
-runs. Wired after it, the guard **passed the deliberate violation written to fail it**.
-
-**One collision, resolved by marker rather than by weakening either guard.**
-`tests/ui/_carries_a_deletion.py` deliberately leaves a Python-owned cyclic widget at the boundary,
-because `T-238`'s drain is proved by the *next* test finding it gone. It now carries
-`@pytest.mark.leaves_a_collectable_widget`, registered in `pyproject.toml` with the reason. Nothing
-is exempt from the rule; one file is exempt from being *failed at a boundary* for a state its
-sibling test asserts is cleared a moment later.
-
-**Cost: unit+UI is 35–38 s against a 39 s baseline**, two runs — within the noise between runs.
-
-*(The claim attached to that number was wrong twice.* First it was **58 s**, which was the broken
-version collecting at the boundary *in addition to* the drain and once more in a `finally` — three a
-test. Then it was *"no extra collection"*, which `T289-R9` corrected: **there is still one**, the
-inspection's own `gc.collect()`, on top of the drain's. It is there to catch state that became
-garbage at the very end of a test and has not been collected yet, which the parking alone would
-miss. What the rework removed was the third one, and what the wall clock says is that the remaining
-extra is not measurable against run-to-run variation — not that it does not exist.)*
-
-#### Where each criterion stands — 2026-08-30
-
-| # | Criterion | State |
-|---|---|---|
-| 1 | The rule is stated durably **and enforced mechanically** | **Met.** `ai/TESTING.md` §7, and the boundary guard |
-| 2 | **Re-scoped 2026-09-04.** No widget tree left owned by Python alone where a pool thread can collect it — **established by enumeration rather than by identifying the released crash route** | **Met, under the re-scoped wording.** The product has one Python-owned widget, the `MainWindow`, and it is strongly referenced for the life of the process; 162 constructions, 4 parentless, no un-parenting call anywhere (*The ownership audit, 2026-08-31*). The teardown precondition is removed by `T289-R21`'s pool sequencing. **What the criterion no longer asks for is the identification of the dump's route**, which six null probes and this audit together argue is not reachable by sampling — see *Ruled 2026-09-04* |
-| 3 | Not `gc.disable()` on pool threads | **Met.** Not used, and the entry records why it is not needed: the property is ownership, not threading |
-| 4 | A test that fails on the uncorrected tree | **Met.** `_leaks_a_collectable_widget.py`, in a subprocess, required to fail with this guard's message |
-| 5 | The three `edit: editing failed` lines accounted for | **Met — explained**, see below |
-| 6 | The update path logs what it is doing (`T-282`), or this records why not | **Recorded**, see below |
-
-**Criterion 2 is not met, and the first version of this section claimed otherwise** (`T289-R3`).
-It said *"the rule holds in the product today"*, resting on `T-238`'s criterion-4 run and on the
-suite passing the new guard. **Neither supports that.** `T-238`'s run is a bounded offscreen
-inventory whose own entry stays `Ready` **for the real-session measurement it has not had**, and it
-established something narrower: none of the route-opened wrappers *in those arms* was parked live.
-A passing suite is a sampler over what the tests happen to exercise. **The released native-abort
-route is still unidentified and uncorrected**, and this entry's own text says the dump names no
-Python type — a passing test cannot turn that admitted unknown into product compliance.
-
-**What is actually delivered is enforcement**: the next widget left in this state inside the suite
-arrives as a named test failure instead of a core dump. That is worth having and it is not
-criterion 2.
-
-**Ruled 2026-08-30 by the maintainer: instrument the real route.** Of the two the review offered,
-the re-scope was refused — this task keeps criterion 2 and stays open until a product-representative
-measurement identifies the ownership route and corrects it. What that means concretely:
-
-- **The application on a real display**, not offscreen, driven through the route that actually
-  crashed: Settings → yt-dlp → Update.
-- **A `gc` hook reporting every Python-owned widget the collector frees** and the thread that freed
-  it, so the tree is named rather than inferred. Behind a flag, and removed when it has answered.
-- **Either outcome is evidence**: it names the tree, or it shows this route is clean and moves
-  suspicion somewhere with a measurement behind it.
-
-*(The rejected option is recorded so it is not re-proposed as new: re-scoping this entry to
-diagnostic test hardening and filing the hunt separately. Cheap and honest, and it would have left a
-double free reachable from Settings → Update with no owner until that entry was scheduled. The
-maintainer declined to accept that risk. A blanket ownership pass over every top-level widget was
-also considered and rejected — many files changed on a hypothesis, unfalsifiable while the guard
-already passes, and `T-289`'s own Risk line is "High to fix wrongly".)*
-
-**This bears on `T-238`'s outstanding real-session step from the other end, and closes neither
-end** (`T289-R15`). Both halves have now run once — the update route here, the staged-row thumbnail
-route in the review of 2026-08-31 — and both were `INCONCLUSIVE`. This sentence previously said the
-measurement *closes* that step, and kept saying it after the section below recorded that only half
-had been taken.
-
-**The instrument is built and has now been driven** — 60 isolated sessions on 2026-08-31 and the
-reviewer's own real-display run the same day — corrected after `T289-R6`…`R8`:
-`tools/t289_session_watch.py`.
-It runs the real entry point and **changes nothing in the product** — no `src/` file is touched and
-the application reads no flag; the wrapper *is* the flag, so an ordinary `python -m tracks_and_trails`
-is unaffected. It records three things: every widget destroyed on a thread that is not the GUI
-thread, **the Python stack of that thread at that moment** — which is what the core dump could not
-give — and every cyclic collection with the thread it ran on, so a destruction inside one can be
-told from a destruction beside one.
-
-**It observes and does not steer.** No `DEBUG_SAVEALL`, no forced collection: parking every collected
-object for a whole session would change the memory behaviour of the thing being measured.
-
-**What it costs is not fully known, and the record says so** (`T289-R11`). The filter re-reads each
-widget's ownership on every event — a synthetic measurement puts that at roughly **10.7 µs per
-event**, and nobody has generalised it to a live session's event rate. If it proves visible,
-sampling instead of every-event refresh is the obvious next shape.
-
-**Three corrections, and each was a way for it to have lied** (`T289-R6`…`R8`):
-
-- **It discovers widgets through an application-wide event filter, never by enumerating them**
-  (`T289-R8`). The first version polled `QApplication.allWidgets()` every 250 ms — the exact
-  enumeration `T238-R1` recorded killing a process with SIGSEGV when deletions were queued. An
-  instrument built to observe memory corruption must not be a plausible cause of it.
-- **It tracks every collection, both phases, on every thread** (`T289-R6`), so a destruction *inside*
-  a collection can be told from one beside it, and so a null result can be read at all: *no off-GUI
-  destruction* and *no collection that could have caused one* are otherwise the same report.
-  GUI-thread destructions are counted for the same reason.
-- **It refuses to call a session clean unless the route ran** (`T289-R7`). `install_latest_version`
-  is wrapped **in this process**, and the Settings screen is noticed through the same discovery the
-  widgets use. A session that never opened Settings reports `NOT A RESULT` rather than a clean bill
-  for a route nobody drove.
-  **Finished means finished**: the call hands its work to a `QThreadPool` and returns at once, so the
-  first version marked the route complete before the install had begun. Completion now comes from the
-  service's own `reported`/`failed` signals — the same ones the screen listens to.
-- **It names the near misses, not just counts them** (`T289-R6`). A candidate the collector destroys
-  **on the GUI thread** is the tree that would have been destroyed in place had the collector fired
-  on a pool thread, and the first version recorded it as a number with no name. Those names are what
-  a correction can be aimed at, and the verdict prints them.
-  **A candidate is Python-typed *and* owned by Python** — both, because a Python subclass with a Qt
-  parent belongs to C++ and releasing its wrapper destroys nothing. Testing the type alone named one
-  of those, which would have sent a correction after the wrong tree.
-  **Ownership is read two ways, and measurement chose which where** (`T289-R6`, twice). At rest it is
-  `shiboken6.ownedByPython`. **At a `ParentChange` that flag is stale** — `setParent(None)` sends the
-  event before shiboken moves it — so the reparent is read from `parent()`, which is already correct
-  at that instant. Measured: inside the handler `parent()` is `None` while `ownedByPython` still says
-  `False`. Neither can be read at destruction: there Qt hands over an object that raises `TypeError`
-  from `ownedByPython` and `AttributeError` from `parent()`, so the answer is recorded while the
-  widget is alive. **A cached flag refreshed only on events lost the immediate-collection case**, and
-  that is what the fourth self-test direction now holds.
-- **An off-GUI destruction with no collection running is reported as a different defect** (`T289-R6`).
-  Qt still forbids it and it deserves its own entry, but this task is about the *collector* doing it,
-  and a verdict that called both `T-289` would have closed this task on someone else's bug.
-
-**The report carries its own proof and its own identity** (`T289-R7`). Before the application
-starts, the session runs `--self-test` **in a subprocess and writes the result into the same file**,
-refusing to start if it fails — a null result is worth exactly what the positive control is worth,
-and asking for it as a separate command leaves it somewhere else or untaken. The header records the
-tree (marked dirty when it is), the host, and the Python, PySide6 and Qt versions, and the session
-records **the plugin Qt actually selected** rather than the one the environment requested — a report
-naming the wrong platform is a report about the wrong platform (`T289-R7`).
-
-**The control runs offscreen even when the session does not** (`T289-R7`). Its job is to destroy a
-widget off the GUI thread *on purpose*, and doing that through the maintainer's real plugin would
-run the hazard against a live desktop to prove an instrument. Offscreen exercises the same shiboken
-and collector paths, which is where the mechanism lives; the report says what that does not cover.
-
-**Killed sessions say so too.** `SIGTERM` writes the summary and verdict before quitting — and the
-handler needs a heartbeat timer to run at all, because Python executes signal handlers between
-bytecodes and Qt's `exec()` is C. Installing the handler *without* that made the session unkillable
-by anything but `SIGKILL`, which is the opposite of the intent and is recorded here because it is a
-trap anyone adding a signal handler to a Qt program walks into.
-
-**Its positive control runs offscreen in a second, and must be run first.**
-`--self-test` goes through `arm()` — the real event filter and the real `gc` callback, not a
-hand-wired handler (`T289-R7`) — and drives **six directions**: the measured arm collected on a
-pool thread, which must be reported **by the subject's own name** rather than by any off-thread
-destruction happening to occur; a second candidate collected on the **GUI** thread, which must be
-**named** as a near miss; and a Python subclass **with a Qt parent**, which must **not** be named,
-because it is owned by C++ and releasing its wrapper destroys nothing; and a child released by
-`setParent(None)` and collected **immediately**, with no event in between, which must be named — the
-case both cached versions lost; and one whose **first** observed event *is* that reparent, which the
-version after those two still lost (`T289-R6`).
-
-**The sixth is the classifier itself** (`T289-R12`). A widget whose last Python reference is dropped
-**on a pool thread by refcount**, with no collection running, must classify as *OFF-GUI DESTRUCTION,
-BUT NOT T-289* — and it runs on a `Watch` of its own, because on the shared one that arm is
-unreachable: an earlier direction already put a destruction inside a collection and the aggregate
-reports the stronger finding. Until this existed, replacing `off_gui_in_a_collection` with
-`off_gui_destructions` — restoring the verdict that called somebody else's bug this task's — passed
-every arm. It is killed now. *A clean session is worth exactly as much as that
-check passing beforehand*, and three instruments in this family have reported confidently about
-nothing.
-
-    .venv/bin/python tools/t289_session_watch.py --self-test
-    env -u QT_QPA_PLATFORM .venv/bin/python tools/t289_session_watch.py \
-        --report reports/t289-session.txt
-
-Then **Settings → yt-dlp → Update**, let it finish, use the window for a minute, and close it.
-
-**A clean run is a result and it is not a closure.** The report says how many widgets were watched,
-for how long, how many collections ran on which threads, and **which Python-typed widgets the
-collector destroyed on the GUI thread** — the near misses, named, because those are the trees that
-would have been destroyed in place had the collector fired on a pool thread instead (`T289-R6`).
-**The bound is stated in the tool**: a widget that never receives an event is never discovered.
-**One null session cannot close criterion 2**, which the reviewer said plainly and the verdict text
-now says too.
-
-**Criterion 5: the three lines are Qt refusing to open an editor, and the route is identified.**
-`QAbstractItemView.edit(index)` prints exactly `edit: editing failed` when the index is not
-editable — reproduced directly. The product calls it from `RowDelegate.editorEvent` on a click
-inside `_control_of(...)`, and **that rect is geometry alone**: it does not consult `_editable`, so
-a click where the control *would* be, on a row that has none, reaches `edit()` and is refused.
-Three clicks, three lines. **Benign** — the click does nothing, which is correct — and separable
-from the abort, which is what the criterion asks.
-
-*(**An adjacent defect, recorded and not fixed here** — `AGENTS.md` §7. The delegate offers a click
-target where it painted no control, and `UX-005` §5 is the rule against offering what would be
-refused. It is two lines to gate `editorEvent` on `_editable`, it is not this task's behaviour, and
-filing it is the maintainer's or the reviewer's call rather than mine.)*
-
-**Criterion 6: the update path still logs nothing, and `T-282` is why.** The application log's last
-line is 97 minutes before the crash. `T-282` is the task for a debug level reachable without editing
-code, and it is Proposed. Adding logging here would be that task done narrowly and in the wrong
-place; what this entry can say is that the gap is owned, named, and unclosed.
-
-#### The driven measurement, 2026-08-31: the gun is loaded on that thread and holds no widget
-
-**60 unattended sessions at `179f73e`**, each the product on a nested `kwin_wayland --virtual`
-compositor — Qt selected the `wayland` plugin in all 60, which the report reads from the running
-application rather than from the environment it was asked for — driven through
-`MainWindow.open_settings()` and a click on the Settings screen's own `ytdlpUpdate` button, which
-composition wires to `YtdlpService.install_latest_version`. **The whole update runs**: the wheel is
-fetched from PyPI, verified and extracted into the session's own disposable `user_data_dir`, and
-every session reported `Resolution(version='2026.08.19', source='user-managed copy (OPS-002)')` —
-the copy its own install had just written.
-
-    tools/t289_isolated_session.sh reports/t289-session.txt   # one session, ~20 s
-
-**The 60-run aggregate came from this loop, and the batch — not the session — chooses to continue
-past a bad sample** (`T289-R14`):
-
-    for i in $(seq -w 1 60); do
-        tools/t289_isolated_session.sh "$dir/run-$i.txt" || echo "run-$i FAILED" >&2
-    done
-
-**The table below is read from the one summary line each report ends with**, which carries every
-count in it; `grep -h 'widgets over' "$dir"/run-*.txt` prints the 60 lines the columns were counted
-from. A report without a `VERDICT` line and a completed route is not a sample — the wrapper now
-refuses it rather than returning 0, and re-checking the 60 stored reports against that rule passes
-**60/60**, so the counts here are the counts a gated run would have produced.
-
-**There is no file for this under `ai/evidence/`, deliberately**: that directory is for artifacts a
-re-run would not produce, and this is a committed tool driving a deterministic route. Its command
-line is above and its numbers are here, which is what that README asks for.
-
-**The collector-and-thread half of the precondition reproduces every time — and only that half**
-(`T289-R15`). This entry defines the precondition as a Python-owned *widget* being collected and
-destroyed on a pool thread; what these runs reproduce is the collector firing there at all, which
-the tool itself calls *"the loaded gun, widget or not"*. Calling that "the precondition" reads as
-though the crash were one step away, and it is not: the widget half never happened once. In 60 of
-60 sessions the cyclic collector ran on the update's pool thread — `Dummy-1`, `ytdlp_service`'s own `QThreadPool` — while the update was in
-flight, freeing 9 objects. That is the thread the core dump names — `PyObject_CallNoArgs`, Qt
-calling this task's Python, through `_Py_HandlePending` into `gc_collect_main` — at the moment the
-dump names it.
-
-| Per session | Across the 60 |
-|---|---|
-| Route completed — Settings opened, update started, update finished | **60 / 60** |
-| Widgets watched | 965 (964 in two sessions) |
-| Collections on the GUI thread | 8 (7 in four) |
-| Collections on a pool thread | 2 on `Dummy-1`; four sessions also ran one on a `Dummy-2` |
-| Objects freed by the pool-thread collections | 9, in every session |
-| **Widget destructions off the GUI thread** | **0** (0 inside a collection) |
-| Widget destructions on the GUI thread | 28, **none** inside a collection |
-| **Near misses** — Python-owned widgets the collector destroyed on the GUI thread | **0** |
-| Verdict | `INCONCLUSIVE`, 60 / 60 |
-
-**No widget was ever among what the collector freed** — not on a pool thread, not on the GUI
-thread. The other 28 destructions per session are Qt's own, on the GUI thread and outside any
-collection; **the watch counts them without naming them**, so *which* widgets they are is not
-established here and the obvious reading — the Settings screen and its children — is an inference
-this run does not carry. What it does establish is the classification that matters: none of them
-happened inside a collection, and none happened off the GUI thread. The instrument's positive
-control passed offscreen before each of the 60 sessions, so a clean report is the instrument
-reporting rather than the instrument being blind.
-
-**Criterion 2 stays NOT met, and the size of the batch must not be read as strength.** 56 of the 60
-sessions produced identical arithmetic; the other four differ by a second pool thread and one
-collection. These are not 60 samples of an intermittent event — they are one deterministic route
-measured 60 times, and the reviewer's *"one null session cannot close criterion 2"* applies to
-sixty of them just as it did to one. What the run establishes is that **this route, driven this
-way, hands the collector no widget at all**, and that the instrument said so with its positive
-control passing beforehand each time.
-
-**Four bounds. Two of them the review of 2026-08-31 discharged, and two stand**: the **virtual
-output** and the untouched **thumbnail pool** were both answered by the reviewer's own runs below;
-still standing are that the watch discovers widgets by event, so the 965 it names are the ones that
-received one, and that a timer which opens Settings four seconds after launch and closes the window
-twelve seconds later is not the used session the crash came from.
-
-#### The forced collection, 2026-08-31: two moments where the collector is offered a widget and finds none
-
-`tools/t289_forced_collection_probe.py`, run through the same isolation as the watch
-(`tools/t289_isolated_session.sh <report> probe`). **The numbers below are the second measurement**;
-the first is withdrawn because `T289-R18`…`R20` each changed what it meant.
-
-**Why a second instrument.** The watch observes and does not steer, by design, and it has answered
-what it can: on this route the collector fires on the update's own pool thread and never holds a
-widget. *"We watched and nothing happened"* does not separate **the product never hands the
-collector a widget** from **we did not watch at the moment it did**, and no number of observed
-sessions closes that gap. This probe drives the same route and then **forces a collection off the
-GUI thread** at two chosen moments.
-
-| Phase | Moment | Objects parked | Widgets among them |
-|---|---|---:|---:|
-| **A** | the update has reported, Settings still open — the two facts the crash report also states | 9 in two runs of four, 0 in the others | **0** |
-| **B** | the Settings dialog closed **inside the parking boundary** | 5 | **0** |
-
-**Not zero findings — zero widgets.** The collector had cycles to work with and not one of them
-contained a `QWidget`, so the classifier never had to discriminate on a product object.
-
-**Phase B closes the dialog inside the parking boundary** (`T289-R18`). It used to close it and
-deliver the deletion *before* the parking was armed, so an automatic collection could consume the
-teardown garbage the phase exists to inspect — the false-absence path the tool's own header warns
-about. The close now runs with automatic collection off and `DEBUG_SAVEALL` on, and releases the
-dialog before the off-thread collection.
-
-**And it says why the number is what it is.** After the collection the probe reports the dialog
-through a weak reference: *wrapper survived, C++ object alive, **owned by Qt, parented to
-`MainWindow`**, the product no longer references it, frames of this probe holding it: **0***. So the
-zero is not the product retaining the dialog and not the probe retaining it — the window's own
-reference **is** dropped, by `_forget_settings_dialog` on `finished`. It is Qt ownership:
-`open_settings` builds the dialog with `parent=self`, and dropping a wrapper Qt owns destroys
-nothing. **That property is the one `ai/TESTING.md` §7 states.**
-
-**`SettingsDialog` sets no `WA_DeleteOnClose`, so closing it deletes nothing**, and the probe
-delivers `DeferredDelete` **to that dialog** rather than flushing every pending delete in the
-process. The earlier *"its deferred deletions delivered"* claimed something neither the flush nor
-the close establishes.
-
-**What it does not establish, and the result is kept to it.** Two samples on one route: **after the
-update reported, and after the Settings dialog closed**, plus the ownership edge above. A widget
-that became collector-reachable at any other moment is not seen; a forced collection is not one the
-product would have run then; the thumbnail pool is untouched. Nothing here is a statement about the
-application as a whole.
-
-**Four review findings, and each was the instrument rather than the product** (`T289-R17`…`R20`).
-The shared wrapper's default mode stopped starting, because the tool path and `--drive` were held in
-one string and Python looked for a file with a space in its name. Phase B held the dialog in a local
-across its own collection, so its zero was the probe's doing — the self-retention class that
-invalidated an earlier `T-238` zero, reproduced by the instrument built after it. The cleanup
-re-enabled automatic collection before draining, so a positive result would have left a live
-collectable widget for a pool thread to destroy — the probe causing the defect it came to look for.
-And the reporting predicate omitted `defined_in_python`, so a plain `QWidget` — which Shiboken
-marshals to the GUI thread and destroys safely — classified as a `T-289` finding; the phase summary
-then kept the wider wording for one more round, so a narrowed count was announced in words that
-denied such a widget existed (`T289-R20`). **`valid` was
-dropped from that predicate on the same ruling**: `owned` is computed as *valid and
-`ownedByPython`*, so it stated a condition no real widget could falsify.
-
-**Nine mutations of the classifier and its predicate are killed by the controls**, and getting there
-took three passes in which arms that looked like controls were not. The Qt-owned arm never parked
-its widget, so it asserted nothing; nothing checked that a Qt-typed widget is not called
-Python-defined; nothing checked the collection ran off the GUI thread. **Two detectors written for
-`R18` and `R19` were then blind in turn**, and both were caught by testing them against the defect
-they were written for rather than by review: `gc.get_referrers` cannot see a frame CPython has not
-materialised, so the retention check answered *0 frames* while a deliberately reintroduced `R18`
-held the dialog — it walks the stack now, and reports 1 against that same mutant and 0 clean.
-
-**The drain has an effect control, and my argument that it could not have one was wrong**
-(`T289-R19`). I built two and both were blind — a weak reference reports the widget dead whichever
-way the phase ends, because CPython clears weakrefs to unreachable objects *before* `DEBUG_SAVEALL`
-parks them; and a `__del__` flag fires either way — and concluded no such control was possible here,
-recording that `gc.garbage.clear()` *"frees the cycle by itself"*. **That is withdrawn.** `__del__`
-firing is finalization, not deallocation. The review's own control keeps **only `id(widget)`**,
-which holds nothing, and asks `gc.get_objects()` afterwards whether anything at that identity is
-still tracked. Replayed here: with the drain the widget is gone; with the drain omitted it is still
-tracked **and `shiboken6.isValid` is true**, with automatic collection already restored. The arm
-now fails on that, not on the order of the calls.
-
-#### The reviewer's real-display runs, 2026-08-31: both routes, both inconclusive
-
-Recorded in `ai/REVIEWS.md` under *Driven-session results*; summarised here because this entry is
-current truth and the numbers change what is still owed. Neither run is mine and neither closes a
-criterion.
-
-**Settings → yt-dlp → Update, on the real display** at clean `948f837`, `QT_QPA_PLATFORM` unset,
-Qt selecting the real `wayland` plugin, profile disposable. Route complete; **971** widgets watched;
-collections `MainThread` 7, `Dummy-1` 1, `Dummy-2` 2; **9 objects freed by the `Dummy-2` collection
-while the update was in flight**; **0** widget destructions off the GUI thread, 28 on it and none
-inside a collection; **0** near misses. **`INCONCLUSIVE`.** This discharges *real display rather
-than virtual output* for one bounded sample. It does not identify criterion 2's widget tree, and it
-is still the short automated route rather than the used session the report came from.
-
-**The staged-row thumbnail pipeline, on the real display.** A reviewer driver composed the real
-application with the spawned-fixture worker, opened `MainWindow.open_add_dialog()`, pasted the
-recorded Archive.org URL and let the dialog's own debounce stage it; the delegate started the real
-`ThumbnailStore` pipeline and the public JPEG became a pixmap. `_ReadFromDisk` ran on `Dummy-2`,
-`_DecodeAndStore` on `Dummy-3`, `_SweepTask` on `Dummy-4`; **647** widgets watched; **12**
-collections on `MainThread` and **none on any thumbnail task thread**; **0** destructions off the
-GUI thread, 24 on it, none inside a collection; **0** near misses. **`INCONCLUSIVE`** — the pool
-worked and the collector never ran there. Nothing was forced: no `gc.collect()`, no lowered
-threshold, because forcing it on the live desktop would turn the measurement into the hazard.
-
-**So the two pools have now each been watched once on a real display, and neither handed the
-collector a widget.** Criterion 2 stays open, and what it now lacks is not a display or a route but
-the tree itself.
-
-#### The ownership audit, 2026-08-31: one Python-owned widget in the product, and it is the window
-
-`tools/t289_ownership_audit.py`, plus a runtime survey of `QApplication.topLevelWidgets()`.
-
-**Why a reading rather than a sixth measurement.** Every probe so far has asked *"is there a
-collectable product widget at this instant?"* and answered no — 60 isolated sessions, two
-real-display runs, and a forced collection at two sampled moments. That question has a regress in
-it: another null sample cannot separate *there is none* from *we sampled the wrong instant*, and
-`T289-R14`…`R20` were all found in the instruments rather than in the product. **A widget can only
-be owned by Python if the product leaves it without a Qt parent**, so the set of places where this
-defect is even possible is finite and can be enumerated instead of sampled.
-
-**162 widget constructions in `src/`. Four have no Qt parent, and zero calls anywhere hand a
-parented widget back** — no `setParent(None)`, no `takeWidget()`, no `removeWidget()`, no
-`takeAt()`.
-
-| Site | What becomes of it | Python-owned in the product? |
-|---|---|---|
-| `app.py:979` `MainWindow(...)` | top-level by design; composition holds it for the life of the process | **Yes — the only one** |
-| `ui/queue_view.py:2216` `QueueView(...)` | `main_window.py:666` calls `setCentralWidget`, which reparents it two statements later; strongly referenced throughout | No |
-| `ui/job_detail.py:849` `JobProgressView(...)` | `build_progress_view` is called by **no `src/` code** — only tests | Never constructed |
-| `ui/log_view.py:257` `LogView(...)` | built only inside `JobProgressView.__init__`, which the product never reaches | Never constructed |
-
-**The runtime survey agrees, which is the point of running it.** Offscreen, at two moments — window
-up, and Settings open — `topLevelWidgets()` reports exactly one **PYTHON-OWNED** widget, the
-`MainWindow`. `SettingsDialog` is **Qt-owned**, as `T289-R18`'s weak-reference report already said
-from the other direction. The remaining top-levels are Qt's own `QMenu`s and `QFrame`s, all
-Qt-owned — the widgets a scan of `src/` cannot see, which is why the survey exists.
-
-**So the candidate list for criterion 2 has one entry, and it is strongly referenced.** As the
-product is written there is no site that leaves a widget for the collector to destroy: everything is
-parented at construction or adopted immediately, and the one exception is the window, held by the
-frame running the application. **This does not say the crash did not happen** — it says the tree in
-the dump is not produced by any construction site in `src/` **in the states measured so far**.
-
-**The sharpest remaining hypothesis, proposed and not built: shutdown.** The window is the one
-Python-owned widget, `T-273` records that it is retained across C++ and signal edges `gc` cannot
-traverse, and composition's references to it drop during teardown — while a pool thread may still
-be alive, which is exactly the configuration the dump shows. Every measurement so far has left the
-window open on purpose. Forcing a collection during teardown, with a pool task in flight, is the
-next question worth asking, and it is a **maintainer's call**: it is deliberately provoking a double
-free in a process that is already tearing down.
-
-**A lead for `T-238`, recorded here because this audit is what produced it.** The only parentless
-constructions of product widget classes that actually run are in **tests** — `build_progress_view`
-and `JobProgressView` directly, plus the five parentless screens `tests/ui/surfaces.py` builds. The
-product constructs neither. `T-238`'s crash is a **test** crash whose retained stack is
-`~QAbstractItemView`, and its arm B reproduced the abort using helper-owned parentless widgets. That
-the harness creates the state and the product does not is consistent across both tasks, and it is
-the difference between them.
-
-#### The teardown reading, 2026-08-31: nothing joins either pool, and the process exits with one running
-
-**Read, then measured twice, and neither measurement forces anything.** This is the first result in
-this task that names a mechanism in the product rather than a property of an instrument.
-
-**Neither `QThreadPool` is ever joined.** `ytdlp_service` and `ui/thumbnails` each hold a
-module-global pool, and **there is no `waitForDone` call anywhere in `src/`** — the only mention is
-`thumbnails.py:509`, a comment recording one that was *removed* because it blocked the GUI thread
-from the add dialog. `OrderlyShutdown` sequences the manager, the writer, the connection and the
-instance lock, and then calls `app.quit()`. **It never mentions either pool**: it waits for the
-worker *process* and the writer *thread*, which are not these.
-
-**So `exec()` can return with pool work in flight, and it does.** Measured offscreen: click Update,
-close the window 50 ms later, and after `run()` returns —
-
-| After `run()` returned | Observed |
-|---|---|
-| `ytdlp_service` pool active threads | **1** |
-| `MainWindow` still tracked | yes |
-| its C++ object | **valid** |
-| owned by Python | **yes** |
-| freed by a main-thread `gc.collect()` | **no** — nothing deletes the window, so it is not garbage |
-
-**The window is not cyclic garbage at that point, and that matters**: it is alive because nothing
-ever deletes it. `T-273` already ruled that `shutdown.begin()` does not own the window's lifetime.
-Qt destroys the widget tree later, during process teardown, **on the GUI thread** — which is what
-the core dump's GUI thread is doing: `QLabel::setBuddy` → `disconnectImpl` → `free`.
-
-**That is the configuration the dump shows, with both halves now measured rather than inferred**: a
-pool thread still alive and able to run Python — where a collection runs `gc_collect_main` →
-`_Py_Dealloc` → shiboken → `~QWidget` — while the GUI thread destroys the same widget tree at exit.
-**Nothing sequences those two.** What remains an inference is that the two threads freed the *same*
-graph, which `T212-R4` already required this entry to say.
-
-**The proposed correction, not built**: drain both pools with a bounded `waitForDone` as a step in
-`OrderlyShutdown`, before `app.quit()`, so no pool thread survives into the teardown that destroys
-the widgets. **It is a maintainer's decision and not a small one.** `T-013`'s rule is that shutdown
-steps do not block the GUI thread, and `thumbnails.py` removed exactly this call for exactly that
-reason — a bounded wait *once, at exit* is a different proposition from one *per request*, but it is
-the same call and the same rule, and the bound's value is a judgement about how long a user should
-wait for a process that is already leaving. **An alternative worth ruling on together with it**: end
-the pools' work rather than wait for it, which needs the tasks to be cancellable and they are not.
-
-#### `T289-R21`, 2026-08-31: the pools are sealed, cancelled, and waited for
-
-**Built to the review's five points.** `src/tracks_and_trails/downloader/pools.py` adds `SealedPool`,
-the gate both `QThreadPool`s now sit behind, and `OrderlyShutdown` gained the barrier.
-
-1. **Sealed when shutdown begins.** `begin()` seals both pools before anything else. A pool still
-   accepting work has no last task, so the barrier would never complete — a thumbnail requested
-   while the window closes would extend it indefinitely.
-2. **Cancelled cooperatively.** A `QRunnable` cannot be interrupted, so `_Task`, `_ReadFromDisk`,
-   `_DecodeAndStore` and `_SweepTask` ask `cancelled` **before their work**, the one point where
-   stopping leaves nothing half-done. An update mid-extract must finish or roll back (`T-198`), so
-   it is deliberately not asked again inside.
-3. **An asynchronous barrier.** `drained` is emitted when the last task finishes, from a callback;
-   `when_all_drained` re-asks the predicate on each arrival. `seal()` returns immediately, which is
-   `T013-R2`'s rule kept.
-4. **`quit()` withheld.** `_writes_are_finished` no longer quits: it records that the database side
-   is done, and whichever of *writes finished* and *pools drained* completes last calls `_leave()`.
-5. **Counting is the gate's job.** Every runnable is wrapped so a task that raises or returns early
-   still decrements exactly once, through a signal delivered on the GUI thread.
-
-**The `aboutToQuit` bypass waits, bounded.** The asynchronous barrier cannot complete there —
-`drained` arrives through a queued connection and no event loop is left to deliver it — so
-`stop_for_exit` seals both pools and waits up to 3 s each. `stop_for_exit` already makes exactly
-this argument for the writer: the process is leaving and there is no interaction to block, and the
-alternative is Qt aborting on a running thread.
-
-**Two defects this found in itself, both by measurement rather than by review.** The gate's
-`outstanding` was decremented through a queued connection, so after the bypass — where nothing
-delivers one — it reported work that had finished; `wait_bounded` now reconciles the count from the
-pool, which is the authority. And **sealing a process-global pool is permanent**, which is right in
-an application and leaks in a suite: nine tests failed, all passing alone, because a test that
-composed the application sealed the module's pool for every test after it in that worker.
-`tests/conftest.py` replaces both singletons around every test, for the reason `tests/ui/conftest.py`
-gives about theme dressing — a reset aimed at today's failures leaves the next one to be found by
-accident.
-
-**Seven tests, each pool separately, and nine mutations killed.** The pools are asserted
-independently — wiring only one would pass a test that took both together and saw the other's
-completion — and the bypass has its own. **One mutation survived the first pass**: *the pool edge
-ignores the writer*, which quits as soon as the pools drain. Nothing tested that direction, though
-the writer's edge was asserted twice; a test now drains the pools first and requires the writer's
-completion before the quit. Also killed: no completion edge, the writer edge ignoring the pools, the
-gate never emitting `drained`, a seal that neither refuses work nor cancels, a `begin` that does not
-seal, and a bypass that does not wait.
-
-**`downloader/pools.py`, and the layering decides that**: `ui/` may import `downloader/` and not the
-reverse, `core/` may not import Qt (`ARCHITECTURE.md` §4), so it is the only layer both users can
-legally share.
-
-**Five corrections after the first build, and two of them made the barrier a lie** (`T289-R21`,
-second pass).
-
-- **`drained` fired while a pool thread was still running.** `_Counted` reports completion from
-  **inside** the task's own `run`, so the count reaches zero with that thread still executing — a
-  reviewer probe measured `activeThreadCount() == 1` at the moment the barrier released. The
-  completion signal is now a *hint*: `is_empty()` asks the pool through `waitForDone(0)`, and a
-  10 ms poll started by `seal()` re-asks until it agrees. **`activeThreadCount()` was checked too
-  and is gone**: `waitForDone(0)` is already false whenever it is non-zero, so no mutation of it
-  could fail — `T289-R20`'s unfalsifiable-term ruling applied to my own fix.
-- **The bypass ignored its own answer.** It waited bounded and then recorded a drain unconditionally,
-  so a pool that timed out was quit over as though it had emptied. The result is honoured now, the
-  state stays false, and the run says so in the log. There is no third option on that path:
-  refusing to leave hangs the exit and an unbounded wait is the same thing more slowly.
-- **Cancellation reached only queued work.** Each task asked once, at entry, which a running task is
-  already past. The sweep now asks **between files** — the one task here of unbounded duration — and
-  the decode asks **after decoding and before publishing**. Their entry checks were removed rather
-  than kept: a check the task can never reach past is one no test can aim at, which is exactly how
-  the sweep's guard came to be unexercised.
-- **Nothing asserted what composition wires.** Replacing the composed thumbnail pool with the yt-dlp
-  one — so one pool is waited for twice and the other not at all — left all 80 relevant tests green.
-  The pools are now asserted by identity out of `compose()`.
-- **Two Low corrections.** `app.py`'s new imports were at module scope, which breaks the rule that
-  `__main__` stays importable without Qt (`REL-001`); they are inside the functions now, with every
-  other Qt import in that file. And a sealed admission emitted `failed` directly, skipping the one
-  place that releases the worker hold `_run_holding_the_tree` had already taken — a refused update
-  would have left the queue permanently unable to start.
-
-**Thirteen tests, and every mutation of the six edges is killed** — the barrier trusting the count,
-the sweep and decode ignoring cancellation, the bypass claiming a drain, composition waiting twice
-on one pool, and a sealed admission keeping the hold. **A test that ends with a pool thread running
-joins it itself**: the autouse fixture would otherwise drop a busy `QThreadPool`, whose destructor
-waits or aborts on whichever thread collects it, and that segfaulted the suite once.
-
-#### `T289-R21`, third pass: the bypass waits, the barrier asks the pool, and running work can stop
-
-**The `aboutToQuit` bypass no longer leaves over live work, and two defects lived in the one line
-that did.** `all(pool.wait_bounded(...) for pool in self._pools)` is a generator, so the first pool
-that overran **short-circuited the aggregation and the second pool was never waited at all** — a
-reviewer probe recorded the calls as `[1, 0]`. And expiring the bound was treated as permission to
-continue: the run recorded `_pools_drained = False`, logged, and called `_leave()` anyway, quitting
-and closing the connection at `activeThreadCount() == 1`. **Truthful bookkeeping describes the
-race; it does not sequence teardown.** The constant is `_POOL_EXIT_REPORT_AFTER_MS` now and buys a
-diagnostic and nothing else: every pool is visited whatever the previous one answered, and one that
-overruns is reported and then waited to actual emptiness through `SealedPool.wait_until_empty()`.
-
-**There was never a choice between waiting and not waiting.** Qt already waits for a `QThreadPool`
-with runnables in flight — in `~QThreadPool`, in the middle of destroying the widget tree — or
-aborts. The choice is *where*, and the answer is: at the point where the widgets are still standing.
-An absolute process-exit deadline would need the work behind a boundary that can genuinely be
-killed, which is a design change and not something an exit path decides for itself.
-
-**The combined barrier asks the pool.** `when_all_drained` carried `sealed and not outstanding`, a
-second predicate and a strictly weaker one than what `drained` itself waits for: a runnable started
-on the underlying pool is one the gate never counted, so `outstanding` reads zero while the pool is
-plainly busy. A probe built exactly that, and `begin()` released the quit in it while the gate's own
-`drained` correctly withheld. It is `pool.sealed and pool.is_empty()` now — one predicate, the
-authoritative one.
-
-**yt-dlp work is cancellable past its entry, and the transaction is still indivisible.** `T-198`
-protects the live-tree replacement; it never made download and staging one operation.
-`install_latest` asks after the release lookup, **between download chunks**, after the download, and
-after the staged tree exists — every one of those leaves the live directory untouched and the
-staging workspace to the `finally` that already removes it. `_swap_into_place` has no checkpoint and
-must not have one: it displaces the live tree and either completes or rolls back.
-`resolve_in_a_child`'s single ninety-second `Queue.get` is 100 ms slices against one deadline, so a
-shutdown behind a child that never answers ends at the next slice rather than a minute and a half
-later, and the cancellation leaves through the same `finally` that terminates and joins the child.
-
-**The seam is a callable in a Qt-free module.** `downloader/cancellation.py` holds
-`OperationCancelledError` and `stop_if_cancelled`. Neither the updater nor the resolver may import
-`pools.py`, which imports `PySide6`, because `_freeze_probe.py` pulls the resolver into a process
-that must inherit no Qt (`ARC-002`). `YtdlpService` passes `_the_pool_is_closing`, and **both call
-sites are asserted by identity**: a keyword argument dropped from either is a one-token change that
-leaves every test of the resolver and of the installer itself green.
-
-**The two running-task controls could not tell what they claimed to.** Both sealed the pool and
-*then* called `run()`, so a checkpoint moved back to the task's entry would have left every
-assertion green — they could not distinguish queued cancellation from cancellation after work
-began, which is the distinction they existed for. They now start the task on a thread of its own,
-block it **inside** its first unlink and **inside** its decode, seal from the test thread while it
-is in there, and release it. The sweep must remove exactly the one file it was already deleting:
-fewer would mean it never deletes anything and the control is blind, more that cancellation never
-reached it. The decode's test runs the undisturbed task first, because a test that only asserts an
-absence cannot tell a working checkpoint from a decode that never wrote anything.
-
-**The root fixture owns the disposal it was asked to own** (`T289-R23`). It imported both
-Qt-bearing pool modules for every test in the repository — from the one `conftest.py` that runs
-before `tests/unit/`, whose Qt-freeness is `ai/TESTING.md` §1's — in order to reset two module
-globals. `sys.modules` answers the same question without loading anything, and re-reading it at
-teardown covers a module the test imported itself. And it dropped whatever the test had created
-without asking whether it was busy, which is how a `QThreadPool` comes to be destroyed by whichever
-thread collects it. It now seals and drains what the test made, and **fails the test that left work
-running** instead of letting the next segfault land in somebody else's.
-`tests/ui/_leaves_a_pool_thread_running.py` is the deliberate violation that proves it, in the shape
-`_leaks_a_view.py` established, and `tests/unit/test_skeleton.py` holds the Qt-free half in a
-subprocess because this pytest session has Qt loaded through its own plugins.
-
-**Eighteen mutations, all killed** — the barrier trusting its count, the threshold authorising
-teardown, only the first pool being waited, the final wait acquiring a deadline, the confirmation
-poll outliving the wait, each of the four install checkpoints, the resolution wait's, both service
-seams, the cancellation branch that reports the closing sentence, the sweep's and the decode's, and
-all three of the fixture's edges.
-
-**Two Low items closed in the completion sync** (`T289-R23` third pass, `T289-R25`, approved at
-`194316c`).
-
-- **The fixture drained a pool nothing could reach.** It restored the previous singleton *before*
-  the wait, so for the whole length of the drain the module global held `None` — and a task still
-  running asks `pool()`, not whatever object the fixture happens to be holding. It was handed a
-  freshly built replacement whose `cancelled` is false: the gate being drained reported
-  `cancelled=True` while the task on it saw `False`, went on working, and left the replacement
-  behind uncaptured. Seal and drain now come first and the restore second, and the restore still
-  happens on the failing path so a test that leaves work running does not also leave the module
-  dirty. `test_a_task_still_running_at_teardown_is_the_one_that_is_cancelled` drives the fixture
-  generator directly, because what it asserts happens *inside* a teardown: a test watching from its
-  own body would be watching a moment that has not arrived, and one watching from the next test
-  would need an ordering `-n auto` does not give.
-- **`stop_for_exit`'s summary line still said "Bounded, and blocks."** The bound became a reporting
-  threshold in this correction and the first line of the docstring did not follow.
-
-**What this does not do.** It does not prove the crash is gone — the dump remains unreproduced, and
-`T-238`'s record is that repetition does not discriminate this fault. What it removes is the
-configuration the reading found: **both** exit paths now establish that no pool thread survives into
-the teardown that destroys the widgets — the window's close through the asynchronous barrier, and
-`aboutToQuit` by waiting every pool to actual emptiness before it returns.
-
-#### Ruled 2026-09-04: criterion 2 is re-scoped, and the released route will not be identified
-
-**The maintainer's decision**, of the three this entry offered after the ownership instrument was
-built and run. The rejected two are recorded so neither returns as new: **authorising the shutdown
-experiment** — provoking a collection during teardown with a pool task in flight — and **accepting
-the residual risk** so Phase 4 could exit with the criterion simply unmet.
-
-**Why the experiment was refused rather than deferred.** It is no longer an observation of the
-product. `T289-R21`'s pool sequencing drains both pools before Qt destroys the widget tree, so *"a
-pool thread alive during teardown"* is not reachable in shipped code any more; running it now means
-defeating the gate deliberately to recreate a configuration the fix prevents. That is a controlled
-provocation of a double free, and what it would measure is the instrument's own setup.
-
-**What the criterion asks for now.** That no widget tree is left owned by Python alone where a pool
-thread can collect it — **established by enumeration**. It is: the product owns exactly one widget
-from Python, the `MainWindow`, strongly referenced for the process's life; 162 constructions, 4
-parentless, zero un-parenting calls; and the teardown precondition is gone. **It no longer asks for
-the dump's route to be identified.**
-
-**What that gives up, and it is not small.** The 2026-08-27 abort remains unexplained. Nothing here
-says the crash cannot recur; what it says is that the state which permits it is not written anywhere
-in `src/`, and that six null probes plus an exhaustive reading are the end of what sampling can
-establish. **`T-238`'s criterion 4 is re-scoped with it** — the two lacked the same thing — and its
-guard stays in, so a firing on a real test still reopens both.
-
-*(The 2026-08-31 ruling below chose to instrument ownership over re-scoping. That instrument was
-built, run, and is what makes this re-scope evidence-backed rather than a retreat — the audit is the
-reason the answer changed.)*
-
-#### Ruled 2026-08-31: instrument ownership, not collection
-
-**The maintainer's decision**, of the three this entry offered after the pool work was approved.
-The two rejected are recorded so neither returns as new: **re-scoping criterion 2** to what is
-established, and **accepting the residual risk** so Phase 4 can exit over an unexplained abort.
-
-**What was chosen.** Stop waiting for a collection to catch a widget and go at the state directly:
-whether any widget the product owns from Python is, at real moments in a driven session, reachable
-only through a reference cycle. The argument for it is what the runs already say. Sixty isolated
-sessions, two real-display runs and a forced collection at two sampled moments all put the
-collector on a pool thread and **none of them ever had a widget in what it freed**, with no near
-misses — so the half that is missing is the ownership, and ownership is observable without a
-collection happening at all. Another sixty samples of the half that already reproduces cannot
-discriminate this fault, which is `T-238`'s standing record.
-
-**It covers `T-238`'s criterion 4 as well**, because the two criteria now lack the same thing: a
-product-owned widget reaching the collector. One instrument answers both or neither.
-
-**A negative here is worth more than the negatives so far.** If no product-owned widget is ever in
-that state at any sampled moment, that is a claim about the application rather than about sixty
-runs of one route — and it is the evidence that would justify re-scoping, which is why re-scoping
-was not taken first.
-
-**Not started.** No task entry, no probe, and nothing here claims a result.
-
-#### Out of scope
-
-- **The leaked semaphores.** Three `/mp-*` objects survived, which is what an aborted process
-  leaves; if they survive an *orderly* exit that is `T-268`'s territory, not this
-- **`OPS-003`'s Windows half.** Observed on KDE/Wayland; whether the same collection lands the same
-  way there is unknown and is named rather than assumed
-- Making the update itself faster, or moving it off a pool
-
----
+*(**Empty as of 2026-09-06.** `T-289` and `T-271` were the last two and are both Complete. The
+heading stays because a section that disappears when it empties is one nobody notices coming
+back.)*
 
 ## Complete
 
@@ -13642,6 +12681,980 @@ unmeasured claim — that `New` resolves empty on Windows — which nothing supp
 
 - `T-200`'s wider accessibility pass
 - Re-opening `T-270`'s `Ctrl+Q` fallback, which is measured and approved separately
+
+---
+
+### T-289 — A pool thread's garbage collection destroys widgets while the GUI thread frees them
+
+**Status:** **Complete — Approved at `194316c` on 2026-08-31**, the pool-drain round, after the
+measurement round at `c29e299` the same day (`T289-R14`, `R15`, `R16`; `T289-R21`, `R22`, `R24`
+resolved, after `R2`…`R5` on 2026-08-30). **`T289-R23`'s remaining half and `T289-R25` were
+non-blocking Low and were closed in this entry's completion sync** — see the third-pass section.
+**Criterion 2 is met under the re-scope of 2026-09-04**, and the task closes on that wording.
+
+**Complete does not mean the crash is explained, and this entry is the wrong place to look for
+that comfort.** What closes is the task: both exit paths now establish that no pool thread
+survives into the teardown that destroys the widgets, the guard is in, and the enumeration the
+re-scoped criterion asks for is recorded. **The 2026-08-27 abort remains unexplained by ruling**,
+the dump remains unreproduced, and **a firing of the guard on a real test reopens this**.
+**Whether Phase 4 may exit over that is a separate decision and still the maintainer's** — closing
+the task does not take it.
+
+**Criterion 2 was re-scoped on 2026-09-04 and is met under the new wording** — see *Ruled
+2026-09-04*. It asks that no widget tree is left owned by Python alone where a pool thread can
+collect it, **established by enumeration**, and no longer that the released crash route be
+identified. **The 2026-08-27 abort therefore remains unexplained, deliberately.** The rule *no Qt
+widget is destroyed off the GUI thread* is stated in `ai/TESTING.md` §7 and enforced at every
+`tests/ui`
+boundary: no widget whose type is defined in Python may be owned by Python *and* reachable only
+through a reference cycle. **The parking is armed for the whole test rather than sampled at
+teardown** (`T289-R2`), and the one exemption fails closed (`T289-R4`). Three deliberate violations
+prove it, each run in a subprocess and required to fail with this guard's message.
+
+**Criterion 2 was NOT met under its original wording** (`T289-R3`), and that stood from 2026-08-13
+until the re-scope of 2026-09-04: the released crash route is unidentified and uncorrected, and the
+claim that the rule *"holds in the product today"* was withdrawn. **The maintainer ruled on
+2026-08-30 to instrument the real route rather than re-scope this task**, and the instrument was
+built and run before the re-scope was taken — which is what makes it evidence-backed. See *Where
+each criterion stands*. *(This said the ruling was still owed, in the same commit that recorded it —
+`T289-R5`.)* **The instrumented run happened on 2026-08-31**: 60 driven sessions on a nested Wayland
+compositor put the collector on the update's own pool thread every time and found no widget in what
+it freed — evidence that this route is clean, and not the identification criterion 2 asks for. See
+*The driven measurement*.
+
+*(Filed from this.)* The maintainer updated yt-dlp from the Settings screen and the process
+**aborted**: `double free or corruption (!prev)`,
+core dumped. **The core dump was recovered and is recorded at
+`ai/evidence/2026-08-27-T212-ytdlp-update-double-free.md`**, because `systemd-coredump` rotates and
+the evidence had to outlive it.
+**Owner:** Implementer
+**Priority:** **Highest of anything open.** It is a native memory-corruption abort in a released
+code path, on the run's own head, and every other finding in this run is cosmetic beside it
+**Phase:** Phase 4 — **this is a phase exit question**, not polish. A phase cannot exit over a
+reproducible-in-principle heap corruption without the maintainer deciding that deliberately
+**Depends on:** nothing
+**Relevant context:** `ai/evidence/2026-08-27-T212-ytdlp-update-double-free.md`;
+`downloader/ytdlp_service.py`, which runs the update on a `QThreadPool`; **`T-273`**, the window
+retained across C++ and signal edges that `gc` cannot traverse; `T-238`, the segfault under `gw7`;
+`ARC-002`
+**Affected surfaces:** `downloader/ytdlp_service.py`, whatever owns the widget tree that was
+collected, and the tests that would hold the rule
+**Risk:** **High to fix wrongly.** The obvious mitigations — disabling `gc` on pool threads, or
+sprinkling `deleteLater` — treat the symptom and leave the rule unstated
+
+#### What the core dump says
+
+Two threads were inside the allocator at once, and one of them was destroying a `QWidget` tree on a
+thread that may not. **That they were freeing the *same* graph is an inference** — `T212-R4`, which
+found this entry and its evidence file both stating it as measured. No object address was recovered
+from either stack and the dump names no Python-side type; the evidence file's own *What is not
+established* section says the collected tree is unknown. The identity is the natural reading of a
+`double free`, and it is what a fix would confirm rather than what this dump proves. **The off-GUI
+destruction and the abort are established, and they are what the acceptance criteria below turn
+on** — none of them needs the two trees to be one.
+
+**The GUI thread**, delivering a posted event:
+`QCoreApplication::exec` → `sendPostedEvents` → `QObject::event` → **`QLabel::setBuddy`** →
+`QObject::disconnectImpl` → `free` → `malloc_printerr` → `abort`. A label is clearing itself
+because its buddy is being destroyed.
+
+**A pool thread**, at the same moment:
+`PyObject_CallNoArgs` (Qt calling this task's Python) → `_PyEval_EvalFrameDefault` →
+`_Py_HandlePending` → **`gc_collect_main`** → `_Py_Dealloc` → **libshiboken6** →
+`QWidget::~QWidget` → `QObjectPrivate::deleteChildren`, **five levels deep**, blocked on the
+allocator lock the GUI thread holds.
+
+**CPython's cyclic collector ran on a pool thread and destroyed a Qt widget tree there.** Qt
+widgets may only be destroyed on the GUI thread. Nothing scheduled this: the collector runs
+wherever an allocation threshold happens to trip, which is exactly why it presents as random.
+
+**The update is the occasion, not the mechanism.** `ytdlp_service.py` runs it on a `QThreadPool`,
+so the update is simply Python executing on a non-GUI thread at a moment when a widget tree had
+become garbage. Any pool work can do this.
+
+#### What this is a second instance of
+
+`T-273` established that this application's windows are held by callables that Qt objects close
+over across C++ parent-child and signal edges — references `gc` cannot traverse. It fixed the
+*retention*. **This is the other half: what happens when such a tree does become collectable and
+the collector is not on the GUI thread.** `T-238`'s segfault belongs to the same family. Three
+crashes, one shape.
+
+#### The precondition is now reproducible on demand, measured 2026-08-29
+
+`tools/t289_pool_gc_probe.py` arranges the dump's situation deliberately instead of waiting for it:
+a parented `QWidget` tree — nested children, and a `QLabel` with `setBuddy`, both shaped after the
+stacks — whose only Python reference is inside a reference cycle, so `gc` is the only thing that can
+release it. `gc` is disabled, then `gc.collect()` is run inside a `QRunnable` on a `QThreadPool`,
+exactly where the dump found it. A `weakref.finalize` callback records the thread that performed the
+last decref, which is `T-238`'s probe's method.
+
+**The first version of this probe measured the wrong thing and its result is withdrawn.** It
+reported which thread ran the widget's `weakref.finalize` — the last **Python** decref — and called
+that destruction. Those are different events, and the difference is the whole of `T-289`:
+`shiboken` can hand the C++ deletion to the GUI thread through
+`BindingManager::runDeletionInMainThread`, and a probe reading only the decref thread cannot tell a
+marshalled deletion from an unmarshalled one.
+
+**Corrected and re-measured, offscreen on `Spock`.** `QObject::destroyed` is emitted inside
+`~QObject`, so a `DirectConnection` handler names the thread actually running the destructor:
+
+| | |
+|---|---|
+| Last Python decref | **`Dummy-1`** — a pool thread |
+| C++ `~QObject` | **`MainThread`** |
+
+**So an off-GUI decref is not sufficient to destroy a widget off the GUI thread.** In this
+configuration `shiboken` marshals, and the crash's precondition is **not** reproduced. That is a
+finding rather than a null result, and it means the mechanism is narrower than this entry supposed:
+something about the real crash defeated a marshalling path that works here.
+
+**The dump is not in doubt** — its pool-thread stack goes `_Py_Dealloc` → `libshiboken6` →
+`QWidget::~QWidget` → `QObjectPrivate::deleteChildren`, which is a destructor running on that
+thread. So the open question is now **what makes shiboken destroy in place rather than marshal**,
+and this probe does not reach that state. Candidates worth separating: whether the object was a
+child destroyed through `deleteChildren` rather than a wrapper shiboken tracks, whether the GUI
+thread being inside `sendPostedEvents` at that moment matters, and whether ownership had already
+passed to C++.
+
+**The `--on-the-gui-thread` control now reports its own conclusion.** It prints that both events
+happened on the GUI thread and that nothing was marshalled, rather than reusing the pool mode's
+marshalling sentence — which claimed a mechanism that run cannot observe (`T289-R1`). The control is
+what makes the pool mode's `Dummy-1` → `MainThread` split evidence about the pool thread rather than
+about the instrument, so it has to be readable as the *other* answer.
+
+**One adjacent crash is recorded here without being fitted to this task.** A local parallel unit/UI
+run lost an xdist worker in
+`test_a_picture_published_while_the_sweep_runs_is_not_counted_as_swept`, with the main thread in
+`settle_deferred_deletions` → `QObject::~QObject` → shiboken `getOverride` and a Qt pooled thread
+live; the same test passed alone and the correctly activated full rerun passed 3,378 / 21 skipped.
+**It is unclassified.** The review that recorded it declined to call it this mechanism, and so does
+this entry — it is written down because it is the nearest live specimen to compare a fix against,
+not because it is evidence for the fix. `ai/REVIEWS.md`, 2026-08-29.
+
+#### Answered 2026-08-30: it destroys in place when the type is defined in Python
+
+`ai/evidence/2026-08-30-T289-pool-thread-destruction.md`. The open question above — *what makes
+shiboken destroy in place rather than marshal* — **is none of the three candidates this entry
+listed.** Eight runs a subject, collected on a `QThreadPool` thread:
+
+| Subject | crashed | destructor **off** the GUI thread | marshalled |
+|---|---:|---:|---:|
+| A plain `QWidget` tree | 0/8 | 0/8 | **8/8** |
+| The same tree rooted in a **one-line Python subclass** | **3/8** | **5/8** | 0/8 |
+| The application's own screens (`tests/ui/surfaces.py`) | 0/8 | **8/8** | 0/8 |
+
+**The subclass has no behaviour, no connections, no closures, and is never shown.** Its body is a
+docstring. Being a Python-derived type is the entire difference from the row above it, and
+`--shown` was measured separately: a realised plain `QWidget` still marshals, so the variable is the
+type and not the platform window.
+
+**Every widget this application defines is a Python subclass**, so the marshalling that made the
+first probe's null result look reassuring **does not apply to any widget this project owns**. The
+precondition is the default here; what has kept the crash rare is only how seldom one of those trees
+becomes collectable on a pool thread's allocation.
+
+**Three of the eight subclass runs died, and the stack is the second half of the mechanism**: the
+*main* thread in `_Py_HandlePending` → `make_pending_calls` → shiboken
+**`runDeletionInMainThread()`** → `QtWidgets`, immediately after the probe recorded `~QObject`
+running on `Dummy-1`. Read together that is a **double deletion** — the pool thread destroyed the
+object in place while shiboken had also queued a main-thread deletion for it — which is
+`double free or corruption (!prev)`. **Stated as the reading rather than as proof**: nothing here
+dumped the pointer, so *the same object* is the obvious explanation and not a measured one.
+
+**Criterion 4 is still not met, and is no longer blocked on a mystery.** A tool is not a test. But
+the state the criterion describes — *"force the collector on a pool thread while a tree is
+collectable"* — can now be arranged in about ten lines with no application involved, which is what
+this entry has been missing since it was filed.
+
+**What this does not change.** The fix directions already named are untouched: a widget with a C++
+parent is owned by that parent, so dropping its wrapper destroys nothing, and disposal through the
+GUI thread is unaffected. **This is a diagnosis, not a fix, and `T-289` stays Proposed** until the
+maintainer schedules one.
+
+#### Acceptance criteria
+
+- **The rule is stated somewhere durable and enforced somewhere mechanical**: no Qt widget is
+  destroyed off the GUI thread. A comment in one file is what this project already had
+- **A widget tree is never left owned by Python alone** where a pool thread can collect it — either
+  it has a Qt parent that owns it in C++, or its disposal goes through the GUI thread explicitly
+- **The fix is not `gc.disable()` on pool threads**, or is that only with the reasoning written
+  down and the leak it trades for measured. Turning off the collector to hide a threading rule is a
+  bigger commitment than it looks
+- **A test that fails on the uncorrected tree exists**, even if it has to force the collector on a
+  pool thread while a tree is collectable — the crash is intermittent by nature and a fix with no
+  failing test is a fix nobody can check
+- **The three `edit: editing failed` lines are accounted for** — explained as part of this, or
+  separated out and filed. They are on the console immediately before the abort
+- **The update path logs what it is doing** (`T-282`), or this entry records why it still does not:
+  the application log's last line is 97 minutes before the crash
+
+#### The fix, and what decides its shape — 2026-08-30
+
+**The precondition has a name in the API, and it is queryable.** `shiboken6.ownedByPython(widget)`
+is exactly the discriminator the mechanism turns on, measured on the same subject three ways:
+
+| Widget | `ownedByPython` | Collected on a pool thread |
+|---|---|---|
+| Python subclass, **parentless** | `True` | **`~QObject` runs on `Dummy-1`** — the precondition |
+| Python subclass, **given a Qt parent** | `False` | nothing is destroyed, and the wrapper is not even finalised |
+| Plain `QWidget`, parentless | `True` | marshalled to the GUI thread |
+
+**So criterion 2's first branch is not a style preference — it is the mechanism switched off.** A Qt
+parent moves ownership into C++, and a wrapper the collector frees on a pool thread then destroys
+nothing at all. Nothing in the fix needs to reason about threads once that holds.
+
+**What this rules out as the fix.** Disabling `gc` on pool threads (criterion 3) would leave the
+rule unstated and trade a leak for it; `deleteLater` sprinkled at call sites (the Risk line's other
+temptation) is the same symptom-treating and cannot be checked. Neither is needed when the property
+is one boolean per widget.
+
+**What is left is enforcement, because the product may already comply and nobody could tell.**
+`T-238`'s criterion-4 run measured every widget the application's own routes open: **none was parked
+by the collector while its C++ half was alive**. That is the rule holding today, unenforced — and
+the crash proves a real session reached a state the offscreen composition does not. So the
+deliverable is a guard that fails when the property breaks, proved against a deliberate violation,
+rather than a repair to a site nobody has identified.
+
+#### What was built — 2026-08-30
+
+**The rule, stated where rules live**: `ai/TESTING.md` §7's mandatory-coverage table, with the
+measurement under it — the one boolean, what turns it off, and the two narrowings.
+
+**The guard, at the boundary that names the culprit**: `qt_lifecycle`'s
+`watch_for_collectable_widgets` arms `DEBUG_SAVEALL` **around the whole test**,
+`widgets_the_collector_would_destroy` reads what it parked and clears it, and
+`raise_for_collectable_widgets` fails on any parked widget that is **valid**, **`ownedByPython`**,
+and **not a PySide type**. Wired into `tests/ui`'s autouse fixture beside `T-238`'s orphan check.
+
+**Three calls rather than one, and `T289-R2` is why each split happened.** Arming has to span the
+test, because a collection inside it otherwise frees the evidence — and has to span the *inspection*
+too, because the first correction lowered the flag at the end of the body and a collection in that
+gap did the same thing one layer in. Reading has to clear unconditionally, because skipping the
+clear for the exempt node left its widget parked into the next test. And the flag has exactly one
+owner, because two of them turned an incoming `33` into `1`.
+
+**Two narrowings, each of which the first version got wrong and a run corrected:**
+
+- **`isValid` first.** A parked wrapper whose C++ half is already gone destroys nothing; counting it
+  would report Python catching up with Qt as a hazard. (`T-238`'s `T238-R7` is the same mistake, one
+  task over.)
+- **Not a PySide type.** The first version failed `tests/ui/test_file_actions.py` immediately, over
+  a plain `QListView` held in a cycle — a real leak, and **not** this hazard, because a built-in
+  type is marshalled to the GUI thread. A per-test guard that cries wolf is one somebody deletes.
+  **This narrowing follows the measurement rather than shiboken's documentation**, and if shiboken
+  ever stops marshalling for built-in types the guard misses it silently. Recorded, not hidden.
+
+**Order, which cost a debugging round.** The check must run **before** `settle_deferred_deletions`.
+That function's own `gc.collect()` destroys exactly the state the check looks for — harmlessly,
+because it happens on the GUI thread, and invisibly, because the widget is gone before the check
+runs. Wired after it, the guard **passed the deliberate violation written to fail it**.
+
+**One collision, resolved by marker rather than by weakening either guard.**
+`tests/ui/_carries_a_deletion.py` deliberately leaves a Python-owned cyclic widget at the boundary,
+because `T-238`'s drain is proved by the *next* test finding it gone. It now carries
+`@pytest.mark.leaves_a_collectable_widget`, registered in `pyproject.toml` with the reason. Nothing
+is exempt from the rule; one file is exempt from being *failed at a boundary* for a state its
+sibling test asserts is cleared a moment later.
+
+**Cost: unit+UI is 35–38 s against a 39 s baseline**, two runs — within the noise between runs.
+
+*(The claim attached to that number was wrong twice.* First it was **58 s**, which was the broken
+version collecting at the boundary *in addition to* the drain and once more in a `finally` — three a
+test. Then it was *"no extra collection"*, which `T289-R9` corrected: **there is still one**, the
+inspection's own `gc.collect()`, on top of the drain's. It is there to catch state that became
+garbage at the very end of a test and has not been collected yet, which the parking alone would
+miss. What the rework removed was the third one, and what the wall clock says is that the remaining
+extra is not measurable against run-to-run variation — not that it does not exist.)*
+
+#### Where each criterion stands — 2026-08-30
+
+| # | Criterion | State |
+|---|---|---|
+| 1 | The rule is stated durably **and enforced mechanically** | **Met.** `ai/TESTING.md` §7, and the boundary guard |
+| 2 | **Re-scoped 2026-09-04.** No widget tree left owned by Python alone where a pool thread can collect it — **established by enumeration rather than by identifying the released crash route** | **Met, under the re-scoped wording.** The product has one Python-owned widget, the `MainWindow`, and it is strongly referenced for the life of the process; 162 constructions, 4 parentless, no un-parenting call anywhere (*The ownership audit, 2026-08-31*). The teardown precondition is removed by `T289-R21`'s pool sequencing. **What the criterion no longer asks for is the identification of the dump's route**, which six null probes and this audit together argue is not reachable by sampling — see *Ruled 2026-09-04* |
+| 3 | Not `gc.disable()` on pool threads | **Met.** Not used, and the entry records why it is not needed: the property is ownership, not threading |
+| 4 | A test that fails on the uncorrected tree | **Met.** `_leaks_a_collectable_widget.py`, in a subprocess, required to fail with this guard's message |
+| 5 | The three `edit: editing failed` lines accounted for | **Met — explained**, see below |
+| 6 | The update path logs what it is doing (`T-282`), or this records why not | **Recorded**, see below |
+
+**Criterion 2 is not met, and the first version of this section claimed otherwise** (`T289-R3`).
+It said *"the rule holds in the product today"*, resting on `T-238`'s criterion-4 run and on the
+suite passing the new guard. **Neither supports that.** `T-238`'s run is a bounded offscreen
+inventory whose own entry stays `Ready` **for the real-session measurement it has not had**, and it
+established something narrower: none of the route-opened wrappers *in those arms* was parked live.
+A passing suite is a sampler over what the tests happen to exercise. **The released native-abort
+route is still unidentified and uncorrected**, and this entry's own text says the dump names no
+Python type — a passing test cannot turn that admitted unknown into product compliance.
+
+**What is actually delivered is enforcement**: the next widget left in this state inside the suite
+arrives as a named test failure instead of a core dump. That is worth having and it is not
+criterion 2.
+
+**Ruled 2026-08-30 by the maintainer: instrument the real route.** Of the two the review offered,
+the re-scope was refused — this task keeps criterion 2 and stays open until a product-representative
+measurement identifies the ownership route and corrects it. What that means concretely:
+
+- **The application on a real display**, not offscreen, driven through the route that actually
+  crashed: Settings → yt-dlp → Update.
+- **A `gc` hook reporting every Python-owned widget the collector frees** and the thread that freed
+  it, so the tree is named rather than inferred. Behind a flag, and removed when it has answered.
+- **Either outcome is evidence**: it names the tree, or it shows this route is clean and moves
+  suspicion somewhere with a measurement behind it.
+
+*(The rejected option is recorded so it is not re-proposed as new: re-scoping this entry to
+diagnostic test hardening and filing the hunt separately. Cheap and honest, and it would have left a
+double free reachable from Settings → Update with no owner until that entry was scheduled. The
+maintainer declined to accept that risk. A blanket ownership pass over every top-level widget was
+also considered and rejected — many files changed on a hypothesis, unfalsifiable while the guard
+already passes, and `T-289`'s own Risk line is "High to fix wrongly".)*
+
+**This bears on `T-238`'s outstanding real-session step from the other end, and closes neither
+end** (`T289-R15`). Both halves have now run once — the update route here, the staged-row thumbnail
+route in the review of 2026-08-31 — and both were `INCONCLUSIVE`. This sentence previously said the
+measurement *closes* that step, and kept saying it after the section below recorded that only half
+had been taken.
+
+**The instrument is built and has now been driven** — 60 isolated sessions on 2026-08-31 and the
+reviewer's own real-display run the same day — corrected after `T289-R6`…`R8`:
+`tools/t289_session_watch.py`.
+It runs the real entry point and **changes nothing in the product** — no `src/` file is touched and
+the application reads no flag; the wrapper *is* the flag, so an ordinary `python -m tracks_and_trails`
+is unaffected. It records three things: every widget destroyed on a thread that is not the GUI
+thread, **the Python stack of that thread at that moment** — which is what the core dump could not
+give — and every cyclic collection with the thread it ran on, so a destruction inside one can be
+told from a destruction beside one.
+
+**It observes and does not steer.** No `DEBUG_SAVEALL`, no forced collection: parking every collected
+object for a whole session would change the memory behaviour of the thing being measured.
+
+**What it costs is not fully known, and the record says so** (`T289-R11`). The filter re-reads each
+widget's ownership on every event — a synthetic measurement puts that at roughly **10.7 µs per
+event**, and nobody has generalised it to a live session's event rate. If it proves visible,
+sampling instead of every-event refresh is the obvious next shape.
+
+**Three corrections, and each was a way for it to have lied** (`T289-R6`…`R8`):
+
+- **It discovers widgets through an application-wide event filter, never by enumerating them**
+  (`T289-R8`). The first version polled `QApplication.allWidgets()` every 250 ms — the exact
+  enumeration `T238-R1` recorded killing a process with SIGSEGV when deletions were queued. An
+  instrument built to observe memory corruption must not be a plausible cause of it.
+- **It tracks every collection, both phases, on every thread** (`T289-R6`), so a destruction *inside*
+  a collection can be told from one beside it, and so a null result can be read at all: *no off-GUI
+  destruction* and *no collection that could have caused one* are otherwise the same report.
+  GUI-thread destructions are counted for the same reason.
+- **It refuses to call a session clean unless the route ran** (`T289-R7`). `install_latest_version`
+  is wrapped **in this process**, and the Settings screen is noticed through the same discovery the
+  widgets use. A session that never opened Settings reports `NOT A RESULT` rather than a clean bill
+  for a route nobody drove.
+  **Finished means finished**: the call hands its work to a `QThreadPool` and returns at once, so the
+  first version marked the route complete before the install had begun. Completion now comes from the
+  service's own `reported`/`failed` signals — the same ones the screen listens to.
+- **It names the near misses, not just counts them** (`T289-R6`). A candidate the collector destroys
+  **on the GUI thread** is the tree that would have been destroyed in place had the collector fired
+  on a pool thread, and the first version recorded it as a number with no name. Those names are what
+  a correction can be aimed at, and the verdict prints them.
+  **A candidate is Python-typed *and* owned by Python** — both, because a Python subclass with a Qt
+  parent belongs to C++ and releasing its wrapper destroys nothing. Testing the type alone named one
+  of those, which would have sent a correction after the wrong tree.
+  **Ownership is read two ways, and measurement chose which where** (`T289-R6`, twice). At rest it is
+  `shiboken6.ownedByPython`. **At a `ParentChange` that flag is stale** — `setParent(None)` sends the
+  event before shiboken moves it — so the reparent is read from `parent()`, which is already correct
+  at that instant. Measured: inside the handler `parent()` is `None` while `ownedByPython` still says
+  `False`. Neither can be read at destruction: there Qt hands over an object that raises `TypeError`
+  from `ownedByPython` and `AttributeError` from `parent()`, so the answer is recorded while the
+  widget is alive. **A cached flag refreshed only on events lost the immediate-collection case**, and
+  that is what the fourth self-test direction now holds.
+- **An off-GUI destruction with no collection running is reported as a different defect** (`T289-R6`).
+  Qt still forbids it and it deserves its own entry, but this task is about the *collector* doing it,
+  and a verdict that called both `T-289` would have closed this task on someone else's bug.
+
+**The report carries its own proof and its own identity** (`T289-R7`). Before the application
+starts, the session runs `--self-test` **in a subprocess and writes the result into the same file**,
+refusing to start if it fails — a null result is worth exactly what the positive control is worth,
+and asking for it as a separate command leaves it somewhere else or untaken. The header records the
+tree (marked dirty when it is), the host, and the Python, PySide6 and Qt versions, and the session
+records **the plugin Qt actually selected** rather than the one the environment requested — a report
+naming the wrong platform is a report about the wrong platform (`T289-R7`).
+
+**The control runs offscreen even when the session does not** (`T289-R7`). Its job is to destroy a
+widget off the GUI thread *on purpose*, and doing that through the maintainer's real plugin would
+run the hazard against a live desktop to prove an instrument. Offscreen exercises the same shiboken
+and collector paths, which is where the mechanism lives; the report says what that does not cover.
+
+**Killed sessions say so too.** `SIGTERM` writes the summary and verdict before quitting — and the
+handler needs a heartbeat timer to run at all, because Python executes signal handlers between
+bytecodes and Qt's `exec()` is C. Installing the handler *without* that made the session unkillable
+by anything but `SIGKILL`, which is the opposite of the intent and is recorded here because it is a
+trap anyone adding a signal handler to a Qt program walks into.
+
+**Its positive control runs offscreen in a second, and must be run first.**
+`--self-test` goes through `arm()` — the real event filter and the real `gc` callback, not a
+hand-wired handler (`T289-R7`) — and drives **six directions**: the measured arm collected on a
+pool thread, which must be reported **by the subject's own name** rather than by any off-thread
+destruction happening to occur; a second candidate collected on the **GUI** thread, which must be
+**named** as a near miss; and a Python subclass **with a Qt parent**, which must **not** be named,
+because it is owned by C++ and releasing its wrapper destroys nothing; and a child released by
+`setParent(None)` and collected **immediately**, with no event in between, which must be named — the
+case both cached versions lost; and one whose **first** observed event *is* that reparent, which the
+version after those two still lost (`T289-R6`).
+
+**The sixth is the classifier itself** (`T289-R12`). A widget whose last Python reference is dropped
+**on a pool thread by refcount**, with no collection running, must classify as *OFF-GUI DESTRUCTION,
+BUT NOT T-289* — and it runs on a `Watch` of its own, because on the shared one that arm is
+unreachable: an earlier direction already put a destruction inside a collection and the aggregate
+reports the stronger finding. Until this existed, replacing `off_gui_in_a_collection` with
+`off_gui_destructions` — restoring the verdict that called somebody else's bug this task's — passed
+every arm. It is killed now. *A clean session is worth exactly as much as that
+check passing beforehand*, and three instruments in this family have reported confidently about
+nothing.
+
+    .venv/bin/python tools/t289_session_watch.py --self-test
+    env -u QT_QPA_PLATFORM .venv/bin/python tools/t289_session_watch.py \
+        --report reports/t289-session.txt
+
+Then **Settings → yt-dlp → Update**, let it finish, use the window for a minute, and close it.
+
+**A clean run is a result and it is not a closure.** The report says how many widgets were watched,
+for how long, how many collections ran on which threads, and **which Python-typed widgets the
+collector destroyed on the GUI thread** — the near misses, named, because those are the trees that
+would have been destroyed in place had the collector fired on a pool thread instead (`T289-R6`).
+**The bound is stated in the tool**: a widget that never receives an event is never discovered.
+**One null session cannot close criterion 2**, which the reviewer said plainly and the verdict text
+now says too.
+
+**Criterion 5: the three lines are Qt refusing to open an editor, and the route is identified.**
+`QAbstractItemView.edit(index)` prints exactly `edit: editing failed` when the index is not
+editable — reproduced directly. The product calls it from `RowDelegate.editorEvent` on a click
+inside `_control_of(...)`, and **that rect is geometry alone**: it does not consult `_editable`, so
+a click where the control *would* be, on a row that has none, reaches `edit()` and is refused.
+Three clicks, three lines. **Benign** — the click does nothing, which is correct — and separable
+from the abort, which is what the criterion asks.
+
+*(**An adjacent defect, recorded and not fixed here** — `AGENTS.md` §7. The delegate offers a click
+target where it painted no control, and `UX-005` §5 is the rule against offering what would be
+refused. It is two lines to gate `editorEvent` on `_editable`, it is not this task's behaviour, and
+filing it is the maintainer's or the reviewer's call rather than mine.)*
+
+**Criterion 6: the update path still logs nothing, and `T-282` is why.** The application log's last
+line is 97 minutes before the crash. `T-282` is the task for a debug level reachable without editing
+code, and it is Proposed. Adding logging here would be that task done narrowly and in the wrong
+place; what this entry can say is that the gap is owned, named, and unclosed.
+
+#### The driven measurement, 2026-08-31: the gun is loaded on that thread and holds no widget
+
+**60 unattended sessions at `179f73e`**, each the product on a nested `kwin_wayland --virtual`
+compositor — Qt selected the `wayland` plugin in all 60, which the report reads from the running
+application rather than from the environment it was asked for — driven through
+`MainWindow.open_settings()` and a click on the Settings screen's own `ytdlpUpdate` button, which
+composition wires to `YtdlpService.install_latest_version`. **The whole update runs**: the wheel is
+fetched from PyPI, verified and extracted into the session's own disposable `user_data_dir`, and
+every session reported `Resolution(version='2026.08.19', source='user-managed copy (OPS-002)')` —
+the copy its own install had just written.
+
+    tools/t289_isolated_session.sh reports/t289-session.txt   # one session, ~20 s
+
+**The 60-run aggregate came from this loop, and the batch — not the session — chooses to continue
+past a bad sample** (`T289-R14`):
+
+    for i in $(seq -w 1 60); do
+        tools/t289_isolated_session.sh "$dir/run-$i.txt" || echo "run-$i FAILED" >&2
+    done
+
+**The table below is read from the one summary line each report ends with**, which carries every
+count in it; `grep -h 'widgets over' "$dir"/run-*.txt` prints the 60 lines the columns were counted
+from. A report without a `VERDICT` line and a completed route is not a sample — the wrapper now
+refuses it rather than returning 0, and re-checking the 60 stored reports against that rule passes
+**60/60**, so the counts here are the counts a gated run would have produced.
+
+**There is no file for this under `ai/evidence/`, deliberately**: that directory is for artifacts a
+re-run would not produce, and this is a committed tool driving a deterministic route. Its command
+line is above and its numbers are here, which is what that README asks for.
+
+**The collector-and-thread half of the precondition reproduces every time — and only that half**
+(`T289-R15`). This entry defines the precondition as a Python-owned *widget* being collected and
+destroyed on a pool thread; what these runs reproduce is the collector firing there at all, which
+the tool itself calls *"the loaded gun, widget or not"*. Calling that "the precondition" reads as
+though the crash were one step away, and it is not: the widget half never happened once. In 60 of
+60 sessions the cyclic collector ran on the update's pool thread — `Dummy-1`, `ytdlp_service`'s own `QThreadPool` — while the update was in
+flight, freeing 9 objects. That is the thread the core dump names — `PyObject_CallNoArgs`, Qt
+calling this task's Python, through `_Py_HandlePending` into `gc_collect_main` — at the moment the
+dump names it.
+
+| Per session | Across the 60 |
+|---|---|
+| Route completed — Settings opened, update started, update finished | **60 / 60** |
+| Widgets watched | 965 (964 in two sessions) |
+| Collections on the GUI thread | 8 (7 in four) |
+| Collections on a pool thread | 2 on `Dummy-1`; four sessions also ran one on a `Dummy-2` |
+| Objects freed by the pool-thread collections | 9, in every session |
+| **Widget destructions off the GUI thread** | **0** (0 inside a collection) |
+| Widget destructions on the GUI thread | 28, **none** inside a collection |
+| **Near misses** — Python-owned widgets the collector destroyed on the GUI thread | **0** |
+| Verdict | `INCONCLUSIVE`, 60 / 60 |
+
+**No widget was ever among what the collector freed** — not on a pool thread, not on the GUI
+thread. The other 28 destructions per session are Qt's own, on the GUI thread and outside any
+collection; **the watch counts them without naming them**, so *which* widgets they are is not
+established here and the obvious reading — the Settings screen and its children — is an inference
+this run does not carry. What it does establish is the classification that matters: none of them
+happened inside a collection, and none happened off the GUI thread. The instrument's positive
+control passed offscreen before each of the 60 sessions, so a clean report is the instrument
+reporting rather than the instrument being blind.
+
+**Criterion 2 stays NOT met, and the size of the batch must not be read as strength.** 56 of the 60
+sessions produced identical arithmetic; the other four differ by a second pool thread and one
+collection. These are not 60 samples of an intermittent event — they are one deterministic route
+measured 60 times, and the reviewer's *"one null session cannot close criterion 2"* applies to
+sixty of them just as it did to one. What the run establishes is that **this route, driven this
+way, hands the collector no widget at all**, and that the instrument said so with its positive
+control passing beforehand each time.
+
+**Four bounds. Two of them the review of 2026-08-31 discharged, and two stand**: the **virtual
+output** and the untouched **thumbnail pool** were both answered by the reviewer's own runs below;
+still standing are that the watch discovers widgets by event, so the 965 it names are the ones that
+received one, and that a timer which opens Settings four seconds after launch and closes the window
+twelve seconds later is not the used session the crash came from.
+
+#### The forced collection, 2026-08-31: two moments where the collector is offered a widget and finds none
+
+`tools/t289_forced_collection_probe.py`, run through the same isolation as the watch
+(`tools/t289_isolated_session.sh <report> probe`). **The numbers below are the second measurement**;
+the first is withdrawn because `T289-R18`…`R20` each changed what it meant.
+
+**Why a second instrument.** The watch observes and does not steer, by design, and it has answered
+what it can: on this route the collector fires on the update's own pool thread and never holds a
+widget. *"We watched and nothing happened"* does not separate **the product never hands the
+collector a widget** from **we did not watch at the moment it did**, and no number of observed
+sessions closes that gap. This probe drives the same route and then **forces a collection off the
+GUI thread** at two chosen moments.
+
+| Phase | Moment | Objects parked | Widgets among them |
+|---|---|---:|---:|
+| **A** | the update has reported, Settings still open — the two facts the crash report also states | 9 in two runs of four, 0 in the others | **0** |
+| **B** | the Settings dialog closed **inside the parking boundary** | 5 | **0** |
+
+**Not zero findings — zero widgets.** The collector had cycles to work with and not one of them
+contained a `QWidget`, so the classifier never had to discriminate on a product object.
+
+**Phase B closes the dialog inside the parking boundary** (`T289-R18`). It used to close it and
+deliver the deletion *before* the parking was armed, so an automatic collection could consume the
+teardown garbage the phase exists to inspect — the false-absence path the tool's own header warns
+about. The close now runs with automatic collection off and `DEBUG_SAVEALL` on, and releases the
+dialog before the off-thread collection.
+
+**And it says why the number is what it is.** After the collection the probe reports the dialog
+through a weak reference: *wrapper survived, C++ object alive, **owned by Qt, parented to
+`MainWindow`**, the product no longer references it, frames of this probe holding it: **0***. So the
+zero is not the product retaining the dialog and not the probe retaining it — the window's own
+reference **is** dropped, by `_forget_settings_dialog` on `finished`. It is Qt ownership:
+`open_settings` builds the dialog with `parent=self`, and dropping a wrapper Qt owns destroys
+nothing. **That property is the one `ai/TESTING.md` §7 states.**
+
+**`SettingsDialog` sets no `WA_DeleteOnClose`, so closing it deletes nothing**, and the probe
+delivers `DeferredDelete` **to that dialog** rather than flushing every pending delete in the
+process. The earlier *"its deferred deletions delivered"* claimed something neither the flush nor
+the close establishes.
+
+**What it does not establish, and the result is kept to it.** Two samples on one route: **after the
+update reported, and after the Settings dialog closed**, plus the ownership edge above. A widget
+that became collector-reachable at any other moment is not seen; a forced collection is not one the
+product would have run then; the thumbnail pool is untouched. Nothing here is a statement about the
+application as a whole.
+
+**Four review findings, and each was the instrument rather than the product** (`T289-R17`…`R20`).
+The shared wrapper's default mode stopped starting, because the tool path and `--drive` were held in
+one string and Python looked for a file with a space in its name. Phase B held the dialog in a local
+across its own collection, so its zero was the probe's doing — the self-retention class that
+invalidated an earlier `T-238` zero, reproduced by the instrument built after it. The cleanup
+re-enabled automatic collection before draining, so a positive result would have left a live
+collectable widget for a pool thread to destroy — the probe causing the defect it came to look for.
+And the reporting predicate omitted `defined_in_python`, so a plain `QWidget` — which Shiboken
+marshals to the GUI thread and destroys safely — classified as a `T-289` finding; the phase summary
+then kept the wider wording for one more round, so a narrowed count was announced in words that
+denied such a widget existed (`T289-R20`). **`valid` was
+dropped from that predicate on the same ruling**: `owned` is computed as *valid and
+`ownedByPython`*, so it stated a condition no real widget could falsify.
+
+**Nine mutations of the classifier and its predicate are killed by the controls**, and getting there
+took three passes in which arms that looked like controls were not. The Qt-owned arm never parked
+its widget, so it asserted nothing; nothing checked that a Qt-typed widget is not called
+Python-defined; nothing checked the collection ran off the GUI thread. **Two detectors written for
+`R18` and `R19` were then blind in turn**, and both were caught by testing them against the defect
+they were written for rather than by review: `gc.get_referrers` cannot see a frame CPython has not
+materialised, so the retention check answered *0 frames* while a deliberately reintroduced `R18`
+held the dialog — it walks the stack now, and reports 1 against that same mutant and 0 clean.
+
+**The drain has an effect control, and my argument that it could not have one was wrong**
+(`T289-R19`). I built two and both were blind — a weak reference reports the widget dead whichever
+way the phase ends, because CPython clears weakrefs to unreachable objects *before* `DEBUG_SAVEALL`
+parks them; and a `__del__` flag fires either way — and concluded no such control was possible here,
+recording that `gc.garbage.clear()` *"frees the cycle by itself"*. **That is withdrawn.** `__del__`
+firing is finalization, not deallocation. The review's own control keeps **only `id(widget)`**,
+which holds nothing, and asks `gc.get_objects()` afterwards whether anything at that identity is
+still tracked. Replayed here: with the drain the widget is gone; with the drain omitted it is still
+tracked **and `shiboken6.isValid` is true**, with automatic collection already restored. The arm
+now fails on that, not on the order of the calls.
+
+#### The reviewer's real-display runs, 2026-08-31: both routes, both inconclusive
+
+Recorded in `ai/REVIEWS.md` under *Driven-session results*; summarised here because this entry is
+current truth and the numbers change what is still owed. Neither run is mine and neither closes a
+criterion.
+
+**Settings → yt-dlp → Update, on the real display** at clean `948f837`, `QT_QPA_PLATFORM` unset,
+Qt selecting the real `wayland` plugin, profile disposable. Route complete; **971** widgets watched;
+collections `MainThread` 7, `Dummy-1` 1, `Dummy-2` 2; **9 objects freed by the `Dummy-2` collection
+while the update was in flight**; **0** widget destructions off the GUI thread, 28 on it and none
+inside a collection; **0** near misses. **`INCONCLUSIVE`.** This discharges *real display rather
+than virtual output* for one bounded sample. It does not identify criterion 2's widget tree, and it
+is still the short automated route rather than the used session the report came from.
+
+**The staged-row thumbnail pipeline, on the real display.** A reviewer driver composed the real
+application with the spawned-fixture worker, opened `MainWindow.open_add_dialog()`, pasted the
+recorded Archive.org URL and let the dialog's own debounce stage it; the delegate started the real
+`ThumbnailStore` pipeline and the public JPEG became a pixmap. `_ReadFromDisk` ran on `Dummy-2`,
+`_DecodeAndStore` on `Dummy-3`, `_SweepTask` on `Dummy-4`; **647** widgets watched; **12**
+collections on `MainThread` and **none on any thumbnail task thread**; **0** destructions off the
+GUI thread, 24 on it, none inside a collection; **0** near misses. **`INCONCLUSIVE`** — the pool
+worked and the collector never ran there. Nothing was forced: no `gc.collect()`, no lowered
+threshold, because forcing it on the live desktop would turn the measurement into the hazard.
+
+**So the two pools have now each been watched once on a real display, and neither handed the
+collector a widget.** Criterion 2 stays open, and what it now lacks is not a display or a route but
+the tree itself.
+
+#### The ownership audit, 2026-08-31: one Python-owned widget in the product, and it is the window
+
+`tools/t289_ownership_audit.py`, plus a runtime survey of `QApplication.topLevelWidgets()`.
+
+**Why a reading rather than a sixth measurement.** Every probe so far has asked *"is there a
+collectable product widget at this instant?"* and answered no — 60 isolated sessions, two
+real-display runs, and a forced collection at two sampled moments. That question has a regress in
+it: another null sample cannot separate *there is none* from *we sampled the wrong instant*, and
+`T289-R14`…`R20` were all found in the instruments rather than in the product. **A widget can only
+be owned by Python if the product leaves it without a Qt parent**, so the set of places where this
+defect is even possible is finite and can be enumerated instead of sampled.
+
+**162 widget constructions in `src/`. Four have no Qt parent, and zero calls anywhere hand a
+parented widget back** — no `setParent(None)`, no `takeWidget()`, no `removeWidget()`, no
+`takeAt()`.
+
+| Site | What becomes of it | Python-owned in the product? |
+|---|---|---|
+| `app.py:979` `MainWindow(...)` | top-level by design; composition holds it for the life of the process | **Yes — the only one** |
+| `ui/queue_view.py:2216` `QueueView(...)` | `main_window.py:666` calls `setCentralWidget`, which reparents it two statements later; strongly referenced throughout | No |
+| `ui/job_detail.py:849` `JobProgressView(...)` | `build_progress_view` is called by **no `src/` code** — only tests | Never constructed |
+| `ui/log_view.py:257` `LogView(...)` | built only inside `JobProgressView.__init__`, which the product never reaches | Never constructed |
+
+**The runtime survey agrees, which is the point of running it.** Offscreen, at two moments — window
+up, and Settings open — `topLevelWidgets()` reports exactly one **PYTHON-OWNED** widget, the
+`MainWindow`. `SettingsDialog` is **Qt-owned**, as `T289-R18`'s weak-reference report already said
+from the other direction. The remaining top-levels are Qt's own `QMenu`s and `QFrame`s, all
+Qt-owned — the widgets a scan of `src/` cannot see, which is why the survey exists.
+
+**So the candidate list for criterion 2 has one entry, and it is strongly referenced.** As the
+product is written there is no site that leaves a widget for the collector to destroy: everything is
+parented at construction or adopted immediately, and the one exception is the window, held by the
+frame running the application. **This does not say the crash did not happen** — it says the tree in
+the dump is not produced by any construction site in `src/` **in the states measured so far**.
+
+**The sharpest remaining hypothesis, proposed and not built: shutdown.** The window is the one
+Python-owned widget, `T-273` records that it is retained across C++ and signal edges `gc` cannot
+traverse, and composition's references to it drop during teardown — while a pool thread may still
+be alive, which is exactly the configuration the dump shows. Every measurement so far has left the
+window open on purpose. Forcing a collection during teardown, with a pool task in flight, is the
+next question worth asking, and it is a **maintainer's call**: it is deliberately provoking a double
+free in a process that is already tearing down.
+
+**A lead for `T-238`, recorded here because this audit is what produced it.** The only parentless
+constructions of product widget classes that actually run are in **tests** — `build_progress_view`
+and `JobProgressView` directly, plus the five parentless screens `tests/ui/surfaces.py` builds. The
+product constructs neither. `T-238`'s crash is a **test** crash whose retained stack is
+`~QAbstractItemView`, and its arm B reproduced the abort using helper-owned parentless widgets. That
+the harness creates the state and the product does not is consistent across both tasks, and it is
+the difference between them.
+
+#### The teardown reading, 2026-08-31: nothing joins either pool, and the process exits with one running
+
+**Read, then measured twice, and neither measurement forces anything.** This is the first result in
+this task that names a mechanism in the product rather than a property of an instrument.
+
+**Neither `QThreadPool` is ever joined.** `ytdlp_service` and `ui/thumbnails` each hold a
+module-global pool, and **there is no `waitForDone` call anywhere in `src/`** — the only mention is
+`thumbnails.py:509`, a comment recording one that was *removed* because it blocked the GUI thread
+from the add dialog. `OrderlyShutdown` sequences the manager, the writer, the connection and the
+instance lock, and then calls `app.quit()`. **It never mentions either pool**: it waits for the
+worker *process* and the writer *thread*, which are not these.
+
+**So `exec()` can return with pool work in flight, and it does.** Measured offscreen: click Update,
+close the window 50 ms later, and after `run()` returns —
+
+| After `run()` returned | Observed |
+|---|---|
+| `ytdlp_service` pool active threads | **1** |
+| `MainWindow` still tracked | yes |
+| its C++ object | **valid** |
+| owned by Python | **yes** |
+| freed by a main-thread `gc.collect()` | **no** — nothing deletes the window, so it is not garbage |
+
+**The window is not cyclic garbage at that point, and that matters**: it is alive because nothing
+ever deletes it. `T-273` already ruled that `shutdown.begin()` does not own the window's lifetime.
+Qt destroys the widget tree later, during process teardown, **on the GUI thread** — which is what
+the core dump's GUI thread is doing: `QLabel::setBuddy` → `disconnectImpl` → `free`.
+
+**That is the configuration the dump shows, with both halves now measured rather than inferred**: a
+pool thread still alive and able to run Python — where a collection runs `gc_collect_main` →
+`_Py_Dealloc` → shiboken → `~QWidget` — while the GUI thread destroys the same widget tree at exit.
+**Nothing sequences those two.** What remains an inference is that the two threads freed the *same*
+graph, which `T212-R4` already required this entry to say.
+
+**The proposed correction, not built**: drain both pools with a bounded `waitForDone` as a step in
+`OrderlyShutdown`, before `app.quit()`, so no pool thread survives into the teardown that destroys
+the widgets. **It is a maintainer's decision and not a small one.** `T-013`'s rule is that shutdown
+steps do not block the GUI thread, and `thumbnails.py` removed exactly this call for exactly that
+reason — a bounded wait *once, at exit* is a different proposition from one *per request*, but it is
+the same call and the same rule, and the bound's value is a judgement about how long a user should
+wait for a process that is already leaving. **An alternative worth ruling on together with it**: end
+the pools' work rather than wait for it, which needs the tasks to be cancellable and they are not.
+
+#### `T289-R21`, 2026-08-31: the pools are sealed, cancelled, and waited for
+
+**Built to the review's five points.** `src/tracks_and_trails/downloader/pools.py` adds `SealedPool`,
+the gate both `QThreadPool`s now sit behind, and `OrderlyShutdown` gained the barrier.
+
+1. **Sealed when shutdown begins.** `begin()` seals both pools before anything else. A pool still
+   accepting work has no last task, so the barrier would never complete — a thumbnail requested
+   while the window closes would extend it indefinitely.
+2. **Cancelled cooperatively.** A `QRunnable` cannot be interrupted, so `_Task`, `_ReadFromDisk`,
+   `_DecodeAndStore` and `_SweepTask` ask `cancelled` **before their work**, the one point where
+   stopping leaves nothing half-done. An update mid-extract must finish or roll back (`T-198`), so
+   it is deliberately not asked again inside.
+3. **An asynchronous barrier.** `drained` is emitted when the last task finishes, from a callback;
+   `when_all_drained` re-asks the predicate on each arrival. `seal()` returns immediately, which is
+   `T013-R2`'s rule kept.
+4. **`quit()` withheld.** `_writes_are_finished` no longer quits: it records that the database side
+   is done, and whichever of *writes finished* and *pools drained* completes last calls `_leave()`.
+5. **Counting is the gate's job.** Every runnable is wrapped so a task that raises or returns early
+   still decrements exactly once, through a signal delivered on the GUI thread.
+
+**The `aboutToQuit` bypass waits, bounded.** The asynchronous barrier cannot complete there —
+`drained` arrives through a queued connection and no event loop is left to deliver it — so
+`stop_for_exit` seals both pools and waits up to 3 s each. `stop_for_exit` already makes exactly
+this argument for the writer: the process is leaving and there is no interaction to block, and the
+alternative is Qt aborting on a running thread.
+
+**Two defects this found in itself, both by measurement rather than by review.** The gate's
+`outstanding` was decremented through a queued connection, so after the bypass — where nothing
+delivers one — it reported work that had finished; `wait_bounded` now reconciles the count from the
+pool, which is the authority. And **sealing a process-global pool is permanent**, which is right in
+an application and leaks in a suite: nine tests failed, all passing alone, because a test that
+composed the application sealed the module's pool for every test after it in that worker.
+`tests/conftest.py` replaces both singletons around every test, for the reason `tests/ui/conftest.py`
+gives about theme dressing — a reset aimed at today's failures leaves the next one to be found by
+accident.
+
+**Seven tests, each pool separately, and nine mutations killed.** The pools are asserted
+independently — wiring only one would pass a test that took both together and saw the other's
+completion — and the bypass has its own. **One mutation survived the first pass**: *the pool edge
+ignores the writer*, which quits as soon as the pools drain. Nothing tested that direction, though
+the writer's edge was asserted twice; a test now drains the pools first and requires the writer's
+completion before the quit. Also killed: no completion edge, the writer edge ignoring the pools, the
+gate never emitting `drained`, a seal that neither refuses work nor cancels, a `begin` that does not
+seal, and a bypass that does not wait.
+
+**`downloader/pools.py`, and the layering decides that**: `ui/` may import `downloader/` and not the
+reverse, `core/` may not import Qt (`ARCHITECTURE.md` §4), so it is the only layer both users can
+legally share.
+
+**Five corrections after the first build, and two of them made the barrier a lie** (`T289-R21`,
+second pass).
+
+- **`drained` fired while a pool thread was still running.** `_Counted` reports completion from
+  **inside** the task's own `run`, so the count reaches zero with that thread still executing — a
+  reviewer probe measured `activeThreadCount() == 1` at the moment the barrier released. The
+  completion signal is now a *hint*: `is_empty()` asks the pool through `waitForDone(0)`, and a
+  10 ms poll started by `seal()` re-asks until it agrees. **`activeThreadCount()` was checked too
+  and is gone**: `waitForDone(0)` is already false whenever it is non-zero, so no mutation of it
+  could fail — `T289-R20`'s unfalsifiable-term ruling applied to my own fix.
+- **The bypass ignored its own answer.** It waited bounded and then recorded a drain unconditionally,
+  so a pool that timed out was quit over as though it had emptied. The result is honoured now, the
+  state stays false, and the run says so in the log. There is no third option on that path:
+  refusing to leave hangs the exit and an unbounded wait is the same thing more slowly.
+- **Cancellation reached only queued work.** Each task asked once, at entry, which a running task is
+  already past. The sweep now asks **between files** — the one task here of unbounded duration — and
+  the decode asks **after decoding and before publishing**. Their entry checks were removed rather
+  than kept: a check the task can never reach past is one no test can aim at, which is exactly how
+  the sweep's guard came to be unexercised.
+- **Nothing asserted what composition wires.** Replacing the composed thumbnail pool with the yt-dlp
+  one — so one pool is waited for twice and the other not at all — left all 80 relevant tests green.
+  The pools are now asserted by identity out of `compose()`.
+- **Two Low corrections.** `app.py`'s new imports were at module scope, which breaks the rule that
+  `__main__` stays importable without Qt (`REL-001`); they are inside the functions now, with every
+  other Qt import in that file. And a sealed admission emitted `failed` directly, skipping the one
+  place that releases the worker hold `_run_holding_the_tree` had already taken — a refused update
+  would have left the queue permanently unable to start.
+
+**Thirteen tests, and every mutation of the six edges is killed** — the barrier trusting the count,
+the sweep and decode ignoring cancellation, the bypass claiming a drain, composition waiting twice
+on one pool, and a sealed admission keeping the hold. **A test that ends with a pool thread running
+joins it itself**: the autouse fixture would otherwise drop a busy `QThreadPool`, whose destructor
+waits or aborts on whichever thread collects it, and that segfaulted the suite once.
+
+#### `T289-R21`, third pass: the bypass waits, the barrier asks the pool, and running work can stop
+
+**The `aboutToQuit` bypass no longer leaves over live work, and two defects lived in the one line
+that did.** `all(pool.wait_bounded(...) for pool in self._pools)` is a generator, so the first pool
+that overran **short-circuited the aggregation and the second pool was never waited at all** — a
+reviewer probe recorded the calls as `[1, 0]`. And expiring the bound was treated as permission to
+continue: the run recorded `_pools_drained = False`, logged, and called `_leave()` anyway, quitting
+and closing the connection at `activeThreadCount() == 1`. **Truthful bookkeeping describes the
+race; it does not sequence teardown.** The constant is `_POOL_EXIT_REPORT_AFTER_MS` now and buys a
+diagnostic and nothing else: every pool is visited whatever the previous one answered, and one that
+overruns is reported and then waited to actual emptiness through `SealedPool.wait_until_empty()`.
+
+**There was never a choice between waiting and not waiting.** Qt already waits for a `QThreadPool`
+with runnables in flight — in `~QThreadPool`, in the middle of destroying the widget tree — or
+aborts. The choice is *where*, and the answer is: at the point where the widgets are still standing.
+An absolute process-exit deadline would need the work behind a boundary that can genuinely be
+killed, which is a design change and not something an exit path decides for itself.
+
+**The combined barrier asks the pool.** `when_all_drained` carried `sealed and not outstanding`, a
+second predicate and a strictly weaker one than what `drained` itself waits for: a runnable started
+on the underlying pool is one the gate never counted, so `outstanding` reads zero while the pool is
+plainly busy. A probe built exactly that, and `begin()` released the quit in it while the gate's own
+`drained` correctly withheld. It is `pool.sealed and pool.is_empty()` now — one predicate, the
+authoritative one.
+
+**yt-dlp work is cancellable past its entry, and the transaction is still indivisible.** `T-198`
+protects the live-tree replacement; it never made download and staging one operation.
+`install_latest` asks after the release lookup, **between download chunks**, after the download, and
+after the staged tree exists — every one of those leaves the live directory untouched and the
+staging workspace to the `finally` that already removes it. `_swap_into_place` has no checkpoint and
+must not have one: it displaces the live tree and either completes or rolls back.
+`resolve_in_a_child`'s single ninety-second `Queue.get` is 100 ms slices against one deadline, so a
+shutdown behind a child that never answers ends at the next slice rather than a minute and a half
+later, and the cancellation leaves through the same `finally` that terminates and joins the child.
+
+**The seam is a callable in a Qt-free module.** `downloader/cancellation.py` holds
+`OperationCancelledError` and `stop_if_cancelled`. Neither the updater nor the resolver may import
+`pools.py`, which imports `PySide6`, because `_freeze_probe.py` pulls the resolver into a process
+that must inherit no Qt (`ARC-002`). `YtdlpService` passes `_the_pool_is_closing`, and **both call
+sites are asserted by identity**: a keyword argument dropped from either is a one-token change that
+leaves every test of the resolver and of the installer itself green.
+
+**The two running-task controls could not tell what they claimed to.** Both sealed the pool and
+*then* called `run()`, so a checkpoint moved back to the task's entry would have left every
+assertion green — they could not distinguish queued cancellation from cancellation after work
+began, which is the distinction they existed for. They now start the task on a thread of its own,
+block it **inside** its first unlink and **inside** its decode, seal from the test thread while it
+is in there, and release it. The sweep must remove exactly the one file it was already deleting:
+fewer would mean it never deletes anything and the control is blind, more that cancellation never
+reached it. The decode's test runs the undisturbed task first, because a test that only asserts an
+absence cannot tell a working checkpoint from a decode that never wrote anything.
+
+**The root fixture owns the disposal it was asked to own** (`T289-R23`). It imported both
+Qt-bearing pool modules for every test in the repository — from the one `conftest.py` that runs
+before `tests/unit/`, whose Qt-freeness is `ai/TESTING.md` §1's — in order to reset two module
+globals. `sys.modules` answers the same question without loading anything, and re-reading it at
+teardown covers a module the test imported itself. And it dropped whatever the test had created
+without asking whether it was busy, which is how a `QThreadPool` comes to be destroyed by whichever
+thread collects it. It now seals and drains what the test made, and **fails the test that left work
+running** instead of letting the next segfault land in somebody else's.
+`tests/ui/_leaves_a_pool_thread_running.py` is the deliberate violation that proves it, in the shape
+`_leaks_a_view.py` established, and `tests/unit/test_skeleton.py` holds the Qt-free half in a
+subprocess because this pytest session has Qt loaded through its own plugins.
+
+**Eighteen mutations, all killed** — the barrier trusting its count, the threshold authorising
+teardown, only the first pool being waited, the final wait acquiring a deadline, the confirmation
+poll outliving the wait, each of the four install checkpoints, the resolution wait's, both service
+seams, the cancellation branch that reports the closing sentence, the sweep's and the decode's, and
+all three of the fixture's edges.
+
+**Two Low items closed in the completion sync** (`T289-R23` third pass, `T289-R25`, approved at
+`194316c`).
+
+- **The fixture drained a pool nothing could reach.** It restored the previous singleton *before*
+  the wait, so for the whole length of the drain the module global held `None` — and a task still
+  running asks `pool()`, not whatever object the fixture happens to be holding. It was handed a
+  freshly built replacement whose `cancelled` is false: the gate being drained reported
+  `cancelled=True` while the task on it saw `False`, went on working, and left the replacement
+  behind uncaptured. Seal and drain now come first and the restore second, and the restore still
+  happens on the failing path so a test that leaves work running does not also leave the module
+  dirty. `test_a_task_still_running_at_teardown_is_the_one_that_is_cancelled` drives the fixture
+  generator directly, because what it asserts happens *inside* a teardown: a test watching from its
+  own body would be watching a moment that has not arrived, and one watching from the next test
+  would need an ordering `-n auto` does not give.
+- **`stop_for_exit`'s summary line still said "Bounded, and blocks."** The bound became a reporting
+  threshold in this correction and the first line of the docstring did not follow.
+
+**What this does not do.** It does not prove the crash is gone — the dump remains unreproduced, and
+`T-238`'s record is that repetition does not discriminate this fault. What it removes is the
+configuration the reading found: **both** exit paths now establish that no pool thread survives into
+the teardown that destroys the widgets — the window's close through the asynchronous barrier, and
+`aboutToQuit` by waiting every pool to actual emptiness before it returns.
+
+#### Ruled 2026-09-04: criterion 2 is re-scoped, and the released route will not be identified
+
+**The maintainer's decision**, of the three this entry offered after the ownership instrument was
+built and run. The rejected two are recorded so neither returns as new: **authorising the shutdown
+experiment** — provoking a collection during teardown with a pool task in flight — and **accepting
+the residual risk** so Phase 4 could exit with the criterion simply unmet.
+
+**Why the experiment was refused rather than deferred.** It is no longer an observation of the
+product. `T289-R21`'s pool sequencing drains both pools before Qt destroys the widget tree, so *"a
+pool thread alive during teardown"* is not reachable in shipped code any more; running it now means
+defeating the gate deliberately to recreate a configuration the fix prevents. That is a controlled
+provocation of a double free, and what it would measure is the instrument's own setup.
+
+**What the criterion asks for now.** That no widget tree is left owned by Python alone where a pool
+thread can collect it — **established by enumeration**. It is: the product owns exactly one widget
+from Python, the `MainWindow`, strongly referenced for the process's life; 162 constructions, 4
+parentless, zero un-parenting calls; and the teardown precondition is gone. **It no longer asks for
+the dump's route to be identified.**
+
+**What that gives up, and it is not small.** The 2026-08-27 abort remains unexplained. Nothing here
+says the crash cannot recur; what it says is that the state which permits it is not written anywhere
+in `src/`, and that six null probes plus an exhaustive reading are the end of what sampling can
+establish. **`T-238`'s criterion 4 is re-scoped with it** — the two lacked the same thing — and its
+guard stays in, so a firing on a real test still reopens both.
+
+*(The 2026-08-31 ruling below chose to instrument ownership over re-scoping. That instrument was
+built, run, and is what makes this re-scope evidence-backed rather than a retreat — the audit is the
+reason the answer changed.)*
+
+#### Ruled 2026-08-31: instrument ownership, not collection
+
+**The maintainer's decision**, of the three this entry offered after the pool work was approved.
+The two rejected are recorded so neither returns as new: **re-scoping criterion 2** to what is
+established, and **accepting the residual risk** so Phase 4 can exit over an unexplained abort.
+
+**What was chosen.** Stop waiting for a collection to catch a widget and go at the state directly:
+whether any widget the product owns from Python is, at real moments in a driven session, reachable
+only through a reference cycle. The argument for it is what the runs already say. Sixty isolated
+sessions, two real-display runs and a forced collection at two sampled moments all put the
+collector on a pool thread and **none of them ever had a widget in what it freed**, with no near
+misses — so the half that is missing is the ownership, and ownership is observable without a
+collection happening at all. Another sixty samples of the half that already reproduces cannot
+discriminate this fault, which is `T-238`'s standing record.
+
+**It covers `T-238`'s criterion 4 as well**, because the two criteria now lack the same thing: a
+product-owned widget reaching the collector. One instrument answers both or neither.
+
+**A negative here is worth more than the negatives so far.** If no product-owned widget is ever in
+that state at any sampled moment, that is a claim about the application rather than about sixty
+runs of one route — and it is the evidence that would justify re-scoping, which is why re-scoping
+was not taken first.
+
+**Not started.** No task entry, no probe, and nothing here claims a result.
+
+#### Out of scope
+
+- **The leaked semaphores.** Three `/mp-*` objects survived, which is what an aborted process
+  leaves; if they survive an *orderly* exit that is `T-268`'s territory, not this
+- **`OPS-003`'s Windows half.** Observed on KDE/Wayland; whether the same collection lands the same
+  way there is unknown and is named rather than assumed
+- Making the update itself faster, or moving it off a pool
 
 
 
