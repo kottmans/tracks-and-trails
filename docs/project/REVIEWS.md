@@ -2,7 +2,7 @@
 
 **Purpose:** Dated review findings, dispositions and verification evidence.
 **Owner:** Reviewer · **Maintainer:** Sean Kottman
-**Last updated:** 2026-09-08 (current navigation only)
+**Last updated:** 2026-09-08 (final verification appended; prior records preserved)
 **Update when:** A review is recorded or independently rechecked.
 
 ## Current navigation
@@ -18,6 +18,9 @@ Only the assigned Reviewer changes substantive findings or their disposition.
 - [Active work and correction routing](TASKS.md#in-review).
 - [Latest T-299 correction review](#2026-09-08--t-299-focused-correction-review):
   Changes requested at `23c3d11`; R1 High and R2 Medium remain blocking.
+- [Final project verification at `5e4b3fc`](#final-verification-5e4b3fc):
+  R1/R2 reproduced; R6 records the unavailable security reporting route.
+  T-300 remains pending independent review.
 
 <a id="how-reviews-work-here"></a>
 <a id="standing-risk-focus"></a>
@@ -24170,3 +24173,86 @@ working only from a summary. No external standard or repository rule was edited 
 
 Only this review append is the Reviewer's repository change. R1/R2 remain open at `23c3d11`;
 submit their corrections together for the next focused review. No push was performed.
+
+---
+
+<a id="final-verification-5e4b3fc"></a>
+
+## 2026-09-08 — Final project verification at 5e4b3fc
+
+**Reviewer:** Codex, at the maintainer's explicit request for a final project review.
+**Reviewed head:** `5e4b3fc015b6ca0b91835719083d59f5eab69acb`, clean `main` before this append.
+**Boundaries:** T-300 changes in `f465688..5e4b3fc` (18 files, four commits), the existing
+T-299 blockers at the current head, and the current readiness/reporting claims.
+**Independence:** Codex implemented T-300. Its checks below are implementation verification,
+not independent approval. T-299's implementation was by the other agent; its existing
+findings are rechecked here. No T-300 change or correction is signed off by its implementer.
+**Verdict:** **Changes requested for T-299.** R1 and R2 remain open; R6 confirms that the
+previously unverified reporting route is unavailable. T-300 awaits independent review.
+
+### Findings and routing
+
+| ID | Severity | Blocks approval | Result / required correction | Status and owner |
+|---|---|---|---|---|
+| `T299-R1` | High | Yes | `SECURITY.md:56–58` still implies database copies should not contain credentials. A fresh real `JobRepository` round trip preserves URL userinfo, query tokens and arbitrary diagnostic text verbatim. The table at line 41 already acknowledges URL storage. Remove the contradictory assurance and describe the database as potentially sensitive. Lines 39 and 46–47 also need the already-requested distinction between configured cookie paths, their exclusion from `DownloadRequest`, and registration before logging. | **Open**, reproduced at this head. Documentation Maintainer, existing T-299 correction. |
+| `T299-R2` | Medium | Yes | `evidence/2026-08-05-criterion-8-second-run.md:25–27` still changes a captured `git diff --stat` result from `ai/TASKS.md` to `docs/project/TASKS.md`. The exact recorded command still returns the historical path and 114 insertions. Restore the literal transcript and retain relocation guidance outside it. | **Open**, reproduced at this head. Documentation Maintainer, existing T-299 correction. |
+| `T299-R6` | Medium | Yes | `SECURITY.md:24–25` offers GitHub private vulnerability reporting as its sole private route. The application repository is currently **PRIVATE**, and its private-vulnerability-reporting API endpoint returns **404**. GitHub documents this feature for public repositories. Supply an available private contact route and verify it before claiming it works; changing repository visibility is not required or authorized by this finding. | **Open**, newly established from the earlier external prerequisite. Documentation Maintainer, existing T-299 reporting-policy correction; no new task. |
+
+R6's evidence is the read-only `gh repo view kottmans/tracks-and-trails --json visibility`
+and `gh api repos/kottmans/tracks-and-trails/private-vulnerability-reporting` calls, together
+with [GitHub's feature documentation](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/configure-vulnerability-reporting/configure-for-a-repository).
+A 404 alone would not establish the cause; repository visibility and the documented feature
+scope supply the additional evidence. No report, message, or settings change was submitted.
+
+The README CI wording and current review-policy paths now match the local workflow files.
+Those corrections were made by this reviewer during T-300, so R4 and R2's non-blocking
+navigation correction are **corrected, awaiting independent verification**, not resolved here.
+Previously resolved R3/R5 are not reopened.
+
+### Fresh checks and preservation results
+
+| Check | Actual result |
+|---|---|
+| `python -m pytest -q tests/unit/test_task_placement.py tests/unit/test_option_audit.py tests/unit/test_capability_guards.py` | **79 passed in 2.92 s**. |
+| `python -m pytest -q tests/unit/test_redaction_gate.py tests/unit/test_log_redaction.py` | **30 passed in 1.34 s**. |
+| `ruff check .`; `ruff format --check .` | Lint passed; **233 files already formatted**. |
+| `mypy src tests`; `mypy --platform win32` | Each passed for **164 source files**. Windows-platform type checking is not Windows execution. |
+| `python tools/commit_message_check.py --range f465688..HEAD` | **Four commits checked**, passed. |
+| `git diff --check f465688 HEAD` | Passed. |
+| Temporary SQLite and logging probe, synthetic values only | URL userinfo/query and diagnostic text survive storage exactly. An unknown `session.txt` path survives pattern redaction; registering the same literal with `remember_a_path` produces `<redacted>`. URL logging removes the synthetic userinfo/query. This is an in-process check, not a GUI session. |
+| Task migration compared with `39fcc76` | Independent heading/status scan, excluding fenced quotations: **297 unique IDs/states retained**, **28 unfinished**, **261 Complete**, **8 Cancelled**. Every one of the **269 full closed records** appears verbatim exactly once in COMPLETED_TASKS. The old **22,377-byte preface** and **27,559-byte evidence supplements** also appear verbatim exactly once. |
+| Dated review/decision preservation | REVIEWS from `## Reviews` to EOF equals `f465688` exactly before this append. DECISIONS from the first DOC-001 heading retains the entire old dated body as an exact prefix. Current metadata/navigation was excluded from those comparisons. |
+| Captured formatter evidence | Exactly two `<!-- fmt:off -->` and two `<!-- fmt:on -->` lines were added. Removing those four external lines recovers the entire evidence file from `97223e1` byte-for-byte. |
+| Application/configuration scope | `git diff f465688 HEAD -- src pyproject.toml` is empty. Inspected the three changed task readers and workflow changes; both task files trigger placement, and COMPLETED_TASKS remains outside the full-suite ignore list. |
+| Shared standards source | The local source is clean; HEAD and peeled tag `2026-09-08.4` both resolve to the adoption pin `d96bace502dc0b27606c0e8f61952ed229297603`. Read-only GitHub checks confirm the repository is private and release `.4` exists and is not a draft. The retired application archive directory is absent. |
+
+All Python/test commands used the activated project environment on Linux. The first temporary
+preservation script assumed a decision-section heading existed in the old revision; it stopped
+at that assumption. The corrected comparison uses the actual first dated DOC-001 heading.
+No result from the aborted script is counted as an overall passing check.
+
+The previously recorded full Linux run remains **3940 passed, 21 skipped, 17 warnings in
+169.81 s**; its saved log was inspected. It is the implementation's prior run, **not a new
+full-suite run in this review**. The fresh checks above total 109 passing tests.
+
+For the literal evidence result, rerun `git diff --stat 6bae7ec..541b484`. For preservation,
+read the named baseline blobs with `git show REVISION:PATH` and compare exact bytes, without
+path or whitespace normalization. The closed-record source is
+`39fcc76:docs/project/archive/TASKS-completed-2026-09-08.md`; T-260's full source record is in
+that revision's TASKS.md. Current catalogs exclude fenced historical quotations, while exact
+record comparisons retain their contents. These checks establish migration preservation;
+they do not re-audit every historical claim or independently prove the earlier selection of
+unique STATUS evidence was exhaustive.
+
+### Remaining boundaries
+
+No additional defect was established in T-300's inspected changes. That is bounded verification,
+not independent sign-off or a claim that every application path has been audited. No new
+Windows runtime, real-display, live-network, frozen-build or installer check was performed.
+GitHub fork-approval settings and runner-group restrictions remain unverified.
+
+Phase 4 remains in progress. T-297's capture, T-286/T-290, T-212's 48-row exit evidence and
+the recorded T-289 residual decision are not satisfied by this documentation verification.
+T-238's unreproduced crash remains in its existing task. No product source, standards, task
+state, or repository visibility is changed by this review. Only this append and its current
+navigation are updated; historical findings remain intact. No push was performed.
