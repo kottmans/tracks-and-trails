@@ -18,7 +18,7 @@
 #     Qt baseline and pytest — plus an environment snapshot and the junit XML. It is the part
 #     that can be downloaded and analyzed offline rather than read in a browser.
 #
-# See docs/project/TESTING.md §10 and the T-006 entry in docs/project/TASKS.md.
+# See docs/project/TESTING.md §10 and the T-006 entry in docs/project/COMPLETED_TASKS.md.
 
 name: CI
 
@@ -38,9 +38,7 @@ on:
       # and being killed by commits that only added text.
       #
       # **`docs/project/TASKS.md` is in this list, and its gate did not go with it.**
-      # `tests/unit/test_task_placement.py` reads that file — it is the *only* prose file any test
-      # opens, verified by grepping every `read_text`/`open`/`Path` call under `tests/`; every
-      # other `docs/project/` mention in the suite is a citation in a docstring. `OPS-009` therefore kept it
+      # `tests/unit/test_task_placement.py` reads that file. `OPS-009` originally kept it
       # out of this list, which is why the two pushes that cancelled runs on 2026-08-05 (`T-144`
       # and `T-145`, both `docs/project/TASKS.md` alone) still ran the full matrix.
       #
@@ -49,7 +47,9 @@ on:
       # nothing else: no Qt, no package install, no Windows, seconds rather than 19 minutes. The
       # coverage is unchanged; only its cost is.
       #
-      # Adding a file here is a coverage decision, not tidying: check first that no test reads it.
+      # TASKS and COMPLETED_TASKS now both feed placement and other task-reading checks.
+      # COMPLETED_TASKS stays outside this list so closure updates run those other checks too.
+      # Adding a file here is a coverage decision, not tidying: inspect its test consumers first.
       - "docs/project/ARCHITECTURE.md"
       - "docs/project/DECISIONS.md"
       - "docs/project/IMPLEMENTATION_PLAN.md"

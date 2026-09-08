@@ -1,8 +1,8 @@
 # Commit-message gate — `T-240`.
 #
 # **This runs on every push, with no `paths` filter, and that is the point.** `ci.yml` exempts
-# prose (`OPS-011`) and `prose.yml` covers only `docs/project/TASKS.md`; a commit message has nothing to do
-# with which files a commit touched, and the commits most likely to omit a `Task:` trailer —
+# selected prose (`OPS-011`) and `prose.yml` checks active and completed task placement.
+# A message is independent of which files a commit touched. Commits likely to omit a `Task:` trailer —
 # status syncs, review records — are exactly the prose-only ones neither of those workflows would
 # examine.
 #

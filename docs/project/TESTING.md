@@ -45,7 +45,7 @@ Three things drive the test strategy, and they come straight from the architectu
 
 | Change | Required before "complete" |
 |---|---|
-| Documentation only — `docs/`, `README.md`, comments | No application suite by default. Check affected links, preserved records and documentation consumers; task-specific checks still apply. TASKS.md changes require its placement check. |
+| Documentation only — `docs/`, `README.md`, comments | No application suite by default. Check affected links, preserved records and documentation consumers; task-specific checks still apply. TASKS.md or COMPLETED_TASKS.md changes require the placement check across both files and any affected task-reading checks. |
 | Source change | `ruff check`, `ruff format --check`, `mypy src`, plus the tests relevant to the change |
 | Change that adds or edits a **test** file | The above, plus **bare** `mypy` and `mypy --platform win32`. `mypy src` does not read `tests/`, so a test file's type errors reach no gate before the `windows desktop` CI job — see §12 |
 | Change in `core/`, `downloader/`, or `persistence/` | The above, plus the **full** `tests/unit` and `tests/integration` suites — these layers have cross-cutting effects |
@@ -318,8 +318,8 @@ nobody runs is worse than one that omits it, because it is read as coverage.
 
 | Trigger | What runs |
 |---|---|
-| **push touching anything a test reads** | everything: Linux `check`, the full `windows desktop` suite, `frozen linux`, `frozen windows`, the coverage notice |
-| **push touching prose only** | **nothing** (`OPS-011`), except `prose.yml` when `docs/project/TASKS.md` changed |
+| **push outside the enumerated `ci.yml` ignores** | Linux `check`, the full `windows desktop` suite, `frozen linux`, `frozen windows`, the coverage notice; this includes COMPLETED_TASKS.md and other gated documentation |
+| **push touching only enumerated ignored prose paths** | full CI skipped (`OPS-011`); `prose.yml` checks either task file when its trigger matches; the commit-message gate still runs on every push |
 | **pull request** | **nothing at all** — no workflow carries the trigger (`T-262`) |
 | **nightly (06:00 UTC) and `workflow_dispatch`** | the same as the first row, plus it cannot be cancelled by a push |
 
@@ -373,7 +373,7 @@ read as controlling another job's **destination**.
 | `frozen linux` | `ci.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | matrix leg, unconditional |
 | `frozen windows` | `ci.yml` | literal `[self-hosted, windows, desktop]` | matrix leg, unconditional |
 | `trailers` | `commit-messages.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | every push |
-| `task placement` | `prose.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | push touching `docs/project/TASKS.md`, its test, or that workflow |
+| `task placement` | `prose.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | push touching `docs/project/TASKS.md`, `docs/project/COMPLETED_TASKS.md`, its test, or that workflow |
 | `repeat on STARBASE` | `t074-repeat.yml` | literal `[self-hosted, windows, desktop]` | `workflow_dispatch` only — never on a push or a schedule |
 
 **Three tenses live in that table and must not be flattened into one.**
@@ -507,15 +507,22 @@ and not the Windows one. The exemption is symmetric because no argument for Linu
 for Windows. `ci.yml`'s `paths-ignore` enumerates the exempt paths; adding one is a coverage
 decision, not tidying.
 
-**One gate read prose, and it moved rather than died.**
-`tests/unit/test_task_placement.py` (`T-096`) reads `docs/project/TASKS.md` — the only prose file the suite
-opens. It now runs in `.github/workflows/prose.yml`, alone, on `vars.LINUX_RUNNER`, with `pytest` as
-its whole environment: no package install, no Qt, no Windows, seconds rather than ~19 minutes.
-Coverage unchanged; cost changed. If that test ever gains a dependency on the package, this
-arrangement stops being sufficient and `prose.yml` must say so rather than quietly widen.
+**Task placement runs independently of the full suite.**
+`tests/unit/test_task_placement.py` reads TASKS.md and COMPLETED_TASKS.md. It
+checks status/section/file agreement, missing statuses and unique IDs across
+both catalogs. Controls reject a closure left in TASKS, unfinished work moved
+to COMPLETED_TASKS, duplicate IDs, missing status and an unclosed history fence.
+The standalone `.github/workflows/prose.yml` job needs only pytest and the
+standard library. Keep it independent of the application and Qt.
 
-**What this costs you when reading the board:** a documentation-only head shows no run, so *"the
-last green run"* means the last run **over source**. Citing a phase gate requires a run against a
+The capability guard and option audit also read task records. COMPLETED_TASKS.md
+therefore stays outside the full workflow's ignored paths, as does the option
+audit document. Closing a task runs the placement gate and remains eligible for
+the full CI checks; the prose job alone does not validate those other consumers.
+
+**Reading the board:** a push limited to ignored documentation paths has no full CI run.
+The last green full run may precede that head; documentation consumed by tests can also
+trigger full CI. Citing a phase gate requires a run against a
 head that changed code — which `P2EXIT-R8` is the finding for, where a cited run predated the
 thing it was supposed to evidence.
 

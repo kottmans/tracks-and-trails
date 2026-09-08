@@ -104,8 +104,9 @@ Dated test results and their verified revisions are recorded in
 yt-dlp `info_dict` fixtures.
 
 CI skips the full suite for the enumerated prose paths in `ci.yml`'s
-`paths-ignore`; TASKS.md changes have a separate placement check in `prose.yml`.
-Gated documentation such as `docs/YTDLP_OPTION_AUDIT.md` can still trigger CI.
+`paths-ignore`; TASKS.md and COMPLETED_TASKS.md changes trigger the placement
+check in `prose.yml`. Gated documentation such as COMPLETED_TASKS.md and
+`docs/YTDLP_OPTION_AUDIT.md` also triggers the full CI checks.
 [TESTING](docs/project/TESTING.md) defines required gates and
 [DEVELOPMENT](docs/DEVELOPMENT.md) covers contributor setup.
 
@@ -166,6 +167,7 @@ tools/                   probes, screenshot generators, one-off diagnostics
 | Develop and test | [DEVELOPMENT](docs/DEVELOPMENT.md) and [test policy](docs/project/TESTING.md) |
 | Understand design and rationale | [ARCHITECTURE](docs/project/ARCHITECTURE.md) and [decision index](docs/project/DECISIONS.md#effective-decision-index) |
 | Find active work and blockers | [STATUS](docs/project/STATUS.md) and [TASKS](docs/project/TASKS.md) |
+| Find completed or cancelled work | [COMPLETED_TASKS](docs/project/COMPLETED_TASKS.md) |
 | Inspect review evidence | [REVIEWS](docs/project/REVIEWS.md) |
 
 
@@ -180,6 +182,7 @@ are separable rather than tangled in one file.
 | [docs/project/DECISIONS.md](docs/project/DECISIONS.md) | Why was it designed that way? |
 | [docs/project/IMPLEMENTATION_PLAN.md](docs/project/IMPLEMENTATION_PLAN.md) | In what order is it being built? |
 | [docs/project/TASKS.md](docs/project/TASKS.md) | What work is ready, active, or blocked? |
+| [docs/project/COMPLETED_TASKS.md](docs/project/COMPLETED_TASKS.md) | What work closed, and what evidence was recorded? |
 | [docs/project/REVIEWS.md](docs/project/REVIEWS.md) | What was reviewed, and what did it find? |
 | [docs/project/TESTING.md](docs/project/TESTING.md) | What must be tested, and how? |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | How do I set up and work on it? |

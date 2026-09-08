@@ -323,7 +323,9 @@ def test_the_task_entry_states_the_case_counts_it_has() -> None:
         20: "twenty",
     }
     tasks = Path(__file__).resolve().parents[2] / "docs" / "project" / "TASKS.md"
-    entry = tasks.read_text(encoding="utf-8")
+    entry = "\n".join(
+        path.read_text(encoding="utf-8") for path in (tasks, tasks.with_name("COMPLETED_TASKS.md"))
+    )
     section = entry[
         entry.index("### T-260 —") : entry.index("#### Out of scope", entry.index("### T-260 —"))
     ]

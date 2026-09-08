@@ -1,4 +1,4 @@
-"""`docs/project/TASKS.md`'s navigation must agree with its own fields (`T-096`).
+"""Task placement and IDs agree across the active and closed records (`T-096`, `T-300`).
 
 **Six review rounds found the same defect.** `COORD-R5` through `COORD-R10` each reported a task
 whose `**Status:**` line said one thing while the `## ` section containing it said another, and each
@@ -23,6 +23,9 @@ from pathlib import Path
 import pytest
 
 TASKS = Path(__file__).resolve().parents[2] / "docs" / "project" / "TASKS.md"
+COMPLETED_TASKS = TASKS.with_name("COMPLETED_TASKS.md")
+TASK_DOCUMENTS = (TASKS, COMPLETED_TASKS)
+CLOSED_STATUSES = frozenset({"Complete", "Cancelled"})
 
 #: The vocabulary `docs/project/TASKS.md` declares in its own header. Longest first, so `In Review`
 #: is matched before any shorter term could claim its prefix.
@@ -49,6 +52,7 @@ SECTION_ALLOWS: dict[str, frozenset[str]] = {
     "Ready": frozenset({"Ready", "In Progress"}),
     "Blocked": frozenset({"Blocked"}),
     "Complete": frozenset({"Complete", "Cancelled"}),
+    "Cancelled": frozenset({"Cancelled"}),
 }
 
 #: `## Proposed — Phase 0`, `## Proposed — Phase 2`, … all admit `Proposed` only.
@@ -78,7 +82,27 @@ def operative_status(status_line: str) -> str | None:
     return next((term for term in VOCABULARY if body.startswith(term)), None)
 
 
-def live_entries() -> list[tuple[str, str, str]]:
+def record_lines(document: Path) -> list[tuple[int, str]]:
+    """Markdown outside fenced examples/captured history, with physical line numbers."""
+    lines = []
+    fence = ""
+    for number, line in enumerate(document.read_text(encoding="utf-8").split("\n"), start=1):
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+        if marker:
+            if not fence:
+                fence = marker[1]
+            elif (
+                marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip()
+            ):
+                fence = ""
+            continue
+        if not fence:
+            lines.append((number, line))
+    assert not fence, f"{document.name} has an unclosed code fence that could hide task records"
+    return lines
+
+
+def live_entries(document: Path = TASKS) -> list[tuple[str, str, str]]:
     """`(task id, section, status line)` for every `### T-NNN` entry in the file.
 
     The status line is the **first** `**Status:**` under the heading. A second one inside an entry
@@ -88,9 +112,10 @@ def live_entries() -> list[tuple[str, str, str]]:
     task: str | None = None
     entries: list[tuple[str, str, str]] = []
     seen: set[str] = set()
-    for line in TASKS.read_text(encoding="utf-8").split("\n"):
+    for _, line in record_lines(document):
         if line.startswith("## "):
             section = line[3:].strip()
+            task = None
             continue
         heading = re.match(r"### (T-\d+) — ", line)
         if heading:
@@ -110,27 +135,31 @@ def test_the_file_has_entries_to_check() -> None:
     that satisfies a uniqueness assertion perfectly. A gate that proves *"no ID appears twice"*
     over nothing at all is the exact shape `T-096` exists for.
     """
-    entries = live_entries()
-    headings = status_line_counts()
-    occurrences = heading_occurrences()
-    assert len(entries) > 50, f"only {len(entries)} entries parsed; the format probably changed"
-    assert len(headings) > 50, f"only {len(headings)} headings parsed; the format probably changed"
-    assert len(occurrences) >= len(headings), (
-        f"{len(occurrences)} headings seen in file order against {len(headings)} unique ids. The "
-        "occurrence scan cannot see fewer than the collapsing one does; its regex has drifted."
-    )
+    # The active queue may legitimately become empty; this project's retained history may not.
+    assert sum(len(live_entries(path)) for path in TASK_DOCUMENTS) > 50
+    for document in TASK_DOCUMENTS:
+        headings = status_line_counts(document)
+        occurrences = heading_occurrences(document)
+        broad = [line for _, line in record_lines(document) if re.match(r"^### T-\d+\b", line)]
+        assert len(occurrences) == len(broad), f"{document.name}: malformed task heading"
+        assert len(occurrences) >= len(headings), (
+            f"{document.name}: {len(occurrences)} headings against {len(headings)} unique IDs; "
+            "the occurrence scan cannot see fewer than the collapsing one"
+        )
 
 
-def test_every_section_is_mapped() -> None:
+@pytest.mark.parametrize("document", TASK_DOCUMENTS, ids=lambda path: path.name)
+def test_every_section_is_mapped(document: Path) -> None:
     """An unknown section would exempt every task inside it, which is this file's failure mode."""
-    unmapped = {section for _, section, _ in live_entries() if allowed_for(section) is None}
+    unmapped = {section for _, section, _ in live_entries(document) if allowed_for(section) is None}
     assert not unmapped, (
         f"{sorted(unmapped)} contain tasks but have no entry in SECTION_ALLOWS. Add the section "
         "deliberately — leaving it out silently exempts everything in it."
     )
 
 
-def test_every_entry_states_a_status_from_the_vocabulary() -> None:
+@pytest.mark.parametrize("document", TASK_DOCUMENTS, ids=lambda path: path.name)
+def test_every_entry_states_a_status_from_the_vocabulary(document: Path) -> None:
     """**No entry is skipped for being unparsable** — that is an acceptance criterion, not a detail.
 
     A status this cannot read is a status a reader cannot rely on either, and skipping it would
@@ -138,7 +167,7 @@ def test_every_entry_states_a_status_from_the_vocabulary() -> None:
     """
     unreadable = [
         (task, line.strip()[:70])
-        for task, _, line in live_entries()
+        for task, _, line in live_entries(document)
         if operative_status(line) is None
     ]
     assert not unreadable, (
@@ -147,10 +176,11 @@ def test_every_entry_states_a_status_from_the_vocabulary() -> None:
     )
 
 
-def test_every_entry_sits_under_the_section_its_status_names() -> None:
+@pytest.mark.parametrize("document", TASK_DOCUMENTS, ids=lambda path: path.name)
+def test_every_entry_sits_under_the_section_its_status_names(document: Path) -> None:
     """`COORD-R5` … `COORD-R10`, mechanically. The whole point of this file."""
     wrong = []
-    for task, section, line in live_entries():
+    for task, section, line in live_entries(document):
         allowed = allowed_for(section)
         status = operative_status(line)
         if allowed is None or status is None:
@@ -164,7 +194,7 @@ def test_every_entry_sits_under_the_section_its_status_names() -> None:
     )
 
 
-def heading_occurrences() -> list[tuple[str, int, str]]:
+def heading_occurrences(document: Path = TASKS) -> list[tuple[str, int, str]]:
     """Every `### T-NNN` heading in file order, as `(task id, 1-based line, section)`.
 
     **A list, and that is the entire point** (`T-261`, from `COORD-R23`). `live_entries()` keeps a
@@ -181,7 +211,7 @@ def heading_occurrences() -> list[tuple[str, int, str]]:
     heading = re.compile(r"^### (T-\d+) — ")
     section = ""
     found: list[tuple[str, int, str]] = []
-    for number, line in enumerate(TASKS.read_text(encoding="utf-8").split("\n"), start=1):
+    for number, line in record_lines(document):
         if line.startswith("## "):
             section = line[3:].strip()
             continue
@@ -191,7 +221,7 @@ def heading_occurrences() -> list[tuple[str, int, str]]:
     return found
 
 
-def status_line_counts() -> dict[str, int]:
+def status_line_counts(document: Path = TASKS) -> dict[str, int]:
     """How many `**Status:**` lines each `### T-NNN` heading owns.
 
     Counted from the **headings**, not from the status lines, which is the difference `T096-R1`
@@ -201,7 +231,7 @@ def status_line_counts() -> dict[str, int]:
     heading = re.compile(r"^### (T-\d+) — ")
     counts: dict[str, int] = {}
     task: str | None = None
-    for line in TASKS.read_text(encoding="utf-8").split("\n"):
+    for _, line in record_lines(document):
         if line.startswith("## "):
             task = None
         found = heading.match(line)
@@ -213,7 +243,8 @@ def status_line_counts() -> dict[str, int]:
     return counts
 
 
-def test_every_entry_states_a_status_at_all() -> None:
+@pytest.mark.parametrize("document", TASK_DOCUMENTS, ids=lambda path: path.name)
+def test_every_entry_states_a_status_at_all(document: Path) -> None:
     """**A missing status is invisible to every other test in this file** (`T096-R1`).
 
     They all walk `live_entries()`, which pairs a heading with the status line under it — so an
@@ -221,28 +252,30 @@ def test_every_entry_states_a_status_at_all() -> None:
     left all twelve tests green, which is the same shape as the deleted section heading `T-096` was
     written for: the check ran, found nothing, and reported success.
     """
-    missing = sorted(task for task, count in status_line_counts().items() if count == 0)
+    missing = sorted(task for task, count in status_line_counts(document).items() if count == 0)
     assert not missing, (
         f"{missing} have no **Status:** line. Every other test here pairs a heading with its "
         "status, so an entry without one is skipped rather than reported."
     )
 
 
-def test_each_entry_states_its_status_once() -> None:
+@pytest.mark.parametrize("document", TASK_DOCUMENTS, ids=lambda path: path.name)
+def test_each_entry_states_its_status_once(document: Path) -> None:
     """Two status lines in one entry means two answers, and `T033-R5` found exactly that."""
-    repeated = {task: n for task, n in status_line_counts().items() if n > 1}
+    repeated = {task: n for task, n in status_line_counts(document).items() if n > 1}
     assert not repeated, f"more than one Status line: {repeated}"
 
 
-def test_every_heading_is_paired_with_an_entry() -> None:
+@pytest.mark.parametrize("document", TASK_DOCUMENTS, ids=lambda path: path.name)
+def test_every_heading_is_paired_with_an_entry(document: Path) -> None:
     """The two parses agree, so neither can drift into seeing a different set of tasks.
 
     `live_entries()` walks status lines and `status_line_counts()` walks headings. If they ever
     disagree about which tasks exist, one of them is wrong and every assertion built on it is
     unreliable — this is what says so rather than letting the smaller set quietly win.
     """
-    from_status = {task for task, _, _ in live_entries()}
-    from_headings = set(status_line_counts())
+    from_status = {task for task, _, _ in live_entries(document)}
+    from_headings = set(status_line_counts(document))
     assert from_status == from_headings, (
         f"headings without a parsed entry: {sorted(from_headings - from_status)}; "
         f"entries without a heading: {sorted(from_status - from_headings)}"
@@ -273,9 +306,10 @@ def test_no_task_id_has_two_entries() -> None:
     task are two answers to *"what is its status"* that can drift apart independently, which is the
     class `AGENTS.md` §6 is written against. This is the only check that can see one.
     """
-    positions: dict[str, list[tuple[int, str]]] = {}
-    for task, line, section in heading_occurrences():
-        positions.setdefault(task, []).append((line, section))
+    positions: dict[str, list[tuple[str, int, str]]] = {}
+    for document in TASK_DOCUMENTS:
+        for task, line, section in heading_occurrences(document):
+            positions.setdefault(task, []).append((document.name, line, section))
 
     duplicated = {task: where for task, where in positions.items() if len(where) > 1}
 
@@ -283,10 +317,102 @@ def test_no_task_id_has_two_entries() -> None:
         "these task ids have more than one `### T-NNN` entry: "
         + "; ".join(
             f"{task} at "
-            + ", ".join(f"line {line} under `## {section}`" for line, section in where)
+            + ", ".join(f"{path}:{line} under `## {section}`" for path, line, section in where)
             for task, where in sorted(duplicated.items())
         )
-        + ".\nTASKS.md is current truth, so two entries are two answers about one task. Keep the "
+        + ".\nKeep one operative entry per task across TASKS.md and COMPLETED_TASKS.md. Keep the "
         "one that is right and delete the other — the rest of this file cannot see the difference, "
         "because both of its other parsers key by task id and collapse the copies."
     )
+
+
+def test_closed_tasks_are_in_the_closed_record_only() -> None:
+    wrong = []
+    for document in TASK_DOCUMENTS:
+        for task, _, line in live_entries(document):
+            status = operative_status(line)
+            if status is None:
+                continue  # vocabulary check supplies the diagnostic
+            if (status in CLOSED_STATUSES) != (document == COMPLETED_TASKS):
+                wrong.append(f"{task}: {status} in {document.name}")
+    assert not wrong, "task in the wrong file: " + "; ".join(wrong)
+
+
+@pytest.fixture
+def task_documents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+    """Small catalogs let controls exercise the actual repository gates."""
+    active = tmp_path / "TASKS.md"
+    closed = tmp_path / "COMPLETED_TASKS.md"
+    active.write_text("## Ready\n\n### T-901 — Pending\n\n**Status:** Ready\n", encoding="utf-8")
+    closed.write_text(
+        "## Complete\n\n### T-902 — Finished\n\n**Status:** Complete\n", encoding="utf-8"
+    )
+    monkeypatch.setitem(globals(), "TASKS", active)
+    monkeypatch.setitem(globals(), "COMPLETED_TASKS", closed)
+    monkeypatch.setitem(globals(), "TASK_DOCUMENTS", (active, closed))
+    return active, closed
+
+
+@pytest.mark.parametrize("status", ["Complete", "Cancelled"])
+def test_closing_without_transferring_is_rejected(
+    task_documents: tuple[Path, Path], status: str
+) -> None:
+    active, _ = task_documents
+    active.write_text(
+        f"## Complete\n\n### T-901 — Pending\n\n**Status:** {status}\n", encoding="utf-8"
+    )
+    with pytest.raises(AssertionError, match=r"T-901.*TASKS\.md"):
+        test_closed_tasks_are_in_the_closed_record_only()
+
+
+def test_unfinished_work_in_the_closed_record_is_rejected(
+    task_documents: tuple[Path, Path],
+) -> None:
+    _, closed = task_documents
+    closed.write_text(
+        "## In Review\n\n### T-902 — Finished\n\n**Status:** In Review\n", encoding="utf-8"
+    )
+    with pytest.raises(AssertionError, match=r"T-902.*COMPLETED_TASKS\.md"):
+        test_closed_tasks_are_in_the_closed_record_only()
+
+
+@pytest.mark.parametrize("other_file", [True, False], ids=["across-files", "within-completed"])
+def test_duplicate_closed_records_are_rejected(
+    task_documents: tuple[Path, Path], other_file: bool
+) -> None:
+    active, closed = task_documents
+    target = active if other_file else closed
+    with target.open("a", encoding="utf-8") as out:
+        out.write("\n## Complete\n\n### T-902 — Copy\n\n**Status:** Complete\n")
+    with pytest.raises(AssertionError, match="T-902"):
+        test_no_task_id_has_two_entries()
+
+
+def test_a_closed_record_without_status_is_rejected(task_documents: tuple[Path, Path]) -> None:
+    _, closed = task_documents
+    closed.write_text("## Complete\n\n### T-902 — Finished\n", encoding="utf-8")
+    with pytest.raises(AssertionError, match="T-902"):
+        test_every_entry_states_a_status_at_all(closed)
+
+
+def test_quoted_history_does_not_create_an_operative_task(
+    task_documents: tuple[Path, Path],
+) -> None:
+    _, closed = task_documents
+    with closed.open("a", encoding="utf-8") as out:
+        out.write(
+            "\n## Historical context\n\n````text\n### T-901 — Old brief\n**Status:** Ready\n````\n"
+        )
+        out.write("\n## Cancelled\n\n### T-903 — Withdrawn\n\n**Status:** Cancelled\n")
+    assert [task for task, _, _ in live_entries(closed)] == ["T-902", "T-903"]
+    assert [task for task, _, _ in heading_occurrences(closed)] == ["T-902", "T-903"]
+    assert status_line_counts(closed) == {"T-902": 1, "T-903": 1}
+    test_closed_tasks_are_in_the_closed_record_only()
+    test_no_task_id_has_two_entries()
+
+
+def test_an_unclosed_fence_cannot_silently_hide_tasks(task_documents: tuple[Path, Path]) -> None:
+    _, closed = task_documents
+    closed.write_text("````text\n### T-902 — Finished\n**Status:** Complete\n", encoding="utf-8")
+    with pytest.raises(AssertionError, match="unclosed code fence"):
+        live_entries(closed)

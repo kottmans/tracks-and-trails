@@ -6,7 +6,7 @@
 **Update when:** Permissions, ownership or repository-wide workflow changes.
 
 This file is self-contained with the canonical documents it links. `DOC-007` adopts
-convention revision **2026-09-08.2**, Standard profile, for this desktop application.
+convention revision **2026-09-08.3**, Standard profile, for this desktop application.
 The external web profile does not apply. Existing numbered sections remain stable;
 the `tt-*` anchors give new references durable names.
 
@@ -21,7 +21,8 @@ PySide6. Video and audio are equal first-class uses.
 
 ## 2. Read before working
 
-Read this file, the exact task in `docs/project/TASKS.md`, the current
+Read this file, the exact task in `docs/project/TASKS.md` (closed records are in
+`docs/project/COMPLETED_TASKS.md`), the current
 `docs/project/STATUS.md`, and the requirements, decisions, architecture, source
 and tests relevant to that task. Retrieve long records by ID or heading.
 Expand reading when the task or evidence requires it; broad audits may need more.
@@ -53,16 +54,16 @@ reviewing it.
 
 | Role | May update | Must not update without explicit instruction |
 |---|---|---|
-| Planner | `AGENTS.md`, `docs/project/REQUIREMENTS.md`, `docs/project/ARCHITECTURE.md`, `docs/project/DECISIONS.md`, `docs/project/IMPLEMENTATION_PLAN.md`, `docs/project/TASKS.md`, `docs/project/STATUS.md` | source, tests, `pyproject.toml`, build config |
-| Implementer | `src/**`, `tests/**`, `pyproject.toml`, build config, `docs/project/TASKS.md`, `docs/project/STATUS.md`, `docs/project/TESTING.md` (to add a check the change introduces) | `docs/project/REQUIREMENTS.md`, `docs/project/ARCHITECTURE.md`, `docs/project/DECISIONS.md`, `docs/project/IMPLEMENTATION_PLAN.md` |
+| Planner | `AGENTS.md`, `docs/project/REQUIREMENTS.md`, `docs/project/ARCHITECTURE.md`, `docs/project/DECISIONS.md`, `docs/project/IMPLEMENTATION_PLAN.md`, `docs/project/TASKS.md`, `docs/project/COMPLETED_TASKS.md`, `docs/project/STATUS.md` | source, tests, `pyproject.toml`, build config |
+| Implementer | `src/**`, `tests/**`, `pyproject.toml`, build config, `docs/project/TASKS.md`, `docs/project/COMPLETED_TASKS.md`, `docs/project/STATUS.md`, `docs/project/TESTING.md` (to add a check the change introduces) | `docs/project/REQUIREMENTS.md`, `docs/project/ARCHITECTURE.md`, `docs/project/DECISIONS.md`, `docs/project/IMPLEMENTATION_PLAN.md` |
 | Reviewer | `docs/project/REVIEWS.md` (or the assigned `docs/project/reviews/T-0NN.md`), `docs/project/TESTING.md`, test files, `docs/project/TASKS.md` (approved follow-ups meeting §10's task threshold only) | reviewed source code, unless asked to fix findings |
 | Release Manager | version sources, `CHANGELOG.md`, release metadata, `docs/project/STATUS.md` | product scope, during release prep |
 | Documentation Maintainer | `README.md`, `docs/DEVELOPMENT.md`, `docs/project/PROMPTS.md`, current navigation/metadata, retention archives, cross-links, formatting; adopted documentation policy when instructed | product or architecture *meaning*; dated review findings |
-| Coordinator / Integrator (wave only) | `docs/project/TASKS.md`, `docs/project/STATUS.md`, the `docs/project/REVIEWS.md` index and integration result, branches/worktrees the maintainer authorized | a reviewer's substantive findings; worker source outside conflict resolution |
+| Coordinator / Integrator (wave only) | `docs/project/TASKS.md`, `docs/project/COMPLETED_TASKS.md`, `docs/project/STATUS.md`, the `docs/project/REVIEWS.md` index and integration result, branches/worktrees the maintainer authorized | a reviewer's substantive findings; worker source outside conflict resolution |
 
 **In a parallel wave the assigned exclusive write set overrides this table** (§9). A worker
-writes only its own paths, proposes `docs/project/TASKS.md` / `docs/project/STATUS.md` changes instead of applying
-them, and never edits another worker's surfaces or the reviewer's findings.
+writes only its own paths and proposes TASKS, COMPLETED_TASKS and STATUS changes
+instead of applying them. It never edits another worker's surfaces or the reviewer's findings.
 
 <a id="tt-authority"></a>
 
@@ -101,12 +102,21 @@ preserve the current content. Prefer a targeted inverse patch. A clean Git statu
 does not prove that committed work will survive. Mechanically compare protected
 records after a move, restore or structural edit.
 
-At completion the serial task/status owner, or the wave coordinator, refreshes the
-snapshot, removes duplicated session prose after preserving unique facts, and
-keeps active work visible. Archive old task detail when it buries the queue; keep
-IDs, status, necessary test inputs and links to the record. Do not archive each
-task by ritual. Review storage remains one `REVIEWS.md` in serial work; consider
-partitioning or periodic archives only when navigation or ownership warrants it.
+At completion the serial task/status owner, or the wave coordinator, refreshes
+the snapshot and removes duplicated session prose after preserving unique facts.
+In the same update that marks a task Complete or Cancelled, move its full record
+from `docs/project/TASKS.md` to the single running `docs/project/COMPLETED_TASKS.md`.
+Keep only unfinished work in TASKS, with one link to the closed records and no
+per-task stubs. Append future closures to the same file, without dated batches.
+Preserve IDs, headings, evidence, limitations, attribution and follow-up routes;
+update current links and task-reading checks. Required review/checks precede
+closure; a move grants no approval. Cancelled remains Cancelled.
+
+Both files share task/status ownership; in a wave only the coordinator performs
+transfers. Check both when allocating IDs; never reuse an ID or keep two operative
+entries for one. If work reopens, return its record to TASKS and preserve the prior
+closure as dated history. The placement gate checks both files. Review storage
+remains one `REVIEWS.md` in serial work; partitioning remains optional.
 
 New prose explains behavior, causes, corrections, checks and remaining risk.
 Comments explain constraints and invariants, with stable references for history.
@@ -217,6 +227,7 @@ Read canonical finding rows before preparing a correction batch.
 | Durable choices and amendments | `docs/project/DECISIONS.md` |
 | Phases and exit criteria | `docs/project/IMPLEMENTATION_PLAN.md` |
 | Work queue | `docs/project/TASKS.md` |
+| Completed and cancelled task records | `docs/project/COMPLETED_TASKS.md` |
 | Current state | `docs/project/STATUS.md` |
 | Review evidence | `docs/project/REVIEWS.md`; assigned records during a wave |
 | Testing and review policy | `docs/project/TESTING.md` |

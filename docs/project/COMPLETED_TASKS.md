@@ -1,363 +1,30 @@
-# Task record archive — 2026-09-08
+# COMPLETED_TASKS.md — Tracks & Trails
 
-Historical material from `f465688`. Closed task records below are verbatim; their
-IDs and current navigation remain in [TASKS](../TASKS.md). Status qualifiers and
-paths describe their recorded state. The retained queue preambles are superseded
-session context, not current scheduling instructions. No finding is closed by
-this archival move.
+**Purpose:** Running record of completed and cancelled tasks and their evidence.
+**Owner:** Task/status owner; Coordinator / Integrator during a parallel wave
+**Last updated:** 2026-09-08
+**Update when:** A task closes, reopens, or needs a dated correction or navigation update.
 
-## Previous queue preface
+[TASKS](TASKS.md) contains unfinished work. Move each newly Complete or Cancelled
+record here in the same update that closes it, after its required checks and
+review. Keep its ID, heading, outcome, evidence, limitations and follow-up links.
+Append future closures to the appropriate section in this same file; do not
+create dated batches or leave closed-task stubs in TASKS. IDs are never reused.
+For reopened work, return the record to TASKS and preserve its prior closure as
+dated history. See [AGENTS §6](../../AGENTS.md#tt-history).
 
-# TASKS.md — Tracks & Trails
+Current navigation and operative status are editable; dated evidence below is
+historical. Existing entries and supplements were relocated from `39fcc76`.
+Their original words, dates and captured path spellings are preserved. The
+historical queue preface and original T-300 brief are retained at the end as
+quoted context, outside the operative task catalog.
 
-**Purpose:** Track concrete, actionable work.
-**Authority:** Canonical for current actionable work and its state.
-**Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
-**Maintainer:** Sean Kottman
-**Status:** Active
-**Last updated:** 2026-08-27 — **`T-273` is Complete, Approved at `b6db88d`, with no follow-up
-task.** The retention is identified by measurement and the tree is released. The window is held by callables closing over it that Qt
-objects — its own children — hold across C++ parent-child and signal edges. **`gc` can traverse
-none of those**, so it never sees the cycle. `shiboken6` answered what `get_referrers` could not.
-**`deleteLater()` alone changes nothing**; the deferred delete has to be flushed, and then three
-compose cycles go from **25 / 50 / 75** live widgets to **0 / 0 / 0**. `T273-R1` was closed by CI
-run **`33072004785`** — `windows desktop` on `STARBASE` at that head, **3,756 passed**, all 14
-`composed` cases among them — because no local run could close it.
-
-*(2026-08-26: **`T-279` is Complete**, Approved at `a0085b5`, **all six findings
-closed and no follow-up task**. The Windows measurement is at **code head `693a09f`** — CI run
-`33017151297`. **`a0085b5` adds no source, test or workflow line and is record-only**, so naming it
-as the tested head would claim evidence CI never produced.
-
-**`T279-R5` and `T279-R6` rode the completion pass rather than becoming tasks**, which is
-`DOC-005`. **`T-280` was created and removed by the reviewer and is not re-created.**
-`T-279` closed with `## In Review` empty at that point.)*
-
-*(2026-08-26, earlier: **`T-272` is Complete**, Approved at `12fda3a` (review `de0724c`),
-**all nine findings closed**.)*
-
-**`T-279` is filed from the approval**: `orphan_scan._parent_is_gone` decides *"is this a Python
-process"* by process **name**, and a console-script entry point is named for the script — so a
-worker of a **running** `tracks-and-trails` has a parent named `tracks-and-trai` and is reported
-as an orphan. A false-positive class, in the tool rather than in anything `T-272` built.
-
-*(Superseded: `T-272` back In Review on a maintainer scope ruling: per-run
-coverage of one machine, no fan-out.** The acceptance criterion is **explicitly amended** with the
-original struck and the residual stated, which is what `T272-R5` required of anything narrower than
-fan-out. **The scanner now names its own host in every verdict**, so a green can no longer be read
-as *Linux is clean* — that is `T272-R5`'s harm addressed without fanning out. A **pipeline
-regression** was found while building it and is not part of either finding: the scanning step pipes
-into `tee`, so the alarm survives only on `defaults.run.shell: bash` supplying `pipefail`, and
-nothing asserted it.)*
-
-*(Earlier 2026-08-26: **`T-272`'s approval was withdrawn and it was `Blocked`**, pending that
-ruling. `T272-R5` and `T272-R6` are Medium and blocking; `T272-R1`–`R4` remain
-Resolved and **the scanner is sound**. **`## In Review` is empty.**
-
-**The specimen is alive and the capture is retained** —
-`docs/project/evidence/2026-08-25-linux-orphan-still-running-on-spock.md`. `T272-R6` reports it as having
-ended; on `Spock` at 2026-08-26T00:15:29Z both PIDs are present and the scanner exits 1. **That
-contradiction is raised back rather than resolved**, and the likeliest reading is `T272-R5` itself:
-a check of "current state" names whichever machine it ran on.)*
-
-*(2026-08-25: **`T-276` and `T-277` are both Complete**, Approved at `dcd06a0`
-(review `09e1ecb`, **no findings**) and with follow-up at `4f3ca78` (review `a85b8bb`). `T277-R1`
-is Resolved at completion. **The reviewer accepted the Linux-derived 32 px boundary as the
-cross-platform default**, with Windows shell frame selection recorded as honestly unverified.
-
-**The icon chain is finished: `T-274` → `T-276` → `T-277`, plus `T-278`'s About surfaces, and
-`T-275` Cancelled.** Every one of the eleven assets is now rasterized from a vendored artboard,
-which cut ships at which size is enforced at every size and both sources with a control in each
-direction, and Windows has run the whole resource suite. **`T-272` is the only thing left In
-Review**, and it carries an open finding of its own.)*
-
-*(2026-08-25, earlier: **`T-278` is Complete**, Approved with follow-up at `107236e`.
-The About dialog and its Help menu item both read **About**, the icon goes 64 → 112, and the
-video/audio sentence is gone. **Its three findings are one shape at three depths: a property
-asserted more confidently than it was tested.** `T278-R1` was a width rule that held at the one
-size it was measured at and was written up as holding generally; `T278-R2` was a comment that was
-false in the commit that wrote it; `T278-R3` was a screen-reader result nothing had listened to.
-**Nothing was ever wrong with what the maintainer asked for.**)*
-
-*(A defect came with it that nobody reported: `Qt` reads `&` in a `QAction`'s label as a mnemonic,
-and `APP_NAME` contains one, so the menu item had been rendering as *"About Tracks _Trails"*. The
-short label removes the ampersand and the defect together.)*
-
-*(Earlier that day: **`T-277` was built and In Review**, and it moves `T-276`'s
-boundary from 48 px to **32** on a second maintainer ruling the same day. `T-276` adopted the Icon
-cut but pinned it at 48 and above; measured on the running application, **the KDE panel resolves to
-the 32 px frame and the titlebar to 16 or 24**, so **neither of the two slots that draw the window
-icon was getting the new artwork** — the task switcher and the About dialog ask for 64 and were
-correct throughout. Two files change. The titlebar is measured to be unchanged, which is the half of the
-ruling that could have gone wrong.
-
-*(Earlier that day: **`T-276` was built and In Review**, on a direct maintainer
-instruction the same day: Logo Asset Package **v1.1** adds an **Icon** cut — the Standard artwork
-with the sound-wave arcs removed — and it now ships at **48 px and above**. Sixteen, 24 and 32 are
-byte-for-byte unchanged. **The interesting half is not the asset.** Every check that told one
-shipped cut from the other read gold, and the Icon cut's gold is the trail alone, exactly like the
-Small cut's — so cut identity is now a pair, gold for the arcs and green mass for the landscape,
-each with a control in both directions. The Standard cut stays vendored, rendering nothing, purely
-so the arc predicate can be shown a positive.
-
-The morning ruling refused `T-275`, which is `Cancelled` under `## Complete`; the evening ruling
-granted the band it asked for, and its entry records both.)*
-
-*(2026-08-21: **`T-274` is Complete**, Approved with follow-ups at `60dbbcf`, on a direct
-maintainer instruction the same day: the revamped logo pack replaces every icon asset, and the
-assets are now rasterized from vendored SVG artboards rather than derived from a drawn PNG.
-`T274-R1`, `T274-R2` and `T274-R3` are Resolved. **All three findings were the same defect at
-different scopes** — a check weaker than the claim written over it — and none of them was in the
-artwork or the renderer. The brand palette is unchanged and no source module changed behaviour.)*
-
-*(2026-08-20: **`T-270` and `T-269` are both Complete**, Approved at `c047767`
-and `166ce39`, **neither with an implementation finding**. One run closed both: `32319665394`,
-`windows desktop` green end to end on `STARBASE`. `T270-R1`, `T269-R1`, `T269-R2` and `T266-R2` are
-Resolved.)*
-
-**`Quit` no longer depends on a per-platform standard key Qt is entitled to resolve to nothing**,
-and the proof is on **PySide6 6.11.2** — the version whose empty resolution filed the task — with
-the `>=6.11,<7` constraint untouched. The maintainer ruled that `T-270` may leave it that way;
-**whether runtime floors are the right policy at all is still open** and is nobody's task yet.
-`T-271` is filed for the neighbouring `StandardKey.New`, the same unguarded reliance, **not**
-observed broken.
-
-**What is awaiting a verdict is `## In Review`, and this header does not say what is in it.**
-
-*(**The removed paragraph enumerated that section and was wrong again**, which is the failure
-`T204-R2` named. It read *"`T-256` and `T-258` are what remain In Review"* while `T-267` and
-`T-269` sat there too; it said `T-258` was *"blocked on **one** thing: `T258-R5`"* after `T258-R5`
-was Resolved; and it said **`T-268` is answered and In Review** after `T-268` went **Blocked**.
-Every sentence was true the day it was written. `T-270` did not make them stale — it made the first
-one **falser**, by adding a fifth entry — and the paragraph is removed rather than corrected,
-because the file already states the rule it was breaking: a header that lists a section's contents
-is a second copy of the section, and the copy is what rots. What it recorded about `T-266` is not
-lost; it is in `T-266`'s own entry under `## Complete`.)*
-
-*(**Rewritten 2026-08-18, because appending had made it self-contradicting.** In one paragraph this
-header said `T-259` was Complete *and* awaiting re-review, and that `T-258`'s Windows run existed
-*and* that no Windows run existed. Every sentence was true when it was added and none was removed
-when it stopped being — three appends in a day. A current-truth summary that is only appended to
-becomes a record of every state the project has held, which is what `docs/project/STATUS.md` is for. Found by
-review, not by reading it back.)*
-
-`T-258`'s first submission returned Changes requested with six blocking findings. The window before
-a spawned worker installs its watchdog is reproduced, POSIX is measured not to have it, and the
-application now contains itself in a Job object before any worker exists — through **one seam that
-refuses to spawn rather than warn**, at every product-owned spawn site rather than the manager's
-alone. **Three of its five criteria are unmet and the entry says which.**
-**This section's `## In Review` was duplicated byte-for-byte from `30b473d`** until
-2026-08-17 — six commits — and `T-096`'s gate passed on it throughout, because every duplicated
-status still matched its section.
-
-*(Previously, 2026-08-16: **`T-183` was built and In Review** — it is now **Complete** at
-`1d0caf6`.)* It filed ten entries:
-`T-247`…`T-255` (the typed fields, 44 options over nine tasks) and **`T-256`**. `SEC-004` ruled
-the fifteen unclassified options **forbidden** the same day, so `T-184`'s refusal list is known.
-**`T-183`'s review then returned Changes requested** (`5613af4`) with two product defects — the geo
-exclusion was never enforced, and twelve `hatch` rows the application owns were reachable — and the
-corrections are in. `T-256` now also owns a **sixteenth** option the audit missed. *(Previously: `T-196` is Complete,
-approved at `c70f61a` after a maintainer-authorized documentation-only pass; `T196-R1` … `T196-R5`
-are all Resolved. `T-146` remains Complete at `0adf9e3` and `T-215` at `b9caa40`.)*
-**Phase 4 is the current phase**, its plan deliverables decomposed under `## Proposed — Phase 4`.
-For what is awaiting a verdict now, read `## In Review` — this header does not duplicate it, for
-`T204-R2`'s reason.
-**Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
-**Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
-
-Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
-IDs are never reused. Completed tasks move to `docs/project/archive/` once they bury the live queue.
-
-**Start here: the current phase is Phase 4.** Its first built plan deliverable, `T-146`, is Complete;
-carried-in defect `T-215` is also approved. Phase 3 exited 2026-08-09,
-Phase 2 on 2026-08-05, Phase 1 on 2026-07-29 and Phase 0 on 2026-07-26; every exit review is in
-`docs/project/REVIEWS.md`. **Actionable work is `## Proposed — Phase 4` and `## Ready`; work awaiting review
-or correction is `## In Review`.** None of the three says how many it holds, for `T204-R2`'s reason.
-
-*(**This line has now been wrong twice, and both times it was found by review rather than by
-reading it.** `P3EXIT-R1` found it saying Phase 2 three days after Phase 3 began; `P3EXIT-R4` found
-it saying Phase 3 after Phase 3 exited — inside the commit that recorded the exit. **The line most
-likely to be stale is the one that says what is current**, because nothing else in the file breaks
-when it rots.)*
-
-*(This said **"The current phase is Phase 2"** and named that phase's planning gates. It was true
-until 2026-08-05 and was still standing on 2026-08-08, at the top of the file whose job is to say
-what is actionable now — found by `P3EXIT-R1`. Phase 2's planning-gate detail is below, where the
-rest of its history lives.)*
-
-**The live queue** — rebuilt from the sections below on 2026-07-31, not written alongside them.
-`COORD-R5` through `COORD-R11` are seven rounds of a hand-written summary drifting from the file it
-summarises; this one is transcribed from the actual `## ` sections so it starts correct.
-
-- **In Review:** `T-046` only — corrected a third time 2026-08-01 (`T046-R4`, `T046-R5`).
-  *(Phase 3 has since put two more there: **`T-109`**, whose review returned **Changes requested**
-  on 2026-08-08, and **`T-110`**, submitted 2026-08-08. This bullet is Phase 2's and is left as
-  what it said; the `## In Review` section is the current list, which is why `T-096` gates
-  placement rather than this summary.)*
-- **Blocked on `STARBASE`, which is offline:** `T-092` (arming crash dumps is configuration of that
-  machine) and `T-074` (its segfault has only ever been seen there). **`T-087` is no longer among
-  them** — `OPS-005` was amended 2026-08-01 and its Windows cases passed on the hosted runner.
-- **Approved 2026-08-01** at `eb1bd70`: `T-081`.
-- **Approved 2026-08-01** at `97f96c0`: `T-083` and `T-102`. At `05e5312`: `T-080`, `T-053`,
-  `T-099`, `T-101`, `T-103`. `T-092` is *prepared*, not complete: three of
-  its criteria need `STARBASE`.
-- **Blocked:** **`T-087`**. Its Windows primitive now matches `ARC-006` but has never executed;
-  `A-004` stays unverified and **Phase 2 exit criterion 4 is blocked with it**.
-- **Ready, and nothing among them waits on anything:** `T-082`, `T-084`, `T-100`, plus `T-074`,
-  which blocks nothing. `T-084`'s *approval* waited on `T-053`, which is now approved.
-- **All three Phase 2 planning gates are clear.** `P2PLAN-R2` at `f858da9`; `P2PLAN-R1` and
-  `P2PLAN-R3` at `8306378`. `ARC-007` decides the settings surface, `UX-001` the pause semantics.
-- **No open questions are outstanding.** The last one — whether a corrupt `settings.toml` should
-  report rather than fall back silently — was **decided 2026-07-31**: it reports. `ARC-008` holds
-  the decision and **`T-102`** implements it. *(Two others were decided 2026-07-30: the concurrency
-  **maximum** — `ARC-007` amended, `CONCURRENCY_MAXIMUM = 16` — and **`P2PLAN-R8`**, the history
-  view's owner, which is now **`T-100`**. `T-086` depends on it and is unblocked once it lands.)*
-- **Carried, blocking nothing:** `T-099` (`T097-R2` — the boundary analyser reports a settings
-  offender under the persistence rule's explanation), `T-101` (`T079-R3` — the corrected detail view
-  resets retry ETA correctly, but the ETA-only mutation survives) and `T-103` (found by `T-081`:
-  cancelling a *waiting* job leaves its id on the pool's waiting list).
-
-**Nothing is a choke point as of 2026-07-31.** `T-078` was the last one, and `T-079` was the last
-task anything waited on; every Ready task above can start without waiting for a verdict on the
-three in review.
-
-**Windows runtime has still never run against the pool.** It is not a completion gate for source
-changes here, but `T-078` is the first task to run several worker trees at once, so the risk is
-larger than it was — see `T-078`'s entry and `T-092`.
-
-**Two Phase 1 blockers were dispositioned by decision rather than completed**, and the exit review
-upheld both while keeping them open: `T-066` by the `OPS-005` amendment, `T-074` by `OPS-007`.
-Neither task is closed and neither blocks Phase 2. The reasoning lives in those decisions rather
-than here — restating it is how the block below came to exist.
-
-*(**Everything that stood here was Phase 1's live state, and Phase 1 exited on 2026-07-29.**
-`COORD-R11` found four blocks of it still asserting the present tense underneath the Phase 2 summary
-above: that `T-091`, `T-096` and `T-089` were Ready after two were approved and one was in review;
-that exit criterion 7 was "still unmet"; and that "Phase 1 is not ready". All four were true when
-written and none was true when read.
-
-Removed rather than annotated one by one, because the problem was the block existing at all — a
-current-truth file does not need two summaries, and the second one is always the stale one. Nothing
-is lost: `T-074`'s residual disposition is `OPS-007`, `T-066`'s is the `OPS-005` amendment, and
-Phase 1's exit and its criteria are in `IMPLEMENTATION_PLAN.md` §Phase 1 and the exit review,
-while `STATUS.md` carries the narrative. Each of those is the canonical home; this was a copy
-that outlived them.
-
-**`T-096` passed throughout**, because every status matched its section. It gates placement, not
-prose, and `COORD-R11` is the half it cannot reach.)*
-
-Phase 0 is formally exited (2026-07-26).
-
----
-
-
-## In Review
-*Implementation is finished and a verdict has not been recorded. **The entries below are the
-contents; this preface does not list them.***
-
-*(Was empty from 2026-09-06 until `T-299` landed on 2026-09-08. The heading stays even when it
-empties, because a section that disappears is one nobody notices coming back.)*
+- [Complete](#complete)
+- [Cancelled](#cancelled)
+- [Additional historical evidence](#historical-evidence-supplements--2026-09-08)
+- [Earlier coordination context](#earlier-coordination-context)
 
 ## Complete
-
-## Ready
-
-*(`T-078`…`T-088` are the phase's own deliverables, written 2026-07-29 from
-`docs/project/IMPLEMENTATION_PLAN.md` §Phase 2. `T-097` is a planning-review follow-up; the entries after the
-deliverables — `T-050`, `T-053`, `T-046`, `T-047`, `T-048`, `T-049` — are follow-ups carried out
-of Phase 1 that land in this phase, and they were here first. Nothing below is scheduled: Phase 2's
-prerequisite is Phase 1 approved.)*
-
-*(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
-which replaced everything between `## In Review` and `### T-074` — the heading sat between them.
-For two commits `T-074`, `T-089`, `T-091`, `T-092` and `T-096` therefore sat under `## In Review`
-while each said Ready: the exact status-versus-section class `COORD-R5` through `COORD-R10`
-reported six times, produced here by a tool rather than by inattention. **`T-096` is the answer**
-and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
-being necessary.)*
-
-
----
-
-## Proposed — Phase 0
-
-*(Empty since 2026-08-15, when `T-021` — the only entry it ever held after the phase was formally
-exited — moved to `## In Review`. The heading stays because the section is part of the map, and a
-heading that disappears when it empties is one nobody notices coming back.)*
-
-## Proposed — Phase 1
-
-## Proposed — Phase 2
-
-## Proposed — Phase 3
-
-## Proposed — Phase 4
-
-## Proposed — Phase 4.5
-
-*(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
-descend from, and `T-183` is what turns them into the rest of the phase.)*
-
-## Blocked
-
-
----
-
-## Complete
-
-
-## Original T-300 brief
-
-### T-300 — `AGENTS.md` is 628 lines and is loaded on every task
-
-**Status:** Ready
-
-**Owner:** Documentation Maintainer
-**Priority:** Low — it costs context on every task, and nothing is wrong in it
-**Phase:** Phase 4 (documentation system; **not** a plan deliverable)
-**Depends on:** `T-299` complete, so the section numbers move once rather than twice
-**Relevant context:** `DOC-006` deviation 1, `AGENTS.md` §§1–13
-**Affected surfaces:** `AGENTS.md`, and every citation of its section numbers
-**Risk:** Medium — the risk is entirely in the renumbering, not in the prose
-**Required checks:** `ruff check .` · the full suite · a grep proving no `AGENTS.md §N` citation
-points at the wrong section afterwards
-
-#### Scope
-
-The convention's soft review trigger is roughly 200–300 lines for a file agents load on every
-task; this one is **628**. Compress repeated prose and route historical detail through
-`docs/project/STATUS.md`, `TASKS.md`, and `REVIEWS.md`, which is where the convention says it
-belongs.
-
-#### What makes this harder than it looks
-
-**The section numbers are an interface.** `AGENTS.md` is cited **359** times, and the citations
-name sections rather than headings — `AGENTS.md §7`, `§9`, `§10`. They are in source comments, in
-`pyproject.toml`, in `tools/commit_message_check.py`, in `src/tracks_and_trails/core/settings.py`,
-and throughout the coordination documents. Renumbering silently invalidates every one, and nothing
-fails when it happens.
-
-So the cheap version of this task — delete the long bits — is the version that does the damage.
-
-#### Acceptance criteria
-
-- No concrete safety invariant, secret-handling rule, or permission boundary is removed to meet a
-  size target. Compression means saying the same rule in fewer words or linking to its canonical
-  home, not dropping it.
-- Every `AGENTS.md §N` citation in the repository resolves to the section it meant before the
-  change, or is updated in the same commit. Whichever route is taken, the check is mechanical and
-  its output is recorded.
-- Anything moved out lands in the document the convention names as its home, and is not merely
-  deleted.
-
-#### Out of scope
-
-- The role model and the tool mapping in §3. The convention explicitly permits a named-tool
-  assignment recorded once and mapped to capability roles, which is what §3 already is.
-- Renaming the file. `AGENTS.md` at the repository root is what the convention specifies.
-
-
-## Closed task records
 
 ### T-287 — Minimizing the main window leaves its dialogs on screen
 
@@ -926,6 +593,9 @@ real application must continue resolving the user-managed copy first.
 
 ---
 
+
+Additional historical evidence for T-298: [supplement](#t298-runner-profile).
+
 ### T-291 — A canary that runs the suite against the yt-dlp we have not pinned yet
 
 **Status:** **Complete — Approved at `0332a68` on 2026-08-29.** Three findings corrected, and
@@ -1061,6 +731,9 @@ not tolerated**, so that the job separates:
   gate already runs it against the pin
 
 ---
+
+
+Additional historical evidence for T-291: [supplement](#t291-verdict).
 
 ### T-288 — The scroll bar is the one control the theme never dressed
 
@@ -1214,6 +887,9 @@ shape both reports are asking for, and it is one rule set.
 
 ---
 
+
+Additional historical evidence for T-288: [supplement](#t212-validation).
+
 ### T-292 — The download folder can be chosen but not typed, and its caption says nothing worth a line
 
 **Status:** **Complete — Approved at `0332a68` on 2026-08-29.** Three findings corrected, and
@@ -1353,6 +1029,9 @@ the statement. Recorded here so a later reader does not restore it as an oversig
 
 ---
 
+
+Additional historical evidence for T-292: [supplement](#t212-validation).
+
 ### T-293 — A queued row offers *Remove*, so one playlist entry can go without the playlist
 
 **Status:** **Complete — Approved at `0332a68` on 2026-08-29.** A queued row offers
@@ -1427,6 +1106,9 @@ offered that would be refused* — is what settles it: removing a queued job is 
 - **The header's verbs**, which `group_verbs` decides and `T-140` settled
 
 ---
+
+
+Additional historical evidence for T-293: [supplement](#t212-validation).
 
 ### T-285 — The Options dialog offers audio-only containers to a download that keeps its video
 
@@ -1523,6 +1205,9 @@ by a validator are different sets**, and this task changes only the first.
 
 ---
 
+
+Additional historical evidence for T-285: [supplement](#t212-validation).
+
 ### T-283 — The row's painted *Download as* control insets its text 5 px less than the editor
 
 **Status:** **Complete — Approved at `0332a68` on 2026-08-29.** No implementation finding was
@@ -1589,6 +1274,9 @@ at the moment the user clicks it."* The rectangle does not move; the text inside
 - What the control **says**, which is `T-284`
 
 ---
+
+
+Additional historical evidence for T-283: [supplement](#t212-validation).
 
 ### T-281 — Unavailable playlist entries are carried into the queue as rows that cannot download
 
@@ -1718,6 +1406,9 @@ bare token and survives; redaction is not the thing to weaken.
   already exists, at a level that is already written
 - **Whether the probe should pass a logger at all.** Surfacing yt-dlp's own warning to the user is
   a separate question from this application recording what it itself did
+
+
+Additional historical evidence for T-281: [supplement](#t212-validation).
 
 ### T-273 — Every composed window outlives its own shutdown, and `tests/ui` accumulates them
 
@@ -2298,6 +1989,9 @@ inherited**, and because `T-268`'s five specimens are the reason this scanner ex
 
 ---
 
+
+Additional historical evidence for T-279: [supplement](#t279-mutation).
+
 ### T-272 — The orphan scanner runs only on Windows, and a Linux box has had two orphans for days
 
 **Status:** **Complete — Approved at `12fda3a`**, 2026-08-26, review commit `de0724c`. **All nine
@@ -2754,6 +2448,9 @@ this one returned four verdicts before approving.*
 
 
 ---
+
+
+Additional historical evidence for T-272: [supplement](#t272-first-dispatch).
 
 ### T-277 — Move the split to 32 px, so the Icon cut reaches the slot the desktop draws
 
@@ -3328,170 +3025,6 @@ work from.)*
   not investigated
 - **Whether `U+2011` should be used anywhere else.** It is a *display* spelling and this is the one
   display site; every other use of the tool's name is data and keeps the ordinary hyphen
-
----
-
-### T-275 — Ship 32 px from a cut that keeps the trees and drops the sound-wave arcs
-
-**Status:** **Cancelled — refused by the maintainer ruling of 2026-08-25**, four days after
-filing and one day after `T-274` closed. **A second ruling the same evening granted the band this
-entry asked for** — the Icon cut at 32 px — and `T-277` ships it. This stays `Cancelled` because
-what it proposed was **three** bands, keeping the Standard cut above 48, and that is still refused:
-`T-277` is two bands split at 32. **The disposition is unchanged and the reason for it is now
-half wrong**, which is recorded here rather than by rewriting the entry. **Nothing here was found to be wrong.** Every measurement
-below stands and `T-276` was built against them; what the ruling rejected is the *band*, and it
-did so on evidence that did not exist when this was filed.
-
-*(Filed 2026-08-24 on a maintainer instruction. The maintainer asked whether the full mark could
-serve as the icon with the arcs removed. The comparison said **not generally** — the arcs are not
-what breaks first — and the maintainer then scoped it to **32 px alone**, which is the one size
-where removing them pays. What this entry was for was that **the small-side check could not see
-that change at all**, measured below.)*
-
-#### The ruling — maintainer, 2026-08-25
-
-**Refused: the cut ships at 48 px and above, not at 32.** Logo Asset Package **v1.1** delivered
-the cut this task asked for on 2026-08-25 and gives it a floor: it keeps the three trees and the
-mountain, which are what set the Standard cut's 48 px floor, so it shares that floor rather than
-earning a lower one. The pack says it in terms — *"Below 48 px, use Small."*
-
-**The pack's reasoning and this entry's own measurement agree**, which is why the refusal is
-recorded as a ruling rather than an override. This entry already noted that at 32 px the mid cut's
-trees *"read as texture rather than as three conifers"* and offered it as recorded rather than as
-an objection. The pack made the same observation the ground of a rule.
-
-**What survives is everything except the band.** The three-way table at 32 px, the finding that
-the gold signature is identical to the reduced cut's, the warning that the green-run predicate
-fails at 64 px, and the artboard dependency are all load-bearing in `T-276` — which is two bands
-rather than three, so the `FULL_SIZES` and triple-literal traps this entry named were never
-sprung. **The one thing this entry got wrong is the one thing it could not have known**: it
-assumed the cut would have to be authored on request, and the pack had already drawn it.
-**Owner:** Planner, to prioritize
-**Priority:** **Low.** Nothing is broken. `icon-32.png` and the `.ico`'s 32 px frame ship the
-reduced cut today and are correct; this replaces a legible asset with a richer one
-**Phase:** Phase 4 maintenance
-**Depends on:** **the mid cut existing.** It is not in the logo pack — see *Who authors the cut*
-**Relevant context:** `tools/icons/render_icons.py`, `tools/icons/masters/`,
-`tests/ui/test_resources.py`, `tests/unit/test_resources.py`, `T-274`, `T274-R3`, `ARC_SHARE`
-**Affected surfaces:** `icon-32.png`, the `.ico`'s 32 px frame, the renderer's size bands, and both
-test modules' size constants. **No source module changes** — `main_window.app_icon()` loads
-`icon.ico` and is untouched, as in `T-274`
-**Risk:** **Medium, and all of it is in the tests rather than the asset.** A wrong asset at 32 px is
-visible. A check that cannot tell two cuts apart is not
-
-#### What is asked
-
-**32 px moves off the reduced cut onto a third cut: the full mark with its two gold sound-wave arc
-paths removed, trees and mountain kept.** 16 and 24 stay reduced — at those sizes the trees are an
-illegible scribble and removing the arcs changes nothing that reads. 48 and up stay on the full
-mark, arcs included, where they render cleanly.
-
-*(**Recorded, and not an objection.** At 32 px the mid cut's trees are soft: the trees and mountain
-are the 72 green pixels by which it exceeds the reduced cut, and they read as texture rather than as
-three conifers. The maintainer has seen the comparison and directed the change. This is here so the
-next reader knows it was measured rather than missed.)*
-
-#### The check the change walks straight through
-
-Rendered at 32 px, by the predicates `tests/ui/test_resources.py` already uses:
-
-| cut at 32 px | gold runs | green pixels | green runs |
-|---|---|---|---|
-| reduced (ships today) | `[43]` | 120 | `[83, 37]` |
-| **mid (proposed)** | **`[43]`** | 192 | `[192]` |
-| full | `[43, 9]` | 192 | `[192]` |
-
-**The mid cut's gold signature at 32 px is identical to the reduced cut's — one run of 43 pixels.**
-`test_the_small_cut_is_what_ships_at_every_small_size` asserts exactly that property, so **it would
-pass unchanged on the new asset**: the check accepts the swap silently and stops discriminating at
-32 the moment the band moves.
-
-**This is `T-274`'s finding a fourth time — a check weaker than the claim written over it — and the
-difference is that it is in front of the build rather than behind it.** `T274-R1` and `T274-R3` were
-both found by mutating the selector and watching the suite stay green. The same mutation here is
-free to predict: point 32 at the mid cut, change nothing else, and the small-side test still passes.
-
-#### What does separate them
-
-**Green.** The reduced cut's green falls in two runs — the note body and the hill, held apart by the
-trail. The mid cut's trees bridge them into one and add 60% more green pixels.
-
-Identity at 32 px is then a pair, and all three cuts are distinct:
-
-| cut | arc-sized second gold run | green runs |
-|---|---|---|
-| reduced | no | 2 |
-| mid | no | 1 |
-| full | **yes** | 1 |
-
-Both properties already exist in the module: `has_detached_arcs` separates mid from full, and the
-green-run count separates mid from reduced.
-
-**One direction of control exists for free.** `has_detached_arcs` already rejects the mid cut at
-48 px — its gold there is `[102, 1]`, and `ARC_SHARE` requires the second run to reach 5% of the
-first, 1 against 5.1. The full-side property fails on the mid cut without being touched.
-
-**The green-run predicate is size-dependent, and a control must not assume otherwise.** It separates
-reduced from mid at 16, 24, 32 and 48 — two runs against one — and **fails at 64**, where both are
-two (`[375, 147]` against `[612, 147]`). The mid cut only ships at 32, so this is a constraint on
-how the complement is written, not a defect.
-
-#### The artboard
-
-**The mid cut is not centred, so it cannot simply be the master with two paths deleted.** Ink bounds
-measured at 1024:
-
-| cut | height fill | left margin | right margin |
-|---|---|---|---|
-| full | 0.8613 | 134 | 134 |
-| master minus arcs | 0.8613 | 134 | **196** |
-| reduced | 0.8613 | 171 | 171 |
-
-The arcs sit *beside* the note rather than above it, so deleting them leaves the mark 62 units
-off-centre horizontally while the height fill is unchanged. **The cut needs its own square artboard**
-honouring the pack's 8% margin rule — that rule, and the shared 0.8613, are what keep the cuts at
-matching weight in one frame.
-
-#### Who authors the cut
-
-**`T-274` retired in-repo derivation.** `render_small_glyph.py` was deleted so the cuts cannot drift
-into different marks, and the pack authors each artboard. Two options, and the first is recommended:
-
-- **The maintainer exports the cut from the logo pack** as a square icon artboard, vendored into
-  `masters/` byte-for-byte like the other two. Consistent with `T-274`, and the artboard is a design
-  decision the pack owns.
-- **The repo vendors a master produced by deleting the two arc paths and re-centring the viewBox.**
-  Cheaper. It reintroduces what `T-274` retired — though more weakly than the old pixel masking did,
-  since the arcs are two self-contained `<path>` elements and deleting them is lossless and exact.
-  **The re-centring is the part that is a design judgement made in a script.**
-
-#### Implementation traps
-
-- **`FULL_SIZES` is derived by subtraction** — `tuple(size for size in PNG_SIZES if size not in
-  SMALL_SIZES)`. A third band must be subtracted too, or `test_the_full_mark_is_what_ships_above_
-  the_split` runs at 32 and asserts arcs on an asset built to have none.
-- **The small band is written three times** — `render_icons.py`'s `SMALL_SIZES` frozenset,
-  `tests/ui/test_resources.py`, and `tests/unit/test_resources.py`, where it is a separate literal
-  `(16, 24, 32)`. All three move, and the unit copy is the one that will be missed.
-- **`test_no_unexpected_files_in_the_icon_directory` pins the directory exactly.** A third master
-  PNG, if the renderer emits one, has to be added there.
-- **The `.ico` carries a 32 px frame**, so `icon.ico` changes as well as `icon-32.png`.
-
-#### Suggested acceptance criteria
-
-- **32 px ships the mid cut, and a check proves it** — one that **fails** when the reduced cut is put
-  back at 32 and **fails** when the full mark is. Both directions, as `T274-R3` established
-- **A control proves the check discriminates**, in the shape `test_the_complement_rejects_the_reduced_cut`
-  set: render the wrong cut at the guarded size and require the property to fail
-- **16 and 24 still ship the reduced cut, 48 and up the full mark**, with their existing checks intact
-- **A selector mutation fails at the size it moves.** `T-274` regenerated all eleven assets per
-  mutation and required failure at exactly the moved size; a third band adds mutations, not an
-  exception
-
-#### Out of scope
-
-- **Any change to 16, 24, or 48 and above.** The comparison found nothing wrong at those sizes
-- **A judgement about the artwork.** As in `T-274`, the maintainer's design direction is the input
 
 ---
 
@@ -4352,6 +3885,9 @@ so a parent that is not one cannot be the one that spawned it.
 
 ---
 
+
+Additional historical evidence for T-258: [supplement](#t258-scan-observations).
+
 ### T-270 — Quit has no keyboard shortcut on Windows, and the whole Windows gate is red behind it
 
 **Status:** **Complete — Approved at `c047767`**, 2026-08-20, **no implementation findings**,
@@ -4485,6 +4021,9 @@ commit:
   untested*, not as broken: no run has ever asserted its shortcut on Windows.
 
 ---
+
+
+Additional historical evidence for T-270: [supplement](#t270-version-runs).
 
 ### T-269 — Make the formatter and type-checker versions reproducible
 
@@ -5196,6 +4735,9 @@ fails on growth rather than on faults, and it fails by looking like a hang.
   readable, not about the 32 minutes being right
 - `T-258`'s orphans. Adjacent, on the same machine, **and not the cause** — checked, not assumed
 ---
+
+
+Additional historical evidence for T-259: [supplement](#t259-runtime).
 
 ### T-257 — The Windows job has been red since 2026-08-15, and the failure is the guard, not the product
 
@@ -6944,28 +6486,6 @@ split had leaked.
 - Redesigning the logo itself
 - Any change to the brand hex values fixed by `T-003`
 
-### T-245 — Qt publishes a combo box's value where its name should be
-
-**Status:** **Cancelled — 2026-08-15, superseded by `T200-R7`.** Filed the same day from `T-200`'s
-mutation battery, on the reading that the survivor was a pre-existing gate weakness needing a fork
-this task did not own. **The reviewer overturned that reading**, and was right to: it is a failed
-acceptance criterion of `T-200`, not a follow-up, so it was corrected inside `T-200` rather than
-carried.
-
-**The fork this entry proposed no longer exists.** Branch 1 — *accept Qt's contract and assert
-`accessibleName()`* — would have made the test narrower while leaving the published tree wrong, and
-its claim that neither branch changes user-visible behaviour contradicted branch 2's whole purpose.
-Branch 2 — an interface factory — was then measured and rejected on its own terms: it drops the
-`expandable` state, the `ShowMenu` and `Press` actions and the popup child, because PySide6 exposes
-no `QAccessibleComboBox` to inherit from.
-
-**What was actually done** is the third option the finding named and this entry missed: the
-`Label` relation, through `setBuddy`, which is the mechanism Qt's own source says Linux uses. See
-`T-200`'s entry for the seven controls and the measurements.
-
-**Kept rather than deleted**, because the wrong call is the part worth reading: a survivor was
-filed as follow-up work when it was the criterion failing.
-
 ### T-244 — Expanded playlist entries offer verbs the delegate never draws
 
 **Status:** **Complete — Approved at `510923d` on 2026-08-14.** Filed by the `T-201`
@@ -8371,6 +7891,9 @@ one is how T-204 reached review without reproducing it
 ---
 
 
+
+Additional historical evidence for T-208: [supplement](#t203-checks).
+
 ### T-221 — Decide whether the deferred panel mount visibly flashes
 
 **Status:** **Complete — observed 2026-08-13. No visible flash.** The maintainer ran both panel
@@ -8415,358 +7938,6 @@ closing the combo editor, the dead-editor ordering `T108-R2` established
 
 ---
 
-
-### T-219 — The dialog footer speaks the naming rule, not the selector
-
-**Status:** **Cancelled — ruled 2026-08-13. The refusal is the outcome.** The maintainer chose
-*refuse and close* from the three shapes this entry recorded.
-
-**The ruling, and why it is the right one:** the entry's premise does not hold. The footer is not
-the last surface printing selector syntax — **every probed row prints it too**, through
-`selector_text`, and deliberately: `REQ-009` asks for a selector a user can learn from and copy, and
-`T118-R8` was reported twice against that line. Meeting the criterion would have overturned that
-reading for one surface while leaving it standing on the others, which is the worst of the three
-shapes rather than the cheapest.
-
-**Nothing is owed by this closure.** `T126-R2`, `T140-R3` and `T-159` — the three findings that
-establish surfaces speak the naming rule — are unaffected: they govern *prose* surfaces, and the
-selector is offered as a value to copy rather than as a sentence. The other two shapes are left
-recorded below as what was not chosen.
-
-*(Originally: Blocked on a ruling — 2026-08-12, picked up in an authorized unattended run and not
-built.)*
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 4 — polish, not a plan deliverable
-**Depends on:** a maintainer ruling (below). The same-file hold behind the add-dialog chain is over
-**Relevant context:** `T126-R2`, `T140-R3`, `T-159` — three findings establishing that surfaces
-speak the naming rule, never raw selector syntax; `ui/format_text.py` (the rule),
-`ui/add_dialog.py` (the footer line under *Download as*)
-**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
-**Risk:** Low
-
-#### Scope
-
-The footer under *Download as* prints
-`Every row · Format selector: bestvideo[height<=1080][ext=mp4]+…` — yt-dlp syntax on the primary
-add surface, after three review findings moved every row to the naming rule. The dialog's own
-footer is the last surface still speaking syntax.
-
-#### What the reproduction found, 2026-08-12
-
-**The footer is not the last surface speaking syntax, and the entry says it is.** `selector_text`
-— *"the row's third line"* — builds `Download as: <name> — <whose choice> · Format selector:
-<selector>` through `describe_preset` (`ui/add_dialog.py`). **Every probed row prints the raw
-selector**, not just the footer. Verified by reading both call sites: `describe_preset` feeds the
-row's drawn line at `selector_text`, and the footer builds its own copy in
-`_update_selector_label`.
-
-**And the duplication is deliberate, with its reasoning recorded twice.** `_update_selector_label`'s
-docstring: *"`REQ-009` asks for a selector a user can learn the syntax from and then write their
-own, which means it has to be selectable text they can copy — and a delegate paints pixels, not
-selectable text. The row draws its own selector so a mixed batch can be read at a glance; this is
-where the one in hand can be taken away."* `T118-R8` was reported **twice** against that line.
-
-**So the criterion below cannot be met without overturning `REQ-009`'s reading and `T118-R8`'s
-design**, and that is a ruling rather than an implementation detail. Three shapes, none chosen:
-
-1. **Footer only.** The footer speaks the naming rule with the selector on its tooltip; the row's
-   third line keeps the selector. Smallest change, and it leaves the criterion *"no visible
-   surface prints selector syntax"* **unmet** — the entry would be amended to say so.
-2. **Both surfaces.** Row and footer speak the naming rule; the selector lives on a tooltip and in
-   the options editor. Meets the criterion as written, and is the one that overturns `T118-R8` —
-   a mixed batch would no longer be readable at a glance, which is what that finding was about.
-3. **Neither.** `REQ-009`'s *learn the syntax* is judged to outweigh the three findings that moved
-   other surfaces to the naming rule, and the task closes as refused with that recorded.
-
-**Nothing was built.** An unattended run is the wrong place to overturn a requirement's reading.
-
-#### Acceptance criteria
-
-*(Criterion 3 is the one in question; see above.)*
-
-- The footer line names what rows inherit **in the naming rule's words, through the same function
-  the rows use** — a second phrasing of the same fact is `T140-R3`'s defect and is not built
-- The **raw selector stays reachable** — a tooltip on the line, or the options editor — and this
-  entry records where it went
-- **No visible surface in the dialog prints selector syntax**; a test asserts the footer text for
-  a built-in preset
-- A screen reader hears the same words a sighted user reads — the accessible description carries
-  the friendly line, not the selector
-
-#### Out of scope
-
-- The selector's role in requests, presets, or `REQ-009`'s custom-selector escape hatch — this
-  changes one label, not what is downloaded
-
-### T-228 — A retry deadline stops firing under parallel load
-
-**Status:** **Cancelled — ruled a harness artefact 2026-08-13.** The maintainer closed it on the
-reachability measurement: **680 sessions** — concurrency 1 and 16, idle and saturated, plus 20
-independent managers — lost **no message**, so it is not reachable at supported product concurrency
-by anything measured. It needs the integration suite itself, at high worker count, on a saturated
-host.
-
-**The suspect is named rather than left implied**, which is what makes this a closure rather than a
-shrug: the suite kills workers *and process groups*, and `kill_this_group`'s blast radius depends on
-what shares a group. That is a harness question. **Reopening condition:** any observation of a lost
-`multiprocessing.Queue` message outside that harness — a user report, or a failure at supported
-concurrency — makes this a product defect again and it is refiled with the new evidence.
-
-**What closing costs, stated:** `-n 4` on integration stays unadopted, so the **214 seconds** it
-would save stay unsaved. The reviewer ruled against adopting it on three green runs, and closing
-this does not change that reasoning.
-
-*(Originally: Proposed — filed 2026-08-11 from `T-123`'s adoption run, reproduced at roughly one run
-in three under `pytest -n auto tests/integration/test_manager.py`. **The immediate causal chain was
-established 2026-08-12** (see below), but the first criterion remains open: it requires classifying
-the condition as test-only or product behavior, and that reachability has not been measured yet.
-**Owner:** Implementer
-**Priority:** Medium — it blocks the second half of `T-123`. Integration runs serially today, so
-nothing is red because of it; what it costs is **297 s of every CI run**, which `-n 4` would take
-to 83 s if this were fixed
-**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
-**Depends on:** nothing
-**Relevant context:** `tests/integration/test_manager.py::test_a_stopped_queue_parks_an_automatic_retry_until_it_is_started`,
-`T-123`, `T118-R10`, `T-083`
-**Affected surfaces:** `tests/integration/test_manager.py`, and `downloader/manager.py` if the
-deadline turns out to be the product's rather than the test's
-**Risk:** Medium — the answer decides whether this is a test with no headroom or a retry that can
-genuinely be starved
-
-#### Scope
-
-Under parallel load the test fails on:
-
-```
-assert repository.jobs["job-network"].status is JobStatus.QUEUED
-  AssertionError: the retry's deadline never fired at all, so this proved nothing about the gate
-  assert <JobStatus.FAILED> is <JobStatus.QUEUED>
-```
-
-**The assertion's own message is the finding.** It already anticipates the deadline not firing and
-says that when it does not, the test proved nothing — so this is a test that knows it has no
-headroom and reports it honestly, which is more than most.
-
-**What is not yet established, and must not be assumed:** whether the deadline is the *test's*
-(a bound chosen for an unloaded machine, `T118-R10`'s defect class, which `T-083` also carries) or
-the *product's* (a retry that a busy machine can starve, which would be a real defect and a
-different task's shape). `T-123`'s own hazard list guessed the process tests and was right about
-one and wrong about the mechanism; this entry deliberately does not guess.
-
-#### The mechanism, established 2026-08-12 — and it is neither of the two shapes above
-
-**The causal chain is established; the first criterion is not yet met.** It asks for *test bound
-or product behaviour*, and the evidence below has not established which. Nothing is changed yet,
-which is correct while that classification remains open.
-
-**The reproduction, driven rather than inferred:** **50 runs** of `pytest -n auto
-tests/integration/test_manager.py` on a 20-core machine, in seven batches. **19 runs failed, 21
-failures in total.** The rate rises when the run is instrumented — file I/O on the retry path took
-it from roughly 1-in-3 to 6-in-8 — which is itself evidence: this is load-sensitive, not a fixed
-bound.
-
-**The entry's framing was too narrow in two ways.**
-
-*It is not one test.* The 21 failures landed on **twelve distinct tests** — and across the first
-20 runs **no test failed twice**, which is why a single-test entry was the wrong shape to look
-through:
-
-| Failing assertion | Test |
-|---|---|
-| Test | Times | Failing assertion |
-|---|---|---|
-| `test_a_network_failure_retries_itself_and_counts_the_attempt` | 5 | *"a network failure never retried itself"* |
-| `test_idle_is_not_announced_while_a_retry_is_waiting` | 3 | *"idle went out with an automatic retry still waiting"* |
-| `test_the_attempt_count_is_bounded_and_the_last_error_survives` | 2 | *"the automatic attempts never reached the bound and settled"* |
-| `test_a_stopped_queue_parks_an_automatic_retry_until_it_is_started` | 2 | *"the retry's deadline never fired at all"* |
-| `test_an_automatic_retry_preserves_a_probe_as_a_probe` | 1 | *"the probe's automatic retry never ran"* |
-| `test_the_backoff_is_waited_rather_than_declared` | 1 | — |
-| `test_a_started_queue_stays_started_for_work_added_afterwards` | 2 | *"the first job never finished, so the queue never drained"* |
-| five others | 5 | shutdown-descendants, pump-idle, saturated-drain, paused-status, cancellation |
-
-**Fourteen of the 21 are one sentence: an automatic retry never happened.** The task this entry
-was filed against is only the fourth-most-frequent of them.
-
-*It is not a bound with no headroom.* `spin` is **wall-clock** (`tests/integration/conftest.py`),
-so the failures include a `timeout=120` and several `timeout=60` that genuinely elapsed. And the
-obvious explanation is ruled out by measurement: **time from `start()` to the child's failure is
-0.3–0.5 s in every sample taken under full load** (8 samples, max 0.518 s). The machine is not
-starving the children.
-
-**What is actually happening**, from instrumenting `_schedule_automatic_retry`,
-`_perform_due_retries`, the timer stop and `_fail_loudly`:
-
-- In a failing run, **no retry is ever scheduled for the failing job.** The trace records every
-  call to `_schedule_automatic_retry` *before* its `kind is not NETWORK` guard, and for the
-  failing job there is no such call at all — nor any `_retry_at` entry with the backoff that
-  test monkeypatches in. (`test_idle_is_not_announced_while_a_retry_is_waiting` uses **30 s**;
-  no 30-second deadline appears anywhere in a trace of the run that failed it.)
-- The job still reaches `FAILED` — the tests' preceding spin passes.
-- The route it takes is `_fail_loudly`. Captured directly:
-  `FAIL_LOUDLY job=job-NETWORK ended=True sentinel=True forced=False`, in the one worker process
-  whose test failed, while other workers scheduled their retries normally in the same run.
-
-**So: under load the child's outcome is not believed before the session is judged ended, the
-failure is recorded as `WORKER_CRASH` instead of the `NETWORK` the child reported, and
-`_schedule_automatic_retry` correctly declines** — its docstring says exactly why, that deriving
-retryability from `is_retryable` *"would put `WORKER_CRASH` into a loop on its own"*. The tests
-then wait out generous timeouts for a retry that will never come, and their messages
-(*"never fired"*, *"never retried itself"*) name the symptom rather than this cause.
-
-**The timer is not the problem, and that is worth recording because it was the obvious suspect.**
-Every `TIMER STOP` in every trace shows `retry_at={}` — the `T-083` guard that keeps the tick alive
-for a pending backoff holds under load in every instrumented run.
-
-#### Second round, 2026-08-12 — the earlier conclusion was half right, and the half that was wrong matters
-
-**The reviewer ruled that stopping before a source change was correct and stopping the
-investigation was not.** This is the continuation. **Still nothing changed in `src/`.**
-
-**The causal chain above named `_fail_loudly` and stopped there. Instrumenting what it is handed
-shows which of its two branches fires, and it is not the one the chain implied.**
-
-`_fail_loudly` covers two shapes of untrustworthy session: *a stream that broke the contract*
-(`session.violations`) and *a session that reported no outcome* (`outcome is None`). The first
-reading here was that a good `NETWORK` outcome had arrived and was then discarded because
-synthesising the sentinel records a violation — which `_end_the_stream` does, and which would have
-made this a misattribution of a perfectly good worker.
-
-**That is not what happens.** The record captured for the failing job:
-
-```
-FAIL_LOUDLY job=job-NETWORK
-  violations=['the worker exited (code 1) without sending its WorkerFinished sentinel; the parent
-               supplied one so the receiver could stop reading',
-              'a download session produced no outcome; a receiver cannot tell that from a crashed
-               worker (REQ-028)']
-  outcome=None  ended=True  sentinel_sent=True
-```
-
-**`outcome=None`.** Neither of the two messages the child sent arrived — not the `Failed(NETWORK)`
-outcome and not the `WorkerFinished` sentinel. Nothing was discarded, because nothing was
-received. The parent's behaviour from there is correct in every step: no outcome means it cannot
-tell a silent worker from a crashed one (`REQ-028`), so `WORKER_CRASH`, and `WORKER_CRASH` is
-deliberately not retried.
-
-**The child is two lines**, which is what makes this worth recording:
-
-```python
-queue.put(Failed(job_id=job_id, kind=named, message=f"failed as {named.value}"))
-queue.put(WorkerFinished(job_id=job_id, exit_code=1))
-```
-
-`multiprocessing.Queue.put` is asynchronous — it buffers and a feeder thread writes to the pipe —
-so **both messages were lost between the child's `put` and the parent's pump**. That is a delivery
-question, not a scheduling one, and it is the thing that decides product-versus-test: a real
-worker uses the same queue.
-
-**What was ruled out along the way, each by measurement rather than argument:**
-
-| Hypothesis | Ruled out by |
-|---|---|
-| A tight test bound | `spin` is wall-clock; a `timeout=120` elapsed |
-| Starved child processes | Time from `start()` to failure is 0.3–0.5 s in every loaded sample |
-| The `T-083` timer guard failing | Every `TIMER STOP` in every trace shows `retry_at={}` |
-| A good outcome discarded by the synthesised-sentinel violation | `outcome=None` — it never arrived |
-
-#### Bounded reachability, measured 2026-08-12 — and it exonerates the product shape
-
-**First, a correction to a number this entry reported.** *"Roughly one run in three"* was measured
-while the machine was also running other batches, and in some of them the tracing overhead. On an
-**otherwise idle** host it does not reproduce at any worker count:
-
-| Workers | Runs | Failures |
-|---|---:|---:|
-| `-n 1` (serial) | 5 | **0** |
-| `-n 4` | 5 | **0** |
-| `-n 8` | 5 | **0** |
-| `-n 20` (= `-n auto` here) | 5 | **0** |
-
-**Twenty clean runs.** So *worker multiplication is not the trigger*, and an integration-worker cap
-— the branch the review offered — would not have prevented anything measured here.
-
-**Saturation is the trigger.** The same `-n 20`, with 20 busy loops pinning the 20 cores before
-pytest starts: **3 failures in 5 runs** (`test_a_worker_killed_from_outside_does_not_leave_its_grandchild_behind`,
-`test_shutdown_leaves_no_descendant_either`,
-`test_a_pump_that_will_not_stop_keeps_the_manager_from_claiming_it_is_idle`) — a third set of
-tests again, which is now the most consistent thing about this defect.
-
-**Then the question the task exists for: is it reachable at supported product concurrency?**
-Driven the way the application drives it — a real `DownloadManager`, real spawned children, the
-child that failed in the suite — and counting the recorded `ErrorKind` rather than a test's verdict:
-
-| Shape | Sessions | `WORKER_CRASH` |
-|---|---:|---:|
-| One manager, concurrency 1, **idle** host | 30 | **0** |
-| One manager, concurrency 1, **saturated** host (40 loops on 20 cores) | 30 | **0** |
-| One manager, **concurrency 16** — `CONCURRENCY_MAXIMUM`, the busiest the application can be — saturated host | **320** | **0** |
-| **20 independent processes**, one manager each, all spawning at once | **300** | **0** |
-
-**680 sessions across every shape the product can take, including a 2:1 oversubscribed host, and
-not one lost message.** The `Failed(NETWORK)` outcome arrived every time.
-
-**So the classification is: not reachable at supported product concurrency by any means measured
-here.** It needs the **integration suite itself**, at high worker count, on a saturated host.
-Spawning many children does not do it; saturation does not do it; the product's maximum
-concurrency does not do it. The suite plus saturation does.
-
-**The remaining suspect, named rather than guessed at:** `tests/integration/test_manager.py`
-contains tests that deliberately kill workers, kill *process groups* and check orphan reaping, and
-`process_tree.kill_this_group()` is exactly the kind of operation whose blast radius depends on
-what shares a group. Under saturation, timing decides what is alive when one of those fires. The
-scattered failures — twelve distinct tests, then three more — fit interference between concurrently
-running tests better than they fit any one test's bound. **That is the next measurement, and it is
-about the harness rather than `src/`.**
-
-*(What this does **not** establish: that the loss is impossible for a user. It establishes that
-680 sessions in every shape the application supports did not produce one, which is the evidence
-this task was asked for and is the opposite of the direction the first round pointed.)*
-
-#### What this means, stated as a question rather than a decision
-
-**This is a third shape the entry did not list**, and it is not clearly a test problem:
-
-- **If the misattribution is only reachable under absurd oversubscription**, it is an artefact of
-  `-n auto` spawning 20 workers that each spawn children, and the answer is a worker cap.
-- **If it is reachable on a loaded user machine**, it is a **user-visible defect**: a transient
-  network failure recorded as a crash stops retrying, silently, and `REQ-018`'s automatic retry is
-  the thing that does not happen. That is a defect entry of its own, which this task's third
-  criterion already anticipates.
-
-**Which of those it is has not been established. Reviewer ruling, 2026-08-12:** stopping before a
-source change was correct; stopping the investigation was early. This is an empirical reachability
-question, not yet a product choice for the maintainer. Continue through the condition inside
-`_fail_loudly`'s caller that decides a session ended without a believable outcome, first under
-bounded xdist worker counts and then under a single application instance with controlled host
-load. Establish whether a supported user configuration can enter the same path. **`T-056`'s
-`still_running` question may be the same seam from the other side.**
-
-*(Method note: the manager was instrumented on a throwaway working copy and restored; the probe
-test used to take the measurements was deleted. `git status` is clean of both, and the serial run
-is **154 passed, exit 0** — this task changed nothing.)*
-
-#### Acceptance criteria
-
-- **The mechanism is established first** — test bound or product behaviour — with the reproduction
-  driven rather than inferred, and the answer recorded here before anything is changed
-- If it is the test's bound: the bound is derived from something observable rather than raised
-  until it stops failing, and **the test still fails when the gate it guards is mutated away** —
-  a deadline made generous enough to pass everywhere is a test deleted
-- If it is the product's: a defect entry of its own, and this task closes as the reproduction
-- **The fix is demonstrated under load**, not on an idle machine: `pytest -n auto
-  tests/integration/test_manager.py` repeated enough times to beat the one-in-three base rate
-  measured 2026-08-11
-- The same sweep names any sibling timed gate in `tests/integration/` with the same shape, or
-  records that there is none
-
-#### Out of scope
-
-- Adopting `-n` for `tests/integration` in CI. That is `T-123`'s, and it waits on this
-- `T-056` and the Windows process-liveness question, which is a different failure in a different
-  direction
-
----
 
 ### T-230 — A spawned child still gets the developer's real directories
 
@@ -9540,6 +8711,9 @@ and preserves uncertainty about its cause.
 
 ---
 
+
+Additional historical evidence for T-234: [supplement](#t234-local-checks).
+
 ### T-237 — The spec recopies `REL-002` and then blurs its two collection results
 
 **Status:** **Complete — Approved 2026-08-12.** `T237-R1` is Resolved: the comment now separates
@@ -9994,6 +9168,9 @@ does not preserve the distinction it just drew — removing `collect_submodules`
 produced no failure. `T-237` reduces the copy to the current fact plus its stable decision pointer.
 
 ---
+
+
+Additional historical evidence for T-233: [supplement](#t234-local-checks).
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
 
@@ -12479,6 +11656,9 @@ one is still running as of the commit that records it.
 
 ---
 
+
+Additional historical evidence for T-268: [supplement](#t258-scan-observations).
+
 ### T-282 — A debug level for the application log, reachable without editing code
 
 **Status:** **Complete — Approved at `841e6fc` on 2026-09-04** (`T282-R1`…`R4` and `COORD-R27`
@@ -12661,6 +11841,9 @@ unmeasured claim — that `New` resolves empty on Windows — which nothing supp
 - Re-opening `T-270`'s `Ctrl+Q` fallback, which is measured and approved separately
 
 ---
+
+
+Additional historical evidence for T-271: [supplement](#t271-ci-upload).
 
 ### T-289 — A pool thread's garbage collection destroys widgets while the GUI thread frees them
 
@@ -13875,6 +13058,9 @@ reproductions are recorded in `docs/project/REVIEWS.md`; all five findings block
   is meant to live
 
 
+
+Additional historical evidence for T-197: [supplement](#t214-correction-checks).
+
 ### T-222 — The options dialog clips the container note
 
 **Status:** **Complete — approved 2026-08-11 at `4d03937`.** The maintainer-authorised extra
@@ -14003,6 +13189,9 @@ this entry's to assert.
 - Any other options-dialog layout change, and the dialog's spec-side description (`docs/UX_SPEC.md`)
   unless the correction genuinely moves what a user sees
 
+
+Additional historical evidence for T-222: [supplement](#t214-correction-checks).
+
 ### T-214 — The layering test proves less than the tree actually promises
 
 **Status:** **Complete — approved 2026-08-11 at `28012ad`.**
@@ -14104,6 +13293,9 @@ them can grow a `PySide6` import tomorrow and nothing fails.
   a test change smuggles in
 
 
+
+Additional historical evidence for T-214: [supplement](#t214-correction-checks).
+
 ### T-217 — Placeholder thumbnails read as intentional, not broken
 
 **Status:** **Complete — approved 2026-08-11 at `28012ad`.**
@@ -14184,6 +13376,9 @@ audio, a film frame for video.
 - Fetching or generating artwork — the glyph marks absence; it does not fill it
 
 
+
+Additional historical evidence for T-217: [supplement](#t214-correction-checks).
+
 ### T-224 — Draw the ⋮ zone as a button
 
 **Status:** **Complete — approved 2026-08-11 at `28012ad`.**
@@ -14259,6 +13454,9 @@ paint and hit testing read.
 
 - Option G (removing the zone) — the recorded fallback, not this task
 - The menu's contents (`T-223`) and any change to zone geometry or hit-testing behaviour
+
+
+Additional historical evidence for T-224: [supplement](#t214-correction-checks).
 
 ### T-216 — The finished row: the chip owns the state, the bar retires
 
@@ -15209,6 +14407,9 @@ shape; **built 2026-08-10** and submitted against it unchanged.)*
 
 
 
+
+Additional historical evidence for T-203: [supplement](#t203-checks).
+
 ### T-209 — Keep an open row panel laid out after a value refresh
 
 **Status:** **Complete — Approved with follow-up 2026-08-10 at `5652bf1`.** The correction
@@ -15268,6 +14469,9 @@ head, disabling `relayout_panel` fails these two plus `T204-R4`'s regression.
 
 ---
 
+
+
+Additional historical evidence for T-209: [supplement](#t203-checks).
 
 ### T-210 — An opened row can be taller than the list, putting its own Done button out of reach
 
@@ -16784,6 +15988,9 @@ not what an implementer opens.)*
 
 ---
 
+
+Additional historical evidence for T-111: [supplement](#t111-checks).
+
 ### T-113 — Resume a partial download across a restart
 
 **Status:** **Complete — Approved at `476cf60`** (2026-08-08). Three findings over two rounds, all
@@ -16875,6 +16082,9 @@ stopping the process that then recreated it. The parent decides now, once the tr
 - Resuming across a *format* change, which is a different download
 
 ---
+
+
+Additional historical evidence for T-113: [supplement](#t113-timing).
 
 ### T-109 — Post-processing: audio, container, thumbnail, metadata, chapters, subtitles
 
@@ -18804,32 +18014,6 @@ original wording is kept in the note as a superseded reading rather than quietly
 
 ---
 
-### T-173 — One `_now()`, not one per module that needs the same clock
-
-**Status:** **Cancelled 2026-08-06 — the premise was wrong** (`T169-R5`). It proposed centralising a
-clock that two modules defined identically. **There are not two clocks in use.** `manager._now` has
-seven callers; `persistence/store._now` has none, and has had none since the withdrawal removed the
-completion write that used it.
-
-**The agreement it existed to protect no longer exists either.** Its argument named
-`test_a_completed_download_writes_exactly_one_history_row` as the place where a completion's
-`finished_at` and the record's `completed_at` were compared. That test is deleted with the record,
-so there are no two timestamps to keep in step.
-
-**Centralising a dead function into `core/` would have been the worst available outcome**: it would
-give the shared layer a definition with one real caller, and make deleting the dead one harder by
-promoting it first. `T-175` deletes it instead, along with `store.py`'s now-sole use of the
-`datetime` import.
-
-*(Filed by the Implementer on 2026-08-06 during the simplification sweep, hours before the
-withdrawal made half of it untrue. The sweep read the code correctly; what it could not know was
-that one of the two callers was about to go.)*
-**Owner:** Implementer
-**Phase:** Phase 3
-**Risk:** —
-
----
-
 ### T-158 — A refused Open is reported where nobody is looking
 
 **Status:** **Complete — approved with follow-ups at `b92ec62`, 2026-08-06**, with no finding of its
@@ -18934,76 +18118,6 @@ and `mypy --platform win32` all clean.
 **Priority:** Low
 **Phase:** Phase 3
 **Risk:** Low to do, Medium to do carelessly — one item was load-bearing and three were not
-
----
-
-### T-174 — Say "ledger" where the code still says "history"
-
-**Status:** **Cancelled 2026-08-06 — moot.** It proposed renaming `HistoryRepository`,
-`HistoryEntry`, `store.clear_history` and `writer.clear_history` to say *ledger*. **Every one of
-those identifiers has been deleted**, and there is no ledger for the survivors to be named after:
-`REQ-020` is withdrawn and migration `0009` dropped the table this task promised not to rename.
-
-**What was worth keeping from it is its caution**, which now belongs to `T-175`: a mechanical
-find-and-replace across this repository rewrites history in both senses, because the source carries
-its reasoning in prose beside the code and much of that prose is *about* the removed feature and
-correct as it stands.
-
-*(Filed by the Implementer earlier the same day, before the withdrawal. Its dependency on `T-172`
-outlived it by a few hours; `T-172` was cancelled as moot first.)*
-**Owner:** Implementer
-**Phase:** Phase 3
-**Risk:** —
-
----
-
-### T-172 — Delete the ledger's removal API, which nothing calls
-
-**Status:** **Cancelled — 2026-08-06, moot.** It proposed deleting the ledger's unreachable removal
-API. `REQ-020` was withdrawn the same day and the whole ledger went with it, including everything
-this task named. Kept as the record that the dead code was found before the feature was.
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 3
-**Depends on:** `T-170`, complete
-**Relevant context:** `DAT-005`, `DAT-006`, `T-125`, `T-144`, `persistence/repositories.py`
-(`HistoryRepository`), `persistence/store.py`, `persistence/writer.py`
-**Affected surfaces:** `persistence/`, `tests/unit/test_persistence.py`
-**Risk:** Low — it is deletion, and the gate is that the suite still passes without the tests that
-only exercised the deleted code
-
-#### Scope
-
-**Selected-record removal went with the list it selected from**, and its plumbing did not. `T-125`
-built it through three layers and every one of them is now unreachable from the application:
-
-| Dead | Layer |
-|---|---|
-| `HistoryRepository.remove(entry_ids)` | repository |
-| `HistoryRepository.get(entry_id)` | repository |
-| `HistoryRepository.all_entries()` | repository — the History view was its only caller |
-| `PersistentJobStore.remove_history(...)` | store |
-| `QueueWriter.remove_history(...)` and its token handler | writer |
-
-Each is still covered by tests, which is why nothing reports them: **a test is a caller**, and a
-suite is not a check that production uses what it holds.
-
-**`clear()` stays** — it is what *Clear download records* calls, and `DAT-005` §2's reasoning for
-keeping it a separate, explicitly named method is untouched.
-
-#### Acceptance criteria
-
-- The five entries above are gone, along with the tests whose only subject was them
-- **`DAT-005` §2's guarantee keeps a test.** `test_clearing_touches_no_file` already asserts it
-  against `clear()`; removal's version of it must not be deleted without checking that one covers
-  the same promise
-- `HistoryEntry` is constructed in exactly one production place after this, and read in one
-- The full suite passes, and `mypy` finds no now-unused imports
-
-#### Out of scope
-
-- Dropping the table's unused columns. `DAT-006` §5 refuses that and the reasoning is unchanged
-- `HistoryRepository`'s name. It is the ledger now; renaming it is `T-174`
 
 ---
 
@@ -23047,6 +22161,9 @@ part of the fix that nothing yet exercised:
 
 ---
 
+
+Additional historical evidence for T-118: [supplement](#t118-third-flap).
+
 ### T-120 — The brand palette, applied
 
 **Status:** **Complete — Approved at `44091a1`**, 2026-08-02. The canonical swatches have one
@@ -23081,25 +22198,6 @@ Qt's default style chose since Phase 0. The palette is applied for both themes.
 
 **The dark theme has never been on a screen.** Its contrast is asserted as arithmetic. That is
 recorded rather than fixed, and it is not a mechanical blocker.
-
-### T-119 — The queue row: thumbnail, title and progress in one delegate
-
-**Status:** **Cancelled — subsumed into `T-118`**, 2026-08-03. Not abandoned: the maintainer ruled
-that the delegate and `T-118`'s row anatomy are one piece of work, so `T-118` now carries this
-task's scope, acceptance criteria and risks. Filed here rather than deleted because `T-118`,
-`ARCHITECTURE.md` and this file's own history all reference the id.
-*(This read "Proposed — UI rework decomposition, 2026-08-02".)*
-**Owner:** Implementer
-**Superseded by:** `T-118`
-**Phase:** Phase 3
-
-The reasoning, kept because it is the argument for the merge rather than a note about it: the
-reviewer's disposition on `T-118` asks for **one rendered row, one declared keyboard route, one
-effective request**. A delegate is what supplies the first and third, and `T118-R10`'s cost ceiling
-is only removable by drawing one reusable editor instead of a widget per row. Delivering `T-118`
-first and this second would mean correcting a row anatomy against findings that the correction
-itself replaces.
-
 
 ### T-115 — Nothing drains the queue: jobs beyond the limit never start
 
@@ -23346,6 +22444,9 @@ bandwidth-bound and long. They should not draw from one budget.
 
 ---
 
+
+Additional historical evidence for T-116: [supplement](#t083-retry-race).
+
 ### T-088 — Prove the phase: three at once, killed mid-queue, nothing left behind
 
 **Status:** **Complete — Approved at `9e133a6`**, 2026-08-02, after `T088-R4` and `T087-R6`
@@ -23506,6 +22607,9 @@ for one job to reach `RUNNING`, and asserts recovery against the same set the re
 
 ---
 
+
+Additional historical evidence for T-088: [supplement](#t084-platform-checks).
+
 ### T-086 — Open a completed file, or reveal it in the file manager
 
 **Status:** **Complete — implemented at `233c5fd`, approved at `2a41c5f`**, 2026-08-01, after `T086-R1` (High) was corrected. Windows Open no longer
@@ -23591,6 +22695,9 @@ Two decisions worth a reviewer's disagreement:
 - **`shell=True` is refused in code rather than suppressed in a comment.** `ruff`'s `S603` fires on
   the one `subprocess` call in the package; the answer is a guard that raises, with a test that
   fires it, rather than a `noqa` nothing checks.
+
+
+Additional historical evidence for T-086: [supplement](#t084-platform-checks).
 
 ### T-084 — Per-job log capture and a log view
 
@@ -23769,6 +22876,9 @@ Three of nineteen survived the first pass:
 - Shipping logs anywhere, or a crash reporter
 
 ---
+
+
+Additional historical evidence for T-084: [supplement](#t084-platform-checks).
 
 ### T-082 — Interrupted jobs are offered for retry at startup
 
@@ -24145,6 +23255,9 @@ which was true for a few hours and then was not — `T087-R4`.)*
 
 ---
 
+
+Additional historical evidence for T-087: [supplement](#t046-ci-correction).
+
 ### T-046 — Output path collision policy against the filesystem
 
 **Status:** **Complete — Approved at `9c5745a`**, 2026-08-01. All seven findings are **Resolved**:
@@ -24312,6 +23425,9 @@ deleted — it encodes a decision the table cannot, that even a named container 
 depend on ffprobe — and the test now reaches it by giving the table such an entry.
 
 ---
+
+
+Additional historical evidence for T-046: [supplement](#t046-ci-correction).
 
 ### T-081 — Reorder pending jobs, and clear completed ones
 
@@ -24627,6 +23743,9 @@ the rule is one rule; if `T-118` lands without touching it, it needs its own ent
 reopen `T-083`'s approval — the production retry path is untouched by any of this.
 
 ---
+
+
+Additional historical evidence for T-083: [supplement](#t083-retry-race).
 
 ### T-102 — A settings file that cannot be read says so, instead of reverting in silence
 
@@ -28806,6 +27925,9 @@ the documentation that makes the fix reproducible, which is what the acceptance 
 for.
 
 ---
+
+
+Additional historical evidence for T-063: [supplement](#t001-environment).
 
 ### T-016 — Add-URL dialog with probe results
 
@@ -33196,6 +32318,9 @@ item. `pyproject.toml` carries the MIT license metadata, closing `T-004`'s carri
 
 ---
 
+
+Additional historical evidence for T-001: [supplement](#t001-environment).
+
 ### T-002 — Confirm the Python baseline against PySide6 wheel availability
 
 **Status:** Complete — Linux at completion; Windows discharged by `T-006` on 2026-07-25
@@ -34196,6 +33321,792 @@ in this batch were one sentence — a test asserting something true of the autho
 
 ---
 
+### T-260 — Five symlink tests bypass the guard `T-070` built, and fail bare on Windows
+
+**Status:** **Complete — Approved with follow-ups at `a2389e7`**, 2026-08-17, after **six review
+rounds**: one ordinary review, one ordinary re-review, and **four maintainer-authorized passes**
+under `AGENTS.md` §10 — three corrections and one design replacement. `T260-R1` through `T260-R4`
+are Resolved; the only follow-up, `T260-R4`'s stale counts, is closed here and **pinned by a test**
+so it cannot drift again.
+
+**Accepted as out of scope, on the reviewer's ruling:** `__new__` forgery, `ln -s` via a subprocess,
+and **assignment aliasing** (`mk = os.symlink`) — following bindings is dataflow analysis, which is
+the road four rounds established this gate should not walk.
+
+*(Previous status, and the round it describes.)* Redesigned 2026-08-17 under a maintainer-authorized fifth pass. After
+four review rounds, raw symlink creation is now **banned outright** everywhere in `tests/` except
+`tests/capabilities.py`; the `symlinks` fixture returns a **`SymlinkCapability`** object and all
+nine sites create through its `.create()`. The gate that enforces this needs no pytest semantics at
+all, which is the point.
+
+> **Why the design was replaced rather than patched a fifth time.** Rounds one through four were
+> one defect wearing four coats: the gate statically approximated pytest's collection and
+> fixture-resolution semantics, and every approximation had a hole the reviewer found — test bodies
+> only, then a parameter merely *named* `symlinks` (`plant(tmp_path, None)`), then uncollected
+> modules and home-grown `fixture` decorators, then **nested `test_` functions pytest never
+> collects and `@hookimpl` counting because it came from pytest**. Both round-four survivors were
+> reproduced here before anything was decided. `AGENTS.md` §10 names this moment — corrections
+> repeatedly reproducing the same defect class — and its answer, *revisit the design*, is what the
+> maintainer chose on 2026-08-17, the reviewer having proposed no further automatic round. The
+> capability-token design is the alternative the reviewer named in the second-round ruling.
+>
+> **A sixth pass was authorized the same day**, for the fifth review's finding: ordinary import
+> aliases bypassed both flat rules — `from os import symlink as make_link` renamed the local
+> binding a call-site ban keyed on, and `SymlinkCapability as Cap` did the same to the constructor
+> — and the exemption compared **basenames**, silently exempting every nested file named
+> `capabilities.py`. All three were reproduced before fixing. Now the *import itself* of a raw
+> name is banned under any alias (no test file has a sanctioned reason to hold one), an aliased
+> import of the capability class is banned outright (annotations need no rename), and the
+> exemption is the exact path `tests/capabilities.py`. The floor also pins the exempt file to
+> **exactly two** raw sites — the probe and `SymlinkCapability.create` — so a third site cannot
+> ride the exemption.
+>
+> **A claim from the second pass is withdrawn, not reinterpreted:** *"a helper that takes the
+> fixture as a parameter can only be called by something that has it."* False — `symlinks` returned
+> `None`, so any caller could fake it. Under the token design that forgery fails loudly on every
+> platform (`AttributeError`), which is now a tested property rather than an argument.
+
+Filed 2026-08-16 from a real Windows failure, run `31966531162`
+**Owner:** Implementer
+**Priority:** Medium. It costs a red Windows job and five unreadable errors whenever the privilege
+is absent, which is the ordinary state of a Windows machine
+**Phase:** Phase 4 maintenance. Gates nothing in the centre column
+**Depends on:** nothing
+**Relevant context:** `T-070` (Complete, approved 2026-07-28 — it built the guard),
+`tests/capabilities.py` (`can_create_symlinks`, the `symlinks` fixture), `tests/conftest.py`,
+`tests/integration/test_worker.py`, `tests/unit/test_paths.py`, `docs/project/TESTING.md` §12
+**Affected surfaces:** `tests/integration/test_worker.py`, and wherever the enforcing check lands.
+**No source**
+**Risk:** Low. The risk of the obvious fix is the opposite one — adding the fixture to five tests
+and calling it done, which is what leaves the sixth to be written next month
+
+#### What happened
+
+`SeCreateSymbolicLinkPrivilege` was absent on `STARBASE` and **five tests failed with a bare
+`OSError: [WinError 1314] A required privilege is not held by the client`** instead of skipping
+with the message that names the privilege.
+
+**`T-070`'s guard is not broken — it is simply not requested.** Of the nine tests that create a
+symlink, four take the `symlinks` fixture and **skipped correctly on the same run**; five do not
+and failed. Derived rather than eyeballed:
+
+| File | Guarded | Unguarded |
+|---|---|---|
+| `tests/unit/test_paths.py` | 3 | 0 |
+| `tests/integration/test_worker.py` | 1 | **5** |
+
+The five: `test_a_sidecar_that_is_a_symlink_out_of_staging_is_refused`,
+`test_a_symlink_at_the_staging_name_fails_the_session_before_anything_is_written`,
+`test_a_symlinked_staging_name_reports_no_partial_to_resume_from`,
+`test_a_symlink_pointing_somewhere_else_inside_the_download_folder_is_refused`,
+`test_a_symlink_planted_during_the_mkdir_is_still_caught`.
+
+**This is `T-070`'s own defect, re-instanced by tests written after it.** That task fixed four named
+tests and added a fixture; nothing makes a *later* symlink test use it. Fixing these five and
+stopping would be the same trade again — the list is not the property.
+
+*(The privilege went missing because the runner was restarted from a non-elevated session while
+`STARBASE` was being recovered on 2026-08-16. That is the trigger and **not** the defect: a Windows
+machine without Developer Mode or elevation is the ordinary case, and `T-070` exists because the
+suite must say so rather than erroring.)*
+
+#### Acceptance criteria
+
+- **A check enforces the property, not the list**: a test that creates a symlink and does not
+  request the capability **fails a gate**, wherever it is written. A nine-line `ast` walk over
+  `tests/` finds all nine of today's cases, so the mechanism is not the hard part
+- **It is proved by adding an unguarded symlink test and watching the gate fail**, then removing it
+  — the mutation, not the assertion
+- **The five gain the guard**, and on a machine without the privilege they **skip with
+  `NO_SYMLINKS`** rather than raising
+- **Coverage is not quietly reduced.** These five assert containment — `T-034`'s boundary — so a
+  skip on Windows is a real gap and must be visible as a skip count, never as a pass
+- The gate sits with the project's other static checks over its own tree (`test_layering.py`,
+  `test_task_placement.py`) rather than becoming a runtime `except OSError`, which would convert
+  every future privilege failure into a silent pass
+
+#### How each criterion was met — 2026-08-17, after the redesign
+
+*(Three earlier versions of this table described the approximation-based gates the review rounds
+rejected; per `T260-R2` they are replaced rather than accumulated. The review history is in
+`docs/project/REVIEWS.md`, five records from 75ed6bf's base onward.)*
+
+| # | Criterion | Evidence |
+|---|---|---|
+| 1 | A check enforces the property, not the list | Two flat rules over **every** `*.py` under `tests/`: **no raw `symlink_to`/`symlink` call outside `tests/capabilities.py`**, in any context whatsoever; and **`SymlinkCapability` constructed nowhere else**. No collection semantics, no fixture semantics, no ancestry analysis — nothing left to approximate |
+| 2 | Proved by adding unguarded sites and watching the gate fail | **Both round-four survivors reproduced as real files and flagged by name** — the nested `test_` function and the `@hookimpl` fixture — plus a forged `SymlinkCapability()` construction. **Eighteen** parametrized raw spellings must be flagged, one per defeated context — including a genuine `@pytest.fixture` creating raw, and the fifth review's aliased raw import both called and uncalled; four sanctioned shapes must not be |
+| 3 | The tests skip rather than raise where the machine cannot | Forced `can_create_symlinks` to `False`: **9 skipped, 0 failed** across both files, each skip naming the privilege and the Developer Mode setting. A sanctioned-route probe also ran end to end on a capable machine: fixture → capability → `.create()` → a real link |
+| 4 | Coverage is not quietly reduced | The floor now counts `symlinks.create(...)` sites (≥ 9) and requires the probe file to still contain raw creation, so a rename of `Path.symlink_to` breaks the ban and the probe together rather than silently unlinking them |
+| 5 | Static, not a runtime `except OSError` | Unchanged in intent, smaller in practice: the static check is ~90 lines with no pytest model. **The propagation question became a runtime property instead** — `plant(path, None)` now fails loudly on every platform, asserted by `test_forging_the_capability_with_none_fails_loudly_on_every_platform` |
+
+**The enforced boundary, stated honestly** (the fourth review's ruling): this prevents accidents —
+the two raw Python spellings and the constructor call. It does not defend against `__new__` forgery
+or shelling out to `ln -s`; no test does either, and one that started to would be visible in review.
+
+#### Out of scope
+
+- Restoring the privilege on `STARBASE`. That is machine configuration, done separately — and if it
+  is restored first, **this defect stops being visible while still being present**, which is the
+  reason it is filed with its evidence rather than left to the next red run
+
+---
+
+
+## Cancelled
+
+### T-275 — Ship 32 px from a cut that keeps the trees and drops the sound-wave arcs
+
+**Status:** **Cancelled — refused by the maintainer ruling of 2026-08-25**, four days after
+filing and one day after `T-274` closed. **A second ruling the same evening granted the band this
+entry asked for** — the Icon cut at 32 px — and `T-277` ships it. This stays `Cancelled` because
+what it proposed was **three** bands, keeping the Standard cut above 48, and that is still refused:
+`T-277` is two bands split at 32. **The disposition is unchanged and the reason for it is now
+half wrong**, which is recorded here rather than by rewriting the entry. **Nothing here was found to be wrong.** Every measurement
+below stands and `T-276` was built against them; what the ruling rejected is the *band*, and it
+did so on evidence that did not exist when this was filed.
+
+*(Filed 2026-08-24 on a maintainer instruction. The maintainer asked whether the full mark could
+serve as the icon with the arcs removed. The comparison said **not generally** — the arcs are not
+what breaks first — and the maintainer then scoped it to **32 px alone**, which is the one size
+where removing them pays. What this entry was for was that **the small-side check could not see
+that change at all**, measured below.)*
+
+#### The ruling — maintainer, 2026-08-25
+
+**Refused: the cut ships at 48 px and above, not at 32.** Logo Asset Package **v1.1** delivered
+the cut this task asked for on 2026-08-25 and gives it a floor: it keeps the three trees and the
+mountain, which are what set the Standard cut's 48 px floor, so it shares that floor rather than
+earning a lower one. The pack says it in terms — *"Below 48 px, use Small."*
+
+**The pack's reasoning and this entry's own measurement agree**, which is why the refusal is
+recorded as a ruling rather than an override. This entry already noted that at 32 px the mid cut's
+trees *"read as texture rather than as three conifers"* and offered it as recorded rather than as
+an objection. The pack made the same observation the ground of a rule.
+
+**What survives is everything except the band.** The three-way table at 32 px, the finding that
+the gold signature is identical to the reduced cut's, the warning that the green-run predicate
+fails at 64 px, and the artboard dependency are all load-bearing in `T-276` — which is two bands
+rather than three, so the `FULL_SIZES` and triple-literal traps this entry named were never
+sprung. **The one thing this entry got wrong is the one thing it could not have known**: it
+assumed the cut would have to be authored on request, and the pack had already drawn it.
+**Owner:** Planner, to prioritize
+**Priority:** **Low.** Nothing is broken. `icon-32.png` and the `.ico`'s 32 px frame ship the
+reduced cut today and are correct; this replaces a legible asset with a richer one
+**Phase:** Phase 4 maintenance
+**Depends on:** **the mid cut existing.** It is not in the logo pack — see *Who authors the cut*
+**Relevant context:** `tools/icons/render_icons.py`, `tools/icons/masters/`,
+`tests/ui/test_resources.py`, `tests/unit/test_resources.py`, `T-274`, `T274-R3`, `ARC_SHARE`
+**Affected surfaces:** `icon-32.png`, the `.ico`'s 32 px frame, the renderer's size bands, and both
+test modules' size constants. **No source module changes** — `main_window.app_icon()` loads
+`icon.ico` and is untouched, as in `T-274`
+**Risk:** **Medium, and all of it is in the tests rather than the asset.** A wrong asset at 32 px is
+visible. A check that cannot tell two cuts apart is not
+
+#### What is asked
+
+**32 px moves off the reduced cut onto a third cut: the full mark with its two gold sound-wave arc
+paths removed, trees and mountain kept.** 16 and 24 stay reduced — at those sizes the trees are an
+illegible scribble and removing the arcs changes nothing that reads. 48 and up stay on the full
+mark, arcs included, where they render cleanly.
+
+*(**Recorded, and not an objection.** At 32 px the mid cut's trees are soft: the trees and mountain
+are the 72 green pixels by which it exceeds the reduced cut, and they read as texture rather than as
+three conifers. The maintainer has seen the comparison and directed the change. This is here so the
+next reader knows it was measured rather than missed.)*
+
+#### The check the change walks straight through
+
+Rendered at 32 px, by the predicates `tests/ui/test_resources.py` already uses:
+
+| cut at 32 px | gold runs | green pixels | green runs |
+|---|---|---|---|
+| reduced (ships today) | `[43]` | 120 | `[83, 37]` |
+| **mid (proposed)** | **`[43]`** | 192 | `[192]` |
+| full | `[43, 9]` | 192 | `[192]` |
+
+**The mid cut's gold signature at 32 px is identical to the reduced cut's — one run of 43 pixels.**
+`test_the_small_cut_is_what_ships_at_every_small_size` asserts exactly that property, so **it would
+pass unchanged on the new asset**: the check accepts the swap silently and stops discriminating at
+32 the moment the band moves.
+
+**This is `T-274`'s finding a fourth time — a check weaker than the claim written over it — and the
+difference is that it is in front of the build rather than behind it.** `T274-R1` and `T274-R3` were
+both found by mutating the selector and watching the suite stay green. The same mutation here is
+free to predict: point 32 at the mid cut, change nothing else, and the small-side test still passes.
+
+#### What does separate them
+
+**Green.** The reduced cut's green falls in two runs — the note body and the hill, held apart by the
+trail. The mid cut's trees bridge them into one and add 60% more green pixels.
+
+Identity at 32 px is then a pair, and all three cuts are distinct:
+
+| cut | arc-sized second gold run | green runs |
+|---|---|---|
+| reduced | no | 2 |
+| mid | no | 1 |
+| full | **yes** | 1 |
+
+Both properties already exist in the module: `has_detached_arcs` separates mid from full, and the
+green-run count separates mid from reduced.
+
+**One direction of control exists for free.** `has_detached_arcs` already rejects the mid cut at
+48 px — its gold there is `[102, 1]`, and `ARC_SHARE` requires the second run to reach 5% of the
+first, 1 against 5.1. The full-side property fails on the mid cut without being touched.
+
+**The green-run predicate is size-dependent, and a control must not assume otherwise.** It separates
+reduced from mid at 16, 24, 32 and 48 — two runs against one — and **fails at 64**, where both are
+two (`[375, 147]` against `[612, 147]`). The mid cut only ships at 32, so this is a constraint on
+how the complement is written, not a defect.
+
+#### The artboard
+
+**The mid cut is not centred, so it cannot simply be the master with two paths deleted.** Ink bounds
+measured at 1024:
+
+| cut | height fill | left margin | right margin |
+|---|---|---|---|
+| full | 0.8613 | 134 | 134 |
+| master minus arcs | 0.8613 | 134 | **196** |
+| reduced | 0.8613 | 171 | 171 |
+
+The arcs sit *beside* the note rather than above it, so deleting them leaves the mark 62 units
+off-centre horizontally while the height fill is unchanged. **The cut needs its own square artboard**
+honouring the pack's 8% margin rule — that rule, and the shared 0.8613, are what keep the cuts at
+matching weight in one frame.
+
+#### Who authors the cut
+
+**`T-274` retired in-repo derivation.** `render_small_glyph.py` was deleted so the cuts cannot drift
+into different marks, and the pack authors each artboard. Two options, and the first is recommended:
+
+- **The maintainer exports the cut from the logo pack** as a square icon artboard, vendored into
+  `masters/` byte-for-byte like the other two. Consistent with `T-274`, and the artboard is a design
+  decision the pack owns.
+- **The repo vendors a master produced by deleting the two arc paths and re-centring the viewBox.**
+  Cheaper. It reintroduces what `T-274` retired — though more weakly than the old pixel masking did,
+  since the arcs are two self-contained `<path>` elements and deleting them is lossless and exact.
+  **The re-centring is the part that is a design judgement made in a script.**
+
+#### Implementation traps
+
+- **`FULL_SIZES` is derived by subtraction** — `tuple(size for size in PNG_SIZES if size not in
+  SMALL_SIZES)`. A third band must be subtracted too, or `test_the_full_mark_is_what_ships_above_
+  the_split` runs at 32 and asserts arcs on an asset built to have none.
+- **The small band is written three times** — `render_icons.py`'s `SMALL_SIZES` frozenset,
+  `tests/ui/test_resources.py`, and `tests/unit/test_resources.py`, where it is a separate literal
+  `(16, 24, 32)`. All three move, and the unit copy is the one that will be missed.
+- **`test_no_unexpected_files_in_the_icon_directory` pins the directory exactly.** A third master
+  PNG, if the renderer emits one, has to be added there.
+- **The `.ico` carries a 32 px frame**, so `icon.ico` changes as well as `icon-32.png`.
+
+#### Suggested acceptance criteria
+
+- **32 px ships the mid cut, and a check proves it** — one that **fails** when the reduced cut is put
+  back at 32 and **fails** when the full mark is. Both directions, as `T274-R3` established
+- **A control proves the check discriminates**, in the shape `test_the_complement_rejects_the_reduced_cut`
+  set: render the wrong cut at the guarded size and require the property to fail
+- **16 and 24 still ship the reduced cut, 48 and up the full mark**, with their existing checks intact
+- **A selector mutation fails at the size it moves.** `T-274` regenerated all eleven assets per
+  mutation and required failure at exactly the moved size; a third band adds mutations, not an
+  exception
+
+#### Out of scope
+
+- **Any change to 16, 24, or 48 and above.** The comparison found nothing wrong at those sizes
+- **A judgement about the artwork.** As in `T-274`, the maintainer's design direction is the input
+
+---
+
+### T-245 — Qt publishes a combo box's value where its name should be
+
+**Status:** **Cancelled — 2026-08-15, superseded by `T200-R7`.** Filed the same day from `T-200`'s
+mutation battery, on the reading that the survivor was a pre-existing gate weakness needing a fork
+this task did not own. **The reviewer overturned that reading**, and was right to: it is a failed
+acceptance criterion of `T-200`, not a follow-up, so it was corrected inside `T-200` rather than
+carried.
+
+**The fork this entry proposed no longer exists.** Branch 1 — *accept Qt's contract and assert
+`accessibleName()`* — would have made the test narrower while leaving the published tree wrong, and
+its claim that neither branch changes user-visible behaviour contradicted branch 2's whole purpose.
+Branch 2 — an interface factory — was then measured and rejected on its own terms: it drops the
+`expandable` state, the `ShowMenu` and `Press` actions and the popup child, because PySide6 exposes
+no `QAccessibleComboBox` to inherit from.
+
+**What was actually done** is the third option the finding named and this entry missed: the
+`Label` relation, through `setBuddy`, which is the mechanism Qt's own source says Linux uses. See
+`T-200`'s entry for the seven controls and the measurements.
+
+**Kept rather than deleted**, because the wrong call is the part worth reading: a survivor was
+filed as follow-up work when it was the criterion failing.
+
+### T-219 — The dialog footer speaks the naming rule, not the selector
+
+**Status:** **Cancelled — ruled 2026-08-13. The refusal is the outcome.** The maintainer chose
+*refuse and close* from the three shapes this entry recorded.
+
+**The ruling, and why it is the right one:** the entry's premise does not hold. The footer is not
+the last surface printing selector syntax — **every probed row prints it too**, through
+`selector_text`, and deliberately: `REQ-009` asks for a selector a user can learn from and copy, and
+`T118-R8` was reported twice against that line. Meeting the criterion would have overturned that
+reading for one surface while leaving it standing on the others, which is the worst of the three
+shapes rather than the cheapest.
+
+**Nothing is owed by this closure.** `T126-R2`, `T140-R3` and `T-159` — the three findings that
+establish surfaces speak the naming rule — are unaffected: they govern *prose* surfaces, and the
+selector is offered as a value to copy rather than as a sentence. The other two shapes are left
+recorded below as what was not chosen.
+
+*(Originally: Blocked on a ruling — 2026-08-12, picked up in an authorized unattended run and not
+built.)*
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** a maintainer ruling (below). The same-file hold behind the add-dialog chain is over
+**Relevant context:** `T126-R2`, `T140-R3`, `T-159` — three findings establishing that surfaces
+speak the naming rule, never raw selector syntax; `ui/format_text.py` (the rule),
+`ui/add_dialog.py` (the footer line under *Download as*)
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Low
+
+#### Scope
+
+The footer under *Download as* prints
+`Every row · Format selector: bestvideo[height<=1080][ext=mp4]+…` — yt-dlp syntax on the primary
+add surface, after three review findings moved every row to the naming rule. The dialog's own
+footer is the last surface still speaking syntax.
+
+#### What the reproduction found, 2026-08-12
+
+**The footer is not the last surface speaking syntax, and the entry says it is.** `selector_text`
+— *"the row's third line"* — builds `Download as: <name> — <whose choice> · Format selector:
+<selector>` through `describe_preset` (`ui/add_dialog.py`). **Every probed row prints the raw
+selector**, not just the footer. Verified by reading both call sites: `describe_preset` feeds the
+row's drawn line at `selector_text`, and the footer builds its own copy in
+`_update_selector_label`.
+
+**And the duplication is deliberate, with its reasoning recorded twice.** `_update_selector_label`'s
+docstring: *"`REQ-009` asks for a selector a user can learn the syntax from and then write their
+own, which means it has to be selectable text they can copy — and a delegate paints pixels, not
+selectable text. The row draws its own selector so a mixed batch can be read at a glance; this is
+where the one in hand can be taken away."* `T118-R8` was reported **twice** against that line.
+
+**So the criterion below cannot be met without overturning `REQ-009`'s reading and `T118-R8`'s
+design**, and that is a ruling rather than an implementation detail. Three shapes, none chosen:
+
+1. **Footer only.** The footer speaks the naming rule with the selector on its tooltip; the row's
+   third line keeps the selector. Smallest change, and it leaves the criterion *"no visible
+   surface prints selector syntax"* **unmet** — the entry would be amended to say so.
+2. **Both surfaces.** Row and footer speak the naming rule; the selector lives on a tooltip and in
+   the options editor. Meets the criterion as written, and is the one that overturns `T118-R8` —
+   a mixed batch would no longer be readable at a glance, which is what that finding was about.
+3. **Neither.** `REQ-009`'s *learn the syntax* is judged to outweigh the three findings that moved
+   other surfaces to the naming rule, and the task closes as refused with that recorded.
+
+**Nothing was built.** An unattended run is the wrong place to overturn a requirement's reading.
+
+#### Acceptance criteria
+
+*(Criterion 3 is the one in question; see above.)*
+
+- The footer line names what rows inherit **in the naming rule's words, through the same function
+  the rows use** — a second phrasing of the same fact is `T140-R3`'s defect and is not built
+- The **raw selector stays reachable** — a tooltip on the line, or the options editor — and this
+  entry records where it went
+- **No visible surface in the dialog prints selector syntax**; a test asserts the footer text for
+  a built-in preset
+- A screen reader hears the same words a sighted user reads — the accessible description carries
+  the friendly line, not the selector
+
+#### Out of scope
+
+- The selector's role in requests, presets, or `REQ-009`'s custom-selector escape hatch — this
+  changes one label, not what is downloaded
+
+### T-228 — A retry deadline stops firing under parallel load
+
+**Status:** **Cancelled — ruled a harness artefact 2026-08-13.** The maintainer closed it on the
+reachability measurement: **680 sessions** — concurrency 1 and 16, idle and saturated, plus 20
+independent managers — lost **no message**, so it is not reachable at supported product concurrency
+by anything measured. It needs the integration suite itself, at high worker count, on a saturated
+host.
+
+**The suspect is named rather than left implied**, which is what makes this a closure rather than a
+shrug: the suite kills workers *and process groups*, and `kill_this_group`'s blast radius depends on
+what shares a group. That is a harness question. **Reopening condition:** any observation of a lost
+`multiprocessing.Queue` message outside that harness — a user report, or a failure at supported
+concurrency — makes this a product defect again and it is refiled with the new evidence.
+
+**What closing costs, stated:** `-n 4` on integration stays unadopted, so the **214 seconds** it
+would save stay unsaved. The reviewer ruled against adopting it on three green runs, and closing
+this does not change that reasoning.
+
+*(Originally: Proposed — filed 2026-08-11 from `T-123`'s adoption run, reproduced at roughly one run
+in three under `pytest -n auto tests/integration/test_manager.py`. **The immediate causal chain was
+established 2026-08-12** (see below), but the first criterion remains open: it requires classifying
+the condition as test-only or product behavior, and that reachability has not been measured yet.
+**Owner:** Implementer
+**Priority:** Medium — it blocks the second half of `T-123`. Integration runs serially today, so
+nothing is red because of it; what it costs is **297 s of every CI run**, which `-n 4` would take
+to 83 s if this were fixed
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing
+**Relevant context:** `tests/integration/test_manager.py::test_a_stopped_queue_parks_an_automatic_retry_until_it_is_started`,
+`T-123`, `T118-R10`, `T-083`
+**Affected surfaces:** `tests/integration/test_manager.py`, and `downloader/manager.py` if the
+deadline turns out to be the product's rather than the test's
+**Risk:** Medium — the answer decides whether this is a test with no headroom or a retry that can
+genuinely be starved
+
+#### Scope
+
+Under parallel load the test fails on:
+
+```
+assert repository.jobs["job-network"].status is JobStatus.QUEUED
+  AssertionError: the retry's deadline never fired at all, so this proved nothing about the gate
+  assert <JobStatus.FAILED> is <JobStatus.QUEUED>
+```
+
+**The assertion's own message is the finding.** It already anticipates the deadline not firing and
+says that when it does not, the test proved nothing — so this is a test that knows it has no
+headroom and reports it honestly, which is more than most.
+
+**What is not yet established, and must not be assumed:** whether the deadline is the *test's*
+(a bound chosen for an unloaded machine, `T118-R10`'s defect class, which `T-083` also carries) or
+the *product's* (a retry that a busy machine can starve, which would be a real defect and a
+different task's shape). `T-123`'s own hazard list guessed the process tests and was right about
+one and wrong about the mechanism; this entry deliberately does not guess.
+
+#### The mechanism, established 2026-08-12 — and it is neither of the two shapes above
+
+**The causal chain is established; the first criterion is not yet met.** It asks for *test bound
+or product behaviour*, and the evidence below has not established which. Nothing is changed yet,
+which is correct while that classification remains open.
+
+**The reproduction, driven rather than inferred:** **50 runs** of `pytest -n auto
+tests/integration/test_manager.py` on a 20-core machine, in seven batches. **19 runs failed, 21
+failures in total.** The rate rises when the run is instrumented — file I/O on the retry path took
+it from roughly 1-in-3 to 6-in-8 — which is itself evidence: this is load-sensitive, not a fixed
+bound.
+
+**The entry's framing was too narrow in two ways.**
+
+*It is not one test.* The 21 failures landed on **twelve distinct tests** — and across the first
+20 runs **no test failed twice**, which is why a single-test entry was the wrong shape to look
+through:
+
+| Failing assertion | Test |
+|---|---|
+| Test | Times | Failing assertion |
+|---|---|---|
+| `test_a_network_failure_retries_itself_and_counts_the_attempt` | 5 | *"a network failure never retried itself"* |
+| `test_idle_is_not_announced_while_a_retry_is_waiting` | 3 | *"idle went out with an automatic retry still waiting"* |
+| `test_the_attempt_count_is_bounded_and_the_last_error_survives` | 2 | *"the automatic attempts never reached the bound and settled"* |
+| `test_a_stopped_queue_parks_an_automatic_retry_until_it_is_started` | 2 | *"the retry's deadline never fired at all"* |
+| `test_an_automatic_retry_preserves_a_probe_as_a_probe` | 1 | *"the probe's automatic retry never ran"* |
+| `test_the_backoff_is_waited_rather_than_declared` | 1 | — |
+| `test_a_started_queue_stays_started_for_work_added_afterwards` | 2 | *"the first job never finished, so the queue never drained"* |
+| five others | 5 | shutdown-descendants, pump-idle, saturated-drain, paused-status, cancellation |
+
+**Fourteen of the 21 are one sentence: an automatic retry never happened.** The task this entry
+was filed against is only the fourth-most-frequent of them.
+
+*It is not a bound with no headroom.* `spin` is **wall-clock** (`tests/integration/conftest.py`),
+so the failures include a `timeout=120` and several `timeout=60` that genuinely elapsed. And the
+obvious explanation is ruled out by measurement: **time from `start()` to the child's failure is
+0.3–0.5 s in every sample taken under full load** (8 samples, max 0.518 s). The machine is not
+starving the children.
+
+**What is actually happening**, from instrumenting `_schedule_automatic_retry`,
+`_perform_due_retries`, the timer stop and `_fail_loudly`:
+
+- In a failing run, **no retry is ever scheduled for the failing job.** The trace records every
+  call to `_schedule_automatic_retry` *before* its `kind is not NETWORK` guard, and for the
+  failing job there is no such call at all — nor any `_retry_at` entry with the backoff that
+  test monkeypatches in. (`test_idle_is_not_announced_while_a_retry_is_waiting` uses **30 s**;
+  no 30-second deadline appears anywhere in a trace of the run that failed it.)
+- The job still reaches `FAILED` — the tests' preceding spin passes.
+- The route it takes is `_fail_loudly`. Captured directly:
+  `FAIL_LOUDLY job=job-NETWORK ended=True sentinel=True forced=False`, in the one worker process
+  whose test failed, while other workers scheduled their retries normally in the same run.
+
+**So: under load the child's outcome is not believed before the session is judged ended, the
+failure is recorded as `WORKER_CRASH` instead of the `NETWORK` the child reported, and
+`_schedule_automatic_retry` correctly declines** — its docstring says exactly why, that deriving
+retryability from `is_retryable` *"would put `WORKER_CRASH` into a loop on its own"*. The tests
+then wait out generous timeouts for a retry that will never come, and their messages
+(*"never fired"*, *"never retried itself"*) name the symptom rather than this cause.
+
+**The timer is not the problem, and that is worth recording because it was the obvious suspect.**
+Every `TIMER STOP` in every trace shows `retry_at={}` — the `T-083` guard that keeps the tick alive
+for a pending backoff holds under load in every instrumented run.
+
+#### Second round, 2026-08-12 — the earlier conclusion was half right, and the half that was wrong matters
+
+**The reviewer ruled that stopping before a source change was correct and stopping the
+investigation was not.** This is the continuation. **Still nothing changed in `src/`.**
+
+**The causal chain above named `_fail_loudly` and stopped there. Instrumenting what it is handed
+shows which of its two branches fires, and it is not the one the chain implied.**
+
+`_fail_loudly` covers two shapes of untrustworthy session: *a stream that broke the contract*
+(`session.violations`) and *a session that reported no outcome* (`outcome is None`). The first
+reading here was that a good `NETWORK` outcome had arrived and was then discarded because
+synthesising the sentinel records a violation — which `_end_the_stream` does, and which would have
+made this a misattribution of a perfectly good worker.
+
+**That is not what happens.** The record captured for the failing job:
+
+```
+FAIL_LOUDLY job=job-NETWORK
+  violations=['the worker exited (code 1) without sending its WorkerFinished sentinel; the parent
+               supplied one so the receiver could stop reading',
+              'a download session produced no outcome; a receiver cannot tell that from a crashed
+               worker (REQ-028)']
+  outcome=None  ended=True  sentinel_sent=True
+```
+
+**`outcome=None`.** Neither of the two messages the child sent arrived — not the `Failed(NETWORK)`
+outcome and not the `WorkerFinished` sentinel. Nothing was discarded, because nothing was
+received. The parent's behaviour from there is correct in every step: no outcome means it cannot
+tell a silent worker from a crashed one (`REQ-028`), so `WORKER_CRASH`, and `WORKER_CRASH` is
+deliberately not retried.
+
+**The child is two lines**, which is what makes this worth recording:
+
+```python
+queue.put(Failed(job_id=job_id, kind=named, message=f"failed as {named.value}"))
+queue.put(WorkerFinished(job_id=job_id, exit_code=1))
+```
+
+`multiprocessing.Queue.put` is asynchronous — it buffers and a feeder thread writes to the pipe —
+so **both messages were lost between the child's `put` and the parent's pump**. That is a delivery
+question, not a scheduling one, and it is the thing that decides product-versus-test: a real
+worker uses the same queue.
+
+**What was ruled out along the way, each by measurement rather than argument:**
+
+| Hypothesis | Ruled out by |
+|---|---|
+| A tight test bound | `spin` is wall-clock; a `timeout=120` elapsed |
+| Starved child processes | Time from `start()` to failure is 0.3–0.5 s in every loaded sample |
+| The `T-083` timer guard failing | Every `TIMER STOP` in every trace shows `retry_at={}` |
+| A good outcome discarded by the synthesised-sentinel violation | `outcome=None` — it never arrived |
+
+#### Bounded reachability, measured 2026-08-12 — and it exonerates the product shape
+
+**First, a correction to a number this entry reported.** *"Roughly one run in three"* was measured
+while the machine was also running other batches, and in some of them the tracing overhead. On an
+**otherwise idle** host it does not reproduce at any worker count:
+
+| Workers | Runs | Failures |
+|---|---:|---:|
+| `-n 1` (serial) | 5 | **0** |
+| `-n 4` | 5 | **0** |
+| `-n 8` | 5 | **0** |
+| `-n 20` (= `-n auto` here) | 5 | **0** |
+
+**Twenty clean runs.** So *worker multiplication is not the trigger*, and an integration-worker cap
+— the branch the review offered — would not have prevented anything measured here.
+
+**Saturation is the trigger.** The same `-n 20`, with 20 busy loops pinning the 20 cores before
+pytest starts: **3 failures in 5 runs** (`test_a_worker_killed_from_outside_does_not_leave_its_grandchild_behind`,
+`test_shutdown_leaves_no_descendant_either`,
+`test_a_pump_that_will_not_stop_keeps_the_manager_from_claiming_it_is_idle`) — a third set of
+tests again, which is now the most consistent thing about this defect.
+
+**Then the question the task exists for: is it reachable at supported product concurrency?**
+Driven the way the application drives it — a real `DownloadManager`, real spawned children, the
+child that failed in the suite — and counting the recorded `ErrorKind` rather than a test's verdict:
+
+| Shape | Sessions | `WORKER_CRASH` |
+|---|---:|---:|
+| One manager, concurrency 1, **idle** host | 30 | **0** |
+| One manager, concurrency 1, **saturated** host (40 loops on 20 cores) | 30 | **0** |
+| One manager, **concurrency 16** — `CONCURRENCY_MAXIMUM`, the busiest the application can be — saturated host | **320** | **0** |
+| **20 independent processes**, one manager each, all spawning at once | **300** | **0** |
+
+**680 sessions across every shape the product can take, including a 2:1 oversubscribed host, and
+not one lost message.** The `Failed(NETWORK)` outcome arrived every time.
+
+**So the classification is: not reachable at supported product concurrency by any means measured
+here.** It needs the **integration suite itself**, at high worker count, on a saturated host.
+Spawning many children does not do it; saturation does not do it; the product's maximum
+concurrency does not do it. The suite plus saturation does.
+
+**The remaining suspect, named rather than guessed at:** `tests/integration/test_manager.py`
+contains tests that deliberately kill workers, kill *process groups* and check orphan reaping, and
+`process_tree.kill_this_group()` is exactly the kind of operation whose blast radius depends on
+what shares a group. Under saturation, timing decides what is alive when one of those fires. The
+scattered failures — twelve distinct tests, then three more — fit interference between concurrently
+running tests better than they fit any one test's bound. **That is the next measurement, and it is
+about the harness rather than `src/`.**
+
+*(What this does **not** establish: that the loss is impossible for a user. It establishes that
+680 sessions in every shape the application supports did not produce one, which is the evidence
+this task was asked for and is the opposite of the direction the first round pointed.)*
+
+#### What this means, stated as a question rather than a decision
+
+**This is a third shape the entry did not list**, and it is not clearly a test problem:
+
+- **If the misattribution is only reachable under absurd oversubscription**, it is an artefact of
+  `-n auto` spawning 20 workers that each spawn children, and the answer is a worker cap.
+- **If it is reachable on a loaded user machine**, it is a **user-visible defect**: a transient
+  network failure recorded as a crash stops retrying, silently, and `REQ-018`'s automatic retry is
+  the thing that does not happen. That is a defect entry of its own, which this task's third
+  criterion already anticipates.
+
+**Which of those it is has not been established. Reviewer ruling, 2026-08-12:** stopping before a
+source change was correct; stopping the investigation was early. This is an empirical reachability
+question, not yet a product choice for the maintainer. Continue through the condition inside
+`_fail_loudly`'s caller that decides a session ended without a believable outcome, first under
+bounded xdist worker counts and then under a single application instance with controlled host
+load. Establish whether a supported user configuration can enter the same path. **`T-056`'s
+`still_running` question may be the same seam from the other side.**
+
+*(Method note: the manager was instrumented on a throwaway working copy and restored; the probe
+test used to take the measurements was deleted. `git status` is clean of both, and the serial run
+is **154 passed, exit 0** — this task changed nothing.)*
+
+#### Acceptance criteria
+
+- **The mechanism is established first** — test bound or product behaviour — with the reproduction
+  driven rather than inferred, and the answer recorded here before anything is changed
+- If it is the test's bound: the bound is derived from something observable rather than raised
+  until it stops failing, and **the test still fails when the gate it guards is mutated away** —
+  a deadline made generous enough to pass everywhere is a test deleted
+- If it is the product's: a defect entry of its own, and this task closes as the reproduction
+- **The fix is demonstrated under load**, not on an idle machine: `pytest -n auto
+  tests/integration/test_manager.py` repeated enough times to beat the one-in-three base rate
+  measured 2026-08-11
+- The same sweep names any sibling timed gate in `tests/integration/` with the same shape, or
+  records that there is none
+
+#### Out of scope
+
+- Adopting `-n` for `tests/integration` in CI. That is `T-123`'s, and it waits on this
+- `T-056` and the Windows process-liveness question, which is a different failure in a different
+  direction
+
+---
+
+### T-173 — One `_now()`, not one per module that needs the same clock
+
+**Status:** **Cancelled 2026-08-06 — the premise was wrong** (`T169-R5`). It proposed centralising a
+clock that two modules defined identically. **There are not two clocks in use.** `manager._now` has
+seven callers; `persistence/store._now` has none, and has had none since the withdrawal removed the
+completion write that used it.
+
+**The agreement it existed to protect no longer exists either.** Its argument named
+`test_a_completed_download_writes_exactly_one_history_row` as the place where a completion's
+`finished_at` and the record's `completed_at` were compared. That test is deleted with the record,
+so there are no two timestamps to keep in step.
+
+**Centralising a dead function into `core/` would have been the worst available outcome**: it would
+give the shared layer a definition with one real caller, and make deleting the dead one harder by
+promoting it first. `T-175` deletes it instead, along with `store.py`'s now-sole use of the
+`datetime` import.
+
+*(Filed by the Implementer on 2026-08-06 during the simplification sweep, hours before the
+withdrawal made half of it untrue. The sweep read the code correctly; what it could not know was
+that one of the two callers was about to go.)*
+**Owner:** Implementer
+**Phase:** Phase 3
+**Risk:** —
+
+---
+
+### T-174 — Say "ledger" where the code still says "history"
+
+**Status:** **Cancelled 2026-08-06 — moot.** It proposed renaming `HistoryRepository`,
+`HistoryEntry`, `store.clear_history` and `writer.clear_history` to say *ledger*. **Every one of
+those identifiers has been deleted**, and there is no ledger for the survivors to be named after:
+`REQ-020` is withdrawn and migration `0009` dropped the table this task promised not to rename.
+
+**What was worth keeping from it is its caution**, which now belongs to `T-175`: a mechanical
+find-and-replace across this repository rewrites history in both senses, because the source carries
+its reasoning in prose beside the code and much of that prose is *about* the removed feature and
+correct as it stands.
+
+*(Filed by the Implementer earlier the same day, before the withdrawal. Its dependency on `T-172`
+outlived it by a few hours; `T-172` was cancelled as moot first.)*
+**Owner:** Implementer
+**Phase:** Phase 3
+**Risk:** —
+
+---
+
+### T-172 — Delete the ledger's removal API, which nothing calls
+
+**Status:** **Cancelled — 2026-08-06, moot.** It proposed deleting the ledger's unreachable removal
+API. `REQ-020` was withdrawn the same day and the whole ledger went with it, including everything
+this task named. Kept as the record that the dead code was found before the feature was.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 3
+**Depends on:** `T-170`, complete
+**Relevant context:** `DAT-005`, `DAT-006`, `T-125`, `T-144`, `persistence/repositories.py`
+(`HistoryRepository`), `persistence/store.py`, `persistence/writer.py`
+**Affected surfaces:** `persistence/`, `tests/unit/test_persistence.py`
+**Risk:** Low — it is deletion, and the gate is that the suite still passes without the tests that
+only exercised the deleted code
+
+#### Scope
+
+**Selected-record removal went with the list it selected from**, and its plumbing did not. `T-125`
+built it through three layers and every one of them is now unreachable from the application:
+
+| Dead | Layer |
+|---|---|
+| `HistoryRepository.remove(entry_ids)` | repository |
+| `HistoryRepository.get(entry_id)` | repository |
+| `HistoryRepository.all_entries()` | repository — the History view was its only caller |
+| `PersistentJobStore.remove_history(...)` | store |
+| `QueueWriter.remove_history(...)` and its token handler | writer |
+
+Each is still covered by tests, which is why nothing reports them: **a test is a caller**, and a
+suite is not a check that production uses what it holds.
+
+**`clear()` stays** — it is what *Clear download records* calls, and `DAT-005` §2's reasoning for
+keeping it a separate, explicitly named method is untouched.
+
+#### Acceptance criteria
+
+- The five entries above are gone, along with the tests whose only subject was them
+- **`DAT-005` §2's guarantee keeps a test.** `test_clearing_touches_no_file` already asserts it
+  against `clear()`; removal's version of it must not be deleted without checking that one covers
+  the same promise
+- `HistoryEntry` is constructed in exactly one production place after this, and read in one
+- The full suite passes, and `mypy` finds no now-unused imports
+
+#### Out of scope
+
+- Dropping the table's unused columns. `DAT-006` §5 refuses that and the reasoning is unchanged
+- `HistoryRepository`'s name. It is the ledger now; renaming it is `T-174`
+
+---
+
+### T-119 — The queue row: thumbnail, title and progress in one delegate
+
+**Status:** **Cancelled — subsumed into `T-118`**, 2026-08-03. Not abandoned: the maintainer ruled
+that the delegate and `T-118`'s row anatomy are one piece of work, so `T-118` now carries this
+task's scope, acceptance criteria and risks. Filed here rather than deleted because `T-118`,
+`ARCHITECTURE.md` and this file's own history all reference the id.
+*(This read "Proposed — UI rework decomposition, 2026-08-02".)*
+**Owner:** Implementer
+**Superseded by:** `T-118`
+**Phase:** Phase 3
+
+The reasoning, kept because it is the argument for the merge rather than a note about it: the
+reviewer's disposition on `T-118` asks for **one rendered row, one declared keyboard route, one
+effective request**. A delegate is what supplies the first and third, and `T118-R10`'s cost ceiling
+is only removable by drawing one reusable editor instead of a widget per row. Delivering `T-118`
+first and this second would mean correcting a row anatomy against findings that the correction
+itself replaces.
+
+
 ## Historical evidence supplements — 2026-09-08
 
 The maintainer requested relocation of unique evidence and removal of the status
@@ -34684,3 +34595,373 @@ verified environment or current installation instructions.
 > | `pip` | 26.0.1, installed via `ensurepip --user` into `~/.local` (no sudo, no PEP 668 marker on F44) |
 > | Project venv | `.venv/` — **repaired 2026-07-28** (`T-063`). It had been installed from a parent directory, so the console script's shebang named a missing interpreter and the editable `.pth` pointed one level above the checkout: neither `tracks-and-trails` nor `python -m tracks_and_trails` worked, and every command used `PYTHONPATH=$PWD/src`. Re-running `pip install -e ".[dev]"` from the checkout fixed both; `docs/DEVELOPMENT.md` carries the symptom and the check. Editable install, PySide6 6.11.1, platformdirs 4.11.0. `comtypes` is a Windows-only dev dependency and is absent here by design |
 > | Dev tools | ruff 0.16.0, mypy 2.3.0, pytest 9.1.1, pytest-qt 4.5.0, PyInstaller 6.21.0, psutil — no longer packaging-only, the default suite needs it since `T-013` asserts on real processes |
+
+## Earlier coordination context
+
+<a id="original-t-300-brief"></a>
+
+The following is the prior archive's introductory material, including the
+original T-300 brief. It is quoted verbatim from `39fcc76` and does not declare
+active or closed tasks in this file. Current work is in TASKS.md.
+
+````text
+# Task record archive — 2026-09-08
+
+Historical material from `f465688`. Closed task records below are verbatim; their
+IDs and current navigation remain in [TASKS](../TASKS.md). Status qualifiers and
+paths describe their recorded state. The retained queue preambles are superseded
+session context, not current scheduling instructions. No finding is closed by
+this archival move.
+
+## Previous queue preface
+
+# TASKS.md — Tracks & Trails
+
+**Purpose:** Track concrete, actionable work.
+**Authority:** Canonical for current actionable work and its state.
+**Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
+**Maintainer:** Sean Kottman
+**Status:** Active
+**Last updated:** 2026-08-27 — **`T-273` is Complete, Approved at `b6db88d`, with no follow-up
+task.** The retention is identified by measurement and the tree is released. The window is held by callables closing over it that Qt
+objects — its own children — hold across C++ parent-child and signal edges. **`gc` can traverse
+none of those**, so it never sees the cycle. `shiboken6` answered what `get_referrers` could not.
+**`deleteLater()` alone changes nothing**; the deferred delete has to be flushed, and then three
+compose cycles go from **25 / 50 / 75** live widgets to **0 / 0 / 0**. `T273-R1` was closed by CI
+run **`33072004785`** — `windows desktop` on `STARBASE` at that head, **3,756 passed**, all 14
+`composed` cases among them — because no local run could close it.
+
+*(2026-08-26: **`T-279` is Complete**, Approved at `a0085b5`, **all six findings
+closed and no follow-up task**. The Windows measurement is at **code head `693a09f`** — CI run
+`33017151297`. **`a0085b5` adds no source, test or workflow line and is record-only**, so naming it
+as the tested head would claim evidence CI never produced.
+
+**`T279-R5` and `T279-R6` rode the completion pass rather than becoming tasks**, which is
+`DOC-005`. **`T-280` was created and removed by the reviewer and is not re-created.**
+`T-279` closed with `## In Review` empty at that point.)*
+
+*(2026-08-26, earlier: **`T-272` is Complete**, Approved at `12fda3a` (review `de0724c`),
+**all nine findings closed**.)*
+
+**`T-279` is filed from the approval**: `orphan_scan._parent_is_gone` decides *"is this a Python
+process"* by process **name**, and a console-script entry point is named for the script — so a
+worker of a **running** `tracks-and-trails` has a parent named `tracks-and-trai` and is reported
+as an orphan. A false-positive class, in the tool rather than in anything `T-272` built.
+
+*(Superseded: `T-272` back In Review on a maintainer scope ruling: per-run
+coverage of one machine, no fan-out.** The acceptance criterion is **explicitly amended** with the
+original struck and the residual stated, which is what `T272-R5` required of anything narrower than
+fan-out. **The scanner now names its own host in every verdict**, so a green can no longer be read
+as *Linux is clean* — that is `T272-R5`'s harm addressed without fanning out. A **pipeline
+regression** was found while building it and is not part of either finding: the scanning step pipes
+into `tee`, so the alarm survives only on `defaults.run.shell: bash` supplying `pipefail`, and
+nothing asserted it.)*
+
+*(Earlier 2026-08-26: **`T-272`'s approval was withdrawn and it was `Blocked`**, pending that
+ruling. `T272-R5` and `T272-R6` are Medium and blocking; `T272-R1`–`R4` remain
+Resolved and **the scanner is sound**. **`## In Review` is empty.**
+
+**The specimen is alive and the capture is retained** —
+`docs/project/evidence/2026-08-25-linux-orphan-still-running-on-spock.md`. `T272-R6` reports it as having
+ended; on `Spock` at 2026-08-26T00:15:29Z both PIDs are present and the scanner exits 1. **That
+contradiction is raised back rather than resolved**, and the likeliest reading is `T272-R5` itself:
+a check of "current state" names whichever machine it ran on.)*
+
+*(2026-08-25: **`T-276` and `T-277` are both Complete**, Approved at `dcd06a0`
+(review `09e1ecb`, **no findings**) and with follow-up at `4f3ca78` (review `a85b8bb`). `T277-R1`
+is Resolved at completion. **The reviewer accepted the Linux-derived 32 px boundary as the
+cross-platform default**, with Windows shell frame selection recorded as honestly unverified.
+
+**The icon chain is finished: `T-274` → `T-276` → `T-277`, plus `T-278`'s About surfaces, and
+`T-275` Cancelled.** Every one of the eleven assets is now rasterized from a vendored artboard,
+which cut ships at which size is enforced at every size and both sources with a control in each
+direction, and Windows has run the whole resource suite. **`T-272` is the only thing left In
+Review**, and it carries an open finding of its own.)*
+
+*(2026-08-25, earlier: **`T-278` is Complete**, Approved with follow-up at `107236e`.
+The About dialog and its Help menu item both read **About**, the icon goes 64 → 112, and the
+video/audio sentence is gone. **Its three findings are one shape at three depths: a property
+asserted more confidently than it was tested.** `T278-R1` was a width rule that held at the one
+size it was measured at and was written up as holding generally; `T278-R2` was a comment that was
+false in the commit that wrote it; `T278-R3` was a screen-reader result nothing had listened to.
+**Nothing was ever wrong with what the maintainer asked for.**)*
+
+*(A defect came with it that nobody reported: `Qt` reads `&` in a `QAction`'s label as a mnemonic,
+and `APP_NAME` contains one, so the menu item had been rendering as *"About Tracks _Trails"*. The
+short label removes the ampersand and the defect together.)*
+
+*(Earlier that day: **`T-277` was built and In Review**, and it moves `T-276`'s
+boundary from 48 px to **32** on a second maintainer ruling the same day. `T-276` adopted the Icon
+cut but pinned it at 48 and above; measured on the running application, **the KDE panel resolves to
+the 32 px frame and the titlebar to 16 or 24**, so **neither of the two slots that draw the window
+icon was getting the new artwork** — the task switcher and the About dialog ask for 64 and were
+correct throughout. Two files change. The titlebar is measured to be unchanged, which is the half of the
+ruling that could have gone wrong.
+
+*(Earlier that day: **`T-276` was built and In Review**, on a direct maintainer
+instruction the same day: Logo Asset Package **v1.1** adds an **Icon** cut — the Standard artwork
+with the sound-wave arcs removed — and it now ships at **48 px and above**. Sixteen, 24 and 32 are
+byte-for-byte unchanged. **The interesting half is not the asset.** Every check that told one
+shipped cut from the other read gold, and the Icon cut's gold is the trail alone, exactly like the
+Small cut's — so cut identity is now a pair, gold for the arcs and green mass for the landscape,
+each with a control in both directions. The Standard cut stays vendored, rendering nothing, purely
+so the arc predicate can be shown a positive.
+
+The morning ruling refused `T-275`, which is `Cancelled` under `## Complete`; the evening ruling
+granted the band it asked for, and its entry records both.)*
+
+*(2026-08-21: **`T-274` is Complete**, Approved with follow-ups at `60dbbcf`, on a direct
+maintainer instruction the same day: the revamped logo pack replaces every icon asset, and the
+assets are now rasterized from vendored SVG artboards rather than derived from a drawn PNG.
+`T274-R1`, `T274-R2` and `T274-R3` are Resolved. **All three findings were the same defect at
+different scopes** — a check weaker than the claim written over it — and none of them was in the
+artwork or the renderer. The brand palette is unchanged and no source module changed behaviour.)*
+
+*(2026-08-20: **`T-270` and `T-269` are both Complete**, Approved at `c047767`
+and `166ce39`, **neither with an implementation finding**. One run closed both: `32319665394`,
+`windows desktop` green end to end on `STARBASE`. `T270-R1`, `T269-R1`, `T269-R2` and `T266-R2` are
+Resolved.)*
+
+**`Quit` no longer depends on a per-platform standard key Qt is entitled to resolve to nothing**,
+and the proof is on **PySide6 6.11.2** — the version whose empty resolution filed the task — with
+the `>=6.11,<7` constraint untouched. The maintainer ruled that `T-270` may leave it that way;
+**whether runtime floors are the right policy at all is still open** and is nobody's task yet.
+`T-271` is filed for the neighbouring `StandardKey.New`, the same unguarded reliance, **not**
+observed broken.
+
+**What is awaiting a verdict is `## In Review`, and this header does not say what is in it.**
+
+*(**The removed paragraph enumerated that section and was wrong again**, which is the failure
+`T204-R2` named. It read *"`T-256` and `T-258` are what remain In Review"* while `T-267` and
+`T-269` sat there too; it said `T-258` was *"blocked on **one** thing: `T258-R5`"* after `T258-R5`
+was Resolved; and it said **`T-268` is answered and In Review** after `T-268` went **Blocked**.
+Every sentence was true the day it was written. `T-270` did not make them stale — it made the first
+one **falser**, by adding a fifth entry — and the paragraph is removed rather than corrected,
+because the file already states the rule it was breaking: a header that lists a section's contents
+is a second copy of the section, and the copy is what rots. What it recorded about `T-266` is not
+lost; it is in `T-266`'s own entry under `## Complete`.)*
+
+*(**Rewritten 2026-08-18, because appending had made it self-contradicting.** In one paragraph this
+header said `T-259` was Complete *and* awaiting re-review, and that `T-258`'s Windows run existed
+*and* that no Windows run existed. Every sentence was true when it was added and none was removed
+when it stopped being — three appends in a day. A current-truth summary that is only appended to
+becomes a record of every state the project has held, which is what `docs/project/STATUS.md` is for. Found by
+review, not by reading it back.)*
+
+`T-258`'s first submission returned Changes requested with six blocking findings. The window before
+a spawned worker installs its watchdog is reproduced, POSIX is measured not to have it, and the
+application now contains itself in a Job object before any worker exists — through **one seam that
+refuses to spawn rather than warn**, at every product-owned spawn site rather than the manager's
+alone. **Three of its five criteria are unmet and the entry says which.**
+**This section's `## In Review` was duplicated byte-for-byte from `30b473d`** until
+2026-08-17 — six commits — and `T-096`'s gate passed on it throughout, because every duplicated
+status still matched its section.
+
+*(Previously, 2026-08-16: **`T-183` was built and In Review** — it is now **Complete** at
+`1d0caf6`.)* It filed ten entries:
+`T-247`…`T-255` (the typed fields, 44 options over nine tasks) and **`T-256`**. `SEC-004` ruled
+the fifteen unclassified options **forbidden** the same day, so `T-184`'s refusal list is known.
+**`T-183`'s review then returned Changes requested** (`5613af4`) with two product defects — the geo
+exclusion was never enforced, and twelve `hatch` rows the application owns were reachable — and the
+corrections are in. `T-256` now also owns a **sixteenth** option the audit missed. *(Previously: `T-196` is Complete,
+approved at `c70f61a` after a maintainer-authorized documentation-only pass; `T196-R1` … `T196-R5`
+are all Resolved. `T-146` remains Complete at `0adf9e3` and `T-215` at `b9caa40`.)*
+**Phase 4 is the current phase**, its plan deliverables decomposed under `## Proposed — Phase 4`.
+For what is awaiting a verdict now, read `## In Review` — this header does not duplicate it, for
+`T204-R2`'s reason.
+**Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
+**Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
+
+Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
+IDs are never reused. Completed tasks move to `docs/project/archive/` once they bury the live queue.
+
+**Start here: the current phase is Phase 4.** Its first built plan deliverable, `T-146`, is Complete;
+carried-in defect `T-215` is also approved. Phase 3 exited 2026-08-09,
+Phase 2 on 2026-08-05, Phase 1 on 2026-07-29 and Phase 0 on 2026-07-26; every exit review is in
+`docs/project/REVIEWS.md`. **Actionable work is `## Proposed — Phase 4` and `## Ready`; work awaiting review
+or correction is `## In Review`.** None of the three says how many it holds, for `T204-R2`'s reason.
+
+*(**This line has now been wrong twice, and both times it was found by review rather than by
+reading it.** `P3EXIT-R1` found it saying Phase 2 three days after Phase 3 began; `P3EXIT-R4` found
+it saying Phase 3 after Phase 3 exited — inside the commit that recorded the exit. **The line most
+likely to be stale is the one that says what is current**, because nothing else in the file breaks
+when it rots.)*
+
+*(This said **"The current phase is Phase 2"** and named that phase's planning gates. It was true
+until 2026-08-05 and was still standing on 2026-08-08, at the top of the file whose job is to say
+what is actionable now — found by `P3EXIT-R1`. Phase 2's planning-gate detail is below, where the
+rest of its history lives.)*
+
+**The live queue** — rebuilt from the sections below on 2026-07-31, not written alongside them.
+`COORD-R5` through `COORD-R11` are seven rounds of a hand-written summary drifting from the file it
+summarises; this one is transcribed from the actual `## ` sections so it starts correct.
+
+- **In Review:** `T-046` only — corrected a third time 2026-08-01 (`T046-R4`, `T046-R5`).
+  *(Phase 3 has since put two more there: **`T-109`**, whose review returned **Changes requested**
+  on 2026-08-08, and **`T-110`**, submitted 2026-08-08. This bullet is Phase 2's and is left as
+  what it said; the `## In Review` section is the current list, which is why `T-096` gates
+  placement rather than this summary.)*
+- **Blocked on `STARBASE`, which is offline:** `T-092` (arming crash dumps is configuration of that
+  machine) and `T-074` (its segfault has only ever been seen there). **`T-087` is no longer among
+  them** — `OPS-005` was amended 2026-08-01 and its Windows cases passed on the hosted runner.
+- **Approved 2026-08-01** at `eb1bd70`: `T-081`.
+- **Approved 2026-08-01** at `97f96c0`: `T-083` and `T-102`. At `05e5312`: `T-080`, `T-053`,
+  `T-099`, `T-101`, `T-103`. `T-092` is *prepared*, not complete: three of
+  its criteria need `STARBASE`.
+- **Blocked:** **`T-087`**. Its Windows primitive now matches `ARC-006` but has never executed;
+  `A-004` stays unverified and **Phase 2 exit criterion 4 is blocked with it**.
+- **Ready, and nothing among them waits on anything:** `T-082`, `T-084`, `T-100`, plus `T-074`,
+  which blocks nothing. `T-084`'s *approval* waited on `T-053`, which is now approved.
+- **All three Phase 2 planning gates are clear.** `P2PLAN-R2` at `f858da9`; `P2PLAN-R1` and
+  `P2PLAN-R3` at `8306378`. `ARC-007` decides the settings surface, `UX-001` the pause semantics.
+- **No open questions are outstanding.** The last one — whether a corrupt `settings.toml` should
+  report rather than fall back silently — was **decided 2026-07-31**: it reports. `ARC-008` holds
+  the decision and **`T-102`** implements it. *(Two others were decided 2026-07-30: the concurrency
+  **maximum** — `ARC-007` amended, `CONCURRENCY_MAXIMUM = 16` — and **`P2PLAN-R8`**, the history
+  view's owner, which is now **`T-100`**. `T-086` depends on it and is unblocked once it lands.)*
+- **Carried, blocking nothing:** `T-099` (`T097-R2` — the boundary analyser reports a settings
+  offender under the persistence rule's explanation), `T-101` (`T079-R3` — the corrected detail view
+  resets retry ETA correctly, but the ETA-only mutation survives) and `T-103` (found by `T-081`:
+  cancelling a *waiting* job leaves its id on the pool's waiting list).
+
+**Nothing is a choke point as of 2026-07-31.** `T-078` was the last one, and `T-079` was the last
+task anything waited on; every Ready task above can start without waiting for a verdict on the
+three in review.
+
+**Windows runtime has still never run against the pool.** It is not a completion gate for source
+changes here, but `T-078` is the first task to run several worker trees at once, so the risk is
+larger than it was — see `T-078`'s entry and `T-092`.
+
+**Two Phase 1 blockers were dispositioned by decision rather than completed**, and the exit review
+upheld both while keeping them open: `T-066` by the `OPS-005` amendment, `T-074` by `OPS-007`.
+Neither task is closed and neither blocks Phase 2. The reasoning lives in those decisions rather
+than here — restating it is how the block below came to exist.
+
+*(**Everything that stood here was Phase 1's live state, and Phase 1 exited on 2026-07-29.**
+`COORD-R11` found four blocks of it still asserting the present tense underneath the Phase 2 summary
+above: that `T-091`, `T-096` and `T-089` were Ready after two were approved and one was in review;
+that exit criterion 7 was "still unmet"; and that "Phase 1 is not ready". All four were true when
+written and none was true when read.
+
+Removed rather than annotated one by one, because the problem was the block existing at all — a
+current-truth file does not need two summaries, and the second one is always the stale one. Nothing
+is lost: `T-074`'s residual disposition is `OPS-007`, `T-066`'s is the `OPS-005` amendment, and
+Phase 1's exit and its criteria are in `IMPLEMENTATION_PLAN.md` §Phase 1 and the exit review,
+while `STATUS.md` carries the narrative. Each of those is the canonical home; this was a copy
+that outlived them.
+
+**`T-096` passed throughout**, because every status matched its section. It gates placement, not
+prose, and `COORD-R11` is the half it cannot reach.)*
+
+Phase 0 is formally exited (2026-07-26).
+
+---
+
+
+## In Review
+*Implementation is finished and a verdict has not been recorded. **The entries below are the
+contents; this preface does not list them.***
+
+*(Was empty from 2026-09-06 until `T-299` landed on 2026-09-08. The heading stays even when it
+empties, because a section that disappears is one nobody notices coming back.)*
+
+## Complete
+
+## Ready
+
+*(`T-078`…`T-088` are the phase's own deliverables, written 2026-07-29 from
+`docs/project/IMPLEMENTATION_PLAN.md` §Phase 2. `T-097` is a planning-review follow-up; the entries after the
+deliverables — `T-050`, `T-053`, `T-046`, `T-047`, `T-048`, `T-049` — are follow-ups carried out
+of Phase 1 that land in this phase, and they were here first. Nothing below is scheduled: Phase 2's
+prerequisite is Phase 1 approved.)*
+
+*(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
+which replaced everything between `## In Review` and `### T-074` — the heading sat between them.
+For two commits `T-074`, `T-089`, `T-091`, `T-092` and `T-096` therefore sat under `## In Review`
+while each said Ready: the exact status-versus-section class `COORD-R5` through `COORD-R10`
+reported six times, produced here by a tool rather than by inattention. **`T-096` is the answer**
+and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
+being necessary.)*
+
+
+---
+
+## Proposed — Phase 0
+
+*(Empty since 2026-08-15, when `T-021` — the only entry it ever held after the phase was formally
+exited — moved to `## In Review`. The heading stays because the section is part of the map, and a
+heading that disappears when it empties is one nobody notices coming back.)*
+
+## Proposed — Phase 1
+
+## Proposed — Phase 2
+
+## Proposed — Phase 3
+
+## Proposed — Phase 4
+
+## Proposed — Phase 4.5
+
+*(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
+descend from, and `T-183` is what turns them into the rest of the phase.)*
+
+## Blocked
+
+
+---
+
+## Complete
+
+
+## Original T-300 brief
+
+### T-300 — `AGENTS.md` is 628 lines and is loaded on every task
+
+**Status:** Ready
+
+**Owner:** Documentation Maintainer
+**Priority:** Low — it costs context on every task, and nothing is wrong in it
+**Phase:** Phase 4 (documentation system; **not** a plan deliverable)
+**Depends on:** `T-299` complete, so the section numbers move once rather than twice
+**Relevant context:** `DOC-006` deviation 1, `AGENTS.md` §§1–13
+**Affected surfaces:** `AGENTS.md`, and every citation of its section numbers
+**Risk:** Medium — the risk is entirely in the renumbering, not in the prose
+**Required checks:** `ruff check .` · the full suite · a grep proving no `AGENTS.md §N` citation
+points at the wrong section afterwards
+
+#### Scope
+
+The convention's soft review trigger is roughly 200–300 lines for a file agents load on every
+task; this one is **628**. Compress repeated prose and route historical detail through
+`docs/project/STATUS.md`, `TASKS.md`, and `REVIEWS.md`, which is where the convention says it
+belongs.
+
+#### What makes this harder than it looks
+
+**The section numbers are an interface.** `AGENTS.md` is cited **359** times, and the citations
+name sections rather than headings — `AGENTS.md §7`, `§9`, `§10`. They are in source comments, in
+`pyproject.toml`, in `tools/commit_message_check.py`, in `src/tracks_and_trails/core/settings.py`,
+and throughout the coordination documents. Renumbering silently invalidates every one, and nothing
+fails when it happens.
+
+So the cheap version of this task — delete the long bits — is the version that does the damage.
+
+#### Acceptance criteria
+
+- No concrete safety invariant, secret-handling rule, or permission boundary is removed to meet a
+  size target. Compression means saying the same rule in fewer words or linking to its canonical
+  home, not dropping it.
+- Every `AGENTS.md §N` citation in the repository resolves to the section it meant before the
+  change, or is updated in the same commit. Whichever route is taken, the check is mechanical and
+  its output is recorded.
+- Anything moved out lands in the document the convention names as its home, and is not merely
+  deleted.
+
+#### Out of scope
+
+- The role model and the tool mapping in §3. The convention explicitly permits a named-tool
+  assignment recorded once and mapped to capability roles, which is what §3 already is.
+- Renaming the file. `AGENTS.md` at the repository root is what the convention specifies.
+
+
+````

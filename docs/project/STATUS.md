@@ -15,7 +15,7 @@ owns phase deliverables and exit criteria.
 
 ## Active work
 
-- **T-300:** Convention revision 2026-09-08.2 adoption implemented; independent
+- **T-300:** Convention revision 2026-09-08.3 adoption implemented; independent
   review pending. DOC-007 records the organization/editorial policy. The single
   review file remains. This is documentation work, not a Phase 4 deliverable.
 - **T-299:** Changes requested in the [focused correction review](REVIEWS.md#2026-09-08--t-299-focused-correction-review)
@@ -32,14 +32,16 @@ owns phase deliverables and exit criteria.
 
 ## Verification
 
-After the status-evidence relocation, the Linux full suite passed with
-**3925 passed / 21 skipped / 17 warnings** in **168.90 s**, using the activated
-project environment. Ruff, 64 documentation-consumer tests and the
-record/navigation checks passed. These are implementation checks; independent
-documentation review remains pending.
+After the running-task-file migration, the Linux full suite passed with
+**3940 passed / 21 skipped / 17 warnings** in **168.63 s**, using the activated
+project environment. Ruff lint, changed Python-file formatting, source/test
+type checks (including Windows-platform bodies), 79 documentation-consumer
+tests and record/navigation checks passed. The whole-tree format check still
+fails on the historical T-300 evidence document, reproduced at base `39fcc76`.
+Independent documentation review remains pending.
 
 This adoption's checks and exact scope are in
-[T-300 evidence](evidence/2026-09-08-T300-documentation-adoption.md).
+[T-300 migration evidence](evidence/2026-09-08-T300-documentation-adoption.md#running-completed-task-record--2026-09-08).
 No new Windows execution or release-gate result is claimed here.
 
 ## Current risks and external blockers
@@ -63,6 +65,10 @@ Refresh this snapshot at task completion; do not prepend session diaries. Preser
 unique decisions, measurements or findings in their canonical records, then link
 them. Review size if this file grows beyond roughly 200–300 lines.
 
-The retired status snapshot's unique evidence is in the [dated task supplements](archive/TASKS-completed-2026-09-08.md#historical-evidence-supplements--2026-09-08),
+Move each Complete or Cancelled task from TASKS to the single running
+COMPLETED_TASKS file in the closure update. Keep only unfinished work in TASKS;
+do not leave closed-task stubs or create dated task archives.
+
+The retired status snapshot's unique evidence is in the [task supplements](COMPLETED_TASKS.md#historical-evidence-supplements--2026-09-08),
 linked from the relevant tasks. The full snapshot remains recoverable from
 `d88e62e`; its source path and recovery command are recorded with the supplements.

@@ -607,7 +607,9 @@ def test_the_already_built_options_name_fields_the_model_really_has() -> None:
 
 def test_the_typed_tasks_partition_the_typed_options_with_no_field_yet() -> None:
     """`T-247`…`T-255` plus the built table cover the typed class exactly once (criterion 3)."""
-    text = TASKS.read_text(encoding="utf-8")
+    text = "\n".join(
+        path.read_text(encoding="utf-8") for path in (TASKS, TASKS.with_name("COMPLETED_TASKS.md"))
+    )
     assigned: list[str] = []
     for task in [f"T-{n}" for n in range(247, 256)]:
         start = text.index(f"### {task} —")

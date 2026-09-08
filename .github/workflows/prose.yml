@@ -2,16 +2,16 @@
 #
 # **This file exists so that exempting prose from CI did not delete a gate.**
 #
-# `ci.yml`'s `paths-ignore` now covers every prose file in the repository, `docs/project/TASKS.md`
-# included. That file is the one piece of prose the test suite actually reads:
-# `tests/unit/test_task_placement.py` (`T-096`) checks that every task entry opens with a status
-# from `TASKS.md`'s own declared vocabulary and sits under the section that status names. Dropping
-# it into `paths-ignore` and stopping there would have been a durable coverage loss made as a side
+# `ci.yml` exempts selected documentation paths, including `docs/project/TASKS.md`.
+# `tests/unit/test_task_placement.py` checks TASKS.md and COMPLETED_TASKS.md:
+# each entry declares a status, sits in the matching section/file, and has one ID across both.
+# The completed record also feeds checks beyond placement, so it remains outside ci.yml's
+# ignore list. Dropping it into `paths-ignore` and stopping there would lose coverage as a side
 # effect of a wall-clock change — exactly the shape `P2EXIT-R4` found and reversed.
 #
 # So the gate moved here rather than going away. What changed is its cost, not its coverage:
 #
-#   - **No Windows.** The placement test is `re` and `pathlib` over a text file. It has no
+#   - **No Windows.** The placement test is `re` and `pathlib` over text files. It has no
 #     platform dimension, and `OPS-005`'s reasoning about Windows verification does not reach it.
 #   - **No package install and no Qt.** The test imports `re`, `pathlib` and `pytest` and nothing
 #     else — checked, not assumed. `pip install pytest` is the whole environment.
@@ -27,6 +27,7 @@ on:
   push:
     paths:
       - "docs/project/TASKS.md"
+      - "docs/project/COMPLETED_TASKS.md"
       - "tests/unit/test_task_placement.py"
       - ".github/workflows/prose.yml"
   # **No `pull_request:` trigger, and its absence is a security control** (`T-262`).
@@ -81,7 +82,7 @@ jobs:
           python3 -m venv .venv-prose
           .venv-prose/bin/python -m pip install --upgrade pip pytest
 
-      - name: Check that TASKS.md agrees with itself
+      - name: Check active and completed task placement
         run: |
           mkdir -p reports
           .venv-prose/bin/python -m pytest tests/unit/test_task_placement.py -v \

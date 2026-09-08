@@ -17,6 +17,10 @@ requirements or design — those live in `REQUIREMENTS.md` and `ARCHITECTURE.md`
 > left alone rather than rewritten. `ai/TESTING.md` below means what is now
 > `docs/project/TESTING.md`.
 
+Current task history is in [COMPLETED_TASKS](COMPLETED_TASKS.md). The dated
+`archive/TASKS-completed-2026-09-08.md` links below record the earlier layout;
+[DOC-007's running-file amendment](#doc-007-completed-tasks) identifies its replacement.
+
 Statuses: Proposed · Accepted · Rejected · Deprecated · Superseded.
 Prefixes: `DOC-` documentation system · `ARC-` architecture · `DAT-` data · `SEC-` security ·
 `OPS-` operations · `REL-` release · `LIC-` licensing · `UX-` user experience.
@@ -91,7 +95,7 @@ Current requirements and architecture retain their own canonical authority.
 | [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu) | The row picks a preset; the per-row verbs are the row's own menu | Accepted | — |
 | [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) | The concurrency control leaves the toolbar for Settings | Accepted | — |
 | [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button) | The row's menu says what it removes, and the ⋮ reads as a button | Accepted | — |
-| [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted | [Status retention amendment](#doc-007-status-retention) |
+| [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted; revision 2026-09-08.3 by amendment | [Status retention](#doc-007-status-retention); [running completed-task record](#doc-007-completed-tasks) |
 
 ## Dated decision records
 
@@ -5822,3 +5826,31 @@ with exact source references, original result text and limitations. Remove the
 snapshot after checking preservation; its full text remains recoverable at
 `d88e62e`. This supersedes the snapshot-retention choice above and leaves the
 original task and review records intact. It changes no external standard.
+
+<a id="doc-007-completed-tasks"></a>
+
+### Running completed-task record — 2026-09-08
+
+**Authority:** The maintainer requested one running COMPLETED_TASKS file,
+immediate transfer on completion, and updates to both standards and this project.
+
+Adopt base convention revision **2026-09-08.3**, Standard profile. The companion
+web profile advances to the same revision; this desktop project does not adopt it.
+`docs/project/TASKS.md` holds unfinished work only. Move every Complete or Cancelled
+record to `docs/project/COMPLETED_TASKS.md` in the same update that closes it,
+after its required checks and review. Keep no closed-task stubs or dated batches.
+Cancelled retains its status and reason. The task/status owner performs transfers;
+the coordinator is the sole writer of both files during an authorized wave.
+
+Preserve IDs, headings, scope, outcome, evidence, limitations, attribution and
+follow-up routes. On reopening, return the record to TASKS and retain the earlier
+closure as dated history. Keep one operative entry per ID across both files.
+Allocate new IDs against both catalogs. Update current links, tests and CI
+triggers; a test's old input path does not justify retaining a closed task in
+the active queue. Review storage and closure criteria are unchanged.
+
+This supersedes the earlier decision to retain closed-task stubs and defer
+archival until the queue became crowded. The former
+`archive/TASKS-completed-2026-09-08.md` is consolidated into the running file,
+including the status-evidence supplements. Its original records and introductory
+context are preserved; literal historical references remain as written.

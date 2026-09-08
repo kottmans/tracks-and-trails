@@ -359,3 +359,160 @@ print(f'{count} added local links resolve; changes confined to the seven authori
 assert not Path(STATUS).exists()
 print('Status archive removed; immutable source remains available in Git.')
 ```
+
+
+## Running completed-task record — 2026-09-08
+
+**Base:** `39fcc76bc2de35f23d9ef1295b8fcf9d81fc2306`.
+**Head:** The commit containing this amendment. Independent review remains pending.
+**Performed by:** Codex, implementing the maintainer's requested convention change.
+
+Both external standards were updated to revision **2026-09-08.3**, including
+ownership, closure/reopening, layouts, completion checks and retrofit guidance.
+The installed convention SHA-256 is
+`f7c90332957b8c1896cf3a6e6bde75c9f0eaa54245ba7759fb890959da955248`;
+the installed web profile SHA-256 is
+`cba104f971d80ea46222f53f5a732f2e27715f6df3ed15c3759cffdad1ef73f3`.
+These files remain external to this repository; the web profile is not applied
+to the desktop product.
+
+The project's [COMPLETED_TASKS](../COMPLETED_TASKS.md) now holds **261 Complete
+and 8 Cancelled** records; TASKS holds **28 unfinished** records. It replaces the
+dated task archive. The [19 historical supplements](../COMPLETED_TASKS.md#historical-evidence-supplements--2026-09-08)
+retain all 38 quoted excerpts and their task routes. The original archive preface
+is quoted at the end, including the original T-300 brief. Original dated links
+and reproduction commands above describe `d88e62e` or `39fcc76`; reproduce those
+checks at their respective commits, not against this later layout.
+
+The placement gate now reads both task files and checks file/status placement,
+missing statuses, section agreement and duplicate IDs, including invalid-transfer
+controls. Capability and option-audit consumers read both files. Prose CI watches
+both; COMPLETED_TASKS remains outside full CI's ignored paths. Parsed YAML
+confirms the other two edited workflow files have only comment changes.
+Application source and `pyproject.toml` are unchanged.
+
+### Migration checks and limits
+
+- Preservation: **269 full closed records verbatim**, all **297 IDs and states**
+  retained, the **27 other unfinished records** unchanged except one navigation
+  destination, and all **38 task-to-evidence routes** retained. The archive preface
+  (**22,377 bytes**) and evidence supplements (**27,559 bytes**) are verbatim.
+  REVIEWS is unchanged; prior dated decisions and this prior evidence record
+  remain unchanged. The 13 numbered AGENTS section subjects are retained.
+- Added Markdown link check: **64 local destinations** passed, including
+  fragments. Standard checks preserved the previous
+  changelog and all explicit anchors; the five new internal links resolved.
+- Focused task-placement/capability/option-audit checks: **79 passed in 2.71 s**.
+- `ruff check .`: passed. Format check on the three edited Python files: passed.
+- `mypy src`: passed, **58 source files**. Bare `mypy` and
+  `mypy --platform win32`: each passed, **164 source files**, isolated caches.
+- `source .venv/bin/activate`, then `python -m pytest -q -n auto`: **3940 passed,
+  21 skipped, 17 warnings in 168.63 s**, Linux with local sockets available.
+  An initial invocation through `.venv/bin/python` without activation had
+  **2 failed, 3938 passed, 21 skipped, 17 warnings in 168.02 s**; both failures
+  were toolchain PATH checks. The activated rerun excluded no additional tests.
+- **Existing format failure:** `ruff format --check .` reports this historical
+  evidence file as the sole file needing formatting (**232 already formatted**).
+  Its Python fences already failed on the byte-identical `39fcc76` version,
+  verified using `git show` to a temporary file and the same pinned Ruff. The
+  dated instrument has not been rewritten. This gate remains failing and must
+  not be summarized as a clean format result.
+- No Windows runtime, real-display verification, external CI, publication or
+  push was performed. Transfers do not approve T-300 or close T-299's findings.
+
+### Reproduce the running-file preservation boundary
+
+At this migration commit, save the following Python text to a temporary file
+and run it with `.venv/bin/python` from the repository root. It reads Git and
+the current files. It checks relocation, not the historical claims' accuracy.
+The block is shown as text to preserve the recorded instrument verbatim.
+
+```text
+from collections import Counter
+from pathlib import Path
+import hashlib
+import re
+import runpy
+import subprocess
+
+BASE = '39fcc76'
+ACTIVE = 'docs/project/TASKS.md'
+CLOSED = 'docs/project/COMPLETED_TASKS.md'
+OLD = 'docs/project/archive/TASKS-completed-2026-09-08.md'
+
+def before(path):
+    return subprocess.check_output(['git', 'show', f'{BASE}:{path}']).decode()
+
+def task_blocks(text):
+    marks = list(re.finditer(r'^## .+$|^### T-\d+ — .+$', text, re.M))
+    result = {}
+    for index, mark in enumerate(marks):
+        if mark[0].startswith('### '):
+            task = re.match(r'### (T-\d+)', mark[0])[1]
+            assert task not in result, task
+            end = marks[index + 1].start() if index + 1 < len(marks) else len(text)
+            result[task] = text[mark.start():end]
+    return result
+
+old = before(OLD)
+prefix, records = old.split('## Closed task records\n', 1)
+records, supplements = records.split('## Historical evidence supplements — 2026-09-08\n', 1)
+old_closed = task_blocks(records)
+old_active = task_blocks(before(ACTIVE))
+new_closed = Path(CLOSED).read_text()
+new_active = task_blocks(Path(ACTIVE).read_text())
+assert len(old_closed) == 268
+old_closed['T-260'] = old_active['T-260']
+for task, record in old_closed.items():
+    assert new_closed.count(record) == 1, task
+for label, value in [('archive preface', prefix), ('evidence supplements', supplements)]:
+    assert new_closed.count(value) == 1, label
+    print(label, len(value.encode()), 'bytes', hashlib.sha256(value.encode()).hexdigest())
+
+parser = runpy.run_path('tests/unit/test_task_placement.py')
+catalogs = {}
+for path in (ACTIVE, CLOSED):
+    entries = parser['live_entries'](Path(path))
+    catalogs[path] = {task: parser['operative_status'](status) for task, _, status in entries}
+    assert len(catalogs[path]) == len(parser['heading_occurrences'](Path(path)))
+assert not catalogs[ACTIVE].keys() & catalogs[CLOSED].keys()
+expected = {
+    task: parser['operative_status'](re.search(r'^\*\*Status:\*\*.*$', text, re.M)[0])
+    for task, text in old_active.items()
+}
+assert catalogs[ACTIVE] | catalogs[CLOSED] == expected
+assert len(catalogs[ACTIVE]) == 28 and len(catalogs[CLOSED]) == 269
+assert Counter(catalogs[CLOSED].values()) == {'Complete': 261, 'Cancelled': 8}
+for task, record in new_active.items():
+    if task == 'T-300':
+        continue
+    original = old_active[task].replace('archive/TASKS-completed-2026-09-08.md', 'COMPLETED_TASKS.md')
+    assert record.rstrip() == original.rstrip(), task
+print('269 closed records verbatim; all 297 IDs, headings and states retained; 27 other unfinished records preserved')
+assert not Path(OLD).exists()
+
+routes = {}
+for task, block in old_active.items():
+    found = re.findall(r'\[Additional historical evidence\]\(archive/TASKS-completed-2026-09-08.md#([^)]+)\)', block)
+    if found:
+        routes[task] = found
+for task, targets in routes.items():
+    record = new_active[task] if task in new_active else new_closed
+    for route in targets:
+        assert f'#{route})' in record
+        assert f'<a id="{route}"></a>' in new_closed
+assert len(routes) == 38
+assert supplements.count('### ') == 19
+print('38 task-to-evidence routes and 19 supplements preserved')
+
+review = 'docs/project/REVIEWS.md'
+assert Path(review).read_text() == before(review)
+decision = 'docs/project/DECISIONS.md'
+marker = '## Dated decision records\n'
+assert Path(decision).read_text().split(marker, 1)[1].startswith(before(decision).split(marker, 1)[1])
+evidence = 'docs/project/evidence/2026-09-08-T300-documentation-adoption.md'
+assert Path(evidence).read_text().startswith(before(evidence))
+assert subprocess.check_output(['git', 'diff', BASE, '--', 'src', 'pyproject.toml']) == b''
+assert re.findall(r'^## \d+\. .+$', Path('AGENTS.md').read_text(), re.M) == re.findall(r'^## \d+\. .+$', before('AGENTS.md'), re.M)
+print('REVIEWS unchanged; previous dated decisions/evidence unchanged; 13 AGENTS sections retained; no application/configuration change')
+```

@@ -513,7 +513,7 @@ worth not settling for — under that workaround the console script stays broken
 tree is still whatever the `.pth` says.
 
 **`.venv/` is git-ignored and does not survive a clone.** Create it during clone
-setup and rebuild it after moving the checkout. The [historical environment record](project/archive/TASKS-completed-2026-09-08.md#t001-environment)
+setup and rebuild it after moving the checkout. The [historical environment record](project/COMPLETED_TASKS.md#t001-environment)
 preserves the earlier launcher and import-path repair.
 
 ## Windows
@@ -533,13 +533,18 @@ suite on exactly such a machine. Corrected under `T-064`.)*
 ## Documentation workflow
 
 Start with README for the product, this guide for local work, ARCHITECTURE and
-DECISIONS for design/rationale, TASKS/STATUS for active work, and REVIEWS for dated
-evidence. Those coordination files live in `docs/project/`. Review policy lives
+DECISIONS for design/rationale, TASKS/STATUS for active work, COMPLETED_TASKS for
+closed task history, and REVIEWS for review evidence. Those files live in
+`docs/project/`. Review policy lives
 in [TESTING §14](project/TESTING.md#14-review-policy); launch wording lives in
 [PROMPTS](project/PROMPTS.md). Required ownership and permissions remain in AGENTS.
 
-At completion, the task/status owner updates current state and retention under
-[AGENTS §6](../AGENTS.md#tt-history). The decision owner updates the amendment index
+When a task becomes Complete or Cancelled, the task/status owner moves its full
+record from TASKS to the running [COMPLETED_TASKS](project/COMPLETED_TASKS.md) in
+the same update. Preserve its evidence and follow-up links, leave no stub in the
+active queue, and run the placement check over both files. Do not create dated
+batches. Follow [AGENTS §6](../AGENTS.md#tt-history) for reopening and ownership.
+The decision owner updates the amendment index
 in the same change. New records describe the problem, cause, correction, checks
 and remaining risk; omit fields that add no information. Record review identity
 in its provenance field rather than narrating tools in product explanations.

@@ -16,6 +16,12 @@ Supporting workflow material, not the product's introduction.
 
 ## Implementation task
 
+Unfinished records are in `docs/project/TASKS.md`; retrieve closed-task history
+by ID from `docs/project/COMPLETED_TASKS.md` when relevant. At closure, the
+task/status owner transfers the full record in the same update, with no stub
+left in TASKS. During a parallel wave, workers propose this transfer to the
+coordinator rather than editing either shared file.
+
 ```text
 Act as the Implementer for Tracks & Trails.
 
