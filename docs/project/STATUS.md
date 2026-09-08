@@ -15,10 +15,11 @@ owns phase deliverables and exit criteria.
 
 ## Active work
 
-- **T-300:** Convention revision 2026-09-08.4 adoption implemented; independent
-  review pending. DOC-007 records the organization/editorial policy. The single
-  review file remains. The shared standard is pinned in the adoption decision;
-  required working rules remain local. This is documentation work, not a Phase 4 deliverable.
+- **T-300:** Convention revision 2026-09-08.5 adoption implemented; independent
+  review pending. [DOC-007](DECISIONS.md#doc-007-review-storage) pins the private
+  shared source. New reviews use task files; existing reviews and dated history
+  stay in REVIEWS.md. TESTING §14 owns storage, and required working rules remain
+  local. This is documentation work, not a Phase 4 deliverable.
 - **T-299:** Changes requested in the [focused correction review](REVIEWS.md#2026-09-08--t-299-focused-correction-review)
   at `23c3d11`. R1 (High) still requires correction of SECURITY.md's credential and
   cookie-path assurances. R2 (Medium) still requires the captured evidence output
@@ -42,7 +43,9 @@ the captured bytes are unchanged. Independent documentation review remains pendi
 
 This follow-up's checks and review boundary are in
 [T-300](TASKS.md#t-300--agentsmd-is-628-lines-and-is-loaded-on-every-task).
-No new Windows execution or release-gate result is claimed here.
+The later review-storage adoption has its own documentation-check results in
+T-300 and preserves those earlier verification boundaries. No new Windows
+execution or release-gate result is claimed here.
 
 ## Current risks and external blockers
 

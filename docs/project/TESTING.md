@@ -8,10 +8,10 @@
 **Last updated:** 2026-09-08
 **Last reviewed:** 2026-07-26
 **Update when:** A test type, CI requirement, mandatory command, coverage rule, or gate changes.
-**Does not contain:** Local setup procedures (`docs/DEVELOPMENT.md`) or dated review findings (`REVIEWS.md`).
+**Does not contain:** Local setup procedures (`docs/DEVELOPMENT.md`) or dated findings (review records indexed by `REVIEWS.md`).
 
 > Required policy is stated below; dated results and limitations belong in
-> REVIEWS.md and the current STATUS.md snapshot. Editing policy does not renew
+> the records indexed by REVIEWS.md and the current STATUS.md snapshot. Editing policy does not renew
 > the historical review date above.
 
 ---
@@ -281,12 +281,12 @@ All of the following, **on Linux and Windows**, before any tag or distributed bu
 13. No secrets, cookies, or personal paths in the artifact or the repository
 14. Cold start under 3 seconds on the reference machine (`NFR-002`)
 15. **Windows manual verification session completed** — the §9 list performed on a real
-    Windows desktop and recorded in `REVIEWS.md`. Blocking for the first public release;
+    Windows desktop and recorded in the canonical review record. Blocking for the first public release;
     CI green is not a substitute (`OPS-003`).
 
 ## 9. Manual verification
 
-Some things cannot be automated and are checked by hand, recorded in `REVIEWS.md` with the
+Some things cannot be automated and are checked by hand, recorded in the review record with the
 date and platform:
 
 - Screen-reader announcement *quality* — whether Orca and Narrator say something **coherent**.
@@ -924,7 +924,7 @@ stop correction of **Critical or High** defects.
   the original task in review. They become separate follow-up tasks only when they meet the
   task-creation threshold below.
 
-**A finding is not automatically a task.** `REVIEWS.md` records evidence and judgment;
+**A finding is not automatically a task.** Review records contain evidence and judgment;
 `TASKS.md` is the deliberately prioritized execution queue. Use the narrowest honest disposition:
 
 1. correct a tightly coupled item in the current correction when it is safe and in scope;
@@ -1045,6 +1045,52 @@ Apply deliberate adversarial attention to affected boundaries:
 - Layering: architecture §4 and the strength of its enforcement tests.
 - Exclusions: `REQ-EXCL` and `SEC-001`.
 
-The same policy applies to the single serial review file and assigned wave
-records. Storage is described by AGENTS §§6/9; [PROMPTS](PROMPTS.md#review-entry-template)
-holds optional entry wording, not a second policy source.
+The same policy applies to every canonical review record. The storage rule below
+governs serial and wave work; [PROMPTS](PROMPTS.md#review-entry-template) supplies
+optional entry wording.
+
+### Review records and storage
+
+For a task's first formal review, create `docs/project/reviews/<task-id>.md`.
+Keep every review round and final disposition for that task in that same file,
+including after closure. Create no empty stubs for unreviewed tasks and no
+separate files for individual findings or correction rounds.
+
+`docs/project/REVIEWS.md` is the navigation index. Add a task/scope link when a
+record is introduced; substantive findings and their authoritative dispositions
+live in the linked record. The index is not a second findings or status tracker.
+Use the task's review link and the index to find the existing record before writing.
+
+Append each round with its date, actual reviewer, exact reviewed base/head or
+bounded snapshot, verdict, findings, checks and limitations. Keep finding IDs
+stable. Append rechecks and disposition changes identifying the finding they
+supersede; retain previous findings, captured bytes and attribution. Current
+navigation is editable. Distinguish review-document commits from the exact
+implementation head that received approval.
+
+One coherent review spanning several tasks uses one canonical record, named
+for its primary task and listing every covered task. Link each covered task to
+that record; do not duplicate the findings in several files. A release or
+integration review without a task ID uses a stable scope name, such as
+`release-1.0.md`, without creating a bookkeeping task. Existing review-unit,
+convergence and approval rules still apply.
+
+**Legacy transition:** Dated contents already in REVIEWS.md remain there below
+the current navigation. Already-open reviews, including T-299 and T-300's
+existing verification, continue there through closure and later disposition
+updates for that recorded scope. An existing canonical record stays canonical
+if its task reopens. New task files begin with new reviews; this adoption does
+not split, move or duplicate the old body. Any later deliberate migration must
+preserve record bytes and update links without duplicate operative records.
+
+The assigned Reviewer owns substantive findings and independent verification.
+In serial work it updates the corresponding index link. During a wave the
+coordinator owns shared indexing and routing; reviewers deliver record paths,
+reviewed revisions and verdicts. The coordinator records combined verification
+in its assigned integration record and links it from the index. Implementers
+respond with corrections and a handoff; only independent review resolves a
+finding or grants approval. Storage does not change permissions, reviewer
+independence, required checks or task-completion criteria.
+
+This is the canonical local storage rule. AGENTS, DEVELOPMENT, the review index
+and templates route here; they do not define another review policy.

@@ -534,10 +534,12 @@ suite on exactly such a machine. Corrected under `T-064`.)*
 
 Start with README for the product, this guide for local work, ARCHITECTURE and
 DECISIONS for design/rationale, TASKS/STATUS for active work, COMPLETED_TASKS for
-closed task history, and REVIEWS for review evidence. Those files live in
+closed task history, and REVIEWS to find the canonical review records. Those files live in
 `docs/project/`. Review policy lives
 in [TESTING §14](project/TESTING.md#14-review-policy); launch wording lives in
 [PROMPTS](project/PROMPTS.md). Required ownership and permissions remain in AGENTS.
+Use the [review-storage rule](project/TESTING.md#review-records-and-storage) to
+choose a new task file or an existing legacy record before starting a review.
 
 When a task becomes Complete or Cancelled, the task/status owner moves its full
 record from TASKS to the running [COMPLETED_TASKS](project/COMPLETED_TASKS.md) in
@@ -549,7 +551,7 @@ in the same change. New records describe the problem, cause, correction, checks
 and remaining risk; omit fields that add no information. Record review identity
 in its provenance field rather than narrating tools in product explanations.
 
-The [standard adoption record](project/DECISIONS.md#doc-007-shared-source) pins
+The [standard adoption record](project/DECISIONS.md#doc-007-review-storage) pins
 the private shared repository, revision and full source commit. Its README and
 release migration notes explain adoption in other projects. When upgrading this
 project, compare that pinned revision with the proposed release, apply relevant
@@ -649,11 +651,12 @@ the change and report the scope expansion; do not edit it quietly.
 writer of `docs/project/TASKS.md`, `docs/project/STATUS.md`, and the wave-level parts of `docs/project/REVIEWS.md`. Workers
 propose those updates in the end-of-task report (AGENTS.md §11).
 
-**Review records are partitioned during a wave.** The assigned reviewer writes
-`docs/project/reviews/T-0NN.md` directly, on the task branch, and `docs/project/REVIEWS.md` links to it as the
-index rather than duplicating findings. Serial work continues to use the monolithic
-`docs/project/REVIEWS.md`. Everything in TESTING.md §14 — severities, blocking rules, verdicts, the pass budget —
-applies unchanged in either mode.
+**Review storage follows TESTING §14 in serial and wave work.** The assigned
+reviewer writes the canonical task or legacy record on the task branch. The
+coordinator updates `docs/project/REVIEWS.md` navigation and records combined
+verification in its assigned integration record. Follow the
+[storage rule](project/TESTING.md#review-records-and-storage), including the
+legacy transition; severity, blocking, independence and the pass budget apply.
 
 **Approval freezes one exact head.** Approval reads `Approved at <sha>` and covers that
 implementation head only. A later commit may advance the branch if its diff is review-only

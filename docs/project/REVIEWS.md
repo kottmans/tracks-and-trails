@@ -1,26 +1,30 @@
 # REVIEWS.md — Tracks & Trails
 
-**Purpose:** Dated review findings, dispositions and verification evidence.
+**Purpose:** Review navigation and preserved consolidated review history.
 **Owner:** Reviewer · **Maintainer:** Sean Kottman
-**Last updated:** 2026-09-08 (final verification appended; prior records preserved)
+**Last updated:** 2026-09-08 (storage/navigation adoption; dated body unchanged)
 **Update when:** A review is recorded or independently rechecked.
 
 ## Current navigation
 
-Serial work uses this single review file. Splitting or archiving is optional when
-size, navigation or independent ownership warrants it; no split is adopted here.
-During an authorized wave, the assigned record is `docs/project/reviews/T-0NN.md`.
-Only the assigned Reviewer changes substantive findings or their disposition.
+Use [TESTING §14's storage rule](TESTING.md#review-records-and-storage) to
+select the canonical review record. New task reviews use `reviews/<task-id>.md`,
+created when the review occurs, with their links added here. Existing reviews
+continue in their current location. The dated consolidated body below remains
+intact; there are no task review files to pre-create for this adoption.
 
-- [Current review policy](TESTING.md#14-review-policy): severity, blocking,
-  independence, convergence, correction evidence and finding disposition.
+- [Current review policy](TESTING.md#14-review-policy).
 - [Review entry template](PROMPTS.md#review-entry-template).
 - [Active work and correction routing](TASKS.md#in-review).
-- [Latest T-299 correction review](#2026-09-08--t-299-focused-correction-review):
-  Changes requested at `23c3d11`; R1 High and R2 Medium remain blocking.
-- [Final project verification at `5e4b3fc`](#final-verification-5e4b3fc):
-  R1/R2 reproduced; R6 records the unavailable security reporting route.
-  T-300 remains pending independent review.
+- [Earlier consolidated records](#reviews): locate other existing reviews by task ID.
+
+| Task / scope | Existing canonical record and entry points |
+|---|---|
+| T-299 | This file: [focused correction review](#2026-09-08--t-299-focused-correction-review), [subsequent verification](#final-verification-5e4b3fc) |
+| T-300 | This file: [implementation verification](#final-verification-5e4b3fc); further review rounds continue here |
+
+Only the assigned Reviewer changes substantive findings or their disposition.
+The linked entries retain their actual review provenance; navigation grants no approval.
 
 <a id="how-reviews-work-here"></a>
 <a id="standing-risk-focus"></a>

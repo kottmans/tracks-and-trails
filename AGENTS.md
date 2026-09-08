@@ -6,10 +6,10 @@
 **Update when:** Permissions, ownership or repository-wide workflow changes.
 
 This file is self-contained with the canonical documents it links. `DOC-007` adopts
-convention revision **2026-09-08.4**, Standard profile, for this desktop application.
+convention revision **2026-09-08.5**, Standard profile, for this desktop application.
 The external web profile does not apply. Existing numbered sections remain stable;
 the `tt-*` anchors give new references durable names.
-The [adoption record](docs/project/DECISIONS.md#doc-007-shared-source) pins the shared
+The [adoption record](docs/project/DECISIONS.md#doc-007-review-storage) pins the shared
 standard's repository and full commit. Routine work uses these local project rules.
 
 <a id="tt-project"></a>
@@ -44,7 +44,7 @@ and may change without changing the roles.
 | Codex | Reviewer |
 
 Review is a **distinct pass by a different agent**. An implementer does not sign off on
-its own change in `docs/project/REVIEWS.md`.
+its own change in any canonical review record.
 
 **Coordinator / Integrator** exists only while a parallel wave is open (§9). Exactly one
 agent or the maintainer holds it, and it does not implement a worker's task while also
@@ -58,10 +58,10 @@ reviewing it.
 |---|---|---|
 | Planner | `AGENTS.md`, `docs/project/REQUIREMENTS.md`, `docs/project/ARCHITECTURE.md`, `docs/project/DECISIONS.md`, `docs/project/IMPLEMENTATION_PLAN.md`, `docs/project/TASKS.md`, `docs/project/COMPLETED_TASKS.md`, `docs/project/STATUS.md` | source, tests, `pyproject.toml`, build config |
 | Implementer | `src/**`, `tests/**`, `pyproject.toml`, build config, `docs/project/TASKS.md`, `docs/project/COMPLETED_TASKS.md`, `docs/project/STATUS.md`, `docs/project/TESTING.md` (to add a check the change introduces) | `docs/project/REQUIREMENTS.md`, `docs/project/ARCHITECTURE.md`, `docs/project/DECISIONS.md`, `docs/project/IMPLEMENTATION_PLAN.md` |
-| Reviewer | `docs/project/REVIEWS.md` (or the assigned `docs/project/reviews/T-0NN.md`), `docs/project/TESTING.md`, test files, `docs/project/TASKS.md` (approved follow-ups meeting §10's task threshold only) | reviewed source code, unless asked to fix findings |
+| Reviewer | the assigned canonical review record and its `docs/project/REVIEWS.md` index link (§10; coordinator owns the index in a wave), `docs/project/TESTING.md`, test files, `docs/project/TASKS.md` (approved follow-ups meeting §10's task threshold only) | reviewed source code, unless asked to fix findings |
 | Release Manager | version sources, `CHANGELOG.md`, release metadata, `docs/project/STATUS.md` | product scope, during release prep |
 | Documentation Maintainer | `README.md`, `docs/DEVELOPMENT.md`, `docs/project/PROMPTS.md`, current navigation/metadata, retention archives, cross-links, formatting; adopted documentation policy when instructed | product or architecture *meaning*; dated review findings |
-| Coordinator / Integrator (wave only) | `docs/project/TASKS.md`, `docs/project/COMPLETED_TASKS.md`, `docs/project/STATUS.md`, the `docs/project/REVIEWS.md` index and integration result, branches/worktrees the maintainer authorized | a reviewer's substantive findings; worker source outside conflict resolution |
+| Coordinator / Integrator (wave only) | `docs/project/TASKS.md`, `docs/project/COMPLETED_TASKS.md`, `docs/project/STATUS.md`, the `docs/project/REVIEWS.md` index and assigned integration review record, branches/worktrees the maintainer authorized | a reviewer's substantive findings; worker source outside conflict resolution |
 
 **In a parallel wave the assigned exclusive write set overrides this table** (§9). A worker
 writes only its own paths and proposes TASKS, COMPLETED_TASKS and STATUS changes
@@ -122,8 +122,11 @@ closure; a move grants no approval. Cancelled remains Cancelled.
 Both files share task/status ownership; in a wave only the coordinator performs
 transfers. Check both when allocating IDs; never reuse an ID or keep two operative
 entries for one. If work reopens, return its record to TASKS and preserve the prior
-closure as dated history. The placement gate checks both files. Review storage
-remains one `REVIEWS.md` in serial work; partitioning remains optional.
+closure as dated history. The placement gate checks both files.
+
+[Review storage](docs/project/TESTING.md#review-records-and-storage) defaults to
+one file per newly reviewed task and an index in REVIEWS. Existing reviews stay
+in their canonical location; ownership and approval rules apply in every location.
 
 New prose explains behavior, causes, corrections, checks and remaining risk.
 Comments explain constraints and invariants, with stable references for history.
@@ -209,7 +212,8 @@ policy: independence, severity, blocking, pass budget, finding disposition and
 correction evidence. Read it for review or correction work. Its task-creation
 threshold also governs adjacent findings during implementation. Only an
 independent Reviewer records resolution or approval; the implementer reports
-correction and awaits verification. `REVIEWS.md` owns the dated evidence.
+correction and awaits verification. Canonical review records own dated evidence;
+`REVIEWS.md` indexes them. TESTING §14 also owns the storage and legacy-transition rule.
 
 <a id="tt-completion"></a>
 
@@ -236,7 +240,7 @@ Read canonical finding rows before preparing a correction batch.
 | Work queue | `docs/project/TASKS.md` |
 | Completed and cancelled task records | `docs/project/COMPLETED_TASKS.md` |
 | Current state | `docs/project/STATUS.md` |
-| Review evidence | `docs/project/REVIEWS.md`; assigned records during a wave |
+| Review evidence | Canonical record indexed by `docs/project/REVIEWS.md`; storage in TESTING §14 |
 | Testing and review policy | `docs/project/TESTING.md` |
 | Contributor procedures | `docs/DEVELOPMENT.md` |
 | Reusable launch wording | `docs/project/PROMPTS.md` (non-authoritative) |

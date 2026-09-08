@@ -16,7 +16,8 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ### T-300 — `AGENTS.md` is 628 lines and is loaded on every task
 
-**Status:** In Review — revision 2026-09-08.4 adopted; independent review pending.
+**Status:** In Review — revision 2026-09-08.5 adopted; independent review pending.
+**Review record:** [Existing verification and continuing review](REVIEWS.md#final-verification-5e4b3fc).
 **Owner:** Documentation Maintainer (Codex for this implementation, by direct request)
 **Priority:** Current maintainer request
 **Phase:** Phase 4 (documentation system; not a plan deliverable)
@@ -77,7 +78,8 @@ records the boundary and verification controls.
 
 - Adopt DOC-007 without applying the web profile to this desktop product.
 - Preserve numbered AGENTS sections, safety/permission boundaries and the accepted role mapping.
-- Keep one review file; route live policy to TESTING and templates to PROMPTS.
+- Apply the review-storage amendment: new task reviews use one file per task;
+  existing consolidated reviews remain in place. Keep policy in TESTING and templates in PROMPTS.
 - Preserve dated reviews/decisions and archived records byte-for-byte.
 - Keep the status concise, unfinished task scopes unchanged, and closed records reachable
   in COMPLETED_TASKS without completed/cancelled stubs in the active queue.
@@ -115,6 +117,35 @@ This follow-up changes only documentation and the captured blocks' outside contr
 Independent approval and Windows runtime validation remain unverified. The shared
 standards repository was published privately as requested; this application
 repository remains unpushed.
+
+#### Review storage adoption — 2026-09-08
+
+The maintainer requested the proposed task-based review standard be published
+privately and adopted here. DOC-007 now pins revision 2026-09-08.5. TESTING §14
+owns storage; instructions, contributor guidance, templates and the review index
+route there. New formal task reviews use one file per task with all rounds
+together. Existing reviews, including this task's verification and T-299's
+corrections, stay in REVIEWS.md. The dated body is not migrated or rewritten.
+
+This follow-up is documentation-only, based on `cd60bf3`; its head is the commit
+carrying this amendment. Required checks are affected links, preservation,
+current routing, Ruff lint/format and the documentation consumers. The earlier
+full-suite/type results above retain their original scope; no new full-suite,
+Windows execution or independent approval is claimed for this follow-up.
+
+Checks: the three documentation consumers passed **79 tests in 2.78 s**.
+Ruff lint passed and **233 files were already formatted**. All **12 added local
+link occurrences** resolved, with prior anchors retained. The standard's **65
+local links/fragments**, version fields and history checks passed; its private
+release and remote tag match the pinned full commit.
+
+The **2,403,546-byte dated REVIEWS body** matches `cd60bf3` exactly, SHA-256
+`4180bd4b9135b919166230218e53fb728fb0992621cc7f2e41001a803a355b8a`.
+Compare the content after `## Reviews` from that revision with the working file,
+without path or whitespace normalization. Prior dated decisions, retained
+contributor rationale, completed task records and every other active task remain
+unchanged. Existing T-299 corrections in SECURITY.md and its evidence transcript
+are outside this adoption; they are not staged with it or assessed by these checks.
 
 ### T-299 — Adopt the neutral coordination layout and the public-ready baseline
 

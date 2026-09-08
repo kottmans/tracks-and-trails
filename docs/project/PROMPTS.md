@@ -56,6 +56,7 @@ implementer's reasoning is correct.
 
 Scope — base: <commit>  head: <commit>
 Task(s): T-###
+Review record: <new task file or existing indexed record; TESTING §14>
 
 Review the diff against:
 - the task's acceptance criteria and out-of-scope list
@@ -75,12 +76,15 @@ Do not modify source unless explicitly asked to fix findings.
 
 Report: verdict, findings ordered by severity with file:line, why each matters, recommended
 correction, checks run and their real results, unresolved risks, and a merge readiness call.
-Record the review in docs/project/REVIEWS.md, then disposition every finding under AGENTS.md §10's
+Follow TESTING §14's storage rule: use docs/project/reviews/T-###.md for a new review,
+or append to the existing indexed record for a continuing review. Keep rounds and finding
+IDs together. In serial work, add the index link when creating a record.
+Then disposition every finding under AGENTS.md §10's
 task-creation threshold: a Note requests no change; a small requested change is a Low
 finding, not a Note; a minor actionable finding rides the current task's completion sync or
 the next existing task; and a new TASKS.md entry is for independently substantial work only.
 Accepted Risk and Won't Fix need the maintainer's explicit no-action decision.
-In a parallel wave, write docs/project/reviews/T-###.md on the task branch instead, name the exact
+In a parallel wave, write the assigned record on the task branch, name the exact
 implementation head you approved, and leave the index and task routing to the coordinator.
 ```
 
@@ -229,19 +233,23 @@ Also verify: version numbers consistent across sources, CHANGELOG current, the p
 baseline recorded (OPS-002), Qt dynamically linked (NFR-009, LIC-001), third-party license
 texts present, and no secrets or personal paths in the artifact.
 
-Record the verdict and any blockers in docs/project/REVIEWS.md.
+Record the verdict and blockers in the canonical review record chosen under TESTING §14
+and ensure REVIEWS.md indexes it. Continue an existing release review in its existing file.
 Do not tag, commit, push, or publish unless explicitly instructed.
 ```
 
 ## Review entry template
 
 Optional wording; [TESTING §14](TESTING.md#14-review-policy) governs review.
+Choose the record under its [storage rule](TESTING.md#review-records-and-storage),
+then append this round to that record. Use stable finding IDs for later rechecks.
 
 ```markdown
 ## YYYY-MM-DD — <Scope title>
 
 **Reviewer:** <actual person/tool; independent of implementer>
-**Task(s):** T-###
+**Task(s):** <every task covered by this coherent review>
+**Round:** Initial | Focused re-review | Disposition update
 **Base:** <commit>  **Head:** <commit or bounded diff>
 **Platforms verified:** <actual scope>
 **Verdict:** Approved | Approved with follow-ups | Changes requested | Blocked

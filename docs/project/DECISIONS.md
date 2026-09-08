@@ -95,7 +95,7 @@ Current requirements and architecture retain their own canonical authority.
 | [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu) | The row picks a preset; the per-row verbs are the row's own menu | Accepted | — |
 | [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) | The concurrency control leaves the toolbar for Settings | Accepted | — |
 | [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button) | The row's menu says what it removes, and the ⋮ reads as a button | Accepted | — |
-| [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted; revision 2026-09-08.4 by amendment | [Status retention](#doc-007-status-retention); [running completed-task record](#doc-007-completed-tasks); [shared source and captured formatting](#doc-007-shared-source) |
+| [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted; revision 2026-09-08.5 by amendment | [Status retention](#doc-007-status-retention); [running completed-task record](#doc-007-completed-tasks); [shared source and captured formatting](#doc-007-shared-source); [review storage](#doc-007-review-storage) |
 
 ## Dated decision records
 
@@ -5890,3 +5890,34 @@ T-300 applies this to its two historical Python instruments, preserving all
 original content while adding only four outside HTML marker lines. Their prior
 format failures remain dated facts. A current passing format result establishes
 the new boundary, not the truth of past measurements or independent approval.
+
+
+<a id="doc-007-review-storage"></a>
+
+### Task-based review records — 2026-09-08
+
+**Authority:** The maintainer requested publication of the proposed review-storage
+standard and adoption in this project, preserving consolidated history in place.
+**Source:** [kottmans/project-standards](https://github.com/kottmans/project-standards).
+**Adopted revision/tag:** `2026-09-08.5`.
+**Full source commit:** `fbc46867bcb80a047e02fd3b5d8dea7bfec86131`.
+**Convention:** [CONVENTION.md at the adopted commit](https://github.com/kottmans/project-standards/blob/fbc46867bcb80a047e02fd3b5d8dea7bfec86131/CONVENTION.md).
+**Profile:** Standard; desktop application. The WEB companion is not adopted.
+**Deviations introduced by this amendment:** None.
+
+This supersedes the earlier current default of one serial review file. New
+formal task reviews use one file per reviewed task with all rounds together;
+REVIEWS.md supplies navigation. TESTING §14 owns the local storage policy and
+its treatment of multi-task, release and integration reviews. Roles, approval
+criteria and review independence retain their existing authority.
+
+The existing REVIEWS.md body remains byte-identical, below updated navigation.
+Already-open reviews, including T-299 and T-300's existing verification, remain
+there through closure and subsequent disposition updates. No historical finding,
+captured path, ID, verdict or attribution is moved or rewritten. Empty task
+review files are not created. The current queue and index route readers to the
+existing records; future new reviews add their file and index link together.
+
+T-300 owns this documentation-only adoption. Its implementation remains pending
+independent review. This amendment grants no finding resolution, task closure,
+project push, visibility change or additional implementation scope.
