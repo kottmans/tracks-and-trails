@@ -52,6 +52,7 @@ prove that all inherited prose is accurate or replace independent review.
 Save the Python block below to a temporary file and run `.venv/bin/python` on it.
 It reads repository data and Git history; it does not modify either.
 
+<!-- fmt:off -->
 ```python
 """Run from the repository root; compares current docs with the adoption base."""
 from pathlib import Path
@@ -222,6 +223,7 @@ unchanged=['src','tests','tools','packaging','.github','pyproject.toml']
 subprocess.run(['git','diff','--exit-code',BASE,'--',*unchanged],check=True)
 print('Source, tests, tools, packaging, CI and dependency configuration unchanged')
 ```
+<!-- fmt:on -->
 
 
 ## Status evidence relocation — 2026-09-08
@@ -286,6 +288,7 @@ temporary file and run it from the repository root at this follow-up commit to
 check the new preservation boundary. It checks text and navigation; it does not
 independently establish the truth of the historical measurements.
 
+<!-- fmt:off -->
 ```python
 from pathlib import Path
 from urllib.parse import unquote
@@ -359,6 +362,7 @@ print(f'{count} added local links resolve; changes confined to the seven authori
 assert not Path(STATUS).exists()
 print('Status archive removed; immutable source remains available in Git.')
 ```
+<!-- fmt:on -->
 
 
 ## Running completed-task record — 2026-09-08

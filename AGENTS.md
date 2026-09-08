@@ -6,9 +6,11 @@
 **Update when:** Permissions, ownership or repository-wide workflow changes.
 
 This file is self-contained with the canonical documents it links. `DOC-007` adopts
-convention revision **2026-09-08.3**, Standard profile, for this desktop application.
+convention revision **2026-09-08.4**, Standard profile, for this desktop application.
 The external web profile does not apply. Existing numbered sections remain stable;
 the `tt-*` anchors give new references durable names.
+The [adoption record](docs/project/DECISIONS.md#doc-007-shared-source) pins the shared
+standard's repository and full commit. Routine work uses these local project rules.
 
 <a id="tt-project"></a>
 
@@ -101,6 +103,11 @@ Before replacing content from an older revision, inspect intervening changes and
 preserve the current content. Prefer a targeted inverse patch. A clean Git status
 does not prove that committed work will survive. Mechanically compare protected
 records after a move, restore or structural edit.
+
+Keep maintained examples under normal checks. Protect captured historical blocks
+with narrowly paired formatter controls outside their content, preserving their
+bytes. Verify both preservation and continued checking of maintained examples;
+[TESTING §4](docs/project/TESTING.md#captured-evidence-and-formatting) gives the exact controls.
 
 At completion the serial task/status owner, or the wave coordinator, refreshes
 the snapshot and removes duplicated session prose after preserving unique facts.

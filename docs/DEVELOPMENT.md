@@ -549,6 +549,16 @@ in the same change. New records describe the problem, cause, correction, checks
 and remaining risk; omit fields that add no information. Record review identity
 in its provenance field rather than narrating tools in product explanations.
 
+The [standard adoption record](project/DECISIONS.md#doc-007-shared-source) pins
+the private shared repository, revision and full source commit. Its README and
+release migration notes explain adoption in other projects. When upgrading this
+project, compare that pinned revision with the proposed release, apply relevant
+changes, verify them, and update the adoption decision. Routine work uses the
+project's local rules and does not require access to the shared repository.
+
+Follow [TESTING's captured-evidence controls](project/TESTING.md#captured-evidence-and-formatting)
+before formatting a historical instrument. Maintained examples stay checked.
+
 ## Parallel work procedure
 
 **Skip this section unless the maintainer has told you that you are in a parallel wave.** It

@@ -95,7 +95,7 @@ Current requirements and architecture retain their own canonical authority.
 | [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu) | The row picks a preset; the per-row verbs are the row's own menu | Accepted | — |
 | [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) | The concurrency control leaves the toolbar for Settings | Accepted | — |
 | [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button) | The row's menu says what it removes, and the ⋮ reads as a button | Accepted | — |
-| [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted; revision 2026-09-08.3 by amendment | [Status retention](#doc-007-status-retention); [running completed-task record](#doc-007-completed-tasks) |
+| [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted; revision 2026-09-08.4 by amendment | [Status retention](#doc-007-status-retention); [running completed-task record](#doc-007-completed-tasks); [shared source and captured formatting](#doc-007-shared-source) |
 
 ## Dated decision records
 
@@ -5854,3 +5854,39 @@ archival until the queue became crowded. The former
 `archive/TASKS-completed-2026-09-08.md` is consolidated into the running file,
 including the status-evidence supplements. Its original records and introductory
 context are preserved; literal historical references remain as written.
+
+
+<a id="doc-007-shared-source"></a>
+
+### Shared standards source and captured formatting — 2026-09-08
+
+**Authority:** The maintainer requested suggestions 1 and 3: resolve the
+formatting/history conflict and establish a shared version-controlled standards
+repository. The repository is private by explicit instruction.
+
+**Source:** [kottmans/project-standards](https://github.com/kottmans/project-standards).
+**Adopted revision/tag:** `2026-09-08.4`.
+**Full source commit:** `d96bace502dc0b27606c0e8f61952ed229297603`.
+**Convention:** [CONVENTION.md at the adopted commit](https://github.com/kottmans/project-standards/blob/d96bace502dc0b27606c0e8f61952ed229297603/CONVENTION.md).
+**Profile:** Standard; desktop application. The WEB companion is not adopted.
+**Deviations introduced by this amendment:** None.
+
+The standards repository preserves the original two revision .3 files verbatim
+at tag `2026-09-08.3`. Revision .4 uses CONVENTION.md and profiles/WEB.md, with
+adoption and migration guidance. The private source is needed when adopting or
+upgrading standards; this project's required roles, instructions, permissions
+and commands remain available in its local canonical documents. Future shared
+releases are adopted deliberately and do not silently change this project.
+Earlier recorded decisions and deviations retain their existing authority.
+
+Captured historical code and output preserve their recorded bytes. Maintained
+examples and executable tools retain the normal checks. Use narrowly paired
+formatter controls outside each captured block, with its reason/source revision
+discoverable nearby. TESTING §4 defines this project's exact Ruff markers and
+preservation/negative controls. Do not introduce broad path exclusions or exempt
+lint, type, build or behavioral checks when protecting a capture.
+
+T-300 applies this to its two historical Python instruments, preserving all
+original content while adding only four outside HTML marker lines. Their prior
+format failures remain dated facts. A current passing format result establishes
+the new boundary, not the truth of past measurements or independent approval.

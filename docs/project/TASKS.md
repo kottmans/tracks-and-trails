@@ -16,7 +16,7 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ### T-300 — `AGENTS.md` is 628 lines and is loaded on every task
 
-**Status:** In Review — revision 2026-09-08.3 adopted; independent review pending.
+**Status:** In Review — revision 2026-09-08.4 adopted; independent review pending.
 **Owner:** Documentation Maintainer (Codex for this implementation, by direct request)
 **Priority:** Current maintainer request
 **Phase:** Phase 4 (documentation system; not a plan deliverable)
@@ -59,6 +59,20 @@ both paths; COMPLETED_TASKS remains eligible for full CI because it also feeds
 capability and option-audit checks. There is no change to required review, product
 behavior or the Windows/platform limits of local checks.
 
+#### Shared source and captured formatting — 2026-09-08
+
+The maintainer requested a private shared GitHub home for the standards and
+resolution of the formatting/history conflict. DOC-007 pins revision 2026-09-08.4
+at the exact standards commit. The shared repository keeps the unmodified .3
+import and provides adoption/upgrade instructions for other projects. Required
+working rules remain local to this project; the web profile remains unadopted.
+
+Two paired Ruff HTML controls protect the dated Python instruments in the
+existing adoption evidence. Removing the four added marker lines recovers the
+whole prior file byte-for-byte. No source, tests, tool versions or formatter
+exclusion configuration changed. Maintained examples remain checked; TESTING §4
+records the boundary and verification controls.
+
 #### Acceptance criteria
 
 - Adopt DOC-007 without applying the web profile to this desktop product.
@@ -72,14 +86,35 @@ behavior or the Windows/platform limits of local checks.
 
 #### Validation and limits
 
-Results are recorded in the [migration evidence](evidence/2026-09-08-T300-documentation-adoption.md#running-completed-task-record--2026-09-08).
-The full suite passed (3940 passed, 21 skipped); the whole-tree format gate has
-an inherited failure in the historical evidence document, reproduced at `39fcc76`.
+Earlier results are recorded in the [migration evidence](evidence/2026-09-08-T300-documentation-adoption.md#running-completed-task-record--2026-09-08).
+The shared-source/formatting follow-up is based on `97223e1`; its head is the
+commit carrying this amendment. The inherited whole-tree format failure is
+resolved with capture protection.
+
+- Linux full suite, activated environment with local sockets: **3940 passed,
+  21 skipped, 17 warnings in 169.81 s**.
+- Ruff lint passed; whole-tree formatting passed (**233 files already formatted**).
+  `mypy src` passed (**58 source files**); bare mypy and its Windows-platform run
+  each passed (**164 source files**).
+- The pinned Ruff preserved the two real protected instruments and the captured
+  control. A deliberately malformed maintained example outside the markers failed
+  checking, formatted normally, and then passed; removing protection exposed the
+  malformed capture. All original evidence bytes survived, and other tasks,
+  completed records, reviews and prior dated decisions were preserved. All **10**
+  added local project links/fragments resolved.
+- The shared source's **61 local links/fragments** resolved. The .3 import,
+  earlier changelogs, headings and explicit anchors were preserved. The repository
+  is verified private; main and tag .4 resolve to the pinned source commit, and
+  release .4 is published. Original Downloads files now point to that source;
+  their full contents remain at tag .3.
+
 Overall review base: `f465688`; original adoption: `d88e62e`; status-retention
-follow-up: `39fcc76`. The running-file migration is the commit carrying this
-amendment, based on `39fcc76`. All await independent review.
-Only documentation, its consuming tests and their Prose trigger change. No independent approval,
-Windows runtime validation, publication or push is claimed by this implementation.
+follow-up: `39fcc76`; running-file migration: `97223e1`. This follow-up's boundary
+is recorded above. All implementation changes await independent review.
+This follow-up changes only documentation and the captured blocks' outside controls.
+Independent approval and Windows runtime validation remain unverified. The shared
+standards repository was published privately as requested; this application
+repository remains unpushed.
 
 ### T-299 — Adopt the neutral coordination layout and the public-ready baseline
 

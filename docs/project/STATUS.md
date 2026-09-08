@@ -15,9 +15,10 @@ owns phase deliverables and exit criteria.
 
 ## Active work
 
-- **T-300:** Convention revision 2026-09-08.3 adoption implemented; independent
+- **T-300:** Convention revision 2026-09-08.4 adoption implemented; independent
   review pending. DOC-007 records the organization/editorial policy. The single
-  review file remains. This is documentation work, not a Phase 4 deliverable.
+  review file remains. The shared standard is pinned in the adoption decision;
+  required working rules remain local. This is documentation work, not a Phase 4 deliverable.
 - **T-299:** Changes requested in the [focused correction review](REVIEWS.md#2026-09-08--t-299-focused-correction-review)
   at `23c3d11`. R1 (High) still requires correction of SECURITY.md's credential and
   cookie-path assurances. R2 (Medium) still requires the captured evidence output
@@ -32,16 +33,15 @@ owns phase deliverables and exit criteria.
 
 ## Verification
 
-After the running-task-file migration, the Linux full suite passed with
-**3940 passed / 21 skipped / 17 warnings** in **168.63 s**, using the activated
-project environment. Ruff lint, changed Python-file formatting, source/test
-type checks (including Windows-platform bodies), 79 documentation-consumer
-tests and record/navigation checks passed. The whole-tree format check still
-fails on the historical T-300 evidence document, reproduced at base `39fcc76`.
-Independent documentation review remains pending.
+After the shared-source/formatting follow-up, the Linux full suite passed with
+**3940 passed / 21 skipped / 17 warnings** in **169.81 s**, using the activated
+project environment. Ruff lint, whole-tree formatting, source/test type checks
+(including Windows-platform bodies), preservation and formatter controls passed.
+The previous format failure is resolved by controls outside the captured evidence;
+the captured bytes are unchanged. Independent documentation review remains pending.
 
-This adoption's checks and exact scope are in
-[T-300 migration evidence](evidence/2026-09-08-T300-documentation-adoption.md#running-completed-task-record--2026-09-08).
+This follow-up's checks and review boundary are in
+[T-300](TASKS.md#t-300--agentsmd-is-628-lines-and-is-loaded-on-every-task).
 No new Windows execution or release-gate result is claimed here.
 
 ## Current risks and external blockers

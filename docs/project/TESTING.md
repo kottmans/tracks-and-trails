@@ -78,6 +78,34 @@ pytest -m network            # opt-in, real network
 pytest --cov=tracks_and_trails --cov-report=term-missing
 ```
 
+### Captured evidence and formatting
+
+Maintained code examples follow the normal Ruff formatting checks. Dated command
+captures, output and reproduction instruments preserve the original recorded
+bytes. Their source revision and purpose must be discoverable beside the capture.
+Use `text` for new plain transcripts; retain existing capture language labels.
+
+For a captured Python block in Markdown, the pinned Ruff supports the paired
+HTML comments `<!-- fmt:off -->` and `<!-- fmt:on -->`. Put them immediately
+outside that block's opening and closing fences. Close each protected region
+before returning to maintained examples. Do not edit the captured code to add
+Python suppression comments or broadly exclude Markdown/evidence directories.
+Lint, types, application behavior and documentation consumers retain their checks.
+
+When adding or changing protection, use temporary copies to verify that:
+
+- Removing only the new outside markers recovers the original capture bytes.
+- Running the pinned formatter leaves the protected capture unchanged.
+- A deliberately misformatted maintained example outside the markers fails
+  `ruff format --check`, then formats normally while the capture remains unchanged.
+- Removing the markers exposes a deliberately unformatted captured control.
+
+The two historical Python instruments in the T-300 adoption evidence use these
+controls; the surrounding Markdown and maintained examples remain eligible for
+formatting. Their original checks are reproduced at their recorded commits.
+This protects the historical record without establishing its claims' accuracy.
+Standalone executable scripts and maintained reproduction tools remain checked code.
+
 ## 5. Fixtures and test data
 
 - **Recorded `info_dict` fixtures** in `tests/fixtures/infodicts/` are the pinned contract
