@@ -5,7 +5,7 @@
 **Owner:** Reviewer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-28
+**Last updated:** 2026-09-08
 **Update when:** A review completes, a defect is found, a prior finding is rechecked, or a release review occurs.
 **Does not contain:** The prioritized implementation queue — that lives in `TASKS.md`. Findings
 and their dispositions live here; a finding becomes a new task only when it crosses the threshold
@@ -23998,3 +23998,135 @@ any failure there reopens T-271 as the initial review states.
 Before this review append the checkout was seven commits ahead of `origin/main` at `d570362` and
 the worktree was clean. The Reviewer appended only this record. No reviewed source, submitted test,
 task/status text, handoff, branch, push, CI run, live display or remote state was changed.
+
+---
+
+## 2026-09-08 — T-299 convention adoption initial review
+
+**Reviewer:** Codex, independent of the implementation
+**Task:** T-299
+**Base:** `cca7db21c5aa5285969a559ee21060f3db0bd9be`
+**Head:** `1d43c212ce5e6a8274b7d6581a9d1db002807604`
+**Work mode:** Serial, `main`; clean working tree at the implementation head before this append.
+**Platforms verified:** Linux on Spock, x86-64, kernel `7.1.4-204.fc44.x86_64`, Python 3.14.7.
+Windows-targeted static analysis passed; Windows execution was not performed.
+**Verdict:** **Changes requested.** Correct the public privacy guarantees and historical-evidence
+rewrite in T-299. No application algorithm regression was established.
+
+The review covers all 157 changed files, including the 44 relocated coordination/evidence files,
+against T-299, DOC-006, AGENTS.md §§6/8/10 and TESTING.md. The supplied base convention revision
+2026-09-08.1 is the adoption reference. Its web companion is for browser-delivered products;
+this project's recorded delivery target is an installed desktop application, so the web-specific
+refinements are not additional project requirements. Neither external standard was modified.
+
+### Findings and disposition
+
+| ID | Severity | Blocks approval | Location at reviewed head | Finding and correction | Status / owner |
+|---|---|---:|---|---|---|
+| `T299-R1` | **High** | **Yes** | `SECURITY.md:39–42`; `README.md:120–123` | The new privacy guarantees contradict the implementation and the accepted DAT-003 amendments. A diagnostic containing `/home/review-user/browser/cookies.sqlite` survives a real SQLite repository round trip. A queued URL containing userinfo and a query also survives verbatim. Conversely, logging removes URL userinfo/query/fragment, while an ordinary `/home/review-user/Downloads/video.mp4` output path survives unchanged. The table promises no database cookie paths, home-directory redaction, and verbatim logged URLs; the README promises structural exclusion of credentials and cookie material from the database. Those statements can lead a reader to share a database or log under a false privacy assumption. Rewrite the prose around the actual distinct storage and logging boundaries, including arbitrary third-party diagnostic text and user-supplied URLs. Follow DAT-003's **amendments**, not its superseded original scope table. Do not change the accepted runtime policy to fit the new prose. | **Open — Documentation Maintainer; current T-299 correction, followed by independent re-review.** |
+| `T299-R2` | **Medium** | **Yes** | `docs/project/DECISIONS.md:367–371`; `docs/project/REVIEWS.md:1327`, `:1509`, `:1998` | DOC-006 deviation 2 is too broad: the replacement changed historical facts, not just navigation targets. The July review's recorded command is now `git diff --check -- docs/project/REVIEWS.md`; at the reviewed base `7bd9e7b46a241d27dec8e81f7a05b40d12f58439`, only `ai/REVIEWS.md` exists. The historical handoff exclusion now names `docs/project/handoffs/T-012-T-033-review-handoff.md`, and reviewer write-set reports say the reviewer changed the new path. These were literal commands, boundaries and past filenames, not live Markdown links. AGENTS.md §6 specifically requires retaining historical handoff references. Restore literal historical evidence to its original spelling; add a dated relocation note/current navigation separately, and append a correction to DOC-006's claim that all such substitutions preserved the claims. Audit the same class in decisions, dated task/status passages and evidence. TASKS.md and STATUS.md are current-truth files as a whole; their classification does not make a quoted past command a present-day command. | **Open — Documentation Maintainer/Planner; current T-299 correction. No blanket rollback of valid current references is requested.** |
+| `T299-R3` | **Low** | **No** | `SECURITY.md:65–66` | The statement that machine addresses and account names are not committed is false at this head. The implementation deliberately retains historical machine/address evidence, including `docs/project/REVIEWS.md:5824` and `:5909`; removing the helper default also does not remove the old committed version. Describe the helper's actual rule: an explicit `STARBASE_HOST` is required. Do not rewrite history merely to make an unsupported repository-wide absence claim true. | **Open — Documentation Maintainer; T-299 wording correction/completion sync.** |
+| `T299-R4` | **Low** | **No** | `README.md:28`, `:94–103` | “Every push, full suite on both” conflicts with `ci.yml`'s `paths-ignore`, which deliberately excludes README and coordination-only pushes. The adjacent three-minute claim was measured with `-n auto`, whereas the displayed suite command is serial. Qualify CI coverage by its actual triggers, and attach timing to the command/environment that produced it or omit the timing. Keep supported platforms separate from dated verification evidence. | **Open — Documentation Maintainer; T-299 wording correction/completion sync.** |
+| `T299-R5` | **Low** | **No** | `docs/project/TESTING.md:50`; `docs/project/evidence/README.md:3` | Two current-policy passages still name the old root: the documentation-only check category includes `ai/`, and the evidence introduction says everything else in `ai/` is prose. These are not historical quotations. Update them to the current layout. The guarded rewrite's deliberate retention of historical bare roots did not distinguish these current uses. | **Open — Documentation Maintainer; T-299 completion sync.** |
+
+All five findings belong to the existing task. None warrants a new task, an agent-selected
+Accepted Risk disposition, or expansion into an application fix. R3–R5 do not independently keep
+the task In Review. R1–R2 require a focused correction review.
+
+R2 also requires narrowing T-299's blanket prohibition on tracked `ai/` document references:
+current navigation must use the new root, while literal historical evidence keeps its original
+path. Otherwise the task's acceptance criterion would require repeating the preservation defect.
+
+### Independent preservation checks
+
+- Enumerated both committed trees with `git ls-tree -r --name-only`, mapped every old `ai/`
+  file to `docs/project/`, and read the blobs with `git show`. No old tracked file was lost.
+  **187 mapped files are byte-identical.** Binary evidence was included in this comparison.
+- Parsed **194 tracked Python files at each commit**. Derived the path substitution vocabulary
+  from the old tree's filenames, independently of the submitted lookbehind regex. After mapping
+  those paths and removing only actual module/class/function docstrings, **191 executable ASTs
+  match exactly**. The other **3** are the four explicit path joins in `test_task_placement.py`,
+  `test_option_audit.py` and `test_capability_guards.py`; inspected those edits, including the
+  extracted `tasks` local. They target the migrated files correctly.
+- Compared docstring text after whitespace/path normalization separately from executable ASTs.
+  No unexpected docstring content change was found. Compared tokenized comments as well; the
+  remaining differences are decorative separator lengths. The executable comparison retains
+  exact string values and therefore covers implicit-concatenation spaces. No dropped/doubled
+  boundary space was found in the nine highlighted hunks. `persistence/db.py` does update a path
+  in an exception message; the strict claim that every source hunk is a comment/docstring is
+  inaccurate, although the change to that diagnostic citation is intentional and harmless.
+- A separate text comparison over **296** mapped UTF-8 files produced **273** exact normalized
+  matches and **23** exceptions. Inspected the exceptions: metadata/new prose, path-join edits,
+  literal boundaries, a continued example command and the host-setting change. This is a
+  comparison of the two submitted commits, not a reproduction of the implementer's intermediate
+  “291 + 5” comparison. Text normalization is not evidence that a historical substitution was
+  semantically appropriate; R2 survives that check.
+- Checked relative inline Markdown file/image destinations against each tree: **0 broken before,
+  0 broken after**. This does not validate heading anchors, remote URLs or every backtick citation.
+  Independently searched remaining `ai/` references and Python path constructions. Real URL
+  substrings under `claude.ai` and `akamai` remain intact. The synthetic `ai/**` YAML parser
+  fixture does not read a repository path. R5 names the current-policy leftovers.
+- Inspected workflow/configuration changes, SQL and JSON changes, relocated evidence scripts and
+  the helper. Workflow trigger paths and the Ruff evidence ignore track the new root; SQL changes
+  are comments and fixture JSON changes are provenance citations. The evidence `.txt` blobs are
+  unchanged and the relocated `.gitattributes` rule still targets them.
+
+### Checks and actual results
+
+| Check | Result |
+|---|---|
+| `.venv/bin/ruff check .` | **All checks passed**, Ruff 0.16.3. |
+| `.venv/bin/ruff format --check .` | **231 files already formatted**. |
+| `.venv/bin/mypy src tests` | **Success, 164 source files**, mypy 2.3.1. |
+| `.venv/bin/mypy --platform win32` | **Success, 164 source files**. Required by TESTING.md §3 when a test file changes, even when no platform-guarded application body changes. |
+| Initial `.venv/bin/python -m pytest -q -n auto` in the restricted sandbox | **56 failed, 3869 passed, 21 skipped, 17 warnings in 118.15 s**. The environment denied local sockets; the virtualenv executable invocation also left the gate commands off PATH, failing two toolchain checks. This is not a passing run. |
+| `source .venv/bin/activate && python -m pytest -q -n auto`, outside the restricted sandbox | **3925 passed, 21 skipped, 17 warnings in 191.76 s**. Full default Linux suite; real-network/Windows-desktop markers remain excluded by project configuration. |
+| Temporary SQLite/logging privacy probe, synthetic values only | URL and diagnostic cookie path survived storage; URL userinfo/query/fragment removed by `redact`; ordinary home-directory output path preserved. Confirms R1 against behavior. |
+| Helper with `STARBASE_HOST` unset, then empty | **Both rc=1**, with the required-variable message, before temporary-directory creation or SSH. |
+| `.venv/bin/python tools/commit_message_check.py --range cca7db2..1d43c21` | **1 commit checked, rc=0**. |
+| `git diff --check cca7db2 1d43c21` | **Passed**. |
+| Handoff tracking check | `git check-ignore -v` reports `.gitignore:78`; not tracked. |
+
+The static/text comparisons and small in-process probes ran alongside parts of the suite;
+the elapsed time is a run result, not a performance benchmark or isolated timing measurement.
+
+### Remaining verification boundaries and readiness
+
+No Windows runtime, real-display, frozen-build, live-download or fresh-install run was performed
+at this head. The GitHub reporting setting, runner configuration and repository visibility were
+not inspected or changed. Private vulnerability reporting must actually be available before
+publishing SECURITY.md's sole reporting route; this is the implementation's acknowledged external
+prerequisite, not evidence supplied by a green local suite. No separate fresh-agent cold-start
+acceptance test was performed; this review arrived with task and handoff context.
+
+The implementation is **not approved at `1d43c21`**. Correct R1–R2 within T-299, include the small
+wording corrections in the same batch, and submit the exact correction base/head for focused
+re-review. T-300 remains the already-scheduled instruction compression task. The reviewer appends
+this review and updates its document metadata; implementation, task/status routing and both external standards remain
+unchanged. No push or publication is authorized by this review.
+
+### Suggestions for the external standard — proposals only
+
+1. **Define historical path semantics explicitly (§6 and retrofit guidance).** Distinguish a live
+   navigation destination from a path inside a past command, log, reviewed boundary or quotation.
+   Permit documented link maintenance while preserving literal evidence, with a dated relocation
+   map for readers. Classify embedded historical passages as well as entire files.
+2. **Replace “zero-risk, mechanical change” in the retrofit section.** Require checks for the
+   risks actually introduced: tree completeness, relative destinations, configuration consumers,
+   paths assembled in code, parse validity and exact runtime string preservation where rewrapping
+   occurs. A generic full-suite rerun cannot establish all of these properties.
+3. **Make nonstandard verification reproducible (§10 handoffs).** Name the exact compared
+   revisions, command/script, interpreter/environment, normalization/allowlist and blind spots.
+   Require a small positive/negative control for an ad hoc checker whose empty output means
+   success. Pseudocode and counts alone do not identify the instrument that produced the claim.
+4. **Add an exception check to public claims (§22 external-reader check).** For safety/privacy and
+   verification claims, follow all accepted amendments and distinguish storage from logging,
+   supported from tested platforms, and configured from verified external services. Search for a
+   counterexample to absolute words such as “never” and “every,” rather than finding one supporting
+   test. This extends the existing source-trace requirement without creating another public spec.
+5. **Consider making the web profile's general workflow refinements available in the base.**
+   Cohesive commits, optional prompt libraries/derived roadmaps and resource-based isolation are
+   choices about project size and workload, not inherently browser delivery. Keep this project's
+   strict host isolation where its process tests need it; record the reason as project policy.
+
+These are suggestions for a future deliberate revision, not amendments adopted by this review.
