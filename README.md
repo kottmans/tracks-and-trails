@@ -2,8 +2,7 @@
 
 A desktop GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp) on Linux and Windows.
 
-yt-dlp is the best media downloader available, and it is command-line only. Tracks & Trails
-puts a real queue-based interface on it — presets and one-click downloads when you want
+Tracks & Trails gives yt-dlp a queue-based desktop interface — presets and one-click downloads when you want
 simple, and the full format table, output templates, and post-processors when you don't.
 
 Video and audio are equally first-class.
@@ -99,20 +98,21 @@ ruff check . && ruff format --check .
 mypy src tests
 ```
 
-That is **3925 passing tests and 21 skipped**, measured on Linux at the current head.
+Dated test results and their verified revisions are recorded in
+[STATUS](docs/project/STATUS.md#verification).
 `tests/network/` is opt-in and excluded by default; everything else runs offline against recorded
 yt-dlp `info_dict` fixtures.
 
-CI runs the full suite on Linux and Windows for pushes that touch code, plus a nightly run.
-Documentation-only pushes are excluded deliberately (`OPS-011`) — nothing they change is something
-a test reads. The Windows machine is the only Windows environment this project has, so anything it
-does not check is genuinely unverified there rather than merely unautomated. [docs/project/TESTING.md](docs/project/TESTING.md) is
-authoritative for what must be tested and which gates are required, and
-[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) covers local setup in detail.
+CI skips the full suite for the enumerated prose paths in `ci.yml`'s
+`paths-ignore`; TASKS.md changes have a separate placement check in `prose.yml`.
+Gated documentation such as `docs/YTDLP_OPTION_AUDIT.md` can still trigger CI.
+[TESTING](docs/project/TESTING.md) defines required gates and
+[DEVELOPMENT](docs/DEVELOPMENT.md) covers contributor setup.
 
 ## A few engineering choices
 
-These are the ones that shaped everything else. Each links to its recorded decision.
+The [decision index](docs/project/DECISIONS.md#effective-decision-index) links to
+the choices below and their amendments.
 
 - **yt-dlp runs in a spawned child process, never in the GUI process** (`ARC-002`). yt-dlp is a
   large library that can hang, crash, or call `sys.exit`; a worker that takes the window with it
@@ -127,9 +127,8 @@ These are the ones that shaped everything else. Each links to its recorded decis
   request. That is deliberately narrower than "the database holds no secrets": a diagnostic
   yt-dlp emits is stored verbatim because `NFR-006` requires it intact, and yt-dlp sometimes names
   a cookie file in one. `DAT-003` is that trade-off, taken explicitly after two attempts to scrub
-  such prose failed — one of them corrupting a user's output directory. The four review rounds
-  behind it are in [docs/project/REVIEWS.md](docs/project/REVIEWS.md), and are a fair sample of
-  what the process here catches.
+  such prose failed. See [DAT-003 and its amendments](docs/project/DECISIONS.md#effective-decision-index)
+  for the storage/logging boundary and retained diagnostic risk.
 - **No pull-request trigger exists in any workflow, and a test enforces it** (`T-262`, `T-264`).
   Every runner is self-hosted, so a fork's pull request would be arbitrary code execution on a
   personal machine.
@@ -153,13 +152,22 @@ src/tracks_and_trails/   the application
   persistence/           SQLite schema, migrations, repositories
   ui/                    Qt widgets
 tests/                   unit · ui · integration · network (opt-in)
-docs/project/            coordination documents — start with TASKS.md
+docs/project/            requirements, design, work state and review evidence
 docs/                    developer and operator documentation
 packaging/               PyInstaller spec and the frozen smoke test
 tools/                   probes, screenshot generators, one-off diagnostics
 ```
 
 ## Documentation
+
+| Reader purpose | Start here |
+|---|---|
+| Understand and run the product | This README, especially [Running it](#running-it) |
+| Develop and test | [DEVELOPMENT](docs/DEVELOPMENT.md) and [test policy](docs/project/TESTING.md) |
+| Understand design and rationale | [ARCHITECTURE](docs/project/ARCHITECTURE.md) and [decision index](docs/project/DECISIONS.md#effective-decision-index) |
+| Find active work and blockers | [STATUS](docs/project/STATUS.md) and [TASKS](docs/project/TASKS.md) |
+| Inspect review evidence | [REVIEWS](docs/project/REVIEWS.md) |
+
 
 The project keeps a structured record so that current truth, historical record, and rationale
 are separable rather than tangled in one file.

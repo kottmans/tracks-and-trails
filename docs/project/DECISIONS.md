@@ -11,7 +11,7 @@ requirements or design — those live in `REQUIREMENTS.md` and `ARCHITECTURE.md`
 **Does not contain:** Completion notes for routine work. Routine fixes go to `TASKS.md` and `CHANGELOG.md`.
 
 
-> **Paths below are as they were written.** The coordination documents moved from `ai/` to
+> **Paths in dated entries are as they were written.** The coordination documents moved from `ai/` to
 > `docs/project/` on 2026-09-08 (`DOC-006`). Entries here are statements about a past head —
 > a command that was run, a review's write set, a `FILE.md:NNN` citation — so their paths are
 > left alone rather than rewritten. `ai/TESTING.md` below means what is now
@@ -22,6 +22,78 @@ Prefixes: `DOC-` documentation system · `ARC-` architecture · `DAT-` data · `
 `OPS-` operations · `REL-` release · `LIC-` licensing · `UX-` user experience.
 
 ---
+
+## Effective-decision index
+
+Current navigation, maintained when a decision is accepted, amended or superseded.
+Titles identify original subjects; they are not current behavior promises. Follow
+the linked amendments and later governing decisions before applying an entry.
+Within an amended record, explicitly superseded/withdrawn positions remain history.
+Current requirements and architecture retain their own canonical authority.
+
+| ID | Original subject | Record status | Amendments / later governing decisions |
+|---|---|---|---|
+| [DOC-001](#doc-001--adopt-the-ai-project-documentation-convention-standard-profile) | Adopt the AI project documentation convention, Standard profile | Accepted | [DOC-003](#doc-003--parallel-work-is-available-opt-in-and-maintainer-opened); [DOC-004](#doc-004--review-findings-do-not-map-one-for-one-to-tasks); [DOC-005](#doc-005--minor-actionable-findings-ride-existing-work-notes-request-no-change); [DOC-006](#doc-006--adopt-convention-revision-2026-09-081-and-the-neutral-coordination-layout); [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) |
+| [DOC-002](#doc-002--defer-the-ui-heavy-and-operational-documentation-profiles) | Defer the UI-heavy and Operational documentation profiles | Accepted | — |
+| [DOC-003](#doc-003--parallel-work-is-available-opt-in-and-maintainer-opened) | Parallel work is available, opt-in, and maintainer-opened | Accepted | — |
+| [DOC-004](#doc-004--review-findings-do-not-map-one-for-one-to-tasks) | Review findings do not map one-for-one to tasks | Accepted | — |
+| [DOC-005](#doc-005--minor-actionable-findings-ride-existing-work-notes-request-no-change) | Minor actionable findings ride existing work; Notes request no change | Accepted | — |
+| [DOC-006](#doc-006--adopt-convention-revision-2026-09-081-and-the-neutral-coordination-layout) | Adopt convention revision 2026-09-08.1 and the neutral coordination layout | Accepted | [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) |
+| [ARC-001](#arc-001--python--pyside6-qt-6-as-the-implementation-stack) | Python + PySide6 (Qt 6) as the implementation stack | Accepted | — |
+| [ARC-002](#arc-002--consume-yt-dlp-as-a-library-inside-one-isolated-child-process-per-job) | Consume yt-dlp as a library inside one isolated child process per job | Accepted | [ARC-003](#arc-003--versioned-in-arc-002-means-version-controlled-not-version-negotiated) |
+| [DAT-001](#dat-001--sqlite-for-queue-and-history-toml-for-settings) | SQLite for queue and history; TOML for settings | Accepted | [Amended 2026-08-06 (second, and current)](#amended-2026-08-06-second-and-current--there-is-no-history-to-store); [Amended 2026-08-06 (first, superseded)](#amended-2026-08-06-first-superseded--history-is-a-private-ledger-and-the-storage-choice-is-unchanged) |
+| [OPS-001](#ops-001--ffmpeg-is-an-external-dependency-detected-on-linux-bundled-on-windows) | ffmpeg is an external dependency: detected on Linux, bundled on Windows | Accepted | — |
+| [OPS-002](#ops-002--ship-a-pinned-yt-dlp-baseline-that-the-user-can-update-in-place) | Ship a pinned yt-dlp baseline that the user can update in place | Accepted | [Amended 2026-08-27](#amended-2026-08-27--the-override-is-recovery-not-a-standing-choice) |
+| [REL-002](#rel-002--collect_submodulesyt_dlp-stays-as-insurance-against-a-pin-we-do-not-have-yet) | `collect_submodules("yt_dlp")` stays, as insurance against a pin we do not have yet | Accepted | — |
+| [REL-001](#rel-001--ship-frozen-self-contained-artifacts-no-python-required-on-the-users-machine) | Ship frozen, self-contained artifacts: no Python required on the user's machine | Accepted | — |
+| [OPS-004](#ops-004--windows-ci-runners-provide-a-real-desktop-verify-against-it) | Windows CI runners provide a real desktop; verify against it | Accepted | [OPS-005](#ops-005--starbase-is-the-windows-verification-platform-hosted-only-findings-do-not-gate-the-phase); [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously) |
+| [SEC-001](#sec-001--no-circumvention-drm-paywalls-auth-walls-and-rate-limits-are-out-of-scope) | No circumvention: DRM, paywalls, auth walls, and rate limits are out of scope | Accepted | — |
+| [LIC-001](#lic-001--project-license-mit) | Project license: MIT | Accepted | — |
+| [OPS-003](#ops-003--windows-verification-is-ci-only-until-a-real-windows-machine-exists) | Windows verification is CI-only until a real Windows machine exists | Partly superseded | [OPS-004](#ops-004--windows-ci-runners-provide-a-real-desktop-verify-against-it); [OPS-005](#ops-005--starbase-is-the-windows-verification-platform-hosted-only-findings-do-not-gate-the-phase) |
+| [ARC-003](#arc-003--versioned-in-arc-002-means-version-controlled-not-version-negotiated) | "Versioned" in `ARC-002` means version-controlled, not version-negotiated | Accepted | — |
+| [DAT-002](#dat-002--filename-sanitizing-promises-idempotence-not-uniqueness) | Filename sanitizing promises idempotence, not uniqueness | Accepted | — |
+| [DAT-003](#dat-003--a-stored-diagnostic-is-verbatim-cookie-paths-inside-one-are-accepted) | A stored diagnostic is verbatim; cookie paths inside one are accepted | Accepted | [Amended 2026-07-30](#amended-2026-07-30--the-boundary-is-provenance-and-the-table-above-overstated-it-t-049); [Amended 2026-08-10](#amended-2026-08-10--cookie-files-land-and-the-path-never-enters-the-model-t-197) |
+| [SEC-002](#sec-002--a-fixture-commits-values-only-for-the-fields-the-projection-reads) | A fixture commits values only for the fields the projection reads | Accepted | [Amended 2026-08-04](#amended-2026-08-04--a-playlist-entry-is-a-record-not-a-count) |
+| [ARC-004](#arc-004--a-probed-job-downloads-from-ready-the-download-re-extracts-it-does-not-re-probe) | A probed job downloads from `READY`; the download re-extracts, it does not re-probe | Accepted | — |
+| [ARC-005](#arc-005--the-gui-thread-never-waits-on-sqlite-one-writer-thread-owns-every-queue-write) | The GUI thread never waits on SQLite; one writer thread owns every queue write | Accepted | [Amended 2026-07-27](#amended-2026-07-27--every-queue-write-means-the-managers-too); [Amended 2026-07-28](#amended-2026-07-28--only-the-announcement-moved-was-not-true-and-callers-unchanged-cost-the-most) |
+| [OPS-005](#ops-005--starbase-is-the-windows-verification-platform-hosted-only-findings-do-not-gate-the-phase) | `STARBASE` is the Windows verification platform; hosted-only findings do not gate the phase | Accepted | [Amended 2026-07-29](#amended-2026-07-29--the-rule-covers-evidence-obtainable-only-on-a-hosted-image-not-only-findings-that-reproduce-there); [Amended 2026-08-01](#amended-2026-08-01--hosted-windows-carries-the-windows-gate-while-starbase-is-unreachable); [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously) |
+| [OPS-006](#ops-006--linux-verification-is-the-maintainers-own-machine) | Linux verification is the maintainer's own machine | Accepted | [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
+| [OPS-007](#ops-007--t-074s-unreproduced-access-violation-is-accepted-as-residual-risk) | `T-074`'s unreproduced access violation is accepted as residual risk | Accepted | [Amendment, 2026-08-04](#amendment-2026-08-04--the-reopening-clause-fired-and-the-residual-no-longer-clears-the-exit); [What `T-128` found, 2026-08-04](#what-t-128-found-2026-08-04--and-why-this-amendment-needs-the-maintainer-again); [Ruled 2026-08-04: (2), with the confirmation made measurable](#ruled-2026-08-04-2-with-the-confirmation-made-measurable) |
+| [UX-001](#ux-001--pause-is-a-queue-level-drain-remove-never-deletes-a-file) | Pause is a queue-level drain; remove never deletes a file | Accepted | [UX-008](#ux-008--per-job-pause-stays-out-resume-is-what-part-files-do-not-a-state) |
+| [ARC-006](#arc-006--the-single-instance-guard-is-a-qlocalserver-named-from-the-resolved-database-path) | The single-instance guard is a `QLocalServer` named from the resolved database path | Accepted | [Amended 2026-07-29](#amended-2026-07-29--the-ownership-primitive-is-withdrawn-qlocalserver-stays-only-as-the-channel) |
+| [ARC-007](#arc-007--phase-2s-settings-surface-is-settingstoml-plus-one-main-window-control-not-a-dialog) | Phase 2's settings surface is `settings.toml` plus one main-window control, not a dialog | Accepted | [`ARC-007` amended 2026-07-30](#arc-007-amended-2026-07-30--the-concurrency-limit-gets-a-ceiling-req-013-does-not-name); [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) |
+| [OPS-008](#ops-008--the-environment-ownership-gates-three-blind-spots-stay-open) | The environment ownership gate's three blind spots stay open | Accepted | — |
+| [ARC-009](#arc-009--a-durable-probe-continues-into-its-download-a-staging-probe-does-not) | A durable probe continues into its download; a staging probe does not | Accepted | — |
+| [ARC-008](#arc-008--a-settings-file-that-exists-and-cannot-be-used-says-so-a-missing-one-does-not) | A settings file that exists and cannot be used says so; a missing one does not | Accepted | — |
+| [UX-002](#ux-002--automatic-retry-is-three-attempts-at-2s-4s-and-8s-on-network-failures-only) | Automatic retry is three attempts at 2s, 4s and 8s, on `NETWORK` failures only | Accepted | — |
+| [DAT-005](#dat-005--removing-a-history-entry-removes-a-record-never-a-file) | Removing a history entry removes a record, never a file | Accepted | [Amended 2026-08-06](#amended-2026-08-06--one-action-renamed-and-the-boundary-this-entry-exists-for-is-untouched); [Amended 2026-08-05](#amended-2026-08-05--clearing-the-whole-list-on-the-foundation-1-named) |
+| [DAT-004](#dat-004--log-redaction-is-provenance-aware-exact-values-always-shape-rules-only-on-our-own-lines) | Log redaction is provenance-aware: exact values always, shape rules only on our own lines | Withdrawn | [Withdrawn 2026-08-01](#withdrawn-2026-08-01--it-contradicted-an-accepted-decision-and-shipped-a-critical); [Ruled 2026-08-01](#ruled-2026-08-01--accepted-dat-003-wins-and-the-criterion-is-amended) |
+| [UX-003](#ux-003--nothing-enters-the-queue-unprobed) | Nothing enters the queue unprobed | Accepted | — |
+| [UX-004](#ux-004--the-staging-rows-controls-a-visible-preset-a-menu-for-the-rest) | The staging row's controls: a visible preset, a menu for the rest | Accepted | [Amended 2026-08-02](#amended-2026-08-02--the-control-is-on-the-row-and-the-cost-was-measured) |
+| [UX-005](#ux-005--the-main-window-two-tabs-no-detail-pane-and-the-verbs-on-the-row) | The main window: two tabs, no detail pane, and the verbs on the row | Accepted | [Amended 2026-08-14](#amended-2026-08-14--a-failed-row-is-one-line-taller-when-it-has-something-to-suggest); [Amended 2026-08-06](#amended-2026-08-06--one-tab-because-the-second-ones-contents-are-no-longer-a-product); [Amended 2026-08-05](#amended-2026-08-05--a-finished-playlist-is-one-history-row); [Amended 2026-08-05](#amended-2026-08-05--a-divergent-playlist-says-which-row-got-which); [Amended 2026-08-05](#amended-2026-08-05--pause-all-is-deferred-to-req-017); [Amendment, 2026-08-04](#amendment-2026-08-04--the-toolbar-the-state-badge-and-the-selection-t-130); [Amended 2026-08-04, third](#amended-2026-08-04-third--a-playlist-is-many-rows-in-one-folder); [Amended 2026-08-04, again](#amended-2026-08-04-again--the-toolbars-appearance-and-what-the--carries); [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch); [UX-007](#ux-007--the-phase-3-surfaces-ruled-all-25-open-p-clauses); [UX-010](#ux-010--a-queue-groups-chip-is-progress-done-of-total); [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu); [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button); [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) |
+| [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) | Linux runs on the maintainer's Fedora machines, because it is faster as well as free | Accepted | [Amended 2026-08-05](#amended-2026-08-05--the-linux-jobs-are-named-linux-not-after-a-distribution) |
+| [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died) | A prose-only push runs no CI, and the one gate that read prose moved rather than died | Accepted | — |
+| [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously) | Windows runs on `STARBASE`, on every push, and asynchronously | Accepted | [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died); [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
+| [OPS-009](#ops-009--where-each-ci-job-runs-now-that-starbase-is-back-and-minutes-are-metered) | Where each CI job runs, now that `STARBASE` is back and minutes are metered | Partly superseded | [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously); [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died); [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
+| [DAT-006](#dat-006--the-completion-ledger-what-it-stores-and-what-it-deliberately-does-not) | The completion ledger: what it stores, and what it deliberately does not | Withdrawn; purge ruling accepted | [Withdrawn 2026-08-06](#withdrawn-2026-08-06--there-is-no-ledger-so-there-is-nothing-to-decide); [Legacy-data ruling 2026-08-06](#legacy-data-ruling-2026-08-06--the-rows-already-written-are-purged-on-upgrade) |
+| [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch) | The queue does not run until it is started, and it is stopped at every launch | Accepted | — |
+| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | — |
+| [UX-007](#ux-007--the-phase-3-surfaces-ruled-all-25-open-p-clauses) | The Phase 3 surfaces, ruled: all 25 open `[P]` clauses | Accepted | — |
+| [SEC-004](#sec-004--the-fifteen-options-sec-003-did-not-see-are-all-forbidden) | The fifteen options `SEC-003` did not see are all forbidden | Accepted | — |
+| [SEC-005](#sec-005----legacy-server-connect-is-forbidden-on-sec-004s-own-tls-reasoning) | `--legacy-server-connect` is forbidden, on `SEC-004`'s own TLS reasoning | Accepted | — |
+| [SEC-003](#sec-003--the-six-yt-dlp-option-families-that-meet-an-exclusion-ruled) | The six yt-dlp option families that meet an exclusion, ruled | Accepted | [Amended 2026-08-21](#amended-2026-08-21--two-options-this-entry-permitted-are-forbidden-and-the-count-corrected-t-256); [SEC-004](#sec-004--the-fifteen-options-sec-003-did-not-see-are-all-forbidden); [SEC-005](#sec-005----legacy-server-connect-is-forbidden-on-sec-004s-own-tls-reasoning) |
+| [OPS-013](#ops-013--a-recorded-evidence-criterion-binds-where-the-source-reports-it-and-nowhere-else) | A recorded-evidence criterion binds where the source reports it, and nowhere else | Accepted | — |
+| [UX-008](#ux-008--per-job-pause-stays-out-resume-is-what-part-files-do-not-a-state) | Per-job pause stays out; resume is what `.part` files do, not a state | Accepted | — |
+| [UX-009](#ux-009--library-wide-actions-live-in-the-dialog-footer-not-on-a-row) | Library-wide actions live in the dialog footer, not on a row | Accepted | — |
+| [DAT-007](#dat-007--the-thumbnail-cache-partitions-by-database-and-the-shared-one-is-adopted-once) | The thumbnail cache partitions by database, and the shared one is adopted once | Accepted | — |
+| [DAT-008](#dat-008--the-application-writes-no-provenance-of-its-own-into-output-files) | The application writes no provenance of its own into output files | Accepted | — |
+| [UX-010](#ux-010--a-queue-groups-chip-is-progress-done-of-total) | A queue group's chip is progress: done of total | Accepted | — |
+| [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu) | The row picks a preset; the per-row verbs are the row's own menu | Accepted | — |
+| [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) | The concurrency control leaves the toolbar for Settings | Accepted | — |
+| [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button) | The row's menu says what it removes, and the ⋮ reads as a button | Accepted | — |
+| [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted | — |
+
+## Dated decision records
 
 ## DOC-001 — Adopt the AI project documentation convention, Standard profile
 
@@ -5689,3 +5761,53 @@ a very pronounced button, people might even miss that they are there."*
 **A per-entry gesture on playlist rows** (*"Choose which entries download…"* pointing at the
 `T-110` picker) was offered alongside the rename and not taken. Adding one later is its own
 ruling; nothing here forecloses it.
+
+---
+
+## DOC-007 — Adopt revision 2026-09-08.2 and maintain concise current documentation
+
+**Status:** Accepted
+**Date:** 2026-09-08
+**Authority:** Maintainer's direct request to apply the revised standards to this project.
+**Amends:** DOC-001, DOC-006; their original records remain intact.
+
+### Decision
+
+Adopt base convention revision **2026-09-08.2**, **Standard** profile, for the
+desktop application. The Web Project Documentation Profile is not applicable.
+AGENTS retains sections 1–13 and gains stable anchors; detailed contributor
+procedures move to DEVELOPMENT, live review policy to TESTING, and optional
+templates to PROMPTS. README routes readers by purpose.
+
+Keep one REVIEWS.md for serial evidence. Partitioning/periodic archives are an
+option when navigation or ownership warrants them, not a requirement by task
+count. Authorized waves retain DOC-003's assigned review records and isolation.
+Current navigation is editable; dated findings and decisions are preserved.
+
+The task/status owner maintains a concise snapshot and queue at completion.
+Archive older completed task detail with stable links and preserve test-consumed
+records. The one-time status snapshot preserves accumulated measurement/risk
+evidence that cannot safely be reduced to a generic completion log.
+
+Maintain an effective-decision index pointing to original entries, amendments and
+explicit later governing decisions. It is navigation, not a second specification.
+Use only useful metadata; distinguish edit, substantive review and verification.
+New prose explains engineering mechanisms/results and factual corrections.
+Personal prompting/model preferences stay outside project knowledge; retain the
+accepted operational role mapping, required tool adapters and true provenance.
+
+### Consequences and limits
+
+DOC-006 deviation 1 is addressed by the shorter instruction file. Its historical
+path-preservation choice and evidence-directory location remain; a single serial
+review file is now the convention default. This adoption does not rewrite history,
+alter product behavior, close T-299 or T-297, or authorize publication/push.
+T-300's scope is amended by the current request; a different reviewer must assess
+this implementation. Existing review severities, pass budgets, machine isolation,
+commit policy and safety/permission boundaries continue to apply.
+
+### Trade-off
+
+Current documents become smaller while archives retain the original evidence.
+Stable task stubs and the test-consumed T-260 record intentionally keep more than
+only open tasks in TASKS.md. Removing them would break navigation or a live gate.

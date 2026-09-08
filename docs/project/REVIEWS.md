@@ -1,98 +1,33 @@
 # REVIEWS.md — Tracks & Trails
 
-**Purpose:** Record code review, QA, and readiness findings and their evidence.
-**Authority:** Canonical for review evidence and finding status. Historical record — append, never rewrite.
-**Owner:** Reviewer
-**Maintainer:** Sean Kottman
-**Status:** Active
-**Last updated:** 2026-09-08
-**Update when:** A review completes, a defect is found, a prior finding is rechecked, or a release review occurs.
-**Does not contain:** The prioritized implementation queue — that lives in `TASKS.md`. Findings
-and their dispositions live here; a finding becomes a new task only when it crosses the threshold
-below.
+**Purpose:** Dated review findings, dispositions and verification evidence.
+**Owner:** Reviewer · **Maintainer:** Sean Kottman
+**Last updated:** 2026-09-08 (current navigation only)
+**Update when:** A review is recorded or independently rechecked.
 
-> **Paths below are as they were written.** The coordination documents moved from `ai/` to
-> `docs/project/` on 2026-09-08 (`DOC-006`). Entries here are statements about a past head —
-> a command that was run, a review's write set, a `FILE.md:NNN` citation — so their paths are
-> left alone rather than rewritten. `ai/TESTING.md` below means what is now
-> `docs/project/TESTING.md`.
+## Current navigation
 
----
+Serial work uses this single review file. Splitting or archiving is optional when
+size, navigation or independent ownership warrants it; no split is adopted here.
+During an authorized wave, the assigned record is `docs/project/reviews/T-0NN.md`.
+Only the assigned Reviewer changes substantive findings or their disposition.
 
-## How reviews work here
+- [Current review policy](TESTING.md#14-review-policy): severity, blocking,
+  independence, convergence, correction evidence and finding disposition.
+- [Review entry template](PROMPTS.md#review-entry-template).
+- [Active work and correction routing](TASKS.md#in-review).
+- [Latest T-299 correction review](#2026-09-08--t-299-focused-correction-review):
+  Changes requested at `23c3d11`; R1 High and R2 Medium remain blocking.
 
-- **The reviewer is a different agent than the implementer** (`AGENTS.md` §3). An implementer
-  never signs off on its own change.
-- **One coherent change unit per review.** Record the exact base and head commit, or a
-  clearly bounded uncommitted diff. Unrelated features must not accumulate into one review
-  because they share a working tree.
-- **Inspect the diff and the evidence, not the explanation.** A confident narrative from the
-  implementer is not proof of correctness; it anchors the review. Verify against
-  `REQUIREMENTS.md`, the task's acceptance criteria, and `TESTING.md`.
-- **Corrections get a focused re-review** as a distinct follow-up diff, before the work unit
-  expands.
-- **A finding is not automatically a task** (`AGENTS.md` §10; `DOC-004`, `DOC-005`). Every Open
-  finding requires an explicit disposition, but only independently schedulable work crosses into
-  a new `TASKS.md` entry:
-  - A **Note** records useful context and requests no change. A small requested change remains a
-    **Low** finding; smallness does not turn it into a Note.
-  - A minor actionable finding normally rides the current correction or completion sync, an
-    existing task that owns the behavior, or the next existing task's normal completion pass when
-    that does not change its behavioral scope, risk, or acceptance criteria.
-  - Create a new task only when the work is independently actionable, materially worth
-    scheduling, has clear acceptance criteria and priority, and is intended to compete for
-    execution time.
-  - **Accepted Risk** and **Won't Fix** require the maintainer's explicit no-action decision. A
-    reviewer may retract an invalid finding or mark a genuinely overtaken one **Superseded**;
-    smallness alone is not a no-action disposition. Critical findings cannot be closed this way.
-- **This file is the record for serial work.** During a parallel wave (`AGENTS.md` §9) reviews
-  are partitioned: the assigned reviewer writes `ai/reviews/T-0NN.md` on the task branch, this
-  file carries only the index entry and the integration result, and approval names the exact
-  implementation head it covers. Every severity, blocking, verdict, and budget rule below is
-  the same in both modes.
+<a id="how-reviews-work-here"></a>
+<a id="standing-risk-focus"></a>
+<a id="review-entry-template"></a>
 
-**Severity:** Critical · High · Medium · Low · Note
-**Finding status:** Open · Resolved · Accepted Risk · Won't Fix · Superseded
-
-### Standing risk focus
-
-Apply deliberate adversarial attention to these on every review that touches them — they are
-where this project's failures are silent or destructive:
-
-- Process lifecycle: orphaned workers, zombie processes, cancellation races, shutdown ordering
-- Anything crossing the IPC boundary: picklability, unbounded queues, partial messages
-- Filesystem writes: path traversal via rendered templates, Windows-illegal names, overwrite of existing files
-- Log and history content: cookie material, proxy credentials, tokens in URLs (`NFR-007`)
-- SQLite migrations and crash recovery: data loss, states that lie
-- Qt threading: any object touched off the GUI thread
-- Layering violations (`ARCHITECTURE.md` §4) — the enforcement test can be weakened as easily as bypassed
-- `REQ-EXCL` boundaries: anything resembling circumvention (`SEC-001`)
-
-### Review entry template
-
-```markdown
-## YYYY-MM-DD — <Scope title>
-
-**Reviewer:** <role/tool>
-**Task(s):** T-###
-**Base:** <commit>  **Head:** <commit>
-**Platforms verified:** Linux / Windows / both
-**Verdict:** Approved | Changes requested | Blocked
-
-### Findings
-
-| ID | Severity | Area | Finding | Recommendation | Status |
-|---|---|---|---|---|---|
-
-### Checks run
-
-| Check | Result |
-|---|---|
-
-### Readiness
-
-<merge/release call, and what remains>
-```
+The former policy/template headings above now route through the links in this
+index. They are current navigation; the dated records below are historical.
+Paths in those records retain their original spelling. `ai/` was relocated to
+`docs/project/` by `DOC-006`; quoted commands, output and reviewed paths describe
+the commit being reviewed, not instructions for the next review.
 
 ---
 

@@ -5,16 +5,14 @@
 **Owner:** Reviewer — policy; Implementer may add checks a change introduces.
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-28
+**Last updated:** 2026-09-08
 **Last reviewed:** 2026-07-26
 **Update when:** A test type, CI requirement, mandatory command, coverage rule, or gate changes.
-**Does not contain:** Local setup instructions (`docs/DEVELOPMENT.md`, once created).
+**Does not contain:** Local setup procedures (`docs/DEVELOPMENT.md`) or dated review findings (`REVIEWS.md`).
 
-> **Status note:** The toolchain and commands below are live as of `T-001` (2026-07-25) and
-> pass. The suite is still mostly structural — the domain layer (`T-010`) is the first
-> behavior it covers, and nothing downloads yet. Sections
-> §7 (mandatory high-risk coverage) and §8 (release gate) describe the approved target, not
-> current coverage. `docs/project/STATUS.md` is authoritative for what actually runs today.
+> Required policy is stated below; dated results and limitations belong in
+> REVIEWS.md and the current STATUS.md snapshot. Editing policy does not renew
+> the historical review date above.
 
 ---
 
@@ -47,7 +45,7 @@ Three things drive the test strategy, and they come straight from the architectu
 
 | Change | Required before "complete" |
 |---|---|
-| Documentation only — `docs/`, `README.md`, comments | **None.** No behavior changed. |
+| Documentation only — `docs/`, `README.md`, comments | No application suite by default. Check affected links, preserved records and documentation consumers; task-specific checks still apply. TASKS.md changes require its placement check. |
 | Source change | `ruff check`, `ruff format --check`, `mypy src`, plus the tests relevant to the change |
 | Change that adds or edits a **test** file | The above, plus **bare** `mypy` and `mypy --platform win32`. `mypy src` does not read `tests/`, so a test file's type errors reach no gate before the `windows desktop` CI job — see §12 |
 | Change in `core/`, `downloader/`, or `persistence/` | The above, plus the **full** `tests/unit` and `tests/integration` suites — these layers have cross-cutting effects |
@@ -871,3 +869,147 @@ Four things that have bitten here:
 Nowhere automatically — this is a discipline, not a gate. §7's mandatory areas are the places
 it matters most, and their tests should carry a comment naming the specification they were
 transcribed from.
+
+---
+
+## 14. Review policy
+
+The review budget is **one initial comprehensive review plus one focused correction
+re-review**. This cap applies when the remaining findings are **Medium or lower**. It does not
+stop correction of **Critical or High** defects.
+
+- An unresolved Critical or High finding remains in the current review until it is corrected and
+  independently verified. Additional focused passes for those severities do not require
+  maintainer authorization, even after the ordinary budget is exhausted.
+- If the budget is exhausted and only blocking Medium-or-lower findings remain, stop the
+  automatic agent-to-agent loop and ask the maintainer to choose: authorize another focused
+  pass, accept the documented risk, change scope, or carry the work into a named follow-up task.
+  A third pass for those findings requires explicit maintainer authorization.
+- Non-blocking findings receive an explicit disposition; they do not consume another pass or keep
+  the original task in review. They become separate follow-up tasks only when they meet the
+  task-creation threshold below.
+
+**A finding is not automatically a task.** `REVIEWS.md` records evidence and judgment;
+`TASKS.md` is the deliberately prioritized execution queue. Use the narrowest honest disposition:
+
+1. correct a tightly coupled item in the current correction when it is safe and in scope;
+2. put mechanical current-truth/status cleanup in the current task's ordinary completion sync;
+3. route substantive work to an existing task that naturally owns the behavior, or roll a very
+   minor mechanical item into the next existing task's normal completion/coordination pass when
+   that does not change its behavioral scope, risk or acceptance criteria;
+4. record it as a Note only when it adds useful context and requests no change — a small required
+   change is still a Low finding, not a Note;
+5. close a valid actionable finding as Accepted Risk or Won't Fix only on an explicit maintainer
+   no-action decision, or as Superseded only when later facts genuinely make it moot; or
+6. create a new task only when the work is independently actionable, materially worth scheduling,
+   has clear acceptance criteria and priority, and is actually intended to compete for execution
+   time.
+
+Do not create a task merely to satisfy an owner/target field or to convert findings one-for-one.
+If an actionable finding is not to be changed, record the maintainer's no-action disposition and
+rationale. Low documentation, test-strength, wording, or cleanup changes normally stay in the
+current or next existing task's completion sync; do not relabel them as Notes merely because they
+are small.
+
+Every extra pass stays focused on unresolved blockers and the correction diff; it is not a new
+broad audit. A finding that revisits settled ground needs new evidence, not a second opinion.
+If High/Critical corrections repeatedly reproduce the same defect class or create fresh serious
+defects, ask the maintainer to split the work or revisit the design, but do not approve the task
+while the serious defect remains.
+
+Every finding records both **severity** and **Blocks approval: Yes | No**.
+
+Severity is anchored to **consequence if shipped**, not to how hard the fix looks — a one-line
+fix for a data-loss defect is still Critical:
+
+| Severity | Means |
+|---|---|
+| **Critical** | Shipping it causes harm the user cannot undo: data loss or corruption, a breached security or privacy boundary, exposed credentials or cookies, a defeated safety constraint, a licence violation. Also silent wrong results in what this product exists to do — downloading the wrong thing, or writing outside the directory the user chose. |
+| **High** | Core or user-visible functionality the task exists to deliver is broken; a stated requirement or acceptance criterion is unmet; a documented architecture invariant is violated; or a user hits a defect with no workaround. |
+| **Medium** | A correctness or robustness gap with a narrow trigger or a workaround — including a gate that does not actually gate what it claims to. |
+| **Low** | Quality, clarity, maintainability; test strength where the behavior under test is correct. |
+| **Note** | Useful context or an observation for which no change is requested. A small required change is Low, not a Note. |
+
+- **A Critical finding always blocks. There is no "normally."** It is fixed before approval,
+  however late it surfaces and however inconvenient the timing. It may **not** be closed as
+  *Accepted Risk* or *Won't Fix* by an agent — only the maintainer can choose to ship known
+  harm, and that belongs in `docs/project/DECISIONS.md` with its reasoning, not in a review table. Where
+  it touches a safety constraint, AGENTS.md §5's safety exception applies: report the conflict and ask,
+  rather than complying silently.
+- High findings block, especially when functionality is broken. Downgrading one needs a stated
+  reason and explicit maintainer approval recorded with the finding.
+- Medium findings block when they violate an acceptance criterion, required check, approved
+  architecture invariant, security boundary, data-integrity rule, or observable correctness.
+  After the ordinary pass budget, an unresolved blocking Medium finding produces **Blocked**
+  pending the maintainer choice above; it does not authorize another pass by itself.
+- Low and Note findings normally do not block.
+- A valid actionable Low or Medium finding may close as *Accepted Risk* or *Won't Fix* only on an
+  explicit maintainer no-action decision. A reviewer may retract an invalid finding or mark a
+  genuinely overtaken one Superseded; smallness alone is not a no-action disposition.
+- Mechanical documentation, status, cleanup, and test-hardening findings do not block unless
+  they materially misstate safety, behavior, release readiness, or a required gate.
+
+Use these verdicts:
+
+| Verdict | Meaning |
+|---|---|
+| **Approved** | No open blocking findings remain. |
+| **Approved with follow-ups** | No blocking findings remain and deliberately scheduled work survives the task-creation threshold. Do not use this verdict merely because a Low finding exists. |
+| **Changes requested** | At least one blocking finding can be corrected in the current task. |
+| **Blocked** | Approval requires a maintainer decision, external dependency, or scope change. |
+
+The initial review should inspect the complete bounded change and report the full finding set
+it can reasonably establish. Do not intentionally stop at the first defect and leave the
+remaining changed surfaces for later rounds.
+
+A focused re-review verifies the original blocking findings and checks the correction diff for
+regressions; it is not a new unbounded audit. A new Critical or High defect, failed acceptance
+criterion with High consequences, High correction regression, or direct continuation of a
+Critical/High blocker continues through another focused correction and verification pass.
+Medium-or-lower discoveries follow the pass budget above. Other new, pre-existing, adjacent,
+Low, or non-blocking Medium findings are dispositioned under the task-creation threshold; they do
+not automatically reopen the reviewed task, create another review pass, or create another task.
+
+Before returning a correction batch, the Implementer must:
+
+- map every blocking finding to its code and test evidence;
+- reproduce the defect with a failing test or deterministic probe when practical;
+- mutation-check or otherwise demonstrate that weakening the correction makes the evidence
+  fail;
+- audit sibling fields, variants, and call paths when the finding represents a defect class;
+  and
+- address all in-scope blocking findings in one batch.
+
+Only the Reviewer marks a finding **Resolved** after independent verification. The Implementer
+records it as corrected and awaiting re-review. A non-blocking finding does not keep the original
+task in `In Review`; if it remains Open, it must be routed under the threshold above — including
+the next existing task for very minor mechanical cleanup — not given a synthetic task merely for
+bookkeeping.
+
+
+### Review scope and standing risk focus
+
+The Reviewer is independent of the implementer (AGENTS §3). Inspect the exact
+base/head or bounded diff against acceptance criteria, requirements, amended
+decisions, architecture and test policy. Inspect evidence directly rather than
+treating an implementation narrative as proof. Keep one coherent change unit
+per review and focused corrections within that unit. Record the reviewed state,
+actual reviewer, checks, limitations, verdict and each finding's blocking status.
+Human acceptance is a separate event; never substitute it for automated provenance.
+Finding statuses are Open, Resolved, Accepted Risk, Won't Fix and Superseded.
+
+Apply deliberate adversarial attention to affected boundaries:
+
+- Process lifecycle: orphaned workers, zombies, cancellation races, shutdown.
+- IPC: picklability, bounded queues and complete messages.
+- Filesystem writes: traversal, Windows-illegal names and overwrites.
+- Logging and stored content: cookies, credentials, URL tokens (`NFR-007`, DAT-003
+  including both its July 30 and August 10 amendments).
+- SQLite migration and crash recovery: loss and inconsistent state.
+- Qt threading and ownership: GUI-thread access and destruction.
+- Layering: architecture §4 and the strength of its enforcement tests.
+- Exclusions: `REQ-EXCL` and `SEC-001`.
+
+The same policy applies to the single serial review file and assigned wave
+records. Storage is described by AGENTS §§6/9; [PROMPTS](PROMPTS.md#review-entry-template)
+holds optional entry wording, not a second policy source.

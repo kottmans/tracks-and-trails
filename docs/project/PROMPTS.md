@@ -6,7 +6,7 @@ Supporting workflow material, not the product's introduction.
 **Owner:** Documentation Maintainer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-27
+**Last updated:** 2026-09-08
 **Update when:** A repeated workflow needs a template, or completion-reporting requirements change.
 
 > These prompts are convenience templates only. `AGENTS.md` and the authoritative project
@@ -58,7 +58,7 @@ Review the diff against:
 - docs/project/ARCHITECTURE.md, especially the §4 layering rules and the §7 error taxonomy
 - docs/project/TESTING.md §3 and §7
 
-Apply the standing risk focus in docs/project/REVIEWS.md: process lifecycle and orphaned workers,
+Apply the review policy and standing risk focus in docs/project/TESTING.md §14: process lifecycle and orphaned workers,
 the IPC boundary, filesystem path safety, log redaction, migrations and crash recovery,
 Qt threading, and REQ-EXCL boundaries.
 
@@ -225,4 +225,32 @@ texts present, and no secrets or personal paths in the artifact.
 
 Record the verdict and any blockers in docs/project/REVIEWS.md.
 Do not tag, commit, push, or publish unless explicitly instructed.
+```
+
+## Review entry template
+
+Optional wording; [TESTING §14](TESTING.md#14-review-policy) governs review.
+
+```markdown
+## YYYY-MM-DD — <Scope title>
+
+**Reviewer:** <actual person/tool; independent of implementer>
+**Task(s):** T-###
+**Base:** <commit>  **Head:** <commit or bounded diff>
+**Platforms verified:** <actual scope>
+**Verdict:** Approved | Approved with follow-ups | Changes requested | Blocked
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding and evidence | Disposition/status |
+|---|---|---|---|---|
+
+### Checks run
+
+| Check and scope | Actual result |
+|---|---|
+
+### Readiness
+
+<Remaining risks, unverified areas and approval/merge limits.>
 ```

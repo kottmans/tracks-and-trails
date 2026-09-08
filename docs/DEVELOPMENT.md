@@ -5,7 +5,7 @@
 **Owner:** Implementer / Documentation Maintainer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-25
+**Last updated:** 2026-09-08
 **Update when:** Setup, dependencies, or the local workflow change.
 **Does not contain:** What must be tested or which gates are required (`docs/project/TESTING.md`).
 
@@ -526,3 +526,313 @@ release.
 *(This section said "there is currently no Windows machine available, so Windows is verified
 through CI only" while the same file's "Verifying on Windows" section above described running the
 suite on exactly such a machine. Corrected under `T-064`.)*
+
+---
+
+## Documentation workflow
+
+Start with README for the product, this guide for local work, ARCHITECTURE and
+DECISIONS for design/rationale, TASKS/STATUS for active work, and REVIEWS for dated
+evidence. Those coordination files live in `docs/project/`. Review policy lives
+in [TESTING §14](project/TESTING.md#14-review-policy); launch wording lives in
+[PROMPTS](project/PROMPTS.md). Required ownership and permissions remain in AGENTS.
+
+At completion, the task/status owner updates current state and retention under
+[AGENTS §6](../AGENTS.md#tt-history). The decision owner updates the amendment index
+in the same change. New records describe the problem, cause, correction, checks
+and remaining risk; omit fields that add no information. Record review identity
+in its provenance field rather than narrating tools in product explanations.
+
+## Parallel work procedure
+
+**Skip this section unless the maintainer has told you that you are in a parallel wave.** It
+describes an option, not an expectation: most work on this project is serial (AGENTS.md §7), nothing here
+requires a wave, and no task is worse for having been done one at a time.
+
+A **parallel wave** is several agents implementing different tasks at the same time. Only the
+maintainer opens one, per wave. An agent does not start one, create its branches, split a task
+into workers, or propose a wave in place of doing the task in front of it. Two tasks merely
+*being* independent is not a reason to run them concurrently — a wave adds base selection,
+write-set assignment, serial integration, and combined verification, and that overhead only pays
+off when the tasks are substantial as well as independent.
+
+**A task may join a wave only if all of these hold.** Otherwise sequence it, or land the
+shared piece first as its own task:
+
+1. Its dependencies are already integrated at the wave's common base.
+2. Its acceptance criteria can be checked without another worker's unfinished code.
+3. Its write set does not overlap another active worker's.
+4. The interfaces it depends on already exist — no two workers inventing the same seam.
+5. `pyproject.toml`, migration sequence numbers, generated assets, and other single-owner
+   surfaces are assigned to one worker or deferred to integration.
+6. Its runtime resources are isolated (see below).
+
+**Setup — coordinator.** Pick one stable `main` commit as the common base, assign a wave ID
+`PW-###`, and per task: branch `task/T-0NN-slug`, its own worktree, exclusive write set,
+read-only shared surfaces, runtime allocation, review-record path, integration order. Record
+those as fields on the `docs/project/TASKS.md` entry. Do **not** record worktree paths there — they are
+machine-specific; the branch and starting commit are the durable identifiers. Start a wave at
+two or three workers, not more.
+
+**One branch, one worktree, one writer.**
+
+```bash
+BASE="$(git rev-parse main)"
+git worktree add -b task/T-042-<slug> ../tracks-and-trails-T-042 "$BASE"
+```
+
+Branches alone are not enough: two agents in one checkout share an index and working tree, and
+switching a branch or editing the same file destroys the other's uncommitted work. That has
+already happened here — a reviewer fell back to `git archive` mid-review because unrelated work
+had entered the shared tree. The primary checkout stays on `main` for coordination.
+
+**One worker per machine.** Separate worktrees are not enough either: **do not run concurrent
+workers on one host**, even with disjoint write sets. A wave gets its parallelism by putting one
+workstream on each machine, each with its own clone. Three reasons specific to this repository:
+
+- **The integration tests that spawn and kill real worker processes contend** — the files are
+  listed under *Runtime isolation* below. Two of those suites on one machine produce intermittent
+  failures that look like defects in the code under test.
+- **`.venv` is an editable install pointing at the primary checkout's `src`**, so a second worktree
+  silently tests the *other* agent's code unless every command overrides `PYTHONPATH`. One worker
+  per machine removes the trap rather than relying on remembering it.
+- **A machine running a measurement is fully committed.** The `T-128` soak (`tools/soak.sh`) runs
+  the whole suite sixty times and measures timing; any second workload invalidates it. So does a CI
+  job — **a machine registered as a self-hosted runner is not idle**, and its runner service must be
+  stopped for the duration or the contention recorded.
+
+**Record which machine produced a measurement** in `docs/project/STATUS.md` or the evidence artifact:
+reproducing a timing-dependent result requires knowing the host, and a baseline taken on one
+machine does not transfer to another. Host names do not belong in a task entry's durable fields,
+for the same reason worktree paths do not.
+
+**Runtime isolation, specific to this repository.**
+
+- `.venv` holds an **editable** install pointing at the primary checkout's `src`, so a second
+  worktree silently tests the *other* agent's code. Override it:
+  `PYTHONPATH=$PWD/src /path/to/primary/.venv/bin/python -m pytest` (and the same for `mypy`),
+  then verify once with
+  `python -c "import tracks_and_trails; print(tracks_and_trails.__file__)"`.
+- **The integration tests that spawn and kill real worker processes** contend with each other:
+  run them in one worktree at a time. They live in `tests/integration/` — `test_manager.py`,
+  `test_crash_kill.py`, `test_single_instance.py`, `test_phase_2_exit.py`, `test_composition.py`
+  and `test_worker.py`.
+  *(This said "`-m process_tree` tests", and **no test carries that marker**: it was retired when
+  `T-019` made cancellation reap the whole process group. So the instruction selected nothing and
+  could not be followed. Naming the files is worse than a marker and better than a marker that
+  does not exist; `T-123` owns identifying them properly, because parallelising the suite needs
+  exactly that list.)*
+- Qt tests need `QT_QPA_PLATFORM=offscreen`. Every worker's tests must use their own temp,
+  database, and config paths — never a shared per-user application directory.
+
+**Write sets are permissions, not predictions.** Needing an unassigned file — a shared module,
+`pyproject.toml`, a migration, a generated asset — is a coordination event. Stop that part of
+the change and report the scope expansion; do not edit it quietly.
+
+**Shared coordination files are frozen for workers.** During a wave the coordinator is the only
+writer of `docs/project/TASKS.md`, `docs/project/STATUS.md`, and the wave-level parts of `docs/project/REVIEWS.md`. Workers
+propose those updates in the end-of-task report (AGENTS.md §11).
+
+**Review records are partitioned during a wave.** The assigned reviewer writes
+`docs/project/reviews/T-0NN.md` directly, on the task branch, and `docs/project/REVIEWS.md` links to it as the
+index rather than duplicating findings. Serial work continues to use the monolithic
+`docs/project/REVIEWS.md`. Everything in TESTING.md §14 — severities, blocking rules, verdicts, the pass budget —
+applies unchanged in either mode.
+
+**Approval freezes one exact head.** Approval reads `Approved at <sha>` and covers that
+implementation head only. A later commit may advance the branch if its diff is review-only
+(the review record, review metadata). Any change to source, tests, build files, dependencies,
+generated artifacts, or evidence creates a new implementation head and needs focused re-review
+of the changed part before integration.
+
+**Integration is serial.** The coordinator merges approved branches one at a time in dependency
+order, resolves conflicts centrally, and runs the relevant checks after each step. A conflict
+resolution that changes behavior is new implementation: keep it as a distinct diff and have it
+reviewed, rather than burying it in a merge. Workers never merge or rebase a moving `main` into
+themselves — that silently moves the review boundary.
+
+**Verify the combined tree, not just the branches.** After the wave, run what `docs/project/TESTING.md`
+§3 requires for the *union* of the layers touched. Branch-local green does not prove the merged
+result works.
+
+**Clean up last.** Remove worktrees and delete branches only after the integrated commit and
+its evidence are secure, and never for a branch holding unique unintegrated work.
+
+
+## Roadmap maintenance
+
+**The maintainer keeps one roadmap, as a published artifact, for their own reference.** It is
+**never committed** — no `roadmap*.html`, no `roadmap*.md`, nothing under `docs/`. Two
+were removed from this repository on 2026-08-08 for that reason.
+
+**It is derived, not authoritative.** `docs/project/IMPLEMENTATION_PLAN.md` §Phase *N* and `docs/project/TASKS.md`
+§`## Proposed — Phase N` remain canonical; the roadmap is a rendering of them. **Where they
+disagree, they are right and it is stale.** Nothing in the repository may cite it, for the reason
+handoffs may not be cited: it is not a home.
+
+**Update it — the same artifact, keeping its URL — when:**
+
+- a phase exits or begins,
+- a task's disposition changes in a way the phase's shape depends on (approved, blocked, re-phased,
+  or newly filed),
+- a ruling opens or closes.
+
+**One artifact, updated in place.** Not one per phase: a bookmark that keeps working is the point,
+and a graveyard of superseded roadmaps is the thing this rule replaces.
+
+**What it contains**, in this order:
+
+1. **A dependency graph** of the phase's tasks — real edges, not a decorative sequence. Label an
+   edge where the *reason* for the dependency is not obvious from the two node names.
+2. **The stages**, expanded: each task's one-line substance and the trap in it.
+3. **Every plan deliverable mapped to an owning task**, and **every exit criterion mapped** too. A
+   deliverable with no owner is the thing this section exists to surface.
+4. **Which entries are *not* plan deliverables** — carried-in polish and defects. They must not be
+   counted as satisfying one.
+5. **Open rulings**, listed separately, each named as the maintainer's to take.
+
+**Diagram legibility is part of the deliverable.** Mermaid in a rendered artifact does not honour
+HTML in labels — `<br/>` and `<b>` are stripped, so `T-200<br/>Accessibility` renders as
+`T-200Accessibility`. **Use single-line plain-text labels with a visible separator.** Mermaid also
+scales an SVG down to its container by default, which shrinks text as the graph grows; set
+`useMaxWidth: false` and let the container scroll.
+
+
+## Commit message format
+
+A commit message is read twice: once as a one-line subject while scanning history, and once in
+full while investigating something that broke. The two readings want different things, and the
+format below serves each separately rather than compromising between them.
+
+### Shape
+
+```
+<subject, imperative, ≤50 chars, no trailing period>
+<blank>
+<why-paragraph: 1–3 sentences of reasoning that is not recoverable from the diff>
+<blank>
+- <one discrete change, wrapped at 72>
+- <another>
+<blank>
+Task: T-0NN
+```
+
+### Subject — the only line most tools show
+
+- **≤50 characters.** Hard cap 60. This is not stylistic: VSCode's Source Control pane, GitHub's
+  commit list and `git log --oneline` in a split terminal all clip around 50, which is why
+  history has looked "cut off" despite nothing being truncated in git itself.
+- **Imperative mood** — "Add", "Close", "Record", "Fix". It completes the sentence *"Applied,
+  this commit will…"*.
+- **No trailing period.** No task ID, no `(T-0NN)` suffix, no `feat:`/`fix:` prefix.
+- Say what changed in the product's own vocabulary, not the file's. "Bound stored geometry to
+  Qt's maximum" beats "Update paths.py".
+
+### Why-paragraph — the part that only you know
+
+One to three sentences on **why**, or what the change means, or what it cost. The diff already
+records what changed; it cannot record that a previous fix was itself wrong, or that a test was
+passing vacuously, or that a design was chosen over a specific alternative. That is the content
+worth keeping.
+
+Skip it only when the subject is genuinely self-explanatory — a typo fix, a status-file pointer
+update. A body that merely restates the subject in longer words is worse than no body.
+
+### Bullets — one per discrete change
+
+Bullets, not paragraphs, once there is more than one thing to report. Wrap at 72 columns so the
+message stays readable under `git log`'s four-space indent.
+
+**Budget: about 150 words, and at most ~8 bullets.** Past that, the commit is doing too much and
+should have been split, or the detail belongs in `docs/project/TASKS.md` where it is indexed and editable.
+A commit message is an immutable record, so it is the worst place to put anything that will need
+revising.
+
+### Trailers
+
+Machine-readable, last, after a blank line:
+
+| Trailer | Use |
+|---|---|
+| `Task:` | `T-0NN`, or `T-027..T-032` for a range. Omit only for work no task covers. |
+| `Refs:` | Decision or requirement IDs the commit turns on — `ARC-002`, `REQ-011`. |
+| `Review:` | Finding IDs closed by this commit — `T034-R5`, `T035-R3`. |
+
+Look-ups stay easy: `git log --grep='Task:.*T-034'`.
+
+**No AI tools as authors or co-authors** — AGENTS.md §7 already governs this, and it applies to trailers
+specifically. No `Co-Authored-By:` for an AI tool, no "generated with" footer. The commit history
+names the human maintainer only.
+
+### Worked example
+
+Rewriting this repository's longest message (516 words, 8 unstructured paragraphs):
+
+```
+Close the Phase 0 exit review findings
+
+Eight findings plus the four that survived the first re-review. The
+theme running through them: stored window geometry was treated as
+trusted input when it is not, and the first fix was itself incomplete
+in a way its own test concealed.
+
+- Bound coordinates to Qt's QWIDGETSIZE_MAX. Validating the four
+  numbers individually missed that QRect derives right() as
+  x + width - 1, so at y = 2**31 - 1 the bottom edge wrapped negative
+  and off-screen recovery never fired.
+- Reject bools, inf and nan in load_geometry, whose contract is that
+  it never raises.
+- Run T-020's frozen negative proof on Windows, not Linux alone.
+- Schedule quit from showEvent so the harness never touches Qt from a
+  foreign thread.
+
+Task: T-027..T-032
+Review: T027-R1..T032-R4
+```
+
+Same facts, a third of the words, and a reader looking for one finding can find it.
+
+### Mechanics
+
+`.gitmessage` at the repository root is the template; `git config commit.template .gitmessage`
+activates it per clone (it is not set automatically by cloning).
+
+Write the message in an editor or a file, not as a chain of `-m` flags — `-m` encourages
+single-line messages and makes wrapping accidental.
+
+## Historical rationale for handoff retention
+
+The following rationale is retained from `f465688`. Current instructions are in
+[AGENTS §6](../AGENTS.md#tt-history); this passage is historical context.
+
+### Handoffs are messages, not records — and are never committed
+
+**A handoff is one agent talking to another.** It asks for a review, or carries a correction back.
+
+**It is never committed.** `docs/project/handoffs/` is in `.gitignore`. A handoff may exist as a local
+untracked file so a reviewer working in this checkout can read it, and it may equally be delivered
+to the maintainer as text to paste — **both are fine; a commit is not.** Once its verdict is in
+`docs/project/REVIEWS.md` the message has done its job, and what is durable is the verdict and the task entry.
+
+*(This first read "transient, deleted once its verdict is recorded", which still put 64 of them in
+the history. The maintainer's rule is narrower and simpler: **not in the repository at all.**)*
+
+**Durable records cite commits, never handoffs.** A commit SHA identifies a tree that still exists;
+a handoff filename identifies a message that is supposed to stop existing. If a record needs a fact
+that appeared in a handoff — what was claimed, what a Planner recommended, what a submission got
+wrong — **it states the fact.** Writing *"see `docs/project/handoffs/…`"* means the record has not recorded
+the thing.
+
+**This was a real defect, found 2026-08-09.** Sixty-four handoffs had accumulated in nine days, and
+nine were cited from durable records. **Not one citation carried content** — every one was
+provenance a SHA already supplied, a bare pointer, or a description of a past event. One cited a
+handoff in order to say it was *not* part of the reviewed boundary. A durable record that delegates
+its content to a file scheduled for deletion is a document whose truth lives somewhere it does not
+control, which is the same failure as a stale current-truth claim.
+
+**Historical records keep their references, and that is not an exception to the rule.** This section
+binds **current-truth** files, which are rewritten to reflect reality. `REVIEWS.md` and
+`DECISIONS.md` are append-only above, and *"a review was requested in `docs/project/handoffs/X`"* stays true
+after `X` is deleted — it is a statement about the past, not a live pointer. **Rewriting them to
+remove a reference would be the larger error.** So a deleted handoff may leave a name behind in
+history; what it must not leave behind is a current-truth file that cannot answer its own question.
