@@ -25,7 +25,7 @@ Concretely, that means:
 |---|---|
 | **You can** | clone it, install it, and download things with it today |
 | **You cannot** | install it from a release — there are no installers or packages yet |
-| **Targets** | Linux (Fedora, x86-64) and Windows 10/11 (x86-64). CI runs the full suite on both on every push |
+| **Targets** | Linux (Fedora, x86-64) and Windows 10/11 (x86-64), both exercised by CI |
 | **Not supported** | macOS |
 
 [docs/project/STATUS.md](docs/project/STATUS.md) is the only document authoritative for what is
@@ -93,7 +93,7 @@ path on your machine.
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest -q                       # the suite
+python -m pytest -q -n auto               # the suite, in parallel
 python -m pytest -q tests/unit            # headless, fast, no Qt
 ruff check . && ruff format --check .
 mypy src tests
@@ -103,9 +103,10 @@ That is **3925 passing tests and 21 skipped**, measured on Linux at the current 
 `tests/network/` is opt-in and excluded by default; everything else runs offline against recorded
 yt-dlp `info_dict` fixtures.
 
-CI runs the full suite on both Linux and Windows on every push. The Windows machine is the only
-Windows environment this project has, so anything it does not check is genuinely unverified there
-rather than merely unautomated. [docs/project/TESTING.md](docs/project/TESTING.md) is
+CI runs the full suite on Linux and Windows for pushes that touch code, plus a nightly run.
+Documentation-only pushes are excluded deliberately (`OPS-011`) — nothing they change is something
+a test reads. The Windows machine is the only Windows environment this project has, so anything it
+does not check is genuinely unverified there rather than merely unautomated. [docs/project/TESTING.md](docs/project/TESTING.md) is
 authoritative for what must be tested and which gates are required, and
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) covers local setup in detail.
 
@@ -121,12 +122,14 @@ These are the ones that shaped everything else. Each links to its recorded decis
   against the newer yt-dlp so upstream drift is found here rather than by a user.
 - **The queue is SQLite with one committed statement per write** (`DAT-001`). There is no state
   in which half a job is stored, and the crash test proves it by killing a real process.
-- **Cookie paths and proxy credentials are refused at the model boundary** (`REQ-026`,
-  `DAT-003`), so they cannot enter a stored request at all — which is a stronger guarantee than
-  filtering them on the way out, and a narrower one than "the database holds no secrets". It took
-  four review rounds to get right, and the record of those rounds in
-  [docs/project/REVIEWS.md](docs/project/REVIEWS.md) is worth reading as an example of what the
-  process here actually catches.
+- **Proxy credentials and cookie paths are refused at the model boundary** (`REQ-026`,
+  `DAT-003`) rather than filtered on the way out, so the application cannot put one into a stored
+  request. That is deliberately narrower than "the database holds no secrets": a diagnostic
+  yt-dlp emits is stored verbatim because `NFR-006` requires it intact, and yt-dlp sometimes names
+  a cookie file in one. `DAT-003` is that trade-off, taken explicitly after two attempts to scrub
+  such prose failed — one of them corrupting a user's output directory. The four review rounds
+  behind it are in [docs/project/REVIEWS.md](docs/project/REVIEWS.md), and are a fair sample of
+  what the process here catches.
 - **No pull-request trigger exists in any workflow, and a test enforces it** (`T-262`, `T-264`).
   Every runner is self-hosted, so a fork's pull request would be arbitrary code execution on a
   personal machine.

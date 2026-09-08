@@ -38,17 +38,24 @@ listener, and no telemetry of any kind. The sensitive material it touches is all
 |---|---|---|
 | Cookie paths and browser profiles | **Refused at construction.** `DownloadRequest` raises on a cookie path, so one cannot enter a stored request | Redacted **when the path is recognizable as a cookie store** — `cookies.txt`, `cookies.sqlite`, and the documented patterns. A cookie file with an ordinary name, such as `session.txt`, is **not** recognized and survives |
 | Proxy credentials | **Refused at construction**, including scheme-less and network-path forms | Userinfo stripped from a URL or a bare `user:pass@host` |
-| URLs the user queues | **Stored verbatim**, query string included, by explicit decision | Query string, userinfo and fragment stripped |
+| URLs the user queues | **Stored verbatim** — query string *and* userinfo included, by explicit decision | Query string, userinfo and fragment stripped |
 | Output paths and filenames | Stored as given | **Not redacted.** An output path under a home directory appears in full |
 | Diagnostics (`error_message`) | **Stored as given.** The repository does not filter this column | Redacted like any other line |
 
-**The two rows that are not guarantees are deliberate.** An output path is what the user chose and
-is the most useful thing in a bug report; `error_message` carries yt-dlp's own diagnostic, which
-`REQ-019` wants intact. Neither is a redaction sink, so **cookie material placed in a diagnostic by
-a caller would be persisted.** No production caller does that, but this is caller discipline rather
-than structure — the finding that established it is `T014-R1` in
-[docs/project/REVIEWS.md](docs/project/REVIEWS.md), and it is worth reading before adding a new
-write to that column.
+**The two rows that are not guarantees are deliberate, and one of them is a recorded decision.**
+`DAT-003` narrows `REQ-026` to values *this application supplies*: it holds a browser **name**, never
+a cookie path, so there is no application-supplied path to exclude. What it does store verbatim is
+the extractor's own diagnostic, because `NFR-006` requires the original message intact — and
+**yt-dlp does sometimes name a browser cookie database inside one**, for instance when a profile
+cannot be read. That path is the accepted residue, not an oversight; two attempts to scrub such
+prose both failed, and one corrupted a user's output directory into a relative path.
+
+An output path is likewise stored and logged as given: it is what the user chose, and it is the
+most useful line in a bug report.
+
+**So the practical rule for anyone handling a copy of the database or the log: treat it as
+containing local file paths.** It should not contain credentials or cookie *contents*. Read
+`DAT-003` before adding a new write to `error_message`.
 
 The governing requirements are `REQ-026` and `NFR-007`; the structural database boundary is
 `DAT-003`. All three are in [docs/project/REQUIREMENTS.md](docs/project/REQUIREMENTS.md) and

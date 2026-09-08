@@ -365,6 +365,50 @@ in `docs/project/TESTING.md`'s documentation-only row.
 **Unchanged by this round:** the suite, lint, formatting and types all still pass, and no source
 behavior was touched. Windows remains unverified at this head.
 
+#### Correction round 2, 2026-09-08 — after reading the recorded review
+
+The first correction round was written from a summary of the verdict. Reading the full record in
+`docs/project/REVIEWS.md` found four things the summary did not carry:
+
+- **`T299-R4` was only half done.** The timing claim was removed, but *"every push, full suite on
+  both"* remained in two places, and it contradicts `ci.yml`'s `paths-ignore`: documentation-only
+  pushes are deliberately excluded (`OPS-011`). Both are now qualified by the real triggers. The
+  displayed suite command is `-n auto` now, matching how the figure was actually measured.
+- **`T299-R1` asked for `DAT-003`'s amendments, not its superseded scope table**, and the first
+  correction did not use them. `DAT-003` is titled *"a stored diagnostic is verbatim; cookie paths
+  inside one are accepted"* — so a cookie path in a diagnostic is a **recorded, reasoned decision**,
+  not the caller-discipline gap the first correction described. `SECURITY.md` now states it that
+  way, and says why the alternative was rejected twice. A probe also confirmed the review's point
+  that **userinfo**, not only a query string, survives in the stored URL; the table says so.
+- **A claim in the submission handoff was false.** It said every `src/` hunk is inside a comment or
+  a docstring. `persistence/db.py` updates a path inside a runtime `ValueError` message. The edit is
+  intentional and the string is a diagnostic, so behavior is unaffected — but the claim was an
+  overstatement I had not checked, and the review's AST comparison is what caught it.
+- **The fixture change was unrequested scope and is reverted.** The review assessed
+  `tests/unit/test_workflow_triggers.py`'s synthetic `ai/**` YAML and ruled it not a finding, since
+  it never reads a repository path. Changing it anyway put an unreviewed edit into a correction
+  batch.
+
+#### Process failure in this round: the recorded review was destroyed and restored
+
+**While correcting `T299-R2` I overwrote `docs/project/REVIEWS.md` with its version from `cca7db2`,
+deleting the review record committed at `66184fd` — 133 lines holding `T299-R1` through `T299-R5`.**
+The deletion was then committed at `e43f58f`.
+
+**How it happened.** I checked that `git status` was clean and read that as *nothing to lose*. It
+was clean because the review had already been **committed**, on top of the head I was working from.
+A whole-file restore from an older commit discards every later change to that file, committed or
+not, and I used one on the single append-only file the reviewer owns.
+
+**What made it recoverable** is that the record was committed, so `66184fd` still holds it. It was
+restored by re-appending the 132-line block that follows `1d43c21`'s line count, then verifying the
+result is byte-identical to `66184fd`'s copy. Had the reviewer left it uncommitted, it would have
+been gone.
+
+**The rule this earns:** a whole-file restore from an older commit is not a way to revert an edit —
+revert the edit. `AGENTS.md` §6 already makes `REVIEWS.md` append-only and reviewer-owned, and a
+blind overwrite is precisely what that ownership forbids.
+
 #### Out of scope
 
 - **`AGENTS.md`'s length.** 628 lines against the convention's ~200–300 review trigger. Filed as

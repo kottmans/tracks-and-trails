@@ -19,6 +19,13 @@ one, and `SECURITY.md` cited that very review while contradicting it. The docume
 measured behavior. **Nothing in the application changed** — the defect was entirely in what was
 claimed about it.
 
+**A correction round destroyed the review record and it was restored.** Overwriting
+`docs/project/REVIEWS.md` with its version from `cca7db2` deleted the 133 lines committed at
+`66184fd`, and the deletion was committed at `e43f58f`. It is back, verified byte-identical, and
+`T-299` records how a clean `git status` was misread as *nothing to lose* when the thing to lose
+had already been committed. **A whole-file restore from an older commit is not a way to revert an
+edit.**
+
 **The Medium finding reversed this migration's most convenient assumption.** `REVIEWS.md` and
 `DECISIONS.md` were restored to the paths they were written with, because there a path is often a
 fact — a command that ran, a review's write set, a `FILE.md:NNN` citation — not a link. Current
