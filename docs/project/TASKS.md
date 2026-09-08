@@ -17,7 +17,7 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 ### T-300 — `AGENTS.md` is 628 lines and is loaded on every task
 
 **Status:** In Review — revision 2026-09-08.5 adopted; independent review pending.
-**Review record:** [Existing verification and continuing review](REVIEWS.md#final-verification-5e4b3fc).
+**Review record:** [Shared verification and continuing review](reviews/T-299.md#migrated-review-0381).
 **Owner:** Documentation Maintainer (Codex for this implementation, by direct request)
 **Priority:** Current maintainer request
 **Phase:** Phase 4 (documentation system; not a plan deliverable)
@@ -78,8 +78,9 @@ records the boundary and verification controls.
 
 - Adopt DOC-007 without applying the web profile to this desktop product.
 - Preserve numbered AGENTS sections, safety/permission boundaries and the accepted role mapping.
-- Apply the review-storage amendment: new task reviews use one file per task;
-  existing consolidated reviews remain in place. Keep policy in TESTING and templates in PROMPTS.
+- Apply the review-storage amendments: move existing entries byte-for-byte into
+  indexed task/shared-scope records, keeping related rounds together. Keep policy
+  in TESTING and templates in PROMPTS.
 - Preserve dated reviews/decisions and archived records byte-for-byte.
 - Keep the status concise, unfinished task scopes unchanged, and closed records reachable
   in COMPLETED_TASKS without completed/cancelled stubs in the active queue.
@@ -146,6 +147,53 @@ without path or whitespace normalization. Prior dated decisions, retained
 contributor rationale, completed task records and every other active task remain
 unchanged. Existing T-299 corrections in SECURITY.md and its evidence transcript
 are outside this adoption; they are not staged with it or assessed by these checks.
+
+#### Historical review migration — 2026-09-08
+
+The maintainer requested migration of the existing reviews after the initial
+storage adoption. This supersedes the earlier in-place transition choice. The
+381 dated entries from `85422bc` now reside in 105 task/shared-scope files, with
+REVIEWS.md reduced to a 145-line navigation index. Shared reviews and checks
+remain single records; their original per-round scope, attribution and verdicts
+are unchanged. T-299 and this task continue in their indexed shared record.
+
+The manifest retains every original byte range and checksum. Its executable
+checker reconstructs the 2,403,546-byte dated body and compares it with the
+source Git blob. Dated-heading links retain landing points in the index; current
+task/status links point directly to the moved records. Review Markdown receives
+the former single file's prose-only CI treatment; application code and tests do
+not consume the moved records.
+
+This documentation/retention follow-up is based on `85422bc`; the commit carrying
+this amendment is its implementation head. Required checks are reconstruction,
+negative controls, links and navigation, Ruff lint/format, the verifier's type
+check, documentation consumers and workflow-trigger checks. Earlier full-suite
+and platform evidence remains historical; this move grants no new approval.
+
+Checks completed:
+
+- Reconstruction: **381 entries / 105 files / 2,403,546 bytes**, exactly equal
+  to the original dated body. Four negative controls rejected a changed byte,
+  deleted record, unmarked duplicate and reordered rounds. A new round outside
+  the historical markers passed the positive control.
+- Links: **805** local review/index links and fragments and **7** added current
+  navigation links resolved. All **381** former dated-heading anchors, plus
+  the explicit final-verification and open-findings anchors, remain index
+  landing points. Historical file:line references still identify the old revision.
+- Documentation consumers and workflow-trigger tests: **104 passed in 2.90 s**.
+- Whole-tree formatting: **340 files already formatted**. Source mypy:
+  **58 files passed**; the retained verifier's mypy: **1 file passed**.
+- Lint passes with only the unrelated, untracked T-299 security probe excluded.
+  The unrestricted run reports that probe's existing **F401, SIM117 and E501**;
+  this migration does not edit or stage it. No permanent exclusion was added.
+- Prior dated decisions, retained contributor rationale, completed tasks and
+  every other active task remain unchanged. Parsed workflow comparison confirms
+  the only CI semantic change is the new review-Markdown ignore. Source, tests,
+  tools and pyproject.toml are unchanged.
+
+The current security/evidence correction work remains outside this commit and
+outside this verification. No new full-suite, Windows, product-readiness or
+independent-review result is claimed.
 
 ### T-299 — Adopt the neutral coordination layout and the public-ready baseline
 

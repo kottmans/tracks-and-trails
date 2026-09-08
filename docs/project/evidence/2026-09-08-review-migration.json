@@ -1,0 +1,4457 @@
+{
+  "purpose": "Preserve and reconstruct the historical review body during the 2026-09-08 migration.",
+  "maintenance": "Source metadata, ordering, byte ranges and checksums are historical. Destination paths and task associations are navigation; update destinations only during a verified move. New review rounds are appended outside migration markers.",
+  "source_revision": "85422bc0b086de9b18d2f809abb4d6bcebb180e4",
+  "source_path": "docs/project/REVIEWS.md",
+  "source_sha256": "c966a13916cc4801f0bfee37bb9f35dd79b43ad7afde4c51ccc2f62f1921bcd3",
+  "body_start": 1994,
+  "body_sha256": "4180bd4b9135b919166230218e53fb728fb0992621cc7f2e41001a803a355b8a",
+  "body_bytes": 2403546,
+  "record_count": 381,
+  "file_count": 105,
+  "records": [
+    {
+      "id": 1,
+      "heading": "2026-07-25 \u2014 T-003 application icon assets",
+      "source_start": 1994,
+      "source_end": 7671,
+      "sha256": "1903057f29dc76d346e78494b3120e03b6d2d46aa89977bbc27f147a4b48f4de",
+      "path": "reviews/T-003.md",
+      "covered_tasks": [
+        "T-003"
+      ]
+    },
+    {
+      "id": 2,
+      "heading": "2026-07-25 \u2014 T-022 focused re-review",
+      "source_start": 7671,
+      "source_end": 11189,
+      "sha256": "5ddd33c398eaf6caf4f135ab76ab983fbef2a61f1c832738f85ba02b35e18dfc",
+      "path": "reviews/T-022.md",
+      "covered_tasks": [
+        "T-003",
+        "T-022"
+      ]
+    },
+    {
+      "id": 3,
+      "heading": "2026-07-25 \u2014 T-006 Linux and Windows CI",
+      "source_start": 11189,
+      "source_end": 17563,
+      "sha256": "773ada6179bb77dcdb0d04f40cae0958d2ef0173a00be5353d771ea0940cd9bb",
+      "path": "reviews/T-006.md",
+      "covered_tasks": [
+        "T-006"
+      ]
+    },
+    {
+      "id": 4,
+      "heading": "2026-07-25 \u2014 T-023 focused re-review",
+      "source_start": 17563,
+      "source_end": 21391,
+      "sha256": "4a66769b873a231270a0db7a267af5d3790f6c38dda914dac5457dc726814b63",
+      "path": "reviews/T-023.md",
+      "covered_tasks": [
+        "T-006",
+        "T-023"
+      ]
+    },
+    {
+      "id": 5,
+      "heading": "2026-07-25 \u2014 T-005 layering enforcement test",
+      "source_start": 21391,
+      "source_end": 27475,
+      "sha256": "aec81259b75d12c5221c165d8594d5caa560aaabad082b2f8e0fec15202b3488",
+      "path": "reviews/T-005.md",
+      "covered_tasks": [
+        "T-005"
+      ]
+    },
+    {
+      "id": 6,
+      "heading": "2026-07-25 \u2014 T-024 focused re-review",
+      "source_start": 27475,
+      "source_end": 32150,
+      "sha256": "b7831f198a47c2912e7514296a671575d72a59786473c60bfd61de2bd41d9764",
+      "path": "reviews/T-024.md",
+      "covered_tasks": [
+        "T-005",
+        "T-024"
+      ]
+    },
+    {
+      "id": 7,
+      "heading": "2026-07-25 \u2014 Phase 0 exit review",
+      "source_start": 32150,
+      "source_end": 44789,
+      "sha256": "78575cf3231cbc811226fece1e12f01a93d6141427cf3933c9e6b2fa0644eca6",
+      "path": "reviews/phase-0-exit.md",
+      "covered_tasks": [
+        "T-001",
+        "T-002",
+        "T-003",
+        "T-004",
+        "T-005",
+        "T-006",
+        "T-007",
+        "T-020",
+        "T-022",
+        "T-023",
+        "T-024",
+        "T-025"
+      ]
+    },
+    {
+      "id": 8,
+      "heading": "2026-07-25 \u2014 Phase 0 exit corrections focused re-review",
+      "source_start": 44789,
+      "source_end": 51974,
+      "sha256": "c7bb626bf8fc20d7de4e1154d899381b35736050018ef5baf2e1860c2d9b79bd",
+      "path": "reviews/phase-0-exit.md",
+      "covered_tasks": [
+        "T-027",
+        "T-032"
+      ]
+    },
+    {
+      "id": 9,
+      "heading": "2026-07-26 \u2014 T-010 domain models, state machine, and error taxonomy",
+      "source_start": 51974,
+      "source_end": 57439,
+      "sha256": "c87d39197eb3f71e9c0c1115842dd44d633e15704cd2e4502e7cd9a4f7a8ee3c",
+      "path": "reviews/T-010.md",
+      "covered_tasks": [
+        "T-010"
+      ]
+    },
+    {
+      "id": 10,
+      "heading": "2026-07-26 \u2014 T-026 real Windows desktop verification",
+      "source_start": 57439,
+      "source_end": 65013,
+      "sha256": "5eb1a85a010a29e33bf11bf636b0556bdfd0e19c1c99a67ec0684530544a21ee",
+      "path": "reviews/T-010.md",
+      "covered_tasks": [
+        "T-026"
+      ]
+    },
+    {
+      "id": 11,
+      "heading": "2026-07-26 \u2014 T-010 and T-026 final focused re-review",
+      "source_start": 65013,
+      "source_end": 72876,
+      "sha256": "72e48bd5f0444e5ed587fb8c7612b729cbfbe167942e41e02db44744ab8ababe",
+      "path": "reviews/T-010.md",
+      "covered_tasks": [
+        "T-010",
+        "T-026"
+      ]
+    },
+    {
+      "id": 12,
+      "heading": "2026-07-26 \u2014 T-011 IPC message contract",
+      "source_start": 72876,
+      "source_end": 81547,
+      "sha256": "e9f8f0b890cb78619582f8e49038ec1d494901319e68c16ee760052647bfb23c",
+      "path": "reviews/T-011.md",
+      "covered_tasks": [
+        "T-011"
+      ]
+    },
+    {
+      "id": 13,
+      "heading": "2026-07-26 \u2014 T-011 final focused re-review",
+      "source_start": 81547,
+      "source_end": 88408,
+      "sha256": "a0e491af44e19b3ec506734c9f201d232a5ee0c57895aeb689173432d6ed0d6c",
+      "path": "reviews/T-011.md",
+      "covered_tasks": [
+        "T-011"
+      ]
+    },
+    {
+      "id": 14,
+      "heading": "2026-07-26 \u2014 T-011 post-final correction verification",
+      "source_start": 88408,
+      "source_end": 93527,
+      "sha256": "4c532af15c61c6d021ec55c35d0bfda15e2f179f898404ade27abc8556f96cd8",
+      "path": "reviews/T-011.md",
+      "covered_tasks": [
+        "T-011"
+      ]
+    },
+    {
+      "id": 15,
+      "heading": "2026-07-26 \u2014 T-041 nested payload validation",
+      "source_start": 93527,
+      "source_end": 100942,
+      "sha256": "f2b52ab1102bb2ca89ab393b588a68eac498479156fc40d001ee83e0eb30b491",
+      "path": "reviews/T-041.md",
+      "covered_tasks": [
+        "T-011",
+        "T-041"
+      ]
+    },
+    {
+      "id": 16,
+      "heading": "2026-07-26 \u2014 T-041 focused correction re-review (final)",
+      "source_start": 100942,
+      "source_end": 108071,
+      "sha256": "3dc0f3de63d7c88c3eadafd2965bcdc45270e077498c257d548870337805b23d",
+      "path": "reviews/T-041.md",
+      "covered_tasks": [
+        "T-011",
+        "T-041"
+      ]
+    },
+    {
+      "id": 17,
+      "heading": "2026-07-26 \u2014 T-034, T-035, T-042 and T-043 initial review",
+      "source_start": 108071,
+      "source_end": 121539,
+      "sha256": "cc2c1da7f63b9a2e60abdbd1a32590a99c48db09cbe96f9c6d7d863b7a13ee10",
+      "path": "reviews/T-034.md",
+      "covered_tasks": [
+        "T-034",
+        "T-035",
+        "T-041",
+        "T-042",
+        "T-043"
+      ]
+    },
+    {
+      "id": 18,
+      "heading": "2026-07-26 \u2014 T-034 and T-035 focused correction re-review (final standard pass)",
+      "source_start": 121539,
+      "source_end": 132109,
+      "sha256": "96db0634f942ba9ea0e36de9cc52c34b49040186f7d3e8801dce38c151efcfe1",
+      "path": "reviews/T-034.md",
+      "covered_tasks": [
+        "T-034",
+        "T-035"
+      ]
+    },
+    {
+      "id": 19,
+      "heading": "2026-07-26 \u2014 T-034 second authorized exception verification",
+      "source_start": 132109,
+      "source_end": 137531,
+      "sha256": "7f477e6eac1f1a38a76d629db91cb8697d6f266d60ef07f95335afe003dab59c",
+      "path": "reviews/T-034.md",
+      "covered_tasks": [
+        "T-034"
+      ]
+    },
+    {
+      "id": 20,
+      "heading": "2026-07-26 \u2014 T-012 and T-033 initial review",
+      "source_start": 137531,
+      "source_end": 150884,
+      "sha256": "6ccb9f84e06cea2ba6088aeb86e5dd59438717798ab69fc685cff6ed225a9d54",
+      "path": "reviews/T-012.md",
+      "covered_tasks": [
+        "T-012",
+        "T-033"
+      ]
+    },
+    {
+      "id": 21,
+      "heading": "2026-07-26 \u2014 T-012 and T-033 correction batch (Implementer)",
+      "source_start": 150884,
+      "source_end": 156593,
+      "sha256": "160ed17179faefeafe96eee798e9a26e86281a63a6585adeecbf554beee77c2c",
+      "path": "reviews/T-012.md",
+      "covered_tasks": [
+        "T-012",
+        "T-033"
+      ]
+    },
+    {
+      "id": 22,
+      "heading": "2026-07-26 \u2014 T-012 and T-033 focused correction re-review",
+      "source_start": 156593,
+      "source_end": 165201,
+      "sha256": "859a06615b71dd8c2fbc4883f997a157ebea5c2db943a90301ba7344e11fe8e2",
+      "path": "reviews/T-012.md",
+      "covered_tasks": [
+        "T-012",
+        "T-033"
+      ]
+    },
+    {
+      "id": 23,
+      "heading": "2026-07-26 \u2014 T-012 and T-033 second correction batch (Implementer)",
+      "source_start": 165201,
+      "source_end": 169582,
+      "sha256": "deed48cebed49df127d037a5c3f5fc02b2d2afd9b90c0bb405ded529d594b7e2",
+      "path": "reviews/T-012.md",
+      "covered_tasks": [
+        "T-012",
+        "T-033"
+      ]
+    },
+    {
+      "id": 24,
+      "heading": "2026-07-26 \u2014 T-012 and T-033 second focused verification",
+      "source_start": 169582,
+      "source_end": 174585,
+      "sha256": "c879d6b1e5450b143d680738fb0f27810f1e27a482bfa3ca73bbb1c6f02a5953",
+      "path": "reviews/T-012.md",
+      "covered_tasks": [
+        "T-012",
+        "T-033"
+      ]
+    },
+    {
+      "id": 25,
+      "heading": "2026-07-26 \u2014 note: commit SHAs in this file were remapped",
+      "source_start": 174585,
+      "source_end": 177425,
+      "sha256": "575be4a3a7eb341c92878ffb7a88ccc59282521b160f97f4c4e7d6810899744d",
+      "path": "reviews/commit-reference-remap.md",
+      "covered_tasks": [
+        "T-033"
+      ]
+    },
+    {
+      "id": 26,
+      "heading": "2026-07-26 \u2014 T-012/T-033 pre-review self-audit (retained from the deleted handoff)",
+      "source_start": 177425,
+      "source_end": 179959,
+      "sha256": "c075ca8b17fb6948bfb343a926b19ef259048bc75a149e31f88d0a3fdbf42654",
+      "path": "reviews/T-012.md",
+      "covered_tasks": [
+        "T-012",
+        "T-033"
+      ]
+    },
+    {
+      "id": 27,
+      "heading": "2026-07-26 \u2014 T-045 reserved-name defusing",
+      "source_start": 179959,
+      "source_end": 184903,
+      "sha256": "0636dea53fec5ec9f47eaf4def2ce4fc01f350207c86b6e5c88f26769457a232",
+      "path": "reviews/T-045.md",
+      "covered_tasks": [
+        "T-045"
+      ]
+    },
+    {
+      "id": 28,
+      "heading": "2026-07-26 \u2014 T-044 reviewed environment API",
+      "source_start": 184903,
+      "source_end": 190609,
+      "sha256": "8243b0531cccbae45a8aaadfbcd82feb8548b8173715d9cbe36fc8603274dce5",
+      "path": "reviews/T-045.md",
+      "covered_tasks": [
+        "T-044"
+      ]
+    },
+    {
+      "id": 29,
+      "heading": "2026-07-26 \u2014 T-044 focused correction re-review",
+      "source_start": 190609,
+      "source_end": 195616,
+      "sha256": "ee8a9ec4d1968bfcb60f24d3c3027660c350309d2babb3e4387e3ced45ea32ed",
+      "path": "reviews/T-045.md",
+      "covered_tasks": [
+        "T-044"
+      ]
+    },
+    {
+      "id": 30,
+      "heading": "2026-07-26 \u2014 T-045 focused decision re-review",
+      "source_start": 195616,
+      "source_end": 200457,
+      "sha256": "b5913acec4ceb46dcb234c08c42a69f4f5d57b52b5f282daf209e1a4d454b65e",
+      "path": "reviews/T-045.md",
+      "covered_tasks": [
+        "T-045"
+      ]
+    },
+    {
+      "id": 31,
+      "heading": "2026-07-26 \u2014 T-044/T-045 focused re-review shared checks",
+      "source_start": 200457,
+      "source_end": 201325,
+      "sha256": "7cabda8570ebeaf3e09af0b70886528754be82f0d697a1b2227dc96a6e9a6ab1",
+      "path": "reviews/T-045.md",
+      "covered_tasks": [
+        "T-044",
+        "T-045"
+      ]
+    },
+    {
+      "id": 32,
+      "heading": "2026-07-26 \u2014 T-044 maintainer-authorized final focused re-review",
+      "source_start": 201325,
+      "source_end": 206037,
+      "sha256": "1c79071a65d195e68c9da716f619e2e8ebe81fbf7a006ae5c8b5da83d5f08381",
+      "path": "reviews/T-045.md",
+      "covered_tasks": [
+        "T-044"
+      ]
+    },
+    {
+      "id": 33,
+      "heading": "2026-07-26 \u2014 T-045 maintainer-authorized final focused re-review",
+      "source_start": 206037,
+      "source_end": 208576,
+      "sha256": "4e91e43d5c6a7fc8a0cd97689820ccc01eaf03345fa50334d1a74cf4afe1c189",
+      "path": "reviews/T-045.md",
+      "covered_tasks": [
+        "T-045"
+      ]
+    },
+    {
+      "id": 34,
+      "heading": "2026-07-26 \u2014 T-044/T-045 final focused re-review shared checks",
+      "source_start": 208576,
+      "source_end": 209425,
+      "sha256": "259e08315465ec56f727a054b7318590b4f0e2452c38843ad453e5ea1cc013ae",
+      "path": "reviews/T-045.md",
+      "covered_tasks": [
+        "T-044",
+        "T-045"
+      ]
+    },
+    {
+      "id": 35,
+      "heading": "2026-07-26 \u2014 T-044 second-decision focused re-review",
+      "source_start": 209425,
+      "source_end": 215580,
+      "sha256": "8afee3be50ff0be16abb2ee3881beef4b162838a497c9a07a9f9119ecf9b2753",
+      "path": "reviews/T-045.md",
+      "covered_tasks": [
+        "T-044"
+      ]
+    },
+    {
+      "id": 36,
+      "heading": "2026-07-26 \u2014 T-044 second-decision shared checks",
+      "source_start": 215580,
+      "source_end": 216523,
+      "sha256": "7c0429c6886d14e041008ac8fec2ca2fc7f17b80b9e23075acb11578d4ac577f",
+      "path": "reviews/T-045.md",
+      "covered_tasks": [
+        "T-044"
+      ]
+    },
+    {
+      "id": 37,
+      "heading": "2026-07-26 \u2014 T-044 maintainer final disposition",
+      "source_start": 216523,
+      "source_end": 219415,
+      "sha256": "8070bd5c3f6c408abadfe1ccbeccc28c82ec2d0093a59bece52f2d5dee5ec692",
+      "path": "reviews/T-045.md",
+      "covered_tasks": [
+        "T-044"
+      ]
+    },
+    {
+      "id": 38,
+      "heading": "2026-07-26 \u2014 T-014 initial comprehensive review",
+      "source_start": 219415,
+      "source_end": 229395,
+      "sha256": "057b30e314ff4853cc84b282ffe27fb95a190e2fedda6f97f2b9d7c2c63dc7e1",
+      "path": "reviews/T-014.md",
+      "covered_tasks": [
+        "T-014"
+      ]
+    },
+    {
+      "id": 39,
+      "heading": "2026-07-26 \u2014 T-014 focused correction re-review",
+      "source_start": 229395,
+      "source_end": 239075,
+      "sha256": "490dfac0abf59b026d16766db7f01328e4c244acecd7b6e2860d0562aca4c393",
+      "path": "reviews/T-014.md",
+      "covered_tasks": [
+        "T-014"
+      ]
+    },
+    {
+      "id": 40,
+      "heading": "2026-07-26 \u2014 T-014 second focused correction re-review",
+      "source_start": 239075,
+      "source_end": 247944,
+      "sha256": "0ec3397cee070ffacc6ff06d2a767eb9dc5c27d8257f4d9df41a04891509973f",
+      "path": "reviews/T-014.md",
+      "covered_tasks": [
+        "T-014"
+      ]
+    },
+    {
+      "id": 41,
+      "heading": "2026-07-26 \u2014 T-014 third focused correction re-review",
+      "source_start": 247944,
+      "source_end": 256722,
+      "sha256": "ff35fae79f2e423f7055df1dff0ff748655b0393454f39eea07d0f0f1a23ddf9",
+      "path": "reviews/T-014.md",
+      "covered_tasks": [
+        "T-014"
+      ]
+    },
+    {
+      "id": 42,
+      "heading": "2026-07-26 \u2014 T-014 final documentation re-review",
+      "source_start": 256722,
+      "source_end": 262896,
+      "sha256": "8b1c5e9ab335c4d979dfaf7a76cd39f86048ab56d8e2770c4c5fbadf7bab5d85",
+      "path": "reviews/T-014.md",
+      "covered_tasks": [
+        "T-014"
+      ]
+    },
+    {
+      "id": 43,
+      "heading": "2026-07-27 \u2014 T-013 initial review",
+      "source_start": 262896,
+      "source_end": 271644,
+      "sha256": "2b351d70e677f6d5c69cdc817ced32b9dd1c530759eba5b99f501852576ed25f",
+      "path": "reviews/T-013.md",
+      "covered_tasks": [
+        "T-013"
+      ]
+    },
+    {
+      "id": 44,
+      "heading": "2026-07-27 \u2014 T-015 and T-018 initial reviews",
+      "source_start": 271644,
+      "source_end": 279599,
+      "sha256": "5d3e1e6ceb090f589713b57d272a7f84b58125fac999841a0671180d2476b23a",
+      "path": "reviews/T-013.md",
+      "covered_tasks": [
+        "T-015",
+        "T-018"
+      ]
+    },
+    {
+      "id": 45,
+      "heading": "2026-07-27 \u2014 T-013 focused correction re-review",
+      "source_start": 279599,
+      "source_end": 285446,
+      "sha256": "2397c82c740308edc791ca02edfcca1cf4510ad2916b8be9c3937231c51c0bde",
+      "path": "reviews/T-013.md",
+      "covered_tasks": [
+        "T-013"
+      ]
+    },
+    {
+      "id": 46,
+      "heading": "2026-07-27 \u2014 T-013, T-015 and T-018 merged correction re-review",
+      "source_start": 285446,
+      "source_end": 294556,
+      "sha256": "fc31e9f920951afe0f80ffcc0d03734b110c17302278c36b87052d2a56266a2f",
+      "path": "reviews/T-013.md",
+      "covered_tasks": [
+        "T-013",
+        "T-015",
+        "T-018"
+      ]
+    },
+    {
+      "id": 47,
+      "heading": "2026-07-27 \u2014 T-013, T-015 and T-018 focused blocker verification",
+      "source_start": 294556,
+      "source_end": 299823,
+      "sha256": "cc1e08ab25a803fba1ef656bc25acc7719411ba4e3279f0df177eb1aeed38e14",
+      "path": "reviews/T-013.md",
+      "covered_tasks": [
+        "T-013",
+        "T-015",
+        "T-018"
+      ]
+    },
+    {
+      "id": 48,
+      "heading": "2026-07-27 \u2014 T-018 third Critical correction verification",
+      "source_start": 299823,
+      "source_end": 305374,
+      "sha256": "aef8a917aa6bfffd6164cbf2d7689daf9fad50c8bd5c0cfc8453d61cce9315b0",
+      "path": "reviews/T-013.md",
+      "covered_tasks": [
+        "T-018"
+      ]
+    },
+    {
+      "id": 49,
+      "heading": "2026-07-27 \u2014 T-018 fourth correction batch returned (`T018-R1`, structural)",
+      "source_start": 305374,
+      "source_end": 310765,
+      "sha256": "242d462f0248057faabcf63b6883a3a2c6aa53af9e52f0e5c4002cc74de36941",
+      "path": "reviews/T-013.md",
+      "covered_tasks": [
+        "T-018"
+      ]
+    },
+    {
+      "id": 50,
+      "heading": "2026-07-27 \u2014 T-018 structural correction re-review",
+      "source_start": 310765,
+      "source_end": 317310,
+      "sha256": "240102ee04846942135eea7c2c27cc4e47ea9d9a15c976f92e6f72e8a4c026cc",
+      "path": "reviews/T-013.md",
+      "covered_tasks": [
+        "T-018",
+        "T-019"
+      ]
+    },
+    {
+      "id": 51,
+      "heading": "2026-07-27 \u2014 T-018 fifth correction batch and T-019's first, returned",
+      "source_start": 317310,
+      "source_end": 322611,
+      "sha256": "0550076962cd36076ff1acf32b182e6c8e6a8dbada64765155feb513ee59bff6",
+      "path": "reviews/T-013.md",
+      "covered_tasks": [
+        "T-018",
+        "T-019"
+      ]
+    },
+    {
+      "id": 52,
+      "heading": "2026-07-27 \u2014 T-018 fifth correction verified; T-019 coverage correction verified",
+      "source_start": 322611,
+      "source_end": 327260,
+      "sha256": "693ef8f09c3128bbc86b6522344e2b32fe6ce6f0893d89f8bd2408035210af20",
+      "path": "reviews/T-013.md",
+      "covered_tasks": [
+        "T-018",
+        "T-019"
+      ]
+    },
+    {
+      "id": 53,
+      "heading": "2026-07-27 \u2014 T-019, T-038 and T-051 implemented on `phase1-orphans-logging-lifecycle`",
+      "source_start": 327260,
+      "source_end": 332229,
+      "sha256": "b96af14a9bb66015cb005bb0999bba4fc6bd420b38f9a5c35b51afd97f6eb0bb",
+      "path": "reviews/T-013.md",
+      "covered_tasks": [
+        "T-019",
+        "T-038",
+        "T-051"
+      ]
+    },
+    {
+      "id": 54,
+      "heading": "2026-07-27 \u2014 T-019, T-038 and T-051 independent review",
+      "source_start": 332229,
+      "source_end": 345380,
+      "sha256": "d1b5af1a1bd1417860c5842cd42bcf7d9fc0ce218e303cf87b5d66ea0250c720",
+      "path": "reviews/T-013.md",
+      "covered_tasks": [
+        "T-019",
+        "T-038",
+        "T-051"
+      ]
+    },
+    {
+      "id": 55,
+      "heading": "2026-07-27 \u2014 T-019 and T-038 corrections returned (`T019-R3/R4/R5`, `T038-R1/R2`)",
+      "source_start": 345380,
+      "source_end": 350799,
+      "sha256": "1ce5ab6b1a445be0114d48b4bd6263dfa4786262ad196b6ae122a03ff665d6ba",
+      "path": "reviews/T-013.md",
+      "covered_tasks": [
+        "T-019",
+        "T-038"
+      ]
+    },
+    {
+      "id": 56,
+      "heading": "2026-07-27 \u2014 T-019 and T-038 focused correction re-review",
+      "source_start": 350799,
+      "source_end": 358276,
+      "sha256": "1f1cc25f520c2380a39af6fa77587b2fd10965df5adea1cff94ec55781f49b39",
+      "path": "reviews/T-013.md",
+      "covered_tasks": [
+        "T-019",
+        "T-038"
+      ]
+    },
+    {
+      "id": 57,
+      "heading": "2026-07-27 \u2014 T-038 R2 second focused correction re-review",
+      "source_start": 358276,
+      "source_end": 364516,
+      "sha256": "c0072f55933e07e30917bfe8ddfb4912a34d2b9908e47d0129e1c27dea270c87",
+      "path": "reviews/T-013.md",
+      "covered_tasks": [
+        "T-038"
+      ]
+    },
+    {
+      "id": 58,
+      "heading": "2026-07-27 \u2014 T-038 R2 third focused correction re-review",
+      "source_start": 364516,
+      "source_end": 371076,
+      "sha256": "963056e25ea1ae716295a628e44dc16f90c80167f21b71ec2c7a1b4ece025ba9",
+      "path": "reviews/T-013.md",
+      "covered_tasks": [
+        "T-038"
+      ]
+    },
+    {
+      "id": 59,
+      "heading": "2026-07-27 \u2014 T-016 initial review",
+      "source_start": 371076,
+      "source_end": 382627,
+      "sha256": "506e5b1eb2374d42ee07040c02c099604daf01e86370a362563dc945450c9a8d",
+      "path": "reviews/T-016.md",
+      "covered_tasks": [
+        "T-016"
+      ]
+    },
+    {
+      "id": 60,
+      "heading": "2026-07-27 \u2014 T-016 focused correction re-review",
+      "source_start": 382627,
+      "source_end": 393037,
+      "sha256": "5e9cfb0d290eb30dc156b7722b3b386a6e7ece5fb5d54e9b4c15b45e7b348e42",
+      "path": "reviews/T-016.md",
+      "covered_tasks": [
+        "T-016"
+      ]
+    },
+    {
+      "id": 61,
+      "heading": "2026-07-27 \u2014 T-016 second focused correction re-review",
+      "source_start": 393037,
+      "source_end": 400826,
+      "sha256": "9ea230b57bc760f0e33f2bdf17c5333e183112ee3a5c4d349d28ee1480383295",
+      "path": "reviews/T-016.md",
+      "covered_tasks": [
+        "T-016"
+      ]
+    },
+    {
+      "id": 62,
+      "heading": "2026-07-27 \u2014 T-016 third focused correction re-review",
+      "source_start": 400826,
+      "source_end": 409700,
+      "sha256": "dd2751125e82f092dd263d3bb20a977c706efb94f6635605208da8df6653e996",
+      "path": "reviews/T-016.md",
+      "covered_tasks": [
+        "T-016"
+      ]
+    },
+    {
+      "id": 63,
+      "heading": "2026-07-28 \u2014 T-016 fourth correction and T-017 initial review",
+      "source_start": 409700,
+      "source_end": 415157,
+      "sha256": "d088abec2076fdcfdf047c7c3f937d568cfd3eec460087bbb23e1328175c6b44",
+      "path": "reviews/T-016.md",
+      "covered_tasks": [
+        "T-016",
+        "T-017"
+      ]
+    },
+    {
+      "id": 64,
+      "heading": "2026-07-28 \u2014 T-057 and T-058 independent review",
+      "source_start": 415157,
+      "source_end": 417950,
+      "sha256": "2b0908ccd0d60016162bcbb8bb6498abb94ea4716d50a69945bcf26cd18d00dd",
+      "path": "reviews/T-016.md",
+      "covered_tasks": [
+        "T-057",
+        "T-058"
+      ]
+    },
+    {
+      "id": 65,
+      "heading": "2026-07-28 \u2014 T-056 and T-054 independent review",
+      "source_start": 417950,
+      "source_end": 421960,
+      "sha256": "6d6302b3b1443caab84e8dc3d35d902d3df65d0c9b7468d3061eb347503a1fcf",
+      "path": "reviews/T-016.md",
+      "covered_tasks": [
+        "T-054",
+        "T-056"
+      ]
+    },
+    {
+      "id": 66,
+      "heading": "2026-07-28 \u2014 T-017, T-058 and T-054 focused correction re-review",
+      "source_start": 421960,
+      "source_end": 429363,
+      "sha256": "39c4402828bb6460e3b79f294556368f4a7556465ce212a4adad604e7cf4c828",
+      "path": "reviews/T-016.md",
+      "covered_tasks": [
+        "T-017",
+        "T-054",
+        "T-058"
+      ]
+    },
+    {
+      "id": 67,
+      "heading": "2026-07-28 \u2014 T-017 and T-058 authorized third review pass",
+      "source_start": 429363,
+      "source_end": 435620,
+      "sha256": "5cc55b135f4037b93945d7c884f155ee92c00169c035030b77c78c3063c73824",
+      "path": "reviews/T-016.md",
+      "covered_tasks": [
+        "T-017",
+        "T-058"
+      ]
+    },
+    {
+      "id": 68,
+      "heading": "2026-07-28 \u2014 T-017 additional authorized focused pass",
+      "source_start": 435620,
+      "source_end": 441723,
+      "sha256": "8a9c5801b262ee99f62f353d1d0d32fcc21ebe7f23b577d3239572c0d324110b",
+      "path": "reviews/T-016.md",
+      "covered_tasks": [
+        "T-017"
+      ]
+    },
+    {
+      "id": 69,
+      "heading": "2026-07-28 \u2014 T-017 final authorized focused pass",
+      "source_start": 441723,
+      "source_end": 446703,
+      "sha256": "45d970f992d62e39c6d45a0eb3d772b0bae2de5c4036d9b3a9d36125d3db9739",
+      "path": "reviews/T-016.md",
+      "covered_tasks": [
+        "T-017"
+      ]
+    },
+    {
+      "id": 70,
+      "heading": "2026-07-28 \u2014 Section 4 independent review",
+      "source_start": 446703,
+      "source_end": 453257,
+      "sha256": "65509dd2e180a9746aeafeb466b1e4e771a2d70bfccad9394d93a39a5f244041",
+      "path": "reviews/T-036.md",
+      "covered_tasks": [
+        "T-036",
+        "T-037",
+        "T-059"
+      ]
+    },
+    {
+      "id": 71,
+      "heading": "2026-07-28 \u2014 Section 5 independent review",
+      "source_start": 453257,
+      "source_end": 457071,
+      "sha256": "4a9626a090b162a32131f1e0787a12aa9fde44402b55ba7cb02e4af68c198f75",
+      "path": "reviews/T-036.md",
+      "covered_tasks": [
+        "T-040",
+        "T-052"
+      ]
+    },
+    {
+      "id": 72,
+      "heading": "2026-07-28 \u2014 Sections 4 and 5 combined validation",
+      "source_start": 457071,
+      "source_end": 457805,
+      "sha256": "2d0c4fb8fcce3fcd07075d23a05f56ed2b47eac946ae9d7cf40c9146acc89d5e",
+      "path": "reviews/T-036.md",
+      "covered_tasks": [
+        "T-036",
+        "T-037",
+        "T-040",
+        "T-052",
+        "T-059"
+      ]
+    },
+    {
+      "id": 73,
+      "heading": "2026-07-28 \u2014 Sections 4 and 5 focused correction re-review",
+      "source_start": 457805,
+      "source_end": 465180,
+      "sha256": "bf0f6c1ecd40f1a474a343853c1c5b003cfb0b90ccf767c667542f1e96af97b1",
+      "path": "reviews/T-036.md",
+      "covered_tasks": [
+        "T-036",
+        "T-037",
+        "T-040"
+      ]
+    },
+    {
+      "id": 74,
+      "heading": "2026-07-28 \u2014 T040-R1 carry and coordination verification",
+      "source_start": 465180,
+      "source_end": 469208,
+      "sha256": "b1e4d3b43f40fa6ab933bf9ceac461728cead9b21c08fd3313a04f041575df69",
+      "path": "reviews/T-036.md",
+      "covered_tasks": [
+        "T-040"
+      ]
+    },
+    {
+      "id": 75,
+      "heading": "2026-07-28 \u2014 T-062 and coordination review",
+      "source_start": 469208,
+      "source_end": 477515,
+      "sha256": "70f2a7664865ce01a3c98b4481ad027b837da90b9376b2252c43906c2c5a13a0",
+      "path": "reviews/T-062.md",
+      "covered_tasks": [
+        "T-062"
+      ]
+    },
+    {
+      "id": 76,
+      "heading": "2026-07-28 \u2014 T-062 coordination focused re-review",
+      "source_start": 477515,
+      "source_end": 483885,
+      "sha256": "dae9c9ce37a3b19ebbdb547f15ca29efafeb509d4068c63785c7cab0b363d2f2",
+      "path": "reviews/T-062.md",
+      "covered_tasks": [
+        "T-062"
+      ]
+    },
+    {
+      "id": 77,
+      "heading": "2026-07-28 \u2014 T-060, T-061 and T-063 review",
+      "source_start": 483885,
+      "source_end": 491828,
+      "sha256": "19616fe9b1c725b314523a4d9a53501edc87f9d6d4db6849d667cc8fc891eff0",
+      "path": "reviews/T-060.md",
+      "covered_tasks": [
+        "T-060",
+        "T-061",
+        "T-063"
+      ]
+    },
+    {
+      "id": 78,
+      "heading": "2026-07-28 \u2014 T-060 correction batch (Implementer)",
+      "source_start": 491828,
+      "source_end": 497003,
+      "sha256": "1943ce6ddd5e11d582e88fe80b84b6b910b78ea89b516d55f01e2ebddf148bb5",
+      "path": "reviews/T-060.md",
+      "covered_tasks": [
+        "T-060"
+      ]
+    },
+    {
+      "id": 79,
+      "heading": "2026-07-28 \u2014 T-060 focused correction re-review",
+      "source_start": 497003,
+      "source_end": 503315,
+      "sha256": "a77dcfd19e5508ae764a254c07613cffd57a984a2ca3ad13c2eaeb2c1eb57938",
+      "path": "reviews/T-060.md",
+      "covered_tasks": [
+        "T-060"
+      ]
+    },
+    {
+      "id": 80,
+      "heading": "2026-07-28 \u2014 STARBASE evidence and T-066 through T-070 review",
+      "source_start": 503315,
+      "source_end": 515449,
+      "sha256": "eda183ce2136a7f81495b6cfa4339bd06970077e79187902c8f65f9109129291",
+      "path": "reviews/T-012.md",
+      "covered_tasks": [
+        "T-066",
+        "T-067",
+        "T-068",
+        "T-069",
+        "T-070"
+      ]
+    },
+    {
+      "id": 81,
+      "heading": "2026-07-28 \u2014 STARBASE correction focused re-review",
+      "source_start": 515449,
+      "source_end": 524318,
+      "sha256": "25cf9694cdf61fea4d91f094a5283aaafffa1e66f8d7594ebca0f9529439c8b7",
+      "path": "reviews/T-012.md",
+      "covered_tasks": [
+        "T-066",
+        "T-069"
+      ]
+    },
+    {
+      "id": 82,
+      "heading": "2026-07-28 \u2014 T-071 icon scale review",
+      "source_start": 524318,
+      "source_end": 526266,
+      "sha256": "67f55100d57204a85c17d135f44ad09d3ad8bd0216e9cd0eab6576bb846d22de",
+      "path": "reviews/T-071.md",
+      "covered_tasks": [
+        "T-071"
+      ]
+    },
+    {
+      "id": 83,
+      "heading": "2026-07-29 \u2014 T-064 and T-072 carry review",
+      "source_start": 526266,
+      "source_end": 533461,
+      "sha256": "c61f52448376dabaa6502f64cf01d4025008e7221e258bc736b7fcff1f833ac6",
+      "path": "reviews/T-064.md",
+      "covered_tasks": [
+        "T-064",
+        "T-072"
+      ]
+    },
+    {
+      "id": 84,
+      "heading": "2026-07-29 \u2014 OPS-005, T-073, and T-072 correction review",
+      "source_start": 533461,
+      "source_end": 543048,
+      "sha256": "f47c416b7131ec6c9c118f83757a4ae4161b1e6951fc44e22eeb79aaab858a69",
+      "path": "reviews/T-064.md",
+      "covered_tasks": [
+        "T-072",
+        "T-073"
+      ]
+    },
+    {
+      "id": 85,
+      "heading": "2026-07-29 \u2014 T-072 second correction focused re-review",
+      "source_start": 543048,
+      "source_end": 550585,
+      "sha256": "0fdca669b3b8f4da7629292aebf609d16b3e5763eefac0a0d622808aac43b600",
+      "path": "reviews/T-064.md",
+      "covered_tasks": [
+        "T-072"
+      ]
+    },
+    {
+      "id": 86,
+      "heading": "2026-07-29 \u2014 T-072 worker-oracle focused re-review",
+      "source_start": 550585,
+      "source_end": 554772,
+      "sha256": "1e75a5d4f14166b29a8b2ee30be40dd5a989fcee3ff1aafb9cff9cab04a6956c",
+      "path": "reviews/T-064.md",
+      "covered_tasks": [
+        "T-072"
+      ]
+    },
+    {
+      "id": 87,
+      "heading": "2026-07-29 \u2014 T-074 diagnostic and Phase 1 evidence-table review",
+      "source_start": 554772,
+      "source_end": 561886,
+      "sha256": "68bd67eeeaf4104139ae00e83a2c3c6284a7a7769abeaab9eb5321dcdb293320",
+      "path": "reviews/phase-1-exit.md",
+      "covered_tasks": [
+        "T-033",
+        "T-074"
+      ]
+    },
+    {
+      "id": 88,
+      "heading": "2026-07-29 \u2014 Phase 1 evidence-table focused correction re-review",
+      "source_start": 561886,
+      "source_end": 568634,
+      "sha256": "e4736f22d53649148fb2af75a1afacf7de5fcf1a1c47b3c8d4475ac18e12fa61",
+      "path": "reviews/phase-1-exit.md",
+      "covered_tasks": [
+        "T-033"
+      ]
+    },
+    {
+      "id": 89,
+      "heading": "2026-07-29 \u2014 Final authorized Phase 1 evidence-table correction review",
+      "source_start": 568634,
+      "source_end": 576634,
+      "sha256": "d1fa308106453990af0884bf4dcd10db8a080fca99b44ca0f8a1c1c3537f8bd2",
+      "path": "reviews/phase-1-exit.md",
+      "covered_tasks": [
+        "T-033"
+      ]
+    },
+    {
+      "id": 90,
+      "heading": "2026-07-29 \u2014 T-073, T-075, and T-076 review",
+      "source_start": 576634,
+      "source_end": 582979,
+      "sha256": "f574b3c254aea8a346059a1e26b6c172645c1dbe7208312e41ad984f41af9497",
+      "path": "reviews/T-064.md",
+      "covered_tasks": [
+        "T-073",
+        "T-075",
+        "T-076"
+      ]
+    },
+    {
+      "id": 91,
+      "heading": "2026-07-29 \u2014 T-075 through T-077 and T-072/T-074 range review",
+      "source_start": 582979,
+      "source_end": 590772,
+      "sha256": "e60ed5182c24c851ef4544dfaa0ae5175e31893793a1e6f5c5718b947a519e75",
+      "path": "reviews/T-064.md",
+      "covered_tasks": [
+        "T-072",
+        "T-074",
+        "T-075",
+        "T-076",
+        "T-077"
+      ]
+    },
+    {
+      "id": 92,
+      "heading": "2026-07-29 \u2014 T-075 through T-077 focused correction re-review",
+      "source_start": 590772,
+      "source_end": 596476,
+      "sha256": "9c4d8980f8e5332172af5248f8c89309c960f8a68f3ef1646dc8ee29e618186c",
+      "path": "reviews/T-064.md",
+      "covered_tasks": [
+        "T-075",
+        "T-076",
+        "T-077"
+      ]
+    },
+    {
+      "id": 93,
+      "heading": "2026-07-29 \u2014 COORD-R7 authorized final documentation re-review",
+      "source_start": 596476,
+      "source_end": 598673,
+      "sha256": "e8e866ac7151a984ea3a51f32a440d5dedf6242835d2457b7278182fdf045ed7",
+      "path": "reviews/coordination-2026-07-29.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 94,
+      "heading": "2026-07-29 \u2014 T-074 implementation review",
+      "source_start": 598673,
+      "source_end": 605900,
+      "sha256": "d95f3c9469651b91e81ca9e4260e1672381545bb48e3f48ba0c7ceb787ccd9fb",
+      "path": "reviews/T-064.md",
+      "covered_tasks": [
+        "T-074"
+      ]
+    },
+    {
+      "id": 95,
+      "heading": "2026-07-29 \u2014 Previously excluded work review",
+      "source_start": 605900,
+      "source_end": 614684,
+      "sha256": "0a09dca0f8313a996509051b2c2da3cd5d48aff76176d2056fcace6a18f8a97e",
+      "path": "reviews/phase-2-planning.md",
+      "covered_tasks": [
+        "T-033",
+        "T-072"
+      ]
+    },
+    {
+      "id": 96,
+      "heading": "2026-07-29 \u2014 T-090 initial review and inherited-High correction verification",
+      "source_start": 614684,
+      "source_end": 622452,
+      "sha256": "07b198f886ee1623be1673f88fbabb56ee80695486172691e8ca2339ea91f025",
+      "path": "reviews/T-090.md",
+      "covered_tasks": [
+        "T-090"
+      ]
+    },
+    {
+      "id": 97,
+      "heading": "2026-07-29 \u2014 Phase 1 exit review",
+      "source_start": 622452,
+      "source_end": 630573,
+      "sha256": "f1187bec7d3fc373983c3fe10b1fb860229386069f160e7aa88f567f5a28a949",
+      "path": "reviews/phase-1-exit.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 98,
+      "heading": "2026-07-29 \u2014 T-050 initial review and P2PLAN-R2 correction review",
+      "source_start": 630573,
+      "source_end": 640990,
+      "sha256": "6b1c916d880b8d8c351dac4d4e9c90ac21001c18f868d619d2e73e18101170dc",
+      "path": "reviews/T-050.md",
+      "covered_tasks": [
+        "T-050"
+      ]
+    },
+    {
+      "id": 99,
+      "heading": "2026-07-29 \u2014 T-050 / P2PLAN-R2 focused correction re-review",
+      "source_start": 640990,
+      "source_end": 649228,
+      "sha256": "d34a9c6702f887b4a2e25226797d7623cc8542bf09c87c3c471c6ac866c83184",
+      "path": "reviews/T-050.md",
+      "covered_tasks": [
+        "T-050"
+      ]
+    },
+    {
+      "id": 100,
+      "heading": "2026-07-29 \u2014 T-050 / T-093 / T-095 focused correction re-review",
+      "source_start": 649228,
+      "source_end": 655222,
+      "sha256": "5a0265c4d2f34a158757fa633c430bb2d2ca30cbfeaa9ee7cae42df0c4f7455d",
+      "path": "reviews/T-050.md",
+      "covered_tasks": [
+        "T-050",
+        "T-093",
+        "T-095"
+      ]
+    },
+    {
+      "id": 101,
+      "heading": "2026-07-29 \u2014 P2PLAN-R1 / P2PLAN-R3 focused correction re-review",
+      "source_start": 655222,
+      "source_end": 661779,
+      "sha256": "0e1bc616843655e0919d7b03c4ec3fa54209d7822b49927e5d1b8d71ed33e141",
+      "path": "reviews/phase-2-planning.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 102,
+      "heading": "2026-07-30 \u2014 T-085 / T-049 / T-047 / T-097 four-task review",
+      "source_start": 661779,
+      "source_end": 670831,
+      "sha256": "2f959b237c8eca444a83dd5ed68fa0f2b4ac4002bd92cca8796f2b00cc16fbf8",
+      "path": "reviews/T-085.md",
+      "covered_tasks": [
+        "T-047",
+        "T-049",
+        "T-085",
+        "T-097"
+      ]
+    },
+    {
+      "id": 103,
+      "heading": "2026-07-30 \u2014 T-091 / T-096 / T-098 three-task review",
+      "source_start": 670831,
+      "source_end": 677681,
+      "sha256": "7169445890bf772cace6c6ef5a3817547bb0bd861cb2984a09c5801e63c1050e",
+      "path": "reviews/T-091.md",
+      "covered_tasks": [
+        "T-091",
+        "T-096",
+        "T-098"
+      ]
+    },
+    {
+      "id": 104,
+      "heading": "2026-07-30 \u2014 T-091 / T-096 focused correction re-review",
+      "source_start": 677681,
+      "source_end": 682210,
+      "sha256": "fea0f16a4498bc82b52d13f624dd58b05bd35900475b19f77f2f1a42b4892229",
+      "path": "reviews/T-091.md",
+      "covered_tasks": [
+        "T-091",
+        "T-096"
+      ]
+    },
+    {
+      "id": 105,
+      "heading": "2026-07-30 \u2014 Settings / T-047 / T-097 / T-089 backlog review",
+      "source_start": 682210,
+      "source_end": 689970,
+      "sha256": "169715e28a193d11ef62926a6a4d9a55414e865c91d1a5acabeeee52016a8721",
+      "path": "reviews/T-085.md",
+      "covered_tasks": [
+        "T-047",
+        "T-089",
+        "T-097"
+      ]
+    },
+    {
+      "id": 106,
+      "heading": "2026-07-30 \u2014 T-078 initial review",
+      "source_start": 689970,
+      "source_end": 696236,
+      "sha256": "3514762803e267a55b5fbd707b56783be90e236f70888ca99ec536cb6c51a40d",
+      "path": "reviews/T-078.md",
+      "covered_tasks": [
+        "T-078"
+      ]
+    },
+    {
+      "id": 107,
+      "heading": "2026-07-30 \u2014 T-078 focused correction re-review",
+      "source_start": 696236,
+      "source_end": 700801,
+      "sha256": "8831ccca656d4368c26d7f9cd2abbeb3833f18410985545ed6234661d742e1b5",
+      "path": "reviews/T-078.md",
+      "covered_tasks": [
+        "T-078"
+      ]
+    },
+    {
+      "id": 108,
+      "heading": "2026-07-31 \u2014 T-079 initial review",
+      "source_start": 700801,
+      "source_end": 707196,
+      "sha256": "890e8ee89157571d378392df27cc03021e34a5e43212729d353e6a6cbab0efea",
+      "path": "reviews/T-079.md",
+      "covered_tasks": [
+        "T-079"
+      ]
+    },
+    {
+      "id": 109,
+      "heading": "2026-07-31 \u2014 T-079 focused correction re-review",
+      "source_start": 707196,
+      "source_end": 713148,
+      "sha256": "1a996ecf2da3c8824235562e001846b556a4698e75de972714f245bd38ed4885",
+      "path": "reviews/T-079.md",
+      "covered_tasks": [
+        "T-079"
+      ]
+    },
+    {
+      "id": 110,
+      "heading": "2026-07-31 \u2014 T-080 and T-081 initial review",
+      "source_start": 713148,
+      "source_end": 722832,
+      "sha256": "f8fb087bff5e484c25e649f81f8b72caf4ab6938716908d7c43a214b9f2b7c3b",
+      "path": "reviews/T-080.md",
+      "covered_tasks": [
+        "T-080",
+        "T-081"
+      ]
+    },
+    {
+      "id": 111,
+      "heading": "2026-08-01 \u2014 complete overnight batch review",
+      "source_start": 722832,
+      "source_end": 736010,
+      "sha256": "dddf0fa00d04f7e69bacc0f4b80af6bf3d02c9892b689507ff0cb9b27d7f796e",
+      "path": "reviews/T-080.md",
+      "covered_tasks": [
+        "T-046",
+        "T-053",
+        "T-080",
+        "T-081",
+        "T-083",
+        "T-087",
+        "T-092",
+        "T-099",
+        "T-101",
+        "T-102",
+        "T-103"
+      ]
+    },
+    {
+      "id": 112,
+      "heading": "2026-08-01 \u2014 overnight batch focused correction re-review",
+      "source_start": 736010,
+      "source_end": 748050,
+      "sha256": "30a9c98391bcd600966e80797efb0604a172d2e3b6fcb5b1b21e441d89c103f8",
+      "path": "reviews/T-080.md",
+      "covered_tasks": [
+        "T-046",
+        "T-081",
+        "T-083",
+        "T-087",
+        "T-092",
+        "T-102"
+      ]
+    },
+    {
+      "id": 113,
+      "heading": "2026-08-01 \u2014 second correction batch, third focused review",
+      "source_start": 748050,
+      "source_end": 758695,
+      "sha256": "c91bf87afe4baf91d7e6d92ce8dae1f6865e4caeb30a9ca283a0700f8f30fab5",
+      "path": "reviews/T-080.md",
+      "covered_tasks": [
+        "T-046",
+        "T-081",
+        "T-087",
+        "T-092"
+      ]
+    },
+    {
+      "id": 114,
+      "heading": "2026-08-01 \u2014 fourth focused correction re-review: T-046 and T-087",
+      "source_start": 758695,
+      "source_end": 767401,
+      "sha256": "a94c06c9015f55a3dc8828af38a53956c3fe6a0ae87bbc90f96906b1f32549e2",
+      "path": "reviews/T-080.md",
+      "covered_tasks": [
+        "T-046",
+        "T-087"
+      ]
+    },
+    {
+      "id": 115,
+      "heading": "2026-08-01 \u2014 Phase 2 feature batch: T-100, T-086, T-084, T-082 and T-088",
+      "source_start": 767401,
+      "source_end": 777924,
+      "sha256": "ec856d2c150b63e67970706e6f5198cd02233a17b00a2f5765936e31be0bc0e8",
+      "path": "reviews/T-100.md",
+      "covered_tasks": [
+        "T-082",
+        "T-084",
+        "T-086",
+        "T-088",
+        "T-100"
+      ]
+    },
+    {
+      "id": 116,
+      "heading": "2026-08-01 \u2014 Phase 2 correction re-review: T-084, T-086 and T-088",
+      "source_start": 777924,
+      "source_end": 784412,
+      "sha256": "2d8f2d60a32444176cc432a25d4be493e4d27b3cd590803833c9405aa0c8cfc2",
+      "path": "reviews/T-100.md",
+      "covered_tasks": [
+        "T-084",
+        "T-086",
+        "T-088"
+      ]
+    },
+    {
+      "id": 117,
+      "heading": "2026-08-01 \u2014 T-115 and the final T-088 correction re-review",
+      "source_start": 784412,
+      "source_end": 792410,
+      "sha256": "5dfd84c8209127f795642ecaa7a886521a7683eef1b741ace9461cc7745c6fce",
+      "path": "reviews/T-100.md",
+      "covered_tasks": [
+        "T-088",
+        "T-115"
+      ]
+    },
+    {
+      "id": 118,
+      "heading": "2026-08-02 \u2014 UI rework and T-115 correction: T-115, T-116, T-117, T-118 and T-120",
+      "source_start": 792410,
+      "source_end": 806161,
+      "sha256": "982278d3e981cd2b5a9ac32426a420e46ef7497ad8b210ee861f25d40765d608",
+      "path": "reviews/T-100.md",
+      "covered_tasks": [
+        "T-115",
+        "T-116",
+        "T-117",
+        "T-118",
+        "T-120"
+      ]
+    },
+    {
+      "id": 119,
+      "heading": "2026-08-03 \u2014 T-116 and T-118 focused correction re-review",
+      "source_start": 806161,
+      "source_end": 819963,
+      "sha256": "90a40b96c4858aa94e1aadc77933b4007c4d9c8f43c96aa50b3a6fcda5929988",
+      "path": "reviews/T-100.md",
+      "covered_tasks": [
+        "T-116",
+        "T-118"
+      ]
+    },
+    {
+      "id": 120,
+      "heading": "2026-08-03 \u2014 CI corrections and Phase 2 roadmap review",
+      "source_start": 819963,
+      "source_end": 829095,
+      "sha256": "1ecd170a1b9c5a00c0fbae6760911b578b9ea0f506bed7a5fd3a6c51812cb1bd",
+      "path": "reviews/phase-2-coordination.md",
+      "covered_tasks": [
+        "T-083",
+        "T-118",
+        "T-119"
+      ]
+    },
+    {
+      "id": 121,
+      "heading": "2026-08-03 \u2014 Coordination corrections focused re-review",
+      "source_start": 829095,
+      "source_end": 833340,
+      "sha256": "1a21dcd4f958a519449c5ba81d24ebbe1a129b9dc0caf804b041c674a365d88b",
+      "path": "reviews/phase-2-coordination.md",
+      "covered_tasks": [
+        "T-118"
+      ]
+    },
+    {
+      "id": 122,
+      "heading": "2026-08-03 \u2014 T-118 delegate correction re-review",
+      "source_start": 833340,
+      "source_end": 844941,
+      "sha256": "4911958dc872f84f9d05c0d7e04f2a902fe21b7f26210eb54421795ac0c515a6",
+      "path": "reviews/T-100.md",
+      "covered_tasks": [
+        "T-118"
+      ]
+    },
+    {
+      "id": 123,
+      "heading": "2026-08-03 \u2014 T-118 second delegate correction re-review",
+      "source_start": 844941,
+      "source_end": 856226,
+      "sha256": "0ffdf3e5ff3aeafc1055af5509d0bd646c74785dc00b215897e556f482951e09",
+      "path": "reviews/T-100.md",
+      "covered_tasks": [
+        "T-118"
+      ]
+    },
+    {
+      "id": 124,
+      "heading": "2026-08-03 \u2014 T-118 third delegate correction re-review",
+      "source_start": 856226,
+      "source_end": 863483,
+      "sha256": "be1cee47ef0c6d0d6be15c3deb277dfaa2657857b9a4f50dd3b9ad3e57e8f580",
+      "path": "reviews/T-100.md",
+      "covered_tasks": [
+        "T-118"
+      ]
+    },
+    {
+      "id": 125,
+      "heading": "2026-08-03 \u2014 T-118 fourth delegate correction re-review",
+      "source_start": 863483,
+      "source_end": 871402,
+      "sha256": "a199a764d66846d33fe81b19650b5ecc76035d6a10bb5a36d179cdc6df23d129",
+      "path": "reviews/T-100.md",
+      "covered_tasks": [
+        "T-118"
+      ]
+    },
+    {
+      "id": 126,
+      "heading": "2026-08-03 \u2014 Phase 2 exit review",
+      "source_start": 871402,
+      "source_end": 883360,
+      "sha256": "28719ca743f6ad1c413309e1f0adf228dc3beb0ece631d724f61579b867900c9",
+      "path": "reviews/phase-2-exit.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 127,
+      "heading": "2026-08-04 \u2014 Indexed Phase 2 / UX-005 review",
+      "source_start": 883360,
+      "source_end": 897741,
+      "sha256": "234ba5e6aac80ebe1136cd0a623f6b8df49f5eb71265277a5305ff5bac4e1f8f",
+      "path": "reviews/T-122.md",
+      "covered_tasks": [
+        "T-122",
+        "T-124",
+        "T-125",
+        "T-126",
+        "T-127"
+      ]
+    },
+    {
+      "id": 128,
+      "heading": "2026-08-04 \u2014 Indexed Phase 2 / UX-005 correction re-review",
+      "source_start": 897741,
+      "source_end": 904595,
+      "sha256": "d578eb55c52166518ce062877d7fcbcc2ec688af04f189384cfc19c6910a5437",
+      "path": "reviews/T-122.md",
+      "covered_tasks": [
+        "T-122",
+        "T-124",
+        "T-125",
+        "T-126",
+        "T-127"
+      ]
+    },
+    {
+      "id": 129,
+      "heading": "2026-08-04 \u2014 `T126-R3` / `T122-R2` second correction re-review",
+      "source_start": 904595,
+      "source_end": 908580,
+      "sha256": "94360a5e14eb46840e027a478af056cdc220a212a417dea8f5dc4911eaa851ea",
+      "path": "reviews/T-122.md",
+      "covered_tasks": [
+        "T-122",
+        "T-126"
+      ]
+    },
+    {
+      "id": 130,
+      "heading": "2026-08-04 \u2014 `T126-R4` focused correction re-review",
+      "source_start": 908580,
+      "source_end": 911578,
+      "sha256": "e6dab9df023b3d3c289475ff6c35b070423aab76fd7db2dddd5bcab16b2c4356",
+      "path": "reviews/T-122.md",
+      "covered_tasks": [
+        "T-126"
+      ]
+    },
+    {
+      "id": 131,
+      "heading": "2026-08-04 \u2014 `T-128` / `T-129` initial review",
+      "source_start": 911578,
+      "source_end": 916823,
+      "sha256": "b8dfc6146be2c45bbd5c53a6f28537fc167b3b726d4e2e2c03733d710bda3452",
+      "path": "reviews/T-128.md",
+      "covered_tasks": [
+        "T-128",
+        "T-129"
+      ]
+    },
+    {
+      "id": 132,
+      "heading": "2026-08-04 \u2014 `T128-R1` focused correction re-review",
+      "source_start": 916823,
+      "source_end": 919910,
+      "sha256": "00eb0f4a99b216c8f250b42e5ce43168a592342b7fefc3b622563203d357daf2",
+      "path": "reviews/T-128.md",
+      "covered_tasks": [
+        "T-128"
+      ]
+    },
+    {
+      "id": 133,
+      "heading": "2026-08-04 \u2014 `T-130` initial review",
+      "source_start": 919910,
+      "source_end": 926472,
+      "sha256": "d02570b203a1f4bd926c74d0b03a357768bff634b426ea8ff1cc0390d7ee86f1",
+      "path": "reviews/T-130.md",
+      "covered_tasks": [
+        "T-130"
+      ]
+    },
+    {
+      "id": 134,
+      "heading": "2026-08-04 \u2014 `T-130` focused correction re-review",
+      "source_start": 926472,
+      "source_end": 931036,
+      "sha256": "2e8eb872decb57fef22b054eed7bcce1769e40dbc023f37431681fcfcf15a53a",
+      "path": "reviews/T-130.md",
+      "covered_tasks": [
+        "T-130"
+      ]
+    },
+    {
+      "id": 135,
+      "heading": "2026-08-04 \u2014 `T130-R3` authorized final correction re-review",
+      "source_start": 931036,
+      "source_end": 934774,
+      "sha256": "b481d155daea79c3e595c94d744ea51fd7ce6ed025a847dcc4476ed390eea7ea",
+      "path": "reviews/T-130.md",
+      "covered_tasks": [
+        "T-130"
+      ]
+    },
+    {
+      "id": 136,
+      "heading": "2026-08-04 \u2014 criterion 8 UI batch initial review",
+      "source_start": 934774,
+      "source_end": 946721,
+      "sha256": "6994e72b581307c52c663825808eca5a24a33a9d64d24e8f22d41fc5cfe4ff3a",
+      "path": "reviews/T-132.md",
+      "covered_tasks": [
+        "T-132",
+        "T-133",
+        "T-134",
+        "T-135",
+        "T-136",
+        "T-137",
+        "T-138",
+        "T-139",
+        "T-140",
+        "T-141"
+      ]
+    },
+    {
+      "id": 137,
+      "heading": "2026-08-05 \u2014 criterion 8 corrections focused re-review",
+      "source_start": 946721,
+      "source_end": 953886,
+      "sha256": "c3d1610bd19510a31f8869dcfeff635fe3e5fb90c84eb2badfd45f2899740442",
+      "path": "reviews/T-132.md",
+      "covered_tasks": [
+        "T-132",
+        "T-133",
+        "T-134",
+        "T-135",
+        "T-136",
+        "T-137",
+        "T-138",
+        "T-139",
+        "T-140",
+        "T-141"
+      ]
+    },
+    {
+      "id": 138,
+      "heading": "2026-08-05 \u2014 `T132-R2` focused correction re-review",
+      "source_start": 953886,
+      "source_end": 957446,
+      "sha256": "d089af28b6546b7b02e37dab6844baffa52b4e4f35f05687deaf8ecb8b311116",
+      "path": "reviews/T-132.md",
+      "covered_tasks": [
+        "T-132"
+      ]
+    },
+    {
+      "id": 139,
+      "heading": "2026-08-05 \u2014 `T140-R3` focused correction re-review",
+      "source_start": 957446,
+      "source_end": 961624,
+      "sha256": "3dd36b6b2bacf4e314db7a31cdab33332fbb4be33f2ad78b5024d1e692bd9f45",
+      "path": "reviews/T-132.md",
+      "covered_tasks": [
+        "T-140"
+      ]
+    },
+    {
+      "id": 140,
+      "heading": "2026-08-05 \u2014 criterion 8 remaining findings focused re-review",
+      "source_start": 961624,
+      "source_end": 970089,
+      "sha256": "88b4c70ccf1ca94ea6809205a8e478675e7422acfc02a95416728b1d821efb7d",
+      "path": "reviews/T-132.md",
+      "covered_tasks": [
+        "T-137",
+        "T-140"
+      ]
+    },
+    {
+      "id": 141,
+      "heading": "2026-08-05 \u2014 criterion 8 blockers focused correction re-review",
+      "source_start": 970089,
+      "source_end": 975827,
+      "sha256": "9373dcac38f5e27a7395ba9581de5202aa2e7e160779823e4f860602640c616c",
+      "path": "reviews/T-132.md",
+      "covered_tasks": [
+        "T-137",
+        "T-140"
+      ]
+    },
+    {
+      "id": 142,
+      "heading": "2026-08-05 \u2014 `P2EXIT-R10` records focused re-review",
+      "source_start": 975827,
+      "source_end": 979671,
+      "sha256": "081a6c6e40c4644970a70d1075e396bd3be2880f91ce309adb9202e1c55e8476",
+      "path": "reviews/phase-2-exit.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 143,
+      "heading": "2026-08-05 \u2014 `P2EXIT-R10` final records re-review",
+      "source_start": 979671,
+      "source_end": 982375,
+      "sha256": "875692f698dbfa4f8a8b15e0edb653886dae172ca67cb26eefefa63fbe39be68",
+      "path": "reviews/phase-2-exit.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 144,
+      "heading": "2026-08-05 \u2014 Phase 2 exit review, second submission",
+      "source_start": 982375,
+      "source_end": 990558,
+      "sha256": "876453f6dacf180e40f3908c191146830ed8752418dbefbe8854d346b628c937",
+      "path": "reviews/phase-2-exit.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 145,
+      "heading": "2026-08-05 \u2014 Phase 2 exit findings focused re-review",
+      "source_start": 990558,
+      "source_end": 997382,
+      "sha256": "2238509607e48771ac451926171d849ecea40321eafe4097b0812a7d40482e2c",
+      "path": "reviews/phase-2-exit.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 146,
+      "heading": "2026-08-05 \u2014 T161-R1 correction focused re-review",
+      "source_start": 997382,
+      "source_end": 1003262,
+      "sha256": "5eeadc33719ce6947cda896a98641203bf8f1498e94804df5c213602716d598d",
+      "path": "reviews/T-161.md",
+      "covered_tasks": [
+        "T-161"
+      ]
+    },
+    {
+      "id": 147,
+      "heading": "2026-08-05 \u2014 P2EXIT-R14 records focused re-review",
+      "source_start": 1003262,
+      "source_end": 1007156,
+      "sha256": "537dc6c91b95ca8805e4b477acc3887098eac8270fbe673caa57603f0f1d8159",
+      "path": "reviews/phase-2-exit.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 148,
+      "heading": "2026-08-05 \u2014 P2EXIT-R14 criterion-claims re-review",
+      "source_start": 1007156,
+      "source_end": 1011230,
+      "sha256": "86ff1df25503f7f120932d044629480a7d7bf7ec8aa02c084070f111066fd430",
+      "path": "reviews/phase-2-exit.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 149,
+      "heading": "2026-08-05 \u2014 P2EXIT-R14 phase-claims final re-review",
+      "source_start": 1011230,
+      "source_end": 1014891,
+      "sha256": "27ef8d6802dc7125212fddd3740463d52a67f5bc5b02c539ff7d6aed8dabd882",
+      "path": "reviews/phase-2-exit.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 150,
+      "heading": "2026-08-05 \u2014 Phase 2 exit review, third submission",
+      "source_start": 1014891,
+      "source_end": 1021580,
+      "sha256": "98c00fd9948a161dc93168e2f9ae89bbb3a1e5871a312586fe4c037a0096fc1c",
+      "path": "reviews/phase-2-exit.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 151,
+      "heading": "2026-08-05 \u2014 P2EXIT-R15 focused re-review",
+      "source_start": 1021580,
+      "source_end": 1025039,
+      "sha256": "cc7ed1cd0ccb03d04ef3d81ce5af677972815ec017331712191d951b95ee0164",
+      "path": "reviews/phase-2-exit.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 152,
+      "heading": "2026-08-05 \u2014 P2EXIT-R15 final re-review and Phase 2 sign-off",
+      "source_start": 1025039,
+      "source_end": 1029222,
+      "sha256": "42956004eb7535412726a5e463e39cc2be76cd02a43b6550f001837fece920c5",
+      "path": "reviews/phase-2-exit.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 153,
+      "heading": "2026-08-05 \u2014 T-160/T-163/T-164/T-166/T-167 row-layout review",
+      "source_start": 1029222,
+      "source_end": 1036428,
+      "sha256": "cb7c576fb75cd36b82fabc32bc16d0d4855d6bd58de80dc1879fa68b513b5678",
+      "path": "reviews/T-160.md",
+      "covered_tasks": [
+        "T-160",
+        "T-163",
+        "T-164",
+        "T-166",
+        "T-167"
+      ]
+    },
+    {
+      "id": 154,
+      "heading": "2026-08-05 \u2014 Row-layout focused correction re-review",
+      "source_start": 1036428,
+      "source_end": 1039802,
+      "sha256": "158e2de5dd549b9be61932bd327607e78059ba18a9a3af9096a55042075a2c92",
+      "path": "reviews/T-160.md",
+      "covered_tasks": [
+        "T-160",
+        "T-163",
+        "T-164",
+        "T-166",
+        "T-167"
+      ]
+    },
+    {
+      "id": 155,
+      "heading": "2026-08-05 \u2014 Phase 3 History batch initial review",
+      "source_start": 1039802,
+      "source_end": 1048866,
+      "sha256": "68afdb542783f4e9596e0140069c81e7f968021a1cb48ea482ef8383d6c449c9",
+      "path": "reviews/T-142.md",
+      "covered_tasks": [
+        "T-142",
+        "T-144",
+        "T-145",
+        "T-159"
+      ]
+    },
+    {
+      "id": 156,
+      "heading": "2026-08-05 \u2014 Phase 3 History batch focused correction re-review",
+      "source_start": 1048866,
+      "source_end": 1055389,
+      "sha256": "71cda19605b82072a38e5ff5c29f7e898ef6369291e54afefa59d14b2de4c918",
+      "path": "reviews/T-142.md",
+      "covered_tasks": [
+        "T-142",
+        "T-144",
+        "T-145",
+        "T-159"
+      ]
+    },
+    {
+      "id": 157,
+      "heading": "2026-08-05 \u2014 History \u00d7 row-layout merge review",
+      "source_start": 1055389,
+      "source_end": 1060631,
+      "sha256": "be0982ba19a3fda62daeab4a9b1ba9891d9eea02265f486f4d5fa96a87186c11",
+      "path": "reviews/history-row-layout-integration.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 158,
+      "heading": "2026-08-06 \u2014 T-105 UX specification review",
+      "source_start": 1060631,
+      "source_end": 1068552,
+      "sha256": "44155c6ecbe2f7e1dd66c0279b886198d51f30093eeaa96c2bd9af9703dfb7e4",
+      "path": "reviews/T-105.md",
+      "covered_tasks": [
+        "T-105"
+      ]
+    },
+    {
+      "id": 159,
+      "heading": "2026-08-06 \u2014 Completion-ledger and Phase 3 batch review",
+      "source_start": 1068552,
+      "source_end": 1078703,
+      "sha256": "9dba333406ad408a2e80e82495ca7982f6e771e084c4b77f50cd7d0353e2dddb",
+      "path": "reviews/T-150.md",
+      "covered_tasks": [
+        "T-150",
+        "T-156",
+        "T-169",
+        "T-170",
+        "T-171"
+      ]
+    },
+    {
+      "id": 160,
+      "heading": "2026-08-06 \u2014 Completion-ledger withdrawal review",
+      "source_start": 1078703,
+      "source_end": 1088864,
+      "sha256": "688aecb24d12e57d2ca1138a7f87b277f1f5602ccb2b27f30f842526c527570c",
+      "path": "reviews/T-150.md",
+      "covered_tasks": [
+        "T-169",
+        "T-170",
+        "T-171"
+      ]
+    },
+    {
+      "id": 161,
+      "heading": "2026-08-06 \u2014 Completion-ledger withdrawal focused re-review",
+      "source_start": 1088864,
+      "source_end": 1097448,
+      "sha256": "6048ae5efb74364d72402020e5c7939d665ab44f9932b30c62a65bcbc6095af0",
+      "path": "reviews/T-150.md",
+      "covered_tasks": [
+        "T-169",
+        "T-170",
+        "T-171",
+        "T-175"
+      ]
+    },
+    {
+      "id": 162,
+      "heading": "2026-08-06 \u2014 Completion-ledger purge follow-up verification",
+      "source_start": 1097448,
+      "source_end": 1100941,
+      "sha256": "430e29323e72559846e1e6b744f03c04ce21912ab48b7ba2d41f55075f3a6b25",
+      "path": "reviews/T-150.md",
+      "covered_tasks": [
+        "T-048",
+        "T-169",
+        "T-173",
+        "T-175"
+      ]
+    },
+    {
+      "id": 163,
+      "heading": "2026-08-06 \u2014 T-175 / T-158 cleanup and refusal review",
+      "source_start": 1100941,
+      "source_end": 1106607,
+      "sha256": "41b173e8836abd9f75b711443f2c94c23a5cbd1ce6af4787d2768e468ab67048",
+      "path": "reviews/T-150.md",
+      "covered_tasks": [
+        "T-158",
+        "T-175"
+      ]
+    },
+    {
+      "id": 164,
+      "heading": "2026-08-06 \u2014 T-177 / T-178 / T-179 efficiency review",
+      "source_start": 1106607,
+      "source_end": 1113426,
+      "sha256": "f31c4013cfa92851166ccaa3a20e15d12483fbae90ac870443b5ce7d8a22bf56",
+      "path": "reviews/T-105.md",
+      "covered_tasks": [
+        "T-177",
+        "T-178",
+        "T-179"
+      ]
+    },
+    {
+      "id": 165,
+      "heading": "2026-08-07 \u2014 Review continuation pointer",
+      "source_start": 1113426,
+      "source_end": 1113927,
+      "sha256": "60d92bad52934b350c7f6390687d94a6e22f843a85a22b2320df0cc456ecc612",
+      "path": "reviews/T-105.md",
+      "covered_tasks": [
+        "T-105",
+        "T-168",
+        "T-179"
+      ]
+    },
+    {
+      "id": 166,
+      "heading": "2026-08-07 \u2014 T-105 focused correction re-review",
+      "source_start": 1113927,
+      "source_end": 1118758,
+      "sha256": "94baa72746957e22c6c4aa26a25986f24579bc0c5d8695409bb3ac5858dd376b",
+      "path": "reviews/T-105.md",
+      "covered_tasks": [
+        "T-105"
+      ]
+    },
+    {
+      "id": 167,
+      "heading": "2026-08-07 \u2014 T-168 initial review",
+      "source_start": 1118758,
+      "source_end": 1122027,
+      "sha256": "ec3964299877a9ec20b1d05fa56f08124484718a25419d4575d826aee27d1e02",
+      "path": "reviews/T-105.md",
+      "covered_tasks": [
+        "T-168"
+      ]
+    },
+    {
+      "id": 168,
+      "heading": "2026-08-07 \u2014 T-179 maintainer-disposition re-review",
+      "source_start": 1122027,
+      "source_end": 1125483,
+      "sha256": "f0a849bb8612cbc2a1eb5d8ae513247988ee977235802d5d6494d25fc0073bff",
+      "path": "reviews/T-105.md",
+      "covered_tasks": [
+        "T-179"
+      ]
+    },
+    {
+      "id": 169,
+      "heading": "2026-08-06 \u2014 T-177 / T-178 / T-179 focused correction re-review",
+      "source_start": 1125483,
+      "source_end": 1133727,
+      "sha256": "7de858967dab5e34cc16484f1cd6190767f747c7c108fb5742683952c7c68e29",
+      "path": "reviews/T-105.md",
+      "covered_tasks": [
+        "T-177",
+        "T-178",
+        "T-179"
+      ]
+    },
+    {
+      "id": 170,
+      "heading": "2026-08-06 \u2014 T-179 maintainer-authorized focused re-review (round 3)",
+      "source_start": 1133727,
+      "source_end": 1140392,
+      "sha256": "bd4423f80ead5e8042f41baa036bec3eb3c928c6a613e1709e57f5a17ccbdb18",
+      "path": "reviews/T-105.md",
+      "covered_tasks": [
+        "T-179"
+      ]
+    },
+    {
+      "id": 171,
+      "heading": "2026-08-07 \u2014 T-105 / T-168 correction re-review and T179-R3 placement",
+      "source_start": 1140392,
+      "source_end": 1146064,
+      "sha256": "e0006fb123e95e4026aed76387461ae44327900d3f6639b0b43705d82b2069e5",
+      "path": "reviews/T-105.md",
+      "covered_tasks": [
+        "T-105",
+        "T-168",
+        "T-179",
+        "T-180"
+      ]
+    },
+    {
+      "id": 172,
+      "heading": "2026-08-07 \u2014 T-105 maintainer-authorized final focused re-review",
+      "source_start": 1146064,
+      "source_end": 1148380,
+      "sha256": "277a9a9749f23f85f4a9253853b743854cfea892d2f184a3c774ac5bf87a08b8",
+      "path": "reviews/T-105.md",
+      "covered_tasks": [
+        "T-105"
+      ]
+    },
+    {
+      "id": 173,
+      "heading": "2026-08-07 \u2014 T-181 / T-176 / T-107 implementation review",
+      "source_start": 1148380,
+      "source_end": 1160504,
+      "sha256": "0de623f2bd12e487b86385c52e84ff39b4b1fa8f374409e4c58d8b2c3f6ef0cb",
+      "path": "reviews/T-181.md",
+      "covered_tasks": [
+        "T-107",
+        "T-176",
+        "T-181"
+      ]
+    },
+    {
+      "id": 174,
+      "heading": "2026-08-07 \u2014 T-181 / T-107 focused correction re-review",
+      "source_start": 1160504,
+      "source_end": 1168036,
+      "sha256": "b1769f346c9b3d7c3013b97425fcda3a4e82446ce1ba77fff911da6233a5b9ff",
+      "path": "reviews/T-181.md",
+      "covered_tasks": [
+        "T-107",
+        "T-181"
+      ]
+    },
+    {
+      "id": 175,
+      "heading": "2026-08-07 \u2014 T-107 High-correction continuation",
+      "source_start": 1168036,
+      "source_end": 1173061,
+      "sha256": "cb2bba3ebcb48915d0b6f0aa545e7e58008284d45acfc7575bc77b00708ac67e",
+      "path": "reviews/T-181.md",
+      "covered_tasks": [
+        "T-107"
+      ]
+    },
+    {
+      "id": 176,
+      "heading": "2026-08-07 \u2014 T-108 / T-185 implementation review",
+      "source_start": 1173061,
+      "source_end": 1180854,
+      "sha256": "aa8dddfd3e3e759fb538b8355089b090b234d6170b23f94b0e8d7822b699df3e",
+      "path": "reviews/T-108.md",
+      "covered_tasks": [
+        "T-108",
+        "T-185"
+      ]
+    },
+    {
+      "id": 177,
+      "heading": "2026-08-07 \u2014 T-108 / T-185 focused correction re-review",
+      "source_start": 1180854,
+      "source_end": 1185887,
+      "sha256": "399902179669e1d9f71ea4f8f55bce9fbe7c3f408af65b9946813b4d349c0065",
+      "path": "reviews/T-108.md",
+      "covered_tasks": [
+        "T-108",
+        "T-185"
+      ]
+    },
+    {
+      "id": 178,
+      "heading": "2026-08-08 \u2014 T-109 implementation review",
+      "source_start": 1185887,
+      "source_end": 1195358,
+      "sha256": "694857744d5cd5e56c665f68959444ee3827202311ddf43a53061118a1e069ca",
+      "path": "reviews/T-109.md",
+      "covered_tasks": [
+        "T-109"
+      ]
+    },
+    {
+      "id": 179,
+      "heading": "2026-08-08 \u2014 T-109 gate re-review and T-110/T-112/T-113/T-114 implementation review",
+      "source_start": 1195358,
+      "source_end": 1204082,
+      "sha256": "a05fc5752d137480aa585e996b108dc74249d2cbe4b4142357b23c8e33dbb43e",
+      "path": "reviews/T-109.md",
+      "covered_tasks": [
+        "T-109",
+        "T-110",
+        "T-112",
+        "T-113",
+        "T-114"
+      ]
+    },
+    {
+      "id": 180,
+      "heading": "2026-08-08 \u2014 T-109 correction batch",
+      "source_start": 1204082,
+      "source_end": 1209630,
+      "sha256": "ad34663480941764e14d74e38aba075ddc1ad49b29ef89f1b4018ab4368ef2bc",
+      "path": "reviews/T-109.md",
+      "covered_tasks": [
+        "T-109"
+      ]
+    },
+    {
+      "id": 181,
+      "heading": "2026-08-08 \u2014 T-109 focused correction re-review",
+      "source_start": 1209630,
+      "source_end": 1216320,
+      "sha256": "50bacdd0eabf599087fd90450f53718ef60ed4743ae4c44d0e867c6d6399f6f3",
+      "path": "reviews/T-109.md",
+      "covered_tasks": [
+        "T-109"
+      ]
+    },
+    {
+      "id": 182,
+      "heading": "2026-08-08 \u2014 T-113 correction batch, and T-109's second",
+      "source_start": 1216320,
+      "source_end": 1222284,
+      "sha256": "f6e18406cb4ed4d92c0058a03b8dc5eb9e7148f20d4d87ecca1cc1b272548398",
+      "path": "reviews/T-109.md",
+      "covered_tasks": [
+        "T-109",
+        "T-113"
+      ]
+    },
+    {
+      "id": 183,
+      "heading": "2026-08-08 \u2014 T-109 / T-113 focused correction re-review",
+      "source_start": 1222284,
+      "source_end": 1227059,
+      "sha256": "b7e46e225e94c101aa6e8d6bccba04fa0985d044583f44c454c8e460fe9c6aff",
+      "path": "reviews/T-109.md",
+      "covered_tasks": [
+        "T-109",
+        "T-113"
+      ]
+    },
+    {
+      "id": 184,
+      "heading": "2026-08-08 \u2014 T113-R1, second correction",
+      "source_start": 1227059,
+      "source_end": 1231379,
+      "sha256": "6a1a1b53f4b1b03451e08796626c8b8eb66e4491c81966c614885ea2d943808f",
+      "path": "reviews/T-109.md",
+      "covered_tasks": [
+        "T-113"
+      ]
+    },
+    {
+      "id": 185,
+      "heading": "2026-08-08 \u2014 T113-R1 second-correction re-review",
+      "source_start": 1231379,
+      "source_end": 1233624,
+      "sha256": "c6ea1d7719b29451af50e74cffb01eccd23419f1343e71b3306bc3602fd638f0",
+      "path": "reviews/T-109.md",
+      "covered_tasks": [
+        "T-113"
+      ]
+    },
+    {
+      "id": 186,
+      "heading": "2026-08-08 \u2014 T-111 implementation review",
+      "source_start": 1233624,
+      "source_end": 1240756,
+      "sha256": "727d55d770dba760d46f0983a060c5a3cb695228ebd05b0a130778d5b9a7fad0",
+      "path": "reviews/T-111.md",
+      "covered_tasks": [
+        "T-111"
+      ]
+    },
+    {
+      "id": 187,
+      "heading": "2026-08-08 \u2014 T-111 focused correction re-review",
+      "source_start": 1240756,
+      "source_end": 1243585,
+      "sha256": "71237e04a374d69d1873ddba2b1e457c1cdc86efa83781d1adca422047a31e46",
+      "path": "reviews/T-111.md",
+      "covered_tasks": [
+        "T-111"
+      ]
+    },
+    {
+      "id": 188,
+      "heading": "2026-08-08 \u2014 T-143 implementation review",
+      "source_start": 1243585,
+      "source_end": 1246062,
+      "sha256": "8bf255bce25509b36e8f726bf8619e8a9bf6febc5592bf1ababb5fcd179ffab3",
+      "path": "reviews/T-143.md",
+      "covered_tasks": [
+        "T-143"
+      ]
+    },
+    {
+      "id": 189,
+      "heading": "2026-08-08 \u2014 T-180 implementation review",
+      "source_start": 1246062,
+      "source_end": 1249874,
+      "sha256": "41c619599b6bc1c78c8be547e63cba9a9b9efc182cbad2f81404c0aaf883c938",
+      "path": "reviews/T-143.md",
+      "covered_tasks": [
+        "T-180"
+      ]
+    },
+    {
+      "id": 190,
+      "heading": "2026-08-10 \u2014 T-215 and T-146 combined review",
+      "source_start": 1249874,
+      "source_end": 1256243,
+      "sha256": "5b1cd98e0fdda73a242acb750ae406c1389cd763dffbd5b6436af596956f8412",
+      "path": "reviews/T-215.md",
+      "covered_tasks": [
+        "T-146",
+        "T-215"
+      ]
+    },
+    {
+      "id": 191,
+      "heading": "2026-08-08 \u2014 T-143 / T-180 focused correction re-review",
+      "source_start": 1256243,
+      "source_end": 1260331,
+      "sha256": "5cd29b6438c67f7ce32c2d07bc88e4a0572f963b73b9d13ca7be2000f1171740",
+      "path": "reviews/T-143.md",
+      "covered_tasks": [
+        "T-143",
+        "T-180"
+      ]
+    },
+    {
+      "id": 192,
+      "heading": "2026-08-08 \u2014 T-189 / T-186 implementation review",
+      "source_start": 1260331,
+      "source_end": 1266079,
+      "sha256": "78d72ef65347d215df55873642cff19d5548cd7996952d734aae67e3f217f10c",
+      "path": "reviews/T-189.md",
+      "covered_tasks": [
+        "T-186",
+        "T-189"
+      ]
+    },
+    {
+      "id": 193,
+      "heading": "2026-08-08 \u2014 T189-R1 / T186-R1 focused correction re-review",
+      "source_start": 1266079,
+      "source_end": 1270421,
+      "sha256": "bae92eca56d5454591eedc592dde2cea03cf188aa2bc8ef93dbfd69b5e068fbf",
+      "path": "reviews/T-189.md",
+      "covered_tasks": [
+        "T-186",
+        "T-189"
+      ]
+    },
+    {
+      "id": 194,
+      "heading": "2026-08-08 \u2014 T186-R1 third pass and T-188 review",
+      "source_start": 1270421,
+      "source_end": 1275927,
+      "sha256": "dc04fa29de83b8736cde4a63a0a6cd415f3836f07fea13868857b4a553a26b43",
+      "path": "reviews/T-189.md",
+      "covered_tasks": [
+        "T-186",
+        "T-188"
+      ]
+    },
+    {
+      "id": 195,
+      "heading": "2026-08-08 \u2014 T188-R1 focused correction re-review",
+      "source_start": 1275927,
+      "source_end": 1279768,
+      "sha256": "97e2c7a8fa3ba1ea2b9393313db575fa9a106b81ea733a52884bf967e2b78851",
+      "path": "reviews/T-189.md",
+      "covered_tasks": [
+        "T-188"
+      ]
+    },
+    {
+      "id": 196,
+      "heading": "2026-08-08 \u2014 T188-R1 third focused correction re-review",
+      "source_start": 1279768,
+      "source_end": 1283911,
+      "sha256": "3d19b70c96d08f8d1005f4292e5767592de52b26f05b0d419eb36b6217e5eb1b",
+      "path": "reviews/T-189.md",
+      "covered_tasks": [
+        "T-188"
+      ]
+    },
+    {
+      "id": 197,
+      "heading": "2026-08-08 \u2014 Phase 3 exit review, initial submission",
+      "source_start": 1283911,
+      "source_end": 1290903,
+      "sha256": "bdb0f641abda7ac090ab316d2a56f2b58e2ac903061f60d604d8082ab0b097e9",
+      "path": "reviews/phase-3-exit.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 198,
+      "heading": "2026-08-08 \u2014 Phase 3 exit findings focused re-review",
+      "source_start": 1290903,
+      "source_end": 1295333,
+      "sha256": "f568886a540da5394d660cbaab2ef26a7cd145bff3f105a4a7fe050ba0e833f0",
+      "path": "reviews/phase-3-exit.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 199,
+      "heading": "2026-08-09 \u2014 Phase 3 exit authorized third pass",
+      "source_start": 1295333,
+      "source_end": 1300262,
+      "sha256": "bc0514e522ca5574700d6aa1e0a93597f347defa92bdb02868af423970e9d53f",
+      "path": "reviews/phase-3-exit.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 200,
+      "heading": "2026-08-09 \u2014 P3EXIT-R3 focused correction re-review",
+      "source_start": 1300262,
+      "source_end": 1303524,
+      "sha256": "f87c22ef2990fccc56c786286221d7b04a6055762c8ed0aa8af95cd541e76d37",
+      "path": "reviews/phase-3-exit.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 201,
+      "heading": "2026-08-09 \u2014 Phase 3 post-approval coordination review",
+      "source_start": 1303524,
+      "source_end": 1306412,
+      "sha256": "44196ad724366b9f8643bc1062d820980de57d93f0741d227a367764f763d932",
+      "path": "reviews/phase-3-exit.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 202,
+      "heading": "2026-08-09 \u2014 P3EXIT-R4 focused correction re-review",
+      "source_start": 1306412,
+      "source_end": 1308816,
+      "sha256": "8bf892711c7bc9b01feb694b2e718a466c933a5f09bcafa2566e1c7723b1168e",
+      "path": "reviews/phase-3-exit.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 203,
+      "heading": "2026-08-09 \u2014 T-192, T-193 and T-194 initial review",
+      "source_start": 1308816,
+      "source_end": 1317101,
+      "sha256": "9858f947147254bc0021ff6f7c145d1d30d13e8f466dbe0f1e6a5d8e3ac7b5be",
+      "path": "reviews/T-192.md",
+      "covered_tasks": [
+        "T-192",
+        "T-193",
+        "T-194"
+      ]
+    },
+    {
+      "id": 204,
+      "heading": "2026-08-09 \u2014 T193-R1 / T194-R1 focused correction re-review",
+      "source_start": 1317101,
+      "source_end": 1323966,
+      "sha256": "d3cd269834525d72e49b247735b87be61c2bfa02bc7edff78dd378e35d911999",
+      "path": "reviews/T-192.md",
+      "covered_tasks": [
+        "T-193",
+        "T-194"
+      ]
+    },
+    {
+      "id": 205,
+      "heading": "2026-08-09 \u2014 T-204 initial review",
+      "source_start": 1323966,
+      "source_end": 1332750,
+      "sha256": "6b2d021afd2971d0ec1c8b2c227388ff33510b03867b97c01c2b4691c010fdec",
+      "path": "reviews/T-204.md",
+      "covered_tasks": [
+        "T-204"
+      ]
+    },
+    {
+      "id": 206,
+      "heading": "2026-08-09 \u2014 T204-R1 / T204-R2 focused correction re-review",
+      "source_start": 1332750,
+      "source_end": 1338034,
+      "sha256": "e792bfc0fa3a1693c00ffd1bf08000c51945634415c0b98ae3dc6485b13dc6fa",
+      "path": "reviews/T-204.md",
+      "covered_tasks": [
+        "T-204"
+      ]
+    },
+    {
+      "id": 207,
+      "heading": "2026-08-09 \u2014 T-204 third focused correction re-review",
+      "source_start": 1338034,
+      "source_end": 1343051,
+      "sha256": "fbb2d6ffdfc043045dca81cc36110b1850d909ab9fc23e7ae830978bb3e79f43",
+      "path": "reviews/T-204.md",
+      "covered_tasks": [
+        "T-204"
+      ]
+    },
+    {
+      "id": 208,
+      "heading": "2026-08-09 \u2014 T-210 / T-211 / T-203 initial comprehensive review",
+      "source_start": 1343051,
+      "source_end": 1351033,
+      "sha256": "4997bb7d6c025475e4be53c59a79f205378ea3e9a33f1ba323e01164190ee251",
+      "path": "reviews/T-210.md",
+      "covered_tasks": [
+        "T-203",
+        "T-210",
+        "T-211"
+      ]
+    },
+    {
+      "id": 209,
+      "heading": "2026-08-10 \u2014 T-210 focused correction re-review",
+      "source_start": 1351033,
+      "source_end": 1355388,
+      "sha256": "65c312e81de99e66cbe71eca2b95477967c3403987b094b80181ac54c90276b1",
+      "path": "reviews/T-210.md",
+      "covered_tasks": [
+        "T-210"
+      ]
+    },
+    {
+      "id": 210,
+      "heading": "2026-08-10 \u2014 T-203 option-E review and T-208/T-209 review",
+      "source_start": 1355388,
+      "source_end": 1363986,
+      "sha256": "d11ad8951b0f534ed26efea6cd2fc6a4664c5a97d6906763e1c2dd3a60f404bf",
+      "path": "reviews/T-210.md",
+      "covered_tasks": [
+        "T-203",
+        "T-208",
+        "T-209"
+      ]
+    },
+    {
+      "id": 211,
+      "heading": "2026-08-10 \u2014 T-203 focused correction re-review",
+      "source_start": 1363986,
+      "source_end": 1367159,
+      "sha256": "e3bd25c22aede535aecac053c209a88b963ca98ac10b0c590c0ba6fb7835ff88",
+      "path": "reviews/T-210.md",
+      "covered_tasks": [
+        "T-203"
+      ]
+    },
+    {
+      "id": 212,
+      "heading": "2026-08-10 \u2014 T-146 maintainer-authorized T146-R3 re-review",
+      "source_start": 1367159,
+      "source_end": 1370575,
+      "sha256": "863d9936ee9abbdbfeb7d88d9620be411b14f5428066ac441e3428800ef96acb",
+      "path": "reviews/T-215.md",
+      "covered_tasks": [
+        "T-146"
+      ]
+    },
+    {
+      "id": 213,
+      "heading": "2026-08-10 \u2014 T-146 focused correction re-review",
+      "source_start": 1370575,
+      "source_end": 1375378,
+      "sha256": "2e026a98a81b61a3e392fd8b91a15a76ced670e22a37f91812ccb3a8784aed4d",
+      "path": "reviews/T-215.md",
+      "covered_tasks": [
+        "T-146"
+      ]
+    },
+    {
+      "id": 214,
+      "heading": "2026-08-10 \u2014 T-199 initial review",
+      "source_start": 1375378,
+      "source_end": 1380946,
+      "sha256": "ffac6766ccdb09d7c4e2aa300111a51b982e1ea129b56a3b02fc382863380f6d",
+      "path": "reviews/T-199.md",
+      "covered_tasks": [
+        "T-199"
+      ]
+    },
+    {
+      "id": 215,
+      "heading": "2026-08-10 \u2014 T-199 focused correction re-review",
+      "source_start": 1380946,
+      "source_end": 1386192,
+      "sha256": "7ee89e565ad59a09323c3563d75ad0f531f71d4d0d70805e2771a11a85c4257f",
+      "path": "reviews/T-199.md",
+      "covered_tasks": [
+        "T-199"
+      ]
+    },
+    {
+      "id": 216,
+      "heading": "2026-08-10 \u2014 T-199 second focused correction re-review",
+      "source_start": 1386192,
+      "source_end": 1390956,
+      "sha256": "11364cd07d629520ffd10e4901910ef3d503c582d38d7786359ec271c38631b6",
+      "path": "reviews/T-199.md",
+      "covered_tasks": [
+        "T-199"
+      ]
+    },
+    {
+      "id": 217,
+      "heading": "2026-08-10 \u2014 T-197 initial review",
+      "source_start": 1390956,
+      "source_end": 1398124,
+      "sha256": "d31d60b331a226c4be495399563f08123582e8dbfa8164d7c4ac319001f6ea5d",
+      "path": "reviews/T-197.md",
+      "covered_tasks": [
+        "T-197"
+      ]
+    },
+    {
+      "id": 218,
+      "heading": "2026-08-10 \u2014 T-197 focused correction re-review",
+      "source_start": 1398124,
+      "source_end": 1405551,
+      "sha256": "011189b1682b8c9ae215091c39a3ebd6494160c885b3640ceb143f2eaa4f170e",
+      "path": "reviews/T-197.md",
+      "covered_tasks": [
+        "T-197"
+      ]
+    },
+    {
+      "id": 219,
+      "heading": "2026-08-10 \u2014 T-197 second focused correction re-review",
+      "source_start": 1405551,
+      "source_end": 1412033,
+      "sha256": "39097f910e9a4d9a5b41eb978474c84e4ef8721eea29299a58e1df103c33ef1c",
+      "path": "reviews/T-197.md",
+      "covered_tasks": [
+        "T-197"
+      ]
+    },
+    {
+      "id": 220,
+      "heading": "2026-08-10 \u2014 T-197 third focused correction re-review",
+      "source_start": 1412033,
+      "source_end": 1418962,
+      "sha256": "5a2ee58bd071e54ff46e8b4d6c2a5bffb86b60f3c71183f27de44624526dfcea",
+      "path": "reviews/T-197.md",
+      "covered_tasks": [
+        "T-197"
+      ]
+    },
+    {
+      "id": 221,
+      "heading": "2026-08-11 \u2014 T-197 fourth focused correction re-review",
+      "source_start": 1418962,
+      "source_end": 1425094,
+      "sha256": "b67636f257d1485cbfb6e252a8eda7d8f945510c9dccc0a195ff917cde8308a6",
+      "path": "reviews/T-197.md",
+      "covered_tasks": [
+        "T-197"
+      ]
+    },
+    {
+      "id": 222,
+      "heading": "2026-08-11 \u2014 T-197 fifth focused correction re-review",
+      "source_start": 1425094,
+      "source_end": 1429938,
+      "sha256": "813bf5cae58c74a843948a92836b2c9706b1f40bce190b7999549a9c1e72f58e",
+      "path": "reviews/T-197.md",
+      "covered_tasks": [
+        "T-197"
+      ]
+    },
+    {
+      "id": 223,
+      "heading": "2026-08-11 \u2014 unattended-run covering review",
+      "source_start": 1429938,
+      "source_end": 1438658,
+      "sha256": "a88b6ba0937d772d2ea166a597574fb0bcc2b35456ce24fd7267f0b3f202e791",
+      "path": "reviews/T-197.md",
+      "covered_tasks": [
+        "T-197",
+        "T-214",
+        "T-216",
+        "T-217",
+        "T-222",
+        "T-224"
+      ]
+    },
+    {
+      "id": 224,
+      "heading": "2026-08-11 \u2014 unattended-run focused correction re-review",
+      "source_start": 1438658,
+      "source_end": 1445474,
+      "sha256": "ab8984253ca7aca4d79a90be3b0e8b4b10ce98c2375fb0e151b599b7429f95c2",
+      "path": "reviews/T-197.md",
+      "covered_tasks": [
+        "T-197",
+        "T-214",
+        "T-217",
+        "T-222",
+        "T-224"
+      ]
+    },
+    {
+      "id": 225,
+      "heading": "2026-08-11 \u2014 T-197 / T-222 third-round focused re-review",
+      "source_start": 1445474,
+      "source_end": 1449565,
+      "sha256": "f3995db6a0835b6a33f02614e6d0a685a61daddc5a60d12e68cbe0e396be63ee",
+      "path": "reviews/T-197.md",
+      "covered_tasks": [
+        "T-197",
+        "T-222"
+      ]
+    },
+    {
+      "id": 226,
+      "heading": "2026-08-11 \u2014 T-195 default preset and output-template review",
+      "source_start": 1449565,
+      "source_end": 1455906,
+      "sha256": "cc9e94845d3ec88eb25346488222f803df2f76569f89aeca266614a4c072769f",
+      "path": "reviews/T-195.md",
+      "covered_tasks": [
+        "T-195"
+      ]
+    },
+    {
+      "id": 227,
+      "heading": "2026-08-11 \u2014 T-195 focused correction re-review",
+      "source_start": 1455906,
+      "source_end": 1460351,
+      "sha256": "d96dabe4268594e8dcbeaf4f26f29abe10095c1fc91aa6af2192866e38fbc028",
+      "path": "reviews/T-195.md",
+      "covered_tasks": [
+        "T-195"
+      ]
+    },
+    {
+      "id": 228,
+      "heading": "2026-08-11 \u2014 T-195 third focused re-review",
+      "source_start": 1460351,
+      "source_end": 1464274,
+      "sha256": "4db8a12520785c29d8011cee10888b7c58926eadf2462fccc46f29d0c2760bc3",
+      "path": "reviews/T-195.md",
+      "covered_tasks": [
+        "T-195"
+      ]
+    },
+    {
+      "id": 229,
+      "heading": "2026-08-11 \u2014 T-195 fourth focused re-review",
+      "source_start": 1464274,
+      "source_end": 1467444,
+      "sha256": "7d7ec26ce4240f2a6926b7dedb97a78eaa6733dc2b183fec5c591f1cdc24894c",
+      "path": "reviews/T-195.md",
+      "covered_tasks": [
+        "T-195"
+      ]
+    },
+    {
+      "id": 230,
+      "heading": "2026-08-11 \u2014 T-195 fifth focused re-review",
+      "source_start": 1467444,
+      "source_end": 1470428,
+      "sha256": "9059da48daee65f49f352a97782805889e1dcdd4a235b1a2fe65be897180e381",
+      "path": "reviews/T-195.md",
+      "covered_tasks": [
+        "T-195"
+      ]
+    },
+    {
+      "id": 231,
+      "heading": "2026-08-11 \u2014 T-195 final focused re-review",
+      "source_start": 1470428,
+      "source_end": 1472495,
+      "sha256": "3ddb694643914795bb8356fb531b1b9429865b7b1bd577a88f88c98556b621d4",
+      "path": "reviews/T-195.md",
+      "covered_tasks": [
+        "T-195"
+      ]
+    },
+    {
+      "id": 232,
+      "heading": "2026-08-11 \u2014 T-225 and T-123 initial review",
+      "source_start": 1472495,
+      "source_end": 1479359,
+      "sha256": "7d031fed207a19a53caf5ffd3855a57e0f16eef5f1f68a6d152d312a0885f747",
+      "path": "reviews/T-012.md",
+      "covered_tasks": [
+        "T-123",
+        "T-225"
+      ]
+    },
+    {
+      "id": 233,
+      "heading": "2026-08-11 \u2014 T-123 focused correction re-review",
+      "source_start": 1479359,
+      "source_end": 1484429,
+      "sha256": "e7412dbab7d8c6833418ac7a44514de0b5258fda6a32beee54e7c798ca0e775d",
+      "path": "reviews/T-012.md",
+      "covered_tasks": [
+        "T-123"
+      ]
+    },
+    {
+      "id": 234,
+      "heading": "2026-08-12 \u2014 T-123 authorized final correction re-review",
+      "source_start": 1484429,
+      "source_end": 1488998,
+      "sha256": "8f3d88fc1aef318323bec72f12c33f257e2b449ee9501b1262f525df254402d2",
+      "path": "reviews/T-012.md",
+      "covered_tasks": [
+        "T-123"
+      ]
+    },
+    {
+      "id": 235,
+      "heading": "2026-08-12 \u2014 unattended-run initial review",
+      "source_start": 1488998,
+      "source_end": 1495950,
+      "sha256": "5f862bde2558cd55bfeef9ccfcfe40da7fb5ecc5231c48bcefd64046aafa03f3",
+      "path": "reviews/T-012.md",
+      "covered_tasks": [
+        "T-033",
+        "T-123",
+        "T-213",
+        "T-218",
+        "T-219",
+        "T-223",
+        "T-225",
+        "T-226"
+      ]
+    },
+    {
+      "id": 236,
+      "heading": "2026-08-12 \u2014 T-033 / T-223 focused correction re-review",
+      "source_start": 1495950,
+      "source_end": 1501093,
+      "sha256": "5a9186bdcd3cada8fa45b9a9fb1817b9faa73d98a87ad01086a91670644ff3f9",
+      "path": "reviews/T-012.md",
+      "covered_tasks": [
+        "T-033",
+        "T-218",
+        "T-223",
+        "T-231"
+      ]
+    },
+    {
+      "id": 237,
+      "heading": "2026-08-12 \u2014 T-033 authorized records re-review / T-066 records cleanup review",
+      "source_start": 1501093,
+      "source_end": 1505593,
+      "sha256": "f1f4ba0c554f3e8f4c0e4acd5f15252a1973621a922dc7fa241651ab2c58aa1e",
+      "path": "reviews/T-012.md",
+      "covered_tasks": [
+        "T-033",
+        "T-066"
+      ]
+    },
+    {
+      "id": 238,
+      "heading": "2026-08-12 \u2014 T066-R2 focused correction re-review",
+      "source_start": 1505593,
+      "source_end": 1510470,
+      "sha256": "f64f8cea6916b951fce3cf73327643914f6677f866afc4d3e3eeff48e633458b",
+      "path": "reviews/T-012.md",
+      "covered_tasks": [
+        "T-066"
+      ]
+    },
+    {
+      "id": 239,
+      "heading": "2026-08-12 \u2014 T033-R6 second authorized records re-review / T-232 review",
+      "source_start": 1510470,
+      "source_end": 1516785,
+      "sha256": "0a3bfabe04150aeabe9c6c7acba6133e06daa8305556dad5a3854c95c0872e8b",
+      "path": "reviews/T-012.md",
+      "covered_tasks": [
+        "T-033",
+        "T-066",
+        "T-232"
+      ]
+    },
+    {
+      "id": 240,
+      "heading": "2026-08-12 \u2014 T-234 initial review / T-233 review / T-228 investigation ruling",
+      "source_start": 1516785,
+      "source_end": 1524462,
+      "sha256": "c485ada10de6241c72992ea64a440d944509656ae4593dba6bf66e522f0865ab",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-228",
+        "T-233",
+        "T-234",
+        "T-236"
+      ]
+    },
+    {
+      "id": 241,
+      "heading": "2026-08-12 \u2014 T-234 focused correction re-review / T-235, T-236, T-237 reviews",
+      "source_start": 1524462,
+      "source_end": 1530175,
+      "sha256": "722163769dffd64b7edf3c1089d1477216ba566ee0562f1660159e4ba950a0f7",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-234",
+        "T-235",
+        "T-236",
+        "T-237"
+      ]
+    },
+    {
+      "id": 242,
+      "heading": "2026-08-12 \u2014 T-234/T-235/T-237 second correction re-review; T-238 evidence correction",
+      "source_start": 1530175,
+      "source_end": 1535270,
+      "sha256": "562dcea997adda4b421f5e213515469df0432850daee42b8e9aa3f91d5ed198e",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-234",
+        "T-235",
+        "T-237",
+        "T-238"
+      ]
+    },
+    {
+      "id": 243,
+      "heading": "2026-08-12 \u2014 T-230, T-220, T-229, and T-239 unattended-run review",
+      "source_start": 1535270,
+      "source_end": 1541831,
+      "sha256": "4d7a87bbd6fe45405ad30a8bbdd91bd589fb20e0568acb83b13e3551c2b7df37",
+      "path": "reviews/T-230.md",
+      "covered_tasks": [
+        "T-220",
+        "T-229",
+        "T-230",
+        "T-239"
+      ]
+    },
+    {
+      "id": 244,
+      "heading": "2026-08-13 \u2014 T-198 initial review",
+      "source_start": 1541831,
+      "source_end": 1549539,
+      "sha256": "0eb711b863be5059d3f7bd5b83248a4ed7725341754ef50c7e31f3cf975ae48b",
+      "path": "reviews/T-198.md",
+      "covered_tasks": [
+        "T-198"
+      ]
+    },
+    {
+      "id": 245,
+      "heading": "2026-08-13 \u2014 T-198 focused correction re-review",
+      "source_start": 1549539,
+      "source_end": 1557028,
+      "sha256": "5508ac6e121884035470ff7407e7801a69550a503c2fde4acc476b9e25239f37",
+      "path": "reviews/T-198.md",
+      "covered_tasks": [
+        "T-198"
+      ]
+    },
+    {
+      "id": 246,
+      "heading": "2026-08-13 \u2014 T-198 exclusion correction re-review",
+      "source_start": 1557028,
+      "source_end": 1562876,
+      "sha256": "95f083840ac23bef6a0c67c37ecaadb03dd8abe7862c8297abdf906cb3e1364e",
+      "path": "reviews/T-198.md",
+      "covered_tasks": [
+        "T-198"
+      ]
+    },
+    {
+      "id": 247,
+      "heading": "2026-08-13 \u2014 T-198 final frozen-evidence verification",
+      "source_start": 1562876,
+      "source_end": 1568686,
+      "sha256": "7730dd22af1559921466198f6dd0f31b6d32ef4c6478edfb8c66e207f974fd63",
+      "path": "reviews/T-198.md",
+      "covered_tasks": [
+        "T-198"
+      ]
+    },
+    {
+      "id": 248,
+      "heading": "2026-08-13 \u2014 T-238 authorised view-leak guard review",
+      "source_start": 1568686,
+      "source_end": 1577388,
+      "sha256": "53f9ea4966cbd4f18311d04fa8eb940df73deedae37057bdaa91c2aa2429cec3",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-238"
+      ]
+    },
+    {
+      "id": 249,
+      "heading": "2026-08-13 \u2014 T-238 focused guard correction re-review",
+      "source_start": 1577388,
+      "source_end": 1583744,
+      "sha256": "f229f127abb847dbdcf72e8c902cdcb45496f74697e9a6077df4f3a4335ac7f4",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-238"
+      ]
+    },
+    {
+      "id": 250,
+      "heading": "2026-08-13 \u2014 T-196 network options review",
+      "source_start": 1583744,
+      "source_end": 1594570,
+      "sha256": "0ee5d74056ca4250ff597fac7e1af3abbcb7a61df668aa72bd928fe87f9c31fc",
+      "path": "reviews/T-196.md",
+      "covered_tasks": [
+        "T-196"
+      ]
+    },
+    {
+      "id": 251,
+      "heading": "2026-08-13 \u2014 T-196 corrections focused re-review",
+      "source_start": 1594570,
+      "source_end": 1599933,
+      "sha256": "21480df741035eabecbf9e028d36b19f1d9348d92e73c3eff38a6cf25d577701",
+      "path": "reviews/T-196.md",
+      "covered_tasks": [
+        "T-196"
+      ]
+    },
+    {
+      "id": 252,
+      "heading": "2026-08-13 \u2014 T-196 R5 authorised focused re-review",
+      "source_start": 1599933,
+      "source_end": 1602447,
+      "sha256": "8009b776cf12d30db3ed4e0dd0b7f674ed94eb66209f5835fe452eeb56e0d045",
+      "path": "reviews/T-196.md",
+      "covered_tasks": [
+        "T-196"
+      ]
+    },
+    {
+      "id": 253,
+      "heading": "2026-08-14 \u2014 T-201 failed-row reason review",
+      "source_start": 1602447,
+      "source_end": 1610772,
+      "sha256": "86a968682eeb3c13695f6fbd165467f2a4b8a971cee6e4bf9d6d34f37889423b",
+      "path": "reviews/T-201.md",
+      "covered_tasks": [
+        "T-201"
+      ]
+    },
+    {
+      "id": 254,
+      "heading": "2026-08-14 \u2014 T-242 Settings-screen fit review",
+      "source_start": 1610772,
+      "source_end": 1615181,
+      "sha256": "f9cb40605bcb5370aea6d7e105a5a0ccf71ce20ed421fa4be3a9a621f5b0340e",
+      "path": "reviews/T-242.md",
+      "covered_tasks": [
+        "T-242"
+      ]
+    },
+    {
+      "id": 255,
+      "heading": "2026-08-14 \u2014 T-227 settings-record gate review",
+      "source_start": 1615181,
+      "source_end": 1618954,
+      "sha256": "099cf2e43b2d6d529ce19de4fd130154026252be2fd34c465ca8db8ad2e22ddb",
+      "path": "reviews/T-227.md",
+      "covered_tasks": [
+        "T-227"
+      ]
+    },
+    {
+      "id": 256,
+      "heading": "2026-08-14 \u2014 T-241 zero-byte row review",
+      "source_start": 1618954,
+      "source_end": 1622808,
+      "sha256": "5335a0222e2cba7b96634cc5ead7dcf26c7f6dac47c8ced5381e34cc62d392c1",
+      "path": "reviews/T-241.md",
+      "covered_tasks": [
+        "T-241"
+      ]
+    },
+    {
+      "id": 257,
+      "heading": "2026-08-14 \u2014 T-201 corrections focused re-review",
+      "source_start": 1622808,
+      "source_end": 1629355,
+      "sha256": "7b924bfa6bc85eba71c0c1f47f14b3d5a7a56d15c38f2968d4a38ebb39c56475",
+      "path": "reviews/T-201.md",
+      "covered_tasks": [
+        "T-201"
+      ]
+    },
+    {
+      "id": 258,
+      "heading": "2026-08-14 \u2014 T-242 corrections focused re-review",
+      "source_start": 1629355,
+      "source_end": 1632052,
+      "sha256": "0d6e0ae15cfffb7c5b9b515ef59092b5c0c4ee5207ae54fc918d36ddf0becd19",
+      "path": "reviews/T-242.md",
+      "covered_tasks": [
+        "T-242"
+      ]
+    },
+    {
+      "id": 259,
+      "heading": "2026-08-14 \u2014 T-227 correction focused re-review",
+      "source_start": 1632052,
+      "source_end": 1633905,
+      "sha256": "6838ae6491a4b63219fcd6697fff678ec21b53c5cfc4de1ffb3eb3b3d06df9b1",
+      "path": "reviews/T-227.md",
+      "covered_tasks": [
+        "T-227"
+      ]
+    },
+    {
+      "id": 260,
+      "heading": "2026-08-14 \u2014 T-241 correction focused re-review",
+      "source_start": 1633905,
+      "source_end": 1635630,
+      "sha256": "b756101a35b286bd133e72777198a964c4adaf81511be0109cfec8c14a1dfa86",
+      "path": "reviews/T-241.md",
+      "covered_tasks": [
+        "T-241"
+      ]
+    },
+    {
+      "id": 261,
+      "heading": "2026-08-14 \u2014 T-201 second correction focused re-review",
+      "source_start": 1635630,
+      "source_end": 1641125,
+      "sha256": "88f2e1ff3d1cf86f45652d9d0c58331ef1f712be6a7a186a13b42c68244232be",
+      "path": "reviews/T-201.md",
+      "covered_tasks": [
+        "T-201"
+      ]
+    },
+    {
+      "id": 262,
+      "heading": "2026-08-14 \u2014 T-244 expanded-child verb review",
+      "source_start": 1641125,
+      "source_end": 1647296,
+      "sha256": "32a58e155142b0fba0b7ea9f1afe05805496b3149a2a90840c2c5e9c3583f5d4",
+      "path": "reviews/T-244.md",
+      "covered_tasks": [
+        "T-244"
+      ]
+    },
+    {
+      "id": 263,
+      "heading": "2026-08-14 \u2014 T-244 correction focused re-review",
+      "source_start": 1647296,
+      "source_end": 1651431,
+      "sha256": "d8a4a3c1995230ae411c3cfc2f7d28cf620ebdd92cdd54c29c112d503fd95f72",
+      "path": "reviews/T-244.md",
+      "covered_tasks": [
+        "T-244"
+      ]
+    },
+    {
+      "id": 264,
+      "heading": "2026-08-14 \u2014 T-244 authorized documentation re-review",
+      "source_start": 1651431,
+      "source_end": 1654261,
+      "sha256": "f03596b802ecd1b45c84c602e429de24e530818ba7c22699849ec1f2d8cc7cda",
+      "path": "reviews/T-244.md",
+      "covered_tasks": [
+        "T-244"
+      ]
+    },
+    {
+      "id": 265,
+      "heading": "2026-08-15 \u2014 T-200 accessibility-pass review",
+      "source_start": 1654261,
+      "source_end": 1662447,
+      "sha256": "56a2e11d0329d4b78ac4cb0d7c29fe43b7ddb3570a142a3b2bbed47e0d8b6b57",
+      "path": "reviews/T-200.md",
+      "covered_tasks": [
+        "T-200"
+      ]
+    },
+    {
+      "id": 266,
+      "heading": "2026-08-15 \u2014 T-200 focused correction re-review",
+      "source_start": 1662447,
+      "source_end": 1671050,
+      "sha256": "9bf56d833bb3ced04b127171064462029a397d36b731107b7b340911c8be4595",
+      "path": "reviews/T-200.md",
+      "covered_tasks": [
+        "T-200"
+      ]
+    },
+    {
+      "id": 267,
+      "heading": "2026-08-15 \u2014 T-200 authorized third-pass re-review",
+      "source_start": 1671050,
+      "source_end": 1677410,
+      "sha256": "7a35b3d7e412fe5de6af887dc7fbfbcd5cea79daf0ccf462bcbd3fef6ce1674e",
+      "path": "reviews/T-200.md",
+      "covered_tasks": [
+        "T-200"
+      ]
+    },
+    {
+      "id": 268,
+      "heading": "2026-08-15 \u2014 overnight six-task review",
+      "source_start": 1677410,
+      "source_end": 1693227,
+      "sha256": "ade29f0d5e1b9871f7cb5eff7d4332e6a7cb42695bdb4c789d27bf8fed7b1cf9",
+      "path": "reviews/T-200.md",
+      "covered_tasks": [
+        "T-021",
+        "T-200",
+        "T-202",
+        "T-240",
+        "T-243",
+        "T-246"
+      ]
+    },
+    {
+      "id": 269,
+      "heading": "2026-08-15 \u2014 T-202, T-240, T-200 and T-243: the four correction rounds",
+      "source_start": 1693227,
+      "source_end": 1699171,
+      "sha256": "08b97e47b1c420183ece54bc744f1a0474f74041883d1c9648fa8f1f7ed2034d",
+      "path": "reviews/T-200.md",
+      "covered_tasks": [
+        "T-200",
+        "T-202",
+        "T-240",
+        "T-243"
+      ]
+    },
+    {
+      "id": 270,
+      "heading": "2026-08-15 \u2014 T-200 and T-243: verdicts on the resolved corrections",
+      "source_start": 1699171,
+      "source_end": 1701813,
+      "sha256": "67f40ac954a1b34fec97b4f8ce6c08b7d73e40a8d4b9e2d5d1367ae3edbeabe3",
+      "path": "reviews/T-200.md",
+      "covered_tasks": [
+        "T-200",
+        "T-243"
+      ]
+    },
+    {
+      "id": 271,
+      "heading": "2026-08-15 \u2014 T-246: the queue's two verbs on the `File` menu",
+      "source_start": 1701813,
+      "source_end": 1704624,
+      "sha256": "e6616a8d125817f31bff08de1ecdfca4c3b70081ecd49be2c92c0eed26fc6857",
+      "path": "reviews/T-200.md",
+      "covered_tasks": [
+        "T-246"
+      ]
+    },
+    {
+      "id": 272,
+      "heading": "2026-08-15 \u2014 T-240, fourth pass: Blocked, and the class is named",
+      "source_start": 1704624,
+      "source_end": 1707401,
+      "sha256": "48e09c12ca1ce35767826b8f16f868f956f26c154ffb68d88ab50db2ca22d9aa",
+      "path": "reviews/T-200.md",
+      "covered_tasks": [
+        "T-240"
+      ]
+    },
+    {
+      "id": 273,
+      "heading": "2026-08-15 \u2014 T-240, fifth pass: Blocked through uncovered branches of the same class",
+      "source_start": 1707401,
+      "source_end": 1710047,
+      "sha256": "bda44f7f2ac1c67c270e9952586bc20ff76f5e52f65884a218c05dc4ca285a7d",
+      "path": "reviews/T-200.md",
+      "covered_tasks": [
+        "T-240"
+      ]
+    },
+    {
+      "id": 274,
+      "heading": "2026-08-15 \u2014 T-240, sixth pass: Approved",
+      "source_start": 1710047,
+      "source_end": 1711970,
+      "sha256": "a9859ce513c929377dffb73fa8002f78ebc2ba0efe41cb8c8a794cb8e7e9c69a",
+      "path": "reviews/T-200.md",
+      "covered_tasks": [
+        "T-240"
+      ]
+    },
+    {
+      "id": 275,
+      "heading": "2026-08-16 \u2014 T-183 yt-dlp option audit",
+      "source_start": 1711970,
+      "source_end": 1722141,
+      "sha256": "9031db77557c94681805dd7835bd1f7afbc363b8aa774235de4451cc664564ff",
+      "path": "reviews/T-183.md",
+      "covered_tasks": [
+        "T-183"
+      ]
+    },
+    {
+      "id": 276,
+      "heading": "2026-08-17 \u2014 T-183 focused re-review",
+      "source_start": 1722141,
+      "source_end": 1730336,
+      "sha256": "09f9fbc0ede621074dd48350323b0c9185eda2735763aff5e05d1fcee9ab8c0f",
+      "path": "reviews/T-183.md",
+      "covered_tasks": [
+        "T-183"
+      ]
+    },
+    {
+      "id": 277,
+      "heading": "2026-08-17 \u2014 T-183 second focused re-review",
+      "source_start": 1730336,
+      "source_end": 1736827,
+      "sha256": "1e942bd4aa5192743a9aaac7963da2ad4ecfe6438247c4c4564cb4b9e6c2299d",
+      "path": "reviews/T-183.md",
+      "covered_tasks": [
+        "T-183"
+      ]
+    },
+    {
+      "id": 278,
+      "heading": "2026-08-17 \u2014 T-260 implementation review",
+      "source_start": 1736827,
+      "source_end": 1741936,
+      "sha256": "107e6e5846fce4aaa5810537ba02a2ef1ed0600de626a9465e668ac3a7b04d9b",
+      "path": "reviews/T-260.md",
+      "covered_tasks": [
+        "T-260"
+      ]
+    },
+    {
+      "id": 279,
+      "heading": "2026-08-17 \u2014 T-260 focused re-review",
+      "source_start": 1741936,
+      "source_end": 1748034,
+      "sha256": "ef4e9dacde751c5a6398a187fd88fe6a3fdaf3dbdc4e5a841661b7f8b118a566",
+      "path": "reviews/T-260.md",
+      "covered_tasks": [
+        "T-260"
+      ]
+    },
+    {
+      "id": 280,
+      "heading": "2026-08-17 \u2014 T-260 authorized third focused re-review",
+      "source_start": 1748034,
+      "source_end": 1755581,
+      "sha256": "988cf91dda7aab5469d73c3e459922f64fe80c5aaef956c96cc8e2acb89cd859",
+      "path": "reviews/T-260.md",
+      "covered_tasks": [
+        "T-260"
+      ]
+    },
+    {
+      "id": 281,
+      "heading": "2026-08-17 \u2014 T-260 final authorized focused re-review",
+      "source_start": 1755581,
+      "source_end": 1762941,
+      "sha256": "16755655e8488df235ed156cf11adef77da5f729b30cef9412fcbd03855dbd43",
+      "path": "reviews/T-260.md",
+      "covered_tasks": [
+        "T-260"
+      ]
+    },
+    {
+      "id": 282,
+      "heading": "2026-08-17 \u2014 T-260 maintainer-authorized redesign review",
+      "source_start": 1762941,
+      "source_end": 1770596,
+      "sha256": "6e1eab101830c79b19ff629fc31d36ce5ff2c1249a9375f065975f5fd2e77f68",
+      "path": "reviews/T-260.md",
+      "covered_tasks": [
+        "T-260"
+      ]
+    },
+    {
+      "id": 283,
+      "heading": "2026-08-17 \u2014 T-260 authorized alias/exemption re-review",
+      "source_start": 1770596,
+      "source_end": 1775637,
+      "sha256": "52ca7198fc5e4b60d35eabc7afd039bc615c12cd27ab4e6de440d4e6a8c4f250",
+      "path": "reviews/T-260.md",
+      "covered_tasks": [
+        "T-260"
+      ]
+    },
+    {
+      "id": 284,
+      "heading": "2026-08-17 \u2014 Duplicate In Review entries repair",
+      "source_start": 1775637,
+      "source_end": 1777858,
+      "sha256": "6f8c6af1d922806b28dab315a036efe4b27489054e769d12debeb3f169eba752",
+      "path": "reviews/task-ledger-repair.md",
+      "covered_tasks": []
+    },
+    {
+      "id": 285,
+      "heading": "2026-08-17 \u2014 T-258 pre-bootstrap containment review",
+      "source_start": 1777858,
+      "source_end": 1787329,
+      "sha256": "d5d6600fb27762cb182dca7dd9f7a87eb7380d896636fb1a5a917f29bd71040d",
+      "path": "reviews/T-258.md",
+      "covered_tasks": [
+        "T-258"
+      ]
+    },
+    {
+      "id": 286,
+      "heading": "2026-08-17 \u2014 T-258 focused containment correction review",
+      "source_start": 1787329,
+      "source_end": 1794903,
+      "sha256": "39dfc83cfad751e65803f7db3237ee7a9939e8a1af666f1f8bdb7eae90d36399",
+      "path": "reviews/T-258.md",
+      "covered_tasks": [
+        "T-258"
+      ]
+    },
+    {
+      "id": 287,
+      "heading": "2026-08-17 \u2014 T-262 self-hosted fork-trigger review",
+      "source_start": 1794903,
+      "source_end": 1800817,
+      "sha256": "e1109ff4ea8af6812d7ccbe0c740a493f03871abd58ba75c4bf1d6f27c63b44e",
+      "path": "reviews/T-262.md",
+      "covered_tasks": [
+        "T-262"
+      ]
+    },
+    {
+      "id": 288,
+      "heading": "2026-08-17 \u2014 T-258 lifecycle-wording re-review",
+      "source_start": 1800817,
+      "source_end": 1804113,
+      "sha256": "218758506859b59051559d712458a5f05ff5c386e0f51a4159718790bc7e79cb",
+      "path": "reviews/T-258.md",
+      "covered_tasks": [
+        "T-258"
+      ]
+    },
+    {
+      "id": 289,
+      "heading": "2026-08-17 \u2014 T-262 focused correction re-review",
+      "source_start": 1804113,
+      "source_end": 1808152,
+      "sha256": "37a875f0b74bf8f1376506189196300df6a896795e70bc40eddf8b50b48cdc5c",
+      "path": "reviews/T-262.md",
+      "covered_tasks": [
+        "T-262"
+      ]
+    },
+    {
+      "id": 290,
+      "heading": "2026-08-17 \u2014 T-257 / T-259 Windows-chain review",
+      "source_start": 1808152,
+      "source_end": 1813780,
+      "sha256": "a0550a5ab9cd96bf530fde0284f6a8eac4ece04e9314f43899325fa3654f0871",
+      "path": "reviews/T-257.md",
+      "covered_tasks": [
+        "T-257",
+        "T-259"
+      ]
+    },
+    {
+      "id": 291,
+      "heading": "2026-08-17 \u2014 T-262 authorized second focused re-review",
+      "source_start": 1813780,
+      "source_end": 1818061,
+      "sha256": "ff29d790f3fc6c02b63777c47addf78ad41a1a22b155fc3a0c8640bcf247e76c",
+      "path": "reviews/T-262.md",
+      "covered_tasks": [
+        "T-262"
+      ]
+    },
+    {
+      "id": 292,
+      "heading": "2026-08-17 \u2014 T-258 second focused correction re-review",
+      "source_start": 1818061,
+      "source_end": 1821670,
+      "sha256": "8169bbbe9d19ab15ce0275b9f7abdc5901ca4e2b313d0a30fc549d69cd2fefd8",
+      "path": "reviews/T-258.md",
+      "covered_tasks": [
+        "T-258"
+      ]
+    },
+    {
+      "id": 293,
+      "heading": "2026-08-17 \u2014 T-259 duration-report correction re-review",
+      "source_start": 1821670,
+      "source_end": 1825320,
+      "sha256": "5abe0d539387791d7076c7bb0e392aa72b1837bea99ae8a93c3e01538218f7ba",
+      "path": "reviews/T-257.md",
+      "covered_tasks": [
+        "T-259"
+      ]
+    },
+    {
+      "id": 294,
+      "heading": "2026-08-17 \u2014 T-264 workflow-trigger policy review",
+      "source_start": 1825320,
+      "source_end": 1832031,
+      "sha256": "c928318066b755a99a7e55910910a1fa8defc80de2c44042cc83aa436352210a",
+      "path": "reviews/T-264.md",
+      "covered_tasks": [
+        "T-264"
+      ]
+    },
+    {
+      "id": 295,
+      "heading": "2026-08-18 \u2014 T-264 workflow-trigger policy focused re-review",
+      "source_start": 1832031,
+      "source_end": 1838553,
+      "sha256": "25785d983b7701636f9c4f496fcc111cd3c2b4834fea289fce203075ff846fe8",
+      "path": "reviews/T-264.md",
+      "covered_tasks": [
+        "T-264"
+      ]
+    },
+    {
+      "id": 296,
+      "heading": "2026-08-18 \u2014 T-264 Windows dependency evidence disposition",
+      "source_start": 1838553,
+      "source_end": 1841937,
+      "sha256": "72eed06c49e89e2f3af9fa90cd6e21d09675410fe776f35735f0610d742e016c",
+      "path": "reviews/T-264.md",
+      "covered_tasks": [
+        "T-264"
+      ]
+    },
+    {
+      "id": 297,
+      "heading": "2026-08-18 \u2014 T-266 Windows mechanism review",
+      "source_start": 1841937,
+      "source_end": 1848866,
+      "sha256": "824bc6b9d6d9b203e34fd435e3f646ed22b3247729af2376883ff01363de8c25",
+      "path": "reviews/T-266.md",
+      "covered_tasks": [
+        "T-266"
+      ]
+    },
+    {
+      "id": 298,
+      "heading": "2026-08-19 \u2014 T-268 diagnosis review, reopened by live specimens",
+      "source_start": 1848866,
+      "source_end": 1854136,
+      "sha256": "616a9b4145bef009a05194c5fbf5eba081738dbfc44733e5fa574fd26768b023",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-268"
+      ]
+    },
+    {
+      "id": 299,
+      "heading": "2026-08-19 \u2014 T-258 scanner evidence disposition",
+      "source_start": 1854136,
+      "source_end": 1858165,
+      "sha256": "aa93f2e1c45e6fb1ca501eb131f5ae3b2b142776a321ae0fa94927e90985a914",
+      "path": "reviews/T-258.md",
+      "covered_tasks": [
+        "T-258"
+      ]
+    },
+    {
+      "id": 300,
+      "heading": "2026-08-19 \u2014 T-263 containment-seam follow-up review",
+      "source_start": 1858165,
+      "source_end": 1861528,
+      "sha256": "4fa314a94ef9badc40434c78b1e2146c522e83fd7819f20f4b99afe69161ebd3",
+      "path": "reviews/T-263.md",
+      "covered_tasks": [
+        "T-263"
+      ]
+    },
+    {
+      "id": 301,
+      "heading": "2026-08-19 \u2014 T-269 reproducible-toolchain review",
+      "source_start": 1861528,
+      "source_end": 1866258,
+      "sha256": "fa9c8de644c62fb1b69c77c6328ceb7357f0bf182c0518aebc9e4d40209c4b82",
+      "path": "reviews/T-269.md",
+      "covered_tasks": [
+        "T-269"
+      ]
+    },
+    {
+      "id": 302,
+      "heading": "2026-08-19 \u2014 T-265 CI runner-inventory review",
+      "source_start": 1866258,
+      "source_end": 1869052,
+      "sha256": "3fd8b46853d429a6c850a82a15da350f7c79176f53854c5a9a9353376f350c67",
+      "path": "reviews/T-265.md",
+      "covered_tasks": [
+        "T-265"
+      ]
+    },
+    {
+      "id": 303,
+      "heading": "2026-08-19 \u2014 T-267 workflow-threshold review",
+      "source_start": 1869052,
+      "source_end": 1871492,
+      "sha256": "649a2c43c36731ff90baf0e594aed39845fbc61f2500b10b739d546f28e19f8d",
+      "path": "reviews/T-267.md",
+      "covered_tasks": [
+        "T-267"
+      ]
+    },
+    {
+      "id": 304,
+      "heading": "2026-08-19 \u2014 T-261 duplicate-task gate review",
+      "source_start": 1871492,
+      "source_end": 1873443,
+      "sha256": "76d4bf34c4fc7dfb493358b763c0b502af55fbd5952be305f826ea8063de8a3e",
+      "path": "reviews/T-261.md",
+      "covered_tasks": [
+        "T-261"
+      ]
+    },
+    {
+      "id": 305,
+      "heading": "2026-08-19 \u2014 T-270 quit-shortcut initial review",
+      "source_start": 1873443,
+      "source_end": 1877988,
+      "sha256": "bb3b01a3c405ac2a1ed4d8cbee3ac814b4be0a3f50729f6a173665d9c212a69a",
+      "path": "reviews/T-270.md",
+      "covered_tasks": [
+        "T-270"
+      ]
+    },
+    {
+      "id": 306,
+      "heading": "2026-08-20 \u2014 T270-R1 focused evidence re-review",
+      "source_start": 1877988,
+      "source_end": 1881345,
+      "sha256": "8b5f205e6a6be522af0b5fd6ea81790762d8a65b42d74dd0ba4f9afa1e978bc1",
+      "path": "reviews/T-270.md",
+      "covered_tasks": [
+        "T-270"
+      ]
+    },
+    {
+      "id": 307,
+      "heading": "2026-08-20 \u2014 T269-R1 / T269-R2 focused correction re-review",
+      "source_start": 1881345,
+      "source_end": 1884900,
+      "sha256": "a7709d4d941e6a5447f467aff116b8acf9254c5a8d955a59e9b545dbd4b68ab6",
+      "path": "reviews/T-269.md",
+      "covered_tasks": [
+        "T-269"
+      ]
+    },
+    {
+      "id": 308,
+      "heading": "2026-08-20 \u2014 session coordination and evidence review",
+      "source_start": 1884900,
+      "source_end": 1894783,
+      "sha256": "83670ab479a0fdb11768d19f1e231f0b8f5632ab543abea1592c137089acab4e",
+      "path": "reviews/session-evidence-2026-08-20.md",
+      "covered_tasks": [
+        "T-074",
+        "T-238",
+        "T-269",
+        "T-270",
+        "T-272"
+      ]
+    },
+    {
+      "id": 309,
+      "heading": "2026-08-20 \u2014 session evidence focused correction re-review",
+      "source_start": 1894783,
+      "source_end": 1903261,
+      "sha256": "96cb3cf40cfd9cd5541df39c5d954313966b23cd1bde1535197d8341b4ae03a1",
+      "path": "reviews/session-evidence-2026-08-20.md",
+      "covered_tasks": [
+        "T-074",
+        "T-238",
+        "T-272"
+      ]
+    },
+    {
+      "id": 310,
+      "heading": "2026-08-20 \u2014 T272-R3 / COORD-R24 focused correction re-review",
+      "source_start": 1903261,
+      "source_end": 1907667,
+      "sha256": "1085b18798eac5506e9df59a2a54a6d1cc1bb8b74c283d05c3c6dba8584a7163",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-272"
+      ]
+    },
+    {
+      "id": 311,
+      "heading": "2026-08-21 \u2014 T-238 criterion-4 / T-272 Linux-scan review",
+      "source_start": 1907667,
+      "source_end": 1917678,
+      "sha256": "55b086e7ad39c423c3936d2569bf23be6ad531745ab0e3e825cf02c48f8fc689",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-238",
+        "T-272",
+        "T-273"
+      ]
+    },
+    {
+      "id": 312,
+      "heading": "2026-08-21 \u2014 T238-R5 focused correction re-review",
+      "source_start": 1917678,
+      "source_end": 1923632,
+      "sha256": "1316adf8623fa531e5f39cd2b2a476126d1ca6b1a4573991fb8b6d2e3a2211a4",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-238",
+        "T-272"
+      ]
+    },
+    {
+      "id": 313,
+      "heading": "2026-08-21 \u2014 T238-R5 authorised final re-review",
+      "source_start": 1923632,
+      "source_end": 1927740,
+      "sha256": "c879d41123a498646de59ece47aa62e4f5b70b92b149876e46b43bea06c5f68c",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-238"
+      ]
+    },
+    {
+      "id": 314,
+      "heading": "2026-08-21 \u2014 T258-R10 authorised record-only re-review",
+      "source_start": 1927740,
+      "source_end": 1931866,
+      "sha256": "969addc0b2d865c0649eccd388f343b3726c4b36da693214af97fa8d475d206f",
+      "path": "reviews/T-258.md",
+      "covered_tasks": [
+        "T-258"
+      ]
+    },
+    {
+      "id": 315,
+      "heading": "2026-08-21 \u2014 T267-R1 focused correction re-review",
+      "source_start": 1931866,
+      "source_end": 1935937,
+      "sha256": "2df31e6cca65efcf5630972174ecd08be06a5bd0e8b7da47030e1c99fc8b3c13",
+      "path": "reviews/T-267.md",
+      "covered_tasks": [
+        "T-267"
+      ]
+    },
+    {
+      "id": 316,
+      "heading": "2026-08-21 \u2014 T-256 ruling-batch review",
+      "source_start": 1935937,
+      "source_end": 1943015,
+      "sha256": "37b15cb21c53eafc6b6f000785907228c91dcb89e242ec9eff6d79a2f8056e82",
+      "path": "reviews/T-256.md",
+      "covered_tasks": [
+        "T-184",
+        "T-256"
+      ]
+    },
+    {
+      "id": 317,
+      "heading": "2026-08-21 \u2014 T256-R1/R2 focused correction re-review",
+      "source_start": 1943015,
+      "source_end": 1950177,
+      "sha256": "1a4cf3e316067d60d14afbb9d5638acf54b7c24e4cb8b2458710a361b2dec1ea",
+      "path": "reviews/T-256.md",
+      "covered_tasks": [
+        "T-256",
+        "T-267"
+      ]
+    },
+    {
+      "id": 318,
+      "heading": "2026-08-21 \u2014 T-256 authorized record-only focused pass",
+      "source_start": 1950177,
+      "source_end": 1956784,
+      "sha256": "6d820d8ee366cf0fc61935c953c0fb31d0caad7300569d7af45084397ad7a114",
+      "path": "reviews/T-256.md",
+      "covered_tasks": [
+        "T-256",
+        "T-267"
+      ]
+    },
+    {
+      "id": 319,
+      "heading": "2026-08-21 \u2014 T-274 revamped logo asset-pipeline review",
+      "source_start": 1956784,
+      "source_end": 1964043,
+      "sha256": "65f7068dfb561d33f383e2f5f5c7d51b79aa1dbc219c370d6b2e083e14f84bc4",
+      "path": "reviews/T-274.md",
+      "covered_tasks": [
+        "T-274"
+      ]
+    },
+    {
+      "id": 320,
+      "heading": "2026-08-21 \u2014 T274-R1/R2 focused correction re-review",
+      "source_start": 1964043,
+      "source_end": 1970642,
+      "sha256": "865889cbdcc4144d7e5e688c8ee95562b9b5cce927404c1a19e488cd0f7c5544",
+      "path": "reviews/T-274.md",
+      "covered_tasks": [
+        "T-274"
+      ]
+    },
+    {
+      "id": 321,
+      "heading": "2026-08-25 \u2014 T-278 About-surface review",
+      "source_start": 1970642,
+      "source_end": 1977426,
+      "sha256": "61b8305973bf57f950c346726cf0d1e0e374f1bf9fc72edb2c75b8fc67c8dc7b",
+      "path": "reviews/T-278.md",
+      "covered_tasks": [
+        "T-278"
+      ]
+    },
+    {
+      "id": 322,
+      "heading": "2026-08-25 \u2014 T278-R1/R2 focused correction re-review",
+      "source_start": 1977426,
+      "source_end": 1984089,
+      "sha256": "6f7e43d5f9b1b69c0614fc90772a377409e94621bee060e1b4bde29a0a1ae9ab",
+      "path": "reviews/T-278.md",
+      "covered_tasks": [
+        "T-278"
+      ]
+    },
+    {
+      "id": 323,
+      "heading": "2026-08-25 \u2014 T-276 Icon-cut review",
+      "source_start": 1984089,
+      "source_end": 1988293,
+      "sha256": "379a009c078384c895300867118d79ff9f2beb422754489d8c7ae8f9a04ad352",
+      "path": "reviews/T-276.md",
+      "covered_tasks": [
+        "T-276"
+      ]
+    },
+    {
+      "id": 324,
+      "heading": "2026-08-25 \u2014 T-277 32 px boundary review",
+      "source_start": 1988293,
+      "source_end": 1993725,
+      "sha256": "79e4350d416f5511e7c9d553806e39ff310ee3443f2b3a8178263444e4cd70f6",
+      "path": "reviews/T-277.md",
+      "covered_tasks": [
+        "T-277"
+      ]
+    },
+    {
+      "id": 325,
+      "heading": "2026-08-25 \u2014 T-272 live-specimen post-approval review",
+      "source_start": 1993725,
+      "source_end": 2001860,
+      "sha256": "16d2c0002dda6d8332cf42efed341ced968590fb9c0ace7dd3909bc0ecc4757f",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-272"
+      ]
+    },
+    {
+      "id": 326,
+      "heading": "2026-08-26 \u2014 T-272 scope-correction focused re-review",
+      "source_start": 2001860,
+      "source_end": 2011346,
+      "sha256": "88219393ce7c3bb8584b93b6c9493f55fa9fdd5b9e2bde7c2a078af736c56e42",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-272"
+      ]
+    },
+    {
+      "id": 327,
+      "heading": "2026-08-26 \u2014 T-272 second-correction re-review",
+      "source_start": 2011346,
+      "source_end": 2019886,
+      "sha256": "2cbb89e4f5e4f9550fa620e5baae159adb004192673ce071aaddcd709ae2176f",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-272"
+      ]
+    },
+    {
+      "id": 328,
+      "heading": "2026-08-26 \u2014 T-272 R6-only correction re-review",
+      "source_start": 2019886,
+      "source_end": 2026980,
+      "sha256": "1a9c026a9d9e1eee1380efee19cd0f9be3c6728224eb75e85412608d2b1c9374",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-272"
+      ]
+    },
+    {
+      "id": 329,
+      "heading": "2026-08-26 \u2014 T-272 fourth R6-only correction re-review",
+      "source_start": 2026980,
+      "source_end": 2033006,
+      "sha256": "4eb94856150212cd09ad980b0c8fa99dbe785b9b9c3931ced928cbf742d4998d",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-272"
+      ]
+    },
+    {
+      "id": 330,
+      "heading": "2026-08-26 \u2014 T-279 initial review",
+      "source_start": 2033006,
+      "source_end": 2042552,
+      "sha256": "e3f3efbe5e1e89b15715d02c50505c1a206bede4b27e129f45dca5222bd4a01c",
+      "path": "reviews/T-279.md",
+      "covered_tasks": [
+        "T-279"
+      ]
+    },
+    {
+      "id": 331,
+      "heading": "2026-08-26 \u2014 T-279 focused correction re-review",
+      "source_start": 2042552,
+      "source_end": 2050805,
+      "sha256": "79cffa9535539cea41cd167f7d9e4f31e37b1a46e2abd041703323c76f226088",
+      "path": "reviews/T-279.md",
+      "covered_tasks": [
+        "T-279"
+      ]
+    },
+    {
+      "id": 332,
+      "heading": "2026-08-26 \u2014 T-279 authorized final focused review",
+      "source_start": 2050805,
+      "source_end": 2060478,
+      "sha256": "c25d75093536feb6feaf3d30c40008b04b420546029d631383f44f8631296509",
+      "path": "reviews/T-279.md",
+      "covered_tasks": [
+        "T-279"
+      ]
+    },
+    {
+      "id": 333,
+      "heading": "2026-08-27 \u2014 T-273 initial review",
+      "source_start": 2060478,
+      "source_end": 2067326,
+      "sha256": "2f9d0979a98854ee3a8682742a5e2d6d7fe70c2f534f9fa35639f72791bf9ded",
+      "path": "reviews/T-273.md",
+      "covered_tasks": [
+        "T-273"
+      ]
+    },
+    {
+      "id": 334,
+      "heading": "2026-08-27 \u2014 T-273 focused correction re-review",
+      "source_start": 2067326,
+      "source_end": 2073158,
+      "sha256": "ed7e64cd6ed8646ffcfdd047ef32d8036fc080fa3f59a2fa6b9adbc4cc8a1a3a",
+      "path": "reviews/T-273.md",
+      "covered_tasks": [
+        "T-273"
+      ]
+    },
+    {
+      "id": 335,
+      "heading": "2026-08-28 \u2014 T-212 unattended-session coordination review",
+      "source_start": 2073158,
+      "source_end": 2078414,
+      "sha256": "addb31a84fc8c193964337dc47042d799501a932b493f3db562c3e02bcd368be",
+      "path": "reviews/T-212.md",
+      "covered_tasks": [
+        "T-212",
+        "T-281",
+        "T-283",
+        "T-285",
+        "T-288",
+        "T-291",
+        "T-292",
+        "T-293"
+      ]
+    },
+    {
+      "id": 336,
+      "heading": "2026-08-28 \u2014 T-281 initial review",
+      "source_start": 2078414,
+      "source_end": 2080994,
+      "sha256": "b7fa601ef84791c861cd0bca3ac9867707972545a1912619a0ffe60310cc011a",
+      "path": "reviews/T-281.md",
+      "covered_tasks": [
+        "T-281"
+      ]
+    },
+    {
+      "id": 337,
+      "heading": "2026-08-28 \u2014 T-283 initial review",
+      "source_start": 2080994,
+      "source_end": 2082609,
+      "sha256": "c1c621e601d720d5c1f759fe60734bbfdcef0d56b0a4bda23f37b4e6bd906780",
+      "path": "reviews/T-283.md",
+      "covered_tasks": [
+        "T-283"
+      ]
+    },
+    {
+      "id": 338,
+      "heading": "2026-08-28 \u2014 T-285 initial review",
+      "source_start": 2082609,
+      "source_end": 2084309,
+      "sha256": "c14f482427a4a52030c0b6bcb9bc4e0faee146f44803059e044f313d4302ec61",
+      "path": "reviews/T-285.md",
+      "covered_tasks": [
+        "T-285"
+      ]
+    },
+    {
+      "id": 339,
+      "heading": "2026-08-28 \u2014 T-293 initial review",
+      "source_start": 2084309,
+      "source_end": 2086479,
+      "sha256": "3cbb2cf767c161a452a31e22d6a949b1e911cca6e3f577a975d70a799d74f902",
+      "path": "reviews/T-293.md",
+      "covered_tasks": [
+        "T-293"
+      ]
+    },
+    {
+      "id": 340,
+      "heading": "2026-08-28 \u2014 T-292 initial review",
+      "source_start": 2086479,
+      "source_end": 2090117,
+      "sha256": "9312e667dba27bfd6db3abb872ba83ad0938fc04f370a6c5a740109f748e804f",
+      "path": "reviews/T-292.md",
+      "covered_tasks": [
+        "T-292"
+      ]
+    },
+    {
+      "id": 341,
+      "heading": "2026-08-28 \u2014 T-288 initial review",
+      "source_start": 2090117,
+      "source_end": 2092635,
+      "sha256": "2f4eab59564f6a21c27603c8c3e7fe9597426b840c34efda654bd2b48ddac5d3",
+      "path": "reviews/T-288.md",
+      "covered_tasks": [
+        "T-288"
+      ]
+    },
+    {
+      "id": 342,
+      "heading": "2026-08-28 \u2014 T-291 initial review",
+      "source_start": 2092635,
+      "source_end": 2097375,
+      "sha256": "fbce610c3039a62244436a19e6cd663970587d0e7f66d44c744053167bf3914d",
+      "path": "reviews/T-291.md",
+      "covered_tasks": [
+        "T-291"
+      ]
+    },
+    {
+      "id": 343,
+      "heading": "2026-08-29 \u2014 T-212 batch focused correction re-review",
+      "source_start": 2097375,
+      "source_end": 2106727,
+      "sha256": "a7ace29dcf116df56e90b055e8ddf6317dab1e201c4825d605af79d6d047b11e",
+      "path": "reviews/T-212.md",
+      "covered_tasks": [
+        "T-212"
+      ]
+    },
+    {
+      "id": 344,
+      "heading": "2026-08-29 \u2014 Post-approval boundary and T-298 initial review",
+      "source_start": 2106727,
+      "source_end": 2118299,
+      "sha256": "de129d654365484d96ad9254f621ff8da9946c044ab20b3a7ac7c4c8399a1519",
+      "path": "reviews/post-approval-boundaries.md",
+      "covered_tasks": [
+        "T-212",
+        "T-268",
+        "T-289",
+        "T-298"
+      ]
+    },
+    {
+      "id": 345,
+      "heading": "2026-08-29 \u2014 Post-approval correction focused re-review",
+      "source_start": 2118299,
+      "source_end": 2124583,
+      "sha256": "1df777e9fa6f4f5b3f145a160be920edb19eb077001a805065edd08301043542",
+      "path": "reviews/post-approval-boundaries.md",
+      "covered_tasks": [
+        "T-212",
+        "T-268",
+        "T-289",
+        "T-298"
+      ]
+    },
+    {
+      "id": 346,
+      "heading": "2026-08-29 \u2014 T268-R5 focused correction re-review",
+      "source_start": 2124583,
+      "source_end": 2129627,
+      "sha256": "60796da035d2ee4db6f6be8f2e25e7ed13b31583ab56dd2d64c1008ecb2ba97b",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-268"
+      ]
+    },
+    {
+      "id": 347,
+      "heading": "2026-08-30 \u2014 T-238 criterion-4 measurement review",
+      "source_start": 2129627,
+      "source_end": 2136284,
+      "sha256": "f4a40f872656aa0672f7d7e3362bd86f0b7b548ecfdda39e50f7082058ebfa5d",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-238"
+      ]
+    },
+    {
+      "id": 348,
+      "heading": "2026-08-30 \u2014 T-238 criterion-4 focused re-review",
+      "source_start": 2136284,
+      "source_end": 2142580,
+      "sha256": "96df3eff201a95a5af35e1a80824314744652dd9bb765b59ef3fb79baa2be507",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-238"
+      ]
+    },
+    {
+      "id": 349,
+      "heading": "2026-08-30 \u2014 T-284 inherited *Download as* label review",
+      "source_start": 2142580,
+      "source_end": 2151006,
+      "sha256": "22d78fb3c15b78afb13ade0f965e12dbf958235824f801c5032ce05a514f5a91",
+      "path": "reviews/T-284.md",
+      "covered_tasks": [
+        "T-284"
+      ]
+    },
+    {
+      "id": 350,
+      "heading": "2026-08-30 \u2014 T-284 focused correction re-review",
+      "source_start": 2151006,
+      "source_end": 2157920,
+      "sha256": "5478e53b771a65dbc5ee53779fc991902056f2c6f5c45839983fa8305f75bc22",
+      "path": "reviews/T-284.md",
+      "covered_tasks": [
+        "T-284"
+      ]
+    },
+    {
+      "id": 351,
+      "heading": "2026-08-30 \u2014 T-289 widget-destruction guard review",
+      "source_start": 2157920,
+      "source_end": 2165810,
+      "sha256": "89dfbc49568dbd9c268cbe09df8c4b89683ca0353bb92024af65ff03da28c032",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-289"
+      ]
+    },
+    {
+      "id": 352,
+      "heading": "2026-08-30 \u2014 T-289 guard focused correction re-review",
+      "source_start": 2165810,
+      "source_end": 2172522,
+      "sha256": "180de114ffd61860a6a9fa2e1b60d0d15575ac379d2f59b5eaf8b1033f09fa86",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-289"
+      ]
+    },
+    {
+      "id": 353,
+      "heading": "2026-08-30 \u2014 T-289 R2 closure and real-session instrument review",
+      "source_start": 2172522,
+      "source_end": 2181798,
+      "sha256": "2e99751ec9e2bb41059d7f4b1b09aa036c95963af8ff2c2fad11fab14f83356c",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-289"
+      ]
+    },
+    {
+      "id": 354,
+      "heading": "2026-08-30 \u2014 T-289 instrument integrity re-review",
+      "source_start": 2181798,
+      "source_end": 2191145,
+      "sha256": "b9621523d229efa8457b8264eecfb54a6a6ca7e89b2fdb25d28895c562868f87",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-289"
+      ]
+    },
+    {
+      "id": 355,
+      "heading": "2026-08-30 \u2014 T-289 instrument integrity re-review 2",
+      "source_start": 2191145,
+      "source_end": 2198888,
+      "sha256": "ff69e2ca64af35c1772df01724e844a3d05340b49234a588293b79fa36ae9f00",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-289"
+      ]
+    },
+    {
+      "id": 356,
+      "heading": "2026-08-30 \u2014 T-289 instrument integrity re-review 3",
+      "source_start": 2198888,
+      "source_end": 2206824,
+      "sha256": "d77db8b4e512673fa5cc89467dbcb592008c250a1e401eed8bee015276610bc7",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-289"
+      ]
+    },
+    {
+      "id": 357,
+      "heading": "2026-08-30 \u2014 T-289 instrument integrity re-review 4",
+      "source_start": 2206824,
+      "source_end": 2214457,
+      "sha256": "7835353b9f675da4cc8542e8b9f941f3ad1f27c9232b25279f72e6fd6462f978",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-289"
+      ]
+    },
+    {
+      "id": 358,
+      "heading": "2026-08-30 \u2014 T-289 instrument integrity re-review 5",
+      "source_start": 2214457,
+      "source_end": 2220631,
+      "sha256": "314ab7946b8329cb6c12046b68e599fbaca56b16875811160080ca6fb1a466f2",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-289"
+      ]
+    },
+    {
+      "id": 359,
+      "heading": "2026-08-30 \u2014 T-287 work-around initial review",
+      "source_start": 2220631,
+      "source_end": 2228563,
+      "sha256": "acba7baaa96db04296d8af61658834f454f870932cc09a618769593a4ad970ac",
+      "path": "reviews/T-287.md",
+      "covered_tasks": [
+        "T-287"
+      ]
+    },
+    {
+      "id": 360,
+      "heading": "2026-08-31 \u2014 T-287 R1/R2 focused correction re-review",
+      "source_start": 2228563,
+      "source_end": 2236014,
+      "sha256": "47b609e9b3c502b8cad9b98bcfb1cb2dc08b6593213d093fcdd9060d009544fc",
+      "path": "reviews/T-287.md",
+      "covered_tasks": [
+        "T-287"
+      ]
+    },
+    {
+      "id": 361,
+      "heading": "2026-08-31 \u2014 T-289 driven measurement initial review",
+      "source_start": 2236014,
+      "source_end": 2246773,
+      "sha256": "0bb48ac6209d8eb4b403eaec52d99861dbae2a2de0ae86512d6ad04243f3e26f",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-238",
+        "T-289"
+      ]
+    },
+    {
+      "id": 362,
+      "heading": "2026-08-31 \u2014 T-289 driven measurement focused re-review",
+      "source_start": 2246773,
+      "source_end": 2253213,
+      "sha256": "b77a697fa16cb1e8ecd5c3c93f9482553c6a86a352b1a769571ce5a4a4c5eb36",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-238",
+        "T-289"
+      ]
+    },
+    {
+      "id": 363,
+      "heading": "2026-08-31 \u2014 T-289 driven measurement second focused re-review",
+      "source_start": 2253213,
+      "source_end": 2257221,
+      "sha256": "1dfc5b0a407ec5b10ecdc0e613dbc0926b5a59669170bf6d8768aeb9759b4763",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-238",
+        "T-289"
+      ]
+    },
+    {
+      "id": 364,
+      "heading": "2026-08-31 \u2014 T-289 driven measurement final focused re-review",
+      "source_start": 2257221,
+      "source_end": 2260046,
+      "sha256": "fe176b5b7085950c30dcd46f1e991b6fc9137ca9f5ef181cbf6a0b66d7263413",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-238",
+        "T-289"
+      ]
+    },
+    {
+      "id": 365,
+      "heading": "2026-08-31 \u2014 T-289 forced-collection probe initial review",
+      "source_start": 2260046,
+      "source_end": 2269132,
+      "sha256": "9fd7c7f56692fa23b9269a3fcbb5d4d5498ef5f4bf6d883957e242bac97a5160",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-289"
+      ]
+    },
+    {
+      "id": 366,
+      "heading": "2026-08-31 \u2014 T-289 forced-collection probe focused re-review",
+      "source_start": 2269132,
+      "source_end": 2277958,
+      "sha256": "7cb52e1cc5b7a095553ad151b4dce10b4bb43b46974545930a3bfad1e7e069be",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-289"
+      ]
+    },
+    {
+      "id": 367,
+      "heading": "2026-08-31 \u2014 T-289 forced-collection probe second focused re-review",
+      "source_start": 2277958,
+      "source_end": 2284881,
+      "sha256": "eef642fbc145f35371c66d9329e5bd687262650da527481a7174bd4faca27d31",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-289"
+      ]
+    },
+    {
+      "id": 368,
+      "heading": "2026-08-31 \u2014 T-289 forced-collection probe final focused re-review",
+      "source_start": 2284881,
+      "source_end": 2289382,
+      "sha256": "c880055cde80de6b728cef93031a6baf384f357f40f44d00daeba8f6422ee1bf",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-289"
+      ]
+    },
+    {
+      "id": 369,
+      "heading": "2026-08-31 \u2014 T-289 teardown reading review and shutdown ruling",
+      "source_start": 2289382,
+      "source_end": 2296082,
+      "sha256": "1247dad7fb575ed566bb70404b890ab5fca2da4ca73986d9fbfc87efcf5b97a5",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-289"
+      ]
+    },
+    {
+      "id": 370,
+      "heading": "2026-08-31 \u2014 T-289 R21 pool-drain focused re-review",
+      "source_start": 2296082,
+      "source_end": 2306189,
+      "sha256": "66534ea308755610f26b7defeaa847fc6b84e2f2edbfc0da59020a300c96047d",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-289"
+      ]
+    },
+    {
+      "id": 371,
+      "heading": "2026-08-31 \u2014 T-289 R21 pool-drain second focused re-review",
+      "source_start": 2306189,
+      "source_end": 2314917,
+      "sha256": "d523a5ca5009b6d6500bd941b7051820dd23743ea2209c0025c03c5eb6aefc00",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-289"
+      ]
+    },
+    {
+      "id": 372,
+      "heading": "2026-08-31 \u2014 T-289 R21 pool-drain third focused re-review",
+      "source_start": 2314917,
+      "source_end": 2321963,
+      "sha256": "afbc0d0d362b9e52dc4f7ddc923d2105060c7eef595e78598a050e1b37e61403",
+      "path": "reviews/T-289.md",
+      "covered_tasks": [
+        "T-289"
+      ]
+    },
+    {
+      "id": 373,
+      "heading": "2026-08-31 \u2014 T-294, T-295 and T-296 panel-defect review",
+      "source_start": 2321963,
+      "source_end": 2329227,
+      "sha256": "0c6067eae8f47afca15aa422642d8c6145d7ad1c5a9e0e1422ba61e35bd638e5",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-294",
+        "T-295",
+        "T-296"
+      ]
+    },
+    {
+      "id": 374,
+      "heading": "2026-08-31 \u2014 T-296 R1 focused re-review",
+      "source_start": 2329227,
+      "source_end": 2334477,
+      "sha256": "c5f2ca1eeff04814663da6d3f535e010e3ccb2896f502fe6e84ae6081b3131cb",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-296"
+      ]
+    },
+    {
+      "id": 375,
+      "heading": "2026-09-03 \u2014 T-296 cleanup, T-297, T-268 and T-238 initial review",
+      "source_start": 2334477,
+      "source_end": 2348316,
+      "sha256": "489f6e76d785f3c9220bd737ae514eb5b37a21c9f08f2c9e65b96e83e5739370",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-238",
+        "T-268",
+        "T-296",
+        "T-297"
+      ]
+    },
+    {
+      "id": 376,
+      "heading": "2026-09-04 \u2014 T-297, T-268 and T-238 focused correction review",
+      "source_start": 2348316,
+      "source_end": 2357591,
+      "sha256": "458a4318d43009536abfe9ae474c65d4e8159dc28086529e4007f6e3dc915663",
+      "path": "reviews/T-234.md",
+      "covered_tasks": [
+        "T-238",
+        "T-268",
+        "T-297"
+      ]
+    },
+    {
+      "id": 377,
+      "heading": "2026-09-04 \u2014 T-271 and T-282 initial review",
+      "source_start": 2357591,
+      "source_end": 2367800,
+      "sha256": "826ed923256436368260ac24cf9c35217a05e5b5fac1018dcd647e834141d261",
+      "path": "reviews/T-271.md",
+      "covered_tasks": [
+        "T-271",
+        "T-282"
+      ]
+    },
+    {
+      "id": 378,
+      "heading": "2026-09-04 \u2014 T-282 focused correction review",
+      "source_start": 2367800,
+      "source_end": 2373472,
+      "sha256": "a28b1db52e9221d39b939e6b4660a5ad3c32e789318dd00ae1aa55226d5d61f4",
+      "path": "reviews/T-271.md",
+      "covered_tasks": [
+        "T-282"
+      ]
+    },
+    {
+      "id": 379,
+      "heading": "2026-09-08 \u2014 T-299 convention adoption initial review",
+      "source_start": 2373472,
+      "source_end": 2387538,
+      "sha256": "a6462874c28809536bf11201d3dd2a5d4810886aad7fbd6567eb2911e210490e",
+      "path": "reviews/T-299.md",
+      "covered_tasks": [
+        "T-299"
+      ]
+    },
+    {
+      "id": 380,
+      "heading": "2026-09-08 \u2014 T-299 focused correction review",
+      "source_start": 2387538,
+      "source_end": 2397281,
+      "sha256": "ef483902429b59e4ef82f4b522c033b795a8ff861de058c9a2edfd6b3027140a",
+      "path": "reviews/T-299.md",
+      "covered_tasks": [
+        "T-299"
+      ]
+    },
+    {
+      "id": 381,
+      "heading": "2026-09-08 \u2014 Final project verification at 5e4b3fc",
+      "source_start": 2397281,
+      "source_end": 2405540,
+      "sha256": "ecdda0210b6cf6f68f6acb4bc6063fe581365792d817ad0180fd3d4413498d8a",
+      "path": "reviews/T-299.md",
+      "covered_tasks": [
+        "T-299",
+        "T-300"
+      ]
+    }
+  ]
+}

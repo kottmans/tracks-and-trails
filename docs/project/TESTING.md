@@ -1075,13 +1075,31 @@ integration review without a task ID uses a stable scope name, such as
 `release-1.0.md`, without creating a bookkeeping task. Existing review-unit,
 convergence and approval rules still apply.
 
-**Legacy transition:** Dated contents already in REVIEWS.md remain there below
-the current navigation. Already-open reviews, including T-299 and T-300's
-existing verification, continue there through closure and later disposition
-updates for that recorded scope. An existing canonical record stays canonical
-if its task reopens. New task files begin with new reviews; this adoption does
-not split, move or duplicate the old body. Any later deliberate migration must
-preserve record bytes and update links without duplicate operative records.
+**Historical migration:** The maintainer explicitly requested migration of the
+existing consolidated history on 2026-09-08. Its dated entries now live in the
+task/shared-scope records indexed by REVIEWS.md. Continue already-open reviews
+in those records, including T-299 and T-300's shared record. A task reopening
+does not create another operative record for its existing review scope.
+
+Inseparable joint reviews and shared validation stay together. Cross-cutting
+phase-exit and coordination audits retain scope records; their presence does
+not combine the original per-round approval boundaries. Correct a finding in
+the record containing it, and link any related task or broader audit from the
+index. Earlier references to the consolidated file's paths, line numbers or
+ordering describe its recorded source revision, not the current layout.
+
+The [migration manifest](evidence/2026-09-08-review-migration.json) records all
+381 original entry ranges and their destinations. Run the retained byte check:
+
+```bash
+python docs/project/evidence/2026-09-08-verify-review-migration.py
+```
+
+It reconstructs the original dated body from the migrated blocks and compares
+it with the source Git blob. Keep the migration markers and their contents
+intact; append future rounds outside those markers. Current navigation remains
+editable. Later deliberate moves must preserve the same bytes and update the
+manifest's destinations and live links without duplicate operative records.
 
 The assigned Reviewer owns substantive findings and independent verification.
 In serial work it updates the corresponding index link. During a wave the

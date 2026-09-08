@@ -9,7 +9,7 @@ This file is self-contained with the canonical documents it links. `DOC-007` ado
 convention revision **2026-09-08.5**, Standard profile, for this desktop application.
 The external web profile does not apply. Existing numbered sections remain stable;
 the `tt-*` anchors give new references durable names.
-The [adoption record](docs/project/DECISIONS.md#doc-007-review-storage) pins the shared
+The [adoption record](docs/project/DECISIONS.md#doc-007-review-migration) pins the shared
 standard's repository and full commit. Routine work uses these local project rules.
 
 <a id="tt-project"></a>
@@ -125,8 +125,9 @@ entries for one. If work reopens, return its record to TASKS and preserve the pr
 closure as dated history. The placement gate checks both files.
 
 [Review storage](docs/project/TESTING.md#review-records-and-storage) defaults to
-one file per newly reviewed task and an index in REVIEWS. Existing reviews stay
-in their canonical location; ownership and approval rules apply in every location.
+one file per reviewed task or shared scope, indexed in REVIEWS. Existing history
+has moved to those indexed records; continue each scope there. Ownership and
+approval rules apply in every location.
 
 New prose explains behavior, causes, corrections, checks and remaining risk.
 Comments explain constraints and invariants, with stable references for history.
@@ -213,7 +214,7 @@ correction evidence. Read it for review or correction work. Its task-creation
 threshold also governs adjacent findings during implementation. Only an
 independent Reviewer records resolution or approval; the implementer reports
 correction and awaits verification. Canonical review records own dated evidence;
-`REVIEWS.md` indexes them. TESTING §14 also owns the storage and legacy-transition rule.
+`REVIEWS.md` indexes them. TESTING §14 also owns storage and migration guidance.
 
 <a id="tt-completion"></a>
 

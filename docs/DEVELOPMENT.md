@@ -539,7 +539,7 @@ closed task history, and REVIEWS to find the canonical review records. Those fil
 in [TESTING §14](project/TESTING.md#14-review-policy); launch wording lives in
 [PROMPTS](project/PROMPTS.md). Required ownership and permissions remain in AGENTS.
 Use the [review-storage rule](project/TESTING.md#review-records-and-storage) to
-choose a new task file or an existing legacy record before starting a review.
+choose a new task file or an existing indexed record before starting a review.
 
 When a task becomes Complete or Cancelled, the task/status owner moves its full
 record from TASKS to the running [COMPLETED_TASKS](project/COMPLETED_TASKS.md) in
@@ -551,7 +551,7 @@ in the same change. New records describe the problem, cause, correction, checks
 and remaining risk; omit fields that add no information. Record review identity
 in its provenance field rather than narrating tools in product explanations.
 
-The [standard adoption record](project/DECISIONS.md#doc-007-review-storage) pins
+The [standard adoption record](project/DECISIONS.md#doc-007-review-migration) pins
 the private shared repository, revision and full source commit. Its README and
 release migration notes explain adoption in other projects. When upgrading this
 project, compare that pinned revision with the proposed release, apply relevant
@@ -652,11 +652,11 @@ writer of `docs/project/TASKS.md`, `docs/project/STATUS.md`, and the wave-level 
 propose those updates in the end-of-task report (AGENTS.md §11).
 
 **Review storage follows TESTING §14 in serial and wave work.** The assigned
-reviewer writes the canonical task or legacy record on the task branch. The
+reviewer writes the assigned canonical record on the task branch. The
 coordinator updates `docs/project/REVIEWS.md` navigation and records combined
 verification in its assigned integration record. Follow the
 [storage rule](project/TESTING.md#review-records-and-storage), including the
-legacy transition; severity, blocking, independence and the pass budget apply.
+historical migration; severity, blocking, independence and the pass budget apply.
 
 **Approval freezes one exact head.** Approval reads `Approved at <sha>` and covers that
 implementation head only. A later commit may advance the branch if its diff is review-only

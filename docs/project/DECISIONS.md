@@ -95,7 +95,7 @@ Current requirements and architecture retain their own canonical authority.
 | [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu) | The row picks a preset; the per-row verbs are the row's own menu | Accepted | — |
 | [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) | The concurrency control leaves the toolbar for Settings | Accepted | — |
 | [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button) | The row's menu says what it removes, and the ⋮ reads as a button | Accepted | — |
-| [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted; revision 2026-09-08.5 by amendment | [Status retention](#doc-007-status-retention); [running completed-task record](#doc-007-completed-tasks); [shared source and captured formatting](#doc-007-shared-source); [review storage](#doc-007-review-storage) |
+| [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted; revision 2026-09-08.5 by amendment | [Status retention](#doc-007-status-retention); [running completed-task record](#doc-007-completed-tasks); [shared source and captured formatting](#doc-007-shared-source); [review storage](#doc-007-review-storage); [historical review migration](#doc-007-review-migration) |
 
 ## Dated decision records
 
@@ -5921,3 +5921,35 @@ existing records; future new reviews add their file and index link together.
 T-300 owns this documentation-only adoption. Its implementation remains pending
 independent review. This amendment grants no finding resolution, task closure,
 project push, visibility change or additional implementation scope.
+
+
+<a id="doc-007-review-migration"></a>
+
+### Historical review migration — 2026-09-08
+
+**Authority:** The maintainer explicitly requested splitting the existing review
+history into task files and leaving REVIEWS.md as a short index.
+**Adopted standard:** `2026-09-08.5`, Standard profile; WEB remains unadopted.
+**Source repository:** [kottmans/project-standards](https://github.com/kottmans/project-standards).
+**Full standard source commit:** `fbc46867bcb80a047e02fd3b5d8dea7bfec86131`.
+**Deviations introduced:** None; the standard permits a deliberate migration
+with preservation and updated navigation.
+
+This supersedes the earlier choice to leave the consolidated body in place.
+Move its existing dated entries from `85422bc` into indexed task/shared-scope
+records. Joint reviews and their shared evidence are not split or duplicated;
+related task rounds remain together, while phase-exit and cross-cutting audits
+retain scope records. These storage groups do not merge approval boundaries or
+alter the original findings, disposition, attribution or captured evidence.
+
+The 381 entries occupy 105 records. The manifest records their original byte
+ranges and destinations; the retained checker reconstructs the entire original
+dated body, including separators and incidental historical notes. All
+2,403,546 bytes are preserved. Old dated-heading anchors remain index landing
+points, and current task/status links route directly to the moved entries.
+Earlier file:line and ordering references describe the source Git revision.
+
+Continue T-299 and T-300 in their indexed shared record. REVIEWS.md holds
+navigation only. TESTING §14 defines storage and verification. This is T-300
+implementation work awaiting independent review; it resolves no findings and
+changes no task approval, product behavior or publication permission.
