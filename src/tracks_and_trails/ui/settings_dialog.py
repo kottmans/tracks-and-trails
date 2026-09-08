@@ -35,9 +35,9 @@ longer an example of the second thing, because this screen is where it is seen.)
 ## The directory picker is injected
 
 `choose_directory` defaults to `QFileDialog.getExistingDirectory` and is a parameter because a
-native modal cannot be driven headlessly (`ai/TESTING.md`), and a screen whose one route to its
-main setting is untestable is a screen whose main setting is untested. The same seam, and the same
-reasoning, as the manager's `entry_point`.
+native modal cannot be driven headlessly (`docs/project/TESTING.md`), and a screen whose one route
+to its main setting is untestable is a screen whose main setting is untested. The same seam, and the
+same reasoning, as the manager's `entry_point`.
 """
 
 import os

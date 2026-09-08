@@ -13,7 +13,10 @@
 # Usage: run-on-starbase.sh 'cd C:\dev\tracks-and-trails && .venv\Scripts\python.exe -m pytest -q'
 set -euo pipefail
 
-HOST=${STARBASE_HOST:-Admin@192.168.68.65}
+# **No default, deliberately.** This named an account and a LAN address, which is the kind of
+# thing a public repository should not carry and which was wrong for anyone but one machine
+# anyway. Unset is a refusal rather than an attempt against somebody else's host.
+HOST=${STARBASE_HOST:?set STARBASE_HOST to user@host for the Windows verification machine}
 TIMEOUT=${STARBASE_TIMEOUT:-1800}
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT

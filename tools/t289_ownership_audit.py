@@ -9,9 +9,9 @@ than in the product.
 
 This asks the complementary question, which has an end. **A widget can only be owned by Python if
 the product leaves it without a Qt parent**, because a parent makes the C++ object Qt's and dropping
-the wrapper then destroys nothing (`ai/TESTING.md` §7). So every construction site is enumerated and
-each is either given a parent or it is not. The ones that are not are the entire candidate list, and
-they are few enough to read.
+the wrapper then destroys nothing (`docs/project/TESTING.md` §7). So every construction site is
+enumerated and each is either given a parent or it is not. The ones that are not are the entire
+candidate list, and they are few enough to read.
 
 **Two doors into Python ownership, and this checks both**: construction without a parent, and
 un-parenting afterwards — `setParent(None)`, `takeWidget()`, `removeWidget()`, `takeAt()`, which
@@ -129,8 +129,8 @@ def item_view_owners(trees: dict[Path, ast.Module], product: set[str]) -> set[st
 
     **Structural, and it replaces a hand-picked list.** The first version of this reading named four
     classes by eye and missed at least two — `PresetManager` and `OptionsDialog` each own a
-    `QListWidget` — which is the failure mode `ai/TESTING.md` §13 is about: a set chosen to fit the
-    conclusion being drawn.
+    `QListWidget` — which is the failure mode `docs/project/TESTING.md` §13 is about: a set chosen
+    to fit the conclusion being drawn.
 
     **Transitive, because ownership is.** A class that constructs another product widget owning an
     item view owns one too, and that is how a `MainWindow` reaches a `QListView`.
@@ -372,7 +372,7 @@ def self_test() -> int:
     # trees, only the *product* class may be counted: a test constructing `QWidget()` as a scratch
     # parent is ordinary and answers nothing. Asserted because a mode that quietly matched nothing
     # would report a confident "no parentless product widgets in the harness" — the shape
-    # `ai/TESTING.md` §13 is about, and the one this whole tool exists downstream of.
+    # `docs/project/TESTING.md` §13 is about, and the one this whole tool exists downstream of.
     with tempfile.TemporaryDirectory() as directory:
         fixture = Path(directory)
         (fixture / "sample.py").write_text(SELF_TEST_SOURCE)

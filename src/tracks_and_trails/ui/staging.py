@@ -19,7 +19,7 @@ of the line it was started for** and to the generation of the input box at that 
 `MediaInfo.url`, which is yt-dlp's canonical `webpage_url` and routinely differs from what was
 pasted. A row whose line is gone is marked `SUPERSEDED` rather than deleted, because a result
 already queued as a signal still arrives and something has to refuse it **by name**. Deleting the
-record would make that refusal unreachable, which `ai/TESTING.md` §13 is about.
+record would make that refusal unreachable, which `docs/project/TESTING.md` §13 is about.
 
 ## Two identical lines are two rows
 
@@ -115,8 +115,8 @@ class Row:
     creates directly rather than asking which ones it had before, which is what an earlier version
     got wrong. So `eq=False` buys the semantics rather than fixing a live defect — and the
     semantics are pinned by a test, because an unfalsifiable justification in a docstring is the
-    thing `ai/TESTING.md` §13 is about. A mutation removing it survived the whole battery until
-    that test existed.
+    thing `docs/project/TESTING.md` §13 is about. A mutation removing it survived the whole battery
+    until that test existed.
     """
 
     url: str

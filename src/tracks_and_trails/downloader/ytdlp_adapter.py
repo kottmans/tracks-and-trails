@@ -5,7 +5,7 @@ in the codebase may `import yt_dlp` (`ARCHITECTURE.md` §6, enforced by `T-005`'
 
 Pure translation: no process handling, no I/O, no network. Everything here is a function from
 yt-dlp's vocabulary to this project's, or back. That is what makes it testable against recorded
-fixtures rather than against a live site (`ai/TESTING.md` §5, §6).
+fixtures rather than against a live site (`docs/project/TESTING.md` §5, §6).
 
 ## Classification maps exception *types*, not message text
 

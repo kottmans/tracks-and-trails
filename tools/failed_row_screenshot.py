@@ -1,19 +1,19 @@
 """Render the queue's failed rows to PNG, through the real model and delegate (`T201-R3`).
 
 **Why this exists.** `T201-R3` was a layout ruling, and the round that raised it could only render
-what was built and what one rejected option would cost — `ai/evidence/README.md` records that
-option B and option C *"are not rendered"*. Option C is built now, so the thing the maintainer
+what was built and what one rejected option would cost — `docs/project/evidence/README.md` records
+that option B and option C *"are not rendered"*. Option C is built now, so the thing the maintainer
 ruled on is a thing anyone can look at, and this is how they look at it.
 
 **A tool rather than a test**, on `tools/settings_screenshots.py`'s precedent and for its reason:
-`ai/evidence/` keeps one dated capture of one head, and a committed generator is what gets the
-*current* rows back. The programmatic gates for the same four cases live in
+`docs/project/evidence/` keeps one dated capture of one head, and a committed generator is what gets
+the *current* rows back. The programmatic gates for the same four cases live in
 `tests/ui/test_queue_view.py`; nothing here verifies anything.
 
 **Offscreen, so it says nothing about a real display.** `T-221` is this project's record of a
 transient no offscreen grab can see.
 
-    python tools/failed_row_screenshot.py ai/evidence 2026-08-14-T201-next-step-option-c
+    python tools/failed_row_screenshot.py docs/project/evidence 2026-08-14-T201-next-step-option-c
 
 Writes `<prefix>.png` and prints, per row, the height the delegate gave it and whether it carries
 an action line — the measurement the ruling turns on, which is that only the rows with something

@@ -6,7 +6,7 @@ piece passing while the application still opens an empty window. A test that con
 manager and a store and wired them itself would be asserting on its own wiring.
 
 The database is real, the writer thread is real, the worker is a real spawned process
-(`ai/TESTING.md` §6). What varies is only which program the child runs.
+(`docs/project/TESTING.md` §6). What varies is only which program the child runs.
 
 ## Wait on the UI, never on the store
 
@@ -250,7 +250,7 @@ def composed(
         overrides.setdefault("output_directory", tmp_path / "downloads")
         overrides.setdefault("geometry_file", tmp_path / "window.toml")
         # Same reason as `geometry_file`: without it these tests read and write the real
-        # `user_config_dir`, which `ai/TESTING.md` §5 forbids (`T-078`).
+        # `user_config_dir`, which `docs/project/TESTING.md` §5 forbids (`T-078`).
         overrides.setdefault("settings_file", tmp_path / "settings.toml")
         # See `QuietYtdlp`: the real service spawns a child on every `open_settings`.
         overrides.setdefault("ytdlp_service", QuietYtdlp())
@@ -662,9 +662,9 @@ def test_the_theme_the_file_names_is_the_one_composition_reports(
 def connection_count(sender: QObject, signal_name: str) -> int:
     """How many slots are connected to `signal_name` on `sender`.
 
-    Asked of Qt rather than of our own bookkeeping (`ai/TESTING.md` §13): a count this code kept
-    would agree with this code. `receivers()` wants the `SIGNAL()`-encoded signature, which the
-    meta-object supplies.
+    Asked of Qt rather than of our own bookkeeping (`docs/project/TESTING.md` §13): a count this
+    code kept would agree with this code. `receivers()` wants the `SIGNAL()`-encoded signature,
+    which the meta-object supplies.
     """
     meta = sender.metaObject()
     for index in range(meta.methodCount()):
@@ -829,7 +829,7 @@ def test_every_manager_signal_the_ui_needs_has_exactly_one_connection(
     """A signal connected twice is how one queued job becomes two of everything downstream.
 
     Counted through Qt's own `receivers()`, not through bookkeeping this code keeps, because
-    bookkeeping this code keeps would agree with this code (`ai/TESTING.md` §13).
+    bookkeeping this code keeps would agree with this code (`docs/project/TESTING.md` §13).
     """
     composition = composed()
     manager = composition.manager
@@ -841,8 +841,8 @@ def test_every_manager_signal_the_ui_needs_has_exactly_one_connection(
     #
     # **The number is written down rather than counted**, which is the whole point: this test
     # exists to fail when a listener appears that nobody meant, and a count derived from the
-    # application would agree with the application by construction (`ai/TESTING.md` §13). It has
-    # gone one → two → one, and each move was a decision recorded here.
+    # application would agree with the application by construction (`docs/project/TESTING.md` §13).
+    # It has gone one → two → one, and each move was a decision recorded here.
     assert connection_count(manager, "job_changed") == 1, (
         "job_changed should have exactly the queue model's listener now that the detail pane is "
         "gone; a second is how one queued job becomes two of everything downstream"
@@ -965,8 +965,8 @@ def test_a_usable_ffmpeg_is_reported_as_usable_and_reaches_the_manager(
 ) -> None:
     """The path is *passed on*, not merely found — the defect class this project met five times.
 
-    `ai/STATUS.md` records it: the resolved yt-dlp version never left the worker, ffmpeg was
-    located and never passed to the library. Locating it here and dropping it would look correct
+    `docs/project/STATUS.md` records it: the resolved yt-dlp version never left the worker, ffmpeg
+    was located and never passed to the library. Locating it here and dropping it would look correct
     and produce no error.
     """
     fake = an_executable_ffmpeg(tmp_path)

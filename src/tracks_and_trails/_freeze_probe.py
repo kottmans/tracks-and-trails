@@ -348,8 +348,8 @@ def _probe_wheel(version: str) -> bytes:
 
     **Minimal is the honest scope here, and the boundary is worth stating.** This probe proves the
     *update path* inside the frozen artifact — install lands where a frozen worker resolves, and
-    revert restores the baseline — which is the sequence `ai/TESTING.md`'s release gate names. It
-    does **not** prove a download runs on the installed copy: that is criterion 2, and
+    revert restores the baseline — which is the sequence `docs/project/TESTING.md`'s release gate
+    names. It does **not** prove a download runs on the installed copy: that is criterion 2, and
     `tests/integration/test_end_to_end.py` proves it against a real yt-dlp and a real transfer
     (`T198-R1`). A frozen probe cannot reach a site, and a package thin enough to ship inside one
     could not run a download anyway — so claiming it would be the vacuous half of `T198-R1` again.
@@ -376,7 +376,7 @@ def run_ytdlp_update_probe() -> int:
     **`T198-R2`.** The frozen jobs built the artifact, probed its bundled baseline and ran the
     generic spawn smoke; none of them ever invoked the updater, resolved an installed copy in a
     spawned child, or reverted. Two green frozen jobs therefore said nothing about criterion 4,
-    and `ai/TESTING.md`'s release-gate item 10 names the missing sequence independently.
+    and `docs/project/TESTING.md`'s release-gate item 10 names the missing sequence independently.
 
     Everything here is the production path: `install_latest` is what the button calls,
     `resolve_in_a_child` spawns `worker.spawn_resolution`, and `revert_to_baseline` is what the

@@ -3,7 +3,7 @@
 The unit tests prove the queue handler and the formatter separately. This proves the thing the
 acceptance criterion actually names — that a **spawned** worker's line lands in the application's
 log file with the credential gone — against a real process, a real queue and a real file
-(`ai/TESTING.md` §6: the process boundary is not mocked).
+(`docs/project/TESTING.md` §6: the process boundary is not mocked).
 """
 
 from __future__ import annotations

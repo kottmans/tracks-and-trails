@@ -57,10 +57,10 @@ def spin(qapp: QCoreApplication) -> Callable[..., bool]:
 # Qt warns when a QObject owning a live timer is destroyed from a thread that does not own it, and
 # then carries on — the dispatcher keeps a pointer to freed memory and follows it on some later
 # tick, which presents as a segfault with no connection to whatever caused it. Two of those cost an
-# overnight soak and two core dumps to attribute (`ai/evidence/SOAK-FAILED-13.txt`).
+# overnight soak and two core dumps to attribute (`docs/project/evidence/SOAK-FAILED-13.txt`).
 #
 # Installed once per session and checked after every test, so the failure names the test that did
-# it. `ai/TESTING.md` §13: the useful signal is the one at the cause.
+# it. `docs/project/TESTING.md` §13: the useful signal is the one at the cause.
 qt_lifecycle.fail_on_orphaned_timers()
 
 
@@ -75,7 +75,8 @@ def _no_orphaned_timers() -> Iterator[None]:
 # An `-n auto` worker died with `SIGSEGV` in `~QAbstractItemView`, reached from
 # `_Py_HandlePending` — a deferred deletion running at an arbitrary bytecode boundary — inside a
 # test whose file constructs no view at all. Sixty runs did not reproduce it, so the maintainer
-# authorised the guard instead: the useful signal is the one at the cause (`ai/TESTING.md` §13).
+# authorised the guard instead: the useful signal is the one at the cause (`docs/project/TESTING.md`
+# §13).
 #
 # **Two halves, and only the second is an assertion.** Collecting and draining at the boundary is
 # what stops a deletion carrying into a later test; the orphan check is what names a test that

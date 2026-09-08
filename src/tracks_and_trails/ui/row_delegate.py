@@ -161,7 +161,7 @@ SELECTOR_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 9
 #: The verbs this row offers, as `Verb` values. Supplied by the model, because *which* verbs a
 #: state permits is `row_verbs.verbs_for`'s answer and the model is what knows the job's status —
 #: a delegate that derived them from the drawn state text would be reading its own output
-#: (`ai/TESTING.md` §13). Absent on a surface with no verbs, which draws none.
+#: (`docs/project/TESTING.md` §13). Absent on a surface with no verbs, which draws none.
 VERBS_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 10
 #: The job this row is about, carried so a verb click can name it. A row index is not an identity:
 #: the queue reorders, and `T118-R14` is the record of what an index that outlived its row costs.
@@ -2387,7 +2387,7 @@ class RowDelegate(QStyledItemDelegate):
         each gap. `RowDelegate.paint` draws the thumbnail on every row it is given because an open
         one is supposed to be covered by its panel, so what the user saw was the thumbnail cutting
         in and out for the length of the drag. Measured at
-        `ai/evidence/2026-09-01-T297-panel-collapses-during-resize.md`.
+        `docs/project/evidence/2026-09-01-T297-panel-collapses-during-resize.md`.
 
         **`super()` for anything else, rather than leaving it alone**: `QStyledItemDelegate` sizes
         an editor to `option.rect`, which for an index widget spanning the row is exactly right —

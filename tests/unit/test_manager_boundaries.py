@@ -211,7 +211,7 @@ def test_the_manager_never_imports_persistence(module: str) -> None:
     ],
 )
 def test_the_check_above_can_actually_fail(source: str) -> None:
-    """`ai/TESTING.md` §13: a guard nobody has watched fail is not evidence.
+    """`docs/project/TESTING.md` §13: a guard nobody has watched fail is not evidence.
 
     Every form the dependency could take is put through the real analyser, so narrowing it —
     dropping `sqlite3`, matching only exact module names, ignoring imports inside functions —

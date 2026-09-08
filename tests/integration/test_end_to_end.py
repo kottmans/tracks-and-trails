@@ -10,8 +10,8 @@ graph is assembled — nobody had proved a download **completing**.
 Everything except the site. `compose()` builds the application, the worker is a real spawned
 process running **real yt-dlp**, the extractor is yt-dlp's generic one, the HTTP downloader is
 yt-dlp's own, and the file lands on a real filesystem. What is faked is the server: a local
-`http.server` serving `video/mp4` from `127.0.0.1`, which is the exception `ai/TESTING.md` §6
-records for exactly this — the acceptance criterion is about bytes actually moving, and a faked
+`http.server` serving `video/mp4` from `127.0.0.1`, which is the exception `docs/project/TESTING.md`
+§6 records for exactly this — the acceptance criterion is about bytes actually moving, and a faked
 adapter cannot move any.
 
 Nothing leaves the machine, so these are not `-m network` tests. The one test that does reach a
@@ -1288,7 +1288,7 @@ def test_a_progressive_download_completes_with_no_ffmpeg_at_all(
         assert spin(lambda: composition.shutdown.finished, timeout=60)
 
 
-# --- 2. surviving a kill (`NFR-003`, `ai/TESTING.md` §7 crash recovery) ------------------------
+# --- 2. surviving a kill (`NFR-003`, `docs/project/TESTING.md` §7 crash recovery) -----------------
 
 
 #: Runs the real application against a given database and URL, starts the download, and waits.
@@ -1899,10 +1899,10 @@ def test_a_killed_download_resumes_from_its_partial_rather_than_starting_again(
 ) -> None:
     """**`T-113`'s first criterion**: *a real restart, verified by killing the process*.
 
-    `ai/TESTING.md` §7's rule, and `NFR-003`'s: a `SIGKILL` to a separate interpreter mid-download,
-    with no handlers and nothing flushed. A clean shutdown would prove that orderly teardown keeps
-    a file, which is a different and much easier claim — and the whole mechanism here is that
-    *nothing runs*: the staging directory survives because no code deleted it.
+    `docs/project/TESTING.md` §7's rule, and `NFR-003`'s: a `SIGKILL` to a separate interpreter
+    mid-download, with no handlers and nothing flushed. A clean shutdown would prove that orderly
+    teardown keeps a file, which is a different and much easier claim — and the whole mechanism here
+    is that *nothing runs*: the staging directory survives because no code deleted it.
 
     **Three assertions, and each one fails on its own.** That the partial survived (the mechanism);
     that the second attempt asked for a **range** rather than the whole file (the resume actually

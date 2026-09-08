@@ -305,7 +305,7 @@ def test_an_export_behind_a_guard_that_is_false_here_is_invisible(tmp_path: Path
     assert not hasattr(module, "HIDDEN"), "the guard must not have run on this host"
     assert "HIDDEN" not in defined_public_names(module), (
         "invisible by construction. If this now fails the gate inspects source again, and the "
-        "promise in defined_public_names plus ai/TESTING.md both need revisiting."
+        "promise in defined_public_names plus docs/project/TESTING.md both need revisiting."
     )
 
 
@@ -641,7 +641,7 @@ def test_versions_compare_by_value_not_by_spelling(left: str, right: str, equal:
     """The pin reads `2026.7.4`; the package reports `2026.07.04`. Same release.
 
     Expectations are transcribed from that fact rather than from the implementation
-    (`ai/TESTING.md` §13). The inequality cases matter more than the equality one: a
+    (`docs/project/TESTING.md` §13). The inequality cases matter more than the equality one: a
     normalisation that returned a constant would satisfy the first two and is the failure mode
     worth guarding.
     """

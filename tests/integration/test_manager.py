@@ -1,8 +1,8 @@
 """The download manager and the result pump (`T-013`).
 
-`ai/TESTING.md` §6: **the process boundary is never mocked here.** Every test below spawns a
-real process, over a real `multiprocessing.Queue`, and terminates it for real. What varies is
-what the child *is*:
+`docs/project/TESTING.md` §6: **the process boundary is never mocked here.** Every test below spawns
+a real process, over a real `multiprocessing.Queue`, and terminates it for real. What varies is what
+the child *is*:
 
 - **A real worker running real yt-dlp** for the two cases where nothing else is evidence: a
   download that completes, and `REQ-015`'s cancellation of a download that is genuinely in
@@ -70,7 +70,7 @@ REPO_ROOT = Path(__file__).parents[2]
 #: reaped the worker but not what the worker spawned, and the loose descendants wedged later runs
 #: intermittently: the same suite finishing in 19 seconds twice and then sitting past ten minutes.
 #:
-#: The defect is fixed, so the reason is gone and the marker with it. `ai/TESTING.md` §7's
+#: The defect is fixed, so the reason is gone and the marker with it. `docs/project/TESTING.md` §7's
 #: Cancellation and Worker-crash areas live in this file, and they are covered by a plain
 #: `pytest` again.
 #:
@@ -78,7 +78,7 @@ REPO_ROOT = Path(__file__).parents[2]
 #: found that `addopts` had removed these from **CI** as well, so two mandatory areas gated
 #: nothing anywhere for a day while three records said otherwise.
 
-#: `REQ-015` and `ai/TESTING.md` §7: cancel terminates the worker within two seconds.
+#: `REQ-015` and `docs/project/TESTING.md` §7: cancel terminates the worker within two seconds.
 CANCEL_BUDGET_SECONDS = 2.0
 
 #: `NFR-001`: an interaction responds within ~100 ms. Applied here to the manager calls a
@@ -862,8 +862,8 @@ def test_the_survival_check_can_tell_a_live_process_from_a_dead_one() -> None:
 
     A mutation that made it always return "nothing alive" left the whole process-tree suite
     green: every `assert not still_running(...)` became trivially true. A helper that carries
-    assertions is a guard, and a guard nobody watches fail is the shape `ai/TESTING.md` §13 is
-    about — the same lesson as the orphan detector, one layer up.
+    assertions is a guard, and a guard nobody watches fail is the shape `docs/project/TESTING.md`
+    §13 is about — the same lesson as the orphan detector, one layer up.
     """
     alive = start_a_grandchild()
     dead = start_a_grandchild()
@@ -996,7 +996,7 @@ def _generations_between(ancestor_pid: int, descendant_pid: int) -> int | None:
 
 
 def test_the_detector_still_ignores_the_resource_tracker(existing_children: set[int]) -> None:
-    """The one exclusion that is right, kept honest (`ai/TESTING.md` §13).
+    """The one exclusion that is right, kept honest (`docs/project/TESTING.md` §13).
 
     Widening the detector to "every descendant" reintroduces the failure the old filter was
     written to avoid: `multiprocessing`'s resource tracker is a child of this process for the
@@ -1181,7 +1181,7 @@ def test_the_manager_drives_the_real_repository(
         assert stored.finished_at is not None
 
 
-# --- cancellation (REQ-015, ai/TESTING.md §7) ---------------------------------------------
+# --- cancellation (REQ-015, docs/project/TESTING.md §7) -------------------------------------------
 
 
 def test_cancel_stops_a_real_in_flight_download_within_the_budget(
@@ -1316,7 +1316,7 @@ def test_cancelling_a_job_that_is_not_running_still_cancels_it(
     assert repository.jobs["job-queued"].status is JobStatus.CANCELLED
 
 
-# --- worker crash (REQ-028, ai/TESTING.md §7) ---------------------------------------------
+# --- worker crash (REQ-028, docs/project/TESTING.md §7) -------------------------------------------
 
 
 def test_a_killed_worker_becomes_worker_crash_with_its_exit_code(
@@ -1774,7 +1774,7 @@ def test_a_descendant_is_asked_to_stop_before_it_is_killed(
     Without this, the escalation's group signalling has no evidence of its own: a grandchild that
     is never signalled still dies moments later, when the session is released and the group is
     reaped with `SIGKILL`. A mutation removing the escalation step passed the whole suite. That
-    is the shape `ai/TESTING.md` §13 is about — a guard that looks like it works because
+    is the shape `docs/project/TESTING.md` §13 is about — a guard that looks like it works because
     something else quietly does its job.
 
     The difference the user gets is the one `REQ-015` cares about: `ffmpeg` asked to stop can
@@ -2104,7 +2104,7 @@ def test_every_message_reaches_the_gui_on_the_gui_thread(
     media_url: Callable[..., str],
     spin: Callable[..., bool],
 ) -> None:
-    """`ARCHITECTURE.md` §8, and the standing risk `ai/REVIEWS.md` names.
+    """`ARCHITECTURE.md` §8, and the standing risk `docs/project/REVIEWS.md` names.
 
     Touching a Qt object from the pump thread produces intermittent failures rather than
     errors, so the thread identity is asserted directly instead of being inferred from the
@@ -2527,7 +2527,7 @@ def test_every_declared_message_type_is_routed_to_a_signal() -> None:
 
     Derived from `MESSAGE_TYPES` rather than from a list written here, so a type added to the
     protocol without a route fails this test instead of silently going nowhere
-    (`ai/TESTING.md` §13).
+    (`docs/project/TESTING.md` §13).
     """
     pump = ResultPump(mp.get_context("spawn").Queue(), "job-1", SessionKind.DOWNLOAD)
     routed = {message_type: pump._routes[message_type] for message_type in MESSAGE_TYPES}
@@ -2562,7 +2562,7 @@ def test_a_message_type_without_a_signal_is_refused_at_construction(
 #: The two statuses `ARC-004` makes entry points, **transcribed** from `ARCHITECTURE.md` §5's
 #: table rather than read from `manager._ENTRY_STATUS` (`T016-R7`). Deriving them from the
 #: production mapping would make the refusal test agree with whatever that mapping said,
-#: including a wrong one — `ai/TESTING.md` §13.
+#: including a wrong one — `docs/project/TESTING.md` §13.
 ENTRY_POINT_STATUSES: Final = (JobStatus.QUEUED, JobStatus.READY)
 
 #: Everything else, as the *complement* over the whole enum rather than a hand-picked sample.
@@ -3482,7 +3482,7 @@ def test_the_advance_walk_only_takes_transitions_the_state_machine_allows(
     """The pipeline in `manager.py` and the table in `core/job_state.py` must agree.
 
     Transcribed from `ARCHITECTURE.md` §5 in both places, so this compares two independent
-    statements rather than asking one of them what it thinks (`ai/TESTING.md` §13).
+    statements rather than asking one of them what it thinks (`docs/project/TESTING.md` §13).
     """
     from tracks_and_trails.downloader.manager import _PIPELINE
 
@@ -3737,7 +3737,7 @@ def test_shutdown_while_a_start_is_reserved_neither_spawns_nor_claims_to_be_idle
         # Read into a local first. Asserting on the property directly narrows it to `False` for
         # the rest of the function, and mypy then calls the later `assert download.is_idle`
         # unreachable — a test whose second half is not analysed at all is the `T-016` lesson in
-        # miniature (`ai/TESTING.md` §12).
+        # miniature (`docs/project/TESTING.md` §12).
         idle_while_reserved = download.is_idle
         assert not idle_while_reserved, "idle was claimed while a start was still reserved"
         assert idles == [], "idle was announced while a start was still reserved"
@@ -5495,8 +5495,8 @@ def test_cancelling_a_waiting_job_drops_it_from_the_waiting_list(
     *(`T-081` carried a sweep in `_settle_clear` for the narrow case it made reachable, and a test
     here asserting the stale premise so it would fail loudly when this landed. It did. The sweep is
     removed with this change: every path that can delete a waiting job's row now drops it from the
-    list first, so the sweep could not fire and a guard nothing can reach is `ai/TESTING.md` §13's
-    shape.)*
+    list first, so the sweep could not fire and a guard nothing can reach is
+    `docs/project/TESTING.md` §13's shape.)*
     """
     repository = FakeRepository()
     queued(repository, "job-1", "job-2", directory=tmp_path)

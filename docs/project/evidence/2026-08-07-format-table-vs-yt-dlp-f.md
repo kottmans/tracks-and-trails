@@ -4,7 +4,7 @@
 **yt-dlp:** 2026.07.04 (the pinned baseline, `OPS-002`)
 **Host:** `kirk`, Fedora
 **Criterion:** *"The format table matches `yt-dlp -F` output for a fixture set of URLs"*
-(`ai/IMPLEMENTATION_PLAN.md` §Phase 3)
+(`docs/project/IMPLEMENTATION_PLAN.md` §Phase 3)
 
 ---
 
@@ -16,7 +16,7 @@ same URLs and transcribed below.
 
 The comparison is asserted in `tests/ui/test_format_table.py::test_the_table_matches_what_yt_dlp_f_reports`,
 which reads the committed fixtures rather than the network — the suite must not touch it
-(`ai/TESTING.md` §5). This document is the record of the run the transcription came from.
+(`docs/project/TESTING.md` §5). This document is the record of the run the transcription came from.
 
 ## `https://archive.org/details/BigBuckBunny_124`
 
@@ -159,7 +159,7 @@ that alone until the ratification. `T-185` stays open as the record of this sear
 person has somewhere to add a source rather than rediscovering that there wasn't one — and
 `OPS-013` names closing it as *"no acceptable source exists"* a legitimate outcome.
 
-`ai/TESTING.md` §5 wants sources that are freely licensed, unsigned and unlikely to change. A site
+`docs/project/TESTING.md` §5 wants sources that are freely licensed, unsigned and unlikely to change. A site
 that reports fps and churns weekly would satisfy the criterion's letter and break the property §5
 chose these sources for.
 

@@ -1,16 +1,17 @@
 """Render the Settings screen to PNG, both themes, from the composed application (`T-242`).
 
 **Why this is a tool rather than a test.** `T-242`'s fourth acceptance criterion asks for
-screenshots of the fixed screen attached to its entry, and `ai/evidence/README.md` asks that
-nothing regenerable be stored. Both are satisfied by a committed generator: the images in
-`ai/evidence/` are the record of one head, and this is how anyone gets the *current* screen back.
+screenshots of the fixed screen attached to its entry, and `docs/project/evidence/README.md` asks
+that nothing regenerable be stored. Both are satisfied by a committed generator: the images in
+`docs/project/evidence/` are the record of one head, and this is how anyone gets the *current*
+screen back.
 
 **It is not verification of anything.** The platform is `offscreen`, so what this produces is a
 faithful render of the widget tree and says nothing about a real display — `T-221` is this
 project's record of a transient no offscreen grab can see, and `T-212`'s recorded checklist run is
 where that gap closes.
 
-    python tools/settings_screenshots.py ai/evidence 2026-08-14-T242-settings
+    python tools/settings_screenshots.py docs/project/evidence 2026-08-14-T242-settings
 
 Writes `<prefix>-light.png` and `<prefix>-dark.png`, and prints the size of each and how many
 labels were drawn shorter than the text in them — which should be zero, and is the measurement

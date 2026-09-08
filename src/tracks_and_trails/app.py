@@ -319,7 +319,7 @@ def default_output_directory() -> Path:
     The user's own downloads directory, not a subfolder of it: a downloader that invents a
     folder is one the user has to go looking in. `platformdirs` answers this per platform, and
     the test suite redirects it to `tmp_path`, so nothing here writes into a real home directory
-    during a run (`ai/TESTING.md` §5).
+    during a run (`docs/project/TESTING.md` §5).
     """
     from platformdirs import user_downloads_dir
 
@@ -425,8 +425,8 @@ def compose(
     database and a crafted worker (`T-037`), not as configuration — `run()` passes none of them.
 
     `entry_point` reaches `DownloadManager` unchanged and is not a mocking seam: the tests that
-    use it spawn a real process over a real queue (`ai/TESTING.md` §6). It is here because the
-    *assembled* application is exactly what `T-036` has to prove, and proving it against a real
+    use it spawn a real process over a real queue (`docs/project/TESTING.md` §6). It is here because
+    the *assembled* application is exactly what `T-036` has to prove, and proving it against a real
     extractor would make the proof depend on a site staying up.
     """
     from tracks_and_trails.core import logging as app_logging
@@ -557,9 +557,10 @@ def compose(
 
     # **Where downloads land, decided here and nowhere else** (`REQ-023`, `T-146`). Three sources,
     # most specific first: the explicit argument (which is how every test redirects downloads away
-    # from a real home directory, `ai/TESTING.md` §5), then the user's stored choice, then the
-    # platform's own downloads folder. `load()` has already refused a stored folder that is gone,
-    # is a file, or cannot be written to, and said why — so by here it is either usable or `None`.
+    # from a real home directory, `docs/project/TESTING.md` §5), then the user's stored choice, then
+    # the platform's own downloads folder. `load()` has already refused a stored folder that is
+    # gone, is a file, or cannot be written to, and said why — so by here it is either usable or
+    # `None`.
     directory_is_default = output_directory is None and settings.download_directory is None
     downloads = output_directory
     if downloads is None:
@@ -1024,8 +1025,9 @@ def compose(
     #
     # `cache_directory` overrides the platform root for the reason `settings_file` and
     # `geometry_file` do: without it a test of this seam writes into the developer's real cache,
-    # which `ai/TESTING.md` §5 forbids — and `T180-R2` is exactly the finding that this seam had
-    # no test at all, only one proving `cache_root_for` separates roots handed to it by hand.
+    # which `docs/project/TESTING.md` §5 forbids — and `T180-R2` is exactly the finding that this
+    # seam had no test at all, only one proving `cache_root_for` separates roots handed to it by
+    # hand.
     cache_root = paths.cache_root_for(database_path, cache_directory)
     if paths.adopt_legacy_cache(database_path, cache_directory):
         logging.getLogger("tracksandtrails.app").info(

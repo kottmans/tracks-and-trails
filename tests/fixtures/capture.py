@@ -1,4 +1,4 @@
-"""Capture and sanitize a recorded fixture (`T-018`, `ai/TESTING.md` §5).
+"""Capture and sanitize a recorded fixture (`T-018`, `docs/project/TESTING.md` §5).
 
 **Run by hand, never by a test.** It touches the network; the committed JSON is what the suite
 reads. Refreshing a fixture is a deliberate act with its own task, and this script exists so
@@ -20,7 +20,7 @@ the guarantee.
 
 Every source below is public domain or freely licensed, is served without signed URLs, and has
 no reason to change. A fixture that churns teaches nothing about our code when it breaks
-(`ai/TESTING.md` §1).
+(`docs/project/TESTING.md` §1).
 """
 
 import argparse
@@ -40,7 +40,7 @@ ERROR_DIR: Final = Path(__file__).parent / "errors"
 #:
 #: Transcribed by hand from that module; `tests/unit/test_fixtures.py` derives the same set from
 #: its AST and fails if the two disagree — transcribe one side, derive the other
-#: (`ai/TESTING.md` §13).
+#: (`docs/project/TESTING.md` §13).
 #:
 #: **This replaces four rounds of guessing what a secret looks like.** Marker lists failed by
 #: enumeration every time: `cookies`, then tuple containers, then capture metadata and non-`C:`
@@ -268,11 +268,12 @@ def _policy_record() -> str:
     permanently committed** — which is the one direction a data-boundary record must never be wrong
     in.
 
-    **The entry fields are listed from `CONSUMED_ENTRY` rather than transcribed** (`ai/TESTING.md`
-    §13). That is the whole correction: a hand-written sentence beside a machine-read allowlist is
-    two statements of one fact, and this is the second time they drifted. Derived, the sentence
-    cannot outlive the list — and `test_the_committed_policy_matches_the_writer` fails if a
-    committed fixture still carries an older one.
+    **The entry fields are listed from `CONSUMED_ENTRY` rather than transcribed**
+    (`docs/project/TESTING.md` §13). That is the whole correction: a hand-written sentence beside a
+    machine-read allowlist is two statements of one fact, and this is the second time they drifted.
+    Derived, the sentence cannot outlive the list — and
+    `test_the_committed_policy_matches_the_writer` fails if a committed fixture still carries an
+    older one.
     """
     entries = ", ".join(CONSUMED_ENTRY)
     return (
@@ -440,7 +441,7 @@ SOURCES: Final[tuple[Source, ...]] = (
 #:
 #: The expected kind is transcribed from §7 by hand and stored with the capture. It is the
 #: specification's answer, not the adapter's — asking the adapter what it does and then checking
-#: it does that is the `T010-R1` shape (`ai/TESTING.md` §13).
+#: it does that is the `T010-R1` shape (`docs/project/TESTING.md` §13).
 ERROR_SOURCES: Final[tuple[tuple[str, str, str, str], ...]] = (
     (
         "unsupported_url",
@@ -467,8 +468,8 @@ def provenance(source: Source, version: str, info: Mapping[str, Any]) -> dict[st
     mutation re-hardcoding the extractor to `"archive.org"` **survived the whole suite**: the
     committed-fixture test compares the files on disk against these declarations, and a broken
     *writer* does not change a file until somebody re-captures. So the assertion that caught the
-    original bug could not catch it coming back — which is `ai/TESTING.md` §13's whole subject, and
-    it was found by mutating rather than by reading.
+    original bug could not catch it coming back — which is `docs/project/TESTING.md` §13's whole
+    subject, and it was found by mutating rather than by reading.
 
     `info` is the extraction result. Only `extractor` is read from it, and only to **check** the
     declaration: `SEC-002` keeps this block hand-written, and the one field taken from outside —
@@ -500,8 +501,9 @@ def provenance(source: Source, version: str, info: Mapping[str, Any]) -> dict[st
         "why_this_source": source.why,
         "policy": _policy_record(),
         "note": (
-            "A contract, not a sample (ai/TESTING.md §5). Changing a projected key must fail "
-            "the projection test. Refreshing this file is a deliberate act with its own task."
+            "A contract, not a sample (docs/project/TESTING.md §5). Changing a projected "
+            "key must fail the projection test. Refreshing this file is a deliberate act "
+            "with its own task."
         ),
     }
 

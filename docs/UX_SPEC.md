@@ -16,8 +16,8 @@ done-of-total progress, and the History count rule stays History's. Before it, 2
 ruled every open `[P]` clause; `UX-006` (the queue is stopped until started) and `ARC-010` (option
 coverage) amended §2, §2.1 and §6
 **Update when:** A surface changes, a `UX-` entry is accepted or amended, or a §10 question is ruled on.
-**Does not contain:** Why a decision was made (`ai/DECISIONS.md`), what must be tested
-(`ai/TESTING.md`), the visual palette (`ARCHITECTURE.md` §8), or Phase 4's settings dialog
+**Does not contain:** Why a decision was made (`docs/project/DECISIONS.md`), what must be tested
+(`docs/project/TESTING.md`), the visual palette (`ARCHITECTURE.md` §8), or Phase 4's settings dialog
 (`REQ-023`).
 
 ---
@@ -35,7 +35,7 @@ drifting, and the fix is not to copy less but to say plainly which is which.
 
 - **This file states what a surface *is*.** A disagreement between this file and an implementation
   is a defect in one of them.
-- **`ai/DECISIONS.md` states why, and what was rejected.** A `UX-` entry accepted *after* this file
+- **`docs/project/DECISIONS.md` states why, and what was rejected.** A `UX-` entry accepted *after* this file
   is written amends it, and this file is then updated — the entry does not become a second spec.
 
 ### Every clause is marked, and the marks are not decoration

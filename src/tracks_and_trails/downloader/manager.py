@@ -44,11 +44,11 @@ then does the rest: a session with no outcome is a violation, and the job fails 
 ## `entry_point`
 
 The function the child runs is a constructor parameter, defaulting to `worker.spawn_session`.
-It is not a mocking seam — `ai/TESTING.md` §6 forbids mocking the process boundary, and the
-tests that use it spawn a *real* process over a *real* queue. It exists because the streams the
-receiving half has to survive are ones a correct worker cannot produce: two outcomes for one
-job, a bare dict on the queue, an exit with nothing reported. Without it those paths could only
-be tested by breaking the worker.
+It is not a mocking seam — `docs/project/TESTING.md` §6 forbids mocking the process boundary, and
+the tests that use it spawn a *real* process over a *real* queue. It exists because the streams the
+receiving half has to survive are ones a correct worker cannot produce: two outcomes for one job, a
+bare dict on the queue, an exit with nothing reported. Without it those paths could only be tested
+by breaking the worker.
 
 ## The exit code is not the outcome
 
@@ -154,9 +154,9 @@ DEFAULT_SHUTDOWN_SECONDS: Final = 5.0
 
 #: The pipeline states, in order, transcribed by hand from `ARCHITECTURE.md` §5's diagram
 #: rather than derived from `core.job_state` — the two must agree, and a walker that read the
-#: transition table to find its own path would agree with it unconditionally (`ai/TESTING.md`
-#: §13). Every step is still validated by `Job.with_status`, so a wrong entry here raises
-#: `IllegalTransitionError` instead of writing a state the machine forbids.
+#: transition table to find its own path would agree with it unconditionally
+#: (`docs/project/TESTING.md` §13). Every step is still validated by `Job.with_status`, so a wrong
+#: entry here raises `IllegalTransitionError` instead of writing a state the machine forbids.
 _PIPELINE: Final[tuple[JobStatus, ...]] = (
     JobStatus.QUEUED,
     JobStatus.PROBING,
@@ -262,8 +262,8 @@ class ProcessLike(Protocol):
 
     Named so the manager's lifetime handling can be driven by a stand-in in a test without
     weakening what the real thing has to do. The integration tests use real processes
-    (`ai/TESTING.md` §6); this exists for the parts that are about *policy* — which escalation
-    happens when — rather than about the process model.
+    (`docs/project/TESTING.md` §6); this exists for the parts that are about *policy* — which
+    escalation happens when — rather than about the process model.
     """
 
     @property
@@ -428,7 +428,7 @@ class DownloadManager(QObject):
     job_failed = Signal(str, object, str)
 
     #: `(job_id, reason)` — the worker broke the IPC contract. Surfaced rather than swallowed;
-    #: `ai/REVIEWS.md` has this class of fault ending in a hang when it is not.
+    #: `docs/project/REVIEWS.md` has this class of fault ending in a hang when it is not.
     protocol_violation = Signal(str, str)
 
     #: Emitted when the last session has been released. `T-036` uses it to know that quitting
@@ -952,7 +952,7 @@ class DownloadManager(QObject):
         Every path that can delete a waiting job's row — `remove()` and this one — drops it from
         the list first, so a sweep here could no longer fire. Keeping it would be a guard whose
         reason has gone and which no test can distinguish from working, which is
-        `ai/TESTING.md` §13's shape.
+        `docs/project/TESTING.md` §13's shape.
         """
         self._repository.clear_completed(self._settle_clear)
 
@@ -1846,7 +1846,7 @@ class DownloadManager(QObject):
         # machine and this line could never run. `T010-R3` settled that on purpose: cancelling stops
         # in-flight work and a failed job has none; **removing** it is the action that applies, and
         # `remove()` does drop the pending retry. A pop here was in the first version of `T-103` and
-        # came out when a mutation showed nothing could reach it (`ai/TESTING.md` §13).
+        # came out when a mutation showed nothing could reach it (`docs/project/TESTING.md` §13).
 
         session = self._sessions.get(job_id)
         if session is None:

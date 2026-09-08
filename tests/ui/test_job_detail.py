@@ -269,7 +269,7 @@ def test_every_stage_req_014_names_is_shown_from_real_messages(
     A real child sends all five stages over a real queue; the manager routes them; the view
     renders them. What is asserted is the *text a user reads*, collected as it changes, because
     a stage that is computed and never displayed is the defect class this project has now met
-    five times (`ai/STATUS.md`).
+    five times (`docs/project/STATUS.md`).
     """
     job = make_job("job-1", tmp_path)
     store.add(job)
@@ -478,7 +478,7 @@ def test_only_an_ending_is_immediate_once_progress_is_on_screen(
 
 #: Every shape the progress bar's three inputs can take. Small and closed on purpose: this is
 #: the space `T017-R2` kept escaping through, three corrections running, because each one gated
-#: the case that had just been found (`ai/TESTING.md` §13).
+#: the case that had just been found (`docs/project/TESTING.md` §13).
 BAR_INPUTS: Final = [
     (done, total, finished)
     for done in (None, 0, 5, 10, 20)
@@ -1122,7 +1122,7 @@ def test_a_drm_failure_offers_no_retry_at_all(
     tmp_path: Path,
     spin: Callable[..., bool],
 ) -> None:
-    """The UI half of `ai/TESTING.md` §7's DRM row (`SEC-001`, `REQ-EXCL-001`).
+    """The UI half of `docs/project/TESTING.md` §7's DRM row (`SEC-001`, `REQ-EXCL-001`).
 
     `core/errors.py` states the reason where the policy lives: *offering the button implies a
     workaround exists*. It does not, so the control is **absent** rather than disabled — a
@@ -1260,7 +1260,7 @@ def test_the_declared_focus_order_is_the_one_qt_builds(
 
     `T016-R4` and `T-040`: deriving the expected order from `focus_chain()` would prove only
     that the list equals itself, and the mutation that reverses two entries survives such a
-    test. So the order below is written out (`ai/TESTING.md` §13).
+    test. So the order below is written out (`docs/project/TESTING.md` §13).
     """
     store.add(make_job("job-1", tmp_path, status=JobStatus.FAILED, error_kind=ErrorKind.NETWORK))
     # `log_directory` pinned to this test's own tree. Without it the view reads the machine's real
@@ -1557,7 +1557,7 @@ def test_a_detached_view_stops_answering_the_manager(
 def _connections_to(sender: QObject, signal_name: str) -> int:
     """How many slots are connected to `signal_name`, asked of Qt rather than of our own count.
 
-    `ai/TESTING.md` §13: a count this code kept would agree with this code.
+    `docs/project/TESTING.md` §13: a count this code kept would agree with this code.
 
     **The `"2"` prefix is not decoration.** `receivers()` takes a `SIGNAL()`-encoded signature, and
     that macro's encoding is the digit 2 in front of the signature the meta-object gives. Without

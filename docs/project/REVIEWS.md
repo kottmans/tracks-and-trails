@@ -2,7 +2,7 @@
 
 **Purpose:** Record code review, QA, and readiness findings and their evidence.
 **Authority:** Canonical for review evidence and finding status. Historical record — append, never rewrite.
-**Owner:** Reviewer (Codex)
+**Owner:** Reviewer
 **Maintainer:** Sean Kottman
 **Status:** Active
 **Last updated:** 2026-08-28
@@ -40,7 +40,7 @@ below.
     reviewer may retract an invalid finding or mark a genuinely overtaken one **Superseded**;
     smallness alone is not a no-action disposition. Critical findings cannot be closed this way.
 - **This file is the record for serial work.** During a parallel wave (`AGENTS.md` §9) reviews
-  are partitioned: the assigned reviewer writes `ai/reviews/T-0NN.md` on the task branch, this
+  are partitioned: the assigned reviewer writes `docs/project/reviews/T-0NN.md` on the task branch, this
   file carries only the index entry and the integration result, and approval names the exact
   implementation head it covers. Every severity, blocking, verdict, and budget rule below is
   the same in both modes.
@@ -108,10 +108,10 @@ ordered ten-asset manifest SHA-256
 
 | ID | Severity | Area | Finding | Recommendation | Status |
 |---|---|---|---|---|---|
-| `T003-R1` | Medium | Palette evidence | `ai/ARCHITECTURE.md:288` calls the hexes and shares exact, while `ai/TASKS.md:299` specifies only a radius, not a clustering algorithm. Reasonable radius-40 implementations did not reproduce all published values: fixed-seed assignment gave weighted centers `#1E5E47` / `#D9A24C` / `#093224` at 72.48% / 24.67% / 2.55%; greedy mode clustering gave `#1E5E47` / `#D8A24C` / `#0C3626` at 72.25% / 24.33% / 2.59%. Radius 20–60 also changed the shares materially. The green and gold choices are visually representative, but the measurement does not uniquely establish the published table. | Supply a deterministic method whose output matches the table, or treat the hexes as adopted canonical swatches and remove the method-dependent share claims. | Resolved — `T-022` |
-| `T003-R2` | Low | Task truth | `ai/TASKS.md:288` marks `T-003` Complete while `ai/TASKS.md:328` says an acceptance criterion was not fully met. Independent inspection finds the 16 px note silhouette and gold path recognizable; only the landscape detail collapses. The minimum “not unreadable mush” criterion is met narrowly, so `T-021` is a justified enhancement rather than a blocker, but the current wording records a contradictory completion state. | Record the criterion as narrowly met, retain the marginal visual assessment, and keep `T-021` as the optional simplified-glyph improvement. | Resolved — `T-022` |
-| `T003-R3` | Low | Test coverage | `ai/TESTING.md:48` requires tests relevant to a source change, but the default suite has no assertion that the assets exist, have the required dimensions, load through Qt, or expose the ICO frame set. The green suite therefore proves only that unrelated Python behavior did not regress. | Add a default-suite resource test and run the same assertion on Windows through `T-006`. | Resolved — `T-022` |
-| `T003-R4` | Note | File ownership | The `ai/ARCHITECTURE.md` edit is authorized in this instance. The task explicitly ordered the exact values recorded and pointed to the approximate Theme entry, and Claude Code holds the Planner capability in `AGENTS.md:40`. The Implementer's restriction at `AGENTS.md:51` was therefore not used to self-authorize an unrelated architecture change. | None for this review. A future task without equally explicit scope would still require Planner direction. | Resolved |
+| `T003-R1` | Medium | Palette evidence | `docs/project/ARCHITECTURE.md:288` calls the hexes and shares exact, while `docs/project/TASKS.md:299` specifies only a radius, not a clustering algorithm. Reasonable radius-40 implementations did not reproduce all published values: fixed-seed assignment gave weighted centers `#1E5E47` / `#D9A24C` / `#093224` at 72.48% / 24.67% / 2.55%; greedy mode clustering gave `#1E5E47` / `#D8A24C` / `#0C3626` at 72.25% / 24.33% / 2.59%. Radius 20–60 also changed the shares materially. The green and gold choices are visually representative, but the measurement does not uniquely establish the published table. | Supply a deterministic method whose output matches the table, or treat the hexes as adopted canonical swatches and remove the method-dependent share claims. | Resolved — `T-022` |
+| `T003-R2` | Low | Task truth | `docs/project/TASKS.md:288` marks `T-003` Complete while `docs/project/TASKS.md:328` says an acceptance criterion was not fully met. Independent inspection finds the 16 px note silhouette and gold path recognizable; only the landscape detail collapses. The minimum “not unreadable mush” criterion is met narrowly, so `T-021` is a justified enhancement rather than a blocker, but the current wording records a contradictory completion state. | Record the criterion as narrowly met, retain the marginal visual assessment, and keep `T-021` as the optional simplified-glyph improvement. | Resolved — `T-022` |
+| `T003-R3` | Low | Test coverage | `docs/project/TESTING.md:48` requires tests relevant to a source change, but the default suite has no assertion that the assets exist, have the required dimensions, load through Qt, or expose the ICO frame set. The green suite therefore proves only that unrelated Python behavior did not regress. | Add a default-suite resource test and run the same assertion on Windows through `T-006`. | Resolved — `T-022` |
+| `T003-R4` | Note | File ownership | The `docs/project/ARCHITECTURE.md` edit is authorized in this instance. The task explicitly ordered the exact values recorded and pointed to the approximate Theme entry, and Claude Code holds the Planner capability in `AGENTS.md:40`. The Implementer's restriction at `AGENTS.md:51` was therefore not used to self-authorize an unrelated architecture change. | None for this review. A future task without equally explicit scope would still require Planner direction. | Resolved |
 | `T003-R5` | Note | Source provenance | The current `icon.png` is clean and its SHA-256 is `f0e202c714ac316fdaa75b4cccbc0b46fee4686129ac09d0d276446abfe74b8d`, but no pre-placement hash or second copy exists in the review evidence. Byte identity to the maintainer's original cannot be independently established after the fact. | Preserve the recorded hash as the baseline for future changes. | Accepted Risk |
 
 ### Checks run
@@ -202,8 +202,8 @@ introduced by this correction.
 
 | ID | Severity | Area | Finding | Recommendation | Status |
 |---|---|---|---|---|---|
-| `T006-R1` | Low | Failure evidence | `.github/workflows/ci.yml:91` writes lint, format, and mypy output only to the Actions job log, while only the baseline and pytest commands tee into `reports/`. This is observable in run `30179263484`: `if: always()` uploaded the failed Windows artifact, but it contained only `environment.txt`; the actual `F401` diagnostic was absent and had to be retrieved from the job log. That contradicts `ai/TESTING.md:175` and the workflow comments calling uploaded artifacts the retained failure output and the only Windows debugging material. The failed-pytest case is captured correctly. | Preserve stdout/stderr for the controllable gates in `reports/` without swallowing their exit status, and document honestly that early action/setup failures remain available through Actions-owned logs rather than the artifact. | Open — `T-023` |
-| `T006-R2` | Low | Coordination truth | The `T-006` record says both Windows carries are discharged, but the canonical completed-task notes still say the opposite: `ai/TASKS.md:475` calls `T-003`'s Windows check unverified and `ai/TASKS.md:536` / `ai/TASKS.md:571` leave `T-002` Linux-only and carried into `T-006`. `TASKS.md` is current truth, so readers receive mutually exclusive states in one file. | Update the `T-002` and `T-003` completion notes to cite the verified `T-006` Windows evidence while preserving genuinely Linux-only probes. | Open — `T-023` |
+| `T006-R1` | Low | Failure evidence | `.github/workflows/ci.yml:91` writes lint, format, and mypy output only to the Actions job log, while only the baseline and pytest commands tee into `reports/`. This is observable in run `30179263484`: `if: always()` uploaded the failed Windows artifact, but it contained only `environment.txt`; the actual `F401` diagnostic was absent and had to be retrieved from the job log. That contradicts `docs/project/TESTING.md:175` and the workflow comments calling uploaded artifacts the retained failure output and the only Windows debugging material. The failed-pytest case is captured correctly. | Preserve stdout/stderr for the controllable gates in `reports/` without swallowing their exit status, and document honestly that early action/setup failures remain available through Actions-owned logs rather than the artifact. | Open — `T-023` |
+| `T006-R2` | Low | Coordination truth | The `T-006` record says both Windows carries are discharged, but the canonical completed-task notes still say the opposite: `docs/project/TASKS.md:475` calls `T-003`'s Windows check unverified and `docs/project/TASKS.md:536` / `docs/project/TASKS.md:571` leave `T-002` Linux-only and carried into `T-006`. `TASKS.md` is current truth, so readers receive mutually exclusive states in one file. | Update the `T-002` and `T-003` completion notes to cite the verified `T-006` Windows evidence while preserving genuinely Linux-only probes. | Open — `T-023` |
 | `T006-R3` | Note | Linux packages | `ubuntu-latest` and unpinned `apt` packages can drift, and the five-package list is sufficient rather than proven minimal. Exact package-version pins on a moving hosted image would be brittle and would suppress security updates; exercising the current supported Ubuntu environment is useful portability pressure. The Linux baseline and suite prove the present list sufficient. | Keep the acknowledged assumption and treat future runner/package drift as CI maintenance, not a reproducibility guarantee. | Accepted Risk |
 | `T006-R4` | Note | Qt environment | The job-level `QT_QPA_PLATFORM=offscreen` and `tests/ui/conftest.py` do not conflict. CI makes the value explicit; local tests default to it; `setdefault` preserves any caller override. The standalone baseline reads the job value and asserts the resolved plugin. | None. | Resolved |
 | `T006-R5` | Note | Baseline validation | Keeping `.github/scripts/qt_baseline.py` outside pytest is justified by its earlier, clearer failure boundary. `ruff` checks it, both matrix jobs execute it, and an independent `mypy --strict` run found no issues. The standard `mypy src` gate does not statically check future edits to it, but its size and mandatory runtime execution keep that residual risk small. | Add it to the type-check command if the script grows beyond this focused probe. | Accepted Risk |
@@ -252,7 +252,7 @@ artifacts and logs
 
 | ID | Result | Evidence |
 |---|---|---|
-| `T006-R1` | Partially resolved | The workflow correction works. Run `30180163074` failed at lint on both platforms without masking the exit, both uploads succeeded, and the downloaded Windows artifact contains the complete `F401` diagnostic in `lint.txt`, including the runner-native `tests\unit\...` path. Run `30180215713` reverted the probe, passed both jobs, and retained all seven expected files per artifact. However, the required documentation correction was omitted: `.github/workflows/ci.yml:10`, `.github/workflows/ci.yml:91`, `ai/TESTING.md:173`, and `ai/TASKS.md:293` still call artifacts the only Windows debugging material. Checkout, setup, and installation failures happen before `reports/` exists, while their Actions-owned job logs remain available. This directly misses `T-023`'s scope and second acceptance criterion. Update all four descriptions to distinguish downloadable project-gate evidence from early Actions/setup logs. |
+| `T006-R1` | Partially resolved | The workflow correction works. Run `30180163074` failed at lint on both platforms without masking the exit, both uploads succeeded, and the downloaded Windows artifact contains the complete `F401` diagnostic in `lint.txt`, including the runner-native `tests\unit\...` path. Run `30180215713` reverted the probe, passed both jobs, and retained all seven expected files per artifact. However, the required documentation correction was omitted: `.github/workflows/ci.yml:10`, `.github/workflows/ci.yml:91`, `docs/project/TESTING.md:173`, and `docs/project/TASKS.md:293` still call artifacts the only Windows debugging material. Checkout, setup, and installation failures happen before `reports/` exists, while their Actions-owned job logs remain available. This directly misses `T-023`'s scope and second acceptance criterion. Update all four descriptions to distinguish downloadable project-gate evidence from early Actions/setup logs. |
 | `T006-R2` | Resolved | The completed `T-002` and `T-003` records now identify their Windows carries as discharged and cite the verified `T-006` evidence. A full `TASKS.md` search found no other stale open carry: remaining uses either define `T-006`'s historical inputs, explicitly mark them resolved, or describe the still-open real-download cancellation check assigned to `T-019`. |
 
 ### New findings
@@ -299,7 +299,7 @@ artifacts and logs
 |---|---|---|---|---|---|
 | `T005-R1` | **High** | Analyzer self-protection | The synthetic cases do not pin the rule definitions; they only sample them. Narrowing the core predicate at `tests/unit/test_layering.py:53` to the two sampled paths (`core/models.py` and `core/paths.py`) excluded every other core module while all 45 tests still passed. Adding the existing `downloader/environment.py` as a third `YTDLP_OWNERS` entry at line 36 also left all 45 green. Those are direct weakenings of §4 and §6 that the claimed meta-guard does not detect. The requested coarse mutations do fail, but the guard can still be weakened immediately around its fixtures. | Pin the complete rule semantics independently of `RULES`: exercise each forbidden package against every discovered source path and compare with an explicit architecture-derived expectation, or directly assert exact package/owner sets and predicate domains. Include future-path sentinels where discovery alone cannot express the domain. | Open — `T-024` |
 | `T005-R2` | Low | Static-analysis purity | `tests/unit/test_layering.py:28` imports `tracks_and_trails` solely to locate `SRC`, executing `__init__.py` before the static analysis. That contradicts the implementation record's “no imports executed” claim and couples collection to the editable installation; an installed non-editable copy could make the test scan a different tree. It is harmless with today's side-effect-free `__init__.py`, but it weakens the reason this test uses AST in the first place. | Derive the repository source path from `Path(__file__).resolve()` and assert the expected package directory exists; do not import the package under test. | Open — `T-024` |
-| `T005-R3` | Low | Current truth | `ai/STATUS.md:100` still says nothing in `TESTING.md` has been implemented, while the same snapshot now says `T-005` is implemented and `TESTING.md` records the layering guard, resource invariants, and CI. The branch edits `STATUS.md` but leaves its closing blanket statement false. | Replace the blanket statement with the actual boundary between implemented checks and approved future behavior. | Open — `T-024` |
+| `T005-R3` | Low | Current truth | `docs/project/STATUS.md:100` still says nothing in `TESTING.md` has been implemented, while the same snapshot now says `T-005` is implemented and `TESTING.md` records the layering guard, resource invariants, and CI. The branch edits `STATUS.md` but leaves its closing blanket statement false. | Replace the blanket statement with the actual boundary between implemented checks and approved future behavior. | Open — `T-024` |
 | `T005-R4` | Note | Scope | Implementing four checks is not scope creep. `T-005`'s Scope explicitly enumerates all four, §4 states the Qt/UI boundaries and the worker no-Qt invariant, and §6 explicitly confines yt-dlp imports to two modules. The “two rules” out-of-scope wording is imprecise, but it does not erase the more specific Scope. | None. | Resolved |
 | `T005-R5` | Note | AST coverage | `ast.walk` correctly detects aliases, star imports, multi-alias statements, and imports inside functions, classes, `TYPE_CHECKING`, and `try` blocks. Skipping relative imports is sound because they cannot name a third-party root. Literal dynamic imports remain undetected as the module docstring says; accepting that conspicuous bypass is reasonable for this task. | Revisit only if dynamic third-party imports enter the codebase. | Accepted Risk |
 
@@ -412,11 +412,11 @@ spike artifacts
 |---|---|---|---|---|---|
 | `P0-R1` | **Medium** | T-007 geometry restore | `src/tracks_and_trails/ui/main_window.py:58-80` promises `load_geometry()` never raises but accepts TOML numeric forms beyond Qt's geometry domain. `x = inf` raises `OverflowError` during `int()`; `x = 1e100` and `x = 9223372036854775808` reach `setGeometry()` at line 173 and raise a shiboken 32-bit overflow. Ordinary but stale multi-monitor coordinates are also never checked for intersection with an available screen, so the only window can restore invisibly. The eight cases at `tests/ui/test_main_window.py:107-137` miss this class. | Validate types and Qt integer bounds, catch conversion overflow, and clamp or relocate geometry that intersects no screen. Pin `inf`, huge integer/float, boolean, and off-screen cases. | Open — `T-027` |
 | `P0-R2` | **Low** | T-007 Qt threading | `tests/ui/test_app_launch.py:21-47` says both cross-thread calls are documented thread-safe. Qt 6.11 documents `QMetaObject::invokeMethod()` and `QCoreApplication.quit()` as thread-safe, but does not give that guarantee to `QCoreApplication::instance()`. The watcher polls `QApplication.instance()` concurrently with application construction, recreating a smaller undocumented race in the harness that already proved unstable once. It also ignores the boolean result of `invokeMethod()`. | Drive shutdown using only a documented thread-safe API, propagate a failed request, and repeat the launch test on both platforms. | Open — `T-028` |
-| `P0-R3` | **Medium** | T-020 negative gate | `ai/TASKS.md:289-290` explicitly requires removing `freeze_support()` to fail on Windows. The implementation record at lines 325-337 records only a Linux mutation. Positive Windows evidence proves the current build works; it does not prove the detector turns red on the platform named by the acceptance criterion. The reviewer repeated the Linux mutation: the smoke exited 1 after 120.4 s and recorded 4 starts, including `--multiprocessing-fork` and both resource-tracker invocations. | Run and retain the same deliberate mutation in Windows CI, restore it, and re-run both final frozen jobs. | Open — `T-029` |
+| `P0-R3` | **Medium** | T-020 negative gate | `docs/project/TASKS.md:289-290` explicitly requires removing `freeze_support()` to fail on Windows. The implementation record at lines 325-337 records only a Linux mutation. Positive Windows evidence proves the current build works; it does not prove the detector turns red on the platform named by the acceptance criterion. The reviewer repeated the Linux mutation: the smoke exited 1 after 120.4 s and recorded 4 starts, including `--multiprocessing-fork` and both resource-tracker invocations. | Run and retain the same deliberate mutation in Windows CI, restore it, and re-run both final frozen jobs. | Open — `T-029` |
 | `P0-R4` | **Low** | T-020 frozen-child proof | `_freeze_probe.py:94-112` prints that the parent and child are frozen but never asserts either value. Both retained platform artifacts happen to report `True`; a future configuration that starts the target in an external interpreter could still exchange the message and pass, weakening `REL-001`'s self-contained-process claim. | Make the frozen smoke fail unless both values are exactly true while preserving any intentionally supported source-mode diagnostic separately. | Open — `T-029` |
 | `P0-R5` | **Low** | T-020 retained evidence | `packaging/frozen_smoke.py:88` writes `dist/frozen-probe.log`, while `.github/workflows/ci.yml:193-200` uploads root-level `frozen-probe.log`. The downloaded Windows frozen artifact contains only the three `reports/` files; the raw log is absent. `frozen-smoke.txt` does repeat the start lines, so the diagnostic is retained indirectly and this is not evidence loss. | Upload the actual path or remove the redundant path and state that `frozen-smoke.txt` is canonical. | Open — `T-029` |
 | `P0-R6` | **Low** | Architecture truth | The two implementation calls are technically sound: ephemeral geometry belongs in a separate UI-owned TOML file, and an in-package probe is necessary to exercise the real `__main__.py` ordering; the environment-gated marker is acceptable same-user diagnostic code. But the implementer explicitly left both “reported, not decided.” `ARCHITECTURE.md:128-169` omits `_freeze_probe.py`, and the §5 ownership table at lines 173-179 omits `window.toml`, so canonical architecture no longer describes the approved tree or its first real filesystem write. | Have the Planner ratify both current choices in §4/§5/§12; no source redesign or durable decision entry is needed. | Open — `T-030` |
-| `P0-R7` | **Medium** | Proposed OPS-004 | The retained spike supports the premise: real `windows` plugin, 1024×768 screen, native visible HWND/title, and a nonblank 960×640 capture. UI Automation is also an appropriate objective test surface. `OPS-004` is not acceptable as written, though. `OPS-003` lists native dialogs and open/reveal behavior at `ai/DECISIONS.md:609-615`; they appear in neither `OPS-004`'s automated list nor its remaining-human list at lines 437-448, yet its consequence would shrink the manual list to that residue. `T-026:160-162` also says a broken layout need only be visible in an artifact while its note claims every weakening fails a gate. | Restore an explicit owner for native dialogs/open/reveal; distinguish screenshot evidence from a red/green assertion; shrink the manual list only as replacements land. Then accept the corrected decision and run T-026. | Open — `T-031` |
+| `P0-R7` | **Medium** | Proposed OPS-004 | The retained spike supports the premise: real `windows` plugin, 1024×768 screen, native visible HWND/title, and a nonblank 960×640 capture. UI Automation is also an appropriate objective test surface. `OPS-004` is not acceptable as written, though. `OPS-003` lists native dialogs and open/reveal behavior at `docs/project/DECISIONS.md:609-615`; they appear in neither `OPS-004`'s automated list nor its remaining-human list at lines 437-448, yet its consequence would shrink the manual list to that residue. `T-026:160-162` also says a broken layout need only be visible in an artifact while its note claims every weakening fails a gate. | Restore an explicit owner for native dialogs/open/reveal; distinguish screenshot evidence from a red/green assertion; shrink the manual list only as replacements land. Then accept the corrected decision and run T-026. | Open — `T-031` |
 | `P0-R8` | **Low** | Current truth | Phase-exit coordination is internally stale. `STATUS.md:65-71` still asks to merge and then run completed T-020/T-025; lines 124-138 call T-007/T-005 “in review,” describe the removed placeholder `app.run`, and state 30/27/3 when the head has 31 Python modules, 26 stubs, and 5 code modules. `TASKS.md:15-23` says nothing is Ready while placing Complete T-007 and Proposed T-026 under Ready. `TESTING.md:13-16` still says only skeleton structural tests exist. | Reconcile navigation, statuses, exact counts, and the coverage status note after the correction tasks settle. | Open — `T-032` |
 
 ### Exit criteria
@@ -672,7 +672,7 @@ installed `gh` credential remains invalid
 | `T026-R2` | **Open** | The popup-menu equalities are a real improvement, and leaving `TitleBar`/`MenuBar` containers unnamed is acceptable. The overall contract is still not an equality. The main-window checks pass with only Windows' native System menu bar/items—no `File` or `Help` header—and the About check passes when its only button is the native title-bar `Close`. Therefore a missing/mis-roled application menu bar or missing QMessageBox Close button can still leave the suite green. |
 | `T026-R3` | **Resolved** | `T-040` is a concrete blocked task tied to the first focusable controls. It explicitly extends the existing real-plugin suite and requires a demonstrated reorder mutation before retiring the gap. No vacuous test was added now. |
 | `T026-R4` | **Resolved** | The desktop job runs config-scoped `mypy --platform win32`. A fresh deliberate post-guard `int = "not an int"` mutation is caught as one assignment error across the 49-file scope and was restored. |
-| `T026-R5` | **Open** | Task placement, §7 coverage count, and repository path were corrected, but current truth is not reconciled. `ai/TESTING.md` now has a duplicate Windows-desktop section at lines 1–35 before its document title and again in §10; its update metadata remains 2026-07-25. `STATUS.md` still says CI forces offscreen and does not use the real desktop, contradicting the dedicated job. `TASKS.md` still says the ten-kind wording “needs correcting” directly above the corrected eleven-kind criterion. |
+| `T026-R5` | **Open** | Task placement, §7 coverage count, and repository path were corrected, but current truth is not reconciled. `docs/project/TESTING.md` now has a duplicate Windows-desktop section at lines 1–35 before its document title and again in §10; its update metadata remains 2026-07-25. `STATUS.md` still says CI forces offscreen and does not use the real desktop, contradicting the dedicated job. `TASKS.md` still says the ten-kind wording “needs correcting” directly above the corrected eleven-kind criterion. |
 
 ### Remaining findings
 
@@ -743,7 +743,7 @@ credential is invalid
 | `T011-R3` | **Medium** | Required-field API | The runtime and type-level contracts disagree. `Probed.media` and `Failed.kind` are typed optional and default to `None`; `Succeeded.output_path` and `Failed.message` default to invalid empty strings. Their constructors reject those defaults only after construction starts. More importantly, `Progress.stage` silently defaults to `PROBING`, so forgetting the required stage creates a valid but false progress report. The public signatures therefore advertise optional fields that the task calls required and conceal an omission that changes meaning. | Use keyword-only dataclasses (or another inheritance shape) so required payloads have no defaults and honest non-optional annotations. Make `Progress.stage` required. Keep runtime validation as protection against `Any` and deserialized/untyped inputs. | Open |
 | `T011-R4` | **Medium** | Terminal-once ownership | The rule is not completely ownerless: the T-011 entry explicitly assigns enforcement to `T-013`, which is the right layer. However, T-013's own scope and acceptance criteria never require rejecting or reporting a second terminal outcome for the same job. It can currently meet every listed criterion without implementing the promised terminal-once rule. | Add an explicit T-013 acceptance criterion and test: after one outcome for a job ID, a second success/failure outcome is a protocol violation and cannot produce a second state transition or signal. Tie it to the protocol predicate after `T011-R1` resolves the meaning of probe outcomes. | Open |
 | `T011-R5` | **Low** | Accepted-decision consistency | Accepted decision `ARC-002` says the IPC protocol is a “versioned internal contract.” The T-011 task and module instead say “No protocol versioning, deliberately.” Avoiding runtime negotiation between two ends of one artifact is reasonable, but that narrower claim does not resolve the direct authority conflict over whether the contract is versioned. | Clarify whether `ARC-002` meant release/version-control evolution or an explicit protocol version. Preserve the historical decision and add an accepted clarification/superseding decision if “versioned” is being withdrawn; otherwise narrow T-011 to “no runtime negotiation” and implement the versioning the decision requires. | Open |
-| `T011-R6` | **Low** | Current truth / coordination | `ai/TASKS.md` changes T-011 to implemented/awaiting review but leaves it under `Ready`, uses a status phrase outside the canonical status list, leaves the “Start here” paragraph saying it is Ready, and retains `Last updated: 2026-07-25`. `STATUS.md` calls it Started while its In-progress section says nothing is active. | Move T-011 to `In Review` with the canonical status, update the metadata and start-here text, and reconcile the concise status snapshot. | Open |
+| `T011-R6` | **Low** | Current truth / coordination | `docs/project/TASKS.md` changes T-011 to implemented/awaiting review but leaves it under `Ready`, uses a status phrase outside the canonical status list, leaves the “Start here” paragraph saying it is Ready, and retains `Last updated: 2026-07-25`. `STATUS.md` calls it Started while its In-progress section says nothing is active. | Move T-011 to `In Review` with the canonical status, update the metadata and start-here text, and reconcile the concise status snapshot. | Open |
 
 ### Review judgments
 
@@ -1132,7 +1132,7 @@ Windows desktop in independently queried CI run `30218288265`
 | New numeric-field mutations | A new required `int` field on `FormatInfo` failed the derived nullability/boolean guards; one on `WorkerFinished` failed the corresponding protocol guards. Restored. |
 | `git diff --check 64c9dfd..f08f5a6` | Passed. |
 | CI `30218288265` | Independently verified successful at exact head `f08f5a6`; all five jobs green. |
-| Worktree after review | All temporary source/test mutations were restored. The only local modification is this reviewer-owned `ai/REVIEWS.md` entry. |
+| Worktree after review | All temporary source/test mutations were restored. The only local modification is this reviewer-owned `docs/project/REVIEWS.md` entry. |
 
 ### Review-policy clarification
 
@@ -1233,7 +1233,7 @@ Windows desktop in independently queried CI run `30219285036`
 | R4 constant-export mutation | Added `YTDLP_VERSION`: all 22 environment tests passed. Restored; assigned to `T-044`. |
 | `git diff --check f08f5a6..fb2dab9` | Passed. |
 | CI `30219285036` | Independently verified successful at exact head `fb2dab9`; all five jobs green. |
-| Worktree after mutations | All temporary source/test mutations were restored. The only local changes are this reviewer-owned entry and the `T-044` follow-up in `ai/TASKS.md`. |
+| Worktree after mutations | All temporary source/test mutations were restored. The only local changes are this reviewer-owned entry and the `T-044` follow-up in `docs/project/TASKS.md`. |
 
 ### Readiness and exhausted budget
 
@@ -1310,7 +1310,7 @@ head.
 | Prior blocker retention | The known 32-bit collision pair now produces distinct names; `COM0`, `COM0.mp4`, `LPT0`, and `LPT0.mp4` remain unchanged. |
 | `git diff --check eca1f7e..313198d` | Passed. |
 | CI `30221188245` | Independently verified successful at exact head `313198d`; all five jobs green. |
-| Worktree after mutations | All temporary source mutations were restored. The only local modification is this reviewer-owned `ai/REVIEWS.md` entry. |
+| Worktree after mutations | All temporary source mutations were restored. The only local modification is this reviewer-owned `docs/project/REVIEWS.md` entry. |
 
 ### Readiness
 
@@ -1324,7 +1324,7 @@ In Review and T-044 remains Ready; neither requests or implies another T-034 pas
 **Task(s):** `T-012`, `T-033`
 **Review base:** `7bd9e7b46a241d27dec8e81f7a05b40d12f58439`
 **Head:** Bounded uncommitted working-tree snapshot from
-`ai/handoffs/T-012-T-033-review-handoff.md`; `AGENTS.md` and the handoff itself are excluded
+`docs/project/handoffs/T-012-T-033-review-handoff.md`; `AGENTS.md` and the handoff itself are excluded
 from the functional change
 **Platforms verified:** Linux locally. Frozen Linux and all Windows evidence remain pending
 because this snapshot is not committed or pushed.
@@ -1352,10 +1352,10 @@ because this snapshot is not committed or pushed.
 
 ### Review judgments
 
-- Keeping `ai/handoffs/T-012-T-033-review-handoff.md` during the review is acceptable. It is
+- Keeping `docs/project/handoffs/T-012-T-033-review-handoff.md` during the review is acceptable. It is
   clearly a convenience artifact and does not replace `TASKS.md`, `STATUS.md`, or this review
   record. Delete or archive it after the review closes unless the project deliberately gives
-  `ai/handoffs/` an owner, retention rule, and non-authoritative label.
+  `docs/project/handoffs/` an owner, retention rule, and non-authoritative label.
 - `_origin_of()` is adequate for the supported baseline and extracted-wheel layouts: a bundled
   baseline has no candidate path to compare, and the user-managed copy is an extracted
   filesystem package with an ordinary origin. Frozen-platform evidence is still required.
@@ -1372,7 +1372,7 @@ because this snapshot is not committed or pushed.
 
 | Check | Result |
 |---|---|
-| Review boundary | Base `7bd9e7b46a241d27dec8e81f7a05b40d12f58439`; 11 functional/coordination files in the bounded working-tree snapshot. `AGENTS.md` and `ai/handoffs/` excluded. Production blob IDs include worker `73ef6568`, adapter `4a571da6`, and freeze probe `026cdaf0`. |
+| Review boundary | Base `7bd9e7b46a241d27dec8e81f7a05b40d12f58439`; 11 functional/coordination files in the bounded working-tree snapshot. `AGENTS.md` and `docs/project/handoffs/` excluded. Production blob IDs include worker `73ef6568`, adapter `4a571da6`, and freeze probe `026cdaf0`. |
 | `.venv/bin/ruff check .` | Passed: “All checks passed!” |
 | `.venv/bin/ruff format --check .` | Passed: 70 files already formatted. |
 | `.venv/bin/mypy src` | Passed: no issues in 31 source files. |
@@ -1506,7 +1506,7 @@ be approved on this batch alone.
 | Dynamic-extractor blocker probe | **Gate incorrectly exited 0** while actual `YoutubeIE` instantiation failed with `ModuleNotFoundError` |
 | Broken-override `SystemExit` probe | **Fallback did not run**; `SystemExit` escaped `_import_ytdlp()` |
 | Real audio postprocessor inspection | `FFmpegExtractAudioPP` installed, but with `mapping="best"` and no requested quality; no MP3 distinction exists |
-| `git diff --check -- ai/REVIEWS.md` | Passed after this entry |
+| `git diff --check -- docs/project/REVIEWS.md` | Passed after this entry |
 
 ### Review decision and next boundary
 
@@ -1547,7 +1547,7 @@ quality* — and is spelled for the reader.
 
 ### Three mutations survived and became tests
 
-Reported rather than smoothed over, per `ai/TESTING.md` §13.
+Reported rather than smoothed over, per `docs/project/TESTING.md` §13.
 
 - Deleting the probe's `lazy` module check survived: instantiation already covers the blocked
   module case, so nothing distinguished it. A class that constructs while remaining the
@@ -1617,7 +1617,7 @@ and the convenience handoff, remain outside this reviewed task boundary.
 | Dynamic-extractor blocker replay | Probe returned **1** with a packaging diagnostic |
 | `SystemExit` fallback replay | Baseline `2026.07.04` selected; rejected override reported |
 | Real audio processor replay | MP3: `mp3` / `192.0`; original: `best` / no quality |
-| `git diff --check -- ai/REVIEWS.md` | Passed after this entry |
+| `git diff --check -- docs/project/REVIEWS.md` | Passed after this entry |
 
 ### Commit and CI decision
 
@@ -1684,7 +1684,7 @@ not, and must not be quoted as the size delta. Filed as part of `T-033`'s remain
 
 ## 2026-07-26 — T-012/T-033 pre-review self-audit (retained from the deleted handoff)
 
-Recorded here because `ai/handoffs/` was deleted on 2026-07-26 as a maintenance burden and a
+Recorded here because `docs/project/handoffs/` was deleted on 2026-07-26 as a maintenance burden and a
 second source of project truth. The handoff itself is not worth keeping — its design notes live
 in the modules' docstrings and its findings in the entries above — but this table did not exist
 anywhere else, and it is the evidence that the *implementer's own* mutation pass found real
@@ -1692,7 +1692,7 @@ gaps before any reviewer saw the code.
 
 Eleven mutations were run against `T-012`/`T-033` before the first review. Nine were killed
 immediately. **Two survived, and both were genuine missing tests rather than redundant code**,
-which is `ai/TESTING.md` §13's default reading and the correct one on both occasions.
+which is `docs/project/TESTING.md` §13's default reading and the correct one on both occasions.
 
 | # | Mutation | Result |
 |---|---|---|
@@ -1863,7 +1863,7 @@ remaining standard budget is one focused correction re-review.
 **Correction base:** `51f3a03a3ca273e1431a1dab2930bc7df8af7f1a`
 **Head:** uncommitted working tree on `main`
 **Review unit:** `tests/unit/test_environment.py` plus T-044 coordination changes;
-`ai/REVIEWS.md` excluded
+`docs/project/REVIEWS.md` excluded
 **Platforms verified:** Linux locally; Windows not run
 **Verdict:** **Blocked**
 
@@ -1927,7 +1927,7 @@ supported binding model, or carry the remainder into a named follow-up task.
 **Correction base:** `51f3a03a3ca273e1431a1dab2930bc7df8af7f1a`
 **Head:** uncommitted working tree on `main`
 **Review unit:** `tests/unit/test_paths.py`, `DAT-002`, and T-045/T-046 coordination changes;
-`ai/REVIEWS.md` excluded
+`docs/project/REVIEWS.md` excluded
 **Platforms verified:** Linux locally; Windows not run
 **Verdict:** **Blocked**
 
@@ -1983,7 +1983,7 @@ documented bound now, or carry the precision fix into a named follow-up.
 ## 2026-07-26 — T-044/T-045 focused re-review shared checks
 
 These checks apply to the complete uncommitted correction boundary
-`51f3a03..working tree`, excluding reviewer-owned `ai/REVIEWS.md`.
+`51f3a03..working tree`, excluding reviewer-owned `docs/project/REVIEWS.md`.
 
 | Check | Result |
 |---|---|
@@ -1994,8 +1994,8 @@ These checks apply to the complete uncommitted correction boundary
 | `mypy --platform win32` | Passed: no issues in 55 source files. |
 | Full suite | Passed: **820 passed, 6 skipped, 1 deselected**. |
 | Baseline suite at `51f3a03` | Passed: **796 passed, 6 skipped, 1 deselected**. |
-| `git diff --check 51f3a03 -- . ':!ai/REVIEWS.md'` | Passed. |
-| Working tree after review | Reviewer changed only `ai/REVIEWS.md`; all temporary mutations were restored outside the repository. |
+| `git diff --check 51f3a03 -- . ':!docs/project/REVIEWS.md'` | Passed. |
+| Working tree after review | Reviewer changed only `docs/project/REVIEWS.md`; all temporary mutations were restored outside the repository. |
 
 ## 2026-07-26 — T-044 maintainer-authorized final focused re-review
 
@@ -2004,7 +2004,7 @@ These checks apply to the complete uncommitted correction boundary
 **Correction base:** `51f3a03a3ca273e1431a1dab2930bc7df8af7f1a`
 **Head:** uncommitted working tree on `main`
 **Review unit:** `tests/unit/test_environment.py` plus T-044 coordination changes;
-`ai/REVIEWS.md` excluded
+`docs/project/REVIEWS.md` excluded
 **Platforms verified:** Linux locally; Windows not run
 **Verdict:** **Blocked**
 
@@ -2064,7 +2064,7 @@ accept the documented risk, or carry the remainder into a named follow-up.
 **Correction base:** `51f3a03a3ca273e1431a1dab2930bc7df8af7f1a`
 **Head:** uncommitted working tree on `main`
 **Review unit:** `tests/unit/test_paths.py`, `DAT-002`, and T-045/T-046 coordination changes;
-`ai/REVIEWS.md` excluded
+`docs/project/REVIEWS.md` excluded
 **Platforms verified:** Linux locally; Windows not run
 **Verdict:** **Approved with follow-ups**
 
@@ -2099,7 +2099,7 @@ filesystem-aware uniqueness before first release.
 ## 2026-07-26 — T-044/T-045 final focused re-review shared checks
 
 These checks apply to the complete uncommitted correction boundary
-`51f3a03..working tree`, excluding reviewer-owned `ai/REVIEWS.md`.
+`51f3a03..working tree`, excluding reviewer-owned `docs/project/REVIEWS.md`.
 
 | Check | Result |
 |---|---|
@@ -2110,8 +2110,8 @@ These checks apply to the complete uncommitted correction boundary
 | `mypy --platform win32` | Passed: no issues in 55 source files. |
 | Full suite | Passed: **829 passed, 6 skipped, 1 deselected**. |
 | Focused environment + paths | Passed: **263 passed**. |
-| `git diff --check 51f3a03 -- . ':!ai/REVIEWS.md'` | Passed. |
-| Working tree after review | Reviewer changed only `ai/REVIEWS.md`; all temporary mutations were restored outside the repository. |
+| `git diff --check 51f3a03 -- . ':!docs/project/REVIEWS.md'` | Passed. |
+| Working tree after review | Reviewer changed only `docs/project/REVIEWS.md`; all temporary mutations were restored outside the repository. |
 
 ## 2026-07-26 — T-044 second-decision focused re-review
 
@@ -2119,8 +2119,8 @@ These checks apply to the complete uncommitted correction boundary
 **Task:** `T-044`
 **Correction base:** `51f3a03a3ca273e1431a1dab2930bc7df8af7f1a`
 **Head:** uncommitted working tree on `main`
-**Review unit:** `tests/unit/test_environment.py`, the new `ai/TESTING.md` gate dependency,
-and T-044 coordination changes; `ai/REVIEWS.md` excluded
+**Review unit:** `tests/unit/test_environment.py`, the new `docs/project/TESTING.md` gate dependency,
+and T-044 coordination changes; `docs/project/REVIEWS.md` excluded
 **Platforms verified:** Linux locally; Windows not run
 **Verdict:** **Blocked**
 
@@ -2190,7 +2190,7 @@ implementation and matrix provide.
 ## 2026-07-26 — T-044 second-decision shared checks
 
 These checks apply to the complete uncommitted boundary `51f3a03..working tree`, excluding
-reviewer-owned `ai/REVIEWS.md`.
+reviewer-owned `docs/project/REVIEWS.md`.
 
 | Check | Result |
 |---|---|
@@ -2201,16 +2201,16 @@ reviewer-owned `ai/REVIEWS.md`.
 | `mypy --platform win32` | Passed: no issues in 55 source files. |
 | Full suite | Passed: **829 passed, 6 skipped, 1 deselected**. |
 | Focused environment + paths | Passed: **263 passed**. |
-| `git diff --check 51f3a03 -- . ':!ai/REVIEWS.md'` | Passed. |
+| `git diff --check 51f3a03 -- . ':!docs/project/REVIEWS.md'` | Passed. |
 | Production diff | No `src/**` file differs from `51f3a03`; T-044 and T-045 remain test/docs-only at this boundary. |
-| Working tree after review | Reviewer changed only `ai/REVIEWS.md`; all temporary mutations were restored outside the repository. |
+| Working tree after review | Reviewer changed only `docs/project/REVIEWS.md`; all temporary mutations were restored outside the repository. |
 
 ## 2026-07-26 — T-044 maintainer final disposition
 
 **Reviewer:** Codex (Reviewer)
 **Task:** `T-044`
 **Boundary:** `51f3a03a3ca273e1431a1dab2930bc7df8af7f1a..uncommitted working tree`
-on `main`; `ai/REVIEWS.md` excluded
+on `main`; `docs/project/REVIEWS.md` excluded
 **Platforms verified:** Linux locally; Windows not run
 **Verdict:** **Approved with follow-ups**
 
@@ -2218,7 +2218,7 @@ on `main`; `ai/REVIEWS.md` excluded
 
 | ID | Severity | Blocks approval | Final disposition |
 |---|---|---:|---|
-| `T044-R1` | **Medium** | **No** | **Resolved by narrowed scope and explicit maintainer acceptance.** The gate promises only that, under the interpreter/platform/configuration actually executing the suite, a public runtime name not accounted for by an import statement is reported. The false-guard, failed-import fallback, and dynamic imported-name rebinding gaps are stated in `defined_public_names`, asserted by dedicated tests, recorded in `ai/TESTING.md`, and owned by T-047. The maintainer directed T-044 forward without another mechanism-design loop. |
+| `T044-R1` | **Medium** | **No** | **Resolved by narrowed scope and explicit maintainer acceptance.** The gate promises only that, under the interpreter/platform/configuration actually executing the suite, a public runtime name not accounted for by an import statement is reported. The false-guard, failed-import fallback, and dynamic imported-name rebinding gaps are stated in `defined_public_names`, asserted by dedicated tests, recorded in `docs/project/TESTING.md`, and owned by T-047. The maintainer directed T-044 forward without another mechanism-design loop. |
 | `T044-R2` | **Low** | **No** | **Resolved.** T-044 and T-045 are complete in both current-truth coordination files; T-014 is next. |
 | `T044-R3` | **Low** | **No** | **Resolved.** The task records review base `6c0a773`. |
 
@@ -2292,7 +2292,7 @@ No findings.
 | `T014-R1` | **Critical** | **Yes** | The narrowed no-secret database criterion is still false at the persistence boundary. First, `DownloadRequest.proxy` accepts any non-empty string, but `strip_credentials()` examines only `urlsplit(...).netloc`; the model-valid `user:pass@proxy.invalid:8080` therefore returns unchanged and is serialized with both credentials. Second, `_job_to_values()` writes `error_message` verbatim. A failed job whose diagnostic is `proxy failed: http://secretuser:hunter2@proxy.invalid:8080` stores `hunter2` in the raw row even though the request copy is stripped. The same unrestricted diagnostic sink can persist a cookie path. Downstream proxy validity is not a defense: the job is persisted before a worker can reject the setting. This is an exposed-credential path and therefore Critical under `AGENTS.md` §9. | Enforce the exclusion at the database sink across every persisted field that can carry diagnostics or settings, and handle accepted proxy forms without relying on `urlsplit()` recognizing a netloc. Add raw-database negative tests for a scheme-less credential-bearing proxy and for credentials/cookie paths arriving through an error message; audit all sibling stored text fields. Preserve the maintainer-approved verbatim job URL exception explicitly. |
 | `T014-R2` | **High** | **Yes** | A migration and its `user_version` bump are not atomic. `migrate()` runs `BEGIN; <DDL>; COMMIT;`, then sets `PRAGMA user_version` and commits again. A simulated interruption on the pragma left both tables committed with version 0; the next `migrate()` failed with `OperationalError: table jobs already exists`. This is exactly the schema/version split the docstring says cannot happen and violates the migration and unclean-exit guarantees. | Put the version pragma before the migration transaction's `COMMIT`, with rollback/error handling, and add a deterministic interruption test proving both schema and version roll back together. SQLite accepts `PRAGMA user_version` inside this transaction; a local `BEGIN; CREATE TABLE; PRAGMA user_version=1; ROLLBACK` left neither the table nor the version. |
 | `T014-R3` | **High** | **Yes** | The only frozen-artifact specification collects `resources/icons/*` and yt-dlp data, but not `persistence/migrations/*.sql`. PyInstaller does not collect arbitrary package data through Python import analysis. In that environment `available_migrations()` sees an empty directory, `connect()` silently creates a version-0 database with no tables, and the first repository write fails `OperationalError: no such table: jobs`. The persistence layer therefore cannot run in the no-Python artifact required by `REL-001`. | Collect the migration SQL in `packaging/tracks-and-trails.spec` and exercise database creation/schema version from inside the frozen artifact on both CI platforms. Prefer also failing clearly when a build that expects migrations finds none, so a packaging omission cannot masquerade as a valid version-0 schema. |
-| `T014-R4` | **Medium** | **Yes** | `test_every_migration_runs_forward_from_every_prior_version_with_data_intact` does not construct historical data. It replays the old DDL but seeds each old schema through the **current** `JobRepository`, current model, and current JSON serializer. When a future request field or representation changes, a real v1 row has the old JSON shape, while this harness writes the new shape into a v1 table before running v2; a missing data migration can therefore pass. Conversely, a current repository that expects a newly added SQL column may fail while seeding the old schema before the migration is exercised. The test is not the v4-capable historical gate claimed by the task and `ai/TESTING.md` §7. | Freeze representative seed data or database fixtures for each schema version while that version is current, then migrate those historical bytes using only the new runner/repository. Mutation-check a representation-changing migration, not only DDL replay with current objects. |
+| `T014-R4` | **Medium** | **Yes** | `test_every_migration_runs_forward_from_every_prior_version_with_data_intact` does not construct historical data. It replays the old DDL but seeds each old schema through the **current** `JobRepository`, current model, and current JSON serializer. When a future request field or representation changes, a real v1 row has the old JSON shape, while this harness writes the new shape into a v1 table before running v2; a missing data migration can therefore pass. Conversely, a current repository that expects a newly added SQL column may fail while seeding the old schema before the migration is exercised. The test is not the v4-capable historical gate claimed by the task and `docs/project/TESTING.md` §7. | Freeze representative seed data or database fixtures for each schema version while that version is current, then migrate those historical bytes using only the new runner/repository. Mutation-check a representation-changing migration, not only DDL replay with current objects. |
 | `T014-R5` | **Low** | **No** | `test_recovery_routes_through_the_state_machine` never calls `recover_interrupted()`. It directly calls `stored.with_failure()`, so it tests the already-covered model method rather than the repository seam named by the test. Replacing `JobRepository.recover_interrupted` at runtime with a function that always raises still left this test passing. A direct `replace(job, status=FAILED, error_kind=..., ...)` implementation with identical output would also satisfy the other recovery assertions, so the reported “writing FAILED directly” mutation did not isolate the claimed route. Current production does call `with_failure`; this is test-strength and mutation-evidence accuracy, not a present behavior defect. | Exercise `recover_interrupted()` with a state-machine spy or force an illegal source into the repository's recovered set and assert that the repository raises. Record mutation evidence for a behavior-preserving direct-state-write bypass. |
 
 ### Scope and decision judgments
@@ -2534,7 +2534,7 @@ specification and probe are unchanged
 
 | ID | Severity | Blocks approval | Disposition and evidence |
 |---|---|---:|---|
-| `T014-R1` | **Critical** | **Yes** | **Open — proxy-credential half resolved; cookie-data half still directly fails.** Moving the proxy boundary into `DownloadRequest` is the right design. Every prior credential-bearing form, including `//userinfo@host`, is rejected before a `Job` can exist; valid credential-free HTTP and SOCKS proxies still reach the adapter unchanged. I found no eighth valid URL-userinfo form that bypasses the literal authority delimiter. Restoring verbatim `error_message`, however, reopens the other unrestricted database sink covered by this finding and by T-014's unchanged criterion. A failed job with diagnostic `cookies /home/someone/cookies.txt; Cookie: SID=hunter2` stored both the path and cookie value verbatim in `jobs.error_message`. T-038 redacts logs; it cannot redact a separate database write. The task's claim that the only residual secret is the already-approved job URL is therefore false. Under §9, cookie material crossing a documented privacy boundary remains Critical. The maintainer may choose the stated trade-off, but §9 requires known Critical harm to be accepted in `ai/DECISIONS.md`, with its reasoning; the current commit neither records that decision nor narrows the contradictory T-014 acceptance criterion. Record and propagate the decision explicitly, including why local database diagnostics may contain cookie paths/content, or restore a design that satisfies both verbatim diagnostics and the database exclusion. |
+| `T014-R1` | **Critical** | **Yes** | **Open — proxy-credential half resolved; cookie-data half still directly fails.** Moving the proxy boundary into `DownloadRequest` is the right design. Every prior credential-bearing form, including `//userinfo@host`, is rejected before a `Job` can exist; valid credential-free HTTP and SOCKS proxies still reach the adapter unchanged. I found no eighth valid URL-userinfo form that bypasses the literal authority delimiter. Restoring verbatim `error_message`, however, reopens the other unrestricted database sink covered by this finding and by T-014's unchanged criterion. A failed job with diagnostic `cookies /home/someone/cookies.txt; Cookie: SID=hunter2` stored both the path and cookie value verbatim in `jobs.error_message`. T-038 redacts logs; it cannot redact a separate database write. The task's claim that the only residual secret is the already-approved job URL is therefore false. Under §9, cookie material crossing a documented privacy boundary remains Critical. The maintainer may choose the stated trade-off, but §9 requires known Critical harm to be accepted in `docs/project/DECISIONS.md`, with its reasoning; the current commit neither records that decision nor narrows the contradictory T-014 acceptance criterion. Record and propagate the decision explicitly, including why local database diagnostics may contain cookie paths/content, or restore a design that satisfies both verbatim diagnostics and the database exclusion. |
 | `T014-R4` | **Medium** | **No** | **Resolved.** `TRANSFORMED_BY_MIGRATION` and its unchecked skip are gone. The v1 fixture still seeds both `jobs` and `history`, and strict per-column equality is correct while every migration is pure DDL. Repeating the prior corrupt-but-readable v2 mutation now failed closed on `jobs.v1-queued.request`. T-048 has an owner trigger and the right acceptance criterion for the first actual data migration: assert the transformed value is correct while retaining strict equality elsewhere. The present review request explicitly authorizes verification of this removal; no additional pass authorization is needed to close R4. |
 | `T014-R7` | **High** | **No** | **Resolved.** `_job_to_values()` again writes `job.error_message`, `_row_to_job()` returns that column unchanged, and both `add()` and `update()` use the shared mapping. Independent repository probes returned the exact original message after add, the exact replacement after update, and the exact authored interruption message after `recover_interrupted()`. No remaining repository paraphrase was found. This closes R7's contract failure; it does not by itself close R1's separate cookie-data exclusion. |
 | `T014-R6` | **Low** | **No** | **Remains retracted.** No code change was needed. |
@@ -2549,7 +2549,7 @@ R2, R3, and R5 remain resolved and their reviewed surfaces are unchanged.
   authorizes the capability trade-off.
 - Because that trade-off changes a durable public capability and is also being used to close a
   Critical security finding, it should be recorded with the cookie-diagnostic decision in
-  `ai/DECISIONS.md`, not only in the editable T-014 task narrative.
+  `docs/project/DECISIONS.md`, not only in the editable T-014 task narrative.
 - `urlsplit()` rejects all valid userinfo forms because the authority delimiter remains a literal
   `@`, including when username/password characters are percent-encoded. NFKC variants that
   normalize into an authority delimiter raise as invalid. Control characters and backslashes did
@@ -2584,7 +2584,7 @@ R2, R3, and R5 remain resolved and their reviewed surfaces are unchanged.
 
 ### Coordination accuracy
 
-`ai/STATUS.md` still describes the superseded second-correction design: it says
+`docs/project/STATUS.md` still describes the superseded second-correction design: it says
 `error_message` never carries external text and that NFR-006 is satisfied only in the per-job
 log. That is the opposite of `04dd8af`. The T-014 task also reports two failures for the
 paraphrase mutation, while the faithful conditional paraphrase above failed one. Both
@@ -2614,7 +2614,7 @@ in T-011 or T-012.
 R1 remains Critical because the unchanged database criterion covers cookie paths/content as
 well as proxy credentials, and arbitrary diagnostics still enter that database verbatim. The
 maintainer's stated decision can resolve this without another filtering mechanism, but the
-Critical accepted risk must be recorded in `ai/DECISIONS.md` and the contradictory acceptance
+Critical accepted risk must be recorded in `docs/project/DECISIONS.md` and the contradictory acceptance
 criterion/current-truth text must be aligned before approval. The persistence unit is
 **Changes requested**.
 
@@ -2625,7 +2625,7 @@ criterion/current-truth text must be aligned before approval. The persistence un
 **Correction base:** `04dd8af`
 **Head:** `db14cc2`
 **Review unit:** Documentation-only decision and authority alignment; the committed
-`ai/REVIEWS.md` addition is the prior reviewer entry, not part of the correction
+`docs/project/REVIEWS.md` addition is the prior reviewer entry, not part of the correction
 **Platforms verified:** Linux locally; Windows not run; frozen build not rerun because no
 executable, specification, or probe file changed
 **Verdict:** **Approved with follow-ups**
@@ -2691,7 +2691,7 @@ to check the decision's factual claims.
 | `mypy --platform win32` | Passed: no issues in 57 source/test files. |
 | Full default suite | Passed: **879 passed, 6 skipped, 1 deselected**. |
 | `git diff --check 04dd8af db14cc2` | Passed. |
-| Reviewer working diff | Passed `git diff --check`; only `ai/REVIEWS.md` and the approved T-049 follow-up in `ai/TASKS.md` were added. |
+| Reviewer working diff | Passed `git diff --check`; only `docs/project/REVIEWS.md` and the approved T-049 follow-up in `docs/project/TASKS.md` were added. |
 
 ### Readiness
 
@@ -2839,7 +2839,7 @@ No test touched the network; the fixture capture script was inspected, not execu
 T-015 remains **In Review — changes requested** with one High blocker. T-018 remains
 **In Review — changes requested** with one Critical and one High blocker; `T012-R6` remains
 open through `T018-R2`, so T-016 is not unblocked. High and Critical corrections continue until
-independently verified regardless of the ordinary pass budget. `ai/STATUS.md` still says the
+independently verified regardless of the ordinary pass budget. `docs/project/STATUS.md` still says the
 playlist projection unblocks T-016; the Implementer must align that current-truth claim in the
 correction batch.
 
@@ -2939,8 +2939,8 @@ non-blocking and assigned to `T-052`.
 local feature branch is deleted. The merged manager and manager tests are byte-identical to the
 T-013 parent, while the preset, projection, capture, fixture and associated test surfaces are
 byte-identical to the T-015/T-018 parent. `git show --remerge-diff` reports content conflicts
-only in `ai/REVIEWS.md` and `ai/STATUS.md`: the merge preserves both append-only reviews and
-rewrites the status snapshot to contain both work streams. `ai/TASKS.md` combined without a
+only in `docs/project/REVIEWS.md` and `docs/project/STATUS.md`: the merge preserves both append-only reviews and
+rewrites the status snapshot to contain both work streams. `docs/project/TASKS.md` combined without a
 content conflict. No production-code conflict was resolved manually.
 
 ### Validation and negative evidence
@@ -2989,7 +2989,7 @@ unverified.
 correction regressions
 **Branch at inspection:** `main` at `14a50e5`, clean, 14 commits ahead of `origin/main`, not
 pushed. While review ran, `main` advanced to docs-only `2ff5606` (15 ahead); that concurrent
-`ai/TASKS.md` status alignment does not change either correction diff.
+`docs/project/TASKS.md` status alignment does not change either correction diff.
 **Platforms verified:** Linux locally; Windows not run
 **T-013 verdict:** **Approved with follow-ups**
 **T-015 verdict:** **Approved**
@@ -3117,7 +3117,7 @@ under `AGENTS.md` §9.
 **Task:** `T-018`
 **Correction base:** `73d04c6`
 **Correction head:** `2f85a32` (structure), plus test coverage added afterwards — see below
-**Authorization:** maintainer, recorded as `SEC-002` in `ai/DECISIONS.md`
+**Authorization:** maintainer, recorded as `SEC-002` in `docs/project/DECISIONS.md`
 **Awaiting re-review.** Only the Reviewer marks a finding Resolved.
 
 ### What changed, and why it is not a fifth marker list
@@ -3206,7 +3206,7 @@ The nine killed on the first pass:
 `T-019`'s live defect leaves descendants that wedge later runs — which is what produced the
 reviewer's own hung full-suite attempt on `73d04c6`. Those 43 tests still pass on demand
 (`pytest -m process_tree`: 43 passed, 2 skipped) and CI still runs them. `T-019` removes the
-marker. Recorded in `ai/TESTING.md` §2 and §7 and in `T-019`'s entry, and called out here because
+marker. Recorded in `docs/project/TESTING.md` §2 and §7 and in `T-019`'s entry, and called out here because
 it changes what a default run proves.
 
 ## 2026-07-27 — T-018 structural correction re-review
@@ -3226,7 +3226,7 @@ and `5f0a6c4` (decision/records and mutation-survivor coverage)
 | ID | Severity | Blocks approval | Disposition and evidence |
 |---|---|---:|---|
 | `T018-R1` | **Critical** | **Yes** | **Open — the allowlist closes the credential-name class, but `_schema` can itself carry captured data.** The structural correction faithfully implements `SEC-002` and the reviewer’s earlier recommendation: the four prior credential keys are absent from `info_dict`, and the raw-fixture gate rejects all five sanitizer/gate disagreements by path. However, `schema_fingerprint()` copies every mapping key verbatim and both schema checks inspect only leaf *values*. `capture.write()` given `{"unknown_map": {"credential-value-as-key-7c6c": "ignored"}}` wrote that known credential into `_schema`; `unexpected_keys()`, `values_in_schema()` and `leaks_in()` all returned `[]`. Mapping keys are captured data too—nested maps commonly use data-derived labels—so the claim that a fingerprint “cannot carry data” is false. `write()` also trusts a caller-supplied `_schema` instead of deriving it at the serialization boundary, and `keep_consumed()` recursively retains values from playlist `entries` although `ytdlp_adapter` reads only their length. The first reproduction alone preserves the irreversible privacy consequence. This is an oversight in the authorized design, including the reviewer’s recommendation, not another credential-marker miss. `SEC-002` must be amended: do not persist arbitrary raw mapping keys; either drop `_schema` or make it name-free (container/type/count only), always derive it inside `write()`, and represent playlist entries by cardinality placeholders rather than unconsumed child values. |
-| `T019-R1` | **Medium** | **Yes** | **Open — `9010794` says CI still runs the process-tree suite, but CI excludes it.** `pyproject.toml` adds `not process_tree` to global `addopts`; `.github/workflows/ci.yml` invokes bare `pytest`, so both Linux and Windows check jobs inherit that exclusion. No workflow step opts the marker back in. Consequently all 43 selected manager tests—including mandatory Cancellation and Worker-crash coverage plus unrelated manager protocol/startup tests—are absent from both the local default and CI, contrary to `ai/TESTING.md`, the test-module comment, the implementer record and the commit message. The opt-in suite itself passes locally (**43 passed, 2 skipped**), so add an explicit CI `pytest -m process_tree` step with evidence/timeout, or narrow/remove the module marker; align the records with what actually runs. This is owned by `T-019` and does not alter the substance of the T-018 privacy finding, but a required gate that does not gate blocks approval of the coverage change. |
+| `T019-R1` | **Medium** | **Yes** | **Open — `9010794` says CI still runs the process-tree suite, but CI excludes it.** `pyproject.toml` adds `not process_tree` to global `addopts`; `.github/workflows/ci.yml` invokes bare `pytest`, so both Linux and Windows check jobs inherit that exclusion. No workflow step opts the marker back in. Consequently all 43 selected manager tests—including mandatory Cancellation and Worker-crash coverage plus unrelated manager protocol/startup tests—are absent from both the local default and CI, contrary to `docs/project/TESTING.md`, the test-module comment, the implementer record and the commit message. The opt-in suite itself passes locally (**43 passed, 2 skipped**), so add an explicit CI `pytest -m process_tree` step with evidence/timeout, or narrow/remove the module marker; align the records with what actually runs. This is owned by `T-019` and does not alter the substance of the T-018 privacy finding, but a required gate that does not gate blocks approval of the coverage change. |
 
 ### Structural verification
 
@@ -3355,7 +3355,7 @@ day Cancellation and Worker crash gated nothing anywhere. `.github/workflows/ci.
 a **Process-tree suite** step in the `check` job on both platforms, after the main test step:
 `-m process_tree` load-bearing against pytest's exit-5-on-empty-collection (`T031-R2`),
 `timeout-minutes: 10` because the defect under test is one that hangs, and its own junit XML and
-log in the evidence artifact. `ai/TESTING.md` §2 and §7, the module comment and `T-019`'s entry
+log in the evidence artifact. `docs/project/TESTING.md` §2 and §7, the module comment and `T-019`'s entry
 each now name the step that makes the claim true. **The CI step itself cannot be verified from
 here** (`OPS-003`); locally, `pytest -m process_tree` is 43 passed, 2 skipped.
 
@@ -3403,7 +3403,7 @@ correction head. The branch is intentional staging for subsequent work.
 | ID | Severity | Blocks approval | Disposition and evidence |
 |---|---|---:|---|
 | `T018-R1` | **Critical** | **No** | **Resolved.** The amended `SEC-002` boundary is implemented at the serialization door. `schema_fingerprint()` and every committed `_schema` block are gone; `write()` rebuilds only `_fixture`, `info_dict` and `error`, so caller-supplied `_schema` and unrelated blocks do not reach disk; and playlist entries preserve cardinality as empty placeholders rather than retaining child values the projection never reads. The public dynamic-key probe wrote the exact 40-byte `{"_fixture": {}, "info_dict": {}}` payload, with neither the credential nor `unknown_map` present. A supplied `_schema` carrying `SID=secret` was dropped. A hostile two-entry playlist became `[{}, {}]`, with its titles, uploader and cookie absent. Independently, `unexpected_keys()` rejected both a restored `_schema` and `info_dict.entries[0].title`. The committed seven-entry fixture contains seven empty placeholders and `playlist_count: 7`. The correction removes the leaking secondary design instead of extending the recognizer again; no privacy-boundary escape remains in the reviewed correction. |
-| `T019-R1` | **Medium** | **No** | **Resolved.** The `check` job's `ubuntu-latest` / `windows-latest` matrix now contains a dedicated `pytest -m process_tree` step after the default suite, with a ten-minute step timeout and separate JUnit/text evidence included by the existing always-run artifact upload. Local collection proves the explicit selector is load-bearing and selects **43** tests despite global `not process_tree` addopts; the opt-in run passed **43 passed, 2 skipped**. `ai/TESTING.md` §2 and §7 and the integration-module comment now accurately say CI has an explicit step. GitHub Actions and Windows runtime results remain unverified locally under `OPS-003`; that does not make the gate vacuous, and any platform failure is evidence for `T-019`'s original descendant-process work rather than a recurrence of this finding. |
+| `T019-R1` | **Medium** | **No** | **Resolved.** The `check` job's `ubuntu-latest` / `windows-latest` matrix now contains a dedicated `pytest -m process_tree` step after the default suite, with a ten-minute step timeout and separate JUnit/text evidence included by the existing always-run artifact upload. Local collection proves the explicit selector is load-bearing and selects **43** tests despite global `not process_tree` addopts; the opt-in run passed **43 passed, 2 skipped**. `docs/project/TESTING.md` §2 and §7 and the integration-module comment now accurately say CI has an explicit step. GitHub Actions and Windows runtime results remain unverified locally under `OPS-003`; that does not make the gate vacuous, and any platform failure is evidence for `T-019`'s original descendant-process work rather than a recurrence of this finding. |
 
 ### Independent verification
 
@@ -4045,7 +4045,7 @@ mechanisms.
 | Configured `mypy` | Passed: no issues in **68 source files**. |
 | Configured `mypy --platform win32` | Passed: no issues in **68 source files**. |
 | Logging and worker-logging subset | Passed: **43 passed in 2.75 s**. |
-| Focused logging/worker-logging/manager suite | Passed: **96 passed in 34.08 s**. The `95 passed` in the handoff and `ai/TASKS.md` is an off-by-one evidence-record error; all selected tests passed and the canonical count below matches the correction record. |
+| Focused logging/worker-logging/manager suite | Passed: **96 passed in 34.08 s**. The `95 passed` in the handoff and `docs/project/TASKS.md` is an off-by-one evidence-record error; all selected tests passed and the canonical count below matches the correction record. |
 | Canonical bare `pytest`, exact head | Passed: **1195 passed, 11 skipped, 1 deselected in 54.60 s**. |
 | Implementer-provided CI at code head `d6f3581` | Run `30317992554` green: Ubuntu **1195 passed, 11 skipped, 1 deselected**; Windows **1184 passed, 20 skipped, 21 deselected**; Windows desktop **20 passed, 1205 deselected**; both frozen jobs succeeded. |
 | Same-job reopen mechanism | Passed: the handler is identical before and after reclaim, the record dispatched before caller reattachment is written, and adding the returned handler does not duplicate it. |
@@ -4199,7 +4199,7 @@ were inspected and run from a clean `git archive 162f286`
 | Configured `mypy --platform win32` | Passed: no issues in **70 source files**. |
 | Focused add-dialog, append, and refusal suite | Passed: **66 passed in 22.26 s**. |
 | Canonical bare `pytest`, exact head | Passed: **1267 passed, 11 skipped, 1 deselected in 79.92 s**. |
-| Implementer-provided CI at code head `8bde969` | Run `30324097829` green: Ubuntu **1267 passed, 11 skipped, 1 deselected**; Windows **1256 passed, 20 skipped**; Windows desktop **20 passed**; both frozen jobs succeeded. `162f286` changes `ai/TASKS.md` only. |
+| Implementer-provided CI at code head `8bde969` | Run `30324097829` green: Ubuntu **1267 passed, 11 skipped, 1 deselected**; Windows **1256 passed, 20 skipped**; Windows desktop **20 passed**; both frozen jobs succeeded. `162f286` changes `docs/project/TASKS.md` only. |
 | Edit during concrete contended probe save | Failed the correction as intended: after the lock was released, the replaced old URL was durably `QUEUED`; adding the displayed new URL left both queued. |
 | Duplicate occurrence after probe | Failed the correction as intended: two identical entered lines produced one stored row after the first occurrence had been probed. |
 | Close during deferred probe save | Failed the correction as intended: the hidden dialog's completion callback started the probe and issued no cancellation. |
@@ -4304,8 +4304,8 @@ durable withdrawal and R3's persistence continuations; R2 and R4–R8 are settle
 **Excluded commit in the range:** `416c867` preserves the preceding reviewer record and changes
 no reviewed source or tests
 **Repository state at inspection:** `main` at `9c959ea`, in sync with `origin/main`; the shared
-checkout had pre-existing uncommitted edits in `AGENTS.md`, `ai/DECISIONS.md`, and
-`ai/PROMPTS.md`, so source and tests were inspected and run from a clean
+checkout had pre-existing uncommitted edits in `AGENTS.md`, `docs/project/DECISIONS.md`, and
+`docs/project/PROMPTS.md`, so source and tests were inspected and run from a clean
 `git archive 9c959ea`. Those three edits were neither read as part of the boundary nor changed.
 **Platforms verified:** Linux locally; Windows from the implementer-provided GitHub Actions run
 `30329071900`
@@ -4438,7 +4438,7 @@ these two findings and inspect only their correction diff for regressions.
 
 | ID | Severity | Blocks approval | Finding and evidence | Recommendation | Status |
 |---|---|---:|---|---|---|
-| `T058-R1` | **Medium** | **Yes** | **The count was not moved to one canonical home, contrary to the task's acceptance criterion and evidence.** At exact head `4a06e92`, `ai/STATUS.md` states “ten of ten” at lines 109 and 128; the latter immediately claims the count is stated only in `ai/TESTING.md` §12. T-058's evidence says `STATUS.md` no longer states the count at all. Coordination commit `2831973` adds a third numeric statement rather than repairing the contradiction. The task exists because duplicated counts drifted before, so retaining three copies is the same defect class, not cosmetic wording. | Leave the number only in `ai/TESTING.md` §12. Make every `STATUS.md` reference point there without restating it, and correct T-058's evidence only after the single-home claim is true. | **Open** |
+| `T058-R1` | **Medium** | **Yes** | **The count was not moved to one canonical home, contrary to the task's acceptance criterion and evidence.** At exact head `4a06e92`, `docs/project/STATUS.md` states “ten of ten” at lines 109 and 128; the latter immediately claims the count is stated only in `docs/project/TESTING.md` §12. T-058's evidence says `STATUS.md` no longer states the count at all. Coordination commit `2831973` adds a third numeric statement rather than repairing the contradiction. The task exists because duplicated counts drifted before, so retaining three copies is the same defect class, not cosmetic wording. | Leave the number only in `docs/project/TESTING.md` §12. Make every `STATUS.md` reference point there without restating it, and correct T-058's evidence only after the single-home claim is true. | **Open** |
 
 ### Review judgments
 
@@ -4450,7 +4450,7 @@ these two findings and inspect only their correction diff for regressions.
   suppressed exception path, and fails if `_has_drm` stops being written.
 - The changed mixed-format assertion is correct. The old expectation described only the fallback
   and contradicted the `_has_drm` branch every processed production info dict takes.
-- `ai/TESTING.md` §7's DRM requirement text is unchanged, and §12 honestly names the two limits:
+- `docs/project/TESTING.md` §7's DRM requirement text is unchanged, and §12 honestly names the two limits:
   no protected fixture under `REQ-EXCL-001`, and `_has_drm`'s absent/`None` ambiguity.
 
 ### Independent checks
@@ -4502,7 +4502,7 @@ re-review remains in the ordinary budget.
 
 | Check | Result |
 |---|---|
-| `git diff --check 4a06e92..9c92c32` | Failed only on `ai/TASKS.md`: new blank line at EOF (`T054-R1`). |
+| `git diff --check 4a06e92..9c92c32` | Failed only on `docs/project/TASKS.md`: new blank line at EOF (`T054-R1`). |
 | Linux survival-helper test | **1 passed in 0.10 s**. |
 | Configured `mypy --platform win32` | Passed: no issues in **72 source/test files**. |
 | Full default suite | **1334 passed, 11 skipped, 1 deselected in 75.58 s**. |
@@ -4547,8 +4547,8 @@ correction diff
 | `T017-R1` | **Medium** | **Yes** | `_on_job_changed()` no longer calls `_draw_pending()`. An interleaved progress/status test observes the promised quantity, `renders`, and stays at zero inside the interval; a terminal transition clears pending progress and stops the timer. Independently restoring the unmetered draw made the rate test fail with two renders, and independently retaining the terminal message made the terminal test fail. | None. | **Resolved** |
 | `T017-R2` | **Medium** | **Yes** | **The correction covers the two `_show_totals()` branches but not the third route that changes the bar.** After rendering `5/10`, `_on_job_changed(..., COMPLETED)` reaches `_refresh()`, which changes the visible bar from 50 to 100 at `job_detail.py:478-480` without changing its accessible description. The deterministic probe read range `0..100`, value `100`, description `"50 percent of 10 B downloaded"`. A job loaded completed with no stored total likewise becomes a determinate 100% bar while retaining the indeterminate “cannot be measured” description. This is the same sighted/screen-reader contradiction as the original finding, through a sibling call path the correction did not gate. | Make the completed override describe 100% truthfully, and gate completion from both a partial determinate bar and an unknown-total bar. Audit every path that changes the bar's range/value, not only `_show_totals()`. | **Open** |
 | `T017-R3` | **Low** | **No** | **The new immediate-state assertion proves only the pre-first-render case.** Its view still has `_displayed is None`, so `_refresh()` writes the nonterminal word. After one progress message has rendered, `_displayed` is non-`None`; a deterministic `RUNNING` → `POST_PROCESSING` status change then left “Downloading video” until the timer-rendered progress arrived. Terminal words are immediate and the delay is bounded by the stated 100 ms interval, so this does not reopen the repaint-rate acceptance criterion, but the source and task evidence overstate what the test proves. | Either state the narrower guarantee—terminal state words are immediate and nonterminal stage changes follow the coalesced progress render—or strengthen the implementation and test after a prior render. **Owner/target:** Implementer, next authorized T-017 correction; otherwise Documentation Maintainer before T-017 closes. | **Open, non-blocking** |
-| `T058-R1` | **Medium** | **Yes** | `ai/STATUS.md` no longer states the mandatory-area count or denominator, so that half is corrected. **The claimed single home is still false inside `ai/TESTING.md`.** Line 142 says “All ten are back in the default run”; line 350 says “Of §7's ten mandatory areas ten are now covered.” Both are numeric claims over the same enumerated §7 set and must change together if that set changes. The handoff's claim that line 350 is the only remaining occurrence is disproved by `rg -n '\\b(ten|nine|eight)\\b' ai/STATUS.md ai/TESTING.md`. This is a direct continuation of the duplicated-count defect, not an adjacent documentation observation. | Keep the numeric mandatory-area count/denominator in §12 only. Rewrite §7's execution note without restating the size of the set, then rerun a search broad enough to find word-form numbers rather than only “ten of ten”/“of ten mandatory.” | **Open** |
-| `T054-R1` | **Low** | **No** | The evidence now says the permutation comparison covered the relocation snapshot and explicitly names the later status/evidence/note edits it excluded. `git diff --check 9c92c32..e66f34d` is clean, and `ai/TASKS.md` ends with one newline. The six affected task entries sit under sections compatible with their status lines. | None. | **Resolved** |
+| `T058-R1` | **Medium** | **Yes** | `docs/project/STATUS.md` no longer states the mandatory-area count or denominator, so that half is corrected. **The claimed single home is still false inside `docs/project/TESTING.md`.** Line 142 says “All ten are back in the default run”; line 350 says “Of §7's ten mandatory areas ten are now covered.” Both are numeric claims over the same enumerated §7 set and must change together if that set changes. The handoff's claim that line 350 is the only remaining occurrence is disproved by `rg -n '\\b(ten|nine|eight)\\b' docs/project/STATUS.md docs/project/TESTING.md`. This is a direct continuation of the duplicated-count defect, not an adjacent documentation observation. | Keep the numeric mandatory-area count/denominator in §12 only. Rewrite §7's execution note without restating the size of the set, then rerun a search broad enough to find word-form numbers rather than only “ten of ten”/“of ten mandatory.” | **Open** |
+| `T054-R1` | **Low** | **No** | The evidence now says the permutation comparison covered the relocation snapshot and explicitly names the later status/evidence/note edits it excluded. `git diff --check 9c92c32..e66f34d` is clean, and `docs/project/TASKS.md` ends with one newline. The six affected task entries sit under sections compatible with their status lines. | None. | **Resolved** |
 
 ### Review judgments
 
@@ -4559,7 +4559,7 @@ correction diff
 - The determinate and indeterminate `_show_totals()` descriptions are individually correct, and
   both branch-removal mutations are killed. The remaining T017-R2 defect is `_refresh()` changing
   the same control outside those branches.
-- `ai/STATUS.md` now points to `ai/TESTING.md` §12 without restating its numeric coverage result.
+- `docs/project/STATUS.md` now points to `docs/project/TESTING.md` §12 without restating its numeric coverage result.
   The remaining T058-R1 duplication is within `TESTING.md` itself.
 - T-016 and T-057 are correctly filed under `## Complete`; T-056 is correctly filed under
   `## Blocked`; T-017 and T-058 are correctly filed under `## In Review` at the reviewed head.
@@ -4574,7 +4574,7 @@ correction diff
 | Four isolated mutations named in T-017's evidence | **All four killed**: unmetered status draw, retained terminal message, missing determinate description, and missing indeterminate description each failed its named test. |
 | Completion accessible-description probe | Visible bar `0..100`, value `100`; accessible description remained `"50 percent of 10 B downloaded"`. |
 | Post-render status-word probe | `RUNNING` → `POST_PROCESSING` left `"Downloading video"` until the coalesced progress render. |
-| Coverage-count search | Found numeric §7 coverage statements at `ai/TESTING.md:142` and `ai/TESTING.md:350`; none in `ai/STATUS.md`. |
+| Coverage-count search | Found numeric §7 coverage statements at `docs/project/TESTING.md:142` and `docs/project/TESTING.md:350`; none in `docs/project/STATUS.md`. |
 | `ruff check .` | Passed. |
 | `ruff format --check .` | **87 files already formatted**. |
 | `mypy src` | Passed: no issues in **35 source files**. |
@@ -4611,8 +4611,8 @@ non-blocking and does not itself consume or require another pass.
 | ID | Severity | Blocks approval | Focused re-review evidence | Recommendation | Status |
 |---|---|---:|---|---|---|
 | `T017-R2` | **Medium** | **Yes** | **The structural single-writer change is sound, and the known-total completion is corrected, but the required unknown-total completion gate is still missing.** Every bar range/value/description write is now inside `_draw_bar()`. The supplied `5/10` → `COMPLETED` test passes and kills both restoring `_refresh` as a writer and removing the finished description. However, changing the finished branch to update its description only when `total` is known let an unknown-total bar become visibly 100% while retaining “progress cannot be measured”; the entire **40-test** job-detail suite still passed. That is the exact unknown-total sibling the prior recommendation required the correction to gate. The shipping branch has a related correctness gap: it derives the finished byte count from the last rendered progress. In a permitted sequence where the view last rendered `1024/unknown` and the store then completed at `2048`, the visible bar was 100% but its description was `"Complete: 1.0 KB downloaded"`, despite the persisted final total being 2 KB. | Gate unknown-total → completed explicitly and kill the conditional-description mutation above. A completed bar with no trustworthy final total should say simply “Complete”; alternatively refresh from the persisted success total before naming a size. Do not present the last coalesced `done` value as the final size. | **Open** |
-| `T017-R3` | **Low** | **No** | The source docstring and new post-render test now state the behavior correctly, and independently mutating either side of the distinction failed: a running status must preserve the more specific worker stage, while an ending must replace it immediately. **The current-truth task record still retains the original overclaim**, though: the first correction section at `ai/TASKS.md:147` says “The state words stay immediate.” The newer second-correction paragraph contradicts and explains it rather than replacing it. | Rewrite that older sentence to “terminal state words stay immediate,” preserving the historical explanation without leaving two current claims. **Owner/target:** Documentation Maintainer, T-017 record before closure. | **Open, non-blocking** |
-| `T058-R1` | **Medium** | **Yes** | `ai/TESTING.md` §7 now says “Every mandatory area above” without a numeral, while §12 remains the sole numeric full-set coverage statement in current-truth documents. T-014, T-034, and T-058 retain their historical numerators without repeating the denominator. The broad word/digit search was read: other matches are partial numerators, quotations describing the former defect, `REVIEWS.md`'s immutable historical snapshots, or `ARCHITECTURE.md` §7's unrelated error taxonomy. No second current coverage count remains. | None. | **Resolved** |
+| `T017-R3` | **Low** | **No** | The source docstring and new post-render test now state the behavior correctly, and independently mutating either side of the distinction failed: a running status must preserve the more specific worker stage, while an ending must replace it immediately. **The current-truth task record still retains the original overclaim**, though: the first correction section at `docs/project/TASKS.md:147` says “The state words stay immediate.” The newer second-correction paragraph contradicts and explains it rather than replacing it. | Rewrite that older sentence to “terminal state words stay immediate,” preserving the historical explanation without leaving two current claims. **Owner/target:** Documentation Maintainer, T-017 record before closure. | **Open, non-blocking** |
+| `T058-R1` | **Medium** | **Yes** | `docs/project/TESTING.md` §7 now says “Every mandatory area above” without a numeral, while §12 remains the sole numeric full-set coverage statement in current-truth documents. T-014, T-034, and T-058 retain their historical numerators without repeating the denominator. The broad word/digit search was read: other matches are partial numerators, quotations describing the former defect, `REVIEWS.md`'s immutable historical snapshots, or `ARCHITECTURE.md` §7's unrelated error taxonomy. No second current coverage count remains. | None. | **Resolved** |
 
 ### Review judgments
 
@@ -4677,7 +4677,7 @@ and remains outside this review.
 | `T017-R2` | **Medium** | **Yes** | `describe_bar()` and `_draw_bar()` now cover the closed value space, and the widget test derives its assertions from the rendered range/value/description relation. The 30-case cross-product kills the reviewer's prior survivor: describing a finished bar only when `total` is known failed all ten finished/unknown-total cases. Removing durable-total adoption, making a determinate bar inherit indeterminate words, and drawing without a description also failed their intended gates. A completed row with `bytes_done == bytes_total == 2048` now renders a 100% bar described as complete at 2 KB. | None. | **Resolved** |
 | `T017-R3` | **Low** | **No** | The first correction entry now says an ending—not every state word—is immediate and records the former wording. It agrees with the source docstring and the post-render behavior test. | None. | **Resolved** |
 | `T017-R4` | **Medium** | **Yes** | **The durable-row correction applies completion policy to every ending and assumes a row invariant the manager does not provide.** `_on_job_changed()` calls `_adopt_stored_totals()` for `COMPLETED`, `FAILED`, and `CANCELLED`. The manager deliberately does not persist same-stage progress messages. A cancel probe therefore rendered `5/10`, then jumped backwards to the row's older `1/10` when `CANCELLED` arrived. Restricting adoption to `COMPLETED` survived the entire **71-test** widget suite. Completion has a second manifestation: the manager's success transition updates `bytes_total` but not `bytes_done` (`manager.py:1276-1280`). With a legitimate completed row at `1/20`, the view displayed a full bar and `"Complete: 20 B downloaded"` beside `"1 B of 20 B"`. If success has no total, `describe_bar()` presents the row's last stage-transition `bytes_done` as a final size even though later same-stage progress was never persisted. These are ordinary protocol states, not malformed rows. | Adopt durable data only for `COMPLETED`. When a final `bytes_total` exists, render completion consistently from that total rather than pairing it with stale `bytes_done`; when it does not, say simply “Complete” and do not present persisted `bytes_done` as a final size. Gate cancellation and failure preserving the newest rendered progress, completion with `bytes_done != bytes_total`, and completion with no trustworthy total. | **Open** |
-| `T017-R5` | **Low** | **No** | T-017's current evidence still says `tests/ui/test_job_detail.py` contains **35 tests** at `ai/TASKS.md:217`; the reviewed file now contains 71 after the three correction batches. This does not affect behavior or approval by itself, but it is stale current truth in the entry being corrected. | Recount or remove the volatile test count before T-017 closes. **Owner/target:** Documentation Maintainer, T-017 record. | **Open, non-blocking** |
+| `T017-R5` | **Low** | **No** | T-017's current evidence still says `tests/ui/test_job_detail.py` contains **35 tests** at `docs/project/TASKS.md:217`; the reviewed file now contains 71 after the three correction batches. This does not affect behavior or approval by itself, but it is stale current truth in the entry being corrected. | Recount or remove the volatile test count before T-017 closes. **Owner/target:** Documentation Maintainer, T-017 record. | **Open, non-blocking** |
 
 ### Review judgments
 
@@ -4799,7 +4799,7 @@ probes into the next named task, assign an owner there, and close T-017 when tha
 | ID | Severity | Blocks approval | Evidence | Recommendation | Status |
 |---|---|---:|---|---|---|
 | `T036-R1` | **High** | **Yes** | **Retry can strand a job durably `QUEUED` without starting it or leaving any usable retry affordance.** `app.retry()` persists `FAILED → QUEUED`, then calls `manager.start()` from the writer callback. The failed session still occupies the pool when that callback runs, so `start()` ordinarily refuses; the exception is logged and discarded at `app.py:236-246`. There is no Phase 1 scheduler to revisit the row. The committed test at `test_composition.py:584-590` asserts only that the store left `FAILED`, explicitly treating start as optional. An independent probe added an observation at the manager boundary and reproduced the defect: after five seconds there were no transitions at all, the store was `QUEUED`, and the view was still `FAILED`. A second Retry does nothing because the durable row is no longer failed. This breaks the retry behavior required by `REQ-015`/`REQ-018`, through the exact composition seam T-036 owns. | Make retry start only after the prior session has released, or give the queue an in-scope owner that starts it then. Keep the persistence ordering, but do not turn a start refusal into an inert durable state. Gate an actual second attempt—at minimum `PROBING`, preferably its terminal result—and agreement between the visible view and durable row; merely leaving `FAILED` is not enough. | **Open** |
-| `T037-R1` | **Low** | **No** | The current-truth Scope at `ai/TASKS.md:281-292` says the two integration tests fake yt-dlp at the adapter seam and that only the opt-in network test is real. The implementation and Evidence at lines 312-315 correctly say the opposite: the default tests run real yt-dlp and its HTTP downloader against a local server. The later paragraph does not make the earlier specification cease to be current truth. | Rewrite the Scope to distinguish a real downloader over a deterministic local origin from the opt-in real-site extractor test. **Owner/target:** Documentation Maintainer, next named coordination/documentation task. | **Open, non-blocking** |
+| `T037-R1` | **Low** | **No** | The current-truth Scope at `docs/project/TASKS.md:281-292` says the two integration tests fake yt-dlp at the adapter seam and that only the opt-in network test is real. The implementation and Evidence at lines 312-315 correctly say the opposite: the default tests run real yt-dlp and its HTTP downloader against a local server. The later paragraph does not make the earlier specification cease to be current truth. | Rewrite the Scope to distinguish a real downloader over a deterministic local origin from the opt-in real-site extractor test. **Owner/target:** Documentation Maintainer, next named coordination/documentation task. | **Open, non-blocking** |
 | `T037-R2` | **Low** | **No** | `tests/network/test_real_download.py:32-38` calls Big Buck Bunny “public domain.” The Blender Foundation identifies the film as Creative Commons Attribution 3.0 on its [official release poster](https://download.blender.org/ED/poster.pdf). The file may be freely reusable, but CC BY and public domain are not equivalent provenance claims. The test has never run, so its availability and size remain separately unverified. | Replace “public domain” with the actual CC BY attribution and retain the existing “never executed” caveat. **Owner/target:** Documentation Maintainer, next named coordination/documentation task. | **Open, non-blocking** |
 
 ### Prior finding disposition
@@ -4864,7 +4864,7 @@ and the Phase 1 aggregate remain unready while `T036-R1` is open.
 
 | ID | Severity | Blocks approval | Evidence | Recommendation | Status |
 |---|---|---:|---|---|---|
-| `T040-R1` | **Medium** | **Yes** | **The progress-view half does not exercise Windows focus traversal.** The dialog tests press Tab/Backtab on a shown, active window and read `QApplication.focusWidget()`. By contrast, `test_the_progress_view_controls_are_reachable_too()` at `test_windows_desktop.py:571-590` only compares `view.focus_chain()` with a literal and compares sets of focusable children. It never presses a key, observes focus, checks order/wrapping, or proves reachability from initial focus. It could run identically under the offscreen plugin. The task evidence at `ai/TASKS.md:1313-1317` says the fifth test covers the three T-017 controls, and T-017's own known-unverified note assigns those controls to T-040; the evidence therefore overstates the real-plugin boundary the test gates. Per the repository severity table, a gate that does not gate what it claims is Medium. | Show and activate the progress view under the real Windows plugin, drive Tab and Backtab through its controls, assert the hand-authored order, wrapping, and reachability, then mutation-check a reordered and an omitted/added control. Keep T-040 blocked until those mutations and all five tests execute on the Windows desktop job. | **Open** |
+| `T040-R1` | **Medium** | **Yes** | **The progress-view half does not exercise Windows focus traversal.** The dialog tests press Tab/Backtab on a shown, active window and read `QApplication.focusWidget()`. By contrast, `test_the_progress_view_controls_are_reachable_too()` at `test_windows_desktop.py:571-590` only compares `view.focus_chain()` with a literal and compares sets of focusable children. It never presses a key, observes focus, checks order/wrapping, or proves reachability from initial focus. It could run identically under the offscreen plugin. The task evidence at `docs/project/TASKS.md:1313-1317` says the fifth test covers the three T-017 controls, and T-017's own known-unverified note assigns those controls to T-040; the evidence therefore overstates the real-plugin boundary the test gates. Per the repository severity table, a gate that does not gate what it claims is Medium. | Show and activate the progress view under the real Windows plugin, drive Tab and Backtab through its controls, assert the hand-authored order, wrapping, and reachability, then mutation-check a reordered and an omitted/added control. Keep T-040 blocked until those mutations and all five tests execute on the Windows desktop job. | **Open** |
 
 ### Prior finding disposition
 
@@ -4906,7 +4906,7 @@ progress controls.
 ## 2026-07-28 — Sections 4 and 5 combined validation
 
 The two reviews above were performed against their own base/head boundaries. Afterward, the
-following checks were run on coordination head `6ce26ec`; that commit changes `ai/STATUS.md` only
+following checks were run on coordination head `6ce26ec`; that commit changes `docs/project/STATUS.md` only
 and is not included in either substantive review boundary.
 
 | Check | Result |
@@ -4941,8 +4941,8 @@ siblings in their correction diff
 
 | ID | Severity | Blocks approval | Evidence | Recommendation | Status |
 |---|---|---:|---|---|---|
-| `T037-R3` | **Low** | **No** | The corrected network comment is not the repository's only copy of the same provenance claim. `ai/TASKS.md:3457-3460` still describes `archive_org_big_buck_bunny.json` as “public domain,” while the fixture's own `content_licence` correctly says Blender Foundation, CC BY 3.0. This is pre-existing current-truth text outside T-037's correction location, so it does not reopen the approved behavior. | Correct the stale T-012 evidence in the next named documentation/coordination task. **Owner:** Documentation Maintainer. | **Open, follow-up** |
-| `T040-R2` | **Low** | **No** | T-040 is correctly filed under `## Blocked`, but `ai/TASKS.md:46-47` and `ai/STATUS.md:25-28` still call it **Ready**. Those summaries predate the Windows-evidence blocker and now contradict the task's canonical section/status. | Update both current-truth summaries when the next task records T040-R1's carry. **Owner:** Documentation Maintainer. | **Open, follow-up** |
+| `T037-R3` | **Low** | **No** | The corrected network comment is not the repository's only copy of the same provenance claim. `docs/project/TASKS.md:3457-3460` still describes `archive_org_big_buck_bunny.json` as “public domain,” while the fixture's own `content_licence` correctly says Blender Foundation, CC BY 3.0. This is pre-existing current-truth text outside T-037's correction location, so it does not reopen the approved behavior. | Correct the stale T-012 evidence in the next named documentation/coordination task. **Owner:** Documentation Maintainer. | **Open, follow-up** |
+| `T040-R2` | **Low** | **No** | T-040 is correctly filed under `## Blocked`, but `docs/project/TASKS.md:46-47` and `docs/project/STATUS.md:25-28` still call it **Ready**. Those summaries predate the Windows-evidence blocker and now contradict the task's canonical section/status. | Update both current-truth summaries when the next task records T040-R1's carry. **Owner:** Documentation Maintainer. | **Open, follow-up** |
 
 ### Review judgments
 
@@ -5014,7 +5014,7 @@ status
 
 | ID | Severity | Blocks approval | Evidence | Recommendation | Status |
 |---|---|---:|---|---|---|
-| `COORD-R1` | **Low** | **No** | `ai/STATUS.md` correctly says the critical path is approved, but canonical `ai/TASKS.md` still opens with T-016 in review, says T-017 is the only startable task and the critical path is `T-017 → T-036 → T-037`, keeps approved T-036 under `## In Review`, and says in T-037's Complete entry that Phase 1 remains unready while T-036 is blocking. These are pre-existing current-truth statements, but they now directly contradict the coordination state this commit records. | In the next coordination task, replace the stale TASKS preamble, file T-036 under Complete at `306840b`, and remove T-037's obsolete T-036 blocker sentence. **Owner:** Documentation Maintainer. | **Open, follow-up** |
+| `COORD-R1` | **Low** | **No** | `docs/project/STATUS.md` correctly says the critical path is approved, but canonical `docs/project/TASKS.md` still opens with T-016 in review, says T-017 is the only startable task and the critical path is `T-017 → T-036 → T-037`, keeps approved T-036 under `## In Review`, and says in T-037's Complete entry that Phase 1 remains unready while T-036 is blocking. These are pre-existing current-truth statements, but they now directly contradict the coordination state this commit records. | In the next coordination task, replace the stale TASKS preamble, file T-036 under Complete at `306840b`, and remove T-037's obsolete T-036 blocker sentence. **Owner:** Documentation Maintainer. | **Open, follow-up** |
 
 ### Review judgments
 
@@ -5032,7 +5032,7 @@ status
 
 | Check | Result |
 |---|---|
-| Changed paths | `ai/REVIEWS.md`, `ai/STATUS.md`, `ai/TASKS.md` only. |
+| Changed paths | `docs/project/REVIEWS.md`, `docs/project/STATUS.md`, `docs/project/TASKS.md` only. |
 | `git diff --check 306840b..479f859` | Passed. |
 | T-060 ownership audit | Every open T040-R1 behavior and Windows mutation has an explicit acceptance criterion. |
 | Licence search | No remaining positive public-domain claim for Big Buck Bunny in current project/task/test documentation. |
@@ -5061,8 +5061,8 @@ coordination **Changes requested**
 
 | ID | Severity | Blocks approval | Evidence | Recommendation | Status |
 |---|---|---:|---|---|---|
-| `COORD-R2` | **Medium** | **Yes** | The range correctly adds user-visible code defect `T-061` as Ready and `T-062` as In Review, but both current-truth summaries still describe the state before those additions. `ai/TASKS.md:20-35` says everything open is Windows evidence, lists only T-060 as Ready, and says only Windows evidence plus the exit review remain; `ai/TASKS.md:52-54` calls its nonempty In Review section empty. `ai/STATUS.md:106-113` likewise says In Review is empty, “what remains is not code,” and T-060 is the one task left to write. T-061 affects whether four of five built-in presets download at all for a user without ffmpeg, so this materially misstates Phase 1 readiness rather than merely missing a task count. It also reproduces the current-truth drift COORD-R1 had just corrected. | Rewrite both summaries from the final head: T-061 and T-060 are Ready, T-062 has this review verdict, T-040/T-056 remain blocked on Windows evidence, and the exit review follows the open work. Remove the “empty” In Review note while that section contains an entry. Keep the critical-path statement if desired, but distinguish “critical path built” from “no code remains.” | **Open** |
-| `T062-R1` | **Low** | **No** | T-062's record stops at the penultimate CI run. Its status still says “all three” problems and Windows is unproven, its affected surfaces omit `tests/ui/test_job_detail.py`, and its evidence cites red run `30382752254` rather than final run `30383367481`. The diagnostic acceptance criterion at `ai/TASKS.md:96-97` also says **every** assertion in both T-037 tests reports job status and stored error, while the implementation deliberately augments the two opaque state waits only; ordinary assertions at `test_end_to_end.py:257-298` and `403-462` retain their specific messages. The narrower implementation is sensible—adding `job=completed error=none` to a size mismatch would add noise—but the current claim is false. The new stage note also calls 0.15 seconds “a hundred times faster” than human reading, which is not a supportable measurement. | Record final run `30383367481`, all four corrected surfaces, and the now-proven Windows half. Narrow the diagnostic criterion/evidence to the long-running state waits whose failures otherwise concealed the durable row and environment, and remove the volatile human-reading multiplier. **Owner/target:** Documentation Maintainer, in the COORD-R2 correction batch. | **Open, non-blocking** |
+| `COORD-R2` | **Medium** | **Yes** | The range correctly adds user-visible code defect `T-061` as Ready and `T-062` as In Review, but both current-truth summaries still describe the state before those additions. `docs/project/TASKS.md:20-35` says everything open is Windows evidence, lists only T-060 as Ready, and says only Windows evidence plus the exit review remain; `docs/project/TASKS.md:52-54` calls its nonempty In Review section empty. `docs/project/STATUS.md:106-113` likewise says In Review is empty, “what remains is not code,” and T-060 is the one task left to write. T-061 affects whether four of five built-in presets download at all for a user without ffmpeg, so this materially misstates Phase 1 readiness rather than merely missing a task count. It also reproduces the current-truth drift COORD-R1 had just corrected. | Rewrite both summaries from the final head: T-061 and T-060 are Ready, T-062 has this review verdict, T-040/T-056 remain blocked on Windows evidence, and the exit review follows the open work. Remove the “empty” In Review note while that section contains an entry. Keep the critical-path statement if desired, but distinguish “critical path built” from “no code remains.” | **Open** |
+| `T062-R1` | **Low** | **No** | T-062's record stops at the penultimate CI run. Its status still says “all three” problems and Windows is unproven, its affected surfaces omit `tests/ui/test_job_detail.py`, and its evidence cites red run `30382752254` rather than final run `30383367481`. The diagnostic acceptance criterion at `docs/project/TASKS.md:96-97` also says **every** assertion in both T-037 tests reports job status and stored error, while the implementation deliberately augments the two opaque state waits only; ordinary assertions at `test_end_to_end.py:257-298` and `403-462` retain their specific messages. The narrower implementation is sensible—adding `job=completed error=none` to a size mismatch would add noise—but the current claim is false. The new stage note also calls 0.15 seconds “a hundred times faster” than human reading, which is not a supportable measurement. | Record final run `30383367481`, all four corrected surfaces, and the now-proven Windows half. Narrow the diagnostic criterion/evidence to the long-running state waits whose failures otherwise concealed the durable row and environment, and remove the volatile human-reading multiplier. **Owner/target:** Documentation Maintainer, in the COORD-R2 correction batch. | **Open, non-blocking** |
 | `ENV-R1` | **Low** | **No** | The handoff's unfiled environment problem reproduces. `.venv/bin/tracks-and-trails` names `/mnt/projects/software_projects/tracks-and-trails/.venv/bin/python`, which does not exist, while the editable install's `direct_url.json` targets `file:///mnt/projects/software_projects/tracks-and-trails`, one directory above this checkout. Running this checkout's `.venv/bin/python` cannot import `tracks_and_trails` without an explicit `PYTHONPATH`. This predates the review boundary and does not affect CI or the reviewed code, but “Repository path — Unsettled” in STATUS is not an actionable owner. | Have the Planner file a small environment-repair task in the COORD-R2 correction batch. Until it lands, use this checkout's `.venv/bin/python -m …` with an explicit checkout `PYTHONPATH`, as this review did. | **Open, non-blocking; pre-existing** |
 
 ### Implementation judgments
@@ -5148,7 +5148,7 @@ workflow correction is requested.
 | ID | Severity | Blocks approval | Verification | Status |
 |---|---|---:|---|---|
 | `COORD-R2` | **Medium** | **Yes** | TASKS now says the open work includes code and evidence, places T-062 In Review, lists T-060/T-061/T-063 Ready, leaves T-040/T-056 Blocked, and explicitly says Phase 1 is not ready. STATUS names the same three Ready tasks, T-062 In Review, the two Windows blockers, and the exit review. The obsolete empty-section claim is now identified as historical rather than current. | **Resolved by `8a0117e`** |
-| `T062-R1` | **Low** | **No** | The final run, fourth problem, fourth affected test surface, and Windows evidence are corrected. The evidence prose now accurately says diagnostics were added to two assertions, not the suite. **Two requested corrections remain:** the acceptance criterion at `ai/TASKS.md:108-109` still says every assertion in both T-037 tests reports status/error, and `ai/TASKS.md:167` still calls 0.15 seconds “a hundred times faster” than human reading. Both are the exact overclaims the initial finding asked to remove. | **Partially resolved; remains open, non-blocking** |
+| `T062-R1` | **Low** | **No** | The final run, fourth problem, fourth affected test surface, and Windows evidence are corrected. The evidence prose now accurately says diagnostics were added to two assertions, not the suite. **Two requested corrections remain:** the acceptance criterion at `docs/project/TASKS.md:108-109` still says every assertion in both T-037 tests reports status/error, and `docs/project/TASKS.md:167` still calls 0.15 seconds “a hundred times faster” than human reading. Both are the exact overclaims the initial finding asked to remove. | **Partially resolved; remains open, non-blocking** |
 | `ENV-R1` | **Low** | **No** | T-063 separately records the stale console-script interpreter and wrong editable-install path, reproduces both, requires both invocation forms to work without `PYTHONPATH`, requires a durable documented procedure, and prevents the STATUS environment row from implying a working install. Choosing the canonical repository path remains with the maintainer. | **Resolved by filing T-063** |
 
 ### Focused review judgments
@@ -5168,7 +5168,7 @@ workflow correction is requested.
 
 | Check | Result |
 |---|---|
-| Changed paths | `ai/REVIEWS.md`, `ai/STATUS.md`, and `ai/TASKS.md` only. |
+| Changed paths | `docs/project/REVIEWS.md`, `docs/project/STATUS.md`, and `docs/project/TASKS.md` only. |
 | `git diff --check a78df2f..8a0117e` | Passed. |
 | Section/status audit | T-062 In Review; T-060/T-061/T-063 Ready; T-040/T-056 Blocked. No duplicate task ID was introduced. |
 | Stale-claim search | The old “only evidence,” “only T-060,” and currently empty In Review claims are gone; remaining empty-section text is explicitly historical. |
@@ -5202,7 +5202,7 @@ One adjacent current-truth cleanup does not reopen T-062:
 
 | ID | Severity | Blocks approval | Evidence | Recommendation | Status |
 |---|---|---:|---|---|---|
-| `COORD-R3` | **Low** | **No** | `ai/STATUS.md:111` still labels T-062 “In Review” in the paragraph describing what the CI run produced, after TASKS filed it Complete at `00ce157`. The following “What remains” list is correct and omits T-062, so readiness is not materially overstated, but the status label is stale. | Change it to “then In Review, now Complete” or equivalent in the next coordination update. **Owner/target:** Documentation Maintainer, next T-060/T-061/T-063 status update. | **Open, non-blocking** |
+| `COORD-R3` | **Low** | **No** | `docs/project/STATUS.md:111` still labels T-062 “In Review” in the paragraph describing what the CI run produced, after TASKS filed it Complete at `00ce157`. The following “What remains” list is correct and omits T-062, so readiness is not materially overstated, but the status label is stale. | Change it to “then In Review, now Complete” or equivalent in the next coordination update. **Owner/target:** Documentation Maintainer, next T-060/T-061/T-063 status update. | **Open, non-blocking** |
 
 `git diff --check 8a0117e..00ce157` passed. HEAD and `origin/main` both resolve to `00ce157`;
 Sean Kottman is the sole author and no AI authorship trailer is present. The filing commit's
@@ -5231,7 +5231,7 @@ git-ignored environment repair
 | `T060-R1` | **Medium** | **Yes** | `DIALOG_STATES` covers only an empty editor and a typed URL (`tests/ui/test_windows_desktop.py:498-510`). Both deliberately exclude `cancelProbeButton`, even though it is the only cancellation control enabled while a probe is in flight. T-060 says nothing in the dialog chain remains out of scope and requires a newly reachable undeclared control to fail. The task record itself acknowledges that this state is absent because the present fixture cannot create it. A keyboard regression in the in-flight probe state therefore remains ungated. | Add an in-flight-probe state through a purpose-built fake manager/store or another controlled state seam; drive its real Tab and Backtab chain and include `cancelProbeButton` in the hand-authored expectation. Do not start a real worker merely to create widget state. Run the two required mutation classes against this state on Windows too. | **Open** |
 | `T060-R2` | **Medium** | **Yes** | The progress-view test converts the forward-only walk to a set (`tests/ui/test_windows_desktop.py:687-695`). It never drives Backtab and never compares the delivered sequence with `EXPECTED_VIEW_ORDER`; reversing the actual two-control failed-state order still satisfies the assertion. The separate declaration assertion proves only what `focus_chain()` returns, not what Windows delivers. This does not meet T-060's real-focus Tab/Backtab criterion or its evidence claim that every state checks walked order and both wrap directions. | For each progress-view state, assert the observed forward sequence in order and drive the reverse sequence through Backtab, including wrap. Keep the hand-authored per-state availability independent of the production declaration. Mutation-check reversal and undeclared-control insertion on Windows as the task already requires. | **Open** |
 | `T063-R1` | **Low** | **No** | T-063 repairs the two application entry points exactly as scoped, but reinstalling only this editable project leaves dependency-owned launchers untouched. At this head, 39 scripts under `.venv/bin/` still name `/mnt/projects/software_projects/tracks-and-trails/.venv/bin/python`; bare `.venv/bin/mypy` and `.venv/bin/pytest` both fail with `bad interpreter`. `docs/DEVELOPMENT.md:66-76` documents those bare commands, while its repair step at lines 176-181 does not repair them. Module invocations pass, so this is developer-environment residue rather than a product or T-063 acceptance failure. | Filed `T-064` under Ready to make the repair procedure rebuild or otherwise refresh the complete development environment and prove the documented bare commands. | **Open; carried to T-064** |
-| `COORD-R4` | **Low** | **No** | All three task entries are under `## In Review`, and the handoff states that accurately, but the TASKS preamble still calls T-060/T-061/T-063 Ready and says nothing is in review (`ai/TASKS.md:20-43`). STATUS likewise says they are ready to write (`ai/STATUS.md:110-124`) and does not record the successful T-060 Windows run. Phase readiness is not overstated—the same text says code/evidence remain—so this is current-truth drift rather than a blocking readiness claim. | Synchronize TASKS and STATUS when filing the review results: T-061 approved, T-063 approved with T-064, T-060 in correction review, and T-040/T-056 still blocked. Record run `30388380440` as normal Windows evidence without claiming the unrun mutations. **Owner/target:** Documentation Maintainer, focused correction filing. | **Open, non-blocking** |
+| `COORD-R4` | **Low** | **No** | All three task entries are under `## In Review`, and the handoff states that accurately, but the TASKS preamble still calls T-060/T-061/T-063 Ready and says nothing is in review (`docs/project/TASKS.md:20-43`). STATUS likewise says they are ready to write (`docs/project/STATUS.md:110-124`) and does not record the successful T-060 Windows run. Phase readiness is not overstated—the same text says code/evidence remain—so this is current-truth drift rather than a blocking readiness claim. | Synchronize TASKS and STATUS when filing the review results: T-061 approved, T-063 approved with T-064, T-060 in correction review, and T-040/T-056 still blocked. Record run `30388380440` as normal Windows evidence without claiming the unrun mutations. **Owner/target:** Documentation Maintainer, focused correction filing. | **Open, non-blocking** |
 
 ### Task judgments
 
@@ -5296,7 +5296,7 @@ is owned by Ready task T-064 and does not keep T-063 in review.
 T-060 is **Changes requested** on T060-R1 and T060-R2. The focused correction re-review should
 inspect only those two test gaps, the Windows mutation evidence already required by T-060, and
 the correction diff. Until then T-040 remains Blocked and the Windows tab-order gap in
-`ai/TESTING.md` remains accurate. T-056 is untouched by this review and remains blocked on its
+`docs/project/TESTING.md` remains accurate. T-056 is untouched by this review and remains blocked on its
 own Windows mutation evidence.
 
 ---
@@ -5339,7 +5339,7 @@ the two arrangements. The swap is therefore done on two controls reachable in ev
 Ordering is gated where it is observable — the dialog's three states offer nine to twelve
 reachable controls — and the anchored sequence is asserted for the progress view regardless,
 because it costs nothing and starts gating order by itself the day a third control becomes
-simultaneously reachable. Recorded in `ai/TESTING.md` §12 as a property of small widgets, not as a
+simultaneously reachable. Recorded in `docs/project/TESTING.md` §12 as a property of small widgets, not as a
 property of this test.
 
 ### Verification
@@ -5365,7 +5365,7 @@ at all.
 
 **The `T-026` mutations still have not run on Windows**, for the dialog chain or the view's, and
 that is now blocked on more than a job: GitHub Actions usage is exhausted as of 2026-07-28 and CI
-cannot run for several days (maintainer). `T-040` stays Blocked, `ai/TESTING.md` §12 keeps its
+cannot run for several days (maintainer). `T-040` stays Blocked, `docs/project/TESTING.md` §12 keeps its
 gap, and `T-026`'s acceptance criterion stays unmet. `T-056` is untouched.
 
 ## 2026-07-28 — T-060 focused correction re-review
@@ -5464,8 +5464,8 @@ documentation judgments use the requested head itself.
 
 | ID | Severity | Blocks approval | Evidence | Recommendation | Status |
 |---|---|---:|---|---|---|
-| `T066-R1` | **Medium** | **Yes** | T-066 measured that on Windows in a venv `Popen(sys.executable)` returns the launcher PID while a different PID runs the interpreter (`ai/TASKS.md:180-186`). The recovery test nevertheless calls `process.kill()` on that returned handle and immediately treats `process.wait()` as proof that it killed the application (`tests/integration/test_end_to_end.py:70-80,410-469`). The two T-019 kill-parent tests have the same shape (`tests/integration/test_manager.py:1911-1938,1975-2003`). None identifies the PID reported from inside the application or asserts that interpreter ended. Therefore moving CI into a venv does not establish the crash/reaping property under the deeper shape; it establishes only that the launcher ended. This is also a concrete sibling of T-069's conditional restart failure: an application left alive can still own the database, though that causal link needs a Windows probe rather than an assertion. | Have each driver report its own `os.getpid()` in the startup handshake. Kill that interpreter PID without gracefully unwinding it, then independently assert the interpreter and the expected worker/descendant set have ended before reopening the database. Audit every Windows `Popen([sys.executable, ...])` + `kill(parent.pid)` path, reproduce T-069's predecessor sequence, and mutation-check killing only the launcher. | **Open** |
-| `COORD-R5` | **Medium** | **Yes** | T-040 and T-060 each require `ai/TESTING.md` to drop the Windows tab-order gap and T-026's criterion to be marked met. Their new evidence says both happened (`ai/TASKS.md:918-919,1320-1325`), but `ai/TESTING.md:211-218`, `ai/REQUIREMENTS.md:63-68`, `ai/IMPLEMENTATION_PLAN.md:67-70`, and T-026's own current task text at `ai/TASKS.md:4897-4901` still say the gate does not exist. STATUS says T-040 is both never-run/Blocked (`ai/STATUS.md:24-30,157-164`) and In Review with the criterion met (`ai/STATUS.md:124-129`). The five new task entries are under `## Ready` while each says In Review, and the preamble says In Review contains them. This materially disagrees about whether a required gate exists, not merely where a task is filed. | Reconcile the current-truth chain in authority order: REQUIREMENTS, IMPLEMENTATION_PLAN, TESTING, T-026, T-040/T-060, STATUS, and section placement. Preserve historical statements as explicitly historical, but leave one unambiguous current answer about the manual STARBASE mutation evidence and the still-unautomated mutation run. T-040/T-060 cannot be filed Complete until their explicit documentation criterion is actually met. | **Open** |
+| `T066-R1` | **Medium** | **Yes** | T-066 measured that on Windows in a venv `Popen(sys.executable)` returns the launcher PID while a different PID runs the interpreter (`docs/project/TASKS.md:180-186`). The recovery test nevertheless calls `process.kill()` on that returned handle and immediately treats `process.wait()` as proof that it killed the application (`tests/integration/test_end_to_end.py:70-80,410-469`). The two T-019 kill-parent tests have the same shape (`tests/integration/test_manager.py:1911-1938,1975-2003`). None identifies the PID reported from inside the application or asserts that interpreter ended. Therefore moving CI into a venv does not establish the crash/reaping property under the deeper shape; it establishes only that the launcher ended. This is also a concrete sibling of T-069's conditional restart failure: an application left alive can still own the database, though that causal link needs a Windows probe rather than an assertion. | Have each driver report its own `os.getpid()` in the startup handshake. Kill that interpreter PID without gracefully unwinding it, then independently assert the interpreter and the expected worker/descendant set have ended before reopening the database. Audit every Windows `Popen([sys.executable, ...])` + `kill(parent.pid)` path, reproduce T-069's predecessor sequence, and mutation-check killing only the launcher. | **Open** |
+| `COORD-R5` | **Medium** | **Yes** | T-040 and T-060 each require `docs/project/TESTING.md` to drop the Windows tab-order gap and T-026's criterion to be marked met. Their new evidence says both happened (`docs/project/TASKS.md:918-919,1320-1325`), but `docs/project/TESTING.md:211-218`, `docs/project/REQUIREMENTS.md:63-68`, `docs/project/IMPLEMENTATION_PLAN.md:67-70`, and T-026's own current task text at `docs/project/TASKS.md:4897-4901` still say the gate does not exist. STATUS says T-040 is both never-run/Blocked (`docs/project/STATUS.md:24-30,157-164`) and In Review with the criterion met (`docs/project/STATUS.md:124-129`). The five new task entries are under `## Ready` while each says In Review, and the preamble says In Review contains them. This materially disagrees about whether a required gate exists, not merely where a task is filed. | Reconcile the current-truth chain in authority order: REQUIREMENTS, IMPLEMENTATION_PLAN, TESTING, T-026, T-040/T-060, STATUS, and section placement. Preserve historical statements as explicitly historical, but leave one unambiguous current answer about the manual STARBASE mutation evidence and the still-unautomated mutation run. T-040/T-060 cannot be filed Complete until their explicit documentation criterion is actually met. | **Open** |
 | `WIN-R1` | **Medium** | **Yes** | `tools/windows/ssh-setup.ps1:35-48` uses `Set-Content` on the machine-wide `administrators_authorized_keys`, silently replacing any administrator keys already present; Microsoft's own setup example appends instead. Lines 54-58 then install an inbound TCP/22 allow rule without a remote-address restriction and without a profile, whose documented default is `Any`, while the script makes `sshd` automatic and the project documents that this path yields elevated administrator sessions. Running a repository helper should not delete existing access or expose privileged SSH on every network profile without an explicit choice. | Preserve and deduplicate existing authorized keys. Default the firewall rule to a deliberately scoped source (`LocalSubnet` or an explicit maintainer host) and appropriate profile, make broader exposure an explicit parameter, report the effective rule, and document removal/rollback. See Microsoft's `New-NetFirewallRule` and Windows OpenSSH key-management documentation. | **Open** |
 | `WIN-R2` | **Medium** | **Yes** | `run.cmd` records the remote command's `EXITCODE`, but `tools/windows/run-on-starbase.sh:25-33` only prints the file and returns the final `ssh | sed` status. A deterministic fake transport printed `EXITCODE=1`; the wrapper exited **0**. The timeout branch likewise breaks out and can return success if the partial-output read succeeds. A local runner or caller can therefore report a red remote suite as green—the exact gate-vacuity class this harness says it prevents. | Parse and validate the final `EXITCODE=<n>` marker, return that value, and return a distinct nonzero status on timeout, missing marker, malformed output, or transport failure. Add a platform-neutral harness test with fake `ssh`/`scp` for remote 0, remote nonzero, timeout, and missing marker. | **Open** |
 | `WIN-R3` | **Low** | **No** | `docs/WINDOWS_VERIFICATION.md:120-140` says `run_mutations.py` executes “both classes plus a control” and specifically says `mut_control_always_dead.py` must fail. The driver's `CASES` at `tools/windows/mutations/run_mutations.py:30-36` contains the baseline and four focus mutations only; the named control targets T-056's `still_running`, not the T-026 focus harness. | Either add a relevant positive control to the focus driver and report it, or narrow the documentation to the controls the driver actually runs. Keep the T-056 control in the T-056 procedure rather than presenting it as T-026 evidence. | **Open, non-blocking** |
@@ -5571,8 +5571,8 @@ another correction loop.
 
 | ID | Severity | Blocks approval | Focused re-review result | Status |
 |---|---|---:|---|---|
-| `T066-R1` | **Medium** | **Yes — T-066** | The measured cause is credible and important: under the Windows venv launcher, killing the returned PID killed the launcher and application but left the worker; whole-tree termination removed T-069's 4/5 predecessor failure. The correction enumerates descendants before termination, which is the right order. It still suppresses every `psutil` kill error and discards both lists returned by `wait_procs` (`test_end_to_end.py:98-108`), so `kill_the_application()` may return and reopen the database with a known survivor. The direct no-survivors probe is reported but is not a lasting assertion. The task also says the unchanged T-019 siblings “deserve the same look,” while the new self-hosted job runs only `windows_desktop`; it does not execute or record T-019's `process_tree` assertions under the venv. Consequently `ai/TASKS.md:242-248` calls this the Windows half of T-066 even though its explicit T-019 criterion at lines 204-205 remains unrun. | **Partially resolved; carry.** T-069 is resolved. The next task should make a surviving `wait_procs` result fail, retain the expected descendant set as an assertion, and run/record the T-019 process-tree cases from the Windows venv. T-066 also remains externally Blocked on the four hosted/frozen jobs. |
-| `COORD-R5` | **Medium** | **Yes — coordination closure** | REQUIREMENTS, IMPLEMENTATION_PLAN, TESTING, and T-026 now agree that Windows tab order is gated. The canonical task/status structure still does not: `## In Review` says it is empty while T-066 through T-070 are In Review under `## Ready`; T-040 and T-060 are In Review under `## Blocked`; TASKS' preamble still calls T-060 Blocked; and STATUS first says T-040/T-060 are In Review, then says T-069 is unfixed and T-040 remains Blocked (`ai/STATUS.md:147-175`). These are current-truth files, not an archive, and the stale paragraphs are not labelled as superseded. | **Partially resolved; carry.** The required gate statement is corrected, so the residual is task readiness/filing rather than behavior. File a named coordination follow-up and then T-040/T-060 can close with that carry. |
+| `T066-R1` | **Medium** | **Yes — T-066** | The measured cause is credible and important: under the Windows venv launcher, killing the returned PID killed the launcher and application but left the worker; whole-tree termination removed T-069's 4/5 predecessor failure. The correction enumerates descendants before termination, which is the right order. It still suppresses every `psutil` kill error and discards both lists returned by `wait_procs` (`test_end_to_end.py:98-108`), so `kill_the_application()` may return and reopen the database with a known survivor. The direct no-survivors probe is reported but is not a lasting assertion. The task also says the unchanged T-019 siblings “deserve the same look,” while the new self-hosted job runs only `windows_desktop`; it does not execute or record T-019's `process_tree` assertions under the venv. Consequently `docs/project/TASKS.md:242-248` calls this the Windows half of T-066 even though its explicit T-019 criterion at lines 204-205 remains unrun. | **Partially resolved; carry.** T-069 is resolved. The next task should make a surviving `wait_procs` result fail, retain the expected descendant set as an assertion, and run/record the T-019 process-tree cases from the Windows venv. T-066 also remains externally Blocked on the four hosted/frozen jobs. |
+| `COORD-R5` | **Medium** | **Yes — coordination closure** | REQUIREMENTS, IMPLEMENTATION_PLAN, TESTING, and T-026 now agree that Windows tab order is gated. The canonical task/status structure still does not: `## In Review` says it is empty while T-066 through T-070 are In Review under `## Ready`; T-040 and T-060 are In Review under `## Blocked`; TASKS' preamble still calls T-060 Blocked; and STATUS first says T-040/T-060 are In Review, then says T-069 is unfixed and T-040 remains Blocked (`docs/project/STATUS.md:147-175`). These are current-truth files, not an archive, and the stale paragraphs are not labelled as superseded. | **Partially resolved; carry.** The required gate statement is corrected, so the residual is task readiness/filing rather than behavior. File a named coordination follow-up and then T-040/T-060 can close with that carry. |
 | `WIN-R1` | **Medium** | **Yes — Windows setup tooling** | Existing administrator keys are now preserved and deduplicated. A newly created firewall rule is correctly Private + LocalSubnet. But the script's idempotent path looks up `sshd-tt` and does nothing when it already exists (`ssh-setup.ps1:66-76`). A machine that ran the reviewed broad `Any` rule therefore stays broad on every later run of the correction. The maintainer separately fixed STARBASE, but the checked-in “safe to run more than once” tool does not repair the unsafe state it created. | **Partially resolved; carry.** Update or recreate an existing named rule, then report/verify its effective profile and remote-address filter. |
 | `WIN-R2` | **Medium** | **Yes** | Independent fake-transport probes returned **0** for remote success, **7** for remote exit 7, **124** for timeout, **125** for a missing result marker, and **126** for a run already in flight. `run.cmd` isolates a bare remote `exit` in a child `cmd` and writes the marker with the redirection before the digit. | **Resolved.** |
 | `WIN-R3` | **Low** | **No** | The focus mutation driver now runs a relevant positive control first and accepts only pytest exit 1 as a kill. The guide still names the old T-056 plugin `mut_control_always_dead.py`; the actual new control is `mut_control_chain.py`. | **Functionally resolved; documentation follow-up.** |
@@ -5678,7 +5678,7 @@ documentation/coordination; no production source
 **Verdict by task:** T-064 **Approved**; COORD-R5, WIN-R3 and RUNNER-R1 **Resolved**;
 T066-R1 **Changes requested**; T-072 remains **In Progress / Changes requested**
 
-The checkout advanced to `df2b106` while this review was running, and `ai/TASKS.md` then acquired
+The checkout advanced to `df2b106` while this review was running, and `docs/project/TASKS.md` then acquired
 an uncommitted edit. Both are excluded. The later commit records the maintainer's OPS-005
 decision about T-056/T-068; this review judges the decision question as it stood at `f20a9c8`,
 not that later implementation.
@@ -5688,7 +5688,7 @@ not that later implementation.
 | ID | Severity | Blocks approval | Evidence | Recommendation | Status |
 |---|---|---:|---|---|---|
 | `T072-R1` | **Medium** | **Yes — T066-R1's process-tree half** | `kill_the_application()` treats `len(doomed) > 1` as proof that its recursive walk found the expected tree (`tests/integration/test_end_to_end.py:112-120`). Under the documented Windows venv shape, the launcher plus application interpreter already make that count two; the worker may be absent and the assertion still passes. A deterministic mutation of the exact function reduced `children(recursive=True)` to the direct child: `len(doomed) == 2`, the helper returned successfully, and the omitted worker remained alive. By contrast, a mutation that left a process already present in `doomed` alive was correctly killed by the `assert not alive` check. The new assertion therefore proves termination of whatever the walk happened to return, but does not retain the expected worker set as T-072 requires. | Have `DOWNLOAD_AND_WAIT` report the application interpreter PID in its startup handshake. Start the descendant walk from that PID rather than infer identity from a count beneath the launcher; while the row is RUNNING, assert that the application has the expected worker descendant, capture that exact PID set, kill it, and assert every captured PID ended. Then run two Windows mutations: leave a captured victim alive, and omit the worker from the captured set. | **Open** |
-| `T072-R2` | **Low** | **No** | T-072's status at `ai/TASKS.md:81-85` still says three carries are done, T066-R1 is unexecuted, and the T-019 run is not started. Its table at lines 153-160 and evidence at lines 191-210 say T066-R1 executed and the T-019 cases are done, leaving only WIN-R1. `ai/STATUS.md:314-332` has the same “three done/unexecuted” paragraph immediately before the completed-run paragraph. | Rewrite the live status/progress summary to four of five carries done, with WIN-R1 alone remaining. Keep the earlier unexecuted state only if it is explicitly historical. | **Open, non-blocking** |
+| `T072-R2` | **Low** | **No** | T-072's status at `docs/project/TASKS.md:81-85` still says three carries are done, T066-R1 is unexecuted, and the T-019 run is not started. Its table at lines 153-160 and evidence at lines 191-210 say T066-R1 executed and the T-019 cases are done, leaving only WIN-R1. `docs/project/STATUS.md:314-332` has the same “three done/unexecuted” paragraph immediately before the completed-run paragraph. | Rewrite the live status/progress summary to four of five carries done, with WIN-R1 alone remaining. Keep the earlier unexecuted state only if it is explicitly historical. | **Open, non-blocking** |
 
 ### Task judgments
 
@@ -5773,9 +5773,9 @@ resolved to `dc02084` when the review began, and the tree was clean.
 | ID | Severity | Blocks approval | Evidence | Recommendation | Status |
 |---|---|---:|---|---|---|
 | `T072-R1` | **Medium** | **Yes — T066-R1's process-tree half** | The application-PID handshake fixes the old launcher/application ambiguity, but the checked-in mutations do not prove the expected worker set. `mut_tree_shallow_walk.py` returns `[]`; it does not perform the direct-child walk that produced the reviewed survivor. It therefore proves only that an entirely empty walk trips `assert workers`. `mut_tree_drop_worker.py` removes every worker *before* `kill_the_application()` receives `doomed`; Windows then calls `wait_procs(doomed)`, so `assert not alive` cannot possibly report the omitted process as the plugin says it must. The mutation survived locally, and neither mutation has run on Windows. Run `30416156751` proves the normal path executes, not that weakening it is detected. | Retain an independently obtained worker PID (for example in the child handshake or an external expected-PID set) through the kill and wait, so removing it from `doomed` cannot remove it from the assertion. Make the shallow mutation return the application's real direct children rather than none, and make the dropped-worker mutation assert against the independent set. Demonstrate both kills on Windows; a normal green run is not a substitute. | **Still open** |
-| `T072-R2` | **Low** | **No** | `ai/TASKS.md`'s T-072 status block is corrected, but `ai/STATUS.md:346-364` still presents the superseded “four of five / assertions unexecuted / WIN-R1 last” state as ordinary current prose immediately after the new state. The previous review required the older reading to remain only if explicitly historical. | Mark the older block explicitly historical or replace it with the current state while preserving the superseded reading in a historical parenthetical. | **Still open, non-blocking** |
+| `T072-R2` | **Low** | **No** | `docs/project/TASKS.md`'s T-072 status block is corrected, but `docs/project/STATUS.md:346-364` still presents the superseded “four of five / assertions unexecuted / WIN-R1 last” state as ordinary current prose immediately after the new state. The previous review required the older reading to remain only if explicitly historical. | Mark the older block explicitly historical or replace it with the current state while preserving the superseded reading in a historical parenthetical. | **Still open, non-blocking** |
 | `T072-R3` | **Medium** | **Yes — WIN-R1's evidence criterion** | The proposed Windows proof uses `New-NetFirewallRule -Name sshd-tt` to “recreate” the broad rule. On the machine this repair targets, that name already exists; the command can fail while the following script merely reapplies and reports an already-scoped rule. That produces a green-looking report without ever exercising broad-to-scoped repair. The script itself is statically plausible, but the acceptance criterion requires this exact repair path to be demonstrated. | Deliberately broaden the existing rule with `Set-NetFirewallRule -Name sshd-tt -Profile Any -RemoteAddress Any`, read it back and assert both values are `Any`, run `ssh-setup.ps1`, then assert `Private` and `LocalSubnet`. Make setup failures terminating for the evidence procedure. | **Open** |
-| `COORD-R6` | **Medium** | **Yes — T-072's current-truth acceptance criterion** | The same filing class COORD-R5 was meant to close has recurred. `ai/TASKS.md:15-21` says nothing remains on the critical path and lists only a carry, runner evidence, and exit review, omitting newly filed High-priority T-074. Lines 29-30 still call T-072 and completed T-064 Ready. Lines 70-77 say In Review is genuinely empty while T-073 is marked In Review at lines 159-163 under Ready. `ai/STATUS.md:166-172` still says criterion 7 cannot move until hosted quota resets, contradicted by its T-073 account at lines 377-389. This materially misstates the live queue and release readiness. | Rewrite the opening queue and section placement from current task states, include T-074, and turn superseded status prose into explicitly historical notes. | **Open** |
+| `COORD-R6` | **Medium** | **Yes — T-072's current-truth acceptance criterion** | The same filing class COORD-R5 was meant to close has recurred. `docs/project/TASKS.md:15-21` says nothing remains on the critical path and lists only a carry, runner evidence, and exit review, omitting newly filed High-priority T-074. Lines 29-30 still call T-072 and completed T-064 Ready. Lines 70-77 say In Review is genuinely empty while T-073 is marked In Review at lines 159-163 under Ready. `docs/project/STATUS.md:166-172` still says criterion 7 cannot move until hosted quota resets, contradicted by its T-073 account at lines 377-389. This materially misstates the live queue and release readiness. | Rewrite the opening queue and section placement from current task states, include T-074, and turn superseded status prose into explicitly historical notes. | **Open** |
 | `T073-R1` | **Low** | **No** | The Windows behavior and counts are valid, but two evidence statements are not. Actions timestamps put job `90460498381` at **6 m 29 s** wall, not 3 m 40 s. The alleged two-test collection residual is also explained: Linux's JUnit has two module-level “collection skipped” cases for `tests.ui.test_windows_accessibility` and `tests.ui.test_windows_desktop`; Windows replaces those two placeholders with the 28 real desktop cases. `1412 - 2 + 28 = 1438`, exactly the recorded collection count. | Correct the wall time and replace the open arithmetic question with the JUnit identity reconciliation. Documentation Maintainer, target T-073 filing cleanup; no behavioral re-review needed. | **Open, non-blocking** |
 
 ### Task judgments
@@ -5862,10 +5862,10 @@ commits. `HEAD` and `origin/main` both resolved to `825e3cd`, and the tree was c
 | ID | Severity | Blocks approval | Evidence | Recommendation | Status |
 |---|---|---:|---|---|---|
 | `T072-R1` | **Medium** | **Yes — T066-R1's process-tree half** | Separating `must_die` from `doomed` fixes the list aliasing, but the new positive control does not prove a **worker** can be detected. An instrumented run identified `must_die` as PID 46887 running `multiprocessing.resource_tracker` and PID 46889 running `multiprocessing.spawn`. With `kill_the_application()` disabled, the 30-second wait let the actual worker finish naturally; the assertion failed only on PID 46887, the resource tracker, while reporting it as a worker that still owned the database. A deterministic reviewer mutation then killed the application and tracker, deliberately omitted the actual spawn worker, and the test passed in 1.38 s. Separately, `mut_tree_shallow_walk` patches both `capture_the_doomed_tree` **and the independent oracle** `the_workers_that_must_die`; any deeper process removed from the capture is therefore removed from the check too. The control still has teeth only for “some long-lived descendant,” not for the worker identity T072-R1 requires. | Obtain the actual worker identity independently of the capture, excluding the resource tracker. Keep that worker alive longer than the assertion in the positive control—for example, block its HTTP response until cleanup—and show the failure names that PID. A capture mutation must not patch or shrink the oracle. Then run the drop-worker mutation on Windows; if the worker exits through another legitimate reap path, record that measured outcome rather than requiring a kill for its own sake. | **Still open** |
-| `T072-R2` | **Low** | **No** | The superseded STATUS block is now explicitly historical, resolving the cited block. Two current statements remain stale: `ai/TASKS.md:467-475` still records the old empty-walk plugin as FAILED although the new shallow plugin survives, and `ai/STATUS.md:368-375` still says WIN-R1 is T-072's last carry while T072-R1 is open too. | Replace the old check table with the current control/shallow/drop results and make the later STATUS paragraph historical or current. | **Partially resolved, still open** |
+| `T072-R2` | **Low** | **No** | The superseded STATUS block is now explicitly historical, resolving the cited block. Two current statements remain stale: `docs/project/TASKS.md:467-475` still records the old empty-walk plugin as FAILED although the new shallow plugin survives, and `docs/project/STATUS.md:368-375` still says WIN-R1 is T-072's last carry while T072-R1 is open too. | Replace the old check table with the current control/shallow/drop results and make the later STATUS paragraph historical or current. | **Partially resolved, still open** |
 | `T072-R3` | **Medium** | **No — correction resolved; execution remains owed** | The procedure now uses `Set-NetFirewallRule` on the existing rule, sets `$ErrorActionPreference = "Stop"`, and reads back both profile and remote address before running the repair. The two explicit `throw`s prevent an already-scoped rule from masquerading as the defective setup. | Execute the corrected procedure on Windows and retain its before/after output. | **Resolved; external evidence pending** |
 | `COORD-R6` | **Medium** | **No** | The TASKS preamble now includes T-074, gives T-072/T-073/T-064 their current states, and the In Review section actually holds T-073. STATUS rewrites the hosted-quota claim and preserves its superseded reading explicitly. | None. | **Resolved** |
-| `T073-R1` | **Low** | **No** | T-073's task now records the correct 6 m 29 s wall time and the exact `1412 - 2 + 28 = 1438` JUnit reconciliation. `ai/STATUS.md:388-395`, however, still says the same two tests are unexplained. | Carry the resolved JUnit explanation into STATUS or remove its duplicate count analysis. | **Partially resolved, still open** |
+| `T073-R1` | **Low** | **No** | T-073's task now records the correct 6 m 29 s wall time and the exact `1412 - 2 + 28 = 1438` JUnit reconciliation. `docs/project/STATUS.md:388-395`, however, still says the same two tests are unexplained. | Carry the resolved JUnit explanation into STATUS or remove its duplicate count analysis. | **Partially resolved, still open** |
 
 ### Task judgments
 
@@ -5999,7 +5999,7 @@ resolved to `13138e3`, and the tree was clean before this review record was appe
 |---|---|---:|---|---|---|
 | `P1EXIT-R1` | **Medium** | **Yes — Phase 1's headless exit criterion** | The new table treats “Worker code runs with no display attached” as met by the static layering test and by running Qt with `QT_QPA_PLATFORM=offscreen`. Neither detaches a display from the worker. The purpose-built `test_the_worker_runs_in_a_real_spawned_process_with_no_display` does not do so either: `_spawn_target` is started with an ordinary `multiprocessing.Process` and inherits the parent environment unchanged. On this review host that test passed while `DISPLAY=:0` and `WAYLAND_DISPLAY=wayland-0` were both present. A separate reviewer run with both variables removed also passed, showing the behavior works, but the lasting gate does not create or assert the condition named by the phase criterion. | Make the spawned child run with the platform's display variables deliberately absent and assert that absence from inside the child before exercising the real worker session. On Linux, remove at least `DISPLAY` and `WAYLAND_DISPLAY`; preserve a cross-platform formulation for Windows. Mutation-check the gate with a worker-side display dependency, then cite that integration test in the table. Until then mark this criterion not met rather than substituting Qt's offscreen plugin. | **Open** |
 | `P1EXIT-R2` | **Low** | **No** | The unsupported-URL row cites `test_the_extractor_message_survives_verbatim` and calls it evidence from recorded `info_dict` fixtures. That test constructs a generic `ExtractorError` for a private-video message and uses no fixture; it proves neither `UnsupportedError` classification nor the unsupported-URL UI/storage path. The relevant evidence already exists and passed: `test_subclass_ordering_is_not_swallowed_by_the_base_class` proves `UnsupportedError -> UNSUPPORTED_URL`, while `test_an_unsupported_url_shows_the_extractors_message_character_for_character` and `test_a_failed_probe_leaves_the_job_failed_and_recorded` drive a real manager/process boundary with `errors/unsupported_url.json`. The row's conclusion that this is thinner than a live yt-dlp failure remains correct. | Point the row at those classification and UI/storage tests, call the fixture a recorded **error** fixture rather than an `info_dict`, and retain the honest limitation: the child replays the recorded failure instead of obtaining it from live yt-dlp. | **Open, non-blocking — evidence-table correction** |
-| `T033-R3` | **Low** | **No** | Correcting “PyInstaller is absent” to version 6.21.0 is right, and the required Windows frozen-job result remains externally blocked. The current T-033 task still says the repository cannot locally produce the collection-removal negative run, Linux frozen result, or size delta. That no longer follows: PyInstaller 6.21.0 is installed, the workflow publishes the exact local build/probe/size commands, and this review history already records a successful local PyInstaller 6.21 Linux artifact build for `T014-R3`. What cannot be produced on this host is the Windows result; what the acceptance criterion additionally demands is both named CI jobs green. | Keep T-033 Blocked, but distinguish the external Windows/exact-CI requirement from the Linux build, collection-removal mutation, and Linux size comparison that can now be gathered locally. Correct the stale “cannot produce locally” sentence in `ai/TASKS.md`. | **Open, non-blocking — T-033/current-truth follow-up** |
+| `T033-R3` | **Low** | **No** | Correcting “PyInstaller is absent” to version 6.21.0 is right, and the required Windows frozen-job result remains externally blocked. The current T-033 task still says the repository cannot locally produce the collection-removal negative run, Linux frozen result, or size delta. That no longer follows: PyInstaller 6.21.0 is installed, the workflow publishes the exact local build/probe/size commands, and this review history already records a successful local PyInstaller 6.21 Linux artifact build for `T014-R3`. What cannot be produced on this host is the Windows result; what the acceptance criterion additionally demands is both named CI jobs green. | Keep T-033 Blocked, but distinguish the external Windows/exact-CI requirement from the Linux build, collection-removal mutation, and Linux size comparison that can now be gathered locally. Correct the stale “cannot produce locally” sentence in `docs/project/TASKS.md`. | **Open, non-blocking — T-033/current-truth follow-up** |
 
 ### T-074 judgment
 
@@ -6062,7 +6062,7 @@ the tree was clean before this review record was appended.
 |---|---|---:|---|---|---|
 | `P1EXIT-R1` | **Medium** | **Yes — Phase 1's headless exit criterion** | The environment half is genuinely corrected. `test_the_worker_really_runs_with_no_display_attached` launches a fresh interpreter with `DISPLAY` and `WAYLAND_DISPLAY` absent and asserts their absence inside that child. Removing `env=environment` failed independently and named both inherited values. The workload half remains split away from that condition: the scrubbed child calls only the private `_import_ytdlp()` helper and checks that it returned. It never calls `run_session`, emits or validates a protocol sequence, or completes worker work. The separate `test_the_worker_runs_in_a_real_spawned_process_with_no_display` does those things, but still starts an ordinary `multiprocessing.Process` under the inherited desktop environment and still calls that child “headless.” A display dependency introduced after yt-dlp resolution can therefore leave the claimed headless gate green. | Put the scrub and the worker session in the same observation. For example, remove the display variables before starting the existing real spawned-process test, assert their absence inside `_spawn_target`, then run and validate its real `run_session`/queue path. Mutation-check both halves: restoring the inherited environment and introducing a worker-path display dependency must each fail. Rename or correct the old test/docstring so it no longer independently claims an inherited-display child is headless. | **Still open** |
 | `P1EXIT-R2` | **Low** | **No** | The row no longer mislabels an inline exception as a fixture, and `test_a_failure_reaches_the_parent_classified_and_verbatim` does exercise `run_session`, queue carriage, protocol validation, and exact message equality. It raises `GeoRestrictedError`, however, and asserts `GEO_RESTRICTED`. It never constructs `UnsupportedError` or observes `UNSUPPORTED_URL`, so it is still not evidence for the row “An unsupported URL produces a failed job.” `test_yt_dlps_bug_report_boilerplate_does_not_reach_the_user` likewise uses generic `ExtractorError`. The replacement therefore repeats the original mapping defect with a different unrelated error class. | Either inject `UnsupportedError("Unsupported URL: ...")` through the same `run_session` path and assert `UNSUPPORTED_URL` plus exact text, or cite the existing `UnsupportedError -> UNSUPPORTED_URL` classification and unsupported-URL UI/storage tests together. Retain the honest statement that no live unsupported URL is sent through yt-dlp. | **Still open, non-blocking** |
-| `T033-R3` | **Low** | **No** | The local Linux positive evidence is real. The retained artifact occupies **194260 KiB** by the workflow's `du -sk` measure; an independent `--ytdlp-probe` reported version `2026.07.04` against pin `2026.7.4`, 1,751 extractors, and `youtube` from `yt_dlp.extractor.youtube`; `frozen_smoke.py` completed in about three seconds with one top-level start and no orphan. Two current-truth problems remain. First, `ai/TASKS.md:1325-1328` calls the collection-removal mutation “genuinely external,” although the same local PyInstaller build can remove line 37 of the spec and run the negative probe; T-033 is not “Blocked on Windows only” while that local acceptance proof remains undone. Second, lines 1345-1348 still say the local run is source-mode and both frozen platforms are pending, and `ai/STATUS.md:521-525` repeats the same superseded state. | Run and revert the collection-removal mutation locally, or accurately leave that local evidence pending. Then make TASKS and STATUS agree on one state: Linux frozen positive complete, Linux collection negative complete or pending, Windows frozen external. Only the Windows half is an external blocker. | **Partially resolved, still open and non-blocking** |
+| `T033-R3` | **Low** | **No** | The local Linux positive evidence is real. The retained artifact occupies **194260 KiB** by the workflow's `du -sk` measure; an independent `--ytdlp-probe` reported version `2026.07.04` against pin `2026.7.4`, 1,751 extractors, and `youtube` from `yt_dlp.extractor.youtube`; `frozen_smoke.py` completed in about three seconds with one top-level start and no orphan. Two current-truth problems remain. First, `docs/project/TASKS.md:1325-1328` calls the collection-removal mutation “genuinely external,” although the same local PyInstaller build can remove line 37 of the spec and run the negative probe; T-033 is not “Blocked on Windows only” while that local acceptance proof remains undone. Second, lines 1345-1348 still say the local run is source-mode and both frozen platforms are pending, and `docs/project/STATUS.md:521-525` repeats the same superseded state. | Run and revert the collection-removal mutation locally, or accurately leave that local evidence pending. Then make TASKS and STATUS agree on one state: Linux frozen positive complete, Linux collection negative complete or pending, Windows frozen external. Only the Windows half is an external blocker. | **Partially resolved, still open and non-blocking** |
 
 ### Independent verification
 
@@ -6120,7 +6120,7 @@ the tree was clean before this review record was appended.
 |---|---|---:|---|---|---|
 | `P1EXIT-R1` | **Medium** | **Yes — resolved** | The display condition and worker workload are now one observation. The parent removes `DISPLAY` and `WAYLAND_DISPLAY` before `spawn`; `_spawn_target` checks their absence inside that child; the same child executes `run_session`; and the parent validates the real protocol sequence and `Probed` outcome. Independently removing the scrub failed with the child's inherited-display assertion and both values. Independently adding a post-guard `os.environ["DISPLAY"]` dependency failed with `KeyError: 'DISPLAY'` from the work process. | None. | **Resolved** |
 | `P1EXIT-R2` | **Low** | **No** | `test_an_unsupported_url_fails_the_job_with_the_extractors_own_message` now raises the correct `UnsupportedError` through `run_session`, validates the sequence, and asserts both `UNSUPPORTED_URL` and the exact generated message. An independent mutation removing the `UnsupportedError` mapping failed with the observed kind `EXTRACTOR_ERROR`, while preserving the message, exactly isolating the subclass-ordering gate. The table accurately retains the limitation that yt-dlp URL recognition itself is injected rather than live. | None. | **Resolved** |
-| `T033-R3` | **Low** | **No — superseded by the substantive T033-R4 blocker** | The requested local evidence was produced: baseline and both collection-removal builds completed, their distinct sizes prove the mutations applied, and both negative probes survived. The task now records that result and marks the acceptance criterion unachievable as written. Current-truth cleanup is incomplete: the T-033 status still says “Blocked on Windows only” while a maintainer acceptance decision is also owed; its Scope still states the now-disproved static-analysis premise; and `ai/STATUS.md:530-537,562-572` still says the collection negative remains to run and that hosted jobs are the only constraint. | Rewrite TASKS and STATUS around the finding below: Linux positive and negative builds complete; submodule collection redundant for this pin; package data remains load-bearing but ungated; Windows external; acceptance-criterion decision required. | **Evidence resolved; documentation follow-up remains** |
+| `T033-R3` | **Low** | **No — superseded by the substantive T033-R4 blocker** | The requested local evidence was produced: baseline and both collection-removal builds completed, their distinct sizes prove the mutations applied, and both negative probes survived. The task now records that result and marks the acceptance criterion unachievable as written. Current-truth cleanup is incomplete: the T-033 status still says “Blocked on Windows only” while a maintainer acceptance decision is also owed; its Scope still states the now-disproved static-analysis premise; and `docs/project/STATUS.md:530-537,562-572` still says the collection negative remains to run and that hosted jobs are the only constraint. | Rewrite TASKS and STATUS around the finding below: Linux positive and negative builds complete; submodule collection redundant for this pin; package data remains load-bearing but ungated; Windows external; acceptance-criterion decision required. | **Evidence resolved; documentation follow-up remains** |
 | `T033-R4` | **High** | **Yes — T-033** | The conclusion “neither collection line is necessary” does not follow from the surviving probes. The independent `collect_submodules -> []` build also passed, and the pinned `_extractors.py` really does contain 928 static relative imports, so the explicit submodule collection is redundant for this pin. The data mutation is different: removing `collect_data_files("yt_dlp")` produced a passing probe **while deleting all three yt-dlp YouTube solver assets present in the baseline artifact**: `yt.solver.core.js`, `yt.solver.deno.lib.js`, and `yt.solver.bun.lib.js`. yt-dlp loads these with `importlib.resources` through `vendor.load_script`; `EJSBaseJCP._builtin_source` uses `yt.solver.core.js`, and the Deno/Bun providers use the other two. The current probe only instantiates `YoutubeIE` and checks its URL predicate, so it never touches this runtime data. The mutation survival therefore proves the frozen gate is blind to package-data loss, not that the data line is dead. The causal record is also incomplete: PyInstaller processed a package-supplied `yt_dlp/__pyinstaller/hook-yt_dlp.py` through the `pyinstaller40` entry point, contrary to the claim that no yt-dlp hook exists. That hook does not collect these three assets, so it does not rescue the data mutant. | Keep `collect_data_files("yt_dlp")`. Extend the frozen probe to load at least the shipped built-in core solver through yt-dlp's real `vendor.load_script` path and verify its expected hash; then removing the data collection must fail. Decide separately whether `collect_submodules` stays as explicit future-pin insurance or is removed as redundant for the current pin. Replace the impossible blanket negative criterion with those two distinct decisions, and re-evaluate them whenever the yt-dlp pin changes. | **Open — T-033 Blocked pending maintainer decision and correction** |
 
 ### Independent verification
@@ -6238,7 +6238,7 @@ remains Low and non-blocking.
 |---|---|---:|---|---|---|
 | `T077-R1` | **High** | **Yes — T-077** | T-077's acceptance criterion still says **each built-in preset** completes against the local server and has its resulting file inspected. The implementation executes only three of five. `Best video up to 1080p (MP4)` and `Video with embedded subtitles` are merely named in `UNCOVERABLE_BY_THIS_FIXTURE`; naming an untested case is honest accounting, not evidence that it works. The stated impossibility belongs only to the current direct-file fixture: the local server can instead expose real format metadata and a real subtitle resource without using the public network. The gate is also not mechanically exhaustive: `CONVERTING_PRESETS` and `UNCOVERABLE_BY_THIS_FIXTURE` are two hand-maintained lists, and no assertion derives the built-in set and proves their exact union, so deleting a row or adding a preset would remain green. An independent enumeration confirmed that only **3/5** built-ins execute today. This is the core acceptance criterion of a High task, not a non-blocking coverage note. | Exercise the remaining two presets with network-free fixtures that provide the facts they need, and derive an exact coverage assertion from `BUILT_IN_PRESETS`. Alternatively, obtain an explicit maintainer scope change and file named blocking follow-ups for the two missing user-visible options; the task cannot narrow its own acceptance criterion by recording the gap. | **Open** |
 | `T074-R1` | **High** | **Yes — Phase 1 verification** | The 12 clean STARBASE iterations are useful evidence against the original 25% anecdote, but they do not diagnose or clear the access violation. The four original observations and the repeat batch are not one controlled population: between them the manager and the full-suite composition changed materially, including new integration tests. Even if pooled, `1/16` is only the observed aggregate point estimate after one event, not evidence that the true rate can only be lower; a single green run is common under both a 25% and a 6.25% failure probability. The task's substantive acceptance criteria remain unmet: the crash was not deliberately reproduced, the faulting object is unknown, product pump versus harness is unresolved, and there is no correction mutation. Because the only observed native crash is in ordinary `ResultPump` delivery on the exact Windows architecture path Phase 1 exists to prove, the uncertainty cannot be resolved in favor of product safety. | Keep T-074 High and keep the Windows/Phase 1 criterion unverified until the trigger and faulting object are identified or the failure is affirmatively classified as harness-only. Report the clean batch as `0/12 at ea53c71`; do not promote samples from changed heads into a stable “1 in 16” rate. A downgrade or risk acceptance requires the maintainer's explicit decision. | **Open** |
-| `COORD-R7` | **Medium** | **Yes — Phase 1 exit review** | Current-truth documents disagree with the evidence at this head. `ai/IMPLEMENTATION_PLAN.md:161-163` and `ai/STATUS.md:357-366,449-450` still say T-074 is roughly one in four; `ai/STATUS.md:338-345` says its repeat workflow has not run. `ai/STATUS.md:368-377` still says the Windows drop-worker mutation is owed. Inside T-072 itself, the opening first says WIN-R1 is the sole remaining item, then says both WIN-R1 and `mut_tree_drop_worker` remain (`ai/TASKS.md:669-680`). The checked-in mutation's module docstring also still says the captured set “has to be complete” on Windows (`tools/windows/mutations/mut_tree_drop_worker.py:11-15`), contradicted by the result the same commit records. These are not harmless historical statements: they are current assertions about the evidence and blocker set for the pending exit review. | Rewrite current truth around one state: T072-R1 resolved through a legitimate independent reap path; WIN-R1 remains; T-074 has one historical crash and a separate 0/12 batch but remains unclassified and blocking. Preserve superseded readings explicitly where their history matters. Correct the mutation documentation to describe the observed watchdog/containment outcome. | **Open** |
+| `COORD-R7` | **Medium** | **Yes — Phase 1 exit review** | Current-truth documents disagree with the evidence at this head. `docs/project/IMPLEMENTATION_PLAN.md:161-163` and `docs/project/STATUS.md:357-366,449-450` still say T-074 is roughly one in four; `docs/project/STATUS.md:338-345` says its repeat workflow has not run. `docs/project/STATUS.md:368-377` still says the Windows drop-worker mutation is owed. Inside T-072 itself, the opening first says WIN-R1 is the sole remaining item, then says both WIN-R1 and `mut_tree_drop_worker` remain (`docs/project/TASKS.md:669-680`). The checked-in mutation's module docstring also still says the captured set “has to be complete” on Windows (`tools/windows/mutations/mut_tree_drop_worker.py:11-15`), contradicted by the result the same commit records. These are not harmless historical statements: they are current assertions about the evidence and blocker set for the pending exit review. | Rewrite current truth around one state: T072-R1 resolved through a legitimate independent reap path; WIN-R1 remains; T-074 has one historical crash and a separate 0/12 batch but remains unclassified and blocking. Preserve superseded readings explicitly where their history matters. Correct the mutation documentation to describe the observed watchdog/containment outcome. | **Open** |
 
 ### T072-R1 disposition
 
@@ -6308,7 +6308,7 @@ WIN-R1**
 | `T076-R2` | **Low** | **No** | The correction adds production-derived coverage over `MP3_BITRATES`, but still does not transcribe the exact ordered five values/default or exercise Probe → MP3 → 320 → Add against the durable request. The dialog also lacks a non-MP3 converting-preset regression even though the corrected behavior is independently verified. | **Open, non-blocking — carried to T-089** |
 | `T077-R1` | **High** | **Yes — resolved** | The local HLS fixture supplies real format metadata and a real VTT subtitle group. All five built-in presets execute, the two formerly excluded cases inspect the promised format/subtitle outcome, and a separate equality asserts the table's names exactly match `BUILT_IN_PRESETS`. All six focused tests passed. Independently removing `FFmpegEmbedSubtitle` failed the subtitle case with only video/audio streams observed. | **Resolved** |
 | `T074-R1` | **High** | **Yes — resolved as a review finding; T-074 remains blocking** | TASKS, STATUS, and IMPLEMENTATION_PLAN now record `0/12 at ea53c71` as a clean batch rather than a stable rate, preserve the different-head limitation, and keep the unexplained ordinary-ResultPump access violation as a Phase 1 blocker requiring explicit maintainer action to downgrade. | **Resolved** |
-| `COORD-R7` | **Medium** | **Yes — Phase 1 exit review** | Most cited current-truth blocks and the mutation docstring are corrected, but two live contradictions remain in canonical TASKS. The start-here preamble still says T-074 crashes “roughly one run in four” and says both T066-R1 and WIN-R1 remain open (`ai/TASKS.md:20-26`). T-072's opening first says WIN-R1 is its sole remaining item, then still says two things are owed, including the already executed drop-worker mutation (`ai/TASKS.md:755-770`). These are the exact blocker/rate claims this finding required the batch to reconcile. | **Partially resolved; still open and blocking** |
+| `COORD-R7` | **Medium** | **Yes — Phase 1 exit review** | Most cited current-truth blocks and the mutation docstring are corrected, but two live contradictions remain in canonical TASKS. The start-here preamble still says T-074 crashes “roughly one run in four” and says both T066-R1 and WIN-R1 remain open (`docs/project/TASKS.md:20-26`). T-072's opening first says WIN-R1 is its sole remaining item, then still says two things are owed, including the already executed drop-worker mutation (`docs/project/TASKS.md:755-770`). These are the exact blocker/rate claims this finding required the batch to reconcile. | **Partially resolved; still open and blocking** |
 
 ### Independent verification
 
@@ -6367,7 +6367,7 @@ accept the documented contradiction, change scope, or carry COORD-R7 into a name
 | Check | Result |
 |---|---|
 | Boundary identity | `HEAD == 7c78c7e`; correction isolated as one documentation-only commit |
-| Changed correction surface | `ai/TASKS.md` only |
+| Changed correction surface | `docs/project/TASKS.md` only |
 | `git diff --check 05182e4..7c78c7e` | Passed |
 | Authorship / trailers | Sean Kottman; no AI author or co-author trailer |
 | Current preamble | One crash; `0/12` separate; no rate; T072-R1 resolved; WIN-R1 sole remainder |
@@ -6487,7 +6487,7 @@ all five T-072 carries are discharged, and **T-072 is Approved**.
 | `COORD-R8` | **Medium** | **Yes — Phase 1 exit review** | Current TASKS still gives three incompatible live answers after `b0a6e07`. The start-here bullet calls T-072 **In Progress** and says WIN-R1 remains; T-072's own entry says all five carries are discharged and STATUS calls it complete and in review. T-073 is still filed under In Review with “approved with a documentation follow-up,” although `T073-R1` was independently Resolved at `9802a6a` and the later review explicitly approved T-073. After this review, T-072 is Approved too, so the In Review section should contain only active T-074, not three tasks. The opening “crash, a carry, and frozen-artifact evidence” summary likewise retains a carry that is now closed. These are the exact placement/current-truth failures COORD-R5 through R7 were intended to prevent, and they materially misstate what remains before the exit review. | File T-072 and T-073 under Complete, narrow In Review to T-074, and rewrite the start-here blocker list from the final dispositions. Preserve superseded readings only as explicitly historical text. | **Open** |
 | `T033-R5` | **Low** | **No** | Commit `26c1d4e` correctly separates the two collection mutations and records T033-R4 and the Windows build as the blockers. One attached sentence in the status block still says T033-R1 remains open for “the Windows frozen result and the collection-removal negative run,” immediately after saying the Linux negative is complete. The entry also contains the identical `Phase:` field twice. Neither changes T-033's correctly Blocked disposition, but both are current-truth defects in the correction whose purpose was to reconcile that record. | Remove the completed negative run from the remaining T033-R1 evidence and deduplicate the Phase field when T-033 is next edited. | **Open, non-blocking** |
 | `P2PLAN-R1` | **Medium** | **Yes — Phase 2 planning** | The accepted REQ-015 amendment makes pause/resume **queue-level** and lets in-flight work drain. The higher-level IMPLEMENTATION_PLAN still requires a queue view with **per-job pause/resume**, while T-080 remains titled “Pause, resume, retry and remove, per job.” Its current Scope quotes the old requirement as though it still governs and says REQ-015 “needs” the amendment already made in the same commit. The task's later acceptance criteria describe queue-level behavior. A Phase 2 implementer therefore receives mutually exclusive instructions from the plan and from different halves of the task. | Amend the Phase 2 deliverable to queue-level pause/resume; retitle and rewrite T-080 from current truth, with per-job cancel/retry/remove separated from queue pause/resume. Move the old requirement wording to explicit history or the decision rationale. | **Open** |
-| `P2PLAN-R2` | **Medium** | **Yes — T-087 and durable Phase 2 choices** | Commit `70c96e9` says it records three decisions, but no decision was added to `ai/DECISIONS.md`. QLocalServer keyed from the resolved database path is an architectural, cross-platform choice made over lock files, mutexes, sockets, and `flock`; T-087 itself says it wants a DECISIONS entry first and requires an ID. Queue-draining pause and remove-never-deletes are also durable user-visible trade-offs whose rationale currently lives only in a mutable task. This conflicts with AGENTS §12's canonical home for durable choices and leaves the commit's “recorded” claim false. | Add accepted decision entries for the queue action semantics and the single-instance mechanism, including crash recovery, database-path name derivation, and alternatives. Link their IDs from REQ-015, T-080, and T-087 before those tasks become Ready. | **Open** |
+| `P2PLAN-R2` | **Medium** | **Yes — T-087 and durable Phase 2 choices** | Commit `70c96e9` says it records three decisions, but no decision was added to `docs/project/DECISIONS.md`. QLocalServer keyed from the resolved database path is an architectural, cross-platform choice made over lock files, mutexes, sockets, and `flock`; T-087 itself says it wants a DECISIONS entry first and requires an ID. Queue-draining pause and remove-never-deletes are also durable user-visible trade-offs whose rationale currently lives only in a mutable task. This conflicts with AGENTS §12's canonical home for durable choices and leaves the commit's “recorded” claim false. | Add accepted decision entries for the queue action semantics and the single-instance mechanism, including crash recovery, database-path name derivation, and alternatives. Link their IDs from REQ-015, T-080, and T-087 before those tasks become Ready. | **Open** |
 | `P2PLAN-R3` | **Medium** | **Yes — T-078 readiness** | REQ-013 and the Phase 2 deliverable require a **user-configurable** concurrency limit. T-078 calls it the first setting with runtime effect but leaves where it lives as a decision for the implementer, while the full settings dialog is assigned to Phase 4. Its acceptance criteria prove that different N values work but never require a user-accessible, persisted way to select N. The task can therefore pass with only a constructor or test seam and still miss the product requirement at the centre of the phase. | Decide and state the Phase 2 configuration surface and persistence boundary—whether a minimal settings control lands now or a narrower approved mechanism precedes Phase 4—and add an acceptance criterion that changes the limit through that real user-facing path. | **Open** |
 | `P2PLAN-R4` | **Low** | **No** | T-084 simultaneously requires per-job logs to be “verbatim” and requires credential/cookie redaction. REQ-026 makes the redaction mandatory, so the literal word “verbatim” cannot govern sensitive substrings. The task also says T-053 is the concurrency proof it rests on without making the ordering explicit. | Say “verbatim except for mandatory handler-level redaction” and make T-053 an explicit prerequisite or an acceptance test owned by T-084. | **Open, non-blocking** |
 
@@ -6554,7 +6554,7 @@ resolved before approval regardless of the ordinary budget.
 | Check | Result |
 |---|---|
 | Boundary identity | `b0a6e07` is the sole parent of `35fc7ec`; `HEAD == origin/main == 35fc7ec` at inspection |
-| Changed surfaces | `ai/REVIEWS.md`, `ai/TASKS.md`, `core/logging.py`, and `test_logging.py`; no hidden implementation commit |
+| Changed surfaces | `docs/project/REVIEWS.md`, `docs/project/TASKS.md`, `core/logging.py`, and `test_logging.py`; no hidden implementation commit |
 | `git diff --check b0a6e07..35fc7ec` | Passed |
 | Authorship / trailers | Sean Kottman; no AI author or co-author trailer |
 | Python baseline / PEP 758 syntax | Python **3.14.6**; the unparenthesized `except OSError, EOFError, ValueError:` compiles, imports, lints, and type-checks |
@@ -6597,7 +6597,7 @@ Phase 1 ready for its exit review.
 
 **Reviewer:** Codex (Reviewer)
 **Subject:** The eight Phase 1 exit criteria and their evidence table in
-`ai/IMPLEMENTATION_PLAN.md`
+`docs/project/IMPLEMENTATION_PLAN.md`
 **Phase span inspected for context:** `7b7860d..e2e60e9`; previously approved implementation
 boundaries were not re-reviewed
 **Verdict:** **Approved — Phase 1 exits with the `OPS-005` and `OPS-007` residuals explicit**
@@ -6736,7 +6736,7 @@ required test type gate, and Windows single-instance exclusivity.
 | `T050-R1` | **Critical** | **Yes — T-050** | `downloader/manager.py:1443-1446` first persists `COMPLETED`; only its GUI-thread success callback enters `_on_completed`, which queues the history insert at `:1503-1512`. These are two SQLite transactions with an event-loop turn between them. A deterministic child process withheld GUI event delivery, waited until the writer committed the completed job, then hard-exited. On restart the exact result was `{'child_exit': 0, 'job_status': 'completed', 'history': None}`. No startup recovery backfills history, and `format_used` exists nowhere else, so `REQ-012`'s unexpected-termination promise and `REQ-020`'s durable record are both violated by silent, irreversible record loss. | Make completion one injected persistence operation that updates the job and records history in one transaction on the writer connection. Gate the old between-write boundary with a hard-exit subprocess mutation. Do not announce success until that transaction commits. | **Open — T-093** |
 | `P2PLAN-R5` | **High** | **Yes — P2PLAN-R2 / T-087 readiness** | `DECISIONS.md:1727-1742` chooses `QLocalServer` itself as the single-instance guard and says connect failure proves the owner is gone. [Official Qt 6 documentation](https://doc.qt.io/qt-6/qlocalserver.html#listen) says the opposite property matters on Windows: **two local servers can listen on the same pipe simultaneously**, and connections may go to either. Two concurrent launches can both fail their initial connect and both successfully listen, creating the exact two-writer state `ARC-006:1719-1722` calls a data-integrity threat. The header also says the decision “Discharges” A-004 before T-087 exists, contradicting its own consequence at `:1755`. | Reopen ARC-006. Use an atomic cross-platform ownership primitive, optionally retaining QLocalServer as the attach channel. Test simultaneous starts—not only stale-owner recovery—on Linux and STARBASE, and leave A-004 unverified until implementation lands. | **Open — T-094** |
 | `T050-R2` | **Medium** | **Yes — T-050** | `_on_completed` sends a history write error only through `persistence_failed` (`manager.py:1506-1511`). The composed application installs no stable receiver. `AddUrlDialog` is the only production listener (`add_dialog.py:586`), is temporary, and `_on_persistence_failed` ignores every job not in its private withdrawal set (`:843-849`). A failed history insert during an ordinary completion therefore leaves a `COMPLETED` job, no required history row, a success UI, and no visible or logged report. The optional `history=None` constructor path at `manager.py:421,433-438` provides a second silent-disable route, though the real `app.compose()` currently supplies the sink and its integration test catches omission there. | Give completion persistence one required injected path, and route a failed atomic completion transaction to a stable application-level consumer or log. Test the real composition with no Add-URL dialog alive and force the history half to fail. | **Open — T-093** |
-| `T050-R3` | **Medium** | **Yes — required gate** | Both bare `mypy` and `mypy --platform win32` fail at `tests/integration/test_manager.py:3382`: `active_job_ids()` returns `tuple[str, ...]`, but the new test compares it with `[]`. `ai/TESTING.md` §3 requires both whole-project gates for every test-file edit. `mypy src` passes, which explains how a “35 source files” run missed this. | Use a type-correct truth test and rerun both required whole-project gates. | **Open — T-093** |
+| `T050-R3` | **Medium** | **Yes — required gate** | Both bare `mypy` and `mypy --platform win32` fail at `tests/integration/test_manager.py:3382`: `active_job_ids()` returns `tuple[str, ...]`, but the new test compares it with `[]`. `docs/project/TESTING.md` §3 requires both whole-project gates for every test-file edit. `mypy src` passes, which explains how a “35 source files” run missed this. | Use a type-correct truth test and rerun both required whole-project gates. | **Open — T-093** |
 | `COORD-R9` | **Low** | **No** | The Phase 1 reconciliation is substantively accurate, but `STATUS.md:48` still says calling criterion 7 met is for the exit review to decide after `:31-33` says that review already decided it. `STATUS.md:54` repeats “all four frozen references,” while the exit review explicitly noted the additional Phase 0 risk-register row. Separately, TASKS declares `## In Review` empty at `TASKS.md:97-112`, while T-050 says In Review at `:1018` under Proposed. | Reconcile the post-exit tense/count and file T-050 under the section its status names when recording this verdict. | **Open, non-blocking — T-095** |
 
 ### What passed review
@@ -8066,7 +8066,7 @@ tests until these findings close.
 | `ruff format --check .` | Passed; **115 files** |
 | `mypy src` | Passed; **36 source files** |
 | `mypy --platform win32 src` | Passed; **36 source files** |
-| Bare `mypy` / `mypy --platform win32` | **Failed: 14 / 16 errors** in the existing test tree. None points at the new assertions, but `ai/TESTING.md` requires these wider gates when tests change, so the stronger gate is not clean. |
+| Bare `mypy` / `mypy --platform win32` | **Failed: 14 / 16 errors** in the existing test tree. None points at the new assertions, but `docs/project/TESTING.md` requires these wider gates when tests change, so the stronger gate is not clean. |
 | Focused passing reviewer slice | **25 passed, 191 deselected**: 13 instance-lock, 5 preview and 7 reorder tests |
 | T046-R4 real yt-dlp/ffmpeg regression | **Failed as expected:** preview `master.mp4`, stored output `master.m4a` |
 | T046-R5 merge regression | **Failed as expected:** `preview_is_provisional("mergeall")` returned false |
@@ -8838,7 +8838,7 @@ Critical wrong-request defect. Push and run only after R14's structural identity
 then one run measures the implementation that could actually be approved.
 
 **The external roadmap artifact was not reviewable from this environment.** The linked Claude
-artifact rejected automated access. `ai/IMPLEMENTATION_PLAN.md` is the canonical roadmap under
+artifact rejected automated access. `docs/project/IMPLEMENTATION_PLAN.md` is the canonical roadmap under
 `AGENTS.md` §5 and was inspected locally; it honestly says the third correction awaits re-review
 and will need another current-truth update for this verdict.
 
@@ -8887,7 +8887,7 @@ is ready to push and spend the hosted Ubuntu/Windows run, but is not yet approve
 | ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
 |---|---|---:|---|---|---|---|
 | `COORD-R19` | **Low** | No | Current-truth status | `TASKS.md`'s T-118 status headline still says “three rounds … and three corrections,” immediately before its fourth-round correction. STATUS, the plan and the handoff say four. | Change the headline to four rounds/four corrections in the next coordination update, before the Phase 2 exit review. | **Open, non-blocking; Documentation Maintainer** |
-| `COORD-R20` | **Low** | No | Review boundary hygiene | `c724770` is presented and titled as the implementation correction, but it also stages the complete prior Codex review record into `ai/REVIEWS.md`. The text is the reviewer's unchanged record and the approval boundary remains recoverable, so this does not invalidate the source review; it is another mixed-boundary commit of the class already recorded this session. | Keep the current published/local history intact. On the next round, commit an outstanding reviewer record separately before staging implementation files, and name both SHAs in the handoff. | **Open, non-blocking process follow-up** |
+| `COORD-R20` | **Low** | No | Review boundary hygiene | `c724770` is presented and titled as the implementation correction, but it also stages the complete prior Codex review record into `docs/project/REVIEWS.md`. The text is the reviewer's unchanged record and the approval boundary remains recoverable, so this does not invalidate the source review; it is another mixed-boundary commit of the class already recorded this session. | Keep the current published/local history intact. On the next round, commit an outstanding reviewer record separately before staging implementation files, and name both SHAs in the handoff. | **Open, non-blocking process follow-up** |
 
 ### Independent verification
 
@@ -9007,7 +9007,7 @@ this review record was appended.
 ## 2026-08-04 — Indexed Phase 2 / UX-005 review
 
 **Reviewer:** Codex (Reviewer)
-**Index handoff:** `d2ff1a9` (`ai/handoffs/2026-08-04-review-index.md`)
+**Index handoff:** `d2ff1a9` (`docs/project/handoffs/2026-08-04-review-index.md`)
 **Prior Phase 2 exit submission:** `5eb2611`
 **Reviewed implementation head:** `47299aa`
 **Last CI-backed coordination head:** `8d1b01c`
@@ -9306,7 +9306,7 @@ commit, remote ref or CI state was changed by the reviewer.
 **Reviewer:** Codex (Reviewer)
 **Base:** `05ad990`
 **Submitted state:** bounded uncommitted diff over that base, including the untracked files named
-in `ai/handoffs/2026-08-04-t128-t129-review.md`
+in `docs/project/handoffs/2026-08-04-t128-t129-review.md`
 **Overall verdict:** **Changes requested.** `T-129` has no source finding. `T-128`'s shared
 `drain()` correction addresses the diagnosed teardown window, but the submitted warning detector
 is blind in the full suite. The required 60-run Linux soak and exact-head Windows evidence remain
@@ -9686,7 +9686,7 @@ the Fedora/Windows run on this head.
 | ID | Severity | Blocks approval | Finding | Recommendation | Status |
 |---|---|---:|---|---|---|
 | `T132-R2` | **Medium** | **Yes — correction truth** | Although the handoff correctly disproves T132-R1's mechanism, `main_window.py` now carries an explicit unpolish/polish and a long comment asserting the disproved mechanism as fact; the reviewer test docstring says the same. The enabled route passes with those calls deleted. This is unnecessary source behavior justified by false behavioral prose—the exact “code moved and prose did not” class the project treats as a defect. | Remove the unnecessary repolish or provide a product state that requires it. Keep the enabled real-composition regression, rewrite it as a positive guard for UX-005/T-016, and record T132-R1 as withdrawn rather than corrected. | **Open** |
-| `COORD-R22` | **Medium** | **Yes — review boundary** | `d929d98` is presented as the six-finding correction commit but also includes the unrelated `primary_hover` theme change and its tests (T-146 in source comments), which the handoff never names and no current T-146 task record specifies. It also sweeps the reviewer-owned `ai/REVIEWS.md` into the implementer's commit. The correction boundary therefore contains unreviewed source outside the stated submission. | Before pushing, either give T-146 its own filed task and explicit review scope/evidence, or separate it from this correction boundary using the repository's permitted local-history process. Disclose the reviewer-record inclusion rather than treating `d929d98` as one-purpose. | **Open** |
+| `COORD-R22` | **Medium** | **Yes — review boundary** | `d929d98` is presented as the six-finding correction commit but also includes the unrelated `primary_hover` theme change and its tests (T-146 in source comments), which the handoff never names and no current T-146 task record specifies. It also sweeps the reviewer-owned `docs/project/REVIEWS.md` into the implementer's commit. The correction boundary therefore contains unreviewed source outside the stated submission. | Before pushing, either give T-146 its own filed task and explicit review scope/evidence, or separate it from this correction boundary using the repository's permitted local-history process. Disclose the reviewer-record inclusion rather than treating `d929d98` as one-purpose. | **Open** |
 
 ### Independent verification
 
@@ -9734,9 +9734,9 @@ finding only. `T137-R2`, `T140-R3` and `T140-R5` remain open and were not re-rev
 ### Boundary and submitted uncertainty
 
 The complete reviewed range is `6ad7ce9..ff95990`: `7d66726` changes only `AGENTS.md`,
-`ai/TESTING.md` and `docs/DEVELOPMENT.md`; `d7af554` contains the T132-R2 source and regression
+`docs/project/TESTING.md` and `docs/DEVELOPMENT.md`; `d7af554` contains the T132-R2 source and regression
 correction; `ff95990` commits the handoff. The unrelated one-worker-per-machine prose is disclosed
-and has no source or test effect. `ai/REVIEWS.md`, `ai/TASKS.md` and `ai/STATUS.md` are untouched in
+and has no source or test effect. `docs/project/REVIEWS.md`, `docs/project/TASKS.md` and `docs/project/STATUS.md` are untouched in
 the submitted range. This focused pass does not adjudicate `COORD-R22` or any other open finding.
 
 The submitted uncertainty is resolved in favor of keeping the regression. Its old explanation was
@@ -9787,7 +9787,7 @@ preset name offered by that header's editor. `T137-R2` and `T140-R5` remain outs
   individual-row lifecycle coverage proves the underlying `T126-R3` recursion class; the group
   branch should gain the direct no-emission case when this finding returns with its display fix.
 - **Merge audit confirmed.** `f74de02` is an ancestor of the submitted base. Of its ten touched
-  files, only `ai/DECISIONS.md`, `tests/ui/test_queue_view.py` and
+  files, only `docs/project/DECISIONS.md`, `tests/ui/test_queue_view.py` and
   `tests/ui/test_row_verb_wiring.py` differ at the reviewed head, and each contains later work.
   The other seven are byte-identical. `main_window.py` was not part of `f74de02`; the repolish came
   from `d929d98` on the other merge line, so the corrected attribution in the handoff is accurate.
@@ -9828,7 +9828,7 @@ handoff correctly requests.
 | `T140-R3` | High | No | A common built-in is now rendered through `_effective_format_text()`, so the header says `Download as: Best video available`, matching its editor. The group remains editable, a choice reaches every retargetable member and excludes the completed member, re-choosing the current preset emits nothing, and a different choice still emits. | **Resolved** |
 | `T137-R2` | High | **Yes — T-137 / UX-003 / ARC-009** | The live add-dialog route now admits `QUEUED` entries as `PROBE`, and the manager correctly continues a durable successful probe into `DOWNLOAD` while excluding staging probes. Startup does not preserve that distinction: `queued_job_ids()` returns bare ids for both `QUEUED` and `READY`, and composition admits every id with the default `DOWNLOAD`. If the process exits after the durable playlist rows land but before the add callback admits their probes, restart takes the new `QUEUED` rows directly down the download route. The reviewer restart regression reaches `RUNNING` with the title still `None`; a probe-first restart would persist `A video that exists`. | **Open — partially corrected** |
 | `T140-R5` | High | **Yes — accepted T-140 criterion** | Right/Left disclosure, group Cancel all / conditional Retry failed / Show in folder / Remove, ordinary-row routing, and one count-bearing removal confirmation are implemented and their submitted regressions pass. `Pause all` remains absent. The handoff correctly establishes a conflict with accepted `UX-001`, which removed per-job pause and `JobStatus.PAUSED`; neither implementer nor reviewer may silently choose among waiting for REQ-017, amending UX-005/T-140, or reopening UX-001. | **Blocked — maintainer disposition required** |
-| `COORD-R22` | Medium | No | The hidden hover work was separated, retrospectively filed as T-147 after its id collision was disclosed, and the reviewer record was separated from source. This submitted range names every commit and file in its range table, keeps `ai/REVIEWS.md` out of the implementation, and identifies `191292c` as handoff-only. The header's “seven files” count is a non-blocking arithmetic error—the table names all nine implementation files and the exact SHAs leave the boundary unambiguous. | **Resolved** |
+| `COORD-R22` | Medium | No | The hidden hover work was separated, retrospectively filed as T-147 after its id collision was disclosed, and the reviewer record was separated from source. This submitted range names every commit and file in its range table, keeps `docs/project/REVIEWS.md` out of the implementation, and identifies `191292c` as handoff-only. The header's “seven files” count is a non-blocking arithmetic error—the table names all nine implementation files and the exact SHAs leave the boundary unambiguous. | **Resolved** |
 
 ### New correction-round findings
 
@@ -9903,7 +9903,7 @@ pre-correction scope.
 
 ### Record correction required
 
-Update the outstanding-work row at `ai/IMPLEMENTATION_PLAN.md` criterion-8 item 0 rather than only
+Update the outstanding-work row at `docs/project/IMPLEMENTATION_PLAN.md` criterion-8 item 0 rather than only
 the criterion row above it. Rewrite T-140's opening/current status after this approval so its
 “What remains” statement agrees with the later “Built” paragraph. Rewrite T-142 end to end around
 the scope it actually owns: if it implements History-header verbs after T-145 defines a history
@@ -9968,7 +9968,7 @@ an interchangeable shorthand.
 | Check | Result |
 |---|---|
 | Boundary | `git diff --check 083fbe4..c920446`: **pass**. The range contains the prior review/test carry plus the three current-truth documents corrected at `c920446`. |
-| Stale-claim sweep | No remaining `nine open`, `implementation is not finished`, `What remains here`, or equivalent old T-140 group-verb claim outside `ai/REVIEWS.md`. |
+| Stale-claim sweep | No remaining `nine open`, `implementation is not finished`, `What remains here`, or equivalent old T-140 group-verb claim outside `docs/project/REVIEWS.md`. |
 | T-142 coherence | Title, status, priority, dependency, relevant context, affected surfaces, Scope, acceptance criteria and Out of scope now consistently describe History-header verbs after T-145. |
 | Missing-gate sweep | No current-truth document mentions the required built-window/written checklist for T-132–T-141 or the exact candidate. |
 | Placement gate | `tests/unit/test_task_placement.py`: **14 passed**. |
@@ -9997,7 +9997,7 @@ evidence they now name remain to be performed.
 
 | Check | Result |
 |---|---|
-| Boundary | `git diff --check c920446..431bb47`: **pass**. `814ee93` changes only the reviewer record; `431bb47` changes only `ai/IMPLEMENTATION_PLAN.md` and `ai/STATUS.md`. |
+| Boundary | `git diff --check c920446..431bb47`: **pass**. `814ee93` changes only the reviewer record; `431bb47` changes only `docs/project/IMPLEMENTATION_PLAN.md` and `docs/project/STATUS.md`. |
 | Checklist authority | Both plan and status name the built application, a written T-132–T-141/adopted-mockup checklist, and the exact candidate head; both say automated evidence is insufficient. |
 | Resolution attribution | STATUS names only `T140-R6`, `T137-R2`, `T137-R3` and `T140-R5` as implementation findings resolved at `083fbe4`, and explicitly excludes P2EXIT-R10 from that claim. |
 | Stale/weakening sweep | No current-truth criterion-8 record retains the old “nine open,” unfinished-implementation, or all-findings-at-`083fbe4` claim. The manual checklist is present in both places it is owed. |
@@ -10051,8 +10051,8 @@ criterion 1 asks this review to judge.
 
 | Check | Result |
 |---|---|
-| Boundary | `431bb47..541b484` changes five source files and their tests plus current-truth/evidence records. `541b484..5ccf2bc` changes only plan/status/evidence/handoff files. `git diff --check 431bb47..5ccf2bc` reports one submitted whitespace error: an extra blank line at the end of `ai/STATUS.md`. |
-| Candidate-range identity | `git diff --stat 6bae7ec..541b484` confirms only `ai/TASKS.md` differs, so the Fedora second run does describe one application build despite its unrecorded exact commit. |
+| Boundary | `431bb47..541b484` changes five source files and their tests plus current-truth/evidence records. `541b484..5ccf2bc` changes only plan/status/evidence/handoff files. `git diff --check 431bb47..5ccf2bc` reports one submitted whitespace error: an extra blank line at the end of `docs/project/STATUS.md`. |
+| Candidate-range identity | `git diff --stat 6bae7ec..541b484` confirms only `docs/project/TASKS.md` differs, so the Fedora second run does describe one application build despite its unrecorded exact commit. |
 | Reviewer criterion-1 regression | `test_a_finished_probe_does_not_outlive_the_ready_status`: **failed** — actual state `Probing`, expected `Ready to download`; the chip is `Ready`. |
 | Reviewer focus regression | `test_a_hidden_history_refresh_does_not_take_focus_from_the_toolbar`: **failed** — refreshing hidden History moves focus off `concurrencyChoice`. |
 | Submitted correction neighborhood | **9 passed**: the five T-152 keyboard cases, T-165 cancelled summary and enum coverage, the corrected finished-segment palette case, and T-153's adapter projection case. These prove the submitted local mechanisms but do not reach the two reviewer failures or a thumbnail fetch. |
@@ -10506,8 +10506,8 @@ Complete against acceptance criteria whose premise its own completion note rejec
 
 | ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
 |---|---|---:|---|---|---|---|
-| `ROWLAYOUT-R1` | **Medium** | **Yes — required exact-head check** | Formatting gate | `ai/TESTING.md` requires `ruff format --check .`, but the handoff records only the narrower `ruff format --check src tests`. On exact submission head `9a2bf16`, the canonical command fails on the new handoff's Python fence at lines 99 and 102: both inline comments have three spaces where Ruff requires two. The source/test subset was clean before the handoff was committed; the submitted head is not. | Format the handoff and run the canonical repository-wide command on the resulting exact head. Record that result rather than carrying the pre-handoff subset result forward. | **Open** |
-| `T166-R1` | **Medium** | **Yes — current task contract** | `ai/TASKS.md` T-166 | The completion note at lines 2679–2690 correctly says the filed premise was wrong: verbs and selector occupy different lines, so there is no shared-line minimum to choose. The live Scope and acceptance criteria at lines 2702–2724 still prescribe that rejected geometry, including verbs yielding width to the format line and a named minimum before a verb is drawn beside it. T-166 is therefore Complete while its canonical criteria require a number the same entry says should not exist. The implementation and differential swept test establish the corrected property; the task contract does not. | Rewrite T-166's Scope and acceptance criteria from the corrected geometry: verbs must not change the format line's width or pixels; assert that on a group header across the sweep. Remove the shared-line/minimum requirements rather than leaving the completion note to overrule them. Keep T-163 as the owner of bar-versus-verb yielding and overflow reachability. | **Open** |
+| `ROWLAYOUT-R1` | **Medium** | **Yes — required exact-head check** | Formatting gate | `docs/project/TESTING.md` requires `ruff format --check .`, but the handoff records only the narrower `ruff format --check src tests`. On exact submission head `9a2bf16`, the canonical command fails on the new handoff's Python fence at lines 99 and 102: both inline comments have three spaces where Ruff requires two. The source/test subset was clean before the handoff was committed; the submitted head is not. | Format the handoff and run the canonical repository-wide command on the resulting exact head. Record that result rather than carrying the pre-handoff subset result forward. | **Open** |
+| `T166-R1` | **Medium** | **Yes — current task contract** | `docs/project/TASKS.md` T-166 | The completion note at lines 2679–2690 correctly says the filed premise was wrong: verbs and selector occupy different lines, so there is no shared-line minimum to choose. The live Scope and acceptance criteria at lines 2702–2724 still prescribe that rejected geometry, including verbs yielding width to the format line and a named minimum before a verb is drawn beside it. T-166 is therefore Complete while its canonical criteria require a number the same entry says should not exist. The implementation and differential swept test establish the corrected property; the task contract does not. | Rewrite T-166's Scope and acceptance criteria from the corrected geometry: verbs must not change the format line's width or pixels; assert that on a group header across the sweep. Remove the shared-line/minimum requirements rather than leaving the completion note to overrule them. Keep T-163 as the owner of bar-versus-verb yielding and overflow reachability. | **Open** |
 
 ### Review judgments
 
@@ -10543,7 +10543,7 @@ Complete against acceptance criteria whose premise its own completion note rejec
 | Diff hygiene | `git diff --check 38504b3..9a2bf16`: **pass**. |
 | Relevant tests and placement | `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q tests/unit/test_task_placement.py tests/ui/test_row_delegate.py`: **66 passed** in 4.98 s. |
 | Lint | `.venv/bin/python -m ruff check .`: **pass**. |
-| Format | `.venv/bin/python -m ruff format --check .`: **fail** — one file, `ai/handoffs/2026-08-05-row-layout.md`, would be reformatted at lines 99 and 102. |
+| Format | `.venv/bin/python -m ruff format --check .`: **fail** — one file, `docs/project/handoffs/2026-08-05-row-layout.md`, would be reformatted at lines 99 and 102. |
 | Types, host | `.venv/bin/python -m mypy`: **pass**, 107 files. |
 | Types, Windows branches | `.venv/bin/python -m mypy --platform win32`: **pass**, 107 files. |
 | Realistic paint probe | Rendered a group carrying selector, control, two verbs and sixteen states at row widths 300, 500 and 700. The format line remained above the verbs; the bar was eight deliberate blocks while narrow and sixteen at the single wide transition, with failure visible. A terminal fraction row kept progress visible while dropped actions remained in overflow. |
@@ -10583,7 +10583,7 @@ only; source, tests, build inputs and workflows remain byte-identical to the rev
 | Check | Result |
 |---|---|
 | Correction boundary | `9a2bf16..4799136` contains **three** commits: `8e3f4cd` records the prior review, `1d9022e` applies both corrections, and `4799136` adds the correction handoff. The conversational report said four; the handoff's own two-correction-commit boundary plus submission commit is accurate. |
-| Review-record integrity | `8e3f4cd` changes only `ai/REVIEWS.md`, **72 additions / 0 deletions**. The appended prior review is unmodified. Committing that reviewer-authored record is accepted. |
+| Review-record integrity | `8e3f4cd` changes only `docs/project/REVIEWS.md`, **72 additions / 0 deletions**. The appended prior review is unmodified. Committing that reviewer-authored record is accepted. |
 | Executable-tree identity | `git diff --exit-code fd15ade..4799136 -- src tests pyproject.toml .github`: **empty**. No full-suite rerun is required; the accepted 2204-pass evidence remains about the same executable and tests. |
 | Task-sibling audit | Parsing every `T-###` block at `9a2bf16` and `4799136` finds exactly one changed task body: **T-166**. Status, disposition, thresholds and every sibling task entry are unchanged. |
 | Diff hygiene | `git diff --check 9a2bf16..4799136`: **pass**. |
@@ -10654,7 +10654,7 @@ recorded as maintainer rulings; the task layer cannot grant that authority to it
 | Reviewer test static gates | `ruff check` and `ruff format --check`: **pass**. `mypy --no-incremental` and `mypy --platform win32 --no-incremental`: **success, 109 files**. |
 | Submitted broader evidence | Implementer reports unit/UI/integration **2242 passed, 11 skipped**, ruff and mypy clean. Network and Windows runtime tests were not run. |
 
-The reviewer changed only `ai/REVIEWS.md` and the two test files containing the four regressions.
+The reviewer changed only `docs/project/REVIEWS.md` and the two test files containing the four regressions.
 No reviewed source, decision, task state, commit, remote ref or CI state was changed.
 
 ## 2026-08-05 — Phase 3 History batch focused correction re-review
@@ -10736,10 +10736,10 @@ is fully green:** exact-head run `31065421037` remains in progress/queued at rev
 
 ### Merge reconstruction
 
-- **`ai/REVIEWS.md` is exact.** Both parents are byte-prefix appends to the merge-base file. The
+- **`docs/project/REVIEWS.md` is exact.** Both parents are byte-prefix appends to the merge-base file. The
   merged result is byte-for-byte `base + row-layout append + History append`: 108 and 123 added
   lines respectively, 231 together, with no deletion or rewritten review record.
-- **`ai/TASKS.md` is exact.** Parsing all four revisions yields 165 unique task blocks apiece. The
+- **`docs/project/TASKS.md` is exact.** Parsing all four revisions yields 165 unique task blocks apiece. The
   History parent changes only T-142, T-144, T-145, T-156 and T-159; the row-layout parent changes
   only T-160, T-163, T-164, T-166 and T-167. The sets are disjoint. Every merged block equals the
   sole parent that changed it, every untouched block equals base, and non-entry prose is
@@ -11200,7 +11200,7 @@ and T-178's replacement comment misstates the credential boundary the deleted se
 - **The ordinary T-179 signal paths work.** The submitted removal tests pass, and an independent
   `queue_cleared` probe scheduled `{url}` followed by the empty live set. The blocker is the
   asynchronous cache-write window hidden by remembering request equality.
-- **The pre-existing `ai/REVIEWS.md` delta is not part of this implementation review.** It is the
+- **The pre-existing `docs/project/REVIEWS.md` delta is not part of this implementation review.** It is the
   byte-for-byte T-175/T-158 record appended by this reviewer in the prior pass. This review added
   only the present section.
 
@@ -11208,7 +11208,7 @@ and T-178's replacement comment misstates the credential boundary the deleted se
 
 | Check | Result |
 |---|---|
-| Boundary | Base `9da673b`; before this review record the worktree contained exactly nine modified files: `ai/REVIEWS.md`, `ai/STATUS.md`, `ai/TASKS.md`, three source files and three test files. `git diff --check`: **pass**. The named handoff file was not present in the checkout or home directory, so the task entries and bounded diff were used directly. |
+| Boundary | Base `9da673b`; before this review record the worktree contained exactly nine modified files: `docs/project/REVIEWS.md`, `docs/project/STATUS.md`, `docs/project/TASKS.md`, three source files and three test files. `git diff --check`: **pass**. The named handoff file was not present in the checkout or home directory, so the task entries and bounded diff were used directly. |
 | Focused suites | Persistence, interrupted-offer, queue-view, row-delegate and composition: **246 passed** in 27.96 s. |
 | Full default suite | With loopback permission: **2176 passed, 11 skipped, 2 deselected** in 364.91 s. The restricted attempt was stopped after confirmed `PermissionError: Operation not permitted` failures creating local test sockets; those environmental failures disappeared with permission. |
 | Static gates | `ruff check .`: **pass**; `ruff format --check .`: **184 files already formatted**; configured host mypy and `mypy --platform win32`: **success, 107 source files each**. |
@@ -11247,10 +11247,10 @@ findings remain.
 
 | ID | Severity | Blocks approval | Re-review result | Status |
 |---|---|---:|---|---|
-| `T105-R1` | **High** | **Yes** | `docs/UX_SPEC.md` correctly withdraws P-8 and transcribes TOML at the existing `settings.toml`, but the correction leaves the opposite instructions in the dependent task and phase plan. At `a688a4e`, `T-111` still lists “`core/settings.py` or a new store,” says where presets live “is a decision this task must take or raise,” and argues for a sibling file (`ai/TASKS.md:1714,1722-1725`). The Phase 3 deliverables table still says where user presets live “needs a decision” (`ai/IMPLEMENTATION_PLAN.md:564`). An implementer following those current-truth entries can still create the new store this finding forbids. | **Open** |
-| `T105-R2` | **Medium** | **Yes** | The UX spec itself now states the two facts correctly: an explicit table pair is known to merge, while the worker reads resolved `requested_formats` and falls back only when unresolved. `T-108` still says T-061 means “the ffmpeg gate reads the selector, not the chosen format,” says that selector reading “approved a merge it could not perform,” and asks for a pair a selector-only check would wrongly approve (`ai/TASKS.md:1570-1595`). T-061's reproduced defect was the reverse: the selector fallback falsely refused a progressive `/best` resolution. The downstream task therefore still directs the implementation toward the rejected rule. | **Open — ordinary Medium pass budget exhausted by this re-review** |
+| `T105-R1` | **High** | **Yes** | `docs/UX_SPEC.md` correctly withdraws P-8 and transcribes TOML at the existing `settings.toml`, but the correction leaves the opposite instructions in the dependent task and phase plan. At `a688a4e`, `T-111` still lists “`core/settings.py` or a new store,” says where presets live “is a decision this task must take or raise,” and argues for a sibling file (`docs/project/TASKS.md:1714,1722-1725`). The Phase 3 deliverables table still says where user presets live “needs a decision” (`docs/project/IMPLEMENTATION_PLAN.md:564`). An implementer following those current-truth entries can still create the new store this finding forbids. | **Open** |
+| `T105-R2` | **Medium** | **Yes** | The UX spec itself now states the two facts correctly: an explicit table pair is known to merge, while the worker reads resolved `requested_formats` and falls back only when unresolved. `T-108` still says T-061 means “the ffmpeg gate reads the selector, not the chosen format,” says that selector reading “approved a merge it could not perform,” and asks for a pair a selector-only check would wrongly approve (`docs/project/TASKS.md:1570-1595`). T-061's reproduced defect was the reverse: the selector fallback falsely refused a progressive `/best` resolution. The downstream task therefore still directs the implementation toward the rejected rule. | **Open — ordinary Medium pass budget exhausted by this re-review** |
 | `T105-R3` | **High** | **Yes** | The correction marks the previously unmarked refusals, moves the named screen/container/control choices to P-13 through P-28, separates the settled and proposed §12 inventories, and collects 27 active proposals plus withdrawn P-8 in §10. The previously unsupported shared-screen, subtitle, playlist-container, preview and duplicate-warning choices are no longer presented as derived facts. | **Resolved at `a688a4e`** |
-| `T105-R4` | **Medium** | **Yes** | The task reconciliation remains incomplete. `T-112` explicitly identifies report-as-you-type as unruled P-23 but still requires “An invalid template is reported as the user types” (`ai/TASKS.md:1749-1751,1776`). `T-114`'s relevant-context field still states “a staging-row state, never a modal” as fact although the corrected spec makes that P-26 (`ai/TASKS.md:1836-1838`). Merely naming the contradiction does not keep an implementation task from satisfying its own acceptance criteria with an unratified choice. | **Open — ordinary Medium pass budget exhausted by this re-review** |
+| `T105-R4` | **Medium** | **Yes** | The task reconciliation remains incomplete. `T-112` explicitly identifies report-as-you-type as unruled P-23 but still requires “An invalid template is reported as the user types” (`docs/project/TASKS.md:1749-1751,1776`). `T-114`'s relevant-context field still states “a staging-row state, never a modal” as fact although the corrected spec makes that P-26 (`docs/project/TASKS.md:1836-1838`). Merely naming the contradiction does not keep an implementation task from satisfying its own acceptance criteria with an unratified choice. | **Open — ordinary Medium pass budget exhausted by this re-review** |
 
 ### Focused review judgments
 
@@ -11340,13 +11340,13 @@ preserves the already verified resolution of High `T179-R2`. One Low wording iss
 
 | Check | Result |
 |---|---|
-| Boundary | `e159c9a..1e0d0d5` changes only `ai/TASKS.md` and the `cache_generation()` docstring; `git diff --check e159c9a..1e0d0d5`: **pass**. |
+| Boundary | `e159c9a..1e0d0d5` changes only `docs/project/TASKS.md` and the `cache_generation()` docstring; `git diff --check e159c9a..1e0d0d5`: **pass**. |
 | Authority check | A-004 says no concurrent instances against the same database; accepted ARC-006 derives ownership from that database path; `thumbnail_cache_directory()` derives only from the platform cache root. The corrected rationale matches all three. |
 | Focused suites | Queue view, row delegate and task placement on the current head: **145 passed** in 6.31 s. |
 | Static gates | `ruff check .`: **pass**; `ruff format --check .`: **184 files already formatted**; host mypy and win32 mypy: **success, 44 source files each**, invoked through `.venv/bin/python -m mypy` because the wrapper shebang is stale. |
 
 The reviewer appended these three records only. Concurrent uncommitted edits in
-`ai/DECISIONS.md`, `ai/REQUIREMENTS.md`, and `docs/UX_SPEC.md` belong to another agent's roadmap
+`docs/project/DECISIONS.md`, `docs/project/REQUIREMENTS.md`, and `docs/UX_SPEC.md` belong to another agent's roadmap
 work and were excluded from every boundary and finding. No reviewed source, reviewed test, task
 state, status state, commit, remote ref, migration, user database or CI state was changed.
 
@@ -11399,7 +11399,7 @@ T-179 are not.
 
 | Check | Result |
 |---|---|
-| Boundary | `git status --short` showed exactly the same nine modified files as the initial pass; `git diff --check`: **pass**. There is still no correction-only snapshot, so the handoff's named hunks were checked against the prior review record. The two earlier `ai/REVIEWS.md` sections were unchanged before this append. |
+| Boundary | `git status --short` showed exactly the same nine modified files as the initial pass; `git diff --check`: **pass**. There is still no correction-only snapshot, so the handoff's named hunks were checked against the prior review record. The two earlier `docs/project/REVIEWS.md` sections were unchanged before this append. |
 | Focused suites | Persistence, interrupted-offer, queue-view, row-delegate and composition: **250 passed** in 20.58 s. The four corrected T-179 tests separately passed **4/4**; the two focused waiting-job tests passed **2/2**. |
 | T177 mutation | Runtime injection of the exact old `all_jobs()` plus Python filter: **killed**; the new test failed with 12 deserializations for 2 returned rows. |
 | Static gates | `ruff check .`: **pass**; `ruff format --check .`: **184 files already formatted**; configured host mypy and `mypy --platform win32`: **success, 107 source files each**. |
@@ -11517,7 +11517,7 @@ non-blocking follow-up; T-179's approval is unchanged.
 |---|---|---:|---|---|
 | `T105-R1` | **High** | **Yes** | T-111 now names only `core/settings.py`, states that presets are TOML in the existing `settings.toml`, and explicitly rules out a new store, sibling file, table or migration. The Phase 3 deliverables row states the same settled DAT-001 boundary. The contrary phrases remain only inside clearly marked superseded/correction history. | **Resolved in the bounded working tree** |
 | `T105-R2` | **Medium** | **Yes** | T-108 now separates an explicit table pair from the worker's definitive resolved-format gate and records T-061's measured direction correctly: selector inspection falsely refused a `/best` resolution that produced one progressive format. Its two criteria distinguish both directions—an explicit pair is refused without ffmpeg; a `+` selector resolved to one progressive format is not. A selector-only implementation cannot satisfy both. | **Resolved in the bounded working tree** |
-| `T105-R4` | **Medium** | **Yes** | T-114's context and criterion now leave row-versus-modal treatment to P-26. T-112's acceptance criterion likewise requires only that an invalid template never reach download and leaves edit-time versus commit-time refusal to P-23. However T-112's own `Relevant context` still says “P-23 is this task's own report-as-you-type criterion” (`ai/TASKS.md:1772-1775`). That is the same unratified timing choice presented as task truth one paragraph before the corrected criterion says the timing is unruled. | **Open — ordinary pass budget exhausted; maintainer disposition required** |
+| `T105-R4` | **Medium** | **Yes** | T-114's context and criterion now leave row-versus-modal treatment to P-26. T-112's acceptance criterion likewise requires only that an invalid template never reach download and leaves edit-time versus commit-time refusal to P-23. However T-112's own `Relevant context` still says “P-23 is this task's own report-as-you-type criterion” (`docs/project/TASKS.md:1772-1775`). That is the same unratified timing choice presented as task truth one paragraph before the corrected criterion says the timing is unruled. | **Open — ordinary pass budget exhausted; maintainer disposition required** |
 | `T168-R1` | **Medium** | **Yes** | The per-pixel monotonicity sweep now covers counts 5, 8, 9, 16, 24 and 37, checks that each count actually drew the expected merged/unmerged renderings, and retains a non-vacuity assertion. Independent mutation restored the old reserve globally and produced exactly **3 failures / 3 passes** (16, 24, 37 failed); preserving the correct sixteen case while restoring the old reserve elsewhere produced **2 failures / 4 passes** (24 and 37 failed). The count-specific survivor named by the finding is therefore killed outside sixteen. Nine's harmless 17 px step is accurately documented rather than counted as mutation evidence. | **Resolved in the bounded working tree** |
 | `T179-R3` | **Low** | **No** | T-180 now requires the residual-risk paragraph to say the precise event-driven trigger—until this process's own membership changes—or remove the paragraph if partitioning removes the risk. No approved T-179 source was changed. | **Open — correctly owned by T-180** |
 
@@ -11535,7 +11535,7 @@ not apply that correction or authorize its own next pass.
 
 | Check | Result |
 |---|---|
-| Boundary | Finding corrections are in `ai/TASKS.md`, the T-111 Phase 3 row in `ai/IMPLEMENTATION_PLAN.md`, and `tests/ui/test_row_delegate.py`. UX-006/ARC-010 roadmap edits in decisions, requirements, plan, tasks and `docs/UX_SPEC.md` were excluded except where a correction hunk itself was inspected. `git diff --check`: **pass**. |
+| Boundary | Finding corrections are in `docs/project/TASKS.md`, the T-111 Phase 3 row in `docs/project/IMPLEMENTATION_PLAN.md`, and `tests/ui/test_row_delegate.py`. UX-006/ARC-010 roadmap edits in decisions, requirements, plan, tasks and `docs/UX_SPEC.md` were excluded except where a correction hunk itself was inspected. `git diff --check`: **pass**. |
 | Focused suites | Queue view, row delegate and task placement: **150 passed** in 9.61 s. |
 | T168 global old-reserve mutant | Independent temporary-tree run: **3 failed, 3 passed**; failures at 16, 24 and 37. |
 | T168 count-specific mutant | Independent temporary-tree run retaining the correct sixteen path: **2 failed, 4 passed**; failures at 24 and 37. |
@@ -11569,7 +11569,7 @@ criterion. No open blocking finding remains.
 
 | Check | Result |
 |---|---|
-| Boundary | The behavioral correction is one sentence in `ai/TASKS.md`; no source, test, acceptance criterion or other task entry changed in this pass. UX-006/ARC-010 roadmap hunks remain excluded. `git diff --check`: **pass**. |
+| Boundary | The behavioral correction is one sentence in `docs/project/TASKS.md`; no source, test, acceptance criterion or other task entry changed in this pass. UX-006/ARC-010 roadmap hunks remain excluded. `git diff --check`: **pass**. |
 | Context/criterion agreement | T-112 `Relevant context` and its invalid-template criterion both identify P-23 as unruled and choose neither timing: **pass**. |
 | Task placement | **14 passed** in 0.06 s. |
 | Broader evidence not rerun | The immediately preceding focused pass established **150 passed**, clean ruff/format, and clean host/win32 mypy. This one-sentence docs correction did not require rerunning source/UI gates. |
@@ -11905,7 +11905,7 @@ blocked by four user-visible correctness defects, the omission of `UX-007`'s exp
 | `T109-R3` | **High** | **Yes** | A sidecar claim failure is logged and swallowed, `_run` ignores the empty result, and the unconditional `finally` then deletes the staging directory before returning `Succeeded`. A deterministic `UnsafePathError` probe left the requested subtitle in staging after `claim_sidecars`, then `_discard_staging` deleted it while the media remained. The job would tell the user it completed even though one of the outputs they requested was deliberately discarded. This violates T-109's first acceptance criterion; `_discard_staging`'s cleanup rationale does not apply to a requested output. | Make an unclaimed written subtitle part of the session outcome, not cleanup noise. Do not report success after deleting it; distinguish the written-subtitle path from the valid embedded-subtitle case where the intermediate is expected to be absent. Add deterministic missing-file and failed-claim cases, including a partially claimed multi-language set. | **Open** |
 | `T109-R4` | **Medium** | **Yes** | Sidecar collisions are resolved independently after the media name is fixed. With `Clip.mp4` free but an existing `Clip.de.vtt`, a new requested subtitle lands as `Clip.de (2).vtt`. That is no longer the conventional sidecar for `Clip.mp4`; a player can associate the old `Clip.de.vtt` and ignore the newly downloaded file. The implementation comment acknowledges the odd compound name, while the acceptance criterion requires the sidecar to follow the media's actual name. | Choose one free basename for the media and its requested sidecar family, or otherwise keep every collision variant under the same media stem (`Clip (2).mp4` / `Clip (2).de.vtt`). Add collisions where only a subtitle is occupied and where both media and subtitle names are occupied. | **Open** |
 | `T109-R5` | **High** | **Yes** | `UX-007` ratified P-4 as: a one-off editor explicitly offers *Save as preset…*. The submitted dialog has only OK and Cancel, and its module docstring expressly defers the action to T-111. T-109's task context links the accepted ruling and says this is the §6 editor; its narrower out-of-scope statement cannot override the accepted decision. | Implement the explicit action through an agreed T-111 creation seam, or obtain a maintainer amendment that deliberately moves P-4 out of T-109. Do not describe the omission as satisfying the ruling that requires the control. | **Open** |
-| `T109-R6` | **Medium** | **Yes** | `ai/TESTING.md` §3 requires bare `mypy` and `mypy --platform win32` whenever a test file changes. Both fail at `4cb549d`: `tests/ui/test_options_dialog.py:39` annotates a yielding fixture as `Callable` instead of a generator type, and `tests/integration/test_end_to_end.py:720` constructs an untyped `dict` from a value declared as `str`. The handoff reports only the narrower `mypy src` variants, which do not read tests. | Correct both annotations/types and run the required bare host and Win32-platform commands to success. Preserve the narrower source checks as well; they are not substitutes for the test-reading gate. | **Open** |
+| `T109-R6` | **Medium** | **Yes** | `docs/project/TESTING.md` §3 requires bare `mypy` and `mypy --platform win32` whenever a test file changes. Both fail at `4cb549d`: `tests/ui/test_options_dialog.py:39` annotates a yielding fixture as `Callable` instead of a generator type, and `tests/integration/test_end_to_end.py:720` constructs an untyped `dict` from a value declared as `str`. The handoff reports only the narrower `mypy src` variants, which do not read tests. | Correct both annotations/types and run the required bare host and Win32-platform commands to success. Preserve the narrower source checks as well; they are not substitutes for the test-reading gate. | **Open** |
 | `T109-R7` | **Low** | **No** | `core/models.py` still says two `FFmpegMetadata` entries would be deduplicated and “lose whichever flag came second.” The mutation evidence established the opposite: constructor defaults turn an omitted flag on. The adapter docstring was corrected, but this sibling current-source explanation was not. | Correct the model comment in the T-109 correction batch. If it is not corrected there, assign it to a named documentation follow-up before approval. | **Open — owner Implementer, target T-109 correction batch** |
 
 ### Review judgments
@@ -12023,7 +12023,7 @@ CI state was changed.
 
 **Implementer:** Claude Code
 **Corrects:** the 2026-08-08 review above (`T109-R1`..`T109-R7`)
-**Review base:** `4cb549d` (the reviewed head) · **Correction head:** see `ai/TASKS.md`
+**Review base:** `4cb549d` (the reviewed head) · **Correction head:** see `docs/project/TASKS.md`
 **Status of each finding:** corrected and **awaiting re-review**. Only the Reviewer marks a finding
 `Resolved`, after independent verification (`AGENTS.md` §10).
 
@@ -12108,7 +12108,7 @@ is authorized by `AGENTS.md` §10.
 |---|---|---|---|---|---|
 | `T109-R8` | **Critical** | **Yes** | `claim_outputs` decides that a reported source belongs to the private staging directory with the lexical test `staging in path.parents`. `staging/../Clip.de.vtt` therefore passes. A deterministic probe put user-owned bytes at that adjacent path, reported the `..` spelling as a requested subtitle, and called `claim_outputs`; the original user path disappeared and its bytes were moved into the claimed download family. The `produced` media source has no containment check at all, so it is the same unchecked-source class. This crosses the ownership boundary and can relocate a file the session did not create. | Resolve and enforce containment for **every source before reserving or moving anything**: produced media and all reported sidecars, including `..`, absolute-outside, and symlink spellings. An outside/malformed reported source must fail the session without touching that source or leaving reservations. Add deterministic tests for both media and sidecars and mutation-check weakening the resolved containment check. Audit every yt-dlp-reported path consumed as a source by this claim route. | **Open** |
 | `T109-R9` | **Medium** | **Yes** | The new Save-as-preset path can report success without a durable preset, and can write TOML it cannot read. `settings.save()` swallows every `OSError`; composition then returns `None`, so the dialog says `Saved as …` even when the target is a directory/read-only/unwritable. Separately, `_toml_string` escapes only quote, slash, newline, CR and tab. `QLineEdit` preserves other pasted control characters; saving a name containing `\x08` produced invalid TOML, and the next `load()` returned no presets and reset concurrency from 7 to 3 with `Illegal character '\x08'`. Both are observable correctness/data-integrity failures in the action added for `T109-R5`. | Make the sink's result reflect the actual write outcome without weakening settings' non-fatal error policy, and make serialization total for every name the UI accepts (or validate/refuse unsupported characters before replacing the file). Prove a refused write is not labelled saved and a control-character name cannot make existing settings/presets unreadable. Mutation-check both failure paths. | **Open** |
-| `T109-R10` | **Medium** | **Yes** | The correction updated current-truth coordination files but left them materially contradicting the corrected product: `ai/TASKS.md` still says `claim_sidecars` performs the work and that the editor has no Save-as-preset button; its `T-190` criterion says the control arrives with `T-111`. `ai/STATUS.md` likewise says the button is deliberately absent and describes `claim_sidecars`. These are not historical snapshots; they tell the next implementer that the removed API/current control are the opposite of reality. | Update the stale current-truth passages to the approved implementation and keep the historical review narrative intact. | **Open** |
+| `T109-R10` | **Medium** | **Yes** | The correction updated current-truth coordination files but left them materially contradicting the corrected product: `docs/project/TASKS.md` still says `claim_sidecars` performs the work and that the editor has no Save-as-preset button; its `T-190` criterion says the control arrives with `T-111`. `docs/project/STATUS.md` likewise says the button is deliberately absent and describes `claim_sidecars`. These are not historical snapshots; they tell the next implementer that the removed API/current control are the opposite of reality. | Update the stale current-truth passages to the approved implementation and keep the historical review narrative intact. | **Open** |
 
 ### Reviewer verification at `1381f7f`
 
@@ -12128,7 +12128,7 @@ is authorized by `AGENTS.md` §10.
 
 The implementer's full-suite result was not re-run in this focused pass. Windows runtime and real
 sites remain unverified. Only this review record was changed by the reviewer; reviewed source,
-tests, `ai/TASKS.md`, and `ai/STATUS.md` were not edited, and no commit or push was made.
+tests, `docs/project/TASKS.md`, and `docs/project/STATUS.md` were not edited, and no commit or push was made.
 
 
 ## 2026-08-08 — T-113 correction batch, and T-109's second
@@ -12161,7 +12161,7 @@ four review rounds. They are corrected differently on purpose:
 | `T113-R3` | The worker no longer decides; `_release` discards once the tree is reaped, for a user Cancel or Remove only. `remove()` records the intent instead of deleting up front. | `test_cancelling_an_uncooperative_download_still_discards_its_partial` and `test_removing_an_uncooperative_download_discards_what_it_recreates`, both against a child that ignores `SIGTERM` and rewrites its partial every 20 ms |
 | `T109-R8` | `_inside` resolves both sides and requires strict containment; `produced` is checked too. A reported path outside staging raises **before** the reservation loop. | The `..` spelling, a symlink out of staging, an outside media source, and the staging directory itself — each asserting the victim's bytes and that no reservation was left |
 | `T109-R9` | `save()` returns the failure instead of swallowing it, writes through a scratch file and `os.replace`, and `_toml_string` escapes **every** control character by codepoint. Composition reports the write's own answer and does not advance its in-memory copy when the write failed. | `test_a_write_that_cannot_happen_says_so`, `test_a_failed_write_leaves_the_previous_file_intact`, `test_a_name_carrying_a_control_character_does_not_destroy_the_file`, `test_every_control_character_survives_the_round_trip` |
-| `T109-R10` | `ai/TASKS.md` and `ai/STATUS.md` describe `claim_outputs` and the built *Save as preset…*; `T-190`'s criterion now asks for the control to be described rather than deferred. The historical narrative is kept in the past tense. | Prose |
+| `T109-R10` | `docs/project/TASKS.md` and `docs/project/STATUS.md` describe `claim_outputs` and the built *Save as preset…*; `T-190`'s criterion now asks for the control to be described rather than deferred. The historical narrative is kept in the past tense. | Prose |
 
 ### What the corrections cost beyond the findings
 
@@ -12233,7 +12233,7 @@ before it writes. Critical correction passes remain authorized by `AGENTS.md` §
 
 The implementer's full-suite result was not independently re-run in this focused pass. Windows
 runtime and real sites remain unverified. Only this review record was changed by the reviewer;
-reviewed source, tests, `ai/TASKS.md`, and `ai/STATUS.md` were not edited, and no commit or push was
+reviewed source, tests, `docs/project/TASKS.md`, and `docs/project/STATUS.md` were not edited, and no commit or push was
 made.
 
 
@@ -12343,7 +12343,7 @@ now covers the whole staging lifetime:
 
 The implementer's full-suite and mutation results were not independently re-run. Windows runtime
 and real sites remain unverified. Only this review record was changed by the reviewer; reviewed
-source, tests, `ai/TASKS.md`, and `ai/STATUS.md` were not edited, and no commit or push was made.
+source, tests, `docs/project/TASKS.md`, and `docs/project/STATUS.md` were not edited, and no commit or push was made.
 
 
 ## 2026-08-08 — T-111 implementation review
@@ -12354,7 +12354,7 @@ source, tests, `ai/TASKS.md`, and `ai/STATUS.md` were not edited, and no commit 
 **Review head:** `bf30d82`
 **Scope:** the four-commit T-111 boundary, its six acceptance criteria, and the already-reviewed
 ARC-008 preset reader needed to judge criterion 6. The untracked handoff
-`ai/handoffs/2026-08-08-T-111.md` was read but is not part of the reviewed boundary.
+`docs/project/handoffs/2026-08-08-T-111.md` was read but is not part of the reviewed boundary.
 
 **Verdict:** **Changes requested.** The stored operations, resolved default, ffmpeg predicate, and
 basic manager surface work, but saved presets cannot be edited through the shared options screen
@@ -12406,8 +12406,8 @@ ambiguous; and the only *Manage presets…* route opens a modal dialog synchrono
 | Saved-options route inspection | **failed the accepted P-3/P-16 route**: no `OptionsDialog` import, control, or construction exists in `preset_manager.py` |
 
 The implementer's full-suite, CI, and mutation results were not independently re-run. Windows
-runtime and real sites remain unverified. Only `ai/REVIEWS.md` was changed by the reviewer;
-reviewed source, tests, `ai/TASKS.md`, and `ai/STATUS.md` were not edited, and no commit or push was
+runtime and real sites remain unverified. Only `docs/project/REVIEWS.md` was changed by the reviewer;
+reviewed source, tests, `docs/project/TASKS.md`, and `docs/project/STATUS.md` were not edited, and no commit or push was
 made.
 
 
@@ -12469,7 +12469,7 @@ criterion while explicitly putting that field and its required schema change out
 
 | ID | Severity | Blocks approval | Finding | Required disposition | Status |
 |---|---|---:|---|---|---|
-| `T143-R1` | **High** | **Yes** | The first acceptance row still requires entries to acquire “title, duration, **size** and picture without being downloaded” (`ai/TASKS.md:278`). The implementation and its named test carry title, uploader, duration, and picture, but no size. The entry itself explains why: size is per-format, `Job` has no pre-download size field, and adding one is a schema/design change now declared out of scope (`ai/TASKS.md:285-295`). That is an honest diagnosis, not satisfaction of the stated criterion. A reviewer cannot silently remove an acceptance condition or authorize the schema expansion. | The maintainer must either amend the criterion to the actual `UX-005` §3 row anatomy and explicitly defer pre-download size, or authorize the schema/design work needed to meet the existing wording. If the criterion is narrowed with no source change, a focused documentation re-review is sufficient. | **Open** |
+| `T143-R1` | **High** | **Yes** | The first acceptance row still requires entries to acquire “title, duration, **size** and picture without being downloaded” (`docs/project/TASKS.md:278`). The implementation and its named test carry title, uploader, duration, and picture, but no size. The entry itself explains why: size is per-format, `Job` has no pre-download size field, and adding one is a schema/design change now declared out of scope (`docs/project/TASKS.md:285-295`). That is an honest diagnosis, not satisfaction of the stated criterion. A reviewer cannot silently remove an acceptance condition or authorize the schema expansion. | The maintainer must either amend the criterion to the actual `UX-005` §3 row anatomy and explicitly defer pre-download size, or authorize the schema/design work needed to meet the existing wording. If the criterion is narrowed with no source change, a focused documentation re-review is sufficient. | **Open** |
 
 ### Code judgment and verification
 
@@ -12506,7 +12506,7 @@ does not exercise the criterion's two stores.
 
 | ID | Severity | Blocks approval | Finding | Required correction or disposition | Status |
 |---|---|---:|---|---|---|
-| `T180-R1` | **High** | **Yes** | T-180 says this is “a decision task before it is an implementation task,” assigns the per-machine/per-database choice to the maintainer, and requires the chosen boundary, rejected alternative, and rationale in `ai/DECISIONS.md` before code moves (`ai/TASKS.md:368-382`). No decision entry was added. `ARC-006` permits distinct-database instances; it does not select between a database partition and a safely coordinated machine-wide cache. The source and current-truth prose therefore treat an unratified choice as derived. The legacy rule—first database to launch adopts the mixed shared cache, later databases refetch—is likewise a durable trade-off that belongs with the boundary decision. | The maintainer must accept the per-database boundary and first-launch adoption semantics in `ai/DECISIONS.md`, recording the safely shared alternative and why it lost, or choose the alternative and return the implementation for correction. This needs a maintainer decision, not an implementer-only documentation patch. | **Open** |
+| `T180-R1` | **High** | **Yes** | T-180 says this is “a decision task before it is an implementation task,” assigns the per-machine/per-database choice to the maintainer, and requires the chosen boundary, rejected alternative, and rationale in `docs/project/DECISIONS.md` before code moves (`docs/project/TASKS.md:368-382`). No decision entry was added. `ARC-006` permits distinct-database instances; it does not select between a database partition and a safely coordinated machine-wide cache. The source and current-truth prose therefore treat an unratified choice as derived. The legacy rule—first database to launch adopts the mixed shared cache, later databases refetch—is likewise a durable trade-off that belongs with the boundary decision. | The maintainer must accept the per-database boundary and first-launch adoption semantics in `docs/project/DECISIONS.md`, recording the safely shared alternative and why it lost, or choose the alternative and return the implementation for correction. This needs a maintainer decision, not an implementer-only documentation patch. | **Open** |
 | `T180-R2` | **Medium** | **Yes** | The acceptance criterion requires two stores over two databases to be exercised concurrently and asserts the result on their files. `test_a_sweep_cannot_reach_another_databases_pictures` derives two roots itself, writes both files directly, and constructs only one `QueueView`/`ThumbnailStore`. It proves `cache_root_for` separates manually supplied roots, but it stays green if composition stops deriving the root or if `MainWindow` fails to pass it to either the queue or add-dialog store. The task's production seam is therefore outside the claimed gate. | Add a regression through production composition, or through two actual stores wired by the same production path, that publishes/retains files under two database identities while one sweep runs. Mutation-check omission of the partition at the composition/window seam, not only removal inside `cache_root_for`. | **Open** |
 
 ### Mechanism judgment and verification
@@ -12524,8 +12524,8 @@ source defect was found, and `T179-R3`'s obsolete residual-risk wording is remov
 | Shared static gates | **pass**; see the T-111 table above |
 
 The implementer's full suite and mutation runs were not independently repeated. Windows runtime
-remains unverified. Across these three reviews, only `ai/REVIEWS.md` was changed by the reviewer;
-reviewed source, tests, `ai/TASKS.md`, `ai/STATUS.md`, and `ai/DECISIONS.md` were not edited, and no
+remains unverified. Across these three reviews, only `docs/project/REVIEWS.md` was changed by the reviewer;
+reviewed source, tests, `docs/project/TASKS.md`, `docs/project/STATUS.md`, and `docs/project/DECISIONS.md` were not edited, and no
 commit or push was made.
 
 ## 2026-08-10 — T-215 and T-146 combined review
@@ -12607,8 +12607,8 @@ both findings and their sibling paths. Native Windows behavior, a real-display t
 change, and the native directory picker remain the handoff's known-unverified interactive areas;
 none changes these code-path verdicts.
 
-The Reviewer modified `ai/REVIEWS.md` and moved the approved T-215 entry to Complete in
-`ai/TASKS.md`, also truing that file's Phase 4 header. No reviewed source or test file was changed,
+The Reviewer modified `docs/project/REVIEWS.md` and moved the approved T-215 entry to Complete in
+`docs/project/TASKS.md`, also truing that file's Phase 4 header. No reviewed source or test file was changed,
 and no commit or push was made.
 
 
@@ -12618,7 +12618,7 @@ and no commit or push was made.
 
 **Review base:** `bf30d82`
 **Correction head:** the uncommitted working tree described by
-`ai/handoffs/2026-08-08-t143-t180-r2.md`.
+`docs/project/handoffs/2026-08-08-t143-t180-r2.md`.
 **Scope:** `T143-R1`, `T180-R1`, `T180-R2`, and regressions in their documentation and T-180
 production-wiring correction. T-111 remains Approved and Complete and was not reopened.
 
@@ -12632,8 +12632,8 @@ production-wiring correction. T-111 remains Approved and Complete and was not re
 
 | ID | Re-review result | Evidence |
 |---|---|---|
-| `T143-R1` | **Resolved.** The maintainer amended the criterion to the actual `UX-005` §3 anatomy—title, uploader, duration, and picture—and explicitly deferred pre-download size rather than treating it as delivered. `T-191` owns the deferred schema, migration, format-change, restart, and estimated-versus-stated-size questions in Phase 4. | `ai/TASKS.md` records the maintainer amendment in the criterion and its rationale, removes size from T-143's claimed delivery, names T-191 in out-of-scope, and contains the concrete T-191 entry. No source or test change was needed for this finding. |
-| `T180-R1` | **Resolved.** Accepted `DAT-007` chooses a per-database cache and first-to-launch adoption as explicit policy. It states that `ARC-006` permits the second instance but does not choose its cache boundary, rejects the safely coordinated machine-wide alternative with reasons, and also dispositions no-adoption and other-key alternatives. | `ai/DECISIONS.md` contains Context, Decision, Why, Rejected, and Consequences; the task and `core/paths.py` now cite DAT-007 and preserve the prior mistaken-derivation lesson rather than continuing to present it as architecture. |
+| `T143-R1` | **Resolved.** The maintainer amended the criterion to the actual `UX-005` §3 anatomy—title, uploader, duration, and picture—and explicitly deferred pre-download size rather than treating it as delivered. `T-191` owns the deferred schema, migration, format-change, restart, and estimated-versus-stated-size questions in Phase 4. | `docs/project/TASKS.md` records the maintainer amendment in the criterion and its rationale, removes size from T-143's claimed delivery, names T-191 in out-of-scope, and contains the concrete T-191 entry. No source or test change was needed for this finding. |
+| `T180-R1` | **Resolved.** Accepted `DAT-007` chooses a per-database cache and first-to-launch adoption as explicit policy. It states that `ARC-006` permits the second instance but does not choose its cache boundary, rejects the safely coordinated machine-wide alternative with reasons, and also dispositions no-adoption and other-key alternatives. | `docs/project/DECISIONS.md` contains Context, Decision, Why, Rejected, and Consequences; the task and `core/paths.py` now cite DAT-007 and preserve the prior mistaken-derivation lesson rather than continuing to present it as architecture. |
 | `T180-R2` | **Resolved.** The gate now reaches production composition. Two composed applications expose distinct cache roots, and a sweep through the first window's real queue store removes its own unnamed file without reaching the second database's file. A second case verifies that the queue and add-dialog stores both receive the composed root. | Both new composition cases passed. Inspection confirms the three reported mutants are covered at their actual seams: collapsing composition's derivation fails the distinct-root assertion; dropping the queue handoff prevents the own-file sweep and fails both root checks; dropping the dialog handoff fails its store-root check. The original helper-level test remains correctly scoped. |
 
 ### Correction judgment
@@ -12655,12 +12655,12 @@ finding was found.
 | Complete composition, path, and queue-view modules | **368 passed** |
 | The two new composition cases alone | **2 passed** |
 | Task-placement test | **14 passed** |
-| `git diff --check` | **failed** on one trailing space in `ai/STATUS.md:28`; mechanical, outside the reviewed findings, and non-blocking for both verdicts |
+| `git diff --check` | **failed** on one trailing space in `docs/project/STATUS.md:28`; mechanical, outside the reviewed findings, and non-blocking for both verdicts |
 
 The implementer's full-suite result (**2768 passed, 14 skipped, 2 deselected**) and mutation runs
 were not independently repeated. Windows runtime and real sites remain unverified. Only
-`ai/REVIEWS.md` was changed by the reviewer; reviewed source, tests, `ai/TASKS.md`, `ai/STATUS.md`,
-and `ai/DECISIONS.md` were not edited, and no commit or push was made.
+`docs/project/REVIEWS.md` was changed by the reviewer; reviewed source, tests, `docs/project/TASKS.md`, `docs/project/STATUS.md`,
+and `docs/project/DECISIONS.md` were not edited, and no commit or push was made.
 
 
 ## 2026-08-08 — T-189 / T-186 implementation review
@@ -12701,7 +12701,7 @@ edited file.
   that unverified external run is recorded but is not a separate finding.
 - **T-186 did not change production behavior.** The changed production files contain comment or
   docstring edits only, and `tests/unit/test_presets.py` changes headings, docstrings, and assertion
-  messages. `ai/DECISIONS.md`'s additive DAT-008 commit belongs to T-171 and does not violate the
+  messages. `docs/project/DECISIONS.md`'s additive DAT-008 commit belongs to T-171 and does not violate the
   T-186 commit's historical-record criterion.
 
 ### Reviewer verification at `6a0d97f`
@@ -12721,8 +12721,8 @@ edited file.
 
 The implementer's full-suite result (**2787 passed, 14 skipped, 2 deselected**) was not
 independently repeated. The workflow was inspected but not executed or linted by a YAML-aware
-tool. Windows runtime and real sites remain unverified. Only `ai/REVIEWS.md` was changed by the
-reviewer; reviewed source, tests, `ai/TASKS.md`, and `ai/STATUS.md` were not edited, and no commit or
+tool. Windows runtime and real sites remain unverified. Only `docs/project/REVIEWS.md` was changed by the
+reviewer; reviewed source, tests, `docs/project/TASKS.md`, and `docs/project/STATUS.md` were not edited, and no commit or
 push was made.
 
 
@@ -12774,7 +12774,7 @@ The implementer's full-suite result (**2787 passed, 14 skipped, 2 deselected**) 
 independently repeated. `ci.yml` remains structurally inspected but unexecuted. One process note:
 git topology places `365182c` after both correction commits (`69bac49` and `9a9024f`), not before
 them as the handoff states; the review text itself is unmodified and append-only, so this does not
-affect either verdict. Windows runtime and real sites remain unverified. Only `ai/REVIEWS.md` was
+affect either verdict. Windows runtime and real sites remain unverified. Only `docs/project/REVIEWS.md` was
 changed by the reviewer, and no commit or push was made.
 
 
@@ -12798,7 +12798,7 @@ remains.
 | ID | Severity | Blocks approval | Status | Evidence |
 |---|---|---|---|---|
 | `T186-R1` | High | Yes | **Resolved.** The third pass changes method as the finding required: it searches claims about cardinality rather than another spelling of “History.” All seven examples from the focused re-review are corrected, and the four additional claims found by that method are corrected with them. The retained cases were inspected individually: the staging list and queue are a real pair; the manager and queue table are a real pair; the preset, migration and Windows-enumeration statements describe their actual subjects; the two frozen fixtures genuinely contain history rows; “queue history” means growth over time; and the format-text passage is explicit provenance. | Direct inspection of the eleven corrections and the ten classified survivors. The replacement text is truthful and explicitly historical where history supplies the rationale. No production behavior or test logic changed; the only executable-line edit is an assertion message. |
-| `T188-R1` | **High** | **Yes** | **Open.** The recorded fixture is valid evidence, but it was added beside the old synthetic evidence instead of being adopted at both places the task explicitly requires. `tests/unit/test_format_selection.py:57-60` still makes the shared `pair` fixture read `derived_format_columns`, so the established routing, slot, selector, mode-switch and ffmpeg assertions continue to use the project-authored pair; the two recorded-source tests are additive. More directly, `derived_format_columns.json:14-21` still declares formats 3 and 4 synthetic and says **“NO acceptable recorded source supplies”** the pair, that `T-188` owns the search, and that `OPS-013` permits the gap. Those claims now contradict `dash_akamai_big_buck_bunny` and the task’s current account. This leaves acceptance criteria 3 and 4 unmet. | `ai/TASKS.md:310-313` requires the routing assertions to read the recorded fixture rather than the derived one and requires `derived_format_columns` to stop claiming the pair. Move the shared pair-routing evidence to the recorded fixture, retain the derived fixture only for shapes for which it still supplies unique evidence, and make its provenance identify only what remains synthetic. |
+| `T188-R1` | **High** | **Yes** | **Open.** The recorded fixture is valid evidence, but it was added beside the old synthetic evidence instead of being adopted at both places the task explicitly requires. `tests/unit/test_format_selection.py:57-60` still makes the shared `pair` fixture read `derived_format_columns`, so the established routing, slot, selector, mode-switch and ffmpeg assertions continue to use the project-authored pair; the two recorded-source tests are additive. More directly, `derived_format_columns.json:14-21` still declares formats 3 and 4 synthetic and says **“NO acceptable recorded source supplies”** the pair, that `T-188` owns the search, and that `OPS-013` permits the gap. Those claims now contradict `dash_akamai_big_buck_bunny` and the task’s current account. This leaves acceptance criteria 3 and 4 unmet. | `docs/project/TASKS.md:310-313` requires the routing assertions to read the recorded fixture rather than the derived one and requires `derived_format_columns` to stop claiming the pair. Move the shared pair-routing evidence to the recorded fixture, retain the derived fixture only for shapes for which it still supplies unique evidence, and make its provenance identify only what remains synthetic. |
 
 ### T-188 evidence accepted in this pass
 
@@ -12839,7 +12839,7 @@ the first real CI execution remain unverified.
 One process note does not affect the verdicts: `4b4c158` accidentally committed the reviewer’s
 already-written, append-only 52-line review record together with the T-186 correction. That breaks
 the repository’s commit-partition rule, but it neither edits the historical record nor changes the
-correction’s substance, so it does not reopen `T186-R1`. Only `ai/REVIEWS.md` was modified in this
+correction’s substance, so it does not reopen `T186-R1`. Only `docs/project/REVIEWS.md` was modified in this
 review; no commit or push was made.
 
 
@@ -12860,7 +12860,7 @@ not a new finding, so another focused correction pass remains authorized by `AGE
 
 | ID | Re-review result | Evidence |
 |---|---|---|
-| `T188-R1` | **Open — High, blocks approval.** **Criterion 3 is resolved:** the shared `pair` fixture now loads `dash_akamai_big_buck_bunny`, so the established routing, slot, selector, mode-switch and ffmpeg assertions use the recorded manifest. Expected selectors and descriptions are derived from the selected formats rather than pinning the source’s incidental ids; `pairable` uses the recorded fixture; and the routing/projection sweep includes it. The removed additive test is genuinely redundant. **Criterion 4 remains open:** `derived_format_columns._fixture.what_is_synthetic` still lists `formats[3]` and `formats[4]`, and those entries are exactly the synthetic audio-only/video-only pair (`140`/`137`). The new provenance explicitly says those entries remain and merely declares that they are “no longer the evidence.” The criterion requires that field to **stop claiming the pair**, and the prior finding’s correction direction was to retain the derived fixture only for shapes for which it supplies unique evidence. | Direct JSON inspection at `226366d` returns `formats[3]` and `formats[4]` from `what_is_synthetic`; the corresponding formats carry `vcodec: "none"`/named audio and named video/`acodec: "none"`. `ai/TASKS.md` criterion 4 is unchanged. Remove the redundant synthetic pair from `derived_format_columns` and its provenance, preserving the four genuinely unique shapes (and correcting indices/references as needed), or obtain an explicit maintainer amendment to criterion 4. Rewording the pair as non-evidence does not satisfy the present criterion. |
+| `T188-R1` | **Open — High, blocks approval.** **Criterion 3 is resolved:** the shared `pair` fixture now loads `dash_akamai_big_buck_bunny`, so the established routing, slot, selector, mode-switch and ffmpeg assertions use the recorded manifest. Expected selectors and descriptions are derived from the selected formats rather than pinning the source’s incidental ids; `pairable` uses the recorded fixture; and the routing/projection sweep includes it. The removed additive test is genuinely redundant. **Criterion 4 remains open:** `derived_format_columns._fixture.what_is_synthetic` still lists `formats[3]` and `formats[4]`, and those entries are exactly the synthetic audio-only/video-only pair (`140`/`137`). The new provenance explicitly says those entries remain and merely declares that they are “no longer the evidence.” The criterion requires that field to **stop claiming the pair**, and the prior finding’s correction direction was to retain the derived fixture only for shapes for which it supplies unique evidence. | Direct JSON inspection at `226366d` returns `formats[3]` and `formats[4]` from `what_is_synthetic`; the corresponding formats carry `vcodec: "none"`/named audio and named video/`acodec: "none"`. `docs/project/TASKS.md` criterion 4 is unchanged. Remove the redundant synthetic pair from `derived_format_columns` and its provenance, preserving the four genuinely unique shapes (and correcting indices/references as needed), or obtain an explicit maintainer amendment to criterion 4. Rewording the pair as non-evidence does not satisfy the present criterion. |
 
 ### Reviewer verification at `226366d`
 
@@ -12886,7 +12886,7 @@ result (**2801 passed, 17 skipped, 2 deselected**) were not independently repeat
 stale-bytecode cause is consistent with the impossible source/runtime disagreement described in the
 handoff; this review avoided that state rather than treating the earlier run as evidence. The source
 was not re-captured from the network, and Windows runtime and real CI remain unverified. Only
-`ai/REVIEWS.md` was modified in this review; no commit or push was made.
+`docs/project/REVIEWS.md` was modified in this review; no commit or push was made.
 
 
 ## 2026-08-08 — T188-R1 third focused correction re-review
@@ -12916,7 +12916,7 @@ merge pair, while the derived fixture proves a pairable table that also contains
 
 The criterion-2 amendment also keeps its exclusion intact. “Verifiable for the specific work”
 admits a licence fixed by the work’s identity but continues to reject an assumption based on a
-publisher’s usual practice. It does not relax `ai/TESTING.md` §5’s freely-licensed, unsigned and
+publisher’s usual practice. It does not relax `docs/project/TESTING.md` §5’s freely-licensed, unsigned and
 stable-source rules. Both are maintainer scope rulings recorded in the task entry, not implementer
 claims treated as amendments.
 
@@ -12939,7 +12939,7 @@ The implementer’s full-suite result (**2801 passed, 17 skipped, 2 deselected**
 independently repeated. The temporary removal reaching history before its named dialog/format-table
 gate ran is a recorded process error, but the failing commit was reverted and the restored head was
 verified, so it does not affect approval. The source was not re-captured from the network; Windows
-runtime and real CI remain unverified. Only `ai/REVIEWS.md` was modified in this review; no commit
+runtime and real CI remain unverified. Only `docs/project/REVIEWS.md` was modified in this review; no commit
 or push was made.
 
 
@@ -12965,7 +12965,7 @@ reviewer to sign.
 | ID | Severity | Blocks approval | Area | Finding | Required correction | Status |
 |---|---|---|---|---|---|---|
 | `P3EXIT-R1` | **Medium** | **Yes — Phase 3 exit truth** | Current-truth records and handoff | The phase record cannot currently support criterion 6 because its live claims disagree. `IMPLEMENTATION_PLAN.md` says all loose items are dispositioned and criterion 6 alone remains immediately after marking T-189, T-171, T-186, and T-188 **Open**; it calls the phase’s deliverables nine while its Deliverables table contains eleven rows, including T-169/T-170. `STATUS.md`’s top/current snapshot likewise says those four items still need disposition and T-189 remains to be done. `TASKS.md`’s header still says T-111 is in review and that the current phase is Phase 2, while its live section correctly says Phase 3 has an empty review queue. The handoff then narrows the stale-record warning to one TASKS line, lists nine deliverables but says two of “them” removed Phase 2 deliverables without listing T-169/T-170, and presents FPS as still resting on a derived fixture even though T-185 had already captured and approved real 30/60 FPS values. These are current exit/scope claims, not harmless historical entries. | Sweep the live Phase 3 claims in `IMPLEMENTATION_PLAN.md`, `STATUS.md`, and the TASKS header so task dispositions, deliverable scope/count, and the one outstanding criterion agree. Correct the handoff when carrying the re-review: criterion 1’s current FPS evidence is T-185’s recorded PeerTube fixture; the later T-188 DASH FPS observation does not reopen the already-satisfied column. Preserve historical review/decision text as history. | **Open** |
-| `P3EXIT-R2` | **Medium** | **Yes — required exact-head gate** | `tests/ui/test_main_window.py:778` | Both test-inclusive type gates fail at `7958518`: mypy 2.3.0 reports `Left operand of "and" is always true [redundant-expr]` for `assert bar is not None and gate is not None and summary is not None`. `QMainWindow.statusBar()` is statically non-optional, so the new T-192 assertion makes a required gate red. `ai/TESTING.md` §2 requires bare `mypy` and `mypy --platform win32` whenever a test file changes. The handoff claims both passed at this exact head, but neither does; its format count is also 221 while the same tree reports 222. | Remove the redundant `bar is not None` test (or otherwise make the assertion type-correct without weakening the two nullable child checks), then rerun and report Ruff format plus both bare mypy gates from the corrected exact head. | **Open** |
+| `P3EXIT-R2` | **Medium** | **Yes — required exact-head gate** | `tests/ui/test_main_window.py:778` | Both test-inclusive type gates fail at `7958518`: mypy 2.3.0 reports `Left operand of "and" is always true [redundant-expr]` for `assert bar is not None and gate is not None and summary is not None`. `QMainWindow.statusBar()` is statically non-optional, so the new T-192 assertion makes a required gate red. `docs/project/TESTING.md` §2 requires bare `mypy` and `mypy --platform win32` whenever a test file changes. The handoff claims both passed at this exact head, but neither does; its format count is also 221 while the same tree reports 222. | Remove the redundant `bar is not None` test (or otherwise make the assertion type-correct without weakening the two nullable child checks), then rerun and report Ruff format plus both bare mypy gates from the corrected exact head. | **Open** |
 
 Both findings are Medium because no reviewed product behavior is shown broken. Both block: one is a
 required validation failure, and the other materially misstates the phase gate and scope being
@@ -13002,7 +13002,7 @@ retaining a valid interpreter path.
 
 The first sandboxed integration attempt produced three socket-permission failures before test
 behavior ran; the permitted consolidated rerun is the 293-pass result above. Windows was not rerun,
-real sites were not contacted, and the T-189 workflow remains unexecuted. Only `ai/REVIEWS.md` was
+real sites were not contacted, and the T-189 workflow remains unexecuted. Only `docs/project/REVIEWS.md` was
 modified by the reviewer; reviewed source, tests, current-truth coordination files, and the handoff
 were not edited. No commit or push was made.
 
@@ -13056,7 +13056,7 @@ The implementer’s corrected-head full-suite result (**2803 passed, 17 skipped,
 not independently repeated in this focused pass; the initial review independently obtained the
 same result, and the correction changes only documents plus one dead type guard. Windows runtime,
 real sites, and the first execution of T-189’s workflow remain unverified as previously recorded.
-Only `ai/REVIEWS.md` was modified by the reviewer. No commit or push was made.
+Only `docs/project/REVIEWS.md` was modified by the reviewer. No commit or push was made.
 
 
 ## 2026-08-09 — Phase 3 exit authorized third pass
@@ -13113,7 +13113,7 @@ The implementer’s local full-suite result (**2807 passed, 17 skipped, 2 desele
 was not independently repeated. The count is consistent with T-193/T-194 adding four tests to the
 initial review’s independently reproduced 2803, the relevant source/test tree is unchanged after
 the measured head, and the five-job CI run is independently verified. T-193/T-194 remain unreviewed
-Phase 4 work outside this exit verdict. Real sites remain unverified. Only `ai/REVIEWS.md` was
+Phase 4 work outside this exit verdict. Real sites remain unverified. Only `docs/project/REVIEWS.md` was
 modified by the reviewer; no commit or push was made.
 
 
@@ -13169,7 +13169,7 @@ The full suite and both mypy gates were not repeated for this docs-only correcti
 results remain **2807 passed, 17 skipped, 2 deselected, 4 warnings** and both mypy platforms clean
 over 125 files; no source or test file changed after those measurements. T-192, T-193 and T-194
 remain unreviewed Phase 4 work and receive no verdict here. Real sites remain unverified. Only
-`ai/REVIEWS.md` was modified by the reviewer; no commit or push was made.
+`docs/project/REVIEWS.md` was modified by the reviewer; no commit or push was made.
 
 
 ## 2026-08-09 — Phase 3 post-approval coordination review
@@ -13190,7 +13190,7 @@ Phase 3 has and has not exited.
 
 | ID | Severity | Blocks approval | Area | Finding | Required correction | Status |
 |---|---|---|---|---|---|---|
-| `P3EXIT-R4` | **Medium** | **Yes — coherent exit coordination** | `ai/STATUS.md`, `ai/TASKS.md` | Commit `6114f51` correctly changes STATUS's top snapshot to Phase 4 and says the Phase 3 exit is complete, but leaves the live `### Where the findings stand` table saying `P3EXIT-R3` is “Corrected, unverified” and the following sentence saying criterion 6 is the only criterion unmet. TASKS remains dated 2026-08-08 and says in both its header and “Start here” line that Phase 3 is current and only its exit review remains; the live `## In Review` preface repeats that claim while the section actually contains T-192, T-193 and T-194. These are not merely the explicitly dated historical blocks lower in the files. | Sweep the live STATUS finding/submission block and TASKS header/current-phase/`## In Review` preface so they agree with the approved plan: Phase 3 exited at `ccdbd0f`; `P3EXIT-R1..R3` are resolved; criterion 6 is met; Phase 4 is current; T-192/T-193/T-194 are the unreviewed Phase 4 queue. Preserve genuinely dated historical narrative as history. | **Open** |
+| `P3EXIT-R4` | **Medium** | **Yes — coherent exit coordination** | `docs/project/STATUS.md`, `docs/project/TASKS.md` | Commit `6114f51` correctly changes STATUS's top snapshot to Phase 4 and says the Phase 3 exit is complete, but leaves the live `### Where the findings stand` table saying `P3EXIT-R3` is “Corrected, unverified” and the following sentence saying criterion 6 is the only criterion unmet. TASKS remains dated 2026-08-08 and says in both its header and “Start here” line that Phase 3 is current and only its exit review remains; the live `## In Review` preface repeats that claim while the section actually contains T-192, T-193 and T-194. These are not merely the explicitly dated historical blocks lower in the files. | Sweep the live STATUS finding/submission block and TASKS header/current-phase/`## In Review` preface so they agree with the approved plan: Phase 3 exited at `ccdbd0f`; `P3EXIT-R1..R3` are resolved; criterion 6 is met; Phase 4 is current; T-192/T-193/T-194 are the unreviewed Phase 4 queue. Preserve genuinely dated historical narrative as history. | **Open** |
 
 This is the same defect class as the earlier findings—a current claim stayed in place after the
 fact it described changed—and is Medium because no product behavior or earlier evidence is broken.
@@ -13206,7 +13206,7 @@ state and actionable work. The maintainer's standing authorization covers the ne
 | Semantic search across STATUS, TASKS, and IMPLEMENTATION_PLAN | **plan coherent; the live STATUS and TASKS contradictions above remain** |
 | Source/test changes after approved evidence head | **not reopened; finding is confined to post-approval coordination truth** |
 
-Only `ai/REVIEWS.md` was modified by the reviewer. No commit or push was made.
+Only `docs/project/REVIEWS.md` was modified by the reviewer. No commit or push was made.
 
 
 ## 2026-08-09 — P3EXIT-R4 focused correction re-review
@@ -13247,7 +13247,7 @@ introduces a new contradiction.
 | Correction diff | **STATUS and TASKS only; no source or test change** |
 
 The product suite and mypy gates were not repeated for this docs-only correction. Their accepted
-Phase 3 evidence remains unchanged. Only `ai/REVIEWS.md` was modified by the reviewer; no commit or
+Phase 3 evidence remains unchanged. Only `docs/project/REVIEWS.md` was modified by the reviewer; no commit or
 push was made.
 
 
@@ -13258,7 +13258,7 @@ push was made.
 **Base:** `949ccb0`
 **Candidate head:** `027dc7c`
 **Implementation commits:** `7958518`, `e4cfe0e`, `eff93ab`, `9fe22fb`
-**Submission:** `ai/handoffs/2026-08-09-t192-t193-t194-review.md` at `4141311`, with its completed
+**Submission:** `docs/project/handoffs/2026-08-09-t192-t193-t194-review.md` at `4141311`, with its completed
 suite row at `027dc7c`
 **Scope:** T-192, T-193's explicitly submitted sizing half, and T-194. Later markdown-only commits
 through the review-record checkout do not move the source/test boundary.
@@ -13298,7 +13298,7 @@ T-204 has a concrete reproduction-first contract for the latter, preserves the t
 make the submitted sizing change incomplete. It remains real, High-priority Phase 4 work and this
 review gives T-204 no verdict. The sizing half itself is not approvable because of `T193-R1`.
 
-**Mutation evidence — not required.** `ai/TESTING.md` §7 says its enumerated high-risk behaviors
+**Mutation evidence — not required.** `docs/project/TESTING.md` §7 says its enumerated high-risk behaviors
 require explicit coverage; status-bar placement, panel sizing and current-row restoration are not
 in that list. Section 3 therefore governs this source-plus-test change. This ruling does not excuse
 a regression that tests the wrong lifecycle state: `T193-R1` is a behavior failure with a passing
@@ -13344,8 +13344,8 @@ case. The permitted rerun above is the valid full-suite result. The four warning
 was not independently run; the accepted CI claim remains external evidence rather than a local
 review result. T-204's stuck-open panel remains deliberately unresolved and outside this verdict.
 
-The Reviewer modified only `ai/REVIEWS.md` and added the two explicitly requested Open-finding
-entries to `ai/TASKS.md`. No source or test file was changed. No commit or push was made.
+The Reviewer modified only `docs/project/REVIEWS.md` and added the two explicitly requested Open-finding
+entries to `docs/project/TASKS.md`. No source or test file was changed. No commit or push was made.
 
 
 ## 2026-08-09 — T193-R1 / T194-R1 focused correction re-review
@@ -13393,7 +13393,7 @@ strengthening probe asserted `editing_job_id == "job-2"` after the reset in both
 is `_commit_open_editor`. That naming slip does not simulate or bypass the wiring and is recorded as
 a non-actionable note, not an Open finding.
 
-The prior mutation-policy ruling stands. These UI behaviors are outside `ai/TESTING.md` §7's
+The prior mutation-policy ruling stands. These UI behaviors are outside `docs/project/TESTING.md` §7's
 enumerated high-risk set, so §3 governs and mutation evidence is not mandatory. The independently
 repeated mutations are additional evidence that the corrected regressions are not vacuous.
 
@@ -13435,10 +13435,10 @@ outside this diff.
 
 ### Merge readiness and residuals
 
-**Merge-ready at `a6fbf67`.** There are no Open findings, so no new `ai/TASKS.md` entry was created.
+**Merge-ready at `a6fbf67`.** There are no Open findings, so no new `docs/project/TASKS.md` entry was created.
 The source/test correction is unchanged after its measured evidence head. Windows runtime was not
 independently exercised; both mypy platforms are clean. T-204 remains an explicit, separate open
-task and is not a residual of either correction. Only `ai/REVIEWS.md` was modified by the Reviewer;
+task and is not a residual of either correction. Only `docs/project/REVIEWS.md` was modified by the Reviewer;
 no source, test, task, commit, or push was made.
 
 
@@ -13449,7 +13449,7 @@ no source, test, task, commit, or push was made.
 **Review base:** `f18786a`
 **Candidate head:** `01ce5bf`
 **Implementation commit:** `01ce5bf`
-**Submission:** local `ai/handoffs/2026-08-09-t204-review.md`
+**Submission:** local `docs/project/handoffs/2026-08-09-t204-review.md`
 **Scope:** T-204's disclosure-role correction and regressions. Later docs-only commits through the
 review checkout do not change `src/` or `tests/` and do not move the implementation boundary.
 
@@ -13466,8 +13466,8 @@ correction diff; T-208 is independent follow-up work.
 | ID | Severity | Blocks approval | Location | Finding | Required correction | Status |
 |---|---|---|---|---|---|---|
 | `T204-R1` | **High** | **Yes — acceptance criteria 1–3** | `tests/ui/test_add_dialog.py:3334-3371`; `src/tracks_and_trails/ui/add_dialog.py:2042-2099` | The mutation is real, but the test is not the claimed reproduction. It opens a resolved `READY` row and directly assigns `row.state = PROBING`. Production assigns `PROBING` only when a `WAITING` row receives the probing status; a `READY` row receiving that status takes the later branch and becomes `FAILED`. No production path found in the bounded source performs `READY → PROBING`, and neither the reported near-checkmark gesture nor another real interaction/signal is driven. The test also stops after asserting that the role is a `bool`; it does not close through the disclosure or prove the changed selection survives that post-transition close. The code is useful invariant hardening, but the evidence cannot claim it reproduced or closed the user's trapped-panel defect. | Identify and drive the real user/signal transition that leaves an open playlist non-committable, make that regression fail at the pre-fix boundary, then close through the actual disclosure route and prove a changed selection survives. If no reachable transition exists, correct the task, test, and code rationale to call this invariant hardening and keep the first report open rather than claiming it reproduced. Audit the sibling report through T-208 rather than inferring the same trigger. | **Open** — T-207 |
-| `T204-R2` | **Medium** | **Yes — actionable current truth** | `ai/TASKS.md:101-120` | The `## In Review` preface says “Empty” and “Nothing is awaiting a verdict” immediately before T-204, whose status is In Review. This contradiction was introduced when T-204 moved into the section, despite the adjacent warning that this exact preface has already been wrong in both directions. Task placement passes because it validates heading/status structure, not prose. | Update the live preface to name T-204 and its review state; re-run task placement. | **Open** — T-207 |
-| `T204-R3` | **Medium** | **No — follow-up split now** | `tests/ui/test_add_dialog.py:3374-3410`; `ai/TASKS.md:127-133` | The maintainer's multi-row missing-arrow report is not reproduced. The new test passes both with and without the correction, so it guards a simple second-row reconcile but supplies no evidence about the report's trigger. Waiting until it recurs would discard an already-reported user-visible trap, and T-204 explicitly required a split if the investigations diverged. | Recover or elicit the gesture sequence, determine whether the cause is role admission, remounting/identity, or geometry, and add a failing regression before any correction. Until then keep the report known-unverified. | **Open, non-blocking** — T-208 |
+| `T204-R2` | **Medium** | **Yes — actionable current truth** | `docs/project/TASKS.md:101-120` | The `## In Review` preface says “Empty” and “Nothing is awaiting a verdict” immediately before T-204, whose status is In Review. This contradiction was introduced when T-204 moved into the section, despite the adjacent warning that this exact preface has already been wrong in both directions. Task placement passes because it validates heading/status structure, not prose. | Update the live preface to name T-204 and its review state; re-run task placement. | **Open** — T-207 |
+| `T204-R3` | **Medium** | **No — follow-up split now** | `tests/ui/test_add_dialog.py:3374-3410`; `docs/project/TASKS.md:127-133` | The maintainer's multi-row missing-arrow report is not reproduced. The new test passes both with and without the correction, so it guards a simple second-row reconcile but supplies no evidence about the report's trigger. Waiting until it recurs would discard an already-reported user-visible trap, and T-204 explicitly required a split if the investigations diverged. | Recover or elicit the gesture sequence, determine whether the cause is role admission, remounting/identity, or geometry, and add a failing regression before any correction. Until then keep the report known-unverified. | **Open, non-blocking** — T-208 |
 
 `T204-R1` is High because an explicit acceptance criterion is unmet and the task's core claim—closing
 a user-visible trap—has not been tied to reachable behavior. The code's invariant may still be
@@ -13497,7 +13497,7 @@ does not make the role order itself wrong.
 **The negative mutation is valid but narrower than claimed.** In a fresh archive with bytecode
 caches removed, restoring the old committability-first ordering made the primary regression fail
 **1/1**. The multi-row test still passed **1/1** under the same mutation, confirming it is a guard,
-not evidence for that report. These UI behaviors are outside `ai/TESTING.md` §7's enumerated
+not evidence for that report. These UI behaviors are outside `docs/project/TESTING.md` §7's enumerated
 high-risk set, so mutation was required by T-204's own criterion rather than by §7.
 
 **Architecture remains intact.** The product change stays in `ui/`, introduces no yt-dlp access or
@@ -13537,7 +13537,7 @@ static platform gates are clean.
 **Not merge-ready at `01ce5bf`.** T204-R1 and T204-R2 require the one ordinary focused correction
 pass. T204-R3 does not hold that correction open because T-208 now owns it, but it may not be cited
 as closed evidence for T-204. The row/panel overlap and Windows runtime remain unverified. The
-Reviewer modified only `ai/REVIEWS.md` and added T-207/T-208 to `ai/TASKS.md`; no source or test file
+Reviewer modified only `docs/project/REVIEWS.md` and added T-207/T-208 to `docs/project/TASKS.md`; no source or test file
 was changed, and no commit or push was made.
 
 ## 2026-08-09 — T204-R1 / T204-R2 focused correction re-review
@@ -13565,7 +13565,7 @@ because the committed regression neither shows the dialog nor checks panel geome
 |---|---|---:|---|---|
 | **T204-R1** | **High** | **Yes** | **Open — partially corrected** | `tests/ui/test_add_dialog.py:3338` now uses a real picker gesture and real `manager.job_changed` path, but closes with `dialog.toggle_playlist(job_id)`. That calls the receiving slot directly and skips the view/delegate event route the test claims to exercise. In a shown-dialog probe, clicking the exposed disclosure location emitted no `disclosure_toggled` signal and left the panel open. Replace the direct slot call with a real user event on an actually available close control or event route, and assert the panel closes while retaining the selection. |
 | **T204-R4** | **High** | **Yes** | **Open** | `src/tracks_and_trails/ui/add_dialog.py:2481` refreshes row data after the reachable `job_changed` transition, but does not restore the mounted index widget's geometry. In the shown-dialog reproduction the row remained `485x407` while its `PlaylistPanel` collapsed to `190x26`; the picker body and Done button were clipped and delegate-painted row content showed through. This is the unresolved row/panel overlap in T-204 criterion 6 and leaves no working pointer close path. Keep the mounted panel laid out to the row after value-only refreshes, audit the sibling refresh paths, and add a shown-widget regression that checks geometry plus a real close interaction. T-209 owns the correction. |
-| **T204-R2** | **Medium** | **Yes** | **Open — partially corrected** | `ai/TASKS.md:10` and `ai/TASKS.md:19` still say Phase 4 has ten entries with nothing started, while `## In Review` contains T-204 and T-207; line 22 also says the section holds three tasks when it holds two. Removing the local `## In Review` enumeration fixed one stale copy but not the sibling current-truth summaries in the same file. Remove or derive every live count/state copy so the header and start-here block agree with the actual queues. |
+| **T204-R2** | **Medium** | **Yes** | **Open — partially corrected** | `docs/project/TASKS.md:10` and `docs/project/TASKS.md:19` still say Phase 4 has ten entries with nothing started, while `## In Review` contains T-204 and T-207; line 22 also says the section holds three tasks when it holds two. Removing the local `## In Review` enumeration fixed one stale copy but not the sibling current-truth summaries in the same file. Remove or derive every live count/state copy so the header and start-here block agree with the actual queues. |
 | **T204-R3** | **Medium** | **No** | **Open follow-up** | The maintainer's separate multi-row report remains unreproduced. T-208 continues to own the investigation; it does not block this correction, and its passing guard is not evidence that the report is explained. |
 
 ### Independent verification
@@ -13635,7 +13635,7 @@ T-211, and T-203 work at the same head is recorded separately below.
 | **T204-R4** | **High** | **Yes** | **Resolved** | `StagingModel.refresh` follows a value-only `dataChanged` with `relayout_panel`; restoration runs after Qt's layout turn, refuses an empty rectangle, and checks row/panel identity before applying it. The committed shown-widget regression keeps panel geometry equal to the row's `visualRect` across the reachable transition and closes through the panel. The maintainer's real-display observation supplies the evidence the offscreen ordering cannot. |
 | **T204-R2** | **Medium** | **Yes** | **Resolved** | The header, Start-here block, and `## In Review` preface no longer duplicate live section counts or contents. `tests/unit/test_task_placement.py` remains green. |
 | **T204-R3** | **Medium** | **No** | **Open follow-up — T-208** | Unchanged by design. The multi-row report remains unreproduced and its passing guard is still not evidence that T-204 explained it. |
-| **T207-R1** | **Low** | **No** | **Open follow-up — T-203 documentation/current-truth correction** | `ai/TASKS.md:222-228` still says the corrected test closes through `toggle_playlist`, the direct-slot route T204-R1 rejected. The code and test use `Done`. Correct that sentence when T203-R2's Planner-owned reconciliation updates this same current-truth file; it does not reopen the proved behavior. |
+| **T207-R1** | **Low** | **No** | **Open follow-up — T-203 documentation/current-truth correction** | `docs/project/TASKS.md:222-228` still says the corrected test closes through `toggle_playlist`, the direct-slot route T204-R1 rejected. The code and test use `Done`. Correct that sentence when T203-R2's Planner-owned reconciliation updates this same current-truth file; it does not reopen the proved behavior. |
 
 **T204-R4 is closed without claiming T-209 complete.** The finding's reachable value-refresh path
 and geometry are independently proved. T-209 asks the broader question across both panel kinds and
@@ -13669,10 +13669,10 @@ frozen Linux, frozen Windows, and the STARBASE coverage marker all succeeded. In
 `linux / Tests` and `windows desktop / Full suite` — the two jobs red at `f35d509` — are green at
 the reviewed head. This is the final external result, not a substitution of local figures.
 
-`git show 9668147` confirms it changed only `ai/REVIEWS.md` and appended the prior 65-line focused
+`git show 9668147` confirms it changed only `docs/project/REVIEWS.md` and appended the prior 65-line focused
 re-review record; the recorded payload is byte-identical to the verdict returned by the Reviewer.
 
-The Reviewer modified only `ai/REVIEWS.md`. No source or test file remains changed, and no commit or
+The Reviewer modified only `docs/project/REVIEWS.md`. No source or test file remains changed, and no commit or
 push was made.
 
 ## 2026-08-09 — T-210 / T-211 / T-203 initial comprehensive review
@@ -13698,9 +13698,9 @@ by identity; T-203 — make the row control presets-only and move its verbs to a
 
 | ID | Severity | Blocks approval | Evidence | Finding and required correction | Status |
 |---|---|---:|---|---|---|
-| **T210-R1** | **Medium** | **Yes — acceptance criteria** | `src/tracks_and_trails/ui/add_dialog.py:1532-1558`; `tests/ui/test_add_dialog.py:4387-4465`; `ai/TASKS.md:313-322,356-361` | `panel_height_for` deliberately floors the row at `minimumSizeHint`, so it is not bounded when the viewport is shorter than that floor. An offscreen shown-dialog probe measured: at 600px, viewport 213px / panel 210px / `Done` y=200; at 550px, viewport 163px / panel 210px / `Done` y=200; at 500px, viewport 113px / panel 210px / `Done` y=200. The committed regression begins at 700px and then grows to 900px before its content/close assertions, so it never gates the admitted below-600 failure. The top collapse button remains visible, making this a narrow-window correctness gap with a workaround rather than the original no-exit High defect; it still blocks because T-210 explicitly requires the panel never exceed the viewport and `Done` always remain inside it. Either satisfy those criteria at the stated small size, or obtain a maintainer scope ruling and rewrite the criteria, regression, and stale explanation consistently. The correction must also replace the remaining T-209 citations in T-210 source comments and stop claiming the panel still reproduces the raw-selector third line: current `row_summary` omits it. | **Open** |
+| **T210-R1** | **Medium** | **Yes — acceptance criteria** | `src/tracks_and_trails/ui/add_dialog.py:1532-1558`; `tests/ui/test_add_dialog.py:4387-4465`; `docs/project/TASKS.md:313-322,356-361` | `panel_height_for` deliberately floors the row at `minimumSizeHint`, so it is not bounded when the viewport is shorter than that floor. An offscreen shown-dialog probe measured: at 600px, viewport 213px / panel 210px / `Done` y=200; at 550px, viewport 163px / panel 210px / `Done` y=200; at 500px, viewport 113px / panel 210px / `Done` y=200. The committed regression begins at 700px and then grows to 900px before its content/close assertions, so it never gates the admitted below-600 failure. The top collapse button remains visible, making this a narrow-window correctness gap with a workaround rather than the original no-exit High defect; it still blocks because T-210 explicitly requires the panel never exceed the viewport and `Done` always remain inside it. Either satisfy those criteria at the stated small size, or obtain a maintainer scope ruling and rewrite the criteria, regression, and stale explanation consistently. The correction must also replace the remaining T-209 citations in T-210 source comments and stop claiming the panel still reproduces the raw-selector third line: current `row_summary` omits it. | **Open** |
 | **T203-R1** | **High** | **Yes — NFR-005 and the ruled target guardrail** | `src/tracks_and_trails/ui/add_dialog.py:1350-1374,2298-2320`; `tests/ui/test_add_dialog.py:4712-4743` | The visual label names the row, but the accessible tree does not. With Big Buck Bunny current, the widget displays `For Big Buck Bunny:` while `QAccessible` reports the label name as only `Which item the adjust buttons act on`; the three controls are announced as acting on `the current item`. Because the buttons precede the list in tab order and the label is not focusable or associated as their label, a screen-reader user reaching the bar is not told which row will change. This defeats the exact guardrail that justified moving per-row verbs to a shared bar and violates NFR-005's meaningful labelling obligation. Publish the current row's identity through the accessible label/button relationship or through dynamically updated button names/descriptions, and add an independent `QAccessible` regression that changes the current row and proves the announced target changes with it. | **Open** |
-| **T203-R2** | **Medium** | **Yes — current truth and acceptance contract** | `docs/UX_SPEC.md:176-178,205,316-318,401-402`; `ai/TASKS.md:413-617`; `UX-009` | The build follows the maintainer's Option A ruling, but the durable records do not. UX_SPEC still says `Choose specific formats…`, `Options…`, and `Manage presets…` are reached from the format control; UX-009 amends only the library-wide action and explicitly leaves the remaining layout to T-203. T-203 itself contains mutually exclusive histories — Option A at the top, then Option D, then a painted two-icon proposal — and its live criteria still require a nonexistent column header, two icons, Windows icon coverage, icon styling, and removal/migration work the submitted bar does not perform. This is not a source-code objection to Option A; it is the absence of a coherent durable ruling and acceptance contract for the source that exists. A permitted Planner/Documentation Maintainer must record the chosen bar shape durably, reconcile UX_SPEC §§4, 6, 8 and the §9.1 route as applicable, and rewrite T-203's current scope/criteria to Option A. Also correct T-207's stale direct-slot sentence identified above. T-203 cannot be approved while the authoritative `[T]` clauses and its own criteria describe the old or rejected controls. | **Open** |
+| **T203-R2** | **Medium** | **Yes — current truth and acceptance contract** | `docs/UX_SPEC.md:176-178,205,316-318,401-402`; `docs/project/TASKS.md:413-617`; `UX-009` | The build follows the maintainer's Option A ruling, but the durable records do not. UX_SPEC still says `Choose specific formats…`, `Options…`, and `Manage presets…` are reached from the format control; UX-009 amends only the library-wide action and explicitly leaves the remaining layout to T-203. T-203 itself contains mutually exclusive histories — Option A at the top, then Option D, then a painted two-icon proposal — and its live criteria still require a nonexistent column header, two icons, Windows icon coverage, icon styling, and removal/migration work the submitted bar does not perform. This is not a source-code objection to Option A; it is the absence of a coherent durable ruling and acceptance contract for the source that exists. A permitted Planner/Documentation Maintainer must record the chosen bar shape durably, reconcile UX_SPEC §§4, 6, 8 and the §9.1 route as applicable, and rewrite T-203's current scope/criteria to Option A. Also correct T-207's stale direct-slot sentence identified above. T-203 cannot be approved while the authoritative `[T]` clauses and its own criteria describe the old or rejected controls. | **Open** |
 
 T203-R1 is High because accessibility was not incidental to this design: it ruled out the painted
 alternatives, and the resulting shared control still withholds the row identity needed to use it
@@ -13747,7 +13747,7 @@ GitHub Actions run `31347577337` is the external result for this head. **All fiv
 Linux, Windows desktop, frozen Linux, frozen Windows, and the STARBASE coverage marker. No local
 figure is substituted for that external result.
 
-The Reviewer modified only `ai/REVIEWS.md`. Temporary probes were removed. No source or test file
+The Reviewer modified only `docs/project/REVIEWS.md`. Temporary probes were removed. No source or test file
 remains changed, and no commit or push was made.
 
 ## 2026-08-10 — T-210 focused correction re-review
@@ -13816,7 +13816,7 @@ change. The pre-existing real-display-only uncertainty around deferred panel res
 unchanged and was not reopened by this test-only/comment correction.
 
 No Open finding or follow-up task was created. The untracked handoff remained uncommitted. The
-Reviewer changed only `ai/REVIEWS.md` and T-210's status/placement in `ai/TASKS.md`; no source or
+Reviewer changed only `docs/project/REVIEWS.md` and T-210's status/placement in `docs/project/TASKS.md`; no source or
 test file was modified, and no commit or push was made.
 
 ## 2026-08-10 — T-203 option-E review and T-208/T-209 review
@@ -13850,7 +13850,7 @@ the time this record was written. A queued run is not reported as passing.
 | **T203-R1** | **High** | **Yes** | **Resolved at `3a8aaa9`** | The shared bar and its target announcement are gone. `row_menu(row)` closes each action over the row supplied by the opening route; opening row 1's menu while row 0 remains current acts on row 1. Retargeting the builder to the current row fails the committed successor regression. |
 | **T203-R2** | **Medium** | **Yes** | **Resolved at `3a8aaa9`** | `UX-011`, `docs/UX_SPEC.md` §§3, 4, 6, 8 and 9.1, and T-203's own live criteria consistently describe option E. The per-item-template ruling remains explicitly open and the build removes no capability. The separate stale downstream contracts are T203-R4 rather than a reason to keep this exact finding open. |
 | **T203-R3** | **High** | **Yes — NFR-005 and an explicit acceptance criterion** | **Open** | `src/tracks_and_trails/ui/add_dialog.py:2328-2347` resolves a request only with `indexAt(position)`. For a keyboard-reason context-menu event Qt supplies a position off every row; the handler returns at line 2344 even when the list has a valid current row. A shown-dialog reviewer probe sent the same `QContextMenuEvent(Keyboard, ...)` used by the queue's established regression and no `QMenu` opened. The committed “two doors” test calls `_show_row_menu(visualRect(index).center())` directly, so it proves a second pointer-shaped route and cannot see the keyboard failure. Fall back to `currentIndex()` when `indexAt` is invalid, choose an on-row/global popup anchor for that case, and add a shown `CustomContextMenu` dispatch regression. This is High because the painted `⋮` has no accessibility node by design: without the sibling keyboard door, the three per-row verbs are pointer-only for the users NFR-005 protects. |
-| **T203-R4** | **Medium** | **Yes — current truth and future acceptance contracts** | **Open** | Option E removed the bar, but current Phase 4 records still instruct later work against option A: `ai/TASKS.md:1849-1854` calls the bar the ruled shape, T-200 at lines 2167-2169 says its accessibility pass must audit the bar's buttons, and T-218 at lines 2665-2671 requires the disabled bar to remain in both its criterion and out-of-scope list. `tests/ui/test_add_dialog.py:4955-4957` also says the verbs “are the bar's now.” Reconcile those live consumers with `UX-011` and the built menu; historical descriptions of the rejected bar remain history and are not findings. |
+| **T203-R4** | **Medium** | **Yes — current truth and future acceptance contracts** | **Open** | Option E removed the bar, but current Phase 4 records still instruct later work against option A: `docs/project/TASKS.md:1849-1854` calls the bar the ruled shape, T-200 at lines 2167-2169 says its accessibility pass must audit the bar's buttons, and T-218 at lines 2665-2671 requires the disabled bar to remain in both its criterion and out-of-scope list. `tests/ui/test_add_dialog.py:4955-4957` also says the verbs “are the bar's now.” Reconcile those live consumers with `UX-011` and the built menu; historical descriptions of the rejected bar remain history and are not findings. |
 | **T208-R1** | **Medium** | **Yes — task's explicit disposition rule** | **Blocked on maintainer** | The submitted route is real and the correction is sound: removing the re-anchor independently reproduces the collapse control at `y=-63`, while HEAD keeps it visible and preserves the six-of-seven selection through close. The investigation nevertheless says the maintainer's reported gesture is unconfirmed, and T-208's criterion says closing requires the maintainer's disposition. The maintainer must state that remove-above was the observed route, state that it was not and keep the investigation open, or deliberately close the report on this bounded correction. No source correction is requested by this finding. |
 | **T209-R1** | **Low** | **No** | **Open follow-up — T-221** | The audit observed both panel kinds at their 190×26 minimum during the turn between mounting and deferred geometry. Every permanent state is correct, so this does not reopen the value-refresh defect; whether the transient is visible remains unverified on a real display. T-221 owns that observation and any narrowly justified correction. |
 
@@ -13907,7 +13907,7 @@ AGENTS.md §10 permits that verification even though this is the ordinary correc
 T-208 needs a maintainer decision rather than an implementation correction. T-209 is complete at
 its task-specific head with one non-blocking follow-up.
 
-The Reviewer changed `ai/REVIEWS.md` and `ai/TASKS.md` only. Temporary probes and mutation trees
+The Reviewer changed `docs/project/REVIEWS.md` and `docs/project/TASKS.md` only. Temporary probes and mutation trees
 were not added to the repository; no reviewed source or test file was modified.
 
 ## 2026-08-10 — T-203 focused correction re-review
@@ -13956,8 +13956,8 @@ describes the remote ref, but it does not change the reviewed tree.
 ### Final disposition
 
 No open finding or follow-up remains for T-203. The task is Complete at `fe1d246`; T-213,
-T-218, and T-219 no longer wait on its review. The Reviewer changed `ai/REVIEWS.md` and T-203's
-status/placement in `ai/TASKS.md` only. No reviewed source or test file was modified, and no
+T-218, and T-219 no longer wait on its review. The Reviewer changed `docs/project/REVIEWS.md` and T-203's
+status/placement in `docs/project/TASKS.md` only. No reviewed source or test file was modified, and no
 commit or push was made.
 
 ## 2026-08-10 — T-146 maintainer-authorized T146-R3 re-review
@@ -14017,7 +14017,7 @@ after approval rather than a reason to retain a known-red test. The previous ful
 T146-R1, T146-R2, and T146-R3 are all Resolved. T-146 is Complete at `0adf9e3`; no open finding or
 follow-up remains. T-195 through T-199 are unblocked by this verdict.
 
-The Reviewer changed `ai/REVIEWS.md` and `ai/TASKS.md` only. No reviewed source or test file was
+The Reviewer changed `docs/project/REVIEWS.md` and `docs/project/TASKS.md` only. No reviewed source or test file was
 modified, and no commit or push was made.
 
 ## 2026-08-10 — T-146 focused correction re-review
@@ -14074,7 +14074,7 @@ the full suite is not needed to establish the deterministic Windows test failure
 ### Final disposition
 
 The two original blockers are corrected. T-146 is not approved only because T146-R3 makes the
-required Windows suite fail. The Reviewer changed `ai/REVIEWS.md` and `ai/TASKS.md` only; no
+required Windows suite fail. The Reviewer changed `docs/project/REVIEWS.md` and `docs/project/TASKS.md` only; no
 reviewed source or test file was modified, and no commit or push was made.
 
 ## 2026-08-10 — T-199 initial review
@@ -14129,7 +14129,7 @@ the Windows suite red on T199-R4, while three product blockers already require c
 focused correction only after re-review finds no blocking issue; CI can then provide the native
 Windows evidence rather than reproduce a deterministic known failure.
 
-The Reviewer changed `ai/REVIEWS.md` and T-199's status/findings in `ai/TASKS.md` only. No reviewed
+The Reviewer changed `docs/project/REVIEWS.md` and T-199's status/findings in `docs/project/TASKS.md` only. No reviewed
 source or test file was modified, and no commit or push was made.
 
 ## 2026-08-10 — T-199 focused correction re-review
@@ -14188,7 +14188,7 @@ misses an explicit acceptance criterion and leaves the active worker configurati
 with the stored and displayed setting after a refusal.
 
 The Reviewer changed this review record and T-199's current status only. The concurrently present
-DAT-003/T-197 edits in `ai/DECISIONS.md` and `ai/TASKS.md` were not authored or altered by the
+DAT-003/T-197 edits in `docs/project/DECISIONS.md` and `docs/project/TASKS.md` were not authored or altered by the
 Reviewer. No reviewed source or test file was modified, and no commit or push was made.
 
 ## 2026-08-10 — T-199 second focused correction re-review
@@ -14263,7 +14263,7 @@ branch also contains the DAT-003 records, so do not push the whole local stack a
 or start T-197 until DAT003-R1's one remaining contradiction is corrected. That is a documentation
 correction to the decision boundary, not another T-199 implementation pass.
 
-The Reviewer changed `ai/REVIEWS.md` only. No source, test, decision, task, commit, or remote state
+The Reviewer changed `docs/project/REVIEWS.md` only. No source, test, decision, task, commit, or remote state
 was changed.
 
 ## 2026-08-10 — T-197 initial review
@@ -14322,7 +14322,7 @@ credential-boundary and composition defects already reproduced against the real 
 worker, and pinned yt-dlp library. Correct all five blockers, sweep arbitrary cookie filenames and
 all worker phases/routes, and return one focused correction boundary for re-review.
 
-The Reviewer changed `ai/REVIEWS.md` and T-197's current task status/findings only. No reviewed
+The Reviewer changed `docs/project/REVIEWS.md` and T-197's current task status/findings only. No reviewed
 source, test, decision, status snapshot, commit, or remote state was changed.
 
 ## 2026-08-10 — T-197 focused correction re-review
@@ -14390,7 +14390,7 @@ boundary, make path recognition expansion-aware (or choose a non-heuristic ruled
 make the browser choice bind into each request at queue time while preserving per-preset override.
 Exercise both probes and every three-way UI/load transition in the focused evidence.
 
-The Reviewer changed `ai/REVIEWS.md` and T-197's current task status/findings only. No reviewed
+The Reviewer changed `docs/project/REVIEWS.md` and T-197's current task status/findings only. No reviewed
 source, test, decision, status snapshot, commit, or remote state was changed.
 
 ## 2026-08-10 — T-197 second focused correction re-review
@@ -14448,7 +14448,7 @@ Make one request-construction boundary stamp or preserve the queued browser acro
 playlist and retarget path, and make the No-cookies response clear both cached UI halves before
 redrawing. Return the narrow correction for another focused verification pass.
 
-The Reviewer changed `ai/REVIEWS.md` and T-197's current task status/findings only. No reviewed
+The Reviewer changed `docs/project/REVIEWS.md` and T-197's current task status/findings only. No reviewed
 source, test, decision, status snapshot, commit, or remote state was changed.
 
 ## 2026-08-10 — T-197 third focused correction re-review
@@ -14526,7 +14526,7 @@ component, including `CONTAINER`. Return those two Critical corrections with for
 all-component structural evidence. R4 is resolved; its two Low wiring-test gaps should be hardened
 in the same pass but do not independently block approval.
 
-The Reviewer changed `ai/REVIEWS.md` and T-197's current task status/findings only. No reviewed
+The Reviewer changed `docs/project/REVIEWS.md` and T-197's current task status/findings only. No reviewed
 source, test, decision, status snapshot, commit, or remote state was changed.
 
 ## 2026-08-11 — T-197 fourth focused correction re-review
@@ -14588,7 +14588,7 @@ without globally scrubbing arbitrary short prose, and stop registering accepted 
 names. Exercise both directions through the production load → registration → formatter route.
 R2 and the R4 evidence correction are approved at this boundary.
 
-The Reviewer changed `ai/REVIEWS.md` and T-197's current task status/findings only. No reviewed
+The Reviewer changed `docs/project/REVIEWS.md` and T-197's current task status/findings only. No reviewed
 source, test, decision, status snapshot, commit, or remote state was changed.
 
 ## 2026-08-11 — T-197 fifth focused correction re-review
@@ -14648,7 +14648,7 @@ documented under-four-byte residual.
 generic over-redaction guard, or obtain an explicit maintainer decision amending the absolute
 boundary. R6 is approved at this boundary.
 
-The Reviewer changed `ai/REVIEWS.md` and T-197's current task status/findings only. No reviewed
+The Reviewer changed `docs/project/REVIEWS.md` and T-197's current task status/findings only. No reviewed
 source, test, decision, status snapshot, commit, or remote state was changed.
 
 ## 2026-08-11 — unattended-run covering review
@@ -14727,7 +14727,7 @@ does not require it. The integration frozen-probe suite is green.
 filed, but T-224, T-222, T-217, and T-214 have correctable blocking findings. T-197 additionally
 needs the maintainer's §10 disposition before another Medium-only correction pass may begin.
 
-The Reviewer changed `ai/REVIEWS.md` and current task disposition records only. No reviewed source,
+The Reviewer changed `docs/project/REVIEWS.md` and current task disposition records only. No reviewed source,
 test, specification, commit, or remote state was changed.
 
 ## 2026-08-11 — unattended-run focused correction re-review
@@ -14795,7 +14795,7 @@ T-222 has only blocking Medium findings after its focused pass and is Blocked pe
 maintainer's §10 choice: authorize another focused correction, accept the documented risk, change
 scope, or carry the work into a named follow-up.
 
-The Reviewer changed `ai/REVIEWS.md` and current task dispositions only. No reviewed source, test,
+The Reviewer changed `docs/project/REVIEWS.md` and current task dispositions only. No reviewed source, test,
 UX specification, status snapshot, commit, or remote state was changed.
 
 ## 2026-08-11 — T-197 / T-222 third-round focused re-review
@@ -14903,7 +14903,7 @@ default-preset surface can choose a preset the add dialog silently removes.
 ### Push disposition
 
 **Do not push `e399545`.** Correct all four findings in the current task and return the focused
-boundary. The Reviewer changed only `ai/REVIEWS.md` and `ai/TASKS.md`; no reviewed source, test,
+boundary. The Reviewer changed only `docs/project/REVIEWS.md` and `docs/project/TASKS.md`; no reviewed source, test,
 status snapshot, commit, or remote state was changed.
 
 ## 2026-08-11 — T-195 focused correction re-review
@@ -15107,7 +15107,7 @@ commit, or remote state was changed.
 `.github/workflows/ci.yml`, `pyproject.toml`, `tests/integration/test_manager.py`,
 `docs/DEVELOPMENT.md`, `tests/ui/conftest.py`, and `tests/ui/test_suite_isolation.py` is
 `d08e9cd8dcfc838ef3867179979e655359f88917a546c544b1defd6a3ba5f3c5`; only the two named
-task entries and `T-228` were included from the shared `ai/TASKS.md` surface.
+task entries and `T-228` were included from the shared `docs/project/TASKS.md` surface.
 **Platforms verified:** Linux. Windows has not seen the dependency or workflow change.
 **Verdict:** **Changes requested.** `T-225` has no blocking finding and its residual evidence gaps
 are carried by `T-229`; `T-123` has two blocking Medium findings.
@@ -15175,7 +15175,7 @@ maintainer's authorization under `AGENTS.md` §10.
 | ID | Severity | Blocks approval | Focused result |
 |---|---|---:|---|
 | **T123-R1** | **Medium** | **Resolved** | The GitHub expression is gone. The parsed workflow step uses `RUNNER_OS`; independent execution of that exact shell block recorded `pytest -v tests/unit tests/ui` with no `-n` on Windows, `pytest -v -n auto tests/unit tests/ui` on Linux, and serial integration on both. The condition also enables parallelism on a hypothetical macOS runner, but macOS is not a supported project platform or current matrix cell; that does not block this boundary. |
-| **T123-R2** | **Medium** | **Yes — required path isolation and the safety account remain false** | The guide now publishes the correct two-command split and explicitly refuses bare whole-suite `pytest -n auto`, resolving the main documentation defect. The new rationale says twelve matching files each spawn their own children and root writes in `tmp_path`. The twelve are lexical matches, not a behavioral inventory: they include prose-only mentions (`test_add_dialog`, `test_errors`, `test_protocol`), a negative source assertion (`test_environment`), and a `CompletedProcess` fake (`test_reveal`), while indirect manager launches are not discoverable by that grep. More materially, running the adopted UI test `test_an_open_playlist_shows_entries_and_a_way_back` with `XDG_CACHE_HOME=/tmp/t123-shared-cache-probe` created `/tmp/t123-shared-cache-probe/tracksandtrails/jobs/<uuid>.log`. With no override, every xdist worker uses the same real user cache. This contradicts both the submitted “roots whatever it writes in its own `tmp_path`” claim and `ai/TESTING.md` §5's rule that tests never use real config/data/cache directories. | **Open** |
+| **T123-R2** | **Medium** | **Yes — required path isolation and the safety account remain false** | The guide now publishes the correct two-command split and explicitly refuses bare whole-suite `pytest -n auto`, resolving the main documentation defect. The new rationale says twelve matching files each spawn their own children and root writes in `tmp_path`. The twelve are lexical matches, not a behavioral inventory: they include prose-only mentions (`test_add_dialog`, `test_errors`, `test_protocol`), a negative source assertion (`test_environment`), and a `CompletedProcess` fake (`test_reveal`), while indirect manager launches are not discoverable by that grep. More materially, running the adopted UI test `test_an_open_playlist_shows_entries_and_a_way_back` with `XDG_CACHE_HOME=/tmp/t123-shared-cache-probe` created `/tmp/t123-shared-cache-probe/tracksandtrails/jobs/<uuid>.log`. With no override, every xdist worker uses the same real user cache. This contradicts both the submitted “roots whatever it writes in its own `tmp_path`” claim and `docs/project/TESTING.md` §5's rule that tests never use real config/data/cache directories. | **Open** |
 
 ### Required correction for T123-R2
 
@@ -15218,7 +15218,7 @@ implementation/evidence manifest SHA-256:
 `2ab7ae8ae64cb30d8a1ed422bfcd6aeea9fdd3eb55f37738ddad999591cc201c`.
 The manifest covers `.github/workflows/ci.yml`, `pyproject.toml`,
 `tests/integration/test_manager.py`, `docs/DEVELOPMENT.md`, `tests/conftest.py`,
-`tests/user_directories.py`, `tests/unit/test_user_directories.py`, `ai/TESTING.md`,
+`tests/user_directories.py`, `tests/unit/test_user_directories.py`, `docs/project/TESTING.md`,
 `tests/ui/conftest.py`, and `tests/ui/test_suite_isolation.py`, in that order.
 **Platforms verified:** Linux; both workflow routes rendered. Windows runtime remains for CI.
 **Verdict:** **Approved with follow-ups.** `T123-R2` is resolved. `T-230` owns the independently
@@ -15401,7 +15401,7 @@ T-066's underlying task disposition.
 | Check | Result |
 |---|---|
 | Boundary and worktree | **Clean; `HEAD == origin/main == 7983620`; exactly the submitted two records-only commits follow `d9848ca`.** |
-| Changed paths | **Only `ai/TASKS.md` and `ai/STATUS.md`.** |
+| Changed paths | **Only `docs/project/TASKS.md` and `docs/project/STATUS.md`.** |
 | `git diff --check d9848ca..7983620` | **Passed.** |
 | Task-placement gate | **14 passed, exit 0** via `.venv/bin/pytest -q tests/unit/test_task_placement.py`. |
 | Executable validation | Not rerun: no source, test, workflow, build, or dependency file changed. The previously reviewed `dbc7984` executable evidence is not reopened by this boundary. |
@@ -15464,7 +15464,7 @@ test comment and is carried to `T-232`.
 | Check | Result |
 |---|---|
 | Boundary and worktree before reviewer records | **Clean; `HEAD == origin/main == 6b7454b`; one submitted records commit follows `7a1e233`.** |
-| Changed paths | **Only `ai/TASKS.md` and `ai/STATUS.md`; T-033 is untouched.** |
+| Changed paths | **Only `docs/project/TASKS.md` and `docs/project/STATUS.md`; T-033 is untouched.** |
 | `git diff --check 7a1e233..6b7454b` | **Passed.** |
 | Task-placement gate | **14 passed, exit 0** via `.venv/bin/pytest -q tests/unit/test_task_placement.py`. |
 | Workflow shape | Three functional job paths create a virtualenv and add it to `GITHUB_PATH`; the current test command executes the T-019/process-tree tests from that environment. |
@@ -15516,7 +15516,7 @@ correct packaging operations or frozen gate.
 | Check | Result |
 |---|---|
 | Boundary and worktree before reviewer records | **Clean; `HEAD == origin/main == 034d4c1`; exactly the submitted three commits follow `2751ae5`.** |
-| Changed paths | `ai/TASKS.md`, `ai/STATUS.md`, and one comment in `tests/integration/test_manager.py`; no assertion, source behavior, workflow, build operation, or dependency changed. |
+| Changed paths | `docs/project/TASKS.md`, `docs/project/STATUS.md`, and one comment in `tests/integration/test_manager.py`; no assertion, source behavior, workflow, build operation, or dependency changed. |
 | `git diff --check 2751ae5..034d4c1` | **Passed.** |
 | T-033 focused pin/probe/resolution slice | **19 passed, exit 0.** This includes all frozen-probe logic tests, pin/restatement checks, candidate ordering, and seven broken-user-copy fallback shapes. |
 | T-232 grandchild slice | **3 passed, 151 deselected, exit 0.** |
@@ -15531,7 +15531,7 @@ owns the non-blocking explanatory cleanup. The failed assertion described in the
 hide a final-tree omission: `034d4c1` supplies the missing status edit, and the submitted head is
 internally coherent.
 
-At `034d4c1`, `ai/STATUS.md` correctly still calls T-033 blocked because this verdict did not yet
+At `034d4c1`, `docs/project/STATUS.md` correctly still calls T-033 blocked because this verdict did not yet
 exist. This approval changes that fact. The implementer/maintainer recording the reviewer-owned
 disposition must now rewrite that current blocker paragraph from this verdict; this is mechanical
 post-verdict synchronization and needs no focused implementation re-review. The Reviewer does not
@@ -15608,10 +15608,10 @@ are reviewed together once. T-233 moves to Complete and `T033-R7` is Resolved; `
 Low comment cleanup. T-228 stays Proposed with the causal chain recorded and the empirical
 classification still open.
 
-`ai/STATUS.md` remains Implementer-owned and was not edited. It now needs to say T-234 has changes
+`docs/project/STATUS.md` remains Implementer-owned and was not edited. It now needs to say T-234 has changes
 requested, T-233 is complete with Low follow-up T-237, T-235/T-236 block T-234, and T-228's first
-criterion remains open. The Reviewer changed only `ai/REVIEWS.md` and approved task/follow-up
-records in `ai/TASKS.md`; no reviewed source, test, workflow, dependency, commit, push, or remote
+criterion remains open. The Reviewer changed only `docs/project/REVIEWS.md` and approved task/follow-up
+records in `docs/project/TASKS.md`; no reviewed source, test, workflow, dependency, commit, push, or remote
 state was changed.
 
 ## 2026-08-12 — T-234 focused correction re-review / T-235, T-236, T-237 reviews
@@ -15666,10 +15666,10 @@ T-234 and T-235 remain In Review on the exact-name gate. T-236 moves to Complete
 `T234-R2`. T-237 remains In Review on its product-versus-gate sentence. The correction of
 `T234-R3` is complete. T-228's amended records were read but not reviewed or dispositioned.
 
-`ai/STATUS.md` remains Implementer-owned and was not edited. It must now record the two resolved
+`docs/project/STATUS.md` remains Implementer-owned and was not edited. It must now record the two resolved
 T-234 findings, the remaining exact-name finding, T-236's approval, T-237's requested wording
-correction, and filed T-238. The Reviewer changed only `ai/REVIEWS.md` and approved task records in
-`ai/TASKS.md`; no reviewed source, test, workflow, dependency, commit, push, or remote state was
+correction, and filed T-238. The Reviewer changed only `docs/project/REVIEWS.md` and approved task records in
+`docs/project/TASKS.md`; no reviewed source, test, workflow, dependency, commit, push, or remote state was
 changed.
 
 ## 2026-08-12 — T-234/T-235/T-237 second correction re-review; T-238 evidence correction
@@ -15736,10 +15736,10 @@ answer to a process crash.
 T-234, T-235, and T-237 move to Complete. T-238 remains Proposed, with its title, priority,
 evidence, scope, and criteria rewritten around the SIGSEGV while preserving causal uncertainty.
 
-`ai/STATUS.md` remains Implementer-owned and was not edited. It still repeats the superseded
+`docs/project/STATUS.md` remains Implementer-owned and was not edited. It still repeats the superseded
 *failure / exact assertion* framing and needs a current-truth sync to the corrected T-238 evidence
-and these approvals. The Reviewer changed only `ai/REVIEWS.md` and approved task/follow-up records
-in `ai/TASKS.md`; no reviewed source, test, workflow, dependency, commit, push, or remote state was
+and these approvals. The Reviewer changed only `docs/project/REVIEWS.md` and approved task/follow-up records
+in `docs/project/TASKS.md`; no reviewed source, test, workflow, dependency, commit, push, or remote state was
 changed.
 
 ## 2026-08-12 — T-230, T-220, T-229, and T-239 unattended-run review
@@ -15769,7 +15769,7 @@ non-blocking STATUS wording correction remains (`T239-R1`).
 
 | ID | Severity | Blocks approval | Finding | Required correction |
 |---|---:|---:|---|---|
-| **T239-R1** | **Low** | **No** | `ai/STATUS.md` says format runs before everything and that run `31657367781` produced no Windows evidence. The run shows **Types under the Windows platform** and the dedicated **Windows desktop suite** both succeeded before `ruff format --check .` failed. What was skipped was the Qt baseline and full Windows suite, so the T-239 regression itself received no Windows execution. | Narrow the STATUS statement to the evidence actually lost. The consequence remains material: T-239 lacked full Linux/Windows test execution until dispatched run `31657727760`. |
+| **T239-R1** | **Low** | **No** | `docs/project/STATUS.md` says format runs before everything and that run `31657367781` produced no Windows evidence. The run shows **Types under the Windows platform** and the dedicated **Windows desktop suite** both succeeded before `ruff format --check .` failed. What was skipped was the Qt baseline and full Windows suite, so the T-239 regression itself received no Windows execution. | Narrow the STATUS statement to the evidence actually lost. The consequence remains material: T-239 lacked full Linux/Windows test execution until dispatched run `31657727760`. |
 
 ### The format incident
 
@@ -15782,7 +15782,7 @@ was necessary and is the first full five-job run of the corrected T-239 test.
 
 The underlying process miss is also confirmed: the implementer ran `ruff format --check src tests`
 while repository policy and CI require `ruff format --check .`. The current tree passes the latter.
-No separate task is needed because the command is already canonical in `ai/TESTING.md` §4, the
+No separate task is needed because the command is already canonical in `docs/project/TESTING.md` §4, the
 failure and its cost are recorded, and the exact required command now passes.
 
 ### Independent verification
@@ -15805,9 +15805,9 @@ records were also trued: T-220 no longer says its label half or final reading is
 T-239 names the test as its affected surface and no longer recasts T-238's local xdist crash as a
 runner-red/local-green event.
 
-`ai/STATUS.md` remains Implementer-owned and was not edited. It needs to move all four tasks to
+`docs/project/STATUS.md` remains Implementer-owned and was not edited. It needs to move all four tasks to
 Complete and apply `T239-R1`'s narrower account of what the format failure prevented. The Reviewer
-changed only `ai/REVIEWS.md` and approved task/follow-up records in `ai/TASKS.md`; no reviewed
+changed only `docs/project/REVIEWS.md` and approved task/follow-up records in `docs/project/TASKS.md`; no reviewed
 source, test, workflow, dependency, commit, push, roadmap, or other remote state was changed.
 
 ## 2026-08-13 — T-198 initial review
@@ -15830,7 +15830,7 @@ download.
 | ID | Severity | Blocks approval | Finding and required correction |
 |---|---|---:|---|
 | **T198-R1** | **High** | **Yes** | Criterion 2 requires both a changed reported version **and a download afterwards running on the new copy**, through the worker. `test_installing_then_reverting_moves_the_reported_version_and_moves_it_back` only calls `resolve_in_a_child`; that target is explicitly a query with no session or download. Its synthetic wheel contains only `yt_dlp/__init__.py` and `version.py`, not even the `YoutubeDL` surface a session invokes. The test therefore passes if a real download ignores the update or cannot run with it. **Exercise a spawned download session after installation with an installed test package (or controlled real package) whose download path proves that copy ran.** |
-| **T198-R2** | **High** | **Yes** | Criterion 4 is unmet, as the submission acknowledges. The `frozen` workflow builds the artifact, probes its bundled baseline/extractors and database, then runs the generic spawn smoke; it never invokes `install_latest`, resolves an installed copy in a spawned child, or reverts it. Green Linux and Windows frozen jobs therefore do not prove the criterion, and `ai/TESTING.md` release-gate item 10 independently names the missing sequence: download, extract, resolve the new version, revert. **Add and run the frozen end-to-end probe on Linux and Windows; a build/smoke result alone is not the requested CI proof.** |
+| **T198-R2** | **High** | **Yes** | Criterion 4 is unmet, as the submission acknowledges. The `frozen` workflow builds the artifact, probes its bundled baseline/extractors and database, then runs the generic spawn smoke; it never invokes `install_latest`, resolves an installed copy in a spawned child, or reverts it. Green Linux and Windows frozen jobs therefore do not prove the criterion, and `docs/project/TESTING.md` release-gate item 10 independently names the missing sequence: download, extract, resolve the new version, revert. **Add and run the frozen end-to-end probe on Linux and Windows; a build/smoke result alone is not the requested CI proof.** |
 | **T198-R3** | **Medium** | **Yes** | The update service has no knowledge of active manager sessions. Composition gives the service and manager the same mutable directory, while `_swap_into_place` renames/replaces it and `revert_to_baseline` renames/deletes it. An already-running worker using a user-managed copy can consequently resolve later lazy imports from the replacement version, or from a path the revert removed, producing a mixed-version failure. A Windows rename failure is not a gate: Python does not keep every imported source file or containing directory open, and the POSIX path succeeds by design. **Prevent install/revert while any worker can still use that tree, or adopt an immutable/versioned-directory scheme that keeps each active worker's copy intact.** |
 | **T198-R4** | **Low** | **No** | The task, STATUS, and handoff record **414 integration tests passed**, but the exact `21be6a2` tree collects and passes **415**. The green claim is independently restored below, so this is a count/provenance correction rather than a gate failure. **Correct the current-truth count when synchronizing the review verdict.** |
 
@@ -15866,9 +15866,9 @@ code tree stable is a correctness requirement and cannot be left to platform ren
 
 T-198 remains In Review with three blocking findings. The focused correction should prove the
 post-update download, add the two-platform frozen update/revert gate, and close the active-worker
-race as one correction batch. `ai/TASKS.md` and `ai/STATUS.md` remain Implementer-owned and were not
+race as one correction batch. `docs/project/TASKS.md` and `docs/project/STATUS.md` remain Implementer-owned and were not
 edited; both need the Changes requested verdict, the corrected integration count, and the finding
-states synchronized. The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, workflow,
+states synchronized. The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, workflow,
 dependency, commit, push, handoff, roadmap, or other remote state was changed.
 
 ## 2026-08-13 — T-198 focused correction re-review
@@ -15895,7 +15895,7 @@ jobs.
 | **T198-R2** | **High** | **Yes** | **Still Open, narrowed to Windows execution.** A fresh Linux PyInstaller 6.22.0 build ran `--ytdlp-update-probe` successfully: baseline `2026.07.04`, installed/resolved `9000.1.1` from the user-managed copy in a spawned child, then baseline again after revert. The existing yt-dlp and database probes also remained green. The workflow invokes this probe in both frozen matrix legs, and release-gate item 10 does not require a media download in this same probe; `T198-R1` owns that distinct proof. `OPS-003` still requires the unexecuted Windows result before resolution. |
 | **T198-R3** | **Medium** | **Yes** | **Still Open.** `install_latest_version()` / `revert()` call `_refuse_while_workers_run()` once, then submit asynchronous work to the Qt pool. The GUI and manager remain live during index lookup, download, extraction, and the later swap, so Start, admission, a manager tick, or an automatic retry can start a worker after the check. A deterministic probe changed the predicate from false to true between that guard and `_run` and observed `install_latest` proceed while active. `manager.active_job_ids()` also omits `_retry_at`, even though `is_idle` correctly counts it as future work. The correction must establish mutual exclusion for the whole tree-changing operation: acquire quiescence before scheduling, prevent any new worker start until success/failure releases it, and mutation-check the composed manager/service wiring. A second point-in-time predicate check is still a race. |
 | **T198-R4** | **Low** | **Resolved** | The current task/status summary identifies **415** as the reviewed-head integration count and explains the earlier 414 as a measurement of the preceding tree. The correction head's independent focused counts are recorded separately rather than retroactively attributed to `21be6a2`. |
-| **T198-R5** | **Medium** | **Yes** | `ai/TASKS.md` says all four findings are **Resolved** and that *“the reviewer confirmed”* them; `ai/STATUS.md` likewise calls all four Resolved. Only the Reviewer may make that disposition, `T198-R3` is demonstrably still open, and `T198-R2` lacks its required Windows evidence. This materially misstates the required gate rather than merely using loose completion language. Synchronize both current-truth files to this pass: R1/R4 Resolved, R2 Open pending Windows, R3 Open pending full-operation exclusion, and R5 corrected awaiting re-review. |
+| **T198-R5** | **Medium** | **Yes** | `docs/project/TASKS.md` says all four findings are **Resolved** and that *“the reviewer confirmed”* them; `docs/project/STATUS.md` likewise calls all four Resolved. Only the Reviewer may make that disposition, `T198-R3` is demonstrably still open, and `T198-R2` lacks its required Windows evidence. This materially misstates the required gate rather than merely using loose completion language. Synchronize both current-truth files to this pass: R1/R4 Resolved, R2 Open pending Windows, R3 Open pending full-operation exclusion, and R5 corrected awaiting re-review. |
 
 ### Acceptance and declared-boundary results
 
@@ -15924,12 +15924,12 @@ jobs.
 
 Keep the correction unpushed. Close `T198-R3` with a manager/service exclusion held for the whole
 install or revert, cover the composed wiring and the start-during-update case, and synchronize
-`ai/TASKS.md` / `ai/STATUS.md` per `T198-R5`. Then push that final head so the existing frozen matrix
+`docs/project/TASKS.md` / `docs/project/STATUS.md` per `T198-R5`. Then push that final head so the existing frozen matrix
 step can provide `T198-R2`'s Windows evidence. Because High `T198-R2` remains unresolved, the next
 focused verification of R2/R3/R5 remains within §10's convergence rule without separate maintainer
 authorization.
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, workflow, dependency, commit,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, workflow, dependency, commit,
 push, handoff, roadmap, or other remote state was changed.
 
 ## 2026-08-13 — T-198 exclusion correction re-review
@@ -15949,7 +15949,7 @@ be corrected before this head is pushed.
 |---|---|---:|---|
 | **T198-R2** | **High** | **Yes** | **Still Open and untouched.** This boundary changes neither the frozen probe nor its workflow step. Linux evidence from the preceding pass stands; the required Windows frozen execution still needs CI. |
 | **T198-R3** | **Medium** | **Resolved** | `DownloadManager` now grants a non-reentrant hold only when sessions, reservations, waiting jobs, and scheduled retries are all absent. Every worker-start route parks or stops filling while held, including probes and retries that become due during the operation. `YtdlpService` acquires the hold before scheduling install/revert work and releases it on both success and failure; composition passes the manager itself. The composed regression deterministically presses Start while an install is blocked mid-flight, proves no worker spawns, and proves the parked download begins after release. The changed manager, service, and composition integration files pass independently. |
-| **T198-R5** | **Medium** | **Resolved** | At the reviewed head, `ai/TASKS.md` and `ai/STATUS.md` distinguish the Reviewer's resolved R1/R4 dispositions from the Implementer's corrected-and-awaiting-verdict state for R3/R5, and preserve R2 as Open pending Windows. They no longer claim an unissued reviewer disposition. |
+| **T198-R5** | **Medium** | **Resolved** | At the reviewed head, `docs/project/TASKS.md` and `docs/project/STATUS.md` distinguish the Reviewer's resolved R1/R4 dispositions from the Implementer's corrected-and-awaiting-verdict state for R3/R5, and preserve R2 as Open pending Windows. They no longer claim an unissued reviewer disposition. |
 | **T198-R6** | **Low** | **Yes** | Commit `fb41895` ends with `Co-Authored-By: Claude Opus 5 (1M context)`, directly violating `AGENTS.md` §§7 and 13: AI tools must not be named as commit authors or co-authors. This is Low by shipped consequence but blocks this exact commit because it is an explicit repository hard rule. **Amend or replace the unpushed commit to remove the trailer; do not push `fb41895`.** The replacement may retain the identical tree, and the final R2 verification need only confirm that tree identity plus the corrected metadata before reading CI. |
 
 ### Exclusion audit
@@ -15988,7 +15988,7 @@ The next focused pass is limited to `T198-R2`, the mechanical `T198-R6` correcti
 check, and the disposition sync; the resolved exclusion does not need another code audit absent a
 tree change.
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, workflow, dependency, commit,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, workflow, dependency, commit,
 push, handoff, roadmap, or other remote state was changed.
 
 ## 2026-08-13 — T-198 final frozen-evidence verification
@@ -16040,12 +16040,12 @@ Linux focused evidence recorded in the preceding passes.
 
 ### Completion synchronization owed
 
-`ai/TASKS.md` was updated concurrently during this verification to carry the completed CI evidence
-without taking the Reviewer's disposition. It and `ai/STATUS.md` now need the routine post-verdict
+`docs/project/TASKS.md` was updated concurrently during this verification to carry the completed CI evidence
+without taking the Reviewer's disposition. It and `docs/project/STATUS.md` now need the routine post-verdict
 sync: move T-198 to Complete, record R2 and R6 Resolved, and cite run `31726615968` at `7b20c60`.
 This is not another implementation or review pass.
 
-The Reviewer's edit is only `ai/REVIEWS.md`; the concurrent Implementer edit to `ai/TASKS.md` is
+The Reviewer's edit is only `docs/project/REVIEWS.md`; the concurrent Implementer edit to `docs/project/TASKS.md` is
 preserved. No source, test, workflow, dependency, commit, push, handoff, roadmap, or other remote
 state was changed by the Reviewer.
 
@@ -16093,7 +16093,7 @@ requires evidence for that half in its own right.
 
 | Check | Result |
 |---|---|
-| Boundary and tracked state | **Passed.** `main` is one commit ahead of `origin/main`; `a62b940..2c50456` is exactly one commit. Before this review record the tracked tree was clean. The range changes `ai/STATUS.md`, `ai/TASKS.md`, and four test-harness files; no `src/` path, dependency, existing test timeout, or original thumbnail-store assertion changes. `git diff --check` passed. |
+| Boundary and tracked state | **Passed.** `main` is one commit ahead of `origin/main`; `a62b940..2c50456` is exactly one commit. Before this review record the tracked tree was clean. The range changes `docs/project/STATUS.md`, `docs/project/TASKS.md`, and four test-harness files; no `src/` path, dependency, existing test timeout, or original thumbnail-store assertion changes. `git diff --check` passed. |
 | Focused guard and original-crash node | **Passed:** all four outer tests passed in 1.60 s, including `test_a_test_that_leaks_a_view_is_the_test_that_fails` and `test_deleting_a_closed_store_neither_waits_nor_is_emitted_through`. |
 | Deliberately leaking helper | **Failed as intended:** the named helper's body passed and its teardown errored with `this test left 1 item view(s) alive with no parent`. This verifies the installed assertion and diagnostic. |
 | Fixture ordering | **Observed at this head:** `_undressed_afterwards` tears down first, then `_no_orphaned_views`, then `_no_orphaned_timers`. A warning caused by the collection/drain therefore remains visible to the timer assertion. |
@@ -16111,7 +16111,7 @@ default. The focused correction re-review will inspect only the drain regression
 commit tree identity and message, and the current-truth disposition of criteria 4 and 6. T-238
 cannot move to Complete while those unchanged criteria still say they are unmet.
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed.
 
 ## 2026-08-13 — T-238 focused guard correction re-review
@@ -16160,10 +16160,10 @@ bounded harness change, and integration remains correctly outside its wiring. T-
 move to Complete: product-versus-harness remains unestablished under criterion 4. Its task entry
 should leave `## In Review` during the routine post-verdict sync and move to `## Ready`, matching
 the existing unresolved-intermittent treatment used by T-074, while recording the guard approval
-at `9e5feae` and the three Resolved findings. `ai/STATUS.md` likewise needs only that post-verdict
+at `9e5feae` and the three Resolved findings. `docs/project/STATUS.md` likewise needs only that post-verdict
 state sync; no additional implementation or review pass is required.
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed.
 
 ## 2026-08-13 — T-196 network options review
@@ -16236,7 +16236,7 @@ stored object. Because `T196-R1` is Critical, independent focused correction and
 continues until it is resolved regardless of the ordinary pass budget; no approval can be issued
 while any of these findings remains open.
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed.
 
 ## 2026-08-13 — T-196 corrections focused re-review
@@ -16262,7 +16262,7 @@ risk, change scope, or carry it to a named follow-up.
 | **T196-R2** | **Medium** | **Yes** | **Resolved** | `_proxy_from`'s reason carries no value or worked example. Public `registrable_proxy` is shared by stored and runtime routes and admits only a usable proxy or one carrying `@`. The four-shape composed formatter test passes. Restoring the old `://`/`@` classifier damaged an ordinary URL and failed one of four cases; appending `proxy_refusal` to the reason quoted three refused values and failed three of four cases. |
 | **T196-R3** | **Medium** | **Yes** | **Resolved** | `RATE_LIMIT_MINIMUM_BYTES = 1024` is enforced by `Settings`, `_rate_limit_from`, and `with_network_options`; 1/500/1023 are raised and reported, 1024 and non-multiples above it remain exact, and unrelated edits preserve the stored remainder. Lowering the floor to one made four of the six focused unit/UI cases fail, including a one-byte limit displayed as `No limit`. |
 | **T196-R4** | **Medium** | **Yes** | **Resolved** | The composed regression drives proxy and rate controls, checks `settings.toml`, builds the next request through the add dialog, and ends at adapter `proxy` and `ratelimit`. The reviewer's exact mutation — retain only `NetworkOptions(retries=options.retries)` in `choose_network` — now produces **1 failed, 9 passed**, at the new regression's persisted-proxy assertion; the restored selection is **10 passed**. |
-| **T196-R5** | **Medium** | **Yes** | **Open** | The visible label and accessible name both say *Retries of the file transfer, within one attempt*, and the section explains the separate segmented-stream count. Restoring the old label fails its focused UI regression. However, `ai/STATUS.md:504` still says yt-dlp `--retries` is **per-fragment**, and `ai/TASKS.md:317-318` still defines the acceptance choice as **fragment retries or job-level retry**. Both are current-truth surfaces under `AGENTS.md` §6, both materially misstate the built setting, and both directly continue R5. Correct them to distinguish file-transfer `--retries`, per-fragment `--fragment-retries`, and the application's job-level retry. |
+| **T196-R5** | **Medium** | **Yes** | **Open** | The visible label and accessible name both say *Retries of the file transfer, within one attempt*, and the section explains the separate segmented-stream count. Restoring the old label fails its focused UI regression. However, `docs/project/STATUS.md:504` still says yt-dlp `--retries` is **per-fragment**, and `docs/project/TASKS.md:317-318` still defines the acceptance choice as **fragment retries or job-level retry**. Both are current-truth surfaces under `AGENTS.md` §6, both materially misstate the built setting, and both directly continue R5. Correct them to distinguish file-transfer `--retries`, per-fragment `--fragment-retries`, and the application's job-level retry. |
 
 ### Independent verification
 
@@ -16282,7 +16282,7 @@ No implementation or test change is requested. R5 needs only the two current-tru
 identified above. Because this focused pass consumes the ordinary review budget, a further verdict
 requires the maintainer disposition described in `AGENTS.md` §10.
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed.
 
 ## 2026-08-13 — T-196 R5 authorised focused re-review
@@ -16300,18 +16300,18 @@ remain Resolved, so no open blocking finding remains.
 
 | ID | Severity | Blocks approval | Status | Authorised focused re-review result |
 |---|---|---:|---|---|
-| **T196-R5** | **Medium** | **Yes** | **Resolved** | The two current-truth defects named by the prior verdict are corrected. `ai/STATUS.md` now distinguishes file-transfer `--retries`, per-fragment `--fragment-retries`, and the application's job-level retry. `ai/TASKS.md` makes the same three-way distinction in the acceptance criterion. The recorded maintainer ruling keeps its original wording as history but is marked inaccurate at the quote and corrected immediately beneath it, so it cannot be read as current meaning. A focused sweep of `ai/` and `docs/` found no remaining unannotated current-truth statement that calls `--retries` per-fragment. |
+| **T196-R5** | **Medium** | **Yes** | **Resolved** | The two current-truth defects named by the prior verdict are corrected. `docs/project/STATUS.md` now distinguishes file-transfer `--retries`, per-fragment `--fragment-retries`, and the application's job-level retry. `docs/project/TASKS.md` makes the same three-way distinction in the acceptance criterion. The recorded maintainer ruling keeps its original wording as history but is marked inaccurate at the quote and corrected immediately beneath it, so it cannot be read as current meaning. A focused sweep of `ai/` and `docs/` found no remaining unannotated current-truth statement that calls `--retries` per-fragment. |
 
 ### Independent verification
 
 | Check | Result |
 |---|---|
 | Boundary before this record | **Passed:** `main`, `origin/main`, and HEAD were `c70f61a`; the tracked tree was clean; `git diff --check c09badd..c70f61a` passed. |
-| Correction scope | **Passed:** `fb083f5..c70f61a` changes only `ai/STATUS.md` and `ai/TASKS.md`; `src/`, `tests/`, `pyproject.toml`, `.github/`, and `docs/` are unchanged. |
+| Correction scope | **Passed:** `fb083f5..c70f61a` changes only `docs/project/STATUS.md` and `docs/project/TASKS.md`; `src/`, `tests/`, `pyproject.toml`, `.github/`, and `docs/` are unchanged. |
 | R5 terminology sweep | **Passed:** every remaining `per-fragment`, `fragment retries`, `--retries`, and `--fragment-retries` occurrence in the focused current-truth surface is either accurate or explicitly marked as superseded historical wording. |
 | Runtime and static gates | **Not run:** this pass changes and reviews documentation only; `AGENTS.md` §8 requires no source gate, and no prior source/test evidence is promoted to a new result. |
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed. The routine post-verdict sync may move
 `T-196` out of `## In Review` and update current status to this approval without another review pass.
 
@@ -16372,7 +16372,7 @@ newline-only exception is retained. Because R3 is High, focused correction and i
 verification continue until the product surface is real; the already-correct taxonomy,
 failed/status, accessibility, and no-bypass branches do not need a second broad audit.
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed.
 
 ## 2026-08-14 — T-242 Settings-screen fit review
@@ -16392,7 +16392,7 @@ multi-monitor desktop, and the two screenshots required by the task are not atta
 | ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
 |---|---|---:|---|---|---|---|
 | **T242-R1** | **Medium** | **Yes** | Multi-monitor sizing | `_room_on_screen()` always uses `QApplication.primaryScreen()`, despite its own call-site claim that the dialog is bounded by “the screen it is on.” `SettingsDialog` is parented to the main window, so a main window on a smaller secondary display can open Settings using the larger primary display's available height. For example, a 1080-high primary can permit roughly a 1032-pixel dialog while the parent sits on the 768-high display named by the acceptance criterion, recreating the off-screen/clipped dialog this task exists to remove. The test also asks only `primaryScreen()`, so it is false-green for the same implementation. This is a narrow multi-monitor trigger but directly misses the required 1366×768 working-area case. | Resolve available geometry from the dialog/parent's associated `screen()` and use the primary display only as the no-associated-screen fallback. Add a deterministic regression in which the associated display's room is smaller than the primary display's and assert the associated room wins. | **Open** |
-| **T242-R2** | **Medium** | **Yes** | Required visual evidence | The fourth acceptance criterion requires fixed-screen screenshots in both themes attached to the T-242 entry. The entry contains only the claim that 620×700 offscreen images were rendered; commit `2c9ccf8` changes only `ai/TASKS.md`, the dialog, and its test, and the entry has no image or link. The evidence therefore cannot be inspected, even at the explicitly limited offscreen confidence level. | Attach or durably link the composed 620×700 light and dark captures at the task entry, or obtain maintainer approval to amend the criterion. Keep the limitation that they are offscreen and do not stand in for T-212's real-display pass. | **Open** |
+| **T242-R2** | **Medium** | **Yes** | Required visual evidence | The fourth acceptance criterion requires fixed-screen screenshots in both themes attached to the T-242 entry. The entry contains only the claim that 620×700 offscreen images were rendered; commit `2c9ccf8` changes only `docs/project/TASKS.md`, the dialog, and its test, and the entry has no image or link. The evidence therefore cannot be inspected, even at the explicitly limited offscreen confidence level. | Attach or durably link the composed 620×700 light and dark captures at the task entry, or obtain maintainer approval to amend the criterion. Keep the limitation that they are offscreen and do not stand in for T-212's real-display pass. | **Open** |
 
 ### Independent verification
 
@@ -16412,7 +16412,7 @@ Keep the commit unpushed. Correct the display selection, add its focused regress
 two evidence images in the task record in one batch. The focused re-review will verify those two
 findings and the correction diff; it will not treat offscreen output as real-display verification.
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed.
 
 ## 2026-08-14 — T-227 settings-record gate review
@@ -16458,7 +16458,7 @@ Keep the commit unpushed. Move only the malformed count marker and add the narro
 the declaration shape and the existing record comparisons require no redesign. The focused
 re-review will inspect that correction and the affected settings-record tests only.
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed.
 
 ## 2026-08-14 — T-241 zero-byte row review
@@ -16478,7 +16478,7 @@ T-241's implementation and required sub-question answer inside T-201 instead of 
 
 | ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
 |---|---|---:|---|---|---|---|
-| **T241-R1** | **Medium** | **Yes** | Task record / scope truth | Commit `860d440` inserts “What was built, and the two questions it turned on,” the zero-byte rule, and the cancelled-partial answer at `ai/TASKS.md:163-191`—inside the `T-201` entry. The actual T-241 entry says the required sub-question “is answered below,” but it reaches its acceptance criteria and Out of scope without that answer or any built-implementation section. The record therefore attributes T-241 behavior to T-201, duplicates the two tasks' scope, and fails to make the owning entry self-contained. This is not merely a heading preference: T-201 deliberately stopped at failures, while T-241 exists because cancellation/queued states were outside it. | Move the implementation/rationale/sub-question section into T-241 before its acceptance criteria and remove it from T-201. Keep the source and tests unchanged. | **Open** |
+| **T241-R1** | **Medium** | **Yes** | Task record / scope truth | Commit `860d440` inserts “What was built, and the two questions it turned on,” the zero-byte rule, and the cancelled-partial answer at `docs/project/TASKS.md:163-191`—inside the `T-201` entry. The actual T-241 entry says the required sub-question “is answered below,” but it reaches its acceptance criteria and Out of scope without that answer or any built-implementation section. The record therefore attributes T-241 behavior to T-201, duplicates the two tasks' scope, and fails to make the owning entry self-contained. This is not merely a heading preference: T-201 deliberately stopped at failures, while T-241 exists because cancellation/queued states were outside it. | Move the implementation/rationale/sub-question section into T-241 before its acceptance criteria and remove it from T-201. Keep the source and tests unchanged. | **Open** |
 
 ### Independent verification
 
@@ -16501,11 +16501,11 @@ that the implementation tree remains unchanged.
 ### Queue-wide bookkeeping note
 
 The four task entries enumerate **27** submitted mutations: T-201 seven, T-242 six, T-227 eight,
-and T-241 six. The handoff and the top `ai/STATUS.md` snapshot say **26**. None of these verdicts
+and T-241 six. The handoff and the top `docs/project/STATUS.md` snapshot say **26**. None of these verdicts
 relies on the aggregate, and the discrepancy is not assigned to T-241, but the current-truth total
 should be corrected in the next coordination sync.
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed.
 
 ## 2026-08-14 — T-201 corrections focused re-review
@@ -16574,7 +16574,7 @@ actionable, no-action, exhausted-network, and long-diagnostic cases. Although th
 focused re-review, R3 is High, so `AGENTS.md` §10 keeps focused correction and independent
 verification open until that finding is resolved.
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed.
 
 ## 2026-08-14 — T-242 corrections focused re-review
@@ -16606,7 +16606,7 @@ remains.
 | Visual inspection | **Passed at the claimed offscreen confidence level:** both committed captures were inspected at original resolution. No real-display or transient-window claim is inferred. |
 | Static gates | **Passed:** the shared correction static results recorded in the T-201 focused review above. |
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed. The routine post-verdict sync may move
 `T-242` out of `## In Review` without another review pass.
 
@@ -16635,7 +16635,7 @@ claimed.
 | Placement mutation | **Caught:** restoring the original start-of-line marker makes the UX-spec parameter fail and reports the offending line. |
 | Runtime/static gates | No runtime source changed. The changed test is included in the shared correction `ruff` and formatting pass recorded above. |
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed. The routine post-verdict sync may move
 `T-227` out of `## In Review` without another review pass.
 
@@ -16662,7 +16662,7 @@ commit, push, handoff, roadmap, or remote state was changed. The routine post-ve
 | Placement | **Passed:** the complete “What was built” and “The sub-question, answered” sections occur under T-241; the former T-201 location is absent. |
 | Runtime/static gates | **Not run for this correction:** `AGENTS.md` §8 requires none for a documentation-only move, and no previous runtime result is promoted to a new claim. |
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed. The routine post-verdict sync may move
 `T-241` out of `## In Review` without another review pass.
 
@@ -16696,13 +16696,13 @@ for this focused correction and is filed as `T-244`.
 | Static gates | **Passed:** `ruff check` and `ruff format --check` on the seven changed Python files; `mypy src` (**55 files**), bare `mypy` and `mypy --platform win32` (**142 files** each). |
 | R2 live path | **Passed:** the new one-widget regression exercises both attempt states through the real manager signal objects. Source inspection confirms the production persistence callback announces `job_changed` before `job_failed`, and that the render now reads the post-persistence row. |
 | R3 composition and geometry | **Passed for the correction boundary:** the queue supplies the action role, honest empty cases spend no line, the long reason retains `--ffmpeg-location`, and the top-level format/bar/verb tail moves exactly one font line. Accessible text includes the same step. |
-| Visual regeneration | **Passed:** a fresh generator run reported `97, 80, 97, 97` px and `1180x371`; its PNG and `ai/evidence/2026-08-14-T201-next-step-option-c.png` have the identical SHA-256 `73490db03f8dc397df22729108ed5cd63f2e27d33b955d1f9ee72199e92b6181`. The image was inspected at original resolution. |
+| Visual regeneration | **Passed:** a fresh generator run reported `97, 80, 97, 97` px and `1180x371`; its PNG and `docs/project/evidence/2026-08-14-T201-next-step-option-c.png` have the identical SHA-256 `73490db03f8dc397df22729108ed5cd63f2e27d33b955d1f9ee72199e92b6181`. The image was inspected at original resolution. |
 | Adjacent child probe | **Filed as T-244:** two composed failed playlist children each offered `Retry` and `Remove`, carried the new action line at a fitting 63 px height, and produced an empty verb-rectangle list. The unchanged base calculation establishes that this is not a correction regression. |
 | Implementer's wider gates | **Not repeated.** The Implementer reports **2982 passed / 18 skipped** unit+UI and **440 passed** integration; this review neither contradicts nor promotes those figures to independent results. |
 
 The implementation may now be committed as the single T-201 task commit requested by the
 maintainer. A routine post-verdict sync may move `T-201` out of `## In Review` after the commit SHA
-exists. The Reviewer changed only `ai/REVIEWS.md` and the approved follow-up entry in `ai/TASKS.md`;
+exists. The Reviewer changed only `docs/project/REVIEWS.md` and the approved follow-up entry in `docs/project/TASKS.md`;
 no reviewed source, test, product decision/specification, status record, evidence, generator,
 dependency, commit, push, handoff, roadmap, or remote state was changed.
 
@@ -16727,7 +16727,7 @@ its parent.
 | ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
 |---|---|---:|---|---|---|---|
 | **T244-R1** | **Medium** | **Yes** | Phantom-bar reserve / evidence | The new `_depth(index) > 0` guard in `_bar_reserve()` is observable, contrary to the source comment, task entry, status snapshot and handoff's original reasoning. A composed running playlist child at 50% and 180 px offers `Cancel`: the submitted guard draws `Cancel` directly, while restoring the old phantom `MIN_FRACTION_BAR` reserve leaves only `⋯`. Across four child shapes and representative verb sets, independent old-versus-new comparison found changed rectangles over intervals from 175 through 364 px; even the real one-verb running shape differs from 137 through 204 px. The submitted `SWEEP_WIDTHS` starts at 300, its child fixtures carry no `PROGRESS_ROLE`, and therefore none of the fourteen new tests can fail when this guard is removed. The claimed 150–600 no-difference sweep was not a mutation test that established the branch. This is a good behavior change—an entry with no bar should not lose a direct verb to space reserved for one—but it is an unguarded seventh mutation, not an unobservable agreement. | Keep the guard, correct every durable “unobservable/no layout change” claim, and add a non-vacuous running-child regression at a width where restoring the old reserve changes `Cancel` to overflow-only. Demonstrate that restoration fails that test and update the mutation count. Removing the guard and its claims is also internally consistent, but would retain a phantom reserve and is not the recommended correction now that its effect is measured. | **Open** |
-| **T244-R2** | **Medium** | **Yes** | Current-truth review boundary | `ai/STATUS.md` in `c1b4ab0` says T-244 is “in an uncommitted tree on main at `ebe4159`.” `ebe4159` is the task's parent; the task is committed at `c1b4ab0`, and `main` subsequently advanced to `396eeeb`. The corrected handoff gives the real review boundary, but handoffs are untracked messages and `STATUS.md` is the canonical current-truth snapshot. A reader following it inspects the wrong tree and is told a committed task is uncommitted. | Rewrite the top snapshot to say T-244 is committed and awaiting focused re-review without trying to self-name a correction commit that does not exist yet. Keep the exact correction base/head in the next handoff. | **Open** |
+| **T244-R2** | **Medium** | **Yes** | Current-truth review boundary | `docs/project/STATUS.md` in `c1b4ab0` says T-244 is “in an uncommitted tree on main at `ebe4159`.” `ebe4159` is the task's parent; the task is committed at `c1b4ab0`, and `main` subsequently advanced to `396eeeb`. The corrected handoff gives the real review boundary, but handoffs are untracked messages and `STATUS.md` is the canonical current-truth snapshot. A reader following it inspects the wrong tree and is told a committed task is uncommitted. | Rewrite the top snapshot to say T-244 is committed and awaiting focused re-review without trying to self-name a correction commit that does not exist yet. Keep the exact correction base/head in the next handoff. | **Open** |
 
 ### Independent verification
 
@@ -16750,7 +16750,7 @@ measured no-phantom-reserve behavior—and correct R2's current-truth boundary i
 The working child-anatomy, `room_on()` parameterisation and existing fourteen regressions need no
 redesign.
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, decision,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, decision,
 dependency, commit, push, handoff, roadmap, evidence, generator, or remote state was changed.
 
 ## 2026-08-14 — T-244 correction focused re-review
@@ -16793,7 +16793,7 @@ focused re-review**, without describing it as uncommitted or trying to embed its
 commit that current-truth correction, update the untracked handoff with the exact new boundary, and
 request the authorized pass. Do not push meanwhile.
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, decision,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, decision,
 dependency, commit, push, handoff, roadmap, evidence, generator, or remote state was changed.
 
 ## 2026-08-14 — T-244 authorized documentation re-review
@@ -16819,7 +16819,7 @@ finding remains.
 
 | Check | Result |
 |---|---|
-| Boundary and metadata | **Passed:** `2fb651f..510923d` changes only `ai/STATUS.md` and `ai/TASKS.md`, **+37/−5**, and passes `git diff --check`. Its 43-character imperative subject, human-only authorship, `Task: T-244` and `Review: T244-R2` trailers satisfy repository policy. |
+| Boundary and metadata | **Passed:** `2fb651f..510923d` changes only `docs/project/STATUS.md` and `docs/project/TASKS.md`, **+37/−5**, and passes `git diff --check`. Its 43-character imperative subject, human-only authorship, `Task: T-244` and `Review: T244-R2` trailers satisfy repository policy. |
 | Commit-stable truth | **Passed:** every named SHA predates the correction; the correction's own SHA and commit state are absent; the push statement is true at review time with `origin/main == ebe4159`. |
 | Source/test exclusion | **Passed:** `git diff 30aaf42..510923d -- src tests` is empty, so the independently resolved R1 source and gate are unchanged. |
 | Task placement | **14 passed** in `tests/unit/test_task_placement.py`; T-244 remains beneath `## In Review`, matching its status at the reviewed head. |
@@ -16828,7 +16828,7 @@ finding remains.
 T-244 may move from `## In Review` to `## Complete` in the routine post-verdict sync. Nothing may
 be pushed without the maintainer's separate instruction.
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, decision,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, decision,
 dependency, push, handoff, roadmap, evidence, generator, or remote state was changed.
 
 ## 2026-08-15 — T-200 accessibility-pass review
@@ -16849,7 +16849,7 @@ test findings can be corrected in the ordinary focused correction pass.
 
 | ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
 |---|---|---:|---|---|---|---|
-| **T200-R1** | **High** | **Yes** | Linux screen-reader criterion | Both `ai/TASKS.md` and `ai/IMPLEMENTATION_PLAN.md` require Orca to announce every control meaningfully on Linux. The submitted record explicitly says Orca was not run and the criterion is not met. The Windows Narrator exception in `OPS-004` is deliberately Windows-only; it does not waive the separate Linux exit criterion. Honest preservation of the gap is correct, but cannot itself satisfy a criterion whose required result is execution. | Run the application under Orca on a real Linux display, exercise every in-scope surface, and record what “meaningfully” meant plus the actual result. If that cannot be done in this task, obtain a maintainer ruling that amends or defers the Linux criterion; do not approve or close it merely because the gap is named. | **Open** |
+| **T200-R1** | **High** | **Yes** | Linux screen-reader criterion | Both `docs/project/TASKS.md` and `docs/project/IMPLEMENTATION_PLAN.md` require Orca to announce every control meaningfully on Linux. The submitted record explicitly says Orca was not run and the criterion is not met. The Windows Narrator exception in `OPS-004` is deliberately Windows-only; it does not waive the separate Linux exit criterion. Honest preservation of the gap is correct, but cannot itself satisfy a criterion whose required result is execution. | Run the application under Orca on a real Linux display, exercise every in-scope surface, and record what “meaningfully” meant plus the actual result. If that cannot be done in this task, obtain a maintainer ruling that amends or defers the Linux criterion; do not approve or close it merely because the gap is named. | **Open** |
 | **T200-R2** | **Medium** | **Yes** | Keyboard-reachability gate | `test_every_surface_is_fully_reachable_by_tab` defines its expected set with `focusable()`, which includes only widgets whose current focus policy is already not `NoFocus`. A control that loses keyboard focus therefore disappears from both sides of the comparison. Independent exact-head mutation: setting Settings' visible **Choose folder…** button to `Qt.NoFocus` leaves all **11** new accessibility tests green; the aggregate floor merely falls from 42 to 41 and remains above 25. This is the same defect class the pass exists to catch, outside the toolbar-specific T-234 gate. | Derive the expected operable controls independently of focus policy—such as from the accessible/control tree plus explicit justified exceptions—and require each to have a keyboard route. Mutation-check at least one ordinary dialog button losing focus, not only a toolbar widget gaining it. | **Open** |
 | **T200-R3** | **Medium** | **Yes** | Whole-application surface coverage | The module says the format table, playlist picker, preset manager, options dialog and template editor are reached and constructed “below,” and criterion 1 names them explicitly. The file ends after opening only four top-level surfaces: main window, an empty add dialog, Settings and About. None of those nested add-flow surfaces is opened. Independent exact-head mutation: deleting the format table's `Available formats` accessible name leaves all **11** new tests green. The same unvisited boundary applies to its focus route and to the other named nested surfaces. | Drive representative single-item and playlist probe results through the real add-dialog route, open each nested surface through its offered control, and include those trees and focus chains in the audit. Open the preset manager and its options editor through their production callbacks. Add per-surface non-vacuity so one missing surface cannot hide behind the aggregate floor. | **Open** |
 | **T200-R4** | **Medium** | **Yes** | Modal focus-return gate | `test_a_modal_returns_focus_to_the_window_that_opened_it` checks only that each dialog has a parent and a distinct window. It never checks modality, closes a dialog, or observes focus returning. Independent exact-head mutation: changing the real add-dialog route from `dialog.open()` to modeless `dialog.show()` still passes the test. Its docstring's statement that parentage and modality are asserted is therefore false, and criterion 3 is not gated. | Assert modality directly and exercise close/return under a platform where focus behavior is meaningful. If offscreen cannot establish actual restoration, keep that limitation explicit and put the behavioral assertion in an available real-plugin gate rather than treating parentage as the result. | **Open** |
@@ -16878,7 +16878,7 @@ batch, correct the stale R5 assertion, and return the focused correction with ea
 mutation demonstrated against the final tree. R1 additionally needs real Orca evidence or a
 maintainer ruling changing the criterion; source-tree assertions cannot substitute for it.
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, decision,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, decision,
 dependency, commit, push, handoff, roadmap, evidence, generator, or remote state was changed.
 
 ## 2026-08-15 — T-200 focused correction re-review
@@ -16925,7 +16925,7 @@ risk, change scope, or carry the work into named follow-ups.
 | R3 name mutation | **Caught:** deleting the format-table name produces **1 failed / 12 deselected**, naming `QTableView formatTableView`. |
 | R3 focus mutation | **Not caught:** the nested Options audio-codec combo at `NoFocus` leaves accessibility plus Options at **62 passed / 1 skipped**. |
 | R4 mutation | **Caught:** add-dialog `open()` to `show()` produces **1 failed / 12 deselected** at the modality assertion. |
-| R1 documentation boundary | **Passed:** only `ai/IMPLEMENTATION_PLAN.md`, `ai/STATUS.md`, and `ai/TASKS.md` change in `8fbe39e..7069661`; the amended plan names both the deferral and the weaker Linux publication evidence. |
+| R1 documentation boundary | **Passed:** only `docs/project/IMPLEMENTATION_PLAN.md`, `docs/project/STATUS.md`, and `docs/project/TASKS.md` change in `8fbe39e..7069661`; the amended plan names both the deferral and the weaker Linux publication evidence. |
 | Windows accessibility row | **Not executed:** the `&Settings` row remains Windows-only and unpushed. No local or CI pass is claimed. |
 | Implementer's wider suites | **Not repeated.** The Implementer reports **3014 passed / 18 skipped** unit+UI and **440 passed** integration at `8fbe39e`, then **2094 passed / 15 skipped** unit plus accessibility at prose-only `7069661`. This review neither contradicts nor promotes those figures to independent results. |
 
@@ -16937,7 +16937,7 @@ focus-order audit to the nested surfaces for R3, and keep the exact `ClickFocus`
 `NoFocus` mutations as final-tree negatives. R6 may be cleaned up in that batch without becoming
 another blocker. Do not repeat the broad audit.
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, plan,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, plan,
 decision, dependency, commit, push, handoff, roadmap, evidence, generator, or remote state was
 changed.
 
@@ -16991,7 +16991,7 @@ non-vacuity and the `ClickFocus` negatives. Inject a quiet yt-dlp service rather
 manager/writer shutdown lifecycle to own an unrelated global-pool task. Correct the stale nested-
 fixture claim at the same time.
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, plan,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, plan,
 decision, dependency, push, handoff, roadmap, evidence, generator, or remote state was changed.
 
 ## 2026-08-15 — overnight six-task review
@@ -17142,7 +17142,7 @@ T202-R1 and T200-R7 are High, so `AGENTS.md` §10 permits focused correction and
 verification until those serious findings are resolved. T-021 may move to `## Complete` in the
 routine post-verdict sync. T-246 stays Proposed.
 
-The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, plan,
+The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed source, test, task/status record, plan,
 decision, dependency, push, handoff, roadmap, evidence, generator, or remote state was changed.
 
 ---
@@ -17448,11 +17448,11 @@ reviewed here on its merits; its reclassification is reviewed only for final-tre
 
 | ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
 |---|---|---:|---|---|---|---|
-| **T183-R1** | **Critical** | **Yes — `REQ-EXCL-002` / `SEC-003`** | Geo-bypass disposition | Finding 4 equates shared parser `dest` with shared meaning and makes refusal-by-`dest` T-184's design (`docs/YTDLP_OPTION_AUDIT.md:161`, `ai/TASKS.md:7841`). That catches explicit aliases but does not enforce the exclusion. At the pin, no option and `--xff default` both normalize to `geo_bypass=True`; `build_options` emits no `geo_bypass`; and `InfoExtractor.get_param("geo_bypass", True)` therefore enables yt-dlp's automatic fake-XFF retry. Conversely, suppressed `--no-geo-bypass` shares the same `dest` but normalizes to `False`, so the audit's statement that it reaches “the same” parameter behavior is false. Refusing strings or a destination leaves the forbidden behavior active when the user types nothing. | Make the application own the safe effective value: `build_options` must supply `geo_bypass=False` for probe and download unless a future maintainer ruling changes `REQ-EXCL-002`. Amend T-184 to test the normalized library options for the empty/default case and the suppressed aliases, and classify parser actions/values rather than treating destination equality as semantic equality. Sweep other refused `--no-*` aliases for the same action/value distinction. | **Open** |
+| **T183-R1** | **Critical** | **Yes — `REQ-EXCL-002` / `SEC-003`** | Geo-bypass disposition | Finding 4 equates shared parser `dest` with shared meaning and makes refusal-by-`dest` T-184's design (`docs/YTDLP_OPTION_AUDIT.md:161`, `docs/project/TASKS.md:7841`). That catches explicit aliases but does not enforce the exclusion. At the pin, no option and `--xff default` both normalize to `geo_bypass=True`; `build_options` emits no `geo_bypass`; and `InfoExtractor.get_param("geo_bypass", True)` therefore enables yt-dlp's automatic fake-XFF retry. Conversely, suppressed `--no-geo-bypass` shares the same `dest` but normalizes to `False`, so the audit's statement that it reaches “the same” parameter behavior is false. Refusing strings or a destination leaves the forbidden behavior active when the user types nothing. | Make the application own the safe effective value: `build_options` must supply `geo_bypass=False` for probe and download unless a future maintainer ruling changes `REQ-EXCL-002`. Amend T-184 to test the normalized library options for the empty/default case and the suppressed aliases, and classify parser actions/values rather than treating destination equality as semantic equality. Sweep other refused `--no-*` aliases for the same action/value distinction. | **Open** |
 | **T183-R2** | **High** | **Yes — criterion 1 and `ARC-010` §4** | Application-owned classifications | The audit derives only literal keys emitted by `build_options`, then treats several options as hatch-reachable even while their reasons say the application owns or cannot represent the behavior. The clearest case is `-i/--ignore-errors` (`docs/YTDLP_OPTION_AUDIT.md:273`): yt-dlp suppresses `DownloadError`, records `_download_retcode = 1`, and returns the info dict after a post-processing failure; `_extract` never reads that return code, so the worker can continue to `Succeeded`. The same contradiction appears for `--skip-playlist-after-errors` (queue owns failure policy), `--playlist-random` (queue owns ordering), `--lazy-playlist` and `--concat-playlist` (conflict with the projected/one-row-per-entry model), and `--ignore-no-formats-error` (metadata-only extraction in a downloader). These are precisely options that fight the GUI for control of its process, which `ARC-010` says are refused; a key need not already appear in `build_options` for the application to own the policy. | Re-audit the hatch class for semantic ownership, starting with every reason that says “owns”, “conflicts”, or names a missing state. Refuse those options, or add an explicit task criterion proving the worker/queue model can represent their outcomes without a false success, reordered queue, missing media, or bypassed playlist projection. Add a normalized-behavior check for policy-owned options rather than limiting derivation to literal emitted keys. | **Open** |
 | **T183-R3** | **Critical** | **Yes — security boundary and criterion 5** | TLS classification | `--legacy-server-connect` remains `hatch` with the reason “Narrow TLS workaround” (`docs/YTDLP_OPTION_AUDIT.md:466`). The pin implements it with `SSL_OP_LEGACY_SERVER_CONNECT` and a compatibility cipher policy: it is a transport-security downgrade. At T-183's own head no decision covered it, so criterion 5 required it to join the unruled TLS options. At final HEAD, `SEC-004` says an option that weakens transport security is refused, but its deliberately bounded ruling names only the fifteen the audit surfaced; this sixteenth option is absent because the audit missed it. Treating it as hatch-reachable would ship the exact silent downgrade `SEC-004` rejects. | Move the row to `unruled`, correct the counts, and return this omitted option to the maintainer/T-256 boundary. If the maintainer extends `SEC-004` to it, classify it `excluded` and add it to T-184's disposition/refusal evidence. Do not infer that extension from a decision whose stated scope is the original fifteen. | **Open** |
-| **T183-R4** | **Medium** | **Yes — criteria 2–3 and the claimed gate** | Test overclaim | The audit says the test re-derives inventory, application ownership, and excluded families (`docs/YTDLP_OPTION_AUDIT.md:22-33`), and both the audit and task entry say it asserts the 44-row typed-task partition (`docs/YTDLP_OPTION_AUDIT.md:229`, `ai/TASKS.md:440`). It does neither. No test reads `SEC-003`/`SEC-004` or any `T-247`…`T-255` entry. The class/count tests only compare the audit to itself. An in-memory mutation moving `--no-check-certificates` from `excluded` to `hatch`, with the three counts recounted, passed all 14 tests. The `dest` comparison also misses CLI-to-library normalization: e.g. `--color` reaches library `color` while `build_options` emits legacy `no_color`, and CLI post-processing options build the `postprocessors` key the test calls unroutable. | Either implement the asserted derivations/partition checks against authoritative inputs, or narrow every claim to what the tests actually establish and independently prove the 44-row partition. Security dispositions need focused invariants that fail when a ruled option becomes hatch-reachable; a recounted self-description is not that evidence. Account for yt-dlp's `parse_options` normalization rather than comparing raw parser destinations directly to library keys. | **Open** |
-| **T183-R5** | **Low** | **No — correct in the T-183 correction batch** | Final-tree coherence | The later ruling was applied to the audit and plan but not to the current-truth headers/snapshot. `ai/STATUS.md:17-19` still says fifteen options are unclassified and T-256 is merely filed, and reports six mutations although the handoff/final test now records eight. `ai/TASKS.md:8-11` still says T-184 waits on T-256. The plan also says 36 of “64 refused” immediately after stating the final refusal count is 79 (`ai/IMPLEMENTATION_PLAN.md:811-818`). Finding 7's heading says “four hatch options” and lists five. | Reconcile the current-truth prose with `SEC-004` while preserving the historical fact that T-183 originally surfaced fifteen. Recount rather than patching isolated numbers. | **Open — target: T-183 correction** |
+| **T183-R4** | **Medium** | **Yes — criteria 2–3 and the claimed gate** | Test overclaim | The audit says the test re-derives inventory, application ownership, and excluded families (`docs/YTDLP_OPTION_AUDIT.md:22-33`), and both the audit and task entry say it asserts the 44-row typed-task partition (`docs/YTDLP_OPTION_AUDIT.md:229`, `docs/project/TASKS.md:440`). It does neither. No test reads `SEC-003`/`SEC-004` or any `T-247`…`T-255` entry. The class/count tests only compare the audit to itself. An in-memory mutation moving `--no-check-certificates` from `excluded` to `hatch`, with the three counts recounted, passed all 14 tests. The `dest` comparison also misses CLI-to-library normalization: e.g. `--color` reaches library `color` while `build_options` emits legacy `no_color`, and CLI post-processing options build the `postprocessors` key the test calls unroutable. | Either implement the asserted derivations/partition checks against authoritative inputs, or narrow every claim to what the tests actually establish and independently prove the 44-row partition. Security dispositions need focused invariants that fail when a ruled option becomes hatch-reachable; a recounted self-description is not that evidence. Account for yt-dlp's `parse_options` normalization rather than comparing raw parser destinations directly to library keys. | **Open** |
+| **T183-R5** | **Low** | **No — correct in the T-183 correction batch** | Final-tree coherence | The later ruling was applied to the audit and plan but not to the current-truth headers/snapshot. `docs/project/STATUS.md:17-19` still says fifteen options are unclassified and T-256 is merely filed, and reports six mutations although the handoff/final test now records eight. `docs/project/TASKS.md:8-11` still says T-184 waits on T-256. The plan also says 36 of “64 refused” immediately after stating the final refusal count is 79 (`docs/project/IMPLEMENTATION_PLAN.md:811-818`). Finding 7's heading says “four hatch options” and lists five. | Reconcile the current-truth prose with `SEC-004` while preserving the historical fact that T-183 originally surfaced fifteen. Recount rather than patching isolated numbers. | **Open — target: T-183 correction** |
 
 `app:contained` itself is not a separate finding. `ARC-010` already names `paths` as application-
 owned because containment owns it; splitting the application-owned class into reasons while all
@@ -17487,7 +17487,7 @@ correction batch should address all four blocking findings together: enforce the
 the effective-library-option level; re-audit semantic application ownership across the hatch;
 return the legacy-TLS option to an honest unruled state; and make the gate claims match real
 evidence. Then reconcile the final-tree counts/current-truth prose and request one focused
-re-review. The Reviewer changed only `ai/REVIEWS.md`; no reviewed document, source, test, task,
+re-review. The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed document, source, test, task,
 decision, plan, status, handoff, dependency, push or remote state was changed.
 
 ---
@@ -17508,11 +17508,11 @@ and the correction introduces one unsupported policy refusal.
 
 | ID | Severity | Blocks approval | Re-review result | Status |
 |---|---|---:|---|---|
-| **T183-R1** | **Critical** | **Yes — T-184 still carries the rejected design** | The production half is fixed: build_options now supplies geo_bypass=False before the probe/download branch, and the focused tests catch both an absent value and the plausible-wrong truthy string. The operative downstream specification is not fixed. The corrected audit says actions and normalized values are required at docs/YTDLP_OPTION_AUDIT.md:212-218, then concludes the opposite at lines 237-241. ai/IMPLEMENTATION_PLAN.md:827 and ai/TASKS.md:7869-7875,7927-7928 still require a destination-keyed refusal and still group suppressed --no-geo-bypass with the forbidden spellings. Following T-184 therefore refuses a safe normalized value as though it were the SEC-003 bypass. | **Open — partially resolved** |
-| **T183-R2** | **High** | **Yes — classification and downstream refusal list** | app:policy is a legitimate refinement of ARC-010's existing application-owned/refused class; it does not need a new scheme decision merely because the audit records the reason more precisely. The false-success, playlist-projection and missing-media cases named in the first review are now refused. But T-184 still names only the old four refused classes and 79 rows (ai/TASKS.md:7857-7865), so an implementer following the task omits all app:policy rows. In addition, --wait-for-video / --no-wait-for-video are not supported by the stated rationale: at the pin, yt-dlp waits inside extract_info, reports a [wait] message, re-extracts, and returns the ordinary eventual outcome while the worker is already in PROBING. The audit permits retry-sleep, sleep-requests and typed sleep intervals under the same state model. “No dedicated waiting state” does not by itself make this CLI download capability application-owned, and refusing it conflicts with REQ-030 absent stronger evidence. | **Open — partially resolved** |
+| **T183-R1** | **Critical** | **Yes — T-184 still carries the rejected design** | The production half is fixed: build_options now supplies geo_bypass=False before the probe/download branch, and the focused tests catch both an absent value and the plausible-wrong truthy string. The operative downstream specification is not fixed. The corrected audit says actions and normalized values are required at docs/YTDLP_OPTION_AUDIT.md:212-218, then concludes the opposite at lines 237-241. docs/project/IMPLEMENTATION_PLAN.md:827 and docs/project/TASKS.md:7869-7875,7927-7928 still require a destination-keyed refusal and still group suppressed --no-geo-bypass with the forbidden spellings. Following T-184 therefore refuses a safe normalized value as though it were the SEC-003 bypass. | **Open — partially resolved** |
+| **T183-R2** | **High** | **Yes — classification and downstream refusal list** | app:policy is a legitimate refinement of ARC-010's existing application-owned/refused class; it does not need a new scheme decision merely because the audit records the reason more precisely. The false-success, playlist-projection and missing-media cases named in the first review are now refused. But T-184 still names only the old four refused classes and 79 rows (docs/project/TASKS.md:7857-7865), so an implementer following the task omits all app:policy rows. In addition, --wait-for-video / --no-wait-for-video are not supported by the stated rationale: at the pin, yt-dlp waits inside extract_info, reports a [wait] message, re-extracts, and returns the ordinary eventual outcome while the worker is already in PROBING. The audit permits retry-sleep, sleep-requests and typed sleep intervals under the same state model. “No dedicated waiting state” does not by itself make this CLI download capability application-owned, and refusing it conflicts with REQ-030 absent stronger evidence. | **Open — partially resolved** |
 | **T183-R3** | **Critical** | No for the corrected classification | --legacy-server-connect is now honestly unruled and T-256 explicitly carries the maintainer ruling. No inference was made from SEC-004's bounded fifteen-option scope. The stale claim that T-184 has no blocker is tracked under T183-R5 below. | **Resolved in the audit; dependency record still open** |
 | **T183-R4** | **Medium** | **Yes — claimed derivations remain unsound** | The exact --no-check-certificates mutation now fails, and the nine task entries are read. The broader claims still do not hold. An in-memory, recounted mutation moving SEC-003-forbidden --exec from excluded to hatch passed all 17 audit tests. A second mutation moving SEC-003-permitted --netrc from hatch to excluded also passed: test_every_excluded_row_is_named_by_the_decision_it_cites treats any mention in a decision, including “permitted,” or any shared destination as authority for exclusion. The typed partition likewise defines “built” as whatever the nine tasks did not claim; swapping T-247's unbuilt -I/--playlist-items row for the already-built --proxy row passed. Thus neither every SEC-003 prohibition nor the 21-built/44-unbuilt partition is derived as claimed. | **Open** |
-| **T183-R5** | **Medium** | **Yes — current task state can start the wrong work** | The correction recounts the main class table but leaves active contradictions. T-184 says both blockers are cleared, depends on nothing outstanding, names a 79-row list without app:policy, and requires the rejected destination design (ai/TASKS.md:7857-7869,7927). T-256 says unruled is empty and T-184 is unblocked immediately before recording the sixteenth unruled option (lines 127-146). The audit repeats 79/unblocked and destination-keyed conclusions at lines 163, 240 and 304-306; the plan repeats destination-keying at line 827; STATUS.md's opening snapshot still says fifteen options are unclassified before the correction below says one. These are operative current-truth statements, not harmless history, and they contradict the corrected classification and its maintainer boundary. | **Open — now blocking** |
+| **T183-R5** | **Medium** | **Yes — current task state can start the wrong work** | The correction recounts the main class table but leaves active contradictions. T-184 says both blockers are cleared, depends on nothing outstanding, names a 79-row list without app:policy, and requires the rejected destination design (docs/project/TASKS.md:7857-7869,7927). T-256 says unruled is empty and T-184 is unblocked immediately before recording the sixteenth unruled option (lines 127-146). The audit repeats 79/unblocked and destination-keyed conclusions at lines 163, 240 and 304-306; the plan repeats destination-keying at line 827; STATUS.md's opening snapshot still says fifteen options are unclassified before the correction below says one. These are operative current-truth statements, not harmless history, and they contradict the corrected classification and its maintainer boundary. | **Open — now blocking** |
 
 ### The four requested uncertainty checks
 
@@ -17560,7 +17560,7 @@ T-183 remains **In Review**, and T-184 remains blocked on both this correction a
 disposition of --legacy-server-connect. Preserve the working geo default and honest unruled row;
 rewrite every operative T-184/current-truth copy, remove or justify the wait-for-video refusal, and
 make the decision and typed-partition gates prove their full claims before requesting another
-focused pass. The Reviewer changed only ai/REVIEWS.md; no reviewed source, test, audit, task,
+focused pass. The Reviewer changed only docs/project/REVIEWS.md; no reviewed source, test, audit, task,
 decision, plan, status, handoff, dependency, push or remote state was changed.
 
 ---
@@ -17608,7 +17608,7 @@ directions and the built/unbuilt partition now agree at the task an implementer 
 
 | ID | Severity | Blocks approval | Owner / target | Follow-up |
 |---|---|---:|---|---|
-| **T183-F1** | Low | No | **Planner / T-256** | Reconcile the remaining current-truth residues when T-256 rules legacy-server-connect: docs/YTDLP_OPTION_AUDIT.md:171 still says 79/unblocked and lines 319-324 say T-256 is done/T-184 next; STATUS.md:8-35 still describes the pre-ruling/pre-wait correction snapshot; ai/TASKS.md:409-410 still says fifteen are filed unclassified. In T-184's dependency line, replace “sixteen unruled options and three corrections” with the actual blocker: **one** unruled option. The three SEC-003 corrections are explicitly nonblocking at ai/TASKS.md:149-151 and ai/IMPLEMENTATION_PLAN.md:826. |
+| **T183-F1** | Low | No | **Planner / T-256** | Reconcile the remaining current-truth residues when T-256 rules legacy-server-connect: docs/YTDLP_OPTION_AUDIT.md:171 still says 79/unblocked and lines 319-324 say T-256 is done/T-184 next; STATUS.md:8-35 still describes the pre-ruling/pre-wait correction snapshot; docs/project/TASKS.md:409-410 still says fifteen are filed unclassified. In T-184's dependency line, replace “sixteen unruled options and three corrections” with the actual blocker: **one** unruled option. The three SEC-003 corrections are explicitly nonblocking at docs/project/TASKS.md:149-151 and docs/project/IMPLEMENTATION_PLAN.md:826. |
 | **T183-F2** | Low | No | **Planner / T-256** | Narrow or complete _ruled_options' claim that it returns every permitted option. Its derived permitted set contains the five explicitly spelled options but omits SEC-003's family-level client-certificate and SponsorBlock permissions. Current classifications remain protected because an unsupported excluded row fails the independent soundness check; this is claim precision, especially relevant when T-256 revisits the client-certificate ruling. |
 | **T183-F3** | Low | No | **Planner / T-252** | docs/YTDLP_OPTION_AUDIT.md:315 still calls T-252 “the whole retry policy” after the task correctly narrowed that title because file-access-retries and retry-sleep remain hatch options. Update the decomposition copy when T-252 is built. |
 
@@ -17629,7 +17629,7 @@ directions and the built/unbuilt partition now agree at the task an implementer 
 
 T-183 is **Approved with follow-ups at 1d0caf6** and may move to Complete. T-184 remains blocked
 only on the maintainer's disposition of legacy-server-connect; the three proposed SEC-003
-corrections do not extend that blocker. The Reviewer changed only ai/REVIEWS.md; no reviewed
+corrections do not extend that blocker. The Reviewer changed only docs/project/REVIEWS.md; no reviewed
 source, test, audit, task, decision, plan, status, handoff, dependency, push or remote state was
 changed.
 
@@ -17640,7 +17640,7 @@ changed.
 **Reviewer:** Codex (Reviewer)
 **Task:** T-260
 **Base:** 5e4c04f  **Head:** 30b473d
-**Commit reviewed:** 30b473d only — three files, +511/-80. The large `ai/TASKS.md` movement is
+**Commit reviewed:** 30b473d only — three files, +511/-80. The large `docs/project/TASKS.md` movement is
 T-183 completion and its assigned T-184 dependency cleanup, both disclosed in the commit message.
 **Platforms verified:** Linux. The no-symlink state was forced deterministically; no Windows
 runtime or real WinError 1314 execution is claimed.
@@ -17692,7 +17692,7 @@ enforces that restriction.
 
 T-260 remains **In Review**. Preserve the five fixture additions and explicit six-skip behavior;
 broaden or redesign the gate so the helper, fixture and syntax mutations fail, then request one
-focused re-review of that correction commit. The Reviewer changed only `ai/REVIEWS.md`; no reviewed
+focused re-review of that correction commit. The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed
 test, task, handoff, source, decision, plan, status, push or remote state was changed.
 
 ---
@@ -17715,7 +17715,7 @@ pass, accept the documented risk, narrow the rule, or carry it into a named foll
 | ID | Severity | Blocks approval | Re-review result | Status |
 |---|---|---:|---|---|
 | **T260-R1** | **Medium** | **Yes — the acceptance criterion still has a survivor** | **Partially resolved.** The walk now reads every non-exempt Python file under `tests/`, recognizes sync and async functions, and recognizes both attribute and direct-name calls. Independent real-file probes for `conftest.py`, an ordinary helper module, an async test and `from os import symlink` all fail and name the exact site. The remaining propagation argument is false for a module-level helper: `symlinks` is a `None`-returning pytest fixture, so `def plant(path, symlinks): path.symlink_to(path)` can be called by an unguarded `test_x` as `plant(tmp_path, None)`. The shipped gate reports no fault; executing that test with `Path.symlink_to` forced to raise produces `[WinError 1314]`. A defaulted `symlinks=None` helper survives too. Thus taking a same-named parameter does not prove that pytest resolved the capability for the caller. The any-enclosing implementation also treats calls in a top-level test's default expressions or decorators as guarded by that test, although those expressions execute during module import, before fixtures resolve. | **Open — partially resolved; review budget exhausted** |
-| **T260-R2** | **Low** | No | `ai/TASKS.md:209` still says criterion 1 is met by walking only `test_*.py` and synchronous `test_` functions, and lines 215-217 still describe only the original two detector cases. Both contradict the correction status immediately above and the shipped implementation. | **Open — target: T-260 cleanup if another pass is authorized, otherwise Planner follow-up** |
+| **T260-R2** | **Low** | No | `docs/project/TASKS.md:209` still says criterion 1 is met by walking only `test_*.py` and synchronous `test_` functions, and lines 215-217 still describe only the original two detector cases. Both contradict the correction status immediately above and the shipped implementation. | **Open — target: T-260 cleanup if another pass is authorized, otherwise Planner follow-up** |
 
 ### Ruling on the requested design questions
 
@@ -17773,7 +17773,7 @@ T-260 is not approved at `d03c3af`. The correction materially improves the gate 
 preserved, including the guarded-closure case. The remaining question is now explicit: whether the
 project requires the gate to prove that a helper's caller actually obtained the pytest capability,
 as the existing acceptance criterion says, or accepts a parameter-name convention that a plain
-`None` satisfies. The Reviewer changed only `ai/REVIEWS.md`; no reviewed test, task, handoff,
+`None` satisfies. The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed test, task, handoff,
 source, decision, plan, status, push or remote state was changed.
 
 ---
@@ -17831,9 +17831,9 @@ accepted risk, or a named follow-up.
 
 | ID | Severity | Blocks approval | Owner / target | Follow-up |
 |---|---|---:|---|---|
-| **T260-F1** | **Low** | No | **T-260 correction if authorized; otherwise Planner follow-up** | Remove the rejected threading claim from `tests/unit/test_capability_guards.py:22-24` and its failure message at lines 187-188, which still tells a developer to “take it as an argument.” Merely taking the argument is the design this correction correctly rejects. Recount `ai/TASKS.md:210`, which still says thirteen detector shapes while the paragraph below correctly says fourteen rejected plus five accepted. |
+| **T260-F1** | **Low** | No | **T-260 correction if authorized; otherwise Planner follow-up** | Remove the rejected threading claim from `tests/unit/test_capability_guards.py:22-24` and its failure message at lines 187-188, which still tells a developer to “take it as an argument.” Merely taking the argument is the design this correction correctly rejects. Recount `docs/project/TASKS.md:210`, which still says thirteen detector shapes while the paragraph below correctly says fourteen rejected plus five accepted. |
 
-The one-line `ai/REVIEWS.md` change inside 092a4b3 only formats the prior mutation code block. It is
+The one-line `docs/project/REVIEWS.md` change inside 092a4b3 only formats the prior mutation code block. It is
 review-record churn in an implementation commit and makes the handoff's “two files” count
 technically incorrect, but changes no verdict or evidence and is not a separate finding.
 
@@ -17858,7 +17858,7 @@ technically incorrect, but changes no verdict or evidence and is not a separate 
 T-260 is not approved at `092a4b3`. Preserve the explicit pytest-ownership direction, the fixed
 helper/default/import-time cases and the accepted guarded fixture/closure. Approval still requires
 the gate to establish rather than guess its pytest-managed contexts and to visit every relevant AST
-field. The Reviewer changed only `ai/REVIEWS.md`; no reviewed test, task, handoff, source, decision,
+field. The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed test, task, handoff, source, decision,
 plan, status, push or remote state was changed.
 
 ---
@@ -17911,7 +17911,7 @@ The gate does not need a general Python resolver. A safe conservative subset is 
 
 | ID | Severity | Blocks approval | Owner / target | Follow-up |
 |---|---|---:|---|---|
-| **T260-F1** | **Low** | No | **Planner / T-260 disposition** | This cleanup remains open, specifically: `tests/unit/test_capability_guards.py:12-24` still states that every creating function itself requests the fixture and repeats the rejected claim that a helper argument can only come from a guarded caller; lines 217-218 still recommend “take it as an argument.” `ai/TASKS.md:210` still says thirteen detector shapes, and lines 215-219 still say fourteen rejected/five accepted; the shipped tables contain **17 rejected and 8 accepted**. |
+| **T260-F1** | **Low** | No | **Planner / T-260 disposition** | This cleanup remains open, specifically: `tests/unit/test_capability_guards.py:12-24` still states that every creating function itself requests the fixture and repeats the rejected claim that a helper argument can only come from a guarded caller; lines 217-218 still recommend “take it as an argument.” `docs/project/TASKS.md:210` still says thirteen detector shapes, and lines 215-219 still say fourteen rejected/five accepted; the shipped tables contain **17 rejected and 8 accepted**. |
 | **T260-F2** | **Low** | No | **Planner / static-gate maintenance** | Narrow or pin the two acknowledged drift boundaries. `_fixture_capable_modules` currently treats the final stem of every `ImportFrom` in every conftest as fixture-capable—today that derived set includes unrelated stems such as `pathlib`, `dataclasses`, `models` and Qt modules—without proving that the fixture itself was imported into the applicable conftest. This is coarse but a genuine `pytest.fixture` wrapper prevents the current bare-error path, so it is not a blocker. `COLLECTED_MODULE` correctly matches pytest's defaults today, but no test pins the absence of a `python_files` override; add a configuration assertion or derive it before that setting changes. |
 
 ### Independent checks
@@ -17937,7 +17937,7 @@ preserved, but the task cannot be approved while real collected tests can reach 
 capability failure with a clean static gate. The maintainer must now choose the task's disposition
 outside the automatic review loop: correct the two significant resolvability cases, narrow the
 acceptance rule explicitly, or accept the risk through the project's decision process. The
-Reviewer changed only `ai/REVIEWS.md`; no reviewed test, task, handoff, source, decision, plan,
+Reviewer changed only `docs/project/REVIEWS.md`; no reviewed test, task, handoff, source, decision, plan,
 status, push or remote state was changed.
 
 ---
@@ -18019,7 +18019,7 @@ T-260 is **Blocked at `43c08d0`**. Preserve the capability-object redesign, all 
 sites, the explicit skip behavior, and the flat whole-tree rule. Approval still requires the gate
 to follow ordinary import aliases and exempt only the exact probe module; sealing the capability is
 the preferred way to make its runtime meaning match its name. `T260-R3` is non-blocking. The
-Reviewer changed only `ai/REVIEWS.md`; no reviewed test, task, handoff, source, decision, plan,
+Reviewer changed only `docs/project/REVIEWS.md`; no reviewed test, task, handoff, source, decision, plan,
 status, push or remote state was changed.
 
 ---
@@ -18044,7 +18044,7 @@ T-260 or require another review.
 |---|---|---:|---|---|
 | **T260-R1** | **Medium** | **Yes, until this correction** | Resolved. `from os import symlink as make_link` is rejected at the import and call, including when the import is never called. `from tests.capabilities import SymlinkCapability as Cap; Cap()` is likewise rejected at both sites. Banning the imports is an appropriate conservative layer: no non-exempt test has a sanctioned need to possess a raw creator or rename the capability class, and false positives fail safely. The nested-file reproduction is also closed: `_sources` now compares `p.relative_to(TESTS)` with `Path("capabilities.py")`, so a real `unit/capabilities.py` was scanned and faulted while the exact root file stayed exempt. | **Resolved at a2389e7** |
 | **T260-R3** | **Low** | No | Resolved as requested. The root exemption now requires exactly two recognized raw calls, covering the current probe and `SymlinkCapability.create`; zero, one or a third recognized site fails. Per-function attribution would be stronger, but the review expressly offered the exact count as an acceptable floor and no additional strength is required for approval. | **Resolved at a2389e7** |
-| **T260-R4** | **Low** | No | `ai/TASKS.md:217` still says the parametrized table contains **16** rejected spellings, but `_RAW` now contains **18**. The section heading/comments in `test_capability_guards.py` also still describe “four review rounds” after the fifth finding and sixth pass. Update the count and round wording during T-260 closeout; this is stale bookkeeping, not a gate defect. | **Open — Planner / T-260 closeout; no re-review required** |
+| **T260-R4** | **Low** | No | `docs/project/TASKS.md:217` still says the parametrized table contains **16** rejected spellings, but `_RAW` now contains **18**. The section heading/comments in `test_capability_guards.py` also still describe “four review rounds” after the fifth finding and sixth pass. Update the count and round wording during T-260 closeout; this is stale bookkeeping, not a gate defect. | **Open — Planner / T-260 closeout; no re-review required** |
 
 `T260-R2`, `T260-F1`, and `T260-F2` remain resolved. This correction adds new historical prose
 without reviving the rejected fixture-threading claim or either deleted pytest-model boundary.
@@ -18082,7 +18082,7 @@ without reviving the rejected fixture-threading claim or either deleted pytest-m
 
 T-260 is **approved at `a2389e7`**. The Planner may move it to Complete; the Low count/round wording
 can be corrected during closeout and does not need another Reviewer pass. The Reviewer changed only
-`ai/REVIEWS.md`; no reviewed test, task, handoff, source, decision, plan, status, push or remote
+`docs/project/REVIEWS.md`; no reviewed test, task, handoff, source, decision, plan, status, push or remote
 state was changed.
 
 ---
@@ -18108,7 +18108,7 @@ behind a newly filed task first.
 
 | Check | Result |
 |---|---|
-| Boundary | One commit and one file: `ai/TASKS.md`; `git show --check e61152d` passed |
+| Boundary | One commit and one file: `docs/project/TASKS.md`; `git show --check e61152d` passed |
 | Base structure | One `## In Review` heading, but `T-256`, `T-259` and `T-257` headings each appeared twice before `## Complete` |
 | Head structure | One live heading for each of the three task IDs; the first copies are unchanged |
 | Task-placement gate | **14 passed** on the repaired head; inspection confirmed both parsers still collapse duplicate IDs |
@@ -18168,7 +18168,7 @@ T-258 is not ready to push as approved work at `dbc1e6c`. Correct all six blocki
 batch, including the scanner's Critical destructive path and the full sibling-spawn audit. The
 focused re-review must see the Windows known-positive/contained pair, not only a green fixed run;
 that same evidence will decide which diagnosis may be written as current truth. The Reviewer
-changed only `ai/REVIEWS.md` and filed non-blocking follow-up `T-261` in `ai/TASKS.md`; no reviewed
+changed only `docs/project/REVIEWS.md` and filed non-blocking follow-up `T-261` in `docs/project/TASKS.md`; no reviewed
 source, test, tool, handoff, status, decision, plan, push or remote state was changed.
 
 ---
@@ -18229,8 +18229,8 @@ T-258 is substantially corrected but **blocked**, not approved. The next review 
 contained/uncontained pair, reviewed scanner invocation for criterion 5, and the residual
 constructor-time sentence corrected. `T258-R2` remains High, so its focused verification may
 continue under `AGENTS.md` §10 without a separate pass authorization. `T258-R7` through `R9` are
-owned by `T-263` and do not hold T-258. The Reviewer changed only `ai/REVIEWS.md` and filed
-`T-263` in `ai/TASKS.md`; no reviewed source, existing test, tool, handoff, status, decision, plan,
+owned by `T-263` and do not hold T-258. The Reviewer changed only `docs/project/REVIEWS.md` and filed
+`T-263` in `docs/project/TASKS.md`; no reviewed source, existing test, tool, handoff, status, decision, plan,
 push or remote state was changed.
 
 ---
@@ -18252,7 +18252,7 @@ misstating a required gate before publication.
 
 | ID | Severity | Blocks approval | Finding | Recommendation | Status |
 |---|---|---:|---|---|---|
-| **T262-R1** | **Medium** | **Yes — current truth materially misstates the required CI gate** | `ai/TESTING.md:260-271` says CI runs on every push and pull request and repeats that in both trigger rows; `ai/STATUS.md:4385` says CI is green on every push and PR. `.github/workflows/commit-messages.yml:3` says the commit gate runs on every pull request, while lines 30-43 correctly say the trigger's absence is the security control. Its concurrency rationale at lines 55-60 still describes live PR behavior without labelling it dormant. These are not historical references: they describe what the current gates do, and after T-262 they are false. | Update the authoritative CI policy and current status to push/schedule/manual behavior. Make the commit-workflow header agree; either simplify the unreachable PR concurrency branch and its pinning test or explicitly label it dormant restoration scaffolding. | **Open — T-262 correction** |
+| **T262-R1** | **Medium** | **Yes — current truth materially misstates the required CI gate** | `docs/project/TESTING.md:260-271` says CI runs on every push and pull request and repeats that in both trigger rows; `docs/project/STATUS.md:4385` says CI is green on every push and PR. `.github/workflows/commit-messages.yml:3` says the commit gate runs on every pull request, while lines 30-43 correctly say the trigger's absence is the security control. Its concurrency rationale at lines 55-60 still describes live PR behavior without labelling it dormant. These are not historical references: they describe what the current gates do, and after T-262 they are false. | Update the authoritative CI policy and current status to push/schedule/manual behavior. Make the commit-workflow header agree; either simplify the unreachable PR concurrency branch and its pinning test or explicitly label it dormant restoration scaffolding. | **Open — T-262 correction** |
 | **T262-R2** | **Low** | No | The task says 343 distinct paths had ever been committed. At the submitted head, `git log 1387e57 --name-only --format=` yields **344**; the new `tests/unit/test_spawn_sites.py` appears to have landed after the count was taken. The reviewer repeated the named filename and token-pattern scans over the current head and found zero matches, so this does not overturn the safety conclusion, but the recorded evidence is not scoped to the tree it describes. | Scope the count and scan to the exact reviewed head (or omit the unstable count) and record 344 for `1387e57`; keep the existing “pattern scan, not proof” qualification. | **Open — T-262 correction; does not independently block** |
 | **T262-R3** | **Low** | No | The absence of a PR trigger is now a security control with no executable regression gate. None of the 66 relevant unit tests examines workflow triggers; `test_commit_message_check.py` pins only the now-dormant PR concurrency expression. Re-adding `pull_request:` therefore leaves the suite green and restores untrusted-code execution on the configured self-hosted runners. Current behavior is correct, so this is test strength rather than a present exposure. | Add a repository-wide workflow-policy test with positive mutations for mapping and inline PR triggers and future workflow files. The current no-PR policy can be deliberately revised alongside that test if trusted hosted PR CI is designed later. | **Open — `T-264`; no T-262 re-review required** |
 
@@ -18275,8 +18275,8 @@ current CI policy and workflow header describe that tree. Correct `T262-R1` and 
 one documentation/workflow-comment batch; `T262-R3` is owned by `T-264` and does not require
 re-review of the trigger removal. **Push the approved T-262 control before changing repository
 visibility**: `origin/main` still contains the vulnerable triggers, and private local commits do
-not protect a public remote. The Reviewer changed only `ai/REVIEWS.md` and filed `T-264` in
-`ai/TASKS.md`; no workflow, source, existing test, handoff, status, decision, plan, visibility,
+not protect a public remote. The Reviewer changed only `docs/project/REVIEWS.md` and filed `T-264` in
+`docs/project/TASKS.md`; no workflow, source, existing test, handoff, status, decision, plan, visibility,
 push or remote state was changed.
 
 ---
@@ -18307,7 +18307,7 @@ acceptance blockers are unchanged.
 
 | Check | Result |
 |---|---|
-| Boundary / hygiene | `351b1d8` changes only `ai/TASKS.md` and `ai/STATUS.md`; `git diff --check a059c9a..351b1d8` and `git show --check 351b1d8` passed |
+| Boundary / hygiene | `351b1d8` changes only `docs/project/TASKS.md` and `docs/project/STATUS.md`; `git diff --check a059c9a..351b1d8` and `git show --check 351b1d8` passed |
 | Lifecycle records | Both current-truth records now say the outer job is established by the first spawn through `start_contained()`, and that constructing a manager alone does not contain the process |
 | Residual rationale | Targeted source/test search found the manager-construction rationale still live at `process_tree.py:326-327` and `test_process_tree.py:216-221` |
 | Relevant policy tests | Included in the shared focused run with T-262: **66 passed** (`test_commit_message_check.py` and `test_task_placement.py`) |
@@ -18319,7 +18319,7 @@ T-258 remains **blocked**. Correct the source and matching test rationale when n
 finding; approval still principally waits on the Windows contained/uncontained result and an
 invoked unattended scanner. Because `T258-R2` remains High, its eventual focused verification may
 continue under `AGENTS.md` §10 without separate pass authorization. The Reviewer changed only
-`ai/REVIEWS.md`; no reviewed source, test, task, status, handoff, push or remote state was changed.
+`docs/project/REVIEWS.md`; no reviewed source, test, task, status, handoff, push or remote state was changed.
 
 ---
 
@@ -18341,7 +18341,7 @@ for the remaining blocking Medium requires the maintainer's explicit choice unde
 
 | ID | Severity | Blocks approval | Focused result | Status |
 |---|---|---:|---|---|
-| **T262-R1** | **Medium** | **Yes** | The lead, trigger table, status environment row and workflow header now agree that no workflow runs on `pull_request`; retaining the concurrency branch as explicitly dormant restoration scaffolding is sound. But `ai/TESTING.md:282-289`, in the same current CI policy section, still calls `STARBASE coverage` fixed to hosted `ubuntu-latest` and “the only hosted job left.” `ci.yml:470-486` says the opposite: the leg moved to `LINUX_RUNNER` on 2026-08-11, with hosted Ubuntu only as the unset-variable fallback. It directly contradicts lines 266-269's corrected security premise that every configured runner is self-hosted. | **Open — current CI policy remains internally contradictory** |
+| **T262-R1** | **Medium** | **Yes** | The lead, trigger table, status environment row and workflow header now agree that no workflow runs on `pull_request`; retaining the concurrency branch as explicitly dormant restoration scaffolding is sound. But `docs/project/TESTING.md:282-289`, in the same current CI policy section, still calls `STARBASE coverage` fixed to hosted `ubuntu-latest` and “the only hosted job left.” `ci.yml:470-486` says the opposite: the leg moved to `LINUX_RUNNER` on 2026-08-11, with hosted Ubuntu only as the unset-variable fallback. It directly contradicts lines 266-269's corrected security premise that every configured runner is self-hosted. | **Open — current CI policy remains internally contradictory** |
 | **T262-R2** | **Low** | No | `TASKS.md:675-682` now records 344 distinct paths at exact head `1387e57`, and the reviewer reproduced 344 at both that head and the current correction head. `STATUS.md:774-776` still records 343 without a head, so the rejected evidence claim remains in a second current-truth record. | **Open — task corrected; status still stale** |
 | **T262-R3** | **Low** | No | Not revisited; the missing executable trigger guard remains owned by T-264 and does not hold T-262. | **Open — T-264** |
 
@@ -18349,7 +18349,7 @@ for the remaining blocking Medium requires the maintainer's explicit choice unde
 
 | Check | Result |
 |---|---|
-| Boundary / hygiene | `33dea08` changes the commit-message workflow plus `ai/STATUS.md`, `ai/TASKS.md` and `ai/TESTING.md`; `git diff --check a4c2751..33dea08` and `git show --check 33dea08` passed |
+| Boundary / hygiene | `33dea08` changes the commit-message workflow plus `docs/project/STATUS.md`, `docs/project/TASKS.md` and `docs/project/TESTING.md`; `git diff --check a4c2751..33dea08` and `git show --check 33dea08` passed |
 | Trigger audit | No mapping or inline `pull_request`, `pull_request_target`, `workflow_run`, `issue_comment` or `repository_dispatch` trigger exists under `.github/workflows`; the local fork-code path remains closed |
 | Workflow rationale | Commit-message header now says push only; lines 62-69 explicitly label the PR concurrency expression dormant and state that restoring the trigger requires job gating |
 | Relevant tests | `test_commit_message_check.py` plus task placement: **66 passed** |
@@ -18364,7 +18364,7 @@ private; the sequencing constraint is to land the approved trigger-free tree and
 `origin/main` **before** changing visibility. This was the one ordinary correction re-review. If the
 two residual current-truth copies are corrected, the maintainer must explicitly authorize another
 focused pass, accept the documented risk, change scope, or carry the blocker to a named follow-up.
-The Reviewer changed only `ai/REVIEWS.md`; no workflow, source, test, task, status, handoff, push,
+The Reviewer changed only `docs/project/REVIEWS.md`; no workflow, source, test, task, status, handoff, push,
 visibility or remote state was changed.
 
 ---
@@ -18438,7 +18438,7 @@ No T-257 finding was raised.
 T-257 is **approved at `ffa29c1`** and may move to Complete. T-259 is **not approved at
 `3be6758`**: preserve the 40-minute bound and measurements, then implement the two missing signals
 in one correction and request the ordinary focused re-review. The Reviewer changed only
-`ai/REVIEWS.md`; the in-flight `ai/TASKS.md`, `ai/STATUS.md`, `ai/TESTING.md`, `process_tree.py`
+`docs/project/REVIEWS.md`; the in-flight `docs/project/TASKS.md`, `docs/project/STATUS.md`, `docs/project/TESTING.md`, `process_tree.py`
 and `test_process_tree.py` edits already present in the worktree were preserved and excluded. No
 reviewed workflow, source, test, task, status, handoff, push or remote state was changed.
 
@@ -18471,7 +18471,7 @@ jobs or reopen the fork-code path, so they are non-blocking and owned by T-265.
 
 | Check | Result |
 |---|---|
-| Boundary / hygiene | `8ee106b` changes only `ai/TESTING.md`, `ai/STATUS.md` and `ai/TASKS.md`; `git diff --check b6a6d20..8ee106b` and `git show --check 8ee106b` passed |
+| Boundary / hygiene | `8ee106b` changes only `docs/project/TESTING.md`, `docs/project/STATUS.md` and `docs/project/TASKS.md`; `git diff --check b6a6d20..8ee106b` and `git show --check 8ee106b` passed |
 | Runner mapping | `check`, `frozen linux`, `prose`, `trailers` and `STARBASE coverage` all use `LINUX_RUNNER` with an unset-variable `ubuntu-latest` fallback; `windows desktop`, `frozen windows` and manual `repeat` use literal STARBASE labels |
 | Relevant tests | `test_commit_message_check.py` plus task placement: **66 passed** |
 | History count | `git log 1387e57 --name-only --format=` and the same probe at `b6a6d20` each yield **344** distinct non-empty paths |
@@ -18598,7 +18598,7 @@ event policy than T-264 authorizes.
 
 | ID | Severity | Blocks approval | Finding | Recommendation | Status |
 |---|---|---:|---|---|---|
-| **T264-R1** | **Medium** | **Yes — the new gate fails in the Linux CI mode that is meant to carry it** | Three discovery probes create and delete files inside the real `.github/workflows/` directory. That violates `ai/TESTING.md`'s rule that tests write nowhere outside `tmp_path`, and under CI's `pytest -n auto tests/unit tests/ui` the workers race. The first reviewer run failed **1 of 18**: one worker listed `zz-t264-safe-probe.yml` after another had deleted it, producing `FileNotFoundError`. The same shared-directory design can also let the live gate observe another worker's deliberately unsafe probe. | Build a complete workflow directory under `tmp_path` and monkeypatch the directory root used by `workflow_files()`. Still call the production discovery function with no supplied file list, so the test proves discovery without mutating the checkout. Run this file under `-n auto` as well as serially. | **Open — T-264 correction** |
+| **T264-R1** | **Medium** | **Yes — the new gate fails in the Linux CI mode that is meant to carry it** | Three discovery probes create and delete files inside the real `.github/workflows/` directory. That violates `docs/project/TESTING.md`'s rule that tests write nowhere outside `tmp_path`, and under CI's `pytest -n auto tests/unit tests/ui` the workers race. The first reviewer run failed **1 of 18**: one worker listed `zz-t264-safe-probe.yml` after another had deleted it, producing `FileNotFoundError`. The same shared-directory design can also let the live gate observe another worker's deliberately unsafe probe. | Build a complete workflow directory under `tmp_path` and monkeypatch the directory root used by `workflow_files()`. Still call the production discovery function with no supplied file list, so the test proves discovery without mutating the checkout. Run this file under `-n auto` as well as serially. | **Open — T-264 correction** |
 | **T264-R2** | **Medium** | **Yes — the security gate accepts valid forbidden triggers** | The detector scans unresolved text rather than the YAML value GitHub executes. A real probe workflow used `name: &fork_event pull_request` and `on: [push, *fork_event]`; GitHub Actions supports YAML anchors/aliases, yet both the live gate and its “scan read something” guard passed. Separately, `strip_comments()` truncates inside quotes: `on: {push: {branches: ["feature#1"]}, pull_request: null}` parses with a `pull_request` event but the detector returns `[]`. These are accepting-direction bypasses of the rule, not false alarms. | Parse the trigger value with a declared YAML parser that preserves the `on` key and resolves aliases, or reject every unsupported/ambiguous construct fail-closed. Add both probes as positive mutations. A quote-aware comment stripper alone does not close the alias path. | **Open — T-264 correction** |
 | **T264-R3** | **Medium** | **Yes — the commit enforces an event policy outside the task's authorized rule** | T-264 names `pull_request` and `pull_request_target`; `test_the_wider_fork_reachable_set_is_also_absent_today` additionally bans `workflow_run`, `issue_comment` and `repository_dispatch`. Calling the test separate does not make it observational: adding any one now reddens the required unit suite. The premise is also too broad. GitHub documents `pull_request_target` as running trusted base-branch code by default, and `workflow_run` / `issue_comment` become pwn-request paths when they fetch and execute untrusted content, not merely by existing; `repository_dispatch` requires an authorized caller. | Remove the wider enforcement from T-264. If the maintainer wants a blanket event allowlist, file and authorize that policy as its own task with event-specific reasoning. Keep `pull_request_target` forbidden here as T-264 already requires, but describe its privileged context accurately rather than saying it executes fork code by default. | **Open — T-264 correction** |
 
@@ -18632,7 +18632,7 @@ T-264 is **not approved at `cc17ff0`**. Correct T264-R1 through R3 in one focuse
 the discovery tests, make YAML interpretation fail closed across aliases and quoted comments, and
 remove the unauthorized wider-event gate while keeping the task's two-event rule. The ordinary
 focused correction re-review remains available. `cc17ff0` is still local and need not be pushed
-for that pass. The Reviewer changed only `ai/REVIEWS.md`; no reviewed test/task, workflow,
+for that pass. The Reviewer changed only `docs/project/REVIEWS.md`; no reviewed test/task, workflow,
 handoff, push or remote state was changed.
 
 ---
@@ -18645,7 +18645,7 @@ handoff, push or remote state was changed.
 **Correction:** `609d614c8538b245b7daf3c1a354aebb684e0e32` — the only implementation
 commit re-reviewed
 **Platforms verified:** Linux. Windows remains required because the correction adds two declared
-dev dependencies; `ai/TESTING.md` §3 requires the full default suite on both platforms for a
+dev dependencies; `docs/project/TESTING.md` §3 requires the full default suite on both platforms for a
 dependency addition
 **Verdict:** **Blocked.** T264-R1 through T264-R3 are Resolved: the isolated discovery probes are
 stable under xdist, PyYAML resolves both accepting-direction bypasses and fails closed, and the
@@ -18660,7 +18660,7 @@ after a fresh fetch `origin/main` remained `848ce34`, and no remote state was ch
 | **T264-R1** | **Medium** | Yes | Each discovery case builds its complete workflow directory under `tmp_path`, rebinds `WORKFLOWS` inside a `MonkeyPatch` context, and still calls `workflow_files()` without a supplied file list. The file passed **25/25 serially** and **25/25 under 14 xdist workers**. Hashes of all four tracked workflow files were identical before and after every run and mutation. | **Resolved at `609d614`** |
 | **T264-R2** | **Medium** | Yes | `yaml.safe_load` now resolves the alias and quoted-`#` probes the prior text scan accepted. The detector handles PyYAML's YAML-1.1 spelling of bare `on`, accepts the schema's scalar/list/mapping trigger shapes, and raises `UnreadableWorkflowError` for invalid YAML, a non-mapping document, a missing trigger key or an unreadable trigger shape. The live gate records those exceptions as offenders. PyYAML and its stubs are declared plainly in the dev extra. | **Resolved at `609d614`** |
 | **T264-R3** | **Medium** | Yes | `FORBIDDEN` contains only `pull_request` and `pull_request_target`; no test enforces `workflow_run`, `issue_comment` or `repository_dispatch`. The module description now says accurately that `pull_request_target` starts from trusted base-branch code with privilege, and identifies fetching/executing the head as the dangerous transition. No blanket-event task was filed without authority. | **Resolved at `609d614`** |
-| **T264-R4** | **Medium** | **Yes — required dependency-change evidence is absent on the project's only Windows environment** | The correction adds `PyYAML` and `types-PyYAML` to `.[dev]`. They are dev-only, so `AGENTS.md` §7 requires no decision entry; that does not remove `ai/TESTING.md` §3's requirement to run the full default suite on both platforms for a dependency addition. Linux is green. No run at `609d614` has built the new pyproject-keyed Windows virtualenv, installed the two dependencies and executed the default suite. | **Open — push through `609d614` and read the Windows run; no code correction requested** |
+| **T264-R4** | **Medium** | **Yes — required dependency-change evidence is absent on the project's only Windows environment** | The correction adds `PyYAML` and `types-PyYAML` to `.[dev]`. They are dev-only, so `AGENTS.md` §7 requires no decision entry; that does not remove `docs/project/TESTING.md` §3's requirement to run the full default suite on both platforms for a dependency addition. Linux is green. No run at `609d614` has built the new pyproject-keyed Windows virtualenv, installed the two dependencies and executed the default suite. | **Open — push through `609d614` and read the Windows run; no code correction requested** |
 
 ### Independent checks
 
@@ -18995,7 +18995,7 @@ Windows installation/default-suite evidence does not yet exist.
 
 | ID | Severity | Blocks approval | Finding | Required correction | Status |
 |---|---|---:|---|---|---|
-| **T269-R1** | **Medium** | **Yes — the environment gate can approve different executables from the gates that actually run** | `test_toolchain_versions.py` compares `importlib.metadata.version()` in the pytest interpreter. `ai/TESTING.md` and CI invoke bare `ruff` and `mypy`, which resolve through `PATH`. A reviewer put different executables first on `PATH`; all **3 tests passed**, while `ruff --version` selected the injected executable. This is also one of the file's claimed scenarios: a globally installed tool shadowing the venv. The docstring dismisses `PATH` even though `PATH` is the production command boundary. | Execute the same bare commands the gates use, parse their reported versions and compare them with the pyproject pins. Retain the metadata check only if it adds a separately stated invariant. Mutation-check a shadow executable, not only a mismatched installed distribution. | **Open** |
+| **T269-R1** | **Medium** | **Yes — the environment gate can approve different executables from the gates that actually run** | `test_toolchain_versions.py` compares `importlib.metadata.version()` in the pytest interpreter. `docs/project/TESTING.md` and CI invoke bare `ruff` and `mypy`, which resolve through `PATH`. A reviewer put different executables first on `PATH`; all **3 tests passed**, while `ruff --version` selected the injected executable. This is also one of the file's claimed scenarios: a globally installed tool shadowing the venv. The docstring dismisses `PATH` even though `PATH` is the production command boundary. | Execute the same bare commands the gates use, parse their reported versions and compare them with the pyproject pins. Retain the metadata check only if it adds a separately stated invariant. Mutation-check a shadow executable, not only a mismatched installed distribution. | **Open** |
 | **T269-R2** | **Medium** | **Yes — the task's Windows installation criterion and required major-tool bump gate are unverified** | The cited run `32214730271` has `headSha: dc75843`, before `3c2692c`. It therefore says nothing about the re-keyed persistent Windows venv, installation of exact Ruff/Mypy versions, the new test on Windows, or the new `--- gates ---` artifact block. The change raises mypy's minimum across a major version and the acceptance criteria explicitly require the persistent-Windows path. | After T269-R1 is corrected, push the exact correction head and read a fresh `windows desktop` run: venv build/install succeeds, both bare versions match the pins in the artifact, the new test executes, and the default suite completes. | **Open — external evidence after correction** |
 
 ### Independent checks
@@ -19018,7 +19018,7 @@ Windows installation/default-suite evidence does not yet exist.
   or 88% of the 40-minute bound. T-259 should warn at 85%; the review should attribute that
   one-time installation cost rather than weaken the reporter or bound.
 - **Dev-only pins need no runtime-dependency decision.** They do still need the cross-platform
-  execution evidence required by `ai/TESTING.md` and this task's own criterion.
+  execution evidence required by `docs/project/TESTING.md` and this task's own criterion.
 
 ### Readiness
 
@@ -19057,7 +19057,7 @@ is documentation-only; `git show --check d7a2d0f` and `git diff --check` pass. T
 suite is also green, though no behavior gate was required for this docs-only correction.
 
 **Do not build the missing executable inventory gate inside T-265.** Its affected surface and
-acceptance criteria are the exact current `ai/TESTING.md` inventory, not a new parser coupling
+acceptance criteria are the exact current `docs/project/TESTING.md` inventory, not a new parser coupling
 policy prose to four workflow schemas. The implementer's scope judgment was correct. The absence
 does not block this accurate snapshot. Given how quickly `STARBASE orphans` became a fourth
 omission, a Planner may file a separate drift-gate task, with its own supported YAML boundary and
@@ -19210,22 +19210,22 @@ key. T270-R1 is Resolved; the implementation boundary did not change after the i
 
 | ID | Severity | Blocks approval | Focused result | Status |
 |---|---|---:|---|---|
-| **T270-R1** | **Medium** | Yes | Run `32319665394` is a successful push run at `06745fa`, whose only difference from reviewed implementation `c047767` is `ai/REVIEWS.md`. On `STARBASE`, `test_the_quit_shortcut_is_bound` passed and each later environment, lint, format, Qt-baseline and full-suite step executed successfully. | **Resolved by run `32319665394`** |
+| **T270-R1** | **Medium** | Yes | Run `32319665394` is a successful push run at `06745fa`, whose only difference from reviewed implementation `c047767` is `docs/project/REVIEWS.md`. On `STARBASE`, `test_the_quit_shortcut_is_bound` passed and each later environment, lint, format, Qt-baseline and full-suite step executed successfully. | **Resolved by run `32319665394`** |
 
 ### Independent evidence
 
 | Check | Result |
 |---|---|
-| Exact boundary | GitHub reports event `push`, head `06745fa12016c134aa359e56ea96eada3eef2ed1`, overall success. `git diff --name-only c047767..06745fa` contains only `ai/REVIEWS.md`; no implementation, test, dependency or workflow change intervenes. |
+| Exact boundary | GitHub reports event `push`, head `06745fa12016c134aa359e56ea96eada3eef2ed1`, overall success. `git diff --name-only c047767..06745fa` contains only `docs/project/REVIEWS.md`; no implementation, test, dependency or workflow change intervenes. |
 | Product criterion | The Windows desktop log records `test_the_quit_shortcut_is_bound PASSED` at 01:06:04Z and the slice completes **33 passed, 3739 deselected**. |
 | End-to-end criterion | `Record the environment`, `Lint`, `Format check`, `Qt baseline` and `Full suite` all conclude success rather than skip. The full suite reports **3707 passed, 30 skipped, 35 deselected** in 32m22s. |
 | Defect environment | The desktop slice, Qt baseline and full suite independently report **PySide6 6.11.2 / Qt 6.11.2**. `pyproject.toml` remains `PySide6>=6.11,<7`; the run proves the fix in the environment that exposed the defect rather than by downgrading it. |
 | Duration | The job reports 34.5 minutes, 86% of its 40-minute bound, and emits the expected T-259 warning. The prior failed run's 3m21s duration omitted the five steps restored here; this result does not establish a new regression or justify changing the bound. |
-| Evidence records | `f283b8f` changes only `ai/TASKS.md` and `ai/STATUS.md`; placement passes **15 tests**, Ruff passes and Ruff format reports **202 files already formatted** on the resulting tree. |
+| Evidence records | `f283b8f` changes only `docs/project/TASKS.md` and `docs/project/STATUS.md`; placement passes **15 tests**, Ruff passes and Ruff format reports **202 files already formatted** on the resulting tree. |
 
 ### Record note
 
-`ai/STATUS.md` says once that all six jobs in the run were green. GitHub's exact inventory is five
+`docs/project/STATUS.md` says once that all six jobs in the run were green. GitHub's exact inventory is five
 successful jobs plus `STARBASE orphans` skipped, which the later STATUS paragraph states correctly.
 This wording discrepancy does not affect either T-270 criterion, and it does not claim T-268's
 scanner ran; T-268 remains Blocked and the process specimens were outside this review.
@@ -19299,13 +19299,13 @@ range.
 | **T074-R5** | **Medium** | **Yes — the current evidence assigns a stable risk bound to a heterogeneous sample** | The claimed **105 completed Full suite steps and zero native crashes are verified**: GitHub exposes 92 successful and 13 failed step conclusions, and all 13 failures end in ordinary pytest tallies rather than a native-process death. The inference does not follow. These runs span many heads; just the manager and test-lifecycle surfaces changed by **2,886 insertions and 622 deletions** between `bd4dde8` and the last source head `06745fa`. `T074-R1` already ruled that materially changed heads are not one controlled population and required exact-head observations rather than a stable rate. The rule-of-three **2.9% per-run ceiling** assumes exchangeable Bernoulli trials with one underlying probability, which this record does not establish. The enumeration also contains four CI runs with no `Full suite` step at all, in addition to the 22 cancelled and 14 skipped step conclusions the entry names. None changes the correct 105 total, but the method does not account for every run as written. | Keep the exact observation `0/105 completed Full suite steps` and the valid T238-R2 nondiscrimination argument. Remove the stable 2.9% rate claim, or label it explicitly as a conditional pooled calculation whose common-rate premise is not established. Account for the four absent-step runs separately. Preserve the OPS-007 risk decision and T-074's Blocked-on-T-092 disposition; neither depends on the invalid ceiling. | **Open** |
 | **T238-R4** | **Medium** | **Yes — the current task record contradicts its own retained campaign evidence** | The new opening says deliberate load “had never been tried,” that all previous 40 runs were idle, and that repetition is spent at **70 = 40 idle + 30 contended**. The same entry later records **60** prior clean runs: 40 idle, **12 under 20 busy loops**, and **8 beside an `-n auto` integration batch**; it explicitly says that deliberate saturation refuted the earlier recommendation. If the new 30-run campaign is distinct, the clean total is **90**, including 50 previously/newly contended runs, not 70. The opening also says a real-test guard firing is the only route left, while the later 2026-08-16 ruling says criterion 4 is *no longer* “wait for the guard to fire” and names a real-session probe plus a widget-cycle check. The new 30-run zero may still be useful as an additional, better-controlled campaign, but it neither pulls an untried lever nor replaces the recorded next investigation. | Rewrite the new section as **30 additional contended runs**, state the cumulative conditions/count accurately, and identify what the continuous three-batch design adds over the prior 12+8 loaded runs. Reconcile its criterion-4 sentence with the later real-session/cycle plan. Keep T-238 Ready and criterion 4 open; this finding does not request a disposition change. | **Open** |
 | **T272-R1** | **Medium** | **Yes — the causal distinction rests on two different pipes being treated as one mechanism** | T-268 rules out another process retaining the write end of the Windows **spawn payload pipe**: `popen_spawn_win32` creates `pipe_handle` and starts the child with `bInheritHandles=False`. The Linux specimen is held by the separate **resource-tracker pipe**. `popen_spawn_posix._launch()` obtains `resource_tracker.getfd()`, appends that descriptor to the child pass-FD set, and supplies it independently of the payload `pipe_handle`; the spawned worker is therefore expected to retain the tracker's writer. T-272's one-thread, zero-CPU reader is the `resource_tracker`, not the spawned worker T-268 classifies; the spawned worker has two threads and 157 seconds of CPU. The claim that this is “that eliminated” T-268 mechanism, or the five's one-thread shape reproduced outside Windows, is false. The supported conclusions survive: the scanner finds a Linux spawned-worker orphan, Linux scheduling is absent, the worker is past T-258's pre-payload window, and product reachability is unproved. | Distinguish the resource-tracker and spawn-payload channels in both the task and evidence file. Say this is not T-268's cause because it is a different platform channel/process pair, not because T-268 eliminated the same mechanism. Attribute the one-thread/zero-CPU observation to the tracker and the two-thread/157-second observation to the worker; do not present their union as the five's process shape. | **Open** |
-| **T272-R2** | **Low** | **No** | `ai/evidence/README.md` calls its table “What is here now” but does not list the new Linux-orphan artifact or why it satisfies the directory's cannot-be-regenerated rule. The artifact itself does satisfy that rule: it captures read-only state from live specimens that will disappear when those processes exit. | Add the file to the inventory with that retention reason. **Owner/target:** Documentation Maintainer, T-272 correction batch. | **Open, non-blocking** |
+| **T272-R2** | **Low** | **No** | `docs/project/evidence/README.md` calls its table “What is here now” but does not list the new Linux-orphan artifact or why it satisfies the directory's cannot-be-regenerated rule. The artifact itself does satisfy that rule: it captures read-only state from live specimens that will disappear when those processes exit. | Add the file to the inventory with that retention reason. **Owner/target:** Documentation Maintainer, T-272 correction batch. | **Open, non-blocking** |
 
 ### Independent verification
 
 | Check | Result |
 |---|---|
-| Boundary and scope | **Passed.** `main` was clean and five commits ahead of `origin/main`; `5b61279..bf766b3` changes only `ai/TASKS.md`, `ai/STATUS.md`, and one new evidence file. `git diff --check` passes. No `src/`, test, workflow, dependency, or build path changed. |
+| Boundary and scope | **Passed.** `main` was clean and five commits ahead of `origin/main`; `5b61279..bf766b3` changes only `docs/project/TASKS.md`, `docs/project/STATUS.md`, and one new evidence file. `git diff --check` passes. No `src/`, test, workflow, dependency, or build path changed. |
 | Windows Full suite enumeration | **105 completed steps confirmed:** 92 success + 13 failure. All 13 failed-step logs contain an ordinary pytest completion tally and exit 1; none contains an access violation, fatal Python error, segmentation fault, or exit 139. The full 145-run enumeration also contains 22 cancelled conclusions, 14 skipped conclusions, and four runs where the step is absent. |
 | T-074 population audit | The 105 observations are useful as a dated zero count and cannot establish that T-128 caused T-074. They are not an exact-head population: `bd4dde8..06745fa` materially changes `manager.py`, `test_manager.py`, the root/UI conftests and `qt_lifecycle.py` across many commits. This independently reproduces the limitation T074-R1 already recorded. |
 | T-238 retained record | The pre-existing conditions table explicitly totals 40 idle + 12 busy-loop + 8 concurrent-integration runs and calls saturation tried. The later criterion-4 section explicitly redirects work to a real session and widget-cycle reachability. Both contradict the newly prepended summary. |
@@ -19388,7 +19388,7 @@ T-074's accepted board move, T-238's disposition, or any source/test behavior.
 | T-238 correction | The retained conditions now agree at 40 idle + 12 busy-loop + 8 concurrent-integration + 30 continuously contended = 90, with 50 contended. The later criterion-4 ruling and the new summary name the same two next steps. |
 | T-272 correction | Both corrected records name the two channels and two process roles separately. No surviving sentence presents the one-thread tracker and 157-second worker as one shape or calls the tracker channel T-268's eliminated payload mechanism. |
 | Later specimen state | PID absence plus a no-reboot observation proves that this Linux pair had finite process lifetimes. It does **not** identify why either process ended or exclude another session's signal, inspection or cleanup. |
-| Boundary hygiene | `git diff --check 2835a30..d5b95c5` passed. The five commits change only `ai/TASKS.md`, `ai/STATUS.md` and two files under `ai/evidence/`; no source, test, workflow, dependency or build path changed. |
+| Boundary hygiene | `git diff --check 2835a30..d5b95c5` passed. The five commits change only `docs/project/TASKS.md`, `docs/project/STATUS.md` and two files under `docs/project/evidence/`; no source, test, workflow, dependency or build path changed. |
 | Current focused gates | Task placement: **15 passed**. Ruff: passed. Ruff format: **203 files already formatted**. Commit-message checker: **5 commits checked** in `2835a30..d5b95c5`. The full suite was not run and is not required for this documentation-only boundary. |
 
 ### Review judgments
@@ -19439,7 +19439,7 @@ conduct, while the gate record names the command that produces its exact tally.
 
 | Check | Result |
 |---|---|
-| Correction boundary | `30c78a3..1624f10` changes only `ai/TASKS.md`, `ai/STATUS.md` and the two T-272 evidence files. No source, test, workflow, dependency, build path, task disposition or T-268 claim changed. |
+| Correction boundary | `30c78a3..1624f10` changes only `docs/project/TASKS.md`, `docs/project/STATUS.md` and the two T-272 evidence files. No source, test, workflow, dependency, build path, task disposition or T-268 claim changed. |
 | Uncertainty audit | The former natural-exit/absence-of-intent phrases survive only where quoted as withdrawn wording. Operative text says another actor's termination, inspection or release is unknown and cannot be recovered after the fact. The evidence file adds the explicit invariant that no sentence may assume beyond the three observations. |
 | Preservation criterion | “Overtaken” records that no specimen remains available for future inspection. “Never met” is the evidentiary disposition of a criterion that required recorded identity revalidation before termination; it does not claim no unseen actor acted, which the immediately preceding sentence expressly leaves unknowable. |
 | Exact task-placement gate | `.venv/bin/python -m pytest -q tests/unit/test_task_placement.py`: **15 passed**. |
@@ -19488,8 +19488,8 @@ harness-branch answer.
 | ID | Severity | Blocks approval | Evidence | Required correction | Status |
 |---|---|---:|---|---|---|
 | **T238-R5** | **Medium** | **Yes — criterion 4's second step** | The independent run returns **159 before, 159 after, 30 collected objects, 0 widgets**, then exits **3** and says the zero “is not a result about cycles.” That refusal is correct. `_widgets_the_collector_freed()` reads `gc.garbage` immediately after the callback and performs its explicit post-callback `gc.collect()` only in `finally`, after clearing `DEBUG_SAVEALL` and after the recorded result (`tools/t238_widget_cycle_probe.py:75-85`). The measurement therefore does not record what the forced collection after its application locals are released collected. Equal aggregate counts also do not establish widget identity, and a still-reachable object graph may itself contain cycles; retention prevents the collector from classifying it. Finally, the probe deliberately omits five product-reachable screens while the retained criterion asks whether **any** application widget participates in a cycle (`:23-30`; `TASKS.md:8642-8644`). Nevertheless `TASKS.md:8674-8679`, `STATUS.md:12-20`, the T-273 premise at `TASKS.md:9075-9079` and the submission call the route closed, the trees “not garbage,” and the harness branch selected. | Preserve the observed counts and T-273's filed retention phenomenon, but withdraw every live route-closed / not-garbage / harness-branch conclusion. Make the probe's docstring, output, T-238, T-273 and STATUS agree that this run refused to answer criterion 4 because the surfaces remained retained. Keep criterion 4 open unless a new measurement releases or otherwise controls the retention root, tracks the relevant widget identities, observes the post-release collector result, and covers the criterion's application-widget scope. Do not diagnose or fix T-273 inside this correction. | **Open** |
-| **T272-R4** | **Low** | No | `ai/TESTING.md:290` promises that every job in every workflow appears in the OPS-012 inventory. Its ten-row table omits the new `Linux orphans` job immediately after T-265 made that inventory exact. The workflow behavior is still correct and the omission does not weaken its executable tests. | Add the exact `Linux orphans` row: `ci.yml`, the `LINUX_RUNNER` selector, its non-empty-variable gate, schedule/dispatch condition and `needs: check`. **Owner/target:** Documentation Maintainer, this focused correction batch or the next coordination update before push. | **Open, non-blocking** |
-| **T238-R6** | **Low** | No | The correction at `9c25b69` accurately distinguishes the sibling probe's quiet first defect from its loud fivefold over-count. Authoritative current-truth `ai/TESTING.md:395-404` still says it produced a clean result twice and that neither defect was visible in output. This is a pre-existing sibling that the correction-class audit missed. | Apply the already-correct tool/TASKS account to TESTING: one clean-looking zero; then one fivefold over-count exposed by the three-times-longer run. **Owner/target:** Documentation Maintainer, the T238-R5 correction batch; no separate re-review required. | **Open, non-blocking** |
+| **T272-R4** | **Low** | No | `docs/project/TESTING.md:290` promises that every job in every workflow appears in the OPS-012 inventory. Its ten-row table omits the new `Linux orphans` job immediately after T-265 made that inventory exact. The workflow behavior is still correct and the omission does not weaken its executable tests. | Add the exact `Linux orphans` row: `ci.yml`, the `LINUX_RUNNER` selector, its non-empty-variable gate, schedule/dispatch condition and `needs: check`. **Owner/target:** Documentation Maintainer, this focused correction batch or the next coordination update before push. | **Open, non-blocking** |
+| **T238-R6** | **Low** | No | The correction at `9c25b69` accurately distinguishes the sibling probe's quiet first defect from its loud fivefold over-count. Authoritative current-truth `docs/project/TESTING.md:395-404` still says it produced a clean result twice and that neither defect was visible in output. This is a pre-existing sibling that the correction-class audit missed. | Apply the already-correct tool/TASKS account to TESTING: one clean-looking zero; then one fivefold over-count exposed by the three-times-longer run. **Owner/target:** Documentation Maintainer, the T238-R5 correction batch; no separate re-review required. | **Open, non-blocking** |
 | **COORD-R25** | **Low** | No | At the exact eight-commit head, current STATUS says **seven** commits are held (`:8-10`) and **three of seven** are corrections (`:72`). The submitted boundary and history contain eight commits, four explicitly identified as corrections. | Correct the current snapshot to eight/four, or remove the volatile derived counts while retaining the exact base/head. **Owner/target:** Documentation Maintainer, the focused correction batch; no separate re-review required. | **Open, non-blocking** |
 
 ### T-272 acceptance and implementation judgment
@@ -19573,7 +19573,7 @@ requires a maintainer choice before another review pass.
 
 | Check | Result |
 |---|---|
-| Correction scope | 9b08a2c..44a633c changes only ai/STATUS.md, ai/TASKS.md, ai/TESTING.md and tools/t238_widget_cycle_probe.py. No T-272 workflow or unit test changed. |
+| Correction scope | 9b08a2c..44a633c changes only docs/project/STATUS.md, docs/project/TASKS.md, docs/project/TESTING.md and tools/t238_widget_cycle_probe.py. No T-272 workflow or unit test changed. |
 | Corrected probe | Both controls pass; **159 / 159**, **30 total / 0 widgets**, expected exit **3**. The printed refusal contains the surviving aggregate-to-identity inference quoted in T238-R5 above. |
 | Focused tests | pytest over task placement and orphan scan: **27 passed**. |
 | Lint and formatting | ruff check: passed. ruff format --check: **204 files already formatted**. |
@@ -19631,7 +19631,7 @@ unanswered.
 
 | Check | Result |
 |---|---|
-| Correction boundary | 1b51beb..b204f88 changes only ai/STATUS.md, ai/TASKS.md and tools/t238_widget_cycle_probe.py. T-272's workflow/tests, T-273's filing and all three resolved Low findings are untouched. |
+| Correction boundary | 1b51beb..b204f88 changes only docs/project/STATUS.md, docs/project/TASKS.md and tools/t238_widget_cycle_probe.py. T-272's workflow/tests, T-273's filing and all three resolved Low findings are untouched. |
 | Probe | Both controls pass; **159 / 159**, **30 total / 0 widgets**; refusal exit **3**. Output says count, not identity, and criterion 4 unanswered. |
 | Semantic sweep | No operative route-closed, not-garbage, harness-answer or aggregate-to-identity conclusion remains across the probe, TASKS, STATUS and TESTING. The surviving “a run that answered” language is expressly conditional and describes evidence not yet obtained. |
 | Focused tests | Task-placement plus orphan-scan tests: **27 passed**. |
@@ -19688,7 +19688,7 @@ dependency of T-258.
 | Check | Result |
 |---|---|
 | Before-state reproduction | At `1b31aac`, T-258's header says criterion 5 is met while its tally says “wired and unexecuted” and its criterion subsection says “has not executed yet” and “Not yet met”; STATUS also records the run and then says the task waits on that first execution. |
-| Exact correction scope | `3947858^..3947858` changes only `ai/TASKS.md` and `ai/STATUS.md`. No source, workflow, test, dependency or build file changed. |
+| Exact correction scope | `3947858^..3947858` changes only `docs/project/TASKS.md` and `docs/project/STATUS.md`. No source, workflow, test, dependency or build file changed. |
 | Sibling audit | The T-258 header, criteria tally and criterion 5 subsection all say the scanner executed and criterion 5 is met. The matching STATUS header and dated correction entry agree. Searches for the withdrawn strings return only expressly historical quotations describing the defect. |
 | Current-tree continuity | From `3947858` to the current tree, the only change inside T-258's task entry records the maintainer's authorisation and the pass scope. It does not change the corrected gate result. |
 | Task placement | `pytest -q tests/unit/test_task_placement.py`: **15 passed**. |
@@ -19770,7 +19770,7 @@ T267-R1 is Resolved and **T-267 is Approved with follow-ups at `0eece42`**. T259
 this proof. T267-R2 is Low, owned by the Implementer and targeted to T-267's completion
 synchronization; it does not consume another review pass or keep the task In Review.
 
-The Reviewer changed `ai/REVIEWS.md` and added only the approved follow-up to T-267's task entry.
+The Reviewer changed `docs/project/REVIEWS.md` and added only the approved follow-up to T-267's task entry.
 No reviewed test, tool, workflow, policy value, push or remote state was changed.
 
 ---
@@ -19793,7 +19793,7 @@ current-truth records retain several pre-ruling answers about the same options a
 | ID | Severity | Blocks approval | Finding | Required correction | Status |
 |---|---|---:|---|---|---|
 | **T256-R1** | **Medium** | **Yes — the executable gate can approve an audit that contradicts an accepted security decision** | `rule()` checks for `"forbidden"` and then `elif "permitted"` (`tests/unit/test_option_audit.py:379-394`). A clause containing both words is therefore treated wholly as forbidden; the opposite set is removed, so the intersection assertion at :422 can never detect the case its docstring says it catches. The Reviewer joined the amendment's permitted and forbidden phrases into one clause, moved permitted `--netrc` and `--netrc-location` to `excluded`, and updated the class/refusal counts to 91/28/94. **All 19 tests passed.** The gate accepted a refusal wider than the decision while every count agreed. | Reject a clause containing both verdict words before applying either one, or parse the verdict into an equally fail-closed structure. Add a regression that combines permitted and forbidden options in one clause and demonstrates that the gate fails even when the audit rows and all counts are changed to agree with the parser's wrong reading. Keep later-table override behavior for separate clauses. | **Open** |
-| **T256-R2** | **Medium** | **Yes — canonical task/audit records give both the pre-ruling and post-ruling security dispositions** | T-256's lead says all four rulings are taken, but its active priority still says three corrections remain and its lower heading says **“PROPOSED, nobody has ruled”** (`ai/TASKS.md:447-448,475-483`); its historical blockquote is not introduced as historical, and criterion 4 still says the audit test passes unchanged although `f026c0c` had to change it. The audit says `unruled` is 0 at :87 and one remains at :89; Finding 3 says the two options are `hatch` and nobody ruled at :205-207 although its rows classify them `excluded`; Finding 5 still calls the count correction proposed at :276-282; and the decomposition credits only SEC-004 and says T-184 was already unblocked at :324-328. T-184's lead gives the current **92**, while its active `Depends on` line still gives **89** (`ai/TASKS.md:9351,9366-9367`). These are current-truth files, not the historical original verdict retained correctly in DECISIONS. A T-184 implementer can read both the three newly refused options and the old list that omits them. | Sweep the active T-256 entry, the audit's summaries/findings/decomposition, and T-184's dependency text. State the post-ruling disposition and 92-row list once at each live consumer; either remove superseded claims or mark them explicitly as historical quotations. Update criterion 4 to acknowledge the necessary gate amendment and require that it derives the effective later verdict. Do not rewrite SEC-003's original historical table; its appended amendment is the correct preservation mechanism. | **Open** |
+| **T256-R2** | **Medium** | **Yes — canonical task/audit records give both the pre-ruling and post-ruling security dispositions** | T-256's lead says all four rulings are taken, but its active priority still says three corrections remain and its lower heading says **“PROPOSED, nobody has ruled”** (`docs/project/TASKS.md:447-448,475-483`); its historical blockquote is not introduced as historical, and criterion 4 still says the audit test passes unchanged although `f026c0c` had to change it. The audit says `unruled` is 0 at :87 and one remains at :89; Finding 3 says the two options are `hatch` and nobody ruled at :205-207 although its rows classify them `excluded`; Finding 5 still calls the count correction proposed at :276-282; and the decomposition credits only SEC-004 and says T-184 was already unblocked at :324-328. T-184's lead gives the current **92**, while its active `Depends on` line still gives **89** (`docs/project/TASKS.md:9351,9366-9367`). These are current-truth files, not the historical original verdict retained correctly in DECISIONS. A T-184 implementer can read both the three newly refused options and the old list that omits them. | Sweep the active T-256 entry, the audit's summaries/findings/decomposition, and T-184's dependency text. State the post-ruling disposition and 92-row list once at each live consumer; either remove superseded claims or mark them explicitly as historical quotations. Update criterion 4 to acknowledge the necessary gate amendment and require that it derives the effective later verdict. Do not rewrite SEC-003's original historical table; its appended amendment is the correct preservation mechanism. | **Open** |
 
 ### Independent checks
 
@@ -19931,7 +19931,7 @@ Three residual record-clarity findings are Low, owned and targeted; none blocks 
 
 | Check | Result |
 |---|---|
-| Authorized scope | `801324b..ed7e25a` contains **2 commits** and changes only `ai/STATUS.md`, `ai/TASKS.md` and `docs/YTDLP_OPTION_AUDIT.md`. `04e6b93` applies the three record corrections; `ed7e25a` records the maintainer's further-pass authorization and exact exclusions. No source, test, workflow or decision changed. |
+| Authorized scope | `801324b..ed7e25a` contains **2 commits** and changes only `docs/project/STATUS.md`, `docs/project/TASKS.md` and `docs/YTDLP_OPTION_AUDIT.md`. `04e6b93` applies the three record corrections; `ed7e25a` records the maintainer's further-pass authorization and exact exclusions. No source, test, workflow or decision changed. |
 | T256-R2 exact correction | The audit's authority and header now include SEC-005 and amended SEC-003, and the header refusal count is 92. The operative class summary remains 92. Searches found no live 89-row consumer; T-256's surviving 89 is introduced as its original historical status. |
 | T256-R3 exact correction | STATUS's result is **3 failed, 17 passed**, matching the Reviewer's fully re-derived mutation at `801324b`. The new statement that no documented `--netrc` row exists is contradicted by the audit's `-n`/`--netrc` row and is separated as non-blocking T256-R5. |
 | T267-R3 exact correction | The stale “update when moving” instruction is now quoted only inside a paragraph saying that it outlived the completed move. The live paragraph states the correct test name and resolved disposition. |
@@ -19961,8 +19961,8 @@ T-256 is **Approved with follow-ups at `ed7e25a`** and may move to Complete. T25
 Resolved; the four maintainer rulings remain accepted; T-184 remains unblocked on the 92-row refusal
 input. T256-R4, T256-R5 and T256-R6 are Low, non-blocking and require no further review of T-256.
 
-The Reviewer changed `ai/REVIEWS.md` and added only the approved follow-up owner/targets to
-`ai/TASKS.md`. No reviewed audit/status text, test, gate, workflow, decision, source, handoff, push
+The Reviewer changed `docs/project/REVIEWS.md` and added only the approved follow-up owner/targets to
+`docs/project/TASKS.md`. No reviewed audit/status text, test, gate, workflow, decision, source, handoff, push
 or remote state was changed.
 
 ---
@@ -19986,7 +19986,7 @@ brand source of record.
 | ID | Severity | Blocks approval | Finding | Required correction | Status |
 |---|---|---:|---|---|---|
 | **T274-R1** | **Medium** | **Yes — the selected small/full boundary is not enforced at 24 or 32 px** | `tests/unit/test_resources.py:35-41` states the independent expected set as 16/24/32, but `tests/ui/test_resources.py:131-164` checks the shipped asset only at 16. The parameterization at :167-189 uses that set only to prove that the *full master* has multiple gold runs; it never proves that each shipped small-size asset has one. The Reviewer set `render_icons.SMALL_SIZES` to `{16}`, regenerated all eleven outputs including the `.ico`, and the complete resource pair still reported **30 passed**. The 24 and 32 px PNGs and corresponding ICO frames had changed to the full mark while the stated boundary remained green. | Apply the shipped-asset connectivity assertion to every independently expected small size (retaining the 16 px minimum-gold floor where it belongs), and keep the full-master control. Prove that removing either 24 or 32 from the renderer's set fails the focused suite after a full regeneration. | **Open** |
-| **T274-R2** | **Medium** | **Yes — canonical architecture gives a false source-of-record identity after this replacement** | `ai/ARCHITECTURE.md:389-397` still says the artwork has no flat fills, tells readers to use `resources/icons/icon.png` as the source of record, and pins its SHA-256 as `f0e202c7...74b8d`. That was the replaced T-003 raster. At this head `icon.png` is a generated output with SHA-256 `088dc089...299`, while `tools/icons/masters/icon.svg` is the vendored vector source (`6204d568...b4`) and uses literal `#1E5E47` / `#D9A24C` fills. The canonical swatch values did not change, but their live provenance paragraph now describes a file and artwork properties that no longer exist. | In the Planner-owned architecture record, preserve the three adopted canonical swatches and rewrite only their provenance/source-of-record explanation for the vector-master pipeline. Keep the old raster/hash as historical T-003 context if useful, not as the live source. | **Open** |
+| **T274-R2** | **Medium** | **Yes — canonical architecture gives a false source-of-record identity after this replacement** | `docs/project/ARCHITECTURE.md:389-397` still says the artwork has no flat fills, tells readers to use `resources/icons/icon.png` as the source of record, and pins its SHA-256 as `f0e202c7...74b8d`. That was the replaced T-003 raster. At this head `icon.png` is a generated output with SHA-256 `088dc089...299`, while `tools/icons/masters/icon.svg` is the vendored vector source (`6204d568...b4`) and uses literal `#1E5E47` / `#D9A24C` fills. The canonical swatch values did not change, but their live provenance paragraph now describes a file and artwork properties that no longer exist. | In the Planner-owned architecture record, preserve the three adopted canonical swatches and rewrite only their provenance/source-of-record explanation for the vector-master pipeline. Keep the old raster/hash as historical T-003 context if useful, not as the live source. | **Open** |
 
 ### Independent checks
 
@@ -20377,7 +20377,7 @@ disposition.
 | ID | Severity | Blocks approval | Finding | Required correction | Status |
 |---|---|---:|---|---|---|
 | **T272-R5** | **Medium** | **Yes — the “a find is visible” acceptance criterion** | `vars.LINUX_RUNNER` is `["self-hosted","Linux","fedora"]`, and both persistent Linux runners, `kirk` and `Spock`, carry that exact selector. The workflow creates one `linux-orphans` job, so GitHub chooses either machine. The six-run history proves the consequence: the 2026-08-21 job ran on `Spock`, found PID `434366` and failed; the next four nightlies and the finding-specific dispatch ran on `kirk` and succeeded. The August 25 read-only capture still found the same specimen on `Spock` during that green sequence. Thus a green says only that the selected host was clean; it neither clears nor contradicts the preceding red. T-272's tests prove one job per platform and exit-code propagation, not coverage of every persistent process table behind a shared label. | The maintainer must choose the scope. **Fan out over every persistent Linux runner using distinguishing labels** is the only option that preserves the existing criterion literally. **Pin one named runner** is deterministic but leaves the other unmonitored; **retain arbitrary per-run selection** monitors whichever host is free. Either latter option requires an explicit criterion/job-description amendment that states the uncovered machine or per-run scope and stops interpreting a later green as clearance. The correction remains owned by T-272 because this is its delivered job and criterion; moving broader fleet coverage to a new task requires an explicit maintainer re-scope. The ruling should also authorize one focused post-approval correction pass under §10. | **Open — blocked on maintainer scope ruling** |
-| **T272-R6** | **Medium** | **Yes — the task's preservation gate and central current-truth claim** | The T-272 entry, evidence conclusion/inventory and STATUS passages say both PIDs disappeared on August 20 and no specimen remained. The August 25 capture instead recorded the same PID, PPID, start time, thread count and `pipe:[1629660]` on `Spock`, with the scanner exiting 1; the August 21 CI log independently names PID `434366` on `Spock`. The old clean re-scan may have been a true scan of the other host or a wrong result on this host; its execution host is not recoverable, so this review does not choose. The preservation criterion was therefore live and unmet on August 25, not overtaken on August 20. During this review both PIDs were absent and the scanner exited 0, so it is genuinely overtaken now by a later, unwitnessed ending. | Sweep every operative copy once after the ruling. State the confirmed `kirk`/Spock machine split, preserve uncertainty about which host ran the August 20 manual commands, and date the specimen's actual loss only to the interval between the August 25 capture and this review. Since the August 25 process state can no longer be regenerated, retain that re-capture under `ai/evidence/` if its output survives; otherwise state exactly which captured facts survive and that the fuller snapshot was lost. Do not infer how the processes ended or that anybody inspected, signalled or deliberately released them. **Owner/target:** Implementer, T-272 correction batch after the scope ruling. | **Open** |
+| **T272-R6** | **Medium** | **Yes — the task's preservation gate and central current-truth claim** | The T-272 entry, evidence conclusion/inventory and STATUS passages say both PIDs disappeared on August 20 and no specimen remained. The August 25 capture instead recorded the same PID, PPID, start time, thread count and `pipe:[1629660]` on `Spock`, with the scanner exiting 1; the August 21 CI log independently names PID `434366` on `Spock`. The old clean re-scan may have been a true scan of the other host or a wrong result on this host; its execution host is not recoverable, so this review does not choose. The preservation criterion was therefore live and unmet on August 25, not overtaken on August 20. During this review both PIDs were absent and the scanner exited 0, so it is genuinely overtaken now by a later, unwitnessed ending. | Sweep every operative copy once after the ruling. State the confirmed `kirk`/Spock machine split, preserve uncertainty about which host ran the August 20 manual commands, and date the specimen's actual loss only to the interval between the August 25 capture and this review. Since the August 25 process state can no longer be regenerated, retain that re-capture under `docs/project/evidence/` if its output survives; otherwise state exactly which captured facts survive and that the fuller snapshot was lost. Do not infer how the processes ended or that anybody inspected, signalled or deliberately released them. **Owner/target:** Implementer, T-272 correction batch after the scope ruling. | **Open** |
 
 ### Independent evidence
 
@@ -20446,10 +20446,10 @@ requires a maintainer choice under `AGENTS.md` section 10.
 | ID | Severity | Blocks approval | Focused result / finding | Required correction | Status |
 |---|---|---:|---|---|---|
 | **T272-R5** | **Medium** | Yes | The original platform-wide visibility criterion is struck, the maintainer's per-run-one-machine ruling is explicit, and the replacement states both consequences: an orphan on the unselected machine waits for a later run, and a green can be mistaken for a clean platform. That is the narrower promise the ruling authorized rather than a quiet reinterpretation. Prefixing each verdict with `socket.gethostname()` is a proportionate correction to the demonstrated signal ambiguity; no repository consumer parses the old literal output. | None. | **Resolved at `048ed98`** |
-| **T272-R6** | **Medium** | **Yes — preservation/current truth** | Retaining `ai/evidence/2026-08-25-linux-orphan-still-running-on-spock.md` and correcting the top-level STATUS text are necessary but not the requested sweep. `TASKS.md` still says the pair was on `kirk`, later ended, and left no specimen; its operative acceptance list still strikes preservation as “overtaken by events.” Older operative STATUS passages and the original evidence file repeat the same disposition. Those are the exact PIDs, start times and pipe inode now visible on `Spock`; a process did not migrate between machines. At 2026-08-26T00:55:59Z host `Spock` still showed PIDs `432922` and `434366`, and the submitted scanner reported PID `434366` and exited 1. | Sweep the current-truth copies, including the T-272 body and acceptance list. State that the captured pair was on `Spock`; the later clean `kirk` check did not settle its state; the specimen remains live and the preservation criterion remains unmet. Put an in-file correction banner on the misleading 2026-08-20 evidence framing while preserving its raw capture. Do not infer how it began or authorize inspection, signalling or reaping. | **Open** |
+| **T272-R6** | **Medium** | **Yes — preservation/current truth** | Retaining `docs/project/evidence/2026-08-25-linux-orphan-still-running-on-spock.md` and correcting the top-level STATUS text are necessary but not the requested sweep. `TASKS.md` still says the pair was on `kirk`, later ended, and left no specimen; its operative acceptance list still strikes preservation as “overtaken by events.” Older operative STATUS passages and the original evidence file repeat the same disposition. Those are the exact PIDs, start times and pipe inode now visible on `Spock`; a process did not migrate between machines. At 2026-08-26T00:55:59Z host `Spock` still showed PIDs `432922` and `434366`, and the submitted scanner reported PID `434366` and exited 1. | Sweep the current-truth copies, including the T-272 body and acceptance list. State that the captured pair was on `Spock`; the later clean `kirk` check did not settle its state; the specimen remains live and the preservation criterion remains unmet. Put an in-file correction banner on the misleading 2026-08-20 evidence framing while preserving its raw capture. Do not infer how it began or authorize inspection, signalling or reaping. | **Open** |
 | **T272-R7** | **Low** | No | The production output does join host and verdict, but `test_every_verdict_names_the_machine_it_came_from` does not enforce that stated contract. In an isolated exact-head tree, printing the hostname on a separate line before both verdicts left **all 14 tests passing**: the find branch checks only that line 1 contains the host, and the clean branch checks only that the host appears somewhere in the output. | Assert that the actual verdict line begins with the exact host prefix in both branches, for example `f"{socket.gethostname()}: "`, rather than testing substring presence. **Owner/target:** Implementer, the next authorized T-272 correction or a named test-hardening follow-up if the maintainer closes T-272 without another pass. | **Open, non-blocking** |
 | **T272-R8** | **Medium** | **Yes — the find-fails-the-job acceptance criterion** | `test_a_pipeline_cannot_swallow_the_alarm` reads only workflow-level `defaults.run.shell`. GitHub's more-specific step shell wins over that default. In an isolated exact-head tree, adding `shell: sh` to a scanner step left **all 14 tests passing**, although that step no longer has `pipefail` and `scanner | tee` returns `tee`'s zero status. The new gate therefore does not gate the workflow's effective shell or the property its name claims. | Resolve the effective shell using step, job-default and workflow-default precedence for every piped scanner step, or make each command preserve the scanner's status independently of implicit shell flags and test that mechanism. | **Open** |
-| **T272-R9** | **Low** | No | `git diff --check a85b8bb 048ed98` fails on trailing spaces in the two captured command-line lines at `ai/evidence/2026-08-25-linux-orphan-still-running-on-spock.md:53` and `:88`. The spaces add no evidence; they are the printable residue of command-line separators. | Remove the two trailing spaces during the next documentation correction. **Owner/target:** Implementer, the next T-272 correction batch. | **Open, non-blocking** |
+| **T272-R9** | **Low** | No | `git diff --check a85b8bb 048ed98` fails on trailing spaces in the two captured command-line lines at `docs/project/evidence/2026-08-25-linux-orphan-still-running-on-spock.md:53` and `:88`. The spaces add no evidence; they are the printable residue of command-line separators. | Remove the two trailing spaces during the next documentation correction. **Owner/target:** Implementer, the next T-272 correction batch. | **Open, non-blocking** |
 
 ### Independent checks
 
@@ -20534,7 +20534,7 @@ contradictions.
 - Correct the task title/summary and the test docstring's `kirk` attribution. The same accepted
   specimen cannot have been running on both physical machines.
 - Add the requested correction banner inside
-  `ai/evidence/2026-08-20-linux-orphans-on-kirk.md` itself. Preserve the raw capture and the old
+  `docs/project/evidence/2026-08-20-linux-orphans-on-kirk.md` itself. Preserve the raw capture and the old
   disposition as quoted history, but make the file answer its own validity without requiring a
   reader to discover its README row.
 - Sweep the remaining false present-tense copies in current-truth files. Do not infer which host or
@@ -20691,7 +20691,7 @@ T272-R7, T272-R8 and T272-R9 remain Resolved.
 |---|---|
 | Boundary | `5308196..12fda3a` is one commit changing three files: task prose, workflow comments and a test docstring. `tools/orphan_scan.py`, workflow keys/steps, executable test lines and assertions are unchanged. |
 | Tracked-file enumeration | `git grep -in kirk` at the submitted head produced **115 hits in 16 files**, matching the submitted head count. The implementer's pre-correction count of 113 and head count of 115 are consistent with two retained explanatory references added by the correction. Every non-obvious surviving category was inspected independently. |
-| Named corrections | `ai/TASKS.md` no longer attributes the heading's pair to `kirk`; `.github/workflows/ci.yml` no longer attributes the find to `kirk`; and `tests/unit/test_orphan_scan.py` no longer makes that attribution in the wiring-test docstring. |
+| Named corrections | `docs/project/TASKS.md` no longer attributes the heading's pair to `kirk`; `.github/workflows/ci.yml` no longer attributes the find to `kirk`; and `tests/unit/test_orphan_scan.py` no longer makes that attribution in the wiring-test docstring. |
 | Overtaken question | The task no longer asks the Reviewer to identify the environment that returned the later clean result. It records the disclosed isolated PID namespace as the actual cause while retaining the shared-label and other-host scan as distinct ways an unnamed zero can mislead. |
 | Focused tests | `.venv/bin/python -m pytest -q tests/unit/test_orphan_scan.py tests/unit/test_task_placement.py`: **29 passed**. A preliminary invocation through the `.venv/bin/pytest` console-script wrapper produced one failure in the pre-existing live-parent test; the project-interpreter invocation passed, and this correction changes only that file's docstring. No current finding was reopened on that adjacent, invocation-sensitive result. |
 | Static gates | `ruff check .` passed; `ruff format --check .`: **204 files already formatted**; `mypy src`: **56 files**, passed; bare `mypy`: **154 files**, passed; `mypy --platform win32`: **154 files**, passed. |
@@ -20747,7 +20747,7 @@ a real parent exit in that race window to be missed for the current scan.
 |---|---|---:|---|---|---|
 | **T279-R1** | **Medium** | **Yes — supported-platform gate and acceptance evidence** | `test_a_console_script_parent_is_not_mistaken_for_a_dead_one` writes an extensionless text file with a shebang, applies `chmod(0o755)`, and passes that path directly to `subprocess.Popen`. That is the Linux mechanism under review. On Windows, `Popen(..., shell=False)` uses `CreateProcess`; chmod does not turn this file into an executable, and the installed entry point is instead `tracks-and-trails.exe`. PyPA distlib's launcher source shows that wrapper creating a separate interpreter child and waiting for it. The test therefore neither runs in the Windows product shape nor measures which process is the worker's parent there. No Windows or CI run exists for this unpushed head, while acceptance criterion 3 claims the suite gives the same answer under every invocation. | Make the regression platform-correct. Keep the shebang arrangement on POSIX; on Windows exercise or deterministically model the actual installed `.exe` launcher/interpreter process structure rather than launching the POSIX file. Record which executable is the worker's immediate parent and run the focused test through the Windows wrapper before claiming the cross-platform invocation result. Correct the platform-neutral “`exe()` resolves through the shebang for all three forms” wording to the measured per-platform mechanism. | **Open** |
 | **T279-R2** | **Medium** | **Yes — the correction creates a narrow false-negative path** | `_executable_of` and `_argv0_of` both catch `psutil.NoSuchProcess` and return `None`; `_looks_like_an_interpreter` then returns `True` when both are absent. If the parent exits after `Process(parent_pid)` and the create-time check but before these reads, `_parent_is_gone` returns **False** even though the parent is now gone. A deterministic reviewer probe forced that sequence and observed `parent-gone-after-create False`. This is not the accepted AccessDenied bias: `NoSuchProcess` says the subject ceased to exist. The tuple in `for candidate in (_executable_of(...), _argv0_of(...))` also evaluates both calls eagerly despite calling the second a fallback. No test directly covers any helper exception branch. | Preserve `NoSuchProcess` so `_parent_is_gone` reports the disappeared parent, while keeping the conservative result for a parent that still exists but denies both reads. Make `cmdline()[0]` a genuinely lazy fallback, and add deterministic tests for: executable success, argv-zero fallback, both reads AccessDenied/uninspectable, a parent disappearing during inspection, and a non-interpreter replacement. | **Open** |
-| **T279-R3** | **Low** | No | `ai/STATUS.md:12` still says “`## In Review` is empty,” while this commit moves T-279 into that section and describes it as built. The status narrative also still describes only the pre-fix `name()` implementation. | Synchronize STATUS with T-279's actual review state and correction result. **Owner/target:** Implementer, T-279 focused correction. | **Open, non-blocking** |
+| **T279-R3** | **Low** | No | `docs/project/STATUS.md:12` still says “`## In Review` is empty,” while this commit moves T-279 into that section and describes it as built. The status narrative also still describes only the pre-fix `name()` implementation. | Synchronize STATUS with T-279's actual review state and correction result. **Owner/target:** Implementer, T-279 focused correction. | **Open, non-blocking** |
 | **T279-R4** | **Low** | No | The T-279 current-truth entry says at `TASKS.md:337-338` that the frozen build “has the same shape,” while its new implementation section and source docstring say a frozen child's command line lacks `spawn_main`, so `_SPAWN_MARKERS` excludes it before the parent predicate runs. Both cannot describe this false-positive path as operative. The exclusion claim is correct for the installed CPython 3.14 `multiprocessing.spawn.get_command_line`; it is not evidence that the scanner detects frozen-worker orphans. | Withdraw or qualify the older frozen-affected sentence and state the residual precisely: frozen workers do not enter this predicate under the current two-marker rule. Do not turn that exclusion into a claim of frozen-worker detection coverage. **Owner/target:** Implementer, T-279 focused correction. | **Open, non-blocking** |
 
 ### Independent checks
@@ -20959,7 +20959,7 @@ the append-only review history and the local commit history rather than being si
 **Verdict:** **Blocked.** Releasing the composed window in the fixture is the right ownership
 boundary, the direct `shiboken6.isValid` assertion is appropriate, and the assertion fails when
 the deferred deletion is removed. Approval is blocked because this test-fixture head has no
-Windows result, although `ai/TESTING.md` requires Windows evidence before review and the changed
+Windows result, although `docs/project/TESTING.md` requires Windows evidence before review and the changed
 conftest executes there. Two Low scope/current-truth corrections belong in the same T-273
 correction and do not become follow-up tasks.
 
@@ -20967,7 +20967,7 @@ correction and do not become follow-up tasks.
 
 | ID | Severity | Blocks approval | Finding | Required correction | Status |
 |---|---|---:|---|---|---|
-| **T273-R1** | **Medium** | **Yes — required supported-platform gate** | `c2bb5a0` changes `tests/ui/conftest.py`, including a direct binding-layer import and explicit `DeferredDelete` delivery, but has not run on Windows or in CI. `ai/TESTING.md` section 10 states that Windows evidence is required before a task is reviewed, and section 3 treats test-file changes as cross-platform gate surfaces. The green run cited by the submission is for base `db7af2a`, not this implementation. | Push the final T-273 implementation head and obtain a green `windows desktop` result for that exact executable/test tree. Record the code head separately from any later record-only commit. No product-code change is requested by this finding. | **Open** |
+| **T273-R1** | **Medium** | **Yes — required supported-platform gate** | `c2bb5a0` changes `tests/ui/conftest.py`, including a direct binding-layer import and explicit `DeferredDelete` delivery, but has not run on Windows or in CI. `docs/project/TESTING.md` section 10 states that Windows evidence is required before a task is reviewed, and section 3 treats test-file changes as cross-platform gate surfaces. The green run cited by the submission is for base `db7af2a`, not this implementation. | Push the final T-273 implementation head and obtain a green `windows desktop` result for that exact executable/test tree. Record the code head separately from any later record-only commit. No product-code change is requested by this finding. | **Open** |
 | **T273-R2** | **Low** | No | `tests/ui/conftest.py:359` calls `sendPostedEvents(None, DeferredDelete)`, draining every object's pending deferred deletion inside the non-autouse `composed` fixture. The suite already has a deliberate global drain in `_no_orphaned_views`, after ordinary fixture teardown. This release needs only the event posted to `window`; in an exact-head archive, changing the receiver from `None` to `window` kept the window invalidation check green across the 91 accessibility/colour tests. The global call has no demonstrated current failure, but it broadens teardown ordering beyond the object this fixture owns. | Target `window` as the receiver, or supply measured evidence that another receiver's pending deletion is required here. Update the three-cycle/current-truth wording to name the scoped mechanism. **Disposition:** roll into T-273's correction; no separate task. | **Open, non-blocking** |
 | **T273-R3** | **Low** | No | TASKS, STATUS and the handoff say the new assertion fails on “every UI test.” `composed` is not autouse. Independent exact-head collection found **14 of 1,058** UI cases request it, directly or through `every_surface`; the other tests never execute this assertion. The check still satisfies the acceptance criterion because every composition made through this fixture is guarded. | Say that every use of `composed` is guarded, or name the 14 current cases; do not call it an every-UI-test gate. **Disposition:** current T-273 completion sync; no separate task. | **Open, non-blocking** |
 
@@ -21091,10 +21091,10 @@ test, task/status text, handoff, push, CI run or remote state was changed.
 
 | ID | Severity | Blocks approval | Finding | Required correction | Status |
 |---|---|---:|---|---|---|
-| **T212-R1** | **Medium** | **Yes — required gates are misstated** | `ai/STATUS.md` calls 3,364 unit/UI cases the **full suite** and says the tasks' gates are green. `ai/TESTING.md` makes integration part of the default suite and requires bare `mypy` plus `mypy --platform win32` for changed tests. The submission did not run those scopes; independent review found both all-files mypy commands red on `tests/ui/test_queue_view.py:2365`. The ignored handoff repeats the same “every gate CI runs” claim, and the canary evidence calls its unit-only run “every gate this project has.” | Replace “full suite”/“gates green” with the exact commands and results actually obtained. After correction, record the final all-files mypy results and distinguish unit/UI, integration, Windows and real-display evidence instead of collapsing them. | **Open** |
-| **T212-R2** | **Low** | No | Moving `T-288`, `T-291` and `T-292` to **In Review** moved only their summaries. Their detailed bodies and acceptance criteria remain at `ai/TASKS.md:12044`, `:12270` and `:12331`, where Markdown makes them subsections of `T-287` or `T-290`. The task-placement gate sees the status headings and therefore passes while the task definitions belong to the wrong entries. | Move each orphaned body under its own In Review heading, preserving the text and history. This is completion/current-truth synchronization, not a new task. | **Open, non-blocking** |
-| **T212-R3** | **Medium** | **Yes — supported-platform gate** | None of the six product source/test changes has Windows evidence. `ai/TESTING.md` section 10 requires Windows evidence before review, and all six change shared Python or Qt surfaces. A Linux type simulation is not a Windows runtime result; the current simulation is red in any case. | After the correction batch is final and local gates are green, push that exact executable/test tree and obtain a green `windows desktop` run. Record code head separately from later review-only commits. | **Open** |
-| **T212-R4** | **Medium** | No for these seven tasks; blocks using the claim as T-289's proven cause | `ai/evidence/2026-08-27-T212-ytdlp-update-double-free.md` and `ai/TASKS.md:12160` turn an inference into “the same Qt object graph.” The stacks establish concurrent allocator activity and, critically, a pool-thread collection destroying a QWidget tree. They do not identify object addresses or establish that the GUI thread was freeing that same tree; the evidence itself says the collected tree is unknown. | Preserve the established off-GUI QWidget destruction and the crash, but label graph identity/causation as an inference unless object-address evidence exists. Route the correction to existing `T-289`; create no new task. | **Open, non-blocking for this batch** |
+| **T212-R1** | **Medium** | **Yes — required gates are misstated** | `docs/project/STATUS.md` calls 3,364 unit/UI cases the **full suite** and says the tasks' gates are green. `docs/project/TESTING.md` makes integration part of the default suite and requires bare `mypy` plus `mypy --platform win32` for changed tests. The submission did not run those scopes; independent review found both all-files mypy commands red on `tests/ui/test_queue_view.py:2365`. The ignored handoff repeats the same “every gate CI runs” claim, and the canary evidence calls its unit-only run “every gate this project has.” | Replace “full suite”/“gates green” with the exact commands and results actually obtained. After correction, record the final all-files mypy results and distinguish unit/UI, integration, Windows and real-display evidence instead of collapsing them. | **Open** |
+| **T212-R2** | **Low** | No | Moving `T-288`, `T-291` and `T-292` to **In Review** moved only their summaries. Their detailed bodies and acceptance criteria remain at `docs/project/TASKS.md:12044`, `:12270` and `:12331`, where Markdown makes them subsections of `T-287` or `T-290`. The task-placement gate sees the status headings and therefore passes while the task definitions belong to the wrong entries. | Move each orphaned body under its own In Review heading, preserving the text and history. This is completion/current-truth synchronization, not a new task. | **Open, non-blocking** |
+| **T212-R3** | **Medium** | **Yes — supported-platform gate** | None of the six product source/test changes has Windows evidence. `docs/project/TESTING.md` section 10 requires Windows evidence before review, and all six change shared Python or Qt surfaces. A Linux type simulation is not a Windows runtime result; the current simulation is red in any case. | After the correction batch is final and local gates are green, push that exact executable/test tree and obtain a green `windows desktop` run. Record code head separately from later review-only commits. | **Open** |
+| **T212-R4** | **Medium** | No for these seven tasks; blocks using the claim as T-289's proven cause | `docs/project/evidence/2026-08-27-T212-ytdlp-update-double-free.md` and `docs/project/TASKS.md:12160` turn an inference into “the same Qt object graph.” The stacks establish concurrent allocator activity and, critically, a pool-thread collection destroying a QWidget tree. They do not identify object addresses or establish that the GUI thread was freeing that same tree; the evidence itself says the collected tree is unknown. | Preserve the established off-GUI QWidget destruction and the crash, but label graph identity/causation as an inference unless object-address evidence exists. Route the correction to existing `T-289`; create no new task. | **Open, non-blocking for this batch** |
 
 ### Independent checks
 
@@ -21229,7 +21229,7 @@ test fails both all-files type gates and would make CI red.
 
 | ID | Severity | Blocks approval | Finding | Required correction | Status |
 |---|---|---:|---|---|---|
-| **T293-R1** | **Medium** | **Yes — required check fails** | `tests/ui/test_queue_view.py:2365` passes `jobs[0].playlist_id` (`str | None`) to `toggle_group(str)`. Both bare `mypy` and bare `mypy --platform win32` fail on that line. `ai/TESTING.md` requires both scopes when a test changes, and CI's “Types, tests included” step runs bare mypy. The handoff's `mypy src` did not inspect the new test. | Narrow/assert the fixture value before calling `toggle_group`, or use the known playlist id that built the fixture. Run and record both all-files mypy commands after the correction. | **Open** |
+| **T293-R1** | **Medium** | **Yes — required check fails** | `tests/ui/test_queue_view.py:2365` passes `jobs[0].playlist_id` (`str | None`) to `toggle_group(str)`. Both bare `mypy` and bare `mypy --platform win32` fail on that line. `docs/project/TESTING.md` requires both scopes when a test changes, and CI's “Types, tests included” step runs bare mypy. The handoff's `mypy src` did not inspect the new test. | Narrow/assert the fixture value before calling `toggle_group`, or use the known playlist id that built the fixture. Run and record both all-files mypy commands after the correction. | **Open** |
 
 ### Independent checks
 
@@ -21264,7 +21264,7 @@ forms of untrusted path text are not safely settled.
 | ID | Severity | Blocks approval | Finding | Required correction | Status |
 |---|---|---:|---|---|---|
 | **T292-R1** | **Medium** | **Yes — invalid input escapes the refusal path** | `_directory_typed` calls `Path(typed).expanduser()` outside any guard (`settings_dialog.py:669-680`). On POSIX, `~user` for an account that does not exist raises `RuntimeError`. A direct widget probe with `~tracks_and_trails_user_that_cannot_exist_28493/downloads` raised **“Could not determine home directory”**; no refusal was shown and the field was not restored. The settings loader already documents and catches this exact exception in its never-raises path. | Reuse one shared directory-validation result if practical, or catch the filesystem/expansion exceptions here and route them through `_refuse_directory`. Add a real-slot regression that proves the message and restoration, not only `Path.expanduser` in isolation. | **Open** |
-| **T292-R2** | **Medium** | **Yes — destination meaning is unstable** | The task explicitly names relative paths as one of the cases to decide (`ai/TASKS.md:12347-12353`), but no ruling was recorded and the implementation accepts them unchanged. A direct probe typing `.` sent `PosixPath('.')` to composition. That value is persisted and resolved relative to the process working directory, so the same setting may name a different folder on a later launch. | Decide and record the relative-path rule. Either refuse relative input in the field's voice or convert it to a stable absolute spelling before it leaves the UI, then test the stored/callback value and reopened display. | **Open** |
+| **T292-R2** | **Medium** | **Yes — destination meaning is unstable** | The task explicitly names relative paths as one of the cases to decide (`docs/project/TASKS.md:12347-12353`), but no ruling was recorded and the implementation accepts them unchanged. A direct probe typing `.` sent `PosixPath('.')` to composition. That value is persisted and resolved relative to the process working directory, so the same setting may name a different folder on a later launch. | Decide and record the relative-path rule. Either refuse relative input in the field's voice or convert it to a stable absolute spelling before it leaves the UI, then test the stored/callback value and reopened display. | **Open** |
 | **T292-R3** | **Low** | No | `test_a_tilde_is_understood_rather_than_refused` uses the executing account's real home and assumes it is writable. Under the review sandbox, expansion correctly produced `/home/sean`, but the product correctly refused that sandbox-unwritable directory and the test failed. The normal-environment run passes. The test therefore conflates expansion with host writability. | Point `HOME`/the platform home lookup at a writable `tmp_path` for this test, then assert the expanded callback value. Fold into T-292's correction; no follow-up task. | **Open, non-blocking** |
 
 ### Independent checks
@@ -21299,7 +21299,7 @@ but the task deliberately leaves its required real-display observation unperform
 
 | ID | Severity | Blocks approval | Finding | Required correction | Status |
 |---|---|---:|---|---|---|
-| **T288-R1** | **Medium** | **Yes — acceptance evidence absent** | The acceptance criteria require a rendered check on a real display naming platform and style (`ai/TASKS.md:12101-12103`). The implementation record explicitly leaves it open, and this review has only offscreen/static evidence. The task exists because an offscreen attempt previously gave the wrong theme result; the missing check cannot be replaced by another offscreen inference. | On the KDE/Wayland display that produced the report, inspect both themes and both orientations, including hover/pressed behavior and the Settings/Options scrollers, and record platform/style. If the rendering differs from the sheet's intended shape, correct it in T-288 before the focused pass. | **Open** |
+| **T288-R1** | **Medium** | **Yes — acceptance evidence absent** | The acceptance criteria require a rendered check on a real display naming platform and style (`docs/project/TASKS.md:12101-12103`). The implementation record explicitly leaves it open, and this review has only offscreen/static evidence. The task exists because an offscreen attempt previously gave the wrong theme result; the missing check cannot be replaced by another offscreen inference. | On the KDE/Wayland display that produced the report, inspect both themes and both orientations, including hover/pressed behavior and the Settings/Options scrollers, and record platform/style. If the rendering differs from the sheet's intended shape, correct it in T-288 before the focused pass. | **Open** |
 
 ### Independent checks
 
@@ -21334,7 +21334,7 @@ as upstream drift.
 
 | ID | Severity | Blocks approval | Finding | Required correction | Status |
 |---|---|---:|---|---|---|
-| **T291-R1** | **High** | **Yes — core acceptance criterion unmet** | The task requires “the default suite” (`ai/TASKS.md:12304`), whose configured `testpaths=["tests"]` includes integration. The workflow invokes only `tests/unit tests/ui` (`ytdlp-canary.yml:135-140`). Integration is not irrelevant to yt-dlp drift: `test_worker.py` imports the resolved yt-dlp version and ffmpeg tables, and `test_post_processing.py` uses the real `YoutubeDL`/postprocessor registry. A newer yt-dlp can break those paths while this canary stays green. | Run the configured default suite with only the two explicit stale node IDs deselected (network and Windows-desktop remain excluded by normal addopts), or amend the task by maintainer decision to name and justify a narrower gate. The current implementation does not meet the accepted criterion. | **Open** |
+| **T291-R1** | **High** | **Yes — core acceptance criterion unmet** | The task requires “the default suite” (`docs/project/TASKS.md:12304`), whose configured `testpaths=["tests"]` includes integration. The workflow invokes only `tests/unit tests/ui` (`ytdlp-canary.yml:135-140`). Integration is not irrelevant to yt-dlp drift: `test_worker.py` imports the resolved yt-dlp version and ffmpeg tables, and `test_post_processing.py` uses the real `YoutubeDL`/postprocessor registry. A newer yt-dlp can break those paths while this canary stays green. | Run the configured default suite with only the two explicit stale node IDs deselected (network and Windows-desktop remain excluded by normal addopts), or amend the task by maintainer decision to name and justify a narrower gate. The current implementation does not meet the accepted criterion. | **Open** |
 | **T291-R2** | **Medium** | **Yes — failure report is false on setup errors** | The “Say what a failure means” step uses bare `if: failure()` (`:142-153`) and unconditionally says upstream behavior/list drift failed. GitHub documents `failure()` as true when **any previous step** fails. A checkout, setup-Python, venv, pip/network, or version-report failure therefore produces the same “file it as a task” diagnosis even though the verdict suite never ran. | Give the verdict step an `id` and condition the drift summary on that step's failure outcome. Report setup/infrastructure failure separately and without calling it yt-dlp drift. | **Open** |
 | **T291-R3** | **Low** | No | The file and task say the stale set has “one definition,” but the two node IDs are manually duplicated in `EXPECTED_STALE` and `DESELECT_STALE` (`:72-80`). They match today; an edit to only one recreates exactly the always-red or silently-hidden failure the comment says this structure prevents. | Generate the deselection arguments from one data definition, or add a deterministic check that the two parsed node-id sets are equal. Fold into the T-291 correction. | **Open, non-blocking** |
 | **T291-R4** | **Medium** | **Yes — workflow execution unverified** | No scheduled or dispatched run has parsed and executed this YAML. The dry run installed latest by a different scratch/PYTHONPATH mechanism and ran unit only. It is useful logic evidence, but it does not verify action versions, runner routing, shell expansion, artifacts or summary conditions. | After R1-R3 are corrected and committed, push the final workflow tree and dispatch it once. Record the run id, resolved yt-dlp version, verdict and artifact outcome. | **Open** |
@@ -21373,14 +21373,14 @@ isolation defect exposed by the evidence run; it does not block these seven impl
 
 `75cd183` is the last source/test or executable-workflow correction and is the exact head both
 required external runs used. `c46de5b` changes only workflow comments and one displayed step name;
-`0332a68` changes only `ai/STATUS.md`. Both later diffs were inspected in this pass, so the approval
+`0332a68` changes only `docs/project/STATUS.md`. Both later diffs were inspected in this pass, so the approval
 head includes them rather than pretending a changed workflow file is outside the boundary.
 
 ### Finding dispositions
 
 | ID | Disposition | Verification |
 |---|---|---|
-| **T212-R1** | **Resolved** | `ai/STATUS.md` now names each command and result separately. Ruff, both all-files mypy scopes, unit/UI, integration, real-display, Windows and canary evidence are no longer collapsed into “full suite” or “gates green.” |
+| **T212-R1** | **Resolved** | `docs/project/STATUS.md` now names each command and result separately. Ruff, both all-files mypy scopes, unit/UI, integration, real-display, Windows and canary evidence are no longer collapsed into “full suite” or “gates green.” |
 | **T212-R2** | **Resolved** | The `T-288`, `T-291` and `T-292` bodies are beneath their own In Review headings. The task-placement gate passes. |
 | **T212-R3** | **Resolved** | Run `33231536419`, `windows desktop`, is green at exact code/test head `75cd183`: **3,796 passed, 36 skipped, 35 deselected**; Win32 mypy, the real-desktop slice, Ruff, formatting and the Qt baseline also passed. |
 | **T212-R4** | **Resolved** | Both `T-289` and its evidence now distinguish the established off-GUI `QWidget` destruction from the inferred identity of the two object graphs. |
@@ -21419,7 +21419,7 @@ head includes them rather than pretending a changed workflow file is outside the
 
 | Check | Result |
 |---|---|
-| Boundary | Eleven commits from `e033939..0332a68`; `git show --check`/`git diff --check` clean. The post-evidence diff is only `.github/workflows/ytdlp-canary.yml` comments/display name plus `ai/STATUS.md`. |
+| Boundary | Eleven commits from `e033939..0332a68`; `git show --check`/`git diff --check` clean. The post-evidence diff is only `.github/workflows/ytdlp-canary.yml` comments/display name plus `docs/project/STATUS.md`. |
 | Static/local | `ruff check .`: passed; `ruff format --check .`: **209 files**; bare `mypy`: **154 files**, passed; `mypy --platform win32`: **154 files**, passed. |
 | Focused regressions | The mixed playlist-drop case, four typed-folder cases, queued-playlist offer and task-placement gate: **21 passed**. |
 | Canary structure | Eleven entries resolve to twelve collected tests. Local shell reproduction returns 0 for a failing pipeline under implicit `bash -e` and 1 under explicit `bash -eo pipefail`, matching GitHub's shell contract and the two real runs. |
@@ -21453,7 +21453,7 @@ No blocking finding remains. `T-298` is the only scheduled follow-up from this p
 condition of these approvals.
 
 The Reviewer changed only this historical review record and the approved follow-up entry in
-`ai/TASKS.md`. No reviewed source, existing task meaning, handoff, external run or remote state was
+`docs/project/TASKS.md`. No reviewed source, existing task meaning, handoff, external run or remote state was
 changed.
 
 ---
@@ -21586,12 +21586,12 @@ remains Approved/Complete and no other task is reopened.
 
 | ID | Severity | Blocks approval | Finding | Required correction | Status |
 |---|---|---:|---|---|---|
-| **T268-R5** | **Medium** | **Yes, for T-268's record correction only** | The new source annotation says a suspended process is `ThreadState=5` and “not one” specimen reports it (`process_tree.py:115-116`), but the source's own measured sentence says **all seven** report `ThreadState=5` (`:96`). The discriminating property is `ThreadWaitReason`: suspended is reason 5, while the specimens report reason 37. `ai/TASKS.md:13427-13428` repeats the same field error. The task also says at its top that the inspection is satisfied and it is now blocked on a stack (`:13184-13193`), then retains the old machine-local checklist and `Depends on:` claim that nobody has looked at PIDs 3400/6924 (`:13211-13224`, `:13281-13283`) and still lists a suspended process as a live candidate (`:13568-13569`). | Change both explicit `ThreadState=5` annotations to `ThreadWaitReason=5`. Rewrite or annotate the current dependency/checklist/candidate text so it says the read-only inspection is complete and the remaining optional/blocking work is the stack, with its actual owner. Historical reasoning may remain, but its current disposition must not contradict the run. | **Open; narrow record-only correction** |
+| **T268-R5** | **Medium** | **Yes, for T-268's record correction only** | The new source annotation says a suspended process is `ThreadState=5` and “not one” specimen reports it (`process_tree.py:115-116`), but the source's own measured sentence says **all seven** report `ThreadState=5` (`:96`). The discriminating property is `ThreadWaitReason`: suspended is reason 5, while the specimens report reason 37. `docs/project/TASKS.md:13427-13428` repeats the same field error. The task also says at its top that the inspection is satisfied and it is now blocked on a stack (`:13184-13193`), then retains the old machine-local checklist and `Depends on:` claim that nobody has looked at PIDs 3400/6924 (`:13211-13224`, `:13281-13283`) and still lists a suspended process as a live candidate (`:13568-13569`). | Change both explicit `ThreadState=5` annotations to `ThreadWaitReason=5`. Rewrite or annotate the current dependency/checklist/candidate text so it says the read-only inspection is complete and the remaining optional/blocking work is the stack, with its actual owner. Historical reasoning may remain, but its current disposition must not contradict the run. | **Open; narrow record-only correction** |
 
 ### CRLF ruling
 
 Keeping the raw STARBASE report byte-for-byte is acceptable. `.gitattributes` applies
-`whitespace=-trailing-space` only to direct `ai/evidence/*.txt` artifacts; it does not set `text`
+`whitespace=-trailing-space` only to direct `docs/project/evidence/*.txt` artifacts; it does not set `text`
 or an EOL conversion. `git check-attr` reports that exact policy for the raw file,
 `git ls-files --eol` reports `i/crlf w/crlf`, and `git diff --check f1b36e9..d5f1010` is clean.
 This resolves the prior review note without normalizing evidence.
@@ -21643,7 +21643,7 @@ Complete by this verdict.
 
 ### Enum verification
 
-The widened edits to `ai/STATUS.md`, the evidence file, and the task's earlier ambiguous sentence
+The widened edits to `docs/project/STATUS.md`, the evidence file, and the task's earlier ambiguous sentence
 are accepted. They are additional instances of the same field-name defect, not scope expansion.
 Microsoft's thread-performance table identifies `ThreadState=5` as Wait and wait reasons 5 and 12
 as suspended conditions. Microsoft's `KernelWaitReason` table identifies 5 as `Suspended`, 12 as
@@ -21835,7 +21835,7 @@ All three findings are blocking; `T-284` remains In Review.
 |---|---|---:|---|---|---|
 | **T284-R1** | **Critical** | **Yes** | `StagingModel.data()` answers `PRESET_INHERITED_ROLE` with `effective.name` (`add_dialog.py:1128-1133`). On an overridden row, `effective` is the row's own preset, while the inherited `None` entry means **clear that override and follow the batch** (`row_delegate.py:2206-2217`, `add_dialog.py:1191-1204`). A real-dialog replay set the batch to *Best video up to 1080p (MP4)* and the row override to *Audio only (MP3)*. Reopening the editor offered **“Audio only (MP3) — following the batch”**; selecting it cleared `row.preset`, and `preset_for(row)` became *Best video up to 1080p (MP4)*. This is not cosmetic ambiguity: the control can tell the user Audio and then build the Video request. The new delegate-only test cannot expose it because its synthetic model gives one name without a distinct batch/override state. | Make the value role mean the batch preset the row **would follow**, independently of the row's current override. Add an end-to-end regression with deliberately different batch and override values: open the overridden row, assert the `None` entry names the batch, choose it, and assert the resulting effective/durable request is the same value the entry named. Mutation-check substituting the row's effective preset for the batch. | **Open; blocking** |
 | **T284-R2** | **High** | **Yes** | `test_the_ruled_label_fits_the_control_and_the_rejected_one_does_not` calls 190 px minus the 16 px menu zone “available” and compares text against 174 px (`test_row_delegate.py:634-662`). Qt does not paint the label into that outer rectangle: `_paint_control()` passes the adjusted option through `_label_box()` and `CE_ComboBoxLabel`, whose `SC_ComboBoxEditField` also removes the combo frame/arrow and applies the T-283 inset (`row_delegate.py:1035-1054, 1562-1591`). On the production dark stylesheet's `QStyleSheetStyle`, the same test geometry produced **190 px control / 174 px combo / 148 px actual label field**. The longest built-in name, *Video with embedded subtitles*, measures **174 px**. The regression therefore passes exactly while the shipped name cannot fit. The undressed style was narrower still at 146 px. This fails the explicit acceptance criterion to measure elision at the control's real width and invalidates the “never elides” premise recorded in the task/spec. | Measure the text space Qt actually uses, through the same styled label path or rendered pixels—not `_control_of - _menu_zone_of`. Make the longest built-in name fit that real field, or return for an explicit ruling if the layout cost is not acceptable. Keep the rejected-shape negative control only after the positive half is real, and correct the new 165 px prose to the geometry actually being claimed. | **Open; blocking** |
-| **T284-R3** | **Medium** | **Yes** | The ruling says the inherited entry is recomputed when the batch changes (`ai/TASKS.md:364-365`), but `createEditor()` builds its item text once and `setEditorData()` only changes the selected index (`row_delegate.py:2206-2217, 2297-2314`). `StagingModel.refresh()` deliberately preserves an open editor across value-only `dataChanged` emissions (`add_dialog.py:1213-1241`). In a real dialog, changing the batch from *Best video up to 1080p (MP4)* to *Best video available* updated `selected_preset` while the live first entry stayed **“Best video up to 1080p (MP4) — following the batch.”** | When editor data is refreshed, update the inherited item's text from the current batch-value role (or deliberately close/recreate the editor). Add a real-dialog regression that opens an inherited editor, changes the batch to a different named preset, processes the model refresh, and requires the still-live/reopened `None` entry to carry the new name. | **Open; blocking** |
+| **T284-R3** | **Medium** | **Yes** | The ruling says the inherited entry is recomputed when the batch changes (`docs/project/TASKS.md:364-365`), but `createEditor()` builds its item text once and `setEditorData()` only changes the selected index (`row_delegate.py:2206-2217, 2297-2314`). `StagingModel.refresh()` deliberately preserves an open editor across value-only `dataChanged` emissions (`add_dialog.py:1213-1241`). In a real dialog, changing the batch from *Best video up to 1080p (MP4)* to *Best video available* updated `selected_preset` while the live first entry stayed **“Best video up to 1080p (MP4) — following the batch.”** | When editor data is refreshed, update the inherited item's text from the current batch-value role (or deliberately close/recreate the editor). Add a real-dialog regression that opens an inherited editor, changes the batch to a different named preset, processes the model refresh, and requires the still-live/reopened `None` entry to carry the new name. | **Open; blocking** |
 
 ### Accepted judgments
 
@@ -21969,7 +21969,7 @@ released product no longer reaches the state that already crashed it. `T-289` re
 | **T289-R2** | **High** | **Yes** | The guard observes only cycles that survive until `_no_orphaned_views` teardown. A temporary unmarked real-file replay created the submitted `_Leaked(QWidget)` / self-cycle shape, called ordinary `gc.collect()` inside the test body, and **passed**. The widget was in exactly the forbidden Python-owned collectable state; the GUI thread merely won the collection race before `DEBUG_SAVEALL` was armed. Automatic GC remains enabled during every test, so the same loss of evidence can happen without an explicit call. Moving the check before `settle_deferred_deletions()` fixes only that one known collection, not the temporal hole. The task and TESTING rule therefore overstate “enforced at every boundary,” and criterion 1/4's regression cannot detect this bypass. | Preserve the evidence for the full test lifetime—for example, arm `DEBUG_SAVEALL` before the test and inspect everything parked through teardown while restoring prior GC state—or use an equally complete mechanism. Add an unmarked regression that makes the cycle unreachable, collects it **before teardown**, and must still fail with the guard's diagnosis. Mutation-check that arming only at teardown makes it pass. | **Open; blocking** |
 | **T289-R3** | **High** | **Yes** | No product behavior changed, and the evidence cited for criterion 2 does not prove that no product-owned tree can reach the crash state. T-238's controlled offscreen inventory established a narrower result: none of the route-opened wrappers in those arms was parked **live**. T-238 explicitly remains Ready for a real-session/product-owned-widget measurement, while T-289 itself says the real crash proves a session reached a state that composition did not and that the responsible type/site remains unknown. A passing test-suite sampler—especially one with R2's timing hole—cannot turn that admitted unknown into “the rule holds in the product today.” The released native-abort route is therefore still unidentified and uncorrected, so criterion 2 is not met. | Keep criterion 2 and the task's fix state open until product-representative evidence identifies and corrects the ownership/disposal route, or obtain an explicit maintainer ruling that re-scopes this task to diagnostic test hardening and accepts the released crash risk elsewhere. Do not describe the existing T-238 measurement as proof of product compliance; preserve its real-session limitation. | **Open; blocking** |
 | **T289-R4** | **Medium** | **Yes** | `request.node.get_closest_marker("leaves_a_collectable_widget")` is an unrestricted, inherited bypass for the new safety guard. A second real-file replay put the exact dangerous cycle in a marked test and **passed**. A class- or module-level spelling would suppress every descendant, and nothing pins the exemption to T-238's one diagnostic node even though the task says “Nothing is exempt from the rule.” | Make the exception fail closed: allow only the exact T-238 diagnostic node (and require its marker if the marker is retained), or add a mechanical allowlist gate that rejects every other use, including class/module inheritance. Keep a negative control proving that the same marker on any sibling test cannot suppress the guard. | **Open; blocking** |
-| **T289-R5** | **Low** | No | `ai/STATUS.md` still says T-289 is Proposed, unscheduled, unfixed, and missing criterion 4, while the reviewed task says In Review and every criterion is met. The conservative “unfixed” conclusion agrees with R3, but the scheduling and evidence state no longer describe this head. | Reconcile STATUS during the correction/completion sync with the review outcome and the evidence actually retained after R2/R3. | **Open; ordinary current-truth cleanup** |
+| **T289-R5** | **Low** | No | `docs/project/STATUS.md` still says T-289 is Proposed, unscheduled, unfixed, and missing criterion 4, while the reviewed task says In Review and every criterion is met. The conservative “unfixed” conclusion agrees with R3, but the scheduling and evidence state no longer describe this head. | Reconcile STATUS during the correction/completion sync with the review outcome and the evidence actually retained after R2/R3. | **Open; ordinary current-truth cleanup** |
 
 ### Review judgments
 
@@ -22034,7 +22034,7 @@ Review regardless of the guard correction.
 | **T289-R2** | **Partially corrected; remains Open (High, blocking).** Arming `DEBUG_SAVEALL` around the test fixes the original in-body replay, but the context exits and restores the old flags **before** `assert_no_widget_would_be_destroyed_by_the_collector()` re-arms them. A deterministic scheduling replay held the cycle until that lowering call, released it and collected in the gap, and the unmarked test **passed**. This models the pool-thread scheduling window the guard exists to remove. The single exempt node has the inverse lifecycle bug: if `gc.collect()` runs while its watch is armed, the tree is parked in `gc.garbage`; skipping the assertion also skips the clear, so the drain cannot release it. Forcing that call made the first T-238 test pass and its next control fail with `t238-cycle-root` still alive, followed by the guard blaming the second test. Keep the watch armed through inspection, restore flags in a `finally`, and always consume/clear the parked list before the drain—even for the exempt node. Add both sibling regressions. The inspection helper must restore its exact incoming debug flags too: with `DEBUG_SAVEALL | DEBUG_STATS` pre-set, the reviewed sequence ended at `DEBUG_STATS` only (**33 → 1**) despite the new restoration promise. |
 | **T289-R3** | **Correctly retained Open (High, blocking final task approval).** The task and STATUS withdraw product-compliance and criterion-2 claims, keep the released route unidentified, and specify the real-display Settings → yt-dlp → Update measurement. That is the required disposition; it is not yet the measurement or product correction. |
 | **T289-R4** | **Resolved.** The bypass now requires both the exact allowlisted node id and a marker in `request.node.own_markers`. The module-level sibling is rejected. Replacing this with the submitted inherited lookup made that deliberate violation pass, so the new regression is discriminating. |
-| **T289-R5** | **Substantively corrected; Low current-truth cleanup remains.** STATUS now says the task is scheduled, the guard is corrected, and criterion 2 is open. The task's opening still says **“the maintainer's ruling is owed”** (`ai/TASKS.md:257-258`), while its later section and STATUS say the maintainer already ruled and declined re-scope (`ai/TASKS.md:517-531`; `ai/STATUS.md:27-30`). Reconcile those mutually exclusive claims in the next correction: if a maintainer decision exists, remove “owed”; otherwise record this as the reviewer's required next evidence and stop attributing the risk decision to the maintainer. This Low wording issue does not independently block. |
+| **T289-R5** | **Substantively corrected; Low current-truth cleanup remains.** STATUS now says the task is scheduled, the guard is corrected, and criterion 2 is open. The task's opening still says **“the maintainer's ruling is owed”** (`docs/project/TASKS.md:257-258`), while its later section and STATUS say the maintainer already ruled and declined re-scope (`docs/project/TASKS.md:517-531`; `docs/project/STATUS.md:27-30`). Reconcile those mutually exclusive claims in the next correction: if a maintainer decision exists, remove “owed”; otherwise record this as the reviewer's required next evidence and stop attributing the risk decision to the maintainer. This Low wording issue does not independently block. |
 
 ### Accepted parts of the correction
 
@@ -22165,7 +22165,7 @@ service emits a terminal result. Do not spend the real-display session on this h
 | **T289-R7** | **Partially corrected; remains Open (High, Blocks approval: Yes).** An unopened route now correctly reports `NOT A RESULT`, the Settings milestone is real, and the self-test enters through `arm()`. `update_finished` is nevertheless assigned in the wrapper's `finally` immediately after `install_latest_version()` returns. The real method only schedules `_Task` on the shared pool; terminal success or failure arrives later through `reported` or `failed`. A deterministic scheduler-only stand-in therefore set `started=True`, `finished=True` and produced the clean verdict without emitting any terminal signal. The positive control is aggregate rather than subject-specific too: after leaving the `Derived` widget discovered but disconnecting only its destruction handler, two incidental `PySide6.QtWidgets.QWidget` destructions still made `--self-test` print **SELF-TEST PASSED** and exit 0. Finally, a normal report records no application, Python, Qt/PySide, platform or instrument identity and no proof that the separately invoked self-test passed, despite those being explicit parts of R7's required correction. Observe `reported`/`failed` (or the authoritative `busy=False` edge) rather than method return, make the control require the named subject and expected in-collection classification, and bind the control plus environment/version identity into the session report before permitting any null-route conclusion. | The scheduler-only replay produced `update_started=True update_finished=True` at return and, with the other current predicates true, emitted `NOTHING OFF THE GUI THREAD`. The subject-handler mutation passed while its transcript named only two plain `QWidget` objects. `rg` finds no environment/version identity in the tool. |
 | **T289-R8** | **Resolved.** No executable path calls `QApplication.allWidgets()`. Application-wide event-filter discovery sees the pool positive control, a normal wrapped application (43 widgets in a three-second offscreen run), and an actual shown `SettingsDialog` (milestone true; 620 widgets observed). A widget that receives no event remains an explicit limitation, but the on-screen route this instrument targets is exercised by the filter. | Offscreen probes used the submitted `arm()` path; the normal wrapper exited through its new SIGTERM path and wrote `NOT A RESULT`. The actual Settings class emitted `route: the Settings screen opened`. |
 | **T289-R9** | **Resolved.** TASKS and STATUS now say one additional explicit collection remains and limit the timing conclusion to no measured wall-clock regression. | The corrected text matches the two collection sites identified in the prior review. |
-| **T289-R10** | **Low, Blocks approval: No — current-truth cleanup in the next correction.** The tool's module documentation still says a timer scans `allWidgets()` every 250 ms (`tools/t289_session_watch.py:30-33`), and TASKS still states the removed “between two 250 ms scans” bound (`ai/TASKS.md:599-600`). Those passages describe the unsafe R8 implementation this commit removed. Replace them with the event-filter/no-event bound; also collapse the duplicated arming comment at tool lines 431-437. | Direct source inspection; runtime `rg` confirms `allWidgets` survives only in prose. |
+| **T289-R10** | **Low, Blocks approval: No — current-truth cleanup in the next correction.** The tool's module documentation still says a timer scans `allWidgets()` every 250 ms (`tools/t289_session_watch.py:30-33`), and TASKS still states the removed “between two 250 ms scans” bound (`docs/project/TASKS.md:599-600`). Those passages describe the unsafe R8 implementation this commit removed. Replace them with the event-filter/no-event bound; also collapse the duplicated arming comment at tool lines 431-437. | Direct source inspection; runtime `rg` confirms `allWidgets` survives only in prose. |
 
 ### Rulings on the submitted open questions
 
@@ -22615,7 +22615,7 @@ for the already-corrected defect and starts new findings at R14.
 | ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
 |---|---|---:|---|---|---|---|
 | `T289-R14` | **Medium** | **Yes — the measurement wrapper does not gate its own result** | `tools/t289_isolated_session.sh` / reproducibility | The wrapper ends the compositor command with `|| true` and checks neither exit status nor the report's required `VERDICT`. A deterministic replay placed a `dbus-run-session` ahead of the real binary that exited 42: the wrapper exited **0** and produced no report. The same branch masks timeout, compositor-start and other non-zero failures; depending on KWin's child-status behavior, it may also mask the native abort this instrument exists to expose. The task then says the single-session command above is the command line for the **60-session aggregate**, but no 60-run invocation or aggregation procedure is recorded after the raw report was deleted. | Preserve cleanup while returning failure. If the compositor cannot propagate the child status reliably, require a completed report and route/verdict postcondition as well. Let a batch caller choose explicitly to continue after one failed sample rather than baking that choice into one session. Record the exact 60-run invocation and how the table was derived, or retain a non-regenerable summary input that makes those aggregate counts auditable. | **Open** |
-| `T289-R15` | **Medium** | **Yes — current truth materially misstates the open criteria** | `ai/TASKS.md`, `ai/STATUS.md` | The new section says **“The precondition reproduces every time”** when its own result is that no widget was in the collected objects. This entry defines the precondition earlier as a Python-owned widget being collected and destroyed on the pool thread; what reproduced was only the collector/thread half—the tool itself calls that “the loaded gun, widget or not.” `TASKS.md` also retains **“This also closes T-238's outstanding real-session step”** while the new T-238 section says only half was taken. The review's real-display runs overtake STATUS's “still owed” sentence but do not close either criterion: the update sample was widget-null, and the thumbnail sample saw no collection on its pool threads. | Call the 60-run observation the collector/thread half, not the precondition. Remove the stale T-238 closure sentence. Sync TASKS and STATUS to the two exact reviewer results below: real display and a working thumbnail pipeline have each now run once; both were inconclusive, so T-289 criterion 2 and T-238 criterion 4 stay open. Preserve the short-session, event-discovery and separate-route bounds. | **Open** |
+| `T289-R15` | **Medium** | **Yes — current truth materially misstates the open criteria** | `docs/project/TASKS.md`, `docs/project/STATUS.md` | The new section says **“The precondition reproduces every time”** when its own result is that no widget was in the collected objects. This entry defines the precondition earlier as a Python-owned widget being collected and destroyed on the pool thread; what reproduced was only the collector/thread half—the tool itself calls that “the loaded gun, widget or not.” `TASKS.md` also retains **“This also closes T-238's outstanding real-session step”** while the new T-238 section says only half was taken. The review's real-display runs overtake STATUS's “still owed” sentence but do not close either criterion: the update sample was widget-null, and the thumbnail sample saw no collection on its pool threads. | Call the 60-run observation the collector/thread half, not the precondition. Remove the stale T-238 closure sentence. Sync TASKS and STATUS to the two exact reviewer results below: real display and a working thumbnail pipeline have each now run once; both were inconclusive, so T-289 criterion 2 and T-238 criterion 4 stay open. Preserve the short-session, event-discovery and separate-route bounds. | **Open** |
 | `T289-R16` | **Low** | **Yes — the exact local commits violate repository hard rules while amendment is free** | Commit policy | `tools/commit_message_check.py --range 1386e86..948f837` rejects **all six commits** for missing `Task:` trailers. Four subjects exceed §13's hard 60-character cap: `80e6fca` 66, `e9b8c5c` 70, `a8afbcc` 67 and `ad891b0` 72. The range also uses five commits for T-289 plus one for T-238, while §7 requires one commit per task in serial mode. This is Low by shipped consequence but blocks approval of these unpushed commits for the same reason `T238-R3` did. | Before push, rewrite the unpublished range into the task boundaries the rule requires—normally one T-289 measurement/correction commit and one T-238 soak commit—using imperative subjects at or below 50 characters and valid `Task:` trailers. Keep the corrected final tree plus the R14/R15 correction; do not preserve the intermediate false 40-second and inferred-widget states merely to retain their commits. | **Open** |
 
 ### Driven-session results
@@ -22728,7 +22728,7 @@ present-tense T-238 paragraph still says the now-completed real thumbnail sessio
 | ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
 |---|---|---:|---|---|---|---|
 | `T289-R14` | **Medium** | **Yes — the postcondition does not establish that this run produced the report** | `tools/t289_isolated_session.sh` | The correction checks the requested path after the session but never invalidates an existing report first. A deterministic replay reused the prior review's complete real-display report, put an exit-0 `dbus-run-session` ahead of the real binary, and wrote nothing. The wrapper accepted the old completed route and `VERDICT` and exited **0**. This is the same documented one-session path a caller is invited to reuse, so the new postcondition distinguishes an absent first report from success but not a failed later run from success. The other branches are corrected: fake upstream exit 42 returned 42, and exit 0 with an absent report returned 1. | Make freshness part of the contract: remove/truncate the requested report before launch, or write this run to a new temporary report and publish it only after validation. Add the missing replay—seed a valid completed old report, make the session exit 0 without writing, require wrapper exit 1. Preserve the now-correct upstream status behavior and completed-route checks. | **Open — narrowed** |
-| `T289-R15` | **Medium** | **Yes — one current-truth sentence still asks for a route the next section says ran** | `ai/TASKS.md`, T-238 criterion 4 | The new 2026-08-31 section correctly says both real-session halves ran and only the product-owned widget is missing. Immediately before it, the entry still says in present tense: **“What criterion 4 still needs: the real-session probe — the application on a display with the thumbnail pool working — and a widget…”** Those two adjacent answers contradict each other, and the older one preserves the exact stale obligation R15 asked this correction to remove. `ai/STATUS.md`, the T-289 section and the new T-238 section otherwise match the two reviewer measurements. | Rewrite the older sentence as historical state at that measurement, or remove the now-discharged real-session/thumbnail half so present truth says only that a product-owned widget must reach the collector. | **Open — narrowed** |
+| `T289-R15` | **Medium** | **Yes — one current-truth sentence still asks for a route the next section says ran** | `docs/project/TASKS.md`, T-238 criterion 4 | The new 2026-08-31 section correctly says both real-session halves ran and only the product-owned widget is missing. Immediately before it, the entry still says in present tense: **“What criterion 4 still needs: the real-session probe — the application on a display with the thumbnail pool working — and a widget…”** Those two adjacent answers contradict each other, and the older one preserves the exact stale obligation R15 asked this correction to remove. `docs/project/STATUS.md`, the T-289 section and the new T-238 section otherwise match the two reviewer measurements. | Rewrite the older sentence as historical state at that measurement, or remove the now-discharged real-session/thumbnail half so present truth says only that a product-owned widget must reach the collector. | **Open — narrowed** |
 
 ### Resolved finding and history ruling
 
@@ -22785,7 +22785,7 @@ present-tense historical construction for the same criterion.
 
 | ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
 |---|---|---:|---|---|---|---|
-| `T289-R15` | **Medium** | **Yes — the supersession chain should treat the same wording consistently** | `ai/TASKS.md`, T-238 criterion 4 | Under **“Criterion 4, 2026-08-16”**, the entry still says **“What criterion 4 needs next”** and asks for the real display/thumbnail-pool run. That heading is dated and its successor follows, but those are exactly the properties of the 2026-08-30 paragraph just corrected: it too sat under a dated heading immediately before its successor. If present tense made the later paragraph stale, it does the same here. The rest of R15 is now correct. | Date this sentence the same way—what criterion 4 needed next *as of that measurement*—or otherwise state that the later sections supersede it. No measurement or broader rewrite is needed. | **Open — final narrow wording correction** |
+| `T289-R15` | **Medium** | **Yes — the supersession chain should treat the same wording consistently** | `docs/project/TASKS.md`, T-238 criterion 4 | Under **“Criterion 4, 2026-08-16”**, the entry still says **“What criterion 4 needs next”** and asks for the real display/thumbnail-pool run. That heading is dated and its successor follows, but those are exactly the properties of the 2026-08-30 paragraph just corrected: it too sat under a dated heading immediately before its successor. If present tense made the later paragraph stale, it does the same here. The rest of R15 is now correct. | Date this sentence the same way—what criterion 4 needed next *as of that measurement*—or otherwise state that the later sections supersede it. No measurement or broader rewrite is needed. | **Open — final narrow wording correction** |
 
 ### Resolved dispositions
 
@@ -22954,8 +22954,8 @@ the Python-defined-type discriminator.
 
 | ID | Severity | Blocks approval | Area | Finding | Required correction | Status |
 |---|---|---:|---|---|---|---|
-| `T289-R18` | **Medium** | **Yes — phase B can still miss teardown-created garbage and the recorded conclusion exceeds the sample** | `measure_then_quit`, probe description/verdict, `ai/TASKS.md` | The strong local is gone: the independent run reports the surviving dialog as Qt-owned, parented to `MainWindow`, no longer held by the product, and held by **0** probe frames. But `phase_b()` closes it and then calls `processEvents()` plus `sendPostedEvents(None, DeferredDelete)` **before** `force_a_collection()` reaches `gc.disable()` and `DEBUG_SAVEALL`. Automatic GC can therefore consume garbage created during the very teardown this phase says it measures before parking is armed—the exact false-absence path the probe's lines 38–40 say it prevents. The flush also remains process-wide despite R18's receiver-scope requirement; this `SettingsDialog` has no `WA_DeleteOnClose` and survives the flush, so *“its deferred deletions delivered”* is not established. The task still calls post-report phase A *“the crash's own configuration”* and says Qt ownership is why *“this route is clean”*; the verdict still concludes *“On this route … forced or not”*, immediately beyond the admitted two instants. | Put GC disablement and `DEBUG_SAVEALL` around the phase-B transition itself, including close/event delivery, while still releasing the target before the off-thread collection. Deliver a known receiver's deferred delete while that receiver is identified, or remove the deletion claim instead of dispatching every pending delete in the process. Keep the result to the post-report and post-close samples and the observed Settings ownership edge. Retain the useful 1-vs-0 probe-frame mutation and re-run phase B after its parking boundary changes. | **Open — local-reference half resolved; scope, timing and bounds remain** |
-| `T289-R19` | **Medium** | **Yes — the safety fix lacks the required observable postcondition and current truth denies one that works** | `force_a_collection` control; `ai/TASKS.md` | The implementation is now safe in the tested state: it clears the parking list, restores non-SAVEALL flags, collects on the GUI thread, and only then re-enables automatic GC. Arm 8 proves only that those method calls occur in that order. Its explanation that `gc.garbage.clear()` *“frees the cycle by itself here”* is false: `__del__` firing is GC finalization, not proof that the parked cycle or C++ widget was deallocated. The reviewer's original control retained only `id(widget)`, not the wrapper. Replayed at this head, the corrected function returned with automatic GC restored and no widget at that identity tracked; the same cleanup with the drain omitted returned with automatic GC restored while that widget was still tracked and `shiboken6.isValid(...)` was **true**. A weakref is indeed unsuitable, but the required effect control is not impossible. | Replace or supplement the order assertion with that realizable effect check: save only the integer identity, drop the widget, call the phase, immediately disable automatic GC before scanning `gc.get_objects()`, and require no live widget at that identity; restore the prior enabled state afterward. The drain-omitted mutation must leave the live tracked widget and fail. Correct the false `gc.garbage.clear()` explanation in the tool and current truth. | **Open — cleanup code resolved; control and record remain** |
+| `T289-R18` | **Medium** | **Yes — phase B can still miss teardown-created garbage and the recorded conclusion exceeds the sample** | `measure_then_quit`, probe description/verdict, `docs/project/TASKS.md` | The strong local is gone: the independent run reports the surviving dialog as Qt-owned, parented to `MainWindow`, no longer held by the product, and held by **0** probe frames. But `phase_b()` closes it and then calls `processEvents()` plus `sendPostedEvents(None, DeferredDelete)` **before** `force_a_collection()` reaches `gc.disable()` and `DEBUG_SAVEALL`. Automatic GC can therefore consume garbage created during the very teardown this phase says it measures before parking is armed—the exact false-absence path the probe's lines 38–40 say it prevents. The flush also remains process-wide despite R18's receiver-scope requirement; this `SettingsDialog` has no `WA_DeleteOnClose` and survives the flush, so *“its deferred deletions delivered”* is not established. The task still calls post-report phase A *“the crash's own configuration”* and says Qt ownership is why *“this route is clean”*; the verdict still concludes *“On this route … forced or not”*, immediately beyond the admitted two instants. | Put GC disablement and `DEBUG_SAVEALL` around the phase-B transition itself, including close/event delivery, while still releasing the target before the off-thread collection. Deliver a known receiver's deferred delete while that receiver is identified, or remove the deletion claim instead of dispatching every pending delete in the process. Keep the result to the post-report and post-close samples and the observed Settings ownership edge. Retain the useful 1-vs-0 probe-frame mutation and re-run phase B after its parking boundary changes. | **Open — local-reference half resolved; scope, timing and bounds remain** |
+| `T289-R19` | **Medium** | **Yes — the safety fix lacks the required observable postcondition and current truth denies one that works** | `force_a_collection` control; `docs/project/TASKS.md` | The implementation is now safe in the tested state: it clears the parking list, restores non-SAVEALL flags, collects on the GUI thread, and only then re-enables automatic GC. Arm 8 proves only that those method calls occur in that order. Its explanation that `gc.garbage.clear()` *“frees the cycle by itself here”* is false: `__del__` firing is GC finalization, not proof that the parked cycle or C++ widget was deallocated. The reviewer's original control retained only `id(widget)`, not the wrapper. Replayed at this head, the corrected function returned with automatic GC restored and no widget at that identity tracked; the same cleanup with the drain omitted returned with automatic GC restored while that widget was still tracked and `shiboken6.isValid(...)` was **true**. A weakref is indeed unsuitable, but the required effect control is not impossible. | Replace or supplement the order assertion with that realizable effect check: save only the integer identity, drop the widget, call the phase, immediately disable automatic GC before scanning `gc.get_objects()`, and require no live widget at that identity; restore the prior enabled state afterward. The drain-omitted mutation must leave the live tracked widget and fail. Correct the false `gc.garbage.clear()` explanation in the tool and current truth. | **Open — cleanup code resolved; control and record remain** |
 | `T289-R20` | **Low** | **Yes — one report line still states the wider predicate R20 removed** | `force_a_collection` phase summary | The predicate, lifted-tag control and final verdict now include `defined_in_python`, and the redundant `valid` term/impossible mutation are correctly gone. But lines 196–200 summarize that narrowed `findings` list as *“live widget(s) the product owns from Python”*. A live, product, Python-owned plain `QWidget` now correctly produces zero findings while that line incorrectly says no such widget exists. | Call the count/no-count a T-289 finding, or include all four operative properties in the phase summary: product, live/Python-owned, and Python-defined type. Exercise the zero wording with the Qt-typed arm as well as the predicate. | **Open — predicate and verdict resolved; phase wording remains** |
 
 ### Resolved dispositions and accepted evidence
@@ -23022,7 +23022,7 @@ route-wide and crash-moment claims R18 required removing.
 
 | ID | Severity | Blocks approval | Area | Finding | Required correction | Status |
 |---|---|---:|---|---|---|---|
-| `T289-R18` | **Medium** | **Yes — the machine-readable verdict still promotes two samples to the whole route** | Probe description, `measure_then_quit`, `verdict`, `ai/TASKS.md` | The new task paragraph correctly says *“Two samples on one route”* and *“Nothing here is a statement about the application as a whole,”* but the old claims remain around it. The probe header says either answer *“closes the `gc` route for this route”*; `measure_then_quit` still calls post-report phase A *“the configuration the crash happened in”* and still says phase B's deferred deletions were delivered; the final `VERDICT` still says *“On this route the collector has nothing … forced or not.”* The task table still calls phase A *“the crash's own configuration,”* and its section heading still says there is *“nothing to take.”* These are not historical text: they are the tool's live contract, emitted result, and current-truth summary. | Replace each live claim with the exact samples: after update report with Settings open, and after receiver-scoped close with Settings still Qt-owned. State that no T-289 widget was parked **at those two instants**. Remove the deferred-deletion sentence from `measure_then_quit`; receiver-scoped delivery found no scheduled deletion and the dialog survived. No measurement rerun is needed for this text-only completion. | **Open — phase mechanics resolved; bounds not fully applied** |
+| `T289-R18` | **Medium** | **Yes — the machine-readable verdict still promotes two samples to the whole route** | Probe description, `measure_then_quit`, `verdict`, `docs/project/TASKS.md` | The new task paragraph correctly says *“Two samples on one route”* and *“Nothing here is a statement about the application as a whole,”* but the old claims remain around it. The probe header says either answer *“closes the `gc` route for this route”*; `measure_then_quit` still calls post-report phase A *“the configuration the crash happened in”* and still says phase B's deferred deletions were delivered; the final `VERDICT` still says *“On this route the collector has nothing … forced or not.”* The task table still calls phase A *“the crash's own configuration,”* and its section heading still says there is *“nothing to take.”* These are not historical text: they are the tool's live contract, emitted result, and current-truth summary. | Replace each live claim with the exact samples: after update report with Settings open, and after receiver-scoped close with Settings still Qt-owned. State that no T-289 widget was parked **at those two instants**. Remove the deferred-deletion sentence from `measure_then_quit`; receiver-scoped delivery found no scheduled deletion and the dialog survived. No measurement rerun is needed for this text-only completion. | **Open — phase mechanics resolved; bounds not fully applied** |
 | `T289-R19` | **Medium** | **Yes — the effect control observes after restoring the state that can erase its evidence** | `self_test`, arm 8 | Keeping only the integer identity and checking type/name is the right observable effect, and the submitted drain-omitted mutant fails. But the previous review explicitly required disabling automatic GC immediately before `gc.get_objects()`. The correction calls `object_still_tracked()` while `force_a_collection()` has already re-enabled it. Any automatic collection in that gap can free the mutant's cycle and turn the bad cleanup into a passing *not tracked* answer. The arm also never asserts that GC was restored: deleting `gc.enable()` leaves `note.sequence[:3]` unchanged and the drained widget absent, so that state-restoration mutant passes. | Capture `restored_enabled = gc.isenabled()` immediately after the phase, disable GC before scanning, assert the expected incoming-enabled state was restored, perform the identity/type/name lookup, then restore that enabled state after releasing the diagnostic reference. Stronger still, run the post-drain identity check inside `force_a_collection` before it re-enables GC. Retain the current drain-omitted mutation and add the missing-enable mutation. | **Open — effect chosen correctly; observation boundary and state assertion remain** |
 
 ### Resolved dispositions and accepted evidence
@@ -23563,7 +23563,7 @@ post-push Windows desktop result read and recorded rather than inferred. Keep T-
 do not begin a correction until the maintainer chooses between preserving T-210's cap for the
 template panel and preserving T-296's current child-height criterion. Nothing is pushed.
 
-The Reviewer changed only `ai/REVIEWS.md`. No reviewed source, submitted test, task/status record,
+The Reviewer changed only `docs/project/REVIEWS.md`. No reviewed source, submitted test, task/status record,
 decision, handoff, branch, push, CI run, live display or remote state was changed.
 
 ---
@@ -23629,7 +23629,7 @@ duplicate live prose in the same ordinary completion sync. No further behavioral
 T-294's first post-push Windows desktop result remains outstanding and a failure still reopens that
 task. Nothing is pushed.
 
-The Reviewer changed only `ai/REVIEWS.md` and used offscreen read-only/runtime probes plus focused
+The Reviewer changed only `docs/project/REVIEWS.md` and used offscreen read-only/runtime probes plus focused
 gates. No reviewed source, submitted test, TASKS/STATUS text, decision, handoff, branch, push, CI
 run, live display or remote state was changed.
 
@@ -23676,7 +23676,7 @@ duplication, and T-296 remains Complete.
 | ID | Severity | Blocks approval | Finding | Required disposition | Status |
 |---|---|---:|---|---|---|
 | `T268-R6` | **Medium** | **Yes — the gate does not gate the stated invariant** | `test_the_windows_scan_stays_removed()` calls `scanning_jobs()`, which parses only the single constant `CI_WORKFLOW = .../ci.yml`. A scheduled STARBASE scanner added in any second workflow passes it, even though the test and all three records claim that automatic detection on that machine stays absent. The repository already has other workflow files invoking the scanner manually, so the distinction must be by machine and automatic trigger, not by assuming `ci.yml` is the universe. | Enumerate the workflow directory, resolve jobs that invoke `tools/orphan_scan.py`, and reject any automatically triggered STARBASE invocation while allowing the explicitly manual diagnostic routes. Mutation-check by adding a scheduled scanner in a second workflow; the guard must fail. | **Open** |
-| `T268-R7` | **Medium** | **Yes — current truth gives both dispositions** | `ai/TASKS.md` says the task is still Blocked on a live stack, preservation is standing, and whether pursuit/closure ends is undecided. The new `docs/RUNNER_ORPHANS.md` simultaneously says the unknown lock is “written down here rather than pursued further,” labels the condition settled as a reference with nothing outstanding, and says to reap the specimens otherwise. The task also retains the old `~156 MB` preservation argument while the current seven-row inventory totals about 390 MB. Retiring an alarm because its known positives keep it red does not itself close the diagnosis that produced those positives. | Apply the ruling below consistently: keep T-268 Blocked, keep the seven specimens, and make the reference neutral about ending pursuit. Reconcile the 156/390 MB current wording. An explicit maintainer decision to close as accepted risk and authorize individually revalidated termination may replace this ruling, but neither is implied by the detector decision. | **Open** |
+| `T268-R7` | **Medium** | **Yes — current truth gives both dispositions** | `docs/project/TASKS.md` says the task is still Blocked on a live stack, preservation is standing, and whether pursuit/closure ends is undecided. The new `docs/RUNNER_ORPHANS.md` simultaneously says the unknown lock is “written down here rather than pursued further,” labels the condition settled as a reference with nothing outstanding, and says to reap the specimens otherwise. The task also retains the old `~156 MB` preservation argument while the current seven-row inventory totals about 390 MB. Retiring an alarm because its known positives keep it red does not itself close the diagnosis that produced those positives. | Apply the ruling below consistently: keep T-268 Blocked, keep the seven specimens, and make the reference neutral about ending pursuit. Reconcile the 156/390 MB current wording. An explicit maintainer decision to close as accepted risk and authorize individually revalidated termination may replace this ruling, but neither is implied by the detector decision. | **Open** |
 
 **Specimen/task ruling:** preserve all seven and do not close T-268 against the writeup. The latest
 available scan, scheduled run `33744280877` on 2026-09-03, still finds the same seven PIDs, each
@@ -23703,7 +23703,7 @@ its claims are corrected.
 
 | ID | Severity | Blocks approval | Finding | Required disposition | Status |
 |---|---|---:|---|---|---|
-| `COORD-R26` | **Low** | **No** | The checkout and remote state have moved beyond the current records. `origin/main` is `cd08c7b`, not the five-commit unpushed state: the T-296 cleanup and both T-297 commits are published. `ai/TASKS.md` still says T-294's Windows job has not run, while push run `33525084577` and the next two scheduled runs all completed `windows desktop` successfully. `ai/STATUS.md` is still headed 2026-08-31 and carries none of T-296's final cleanup, T-297, the T-268 retirement, or the T-238 argument. | During the correction/completion sync, record T-294's satisfied Windows obligation with run `33525084577`, update the current snapshot, and state that only `94b56f0` and `e26a8f9` were local before this review commit. | **Open — mechanical; no extra behavioral pass** |
+| `COORD-R26` | **Low** | **No** | The checkout and remote state have moved beyond the current records. `origin/main` is `cd08c7b`, not the five-commit unpushed state: the T-296 cleanup and both T-297 commits are published. `docs/project/TASKS.md` still says T-294's Windows job has not run, while push run `33525084577` and the next two scheduled runs all completed `windows desktop` successfully. `docs/project/STATUS.md` is still headed 2026-08-31 and carries none of T-296's final cleanup, T-297, the T-268 retirement, or the T-238 argument. | During the correction/completion sync, record T-294's satisfied Windows obligation with run `33525084577`, update the current snapshot, and state that only `94b56f0` and `e26a8f9` were local before this review commit. | **Open — mechanical; no extra behavioral pass** |
 
 ### Independent verification
 
@@ -23759,10 +23759,10 @@ KWin/Wayland session. No live desktop, push or new CI run is claimed.
 | `T297-R2` | **High** | **Yes** | The evidence now correctly retracts `_on_list_resized` as the cause, names `RowDelegate.updateEditorGeometry`, reverses the T-296 relation and admits that the cause-before-fix criterion was missed. That resolves the false-current-record half. It cannot make the correct cause predate `cd08c7b`, and no maintainer exception is recorded. | Obtain the explicit maintainer exception required by the initial finding before moving T-297 to Complete. | **Partially resolved — correction complete; exception Open** |
 | `T297-R3` | **Medium** | **No — resolved** | Every reported paint/exposure/resize count is snapped before reconstruction; paint recording is disabled and the resize filter removed before the forced 26 px image. The drift assertion compares all four counters afterward. The review run reproduced the corrected **0 exposed / 8 resizes / 0 collapses / 110 of 110 settled** result. | None. | **Resolved** |
 | `T268-R6` | **Medium** | **Yes** | The helper now visits every current `*.yml`, but `names = {str(triggers)}` for a YAML sequence makes valid `on: [push, workflow_dispatch]` invisible. An independent STARBASE-scanner fixture in that form returned `{}`. The `*.yml` glob also ignores an otherwise identical `.yaml` workflow, which returned `{}` too. Thus the test still does not gate its stated “every workflow, automatic trigger” invariant. | Normalize mapping, scalar and sequence trigger forms to their event names; inspect both GitHub workflow extensions; add controls that a list-form automatic trigger and a `.yaml` automatic workflow are rejected while a manual-only route remains allowed. | **Open** |
-| `T268-R7` | **Medium** | **Yes** | The new reference is corrected: it keeps T-268 Blocked, preserves all seven, limits reap guidance to a new orphan and uses about 390 MB. But the live task summary at `ai/TASKS.md:14521` still says preservation and closure “are still open”; the next paragraphs say all seven are preserved and the task remains Blocked on a stack. The contradiction therefore moved into current truth rather than disappearing. | Delete that superseded decision request or date it as the pre-review state. Keep one current disposition: preserve all seven and keep T-268 Blocked on the live stack. | **Partially resolved — reference and cost fixed; task summary Open** |
+| `T268-R7` | **Medium** | **Yes** | The new reference is corrected: it keeps T-268 Blocked, preserves all seven, limits reap guidance to a new orphan and uses about 390 MB. But the live task summary at `docs/project/TASKS.md:14521` still says preservation and closure “are still open”; the next paragraphs say all seven are preserved and the task remains Blocked on a stack. The contradiction therefore moved into current truth rather than disappearing. | Delete that superseded decision request or date it as the pre-review state. Keep one current disposition: preserve all seven and keep T-268 Blocked on the live stack. | **Partially resolved — reference and cost fixed; task summary Open** |
 | `T238-R11` | **Medium** | **Yes** | `parent=None`, signature-mapped positional `None`, `PresetManager`, `OptionsDialog` and equipped `MainWindow` are now handled. The owner closure, however, seeds only classes that **construct** a name in `ITEM_VIEWS`. `EntryTable` is itself a `QTableView`, so it is not seeded; `PlaylistPicker` constructs `EntryTable`, so it is not reached transitively. Six parentless `PlaylistPicker` sites are omitted. Seeding product subclasses of item views changes the current harness subset from **71 to 77** while the product subset remains 2; 71 is therefore not the stated upper bound. The self-test's `Table(QWidget)` exercises only the construction path and cannot catch this. | Seed the closure with product classes transitively derived from an item view, add a self-test arm where a wrapper owns only such a subclass, rerun the counts, and correct TASKS/STATUS. Keep parentlessness, eventual ownership and destructor reach as separate predicates and do not move criterion 4. | **Open** |
 | `T238-R12` | **Low** | **No — mechanical with R11** | `audit()` now returns four values but its annotation and docstring still declare three. Every caller unpacks four. Direct `mypy tools/t289_ownership_audit.py` reports the incompatible return and all five unpack sites, although the configured project mypy scope does not include this tool. | Correct the return type/docstring while repairing R11. No additional behavioral pass is required for this item. | **Open — non-blocking** |
-| `COORD-R26` | **Low** | **No — resolved** | `ai/TASKS.md` records run `33525084577` as the paid T-294 Windows check, and `ai/STATUS.md` now names T-297's two High record blocks, T-268's alarm retirement and standing stack dependency, and T-238's unchanged criterion-4 ruling. | None. | **Resolved** |
+| `COORD-R26` | **Low** | **No — resolved** | `docs/project/TASKS.md` records run `33525084577` as the paid T-294 Windows check, and `docs/project/STATUS.md` now names T-297's two High record blocks, T-268's alarm retirement and standing stack dependency, and T-238's unchanged criterion-4 ruling. | None. | **Resolved** |
 
 ### Independent controls
 

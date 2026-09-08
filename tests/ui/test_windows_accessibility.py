@@ -21,7 +21,8 @@ MTA worker thread while the main thread pumps the Qt event loop, and only plain 
 back — COM interface pointers are not thread-agnostic.
 
 What this does **not** claim: that Narrator's announcements are *coherent*. A correct tree is
-necessary and not sufficient, and the difference stays a human judgement (`ai/TESTING.md` §9).
+necessary and not sufficient, and the difference stays a human judgement (`docs/project/TESTING.md`
+§9).
 """
 
 import ctypes

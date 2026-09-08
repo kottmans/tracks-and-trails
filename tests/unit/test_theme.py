@@ -32,7 +32,7 @@ from tracks_and_trails.ui.theme import (
 
 #: Every pair a user reads text from. **Written out rather than derived from the dataclass**: a
 #: field added without deciding what it sits on would be swept into a derived list and pass by
-#: default, which is the opposite of noticing it (`ai/TESTING.md` §13).
+#: default, which is the opposite of noticing it (`docs/project/TESTING.md` §13).
 TEXT_PAIRS = (
     ("text", "window"),
     ("text", "surface"),

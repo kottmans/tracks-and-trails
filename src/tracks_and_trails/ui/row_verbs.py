@@ -7,12 +7,12 @@ offering it. A row offers what it permits and says nothing about the rest.
 
 ## Why this is a table and not a chain of `if`s
 
-`ai/TESTING.md` §13's rule is that a test must transcribe its expectation from the specification
-rather than ask production what to expect. That only works if the specification is *transcribable*
-— so the mapping lives in one literal, `UX-005`'s four rows are visible in it side by side, and
-the test writes the same four rows out by hand. Two hand-maintained lists is exactly what §13
-warns against for *derived* sets; here the whole point is that they are independent copies of an
-external authority, and the test fails when they diverge.
+`docs/project/TESTING.md` §13's rule is that a test must transcribe its expectation from the
+specification rather than ask production what to expect. That only works if the specification is
+*transcribable* — so the mapping lives in one literal, `UX-005`'s four rows are visible in it side
+by side, and the test writes the same four rows out by hand. Two hand-maintained lists is exactly
+what §13 warns against for *derived* sets; here the whole point is that they are independent copies
+of an external authority, and the test fails when they diverge.
 
 ## Three states `UX-005` does not name
 

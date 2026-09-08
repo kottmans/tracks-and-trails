@@ -7,7 +7,7 @@
 #
 # `tests/unit/test_orphan_scan.py::test_the_scanner_sees_a_known_orphan` **failed** on the
 # `windows desktop` job at `0332a68` and **passed** at `75cd183`. Those trees differ by a comment in
-# another workflow and a line in `ai/STATUS.md`; neither is reachable from that test. So either it
+# another workflow and a line in `docs/project/STATUS.md`; neither is reachable from that test. So either it
 # is flaky or it depends on something about the machine, and **one observation is not a rate.**
 #
 # It matters more than a single red test usually would. That test is the one that proves the orphan

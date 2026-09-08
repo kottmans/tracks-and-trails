@@ -86,7 +86,7 @@ def test_every_offered_container_is_one_the_model_accepts() -> None:
 
 
 def test_the_container_list_matches_yt_dlp_s_own() -> None:
-    """The transcribed list against the derived one (`ai/TESTING.md` §13).
+    """The transcribed list against the derived one (`docs/project/TESTING.md` §13).
 
     `core/` may not import `yt_dlp`, so `CONTAINER_FORMATS` is a copy — and a copy is only safe
     while something fails when it drifts. A yt-dlp release that adds a container fails here rather

@@ -97,7 +97,8 @@ def test_a_line_that_is_gone_is_superseded_rather_than_dropped() -> None:
     """`T016-R1`: a result already in flight still arrives, and has to be refused **by name**.
 
     Deleting the record would leave the refusal in `_on_media_probed` unreachable — a guard that
-    reads as protection while protecting nothing, which `ai/TESTING.md` §13 exists to catch.
+    reads as protection while protecting nothing, which `docs/project/TESTING.md` §13 exists to
+    catch.
     """
     staging = a_staging("https://gone.invalid/x")
     row = staging.visible[0]

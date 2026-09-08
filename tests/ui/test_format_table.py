@@ -18,8 +18,8 @@ fields at once.
 
 **Phase 3's exit criterion 1 — the table matching `yt-dlp -F` — is evidenced** by
 `test_the_table_matches_what_yt_dlp_f_reports` against
-`ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md`. Matching includes agreeing where yt-dlp
-reports nothing, which is most of what these sources say about fps and codecs.
+`docs/project/evidence/2026-08-07-format-table-vs-yt-dlp-f.md`. Matching includes agreeing where
+yt-dlp reports nothing, which is most of what these sources say about fps and codecs.
 """
 
 import json
@@ -136,15 +136,15 @@ def test_a_recorded_capture_populates_the_codec_column_by_value() -> None:
 
 
 #: What `yt-dlp -F` printed for the recorded sources, transcribed on 2026-08-07 against yt-dlp
-#: 2026.07.04 — the run is in `ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md`.
+#: 2026.07.04 — the run is in `docs/project/evidence/2026-08-07-format-table-vs-yt-dlp-f.md`.
 #:
-#: **Transcribed, not fetched.** The suite must not touch the network (`ai/TESTING.md` §5), so the
-#: comparison is made against what the recorded run actually printed. Re-running it is
-#: `capture.py`'s job and a deliberate act; this keeps the answer under test in the meantime.
-#: **A dict per row rather than a tuple**, since `T-185` added a source printing an `FPS` column
-#: and none of `MORE INFO`. Positional rows made every source pay for every other source's columns,
-#: and a `""` in the seventh slot reads as *"yt-dlp printed an empty note"* rather than *"yt-dlp
-#: printed no such column"*. An absent key here means the column was not in the output at all.
+#: **Transcribed, not fetched.** The suite must not touch the network (`docs/project/TESTING.md`
+#: §5), so the comparison is made against what the recorded run actually printed. Re-running it is
+#: `capture.py`'s job and a deliberate act; this keeps the answer under test in the meantime. **A
+#: dict per row rather than a tuple**, since `T-185` added a source printing an `FPS` column and
+#: none of `MORE INFO`. Positional rows made every source pay for every other source's columns, and
+#: a `""` in the seventh slot reads as *"yt-dlp printed an empty note"* rather than *"yt-dlp printed
+#: no such column"*. An absent key here means the column was not in the output at all.
 YT_DLP_F_OUTPUT: Final[dict[str, list[dict[str, str]]]] = {
     "archive_org_big_buck_bunny": [
         {

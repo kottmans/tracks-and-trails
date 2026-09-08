@@ -1,10 +1,10 @@
 """Fixtures every suite can use, and nothing that costs anything to import (`T-070`).
 
-**Deliberately Qt-free.** `tests/unit/` runs headless and without Qt on purpose (`ai/TESTING.md`
-§1), and a root `conftest.py` is imported before every suite — putting a Qt import here would
-quietly retire that property. `tests/ui/conftest.py`, `tests/integration/conftest.py` and
-`tests/network/conftest.py` each keep their own Qt setup for that reason, duplicated rather than
-hoisted.
+**Deliberately Qt-free.** `tests/unit/` runs headless and without Qt on purpose
+(`docs/project/TESTING.md` §1), and a root `conftest.py` is imported before every suite — putting a
+Qt import here would quietly retire that property. `tests/ui/conftest.py`,
+`tests/integration/conftest.py` and `tests/network/conftest.py` each keep their own Qt setup for
+that reason, duplicated rather than hoisted.
 
 What belongs here is the opposite kind of thing: a question about the machine that any suite
 might need to ask. `tests/capabilities.py` holds the answers; this makes its fixtures visible,
@@ -25,7 +25,7 @@ from tests.capabilities import ffmpeg, symlinks
 __all__ = ["ffmpeg", "symlinks"]
 
 
-# --- `ai/TESTING.md` §5, which had a rule and no mechanism (`T123-R2`) -------------------------
+# --- `docs/project/TESTING.md` §5, which had a rule and no mechanism (`T123-R2`) ------------------
 #
 # §5 says tests must not touch the developer's real config, data or cache directories, and that
 # `platformdirs` paths are redirected to `tmp_path` **by an autouse fixture**. That fixture did
@@ -67,7 +67,7 @@ def _per_user_directories(tmp_path: Path) -> Iterator[None]:
 # suite** runs on that machine with no fonts at all, so every assertion about a widget's size,
 # about elision, or about anything else derived from font metrics is measured against nothing.
 # It passes, which is the worrying part: a suite that agrees with itself while measuring an
-# empty font set is the shape `ai/TESTING.md` §13 exists to catch.
+# empty font set is the shape `docs/project/TESTING.md` §13 exists to catch.
 #
 # So this is fixed in the environment rather than allowlisted in the assertion. Pointing Qt at
 # the directory Windows actually keeps its fonts in restores a populated database, verified by

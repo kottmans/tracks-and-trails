@@ -7,7 +7,7 @@ transactional row updates during downloads and must not corrupt on a hard kill (
 WAL journaling is that guarantee. It is set on every connection rather than assumed, because a
 database restored from a backup taken in another mode would otherwise start without it.
 
-**Migrations are discovered from the directory, never listed in code.** `ai/TESTING.md` §7
+**Migrations are discovered from the directory, never listed in code.** `docs/project/TESTING.md` §7
 requires that every migration run forward from every prior version with data intact. A
 hand-maintained list is a second source of truth that drifts from the files, and a test built on
 it proves only that the list agrees with itself. Globbing means the harness cannot fall behind
@@ -83,7 +83,8 @@ def available_migrations() -> list[tuple[int, Path]]:
     if versions and versions != list(range(1, len(versions) + 1)):
         raise ValueError(
             f"migration versions must run 1..N with no gaps; got {versions}. A gap makes "
-            "'every prior version' ambiguous, which is exactly what ai/TESTING.md §7 tests."
+            "'every prior version' ambiguous, which is exactly what "
+            "docs/project/TESTING.md §7 tests."
         )
     return migrations
 

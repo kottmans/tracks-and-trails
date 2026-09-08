@@ -107,5 +107,5 @@ reported as such rather than built on; anyone adopting a design should re-measur
 
 ## Reproducing
 
-`ai/evidence/2026-08-06-provenance-survival.py` regenerates §2 and §3 from scratch in a temporary
+`docs/project/evidence/2026-08-06-provenance-survival.py` regenerates §2 and §3 from scratch in a temporary
 directory. It needs ffmpeg and ffprobe on `PATH` and nothing else.

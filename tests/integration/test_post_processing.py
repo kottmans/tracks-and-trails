@@ -14,8 +14,8 @@ yt-dlp, real ffmpeg, a real file, and `ffprobe` on what came out.
 ## What is real, and what is not
 
 Everything except the network. The media is built by ffmpeg at test time and served from
-localhost — `ai/TESTING.md` §6's recorded exception, the same one `test_end_to_end.py` runs
-under — so no fixture can go stale and nothing leaves the machine.
+localhost — `docs/project/TESTING.md` §6's recorded exception, the same one `test_end_to_end.py`
+runs under — so no fixture can go stale and nothing leaves the machine.
 
 **Chapters are the one option asserted through the postprocessor rather than through a download,
 and the limit is stated rather than hidden.** `FFmpegMetadata` writes `info['chapters']`, and no

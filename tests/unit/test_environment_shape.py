@@ -139,7 +139,7 @@ def test_the_module_scope_is_still_the_shape_ops_008_measured() -> None:
     ],
 )
 def test_each_construct_is_actually_detected(gap: str, construct: str) -> None:
-    """`ai/TESTING.md` §13: a guard nobody has watched fail is not evidence.
+    """`docs/project/TESTING.md` §13: a guard nobody has watched fail is not evidence.
 
     The three tests above read the real module, which is clean, so on its own each has never fired.
     These put the construct through the same detection and prove it is seen.

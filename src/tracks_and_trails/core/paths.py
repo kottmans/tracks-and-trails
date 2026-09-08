@@ -9,12 +9,12 @@ that reaches this module after yt-dlp renders them into a template, and `ARCHITE
 already forbids them reaching a shell. This module is the other half: they must not reach a
 path outside the directory the user chose either.
 
-**Both platforms' rules, on both platforms.** `ai/TESTING.md` §7 requires Windows-illegal names
-to be sanitized on Linux too. A file named `aux.mp4` or `what?.mp4` is legal on ext4 and
-unopenable once the directory syncs to Windows, gets shared, or is restored onto another
-machine — so the intersection is enforced everywhere rather than per-host. That is also why
-this module takes no interest in `os.name`: identical input produces identical output on both
-platforms, which is what makes it testable in CI on either.
+**Both platforms' rules, on both platforms.** `docs/project/TESTING.md` §7 requires Windows-illegal
+names to be sanitized on Linux too. A file named `aux.mp4` or `what?.mp4` is legal on ext4 and
+unopenable once the directory syncs to Windows, gets shared, or is restored onto another machine —
+so the intersection is enforced everywhere rather than per-host. That is also why this module takes
+no interest in `os.name`: identical input produces identical output on both platforms, which is what
+makes it testable in CI on either.
 
 **What this module does not do.** It does not render output templates — that uses yt-dlp's own
 mechanism and belongs to `ytdlp_adapter.py` (`T-012`), the only code allowed to know that

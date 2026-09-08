@@ -1,12 +1,12 @@
 """Does CPython's collector destroy a `QWidget` on a pool thread? (`T-289` criterion 4.)
 
 **The question, and why it needs an instrument.** `T-289` is a `double free or corruption (!prev)`
-abort recorded in `ai/evidence/2026-08-27-T212-ytdlp-update-double-free.md`. Its established half is
-that `gc_collect_main` ran on a `QThreadPool` thread and took `~QWidget` down with it, five
-`deleteChildren` levels deep, on a thread Qt does not permit widget destruction on. The crash is
-intermittent by nature — the collector runs wherever an allocation threshold happens to trip — so
-waiting for it is not a method. **This arranges the precondition deliberately and reports which
-thread performed the destruction.**
+abort recorded in `docs/project/evidence/2026-08-27-T212-ytdlp-update-double-free.md`. Its
+established half is that `gc_collect_main` ran on a `QThreadPool` thread and took `~QWidget` down
+with it, five `deleteChildren` levels deep, on a thread Qt does not permit widget destruction on.
+The crash is intermittent by nature — the collector runs wherever an allocation threshold happens to
+trip — so waiting for it is not a method. **This arranges the precondition deliberately and reports
+which thread performed the destruction.**
 
 `T-238`'s probe is the model, and its lesson is the reason this one is written the way it is: a
 `weakref.finalize` callback runs on whichever thread dropped the last reference, so the deciding
@@ -185,7 +185,8 @@ def main() -> int:
     # **`--on-the-gui-thread` is the control, and it is not optional decoration.** A probe that
     # only ever reports the pool thread looks exactly like a probe that hard-codes it. Running the
     # identical collection on the GUI thread has to produce the *other* answer before the first
-    # one means anything — `ai/TESTING.md`'s rule about instruments that report confidently.
+    # one means anything — `docs/project/TESTING.md`'s rule about instruments that report
+    # confidently.
     control = "--on-the-gui-thread" in sys.argv
     shown = "--shown" in sys.argv
     real = "--real-screens" in sys.argv

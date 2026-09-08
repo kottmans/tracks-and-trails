@@ -825,8 +825,8 @@ def _press_the_menu_key(table: Any) -> None:
     **`QTest.keyClick(Key_Menu)` cannot be used, and that was measured rather than assumed.** The
     Menu-key and Shift+F10 translation into `QEvent::ContextMenu` is done by the platform plugin,
     not by `QWidget`, so under `offscreen` — which is every Qt test this project runs (`NFR-005`,
-    `ai/TESTING.md`) — the key press arrives as a plain key press and no context menu is ever
-    generated. Probed both ways before writing this: through the widget and through its window
+    `docs/project/TESTING.md`) — the key press arrives as a plain key press and no context menu is
+    ever generated. Probed both ways before writing this: through the widget and through its window
     handle, with `contextMenuEvent` instrumented, and neither produced one.
 
     So this sends the object the platform sends. Everything under test is still exercised: Qt's
@@ -1832,9 +1832,9 @@ def test_the_rows_hold_the_keyboard_when_the_window_opens(
     pressing the key — arranging the very condition the second defect is about, which is why the
     suite went on passing while the route stayed dead. Asserting the focused widget rather than
     synthesising the key is deliberate and disclosed: `offscreen` does not translate `Shift+F10`
-    (`ai/TESTING.md`), so this proves the key would be **delivered to the list**, and the round-one
-    test proves what the list does with it. Neither is an end-to-end proof and neither pretends to
-    be.
+    (`docs/project/TESTING.md`), so this proves the key would be **delivered to the list**, and the
+    round-one test proves what the list does with it. Neither is an end-to-end proof and neither
+    pretends to be.
     """
     window = _window_over([_job("job-1", 0, JobStatus.RUNNING)], tmp_path)
     window.show()

@@ -5,7 +5,7 @@
 > **The two processes did not end. They are running.** `434366` and `432922` are alive on
 > **`Spock`** — present in `ps` and `/proc`, `434366` with two threads still holding
 > `pipe:[1629660]`, `tools/orphan_scan.py` exit **1** — confirmed continuously from 2026-08-25
-> through 2026-08-26. `ai/evidence/2026-08-25-linux-orphan-still-running-on-spock.md` is three
+> through 2026-08-26. `docs/project/evidence/2026-08-25-linux-orphan-still-running-on-spock.md` is three
 > read-only captures of them six days after this one.
 >
 > **The host in this file's title is unestablished.** These exact PIDs are on `Spock`; this file
@@ -14,7 +14,7 @@
 > label **two** machines answer, so a scan names whichever it ran on (`T272-R5`); and an isolated
 > **PID namespace** cannot see the host's processes at all — which is what the Reviewer disclosed
 > when withdrawing a contrary check of their own. **Neither is asserted.** The filename is left as
-> written rather than renamed, because it is cited from `T-272`, `ai/evidence/README.md` and
+> written rather than renamed, because it is cited from `T-272`, `docs/project/evidence/README.md` and
 > `STATUS.md`, and a file that quietly changes name is worse than one that carries its correction.
 >
 > **What is *not* corrected: everything below this banner.** Every measurement, `/proc` read,

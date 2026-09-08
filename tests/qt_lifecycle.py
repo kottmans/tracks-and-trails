@@ -1,8 +1,8 @@
 """Dropping a Qt object safely, and catching the moment a suite does not (`T-128`).
 
 **Not in `tests/conftest.py`.** That file is deliberately Qt-free so `tests/unit/` keeps running
-headless and without Qt (`ai/TESTING.md` §1), and a root conftest is imported before every suite.
-This module is imported only by the conftests that already have Qt.
+headless and without Qt (`docs/project/TESTING.md` §1), and a root conftest is imported before every
+suite. This module is imported only by the conftests that already have Qt.
 
 ## What went wrong, and why it took a soak to find
 
@@ -85,7 +85,7 @@ lines reproduces *a* segfault every time.
 **What this does not claim.** It does not reproduce the segfault — 60 runs did not — and it does
 not prove the crash was a harness defect rather than a product one. It removes the carry-over the
 retained stack shows, and it names a leak at its cause instead of at its consequence
-(`ai/TESTING.md` §13).
+(`docs/project/TESTING.md` §13).
 """
 
 from __future__ import annotations
@@ -102,8 +102,8 @@ from PySide6.QtCore import QCoreApplication, QEvent, QTimer, qInstallMessageHand
 #:
 #: It is a warning, and the process usually keeps running — until the orphaned entry fires, which
 #: may be a test or two later and looks like an unrelated crash. Treated as fatal here for the
-#: reason `ai/TESTING.md` §13 gives about intermittents: the useful signal is the one at the cause,
-#: not the one at the consequence.
+#: reason `docs/project/TESTING.md` §13 gives about intermittents: the useful signal is the one at
+#: the cause, not the one at the consequence.
 CROSS_THREAD_TIMER: Final = "Timers cannot be stopped from another thread"
 
 
@@ -289,7 +289,7 @@ def assert_no_orphaned_views(app: QCoreApplication) -> None:
     does not reproduce the segfault and does not prove the fault was the harness's. It fails at the
     test that produced the condition, on an ordinary run, instead of leaving a deletion to execute
     inside an unrelated test — which is the attribution problem the crash arrived with, and
-    `ai/TESTING.md` §13's rule about intermittents.
+    `docs/project/TESTING.md` §13's rule about intermittents.
     """
     orphans = orphaned_views(app)
     if not orphans:

@@ -243,10 +243,10 @@ def test_the_analyzer_detects_synthetic_violations(
 ) -> None:
     """The guard must itself be guarded.
 
-    `ai/REVIEWS.md` names layering as an area where "the enforcement test can be weakened as
-    easily as bypassed". If someone narrows a rule's `applies_to` or drops a package from
-    `forbidden`, the tree still passes and nothing else notices. These synthetic cases fail
-    the moment the analyzer stops catching what it is supposed to catch.
+    `docs/project/REVIEWS.md` names layering as an area where "the enforcement test can be weakened
+    as easily as bypassed". If someone narrows a rule's `applies_to` or drops a package from
+    `forbidden`, the tree still passes and nothing else notices. These synthetic cases fail the
+    moment the analyzer stops catching what it is supposed to catch.
     """
     violations = check(rel_path, source)
     assert violations, f"{rel_path} breaking {expected_rule!r} was not detected"

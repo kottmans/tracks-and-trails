@@ -2,7 +2,7 @@
 
 Every assertion below reads what was **emitted**. A test that called `redact()` directly would
 prove the function works and say nothing about the property the task is actually about — that a
-call site cannot leak by forgetting to use it (`ai/TESTING.md` §13, `ARCHITECTURE.md` §8).
+call site cannot leak by forgetting to use it (`docs/project/TESTING.md` §13, `ARCHITECTURE.md` §8).
 """
 
 from __future__ import annotations
@@ -922,7 +922,7 @@ def test_the_three_closure_forms_are_recognised() -> None:
     # `setattr` rather than a direct assignment with an ignore comment: `OSError.winerror` exists
     # only on Windows, so mypy needs the ignore on Linux and rejects it as unused under
     # `--platform win32`. There is no single spelling of the assignment that satisfies both gates,
-    # and `ai/TESTING.md` §3 requires both. This one needs neither.
+    # and `docs/project/TESTING.md` §3 requires both. This one needs neither.
     setattr(windows, "winerror", 6)  # noqa: B010
     sentinel = OSError("handle is closed")
 

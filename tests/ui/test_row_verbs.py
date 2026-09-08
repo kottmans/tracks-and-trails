@@ -1,11 +1,11 @@
 """`UX-005` §4 and §5, transcribed by hand (`T-124`).
 
 **Every expectation below is written out from the decision entry, not read from the module.**
-`ai/TESTING.md` §13 records six — now eight — tests in this project that passed while the thing
-they protected was removed, and the common cause is a test that asked production what to expect.
-`T034-R4` is the closest relative: shrinking production's reserved-name set shrank the expectation
-with it, so the test could not fail. A table this small is exactly where that happens, because
-`assert verbs_for(s) == _BY_STATUS[s]` looks like a test and is an identity.
+`docs/project/TESTING.md` §13 records six — now eight — tests in this project that passed while the
+thing they protected was removed, and the common cause is a test that asked production what to
+expect. `T034-R4` is the closest relative: shrinking production's reserved-name set shrank the
+expectation with it, so the test could not fail. A table this small is exactly where that happens,
+because `assert verbs_for(s) == _BY_STATUS[s]` looks like a test and is an identity.
 
 So: the four rows `UX-005` names are typed out again below, and if somebody edits the module's
 literal without the entry, this file fails.
@@ -50,8 +50,8 @@ UX_005_TABLE = {
 def test_each_state_offers_exactly_what_the_decision_says(status: JobStatus, row: str) -> None:
     """The four rows `UX-005` names, by value and in order.
 
-    **Equality, not a subset** (`ai/TESTING.md` §13). A subset check stays green when a verb is
-    deleted, and the failure mode this guards is a state quietly losing an action.
+    **Equality, not a subset** (`docs/project/TESTING.md` §13). A subset check stays green when a
+    verb is deleted, and the failure mode this guards is a state quietly losing an action.
     """
     assert verbs_for(status) == UX_005_TABLE[row], (
         f"a {status.value} row offers {[v.value for v in verbs_for(status)]} where UX-005 says "

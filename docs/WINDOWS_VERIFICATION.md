@@ -6,14 +6,14 @@ make a run look valid when it is not.
 **Maintainer:** Sean Kottman
 **Status:** Active
 **Last updated:** 2026-07-28
-**Related:** `ai/TESTING.md` §12, `T-040`, `T-056`, `T-066`…`T-070`, `OPS-003`, `OPS-004`
+**Related:** `docs/project/TESTING.md` §12, `T-040`, `T-056`, `T-066`…`T-070`, `OPS-003`, `OPS-004`
 
 ---
 
 ## Why this exists
 
 `OPS-003` recorded that the maintainer has no Windows machine, which made the GitHub runner the
-only Windows environment this project had. `ai/TESTING.md` and `.github/workflows/ci.yml` are both
+only Windows environment this project had. `docs/project/TESTING.md` and `.github/workflows/ci.yml` are both
 written around that fact.
 
 It stopped being true on 2026-07-28, and the first run on a machine that is not a runner produced
@@ -67,9 +67,11 @@ metrics is measuring a different thing.
 
 `tools/windows/run-on-starbase.sh` exists for this. It writes the command to a file, triggers a
 pre-registered scheduled task created with `/IT` — so it inherits the logged-on session — and
-returns the output:
+returns the output. It takes the machine from `STARBASE_HOST` and refuses to run without it —
+there is no default account or address in the script:
 
 ```bash
+export STARBASE_HOST=user@windows-host      # once per shell
 tools/windows/run-on-starbase.sh 'cd C:\dev\tracks-and-trails && .venv\Scripts\python.exe -m pytest -q'
 ```
 

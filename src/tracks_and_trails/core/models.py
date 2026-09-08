@@ -1285,9 +1285,9 @@ class Job:
     def with_status(self, target: JobStatus) -> Self:
         """Return a copy in `target`, raising `IllegalTransitionError` if the move is not legal.
 
-        Routing every status change through here is what makes `ai/TESTING.md` §7's guarantee
-        real: there is no way to reach a new status that skips validation, short of building a
-        `Job` by hand.
+        Routing every status change through here is what makes `docs/project/TESTING.md` §7's
+        guarantee real: there is no way to reach a new status that skips validation, short of
+        building a `Job` by hand.
         """
         return replace(self, status=apply(self.status, target))
 

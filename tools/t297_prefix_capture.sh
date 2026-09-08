@@ -3,7 +3,7 @@
 #
 # **Why this exists.** `T-297`'s first criterion asks for the flicker reproduced *on a real display,
 # with a capture*. Every measurement so far was taken on a nested `kwin_wayland --virtual`, and the
-# image in `ai/evidence/` is a labelled reconstruction of the measured geometry rather than a frame
+# image in `docs/project/evidence/` is a labelled reconstruction of the measured geometry rather than a frame
 # of the defect. The reviewer ruled that insufficient and the maintainer chose to run it for real.
 #
 # **Nothing in your checkout is modified.** The pre-fix tree is a `git worktree` at `331845d` — the
@@ -49,7 +49,7 @@ is present. Your own checkout is untouched.
        • Spectacle rectangular region, repeatedly, mid-drag
        • a phone video of the screen — genuinely acceptable evidence here
 5. Save it as
-       ai/evidence/2026-09-04-T297-real-display-capture.<ext>
+       docs/project/evidence/2026-09-04-T297-real-display-capture.<ext>
 
 If the flicker does NOT appear, that is a result worth having too — say so and
 do not manufacture one. It would mean the nested compositor exaggerates it.

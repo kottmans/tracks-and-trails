@@ -17,7 +17,7 @@ for two weeks after the tree was built
 > *(This note said, from 2026-07-25 until 2026-08-09, that 26 of 31 modules were docstring-only
 > stubs and nothing downloaded, probed, or persisted — long-stale by the time it was corrected.)*
 > §4's project-structure listing still shows the planned shape; the built tree has grown modules
-> around it (`ui/` in particular) that the listing does not yet name. `ai/STATUS.md` is
+> around it (`ui/` in particular) that the listing does not yet name. `docs/project/STATUS.md` is
 > authoritative for what is actually built.
 
 ---
@@ -32,7 +32,7 @@ for two weeks after the tree was built
 | Media processing | ffmpeg, external binary invoked by yt-dlp | `OPS-001` |
 | Persistence | SQLite (jobs and queue order) + TOML (settings) | `DAT-001` |
 | Platform dirs | `platformdirs` | `DAT-001` |
-| Test / lint / types | pytest + pytest-qt, ruff, mypy | `ai/TESTING.md` |
+| Test / lint / types | pytest + pytest-qt, ruff, mypy | `docs/project/TESTING.md` |
 
 ## 2. System boundary
 
@@ -458,7 +458,7 @@ classification. Classification is a hint, not a replacement.
 
 ## 11. Testing architecture
 
-Detail lives in `ai/TESTING.md`. The architectural commitments that make it possible:
+Detail lives in `docs/project/TESTING.md`. The architectural commitments that make it possible:
 
 - `core/` is pure and headless-testable — the bulk of logic lives there deliberately.
 - The parent/child contract is `downloader/protocol.py` dataclasses, so the manager can be

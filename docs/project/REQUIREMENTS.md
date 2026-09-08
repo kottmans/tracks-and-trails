@@ -271,4 +271,4 @@ The MVP is accepted when, **on both Linux and Windows**:
 For criteria requiring interactive use, "on Windows" currently means *via CI automation
 where possible, and explicitly recorded as unverified where not* (`OPS-003`). Criterion 8 in
 particular is only partly automatable. The MVP may be accepted with those gaps named; the
-**first public release may not** — see `ai/TESTING.md` §8 item 15.
+**first public release may not** — see `docs/project/TESTING.md` §8 item 15.

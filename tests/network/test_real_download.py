@@ -8,9 +8,9 @@ produces what this code expects.
 That gap is small and it is not zero, so it gets exactly one test: the offline fake is checked
 against reality once, deliberately, on request.
 
-**Excluded from every default run** (`ai/TESTING.md` §2). It reaches the network, so it fails for
-reasons that are not this project's — a site reorganises, a CDN rate-limits, a runner has no
-egress — and `§1` is explicit that a test failing because a site changed teaches nothing about
+**Excluded from every default run** (`docs/project/TESTING.md` §2). It reaches the network, so it
+fails for reasons that are not this project's — a site reorganises, a CDN rate-limits, a runner has
+no egress — and `§1` is explicit that a test failing because a site changed teaches nothing about
 our code. Run it before a release, and when diagnosing extractor trouble.
 
 **Never executed in the environment that wrote it.** The development machine ran it zero times;
@@ -102,7 +102,7 @@ def test_one_real_url_downloads_end_to_end(
         ), (
             "the real download never completed. Before treating this as a defect, check whether "
             f"{REAL_URL} still resolves — this test fails for reasons that are not ours, which "
-            "is why it is opt-in (ai/TESTING.md §1)"
+            "is why it is opt-in (docs/project/TESTING.md §1)"
         )
         record_property("real_download_seconds", round(time.monotonic() - started, 1))
 

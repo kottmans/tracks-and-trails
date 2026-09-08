@@ -18,7 +18,7 @@
 #     Qt baseline and pytest — plus an environment snapshot and the junit XML. It is the part
 #     that can be downloaded and analyzed offline rather than read in a browser.
 #
-# See ai/TESTING.md §10 and the T-006 entry in ai/TASKS.md.
+# See docs/project/TESTING.md §10 and the T-006 entry in docs/project/TASKS.md.
 
 name: CI
 
@@ -37,12 +37,12 @@ on:
       # `packaging/`, `tools/` and `.github/` throughout. The gate was rebuilding the same code
       # and being killed by commits that only added text.
       #
-      # **`ai/TASKS.md` is in this list, and its gate did not go with it.**
+      # **`docs/project/TASKS.md` is in this list, and its gate did not go with it.**
       # `tests/unit/test_task_placement.py` reads that file — it is the *only* prose file any test
       # opens, verified by grepping every `read_text`/`open`/`Path` call under `tests/`; every
-      # other `ai/` mention in the suite is a citation in a docstring. `OPS-009` therefore kept it
+      # other `docs/project/` mention in the suite is a citation in a docstring. `OPS-009` therefore kept it
       # out of this list, which is why the two pushes that cancelled runs on 2026-08-05 (`T-144`
-      # and `T-145`, both `ai/TASKS.md` alone) still ran the full matrix.
+      # and `T-145`, both `docs/project/TASKS.md` alone) still ran the full matrix.
       #
       # Exempting it here would have been the silent-coverage-loss `P2EXIT-R4` found once already.
       # Instead the gate **moved to `.github/workflows/prose.yml`**, which runs that one test and
@@ -50,18 +50,18 @@ on:
       # coverage is unchanged; only its cost is.
       #
       # Adding a file here is a coverage decision, not tidying: check first that no test reads it.
-      - "ai/ARCHITECTURE.md"
-      - "ai/DECISIONS.md"
-      - "ai/IMPLEMENTATION_PLAN.md"
-      - "ai/PROMPTS.md"
-      - "ai/REQUIREMENTS.md"
-      - "ai/REVIEWS.md"
-      - "ai/STATUS.md"
-      - "ai/TASKS.md"
-      - "ai/TESTING.md"
-      - "ai/*.html"
-      - "ai/evidence/**"
-      - "ai/handoffs/**"
+      - "docs/project/ARCHITECTURE.md"
+      - "docs/project/DECISIONS.md"
+      - "docs/project/IMPLEMENTATION_PLAN.md"
+      - "docs/project/PROMPTS.md"
+      - "docs/project/REQUIREMENTS.md"
+      - "docs/project/REVIEWS.md"
+      - "docs/project/STATUS.md"
+      - "docs/project/TASKS.md"
+      - "docs/project/TESTING.md"
+      - "docs/project/*.html"
+      - "docs/project/evidence/**"
+      - "docs/project/handoffs/**"
       # **`docs/` is enumerated rather than globbed, and `docs/YTDLP_OPTION_AUDIT.md` is the
       # reason** (`T-183`). This was `docs/**` when nothing under `docs/` was read by a test. The
       # audit is: `tests/unit/test_option_audit.py` opens it and checks it against the option keys
@@ -176,7 +176,7 @@ jobs:
               || fromJSON('["ubuntu-latest","windows-latest"]') }}
 
     env:
-      # ai/TESTING.md §2: the UI suite runs headless. tests/ui/conftest.py sets the same value
+      # docs/project/TESTING.md §2: the UI suite runs headless. tests/ui/conftest.py sets the same value
       # via setdefault for local runs; setting it here makes CI's behavior explicit rather
       # than inherited.
       QT_QPA_PLATFORM: offscreen
@@ -283,7 +283,7 @@ jobs:
       # without it.
       #
       # Adding the venv to GITHUB_PATH rather than calling it by path in every step keeps the
-      # commands below identical to the ones `ai/TESTING.md` §4 publishes.
+      # commands below identical to the ones `docs/project/TESTING.md` §4 publishes.
       - name: Create the virtualenv
         run: |
           python -m venv .venv
@@ -359,7 +359,7 @@ jobs:
         run: python .github/scripts/qt_baseline.py 2>&1 | tee "reports/qt-baseline.txt"
 
       - name: Tests
-        # Network tests stay excluded by the addopts in pyproject.toml (ai/TESTING.md §10).
+        # Network tests stay excluded by the addopts in pyproject.toml (docs/project/TESTING.md §10).
         #
         # The `process_tree` tests are back in this run as of `T-019`. They had their own step
         # for one day, because `T019-R1` found the marker excluding them from CI as well as
@@ -384,7 +384,7 @@ jobs:
         #
         #       * **nothing shared is written** — every per-user directory is redirected into the
         #         test's own `tmp_path` by the autouse fixture in `tests/conftest.py`, the one
-        #         `ai/TESTING.md` §5 always required and nobody had built. The same run left
+        #         `docs/project/TESTING.md` §5 always required and nobody had built. The same run left
         #         **241 job logs in the real user cache** before it existed and **0** after;
         #       * **nothing reaps what it did not start** — `psutil.process_iter` appears nowhere
         #         under `tests/unit` or `tests/ui`, which is the property parallelism breaks and
@@ -475,7 +475,7 @@ jobs:
   # added a control to the progress view's focus chain, both while `STARBASE` was unreachable.
   # Both merged against green CI and both failed on the first run after the machine returned.
   # This job always runs, costs seconds on Linux, and puts the gap in the run rather than only in
-  # `ai/DECISIONS.md`.
+  # `docs/project/DECISIONS.md`.
   starbase-coverage:
     name: STARBASE coverage
     # **On the maintainer's Linux machine, not a hosted image** (maintainer ruling, 2026-08-11:
@@ -625,7 +625,7 @@ jobs:
       # without it.
       #
       # Adding the venv to GITHUB_PATH rather than calling it by path in every step keeps the
-      # commands below identical to the ones `ai/TESTING.md` §4 publishes.
+      # commands below identical to the ones `docs/project/TESTING.md` §4 publishes.
       # **The virtualenv persists between runs on this machine**, because building it is 111 s of
       # the 13 minutes and this runner's disk survives — measured in run `30861672178`.
       #
@@ -770,7 +770,7 @@ jobs:
         run: python .github/scripts/qt_baseline.py 2>&1 | tee "reports/qt-baseline.txt"
 
       - name: Full suite
-        # **Offscreen on purpose, unlike the desktop slice above.** `ai/TESTING.md` §2 runs the
+        # **Offscreen on purpose, unlike the desktop slice above.** `docs/project/TESTING.md` §2 runs the
         # UI suite headless; the real-plugin assertions are the `windows_desktop` marker's job
         # and already ran.
         #
@@ -982,7 +982,8 @@ jobs:
           # **What the job now measures is in `OPS-012`**: a Fedora-built artifact links Fedora's
           # glibc, so this stops being evidence that the frozen build runs on an older distro.
           # `REL-001`'s release build is Phase 5 and must revisit where Linux artifacts are
-          # produced. Historical citations of `frozen ubuntu-latest` in `ai/` stay as written —
+          # produced. Historical citations of `frozen ubuntu-latest` in the coordination documents stay as
+          # written —
           # those runs did happen on Ubuntu (`AGENTS.md` §6).
           - name: linux
             runner: ${{ fromJSON(vars.LINUX_RUNNER || '"ubuntu-latest"') }}
@@ -1101,7 +1102,7 @@ jobs:
       # without it.
       #
       # Adding the venv to GITHUB_PATH rather than calling it by path in every step keeps the
-      # commands below identical to the ones `ai/TESTING.md` §4 publishes.
+      # commands below identical to the ones `docs/project/TESTING.md` §4 publishes.
       - name: Create the virtualenv
         run: |
           python -m venv .venv
@@ -1189,7 +1190,7 @@ jobs:
         # T198-R2. The steps above build the artifact, probe its bundled baseline and run the
         # generic spawn smoke — none of them ever invokes the updater, resolves an installed
         # copy in a spawned child, or reverts. Two green frozen jobs therefore said nothing
-        # about T-198's criterion 4, and ai/TESTING.md's release-gate item 10 names the missing
+        # about T-198's criterion 4, and docs/project/TESTING.md's release-gate item 10 names the missing
         # sequence independently: download, extract, resolve the new version, revert.
         #
         # This runs that sequence inside the artifact, on both platforms, through the same

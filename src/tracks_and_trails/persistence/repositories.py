@@ -4,12 +4,12 @@ Two properties are the whole point of this module.
 
 **The queue survives an unclean kill.** WAL gives crash-safe commits (`db.configure`); this
 layer's contribution is that every write is a single committed statement, so there is no state
-in which half a job is stored. `ai/TESTING.md` §7 requires that be proven by killing a real
-process, not by closing a connection politely.
+in which half a job is stored. `docs/project/TESTING.md` §7 requires that be proven by killing a
+real process, not by closing a connection politely.
 
 **A job's `DownloadRequest` is frozen at creation.** It is stored with the job so a retry after
 a settings change reproduces the *original* request rather than current defaults
-(`ARCHITECTURE.md` §5, §8) — `ai/TESTING.md` §7's "settings freeze" area.
+(`ARCHITECTURE.md` §5, §8) — `docs/project/TESTING.md` §7's "settings freeze" area.
 
 **What is deliberately not stored** (`REQ-026`, `NFR-007`, and the `T-014` scope decision of
 2026-07-26): a proxy's embedded credentials are stripped before the request is serialized. The
@@ -43,9 +43,9 @@ from tracks_and_trails.core.models import Job as JobModel
 #: restart intact." `T-080` removed the status — `UX-001`'s pause is a queue-level drain that never
 #: changes a job's own status — so the exclusion it explained no longer has anything to exclude.)*
 #:
-#: `ARCHITECTURE.md` §5 names all three. `T-014`'s acceptance criterion and `ai/TESTING.md` §7
-#: mention only `RUNNING`; the architecture outranks both (`AGENTS.md` §5), and recovering only
-#: `RUNNING` would leave a job stuck in `PROBING` forever with no path out.
+#: `ARCHITECTURE.md` §5 names all three. `T-014`'s acceptance criterion and
+#: `docs/project/TESTING.md` §7 mention only `RUNNING`; the architecture outranks both (`AGENTS.md`
+#: §5), and recovering only `RUNNING` would leave a job stuck in `PROBING` forever with no path out.
 INTERRUPTED_ON_STARTUP: Final = frozenset(
     {JobStatus.PROBING, JobStatus.RUNNING, JobStatus.POST_PROCESSING}
 )
@@ -562,7 +562,7 @@ class JobRepository:
     def recover_interrupted(self, *, now: datetime | None = None) -> list[str]:
         """Move jobs left in flight by an unclean exit to a retryable failure. Returns their ids.
 
-        `ARCHITECTURE.md` §5 and `ai/TESTING.md` §7. A job cannot be probing, running or
+        `ARCHITECTURE.md` §5 and `docs/project/TESTING.md` §7. A job cannot be probing, running or
         post-processing if the application is only now starting, so a row that says so is
         describing a state that ended when the process died.
 

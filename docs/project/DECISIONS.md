@@ -6,7 +6,7 @@ requirements or design — those live in `REQUIREMENTS.md` and `ARCHITECTURE.md`
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-26
+**Last updated:** 2026-09-08
 **Update when:** A durable choice is accepted, superseded, or deliberately rejected.
 **Does not contain:** Completion notes for routine work. Routine fixes go to `TASKS.md` and `CHANGELOG.md`.
 
@@ -128,8 +128,8 @@ review-partitioning rules**, recorded in `AGENTS.md` §9 with §3, §4, §7, §1
 match. Serial work on `main` remains the default. A parallel wave is opened by the maintainer
 per wave; an agent never starts one, creates its branches, or splits a task into workers on its
 own. During a wave: one branch and one worktree per task, one writer each, an exclusive write
-set, coordinator-only writes to `ai/TASKS.md` and `ai/STATUS.md`, reviewer-written
-`ai/reviews/T-0NN.md` records, approval frozen to one implementation head, and serial
+set, coordinator-only writes to `docs/project/TASKS.md` and `docs/project/STATUS.md`, reviewer-written
+`docs/project/reviews/T-0NN.md` records, approval frozen to one implementation head, and serial
 integration followed by verification of the combined tree.
 
 Only those deltas were applied deliberately. The rest of the gap between 2026-07-18.1 and
@@ -154,7 +154,7 @@ other agent's code and believe its own passed.
   needs no coordination and produces the same reviewable base/head pairs.
 - **Branches without separate worktrees** — rejected. This is the exact configuration that has
   already destroyed work here; one checkout cannot hold two writers.
-- **Keep the monolithic `ai/REVIEWS.md` during waves** — rejected. Parallel reviewers appending
+- **Keep the monolithic `docs/project/REVIEWS.md` during waves** — rejected. Parallel reviewers appending
   to one file on separate branches conflict on every merge.
 - **Let an agent open a wave when it judges the work parallelizable** — rejected. The
   qualification test needs knowledge of what else is in flight, and the cost of a wrong call is
@@ -162,7 +162,7 @@ other agent's code and believe its own passed.
 
 ### Consequences
 
-- `ai/reviews/` is created on first use, not now.
+- `docs/project/reviews/` is created on first use, not now.
 - A wave adds coordinator overhead: qualification, base selection, write-set assignment,
   serial integration, combined verification, and cleanup.
 - `-m process_tree` tests stay single-slot across worktrees; they cannot be parallelized.
@@ -171,7 +171,7 @@ other agent's code and believe its own passed.
 
 ### Affected files
 
-`AGENTS.md`, `ai/REVIEWS.md`, `ai/PROMPTS.md`.
+`AGENTS.md`, `docs/project/REVIEWS.md`, `docs/project/PROMPTS.md`.
 
 ---
 
@@ -243,7 +243,7 @@ Explicit disposition preserves the observation without pretending it was priorit
 
 ### Affected files
 
-`AGENTS.md`, `ai/REVIEWS.md`, `ai/TASKS.md`.
+`AGENTS.md`, `docs/project/REVIEWS.md`, `docs/project/TASKS.md`.
 
 ---
 
@@ -292,7 +292,97 @@ severity and disposition honest.
 
 ### Affected files
 
-`AGENTS.md`, `ai/REVIEWS.md`, `ai/TASKS.md`.
+`AGENTS.md`, `docs/project/REVIEWS.md`, `docs/project/TASKS.md`.
+
+---
+
+## DOC-006 — Adopt convention revision 2026-09-08.1 and the neutral coordination layout
+
+**Status:** Accepted
+**Date:** 2026-09-08
+**Supersedes:** the layout half of `DOC-001`. `DOC-001`'s profile choice and role mapping stand.
+
+### Context
+
+Two things arrived together. The maintainer decided this repository should become public so the
+work can be shown to employers, and the *AI-Assisted Project Documentation Convention* was revised
+to **2026-09-08.1**, which adds a **public-ready by default** baseline and moves the coordination
+root from `ai/` to `docs/project/`.
+
+The convention's retrofit section asks for that move to be made as **one bounded migration** rather
+than drifting into place, and asks the adoption itself to be recorded here.
+
+### Decision
+
+Adopt convention revision **2026-09-08.1**, keeping the **Standard** profile, adding **UI-heavy**
+(`docs/UX_SPEC.md` already exists and `DOC-002` deferred the label, not the file), and recording
+the delivery target as an **installed desktop application**.
+
+Concretely, in one change:
+
+- `ai/` moved to `docs/project/`, with every path reference updated — workflows, tests, source
+  comments, `pyproject.toml`'s per-file ignores, `.gitignore`, `.gitattributes`, `.gitmessage`.
+- `SECURITY.md` added at the repository root. The application handles cookie material and proxy
+  credentials, runs on a network, and is intended for public distribution; the convention's own
+  criteria for that file are met several times over.
+- `README.md` rewritten product-first. The old one said *"pre-alpha, planning only. No code exists
+  yet"* while 58 source modules and a working application sat beside it.
+- Document `Owner:` fields made capability roles. Three named a tool: `AGENTS.md`,
+  `docs/project/TESTING.md`, and `docs/project/REVIEWS.md`.
+
+### Rationale
+
+`Owner` is an update-responsibility field, not a byline, and the convention is explicit that
+named-tool assignment belongs in one operational mapping rather than in every document's header.
+That mapping already exists in `AGENTS.md` §3 and is unchanged, so nothing about how work is
+actually routed changed here — the roles were never carried by the metadata.
+
+The layout move is the larger half, and its value is that shared engineering knowledge sits in a
+neutral location. Requirements, architecture, decisions, tasks, and reviews belong to the project,
+not to the tooling that happened to write them.
+
+### Alternatives considered
+
+- **Keep `ai/` and change only the framing** — rejected. The convention names the migration
+  specifically, and a directory called `ai/` beside `docs/` invites exactly the misreading that
+  the coordination documents are a tooling artifact rather than the project's record.
+- **Remove the coordination documents from the public repository** — rejected. The review record is
+  the most honest evidence this project has of how it was built, including the parts where the
+  reviewer found the implementation wrong. Hiding it would trade the strongest artifact for a
+  cosmetic gain.
+- **Rewrite history to remove tool names from commit subjects** — rejected. Eighteen subjects name
+  the reviewer. The convention forbids cosmetic rewriting of development history, and independently
+  it would not work: the coordination documents cite several hundred short SHAs, and re-writing
+  1306 commits invalidates every one of those citations.
+
+### Consequences
+
+Four deliberate deviations are in force, each recorded rather than silently taken:
+
+1. **`AGENTS.md` is 628 lines**, against the convention's soft review trigger of roughly 200–300.
+   It is **not** restructured here. Its section numbers are cited from 359 places — source
+   comments, `pyproject.toml`, `tools/commit_message_check.py`, and the coordination documents —
+   and renumbering them in the same change that moves every path would make one large mechanical
+   migration into two. Filed as `T-300`.
+2. **Path references inside historical records were updated; their claims were not.** `REVIEWS.md`,
+   `TASKS.md`, `STATUS.md`, and this file had `ai/FILE.md` rewritten to `docs/project/FILE.md` so
+   links resolve. Bare `ai/` mentions in historical prose — a `paths-ignore` glob a past decision
+   argued about, for instance — are left exactly as written, because those describe what was true
+   at the time. `DOC-001` still says `ai/`, and should.
+3. **Evidence lives at `docs/project/evidence/`.** The convention names no evidence directory; this
+   keeps it beside the records that cite it.
+4. **`REVIEWS.md` stays monolithic.** Partitioned mode is recommended for parallel work, and this
+   project is serial with one writer.
+
+`CHANGELOG.md` is still absent, correctly: there are no releases. It becomes required at the first
+tagged one, with `docs/RELEASE.md`, under Phase 5.
+
+### Affected files
+
+`README.md`, `SECURITY.md`, `AGENTS.md`, all of `docs/project/`, `docs/DEVELOPMENT.md`,
+`docs/WINDOWS_VERIFICATION.md`, `.github/workflows/`, `pyproject.toml`, `.gitignore`,
+`.gitattributes`, `.gitmessage`, `tools/windows/run-on-starbase.sh`, and every test and source
+file that named a coordination document.
 
 ---
 
@@ -600,7 +690,7 @@ every report is unactionable.
   extraction. It executes code the user did not write; treat it as a supply-chain surface.
 - Bumping the baseline is a release-gate step.
 - A future yt-dlp release that adds a **required** compiled dependency breaks this mechanism.
-  The release gate re-checks purity (`ai/TESTING.md` §8).
+  The release gate re-checks purity (`docs/project/TESTING.md` §8).
 
 ---
 
@@ -791,7 +881,7 @@ no other coverage.
 - `T-026` implements the expanded verification, less the installer half. On acceptance that
   half was split into `T-039`, because an installer only exists in Phase 5 and `T-026` is what
   closes Phase 0's remaining exit criterion — it has to be completable now.
-- The pre-release manual Windows session (`ai/TESTING.md` §9) shrinks to the subjective list
+- The pre-release manual Windows session (`docs/project/TESTING.md` §9) shrinks to the subjective list
   above, and should be rewritten when `T-026` lands.
 - `REQUIREMENTS.md` §3's "known-unverified" wording for Windows becomes too broad once the
   objective half is automated.
@@ -883,7 +973,7 @@ distributed binary, not to our source.
   repository. The distributed Windows installer bundles LGPLv3 Qt and LGPL ffmpeg, so the
   *artifact* still carries LGPL duties: ship the license texts, and keep those libraries
   dynamically linked so a user could substitute their own build. Both are true at once, and
-  the release gate checks the second (`ai/TESTING.md` §8).
+  the release gate checks the second (`docs/project/TESTING.md` §8).
 - Static linking of Qt is prohibited (`NFR-009`). Unchanged by this decision.
 - Contributions are accepted under MIT; this should be stated when the repository goes public.
 - `T-004` is complete. `LICENSE` exists at the repository root.
@@ -956,7 +1046,7 @@ path-safety checks are more reliable as assertions than as a human watching Task
 
 - **Blocking before the first public release:** the "not automatable" list above must be
   discharged by a real Windows session — the maintainer's, a tester's, or a rented cloud
-  desktop. Recorded as a Phase 5 release-gate item (`ai/TESTING.md` §8, §9).
+  desktop. Recorded as a Phase 5 release-gate item (`docs/project/TESTING.md` §8, §9).
 - `T-006` is a bigger task than a typical CI setup, because CI is carrying verification load
   that manual testing would otherwise carry.
 - Phase 4's accessibility exit criteria can be fully met on Linux only; the Windows half is
@@ -1205,7 +1295,7 @@ verbatim storage, with `REQ-026` read as binding on values this application supp
 and is what everything below rests on.
 
 **Amended rather than rewritten in place.** `T-049` asked for the table to be rewritten; `AGENTS.md`
-§6 makes `ai/DECISIONS.md` a historical record that is appended to and never silently rewritten. The
+§6 makes `docs/project/DECISIONS.md` a historical record that is appended to and never silently rewritten. The
 superseded rows stay above so the overstatement is visible, which is the point of finding it.
 
 #### Three things the table got wrong
@@ -1227,7 +1317,7 @@ so no path reaches the database — but "none exist" describes current callers, 
 **3. "the only residue" cannot be established.** It is an exhaustive claim about the contents of
 arbitrary third-party prose. yt-dlp can name anything in a diagnostic, and no reading of its source
 at one version bounds what a later one says. This is the enumeration failure `T-044`, `T-045` and
-`T-014` each produced and `ai/TESTING.md` §13 records — an enumerated set treated as complete.
+`T-014` each produced and `docs/project/TESTING.md` §13 records — an enumerated set treated as complete.
 
 #### The boundary, stated as provenance
 
@@ -1277,7 +1367,7 @@ this application supplies. That is unchanged and is still what everything rests 
 #### Why this was needed before any code
 
 `T-197`'s entry says re-opening this decision is out of its scope. **That line is wrong**, and
-`AGENTS.md` §5 is why: this file outranks `ai/TASKS.md`, and the condition above says the decision
+`AGENTS.md` §5 is why: this file outranks `docs/project/TASKS.md`, and the condition above says the decision
 *"must be revisited **before** [cookie-file support] lands, not after"*. Two of `T-197`'s central
 criteria trip conditions — a cookie file path is row one acquiring its first member, and a
 validator on `cookies_from_browser` is the second trigger by name. The task entry is corrected
@@ -1872,7 +1962,7 @@ lands in Phase 5**, next to `T-033`, which is where a Windows frozen build gets 
 
 `OPS-005`'s Context named `T-056` and `T-068`; this amendment names a third task, and the title's
 rule was always the general statement. Reading the two examples as exhaustive is the failure class
-`T-044`, `T-045` and `T-014` each produced and `ai/TESTING.md` §13 records — an enumerated set
+`T-044`, `T-045` and `T-014` each produced and `docs/project/TESTING.md` §13 records — an enumerated set
 treated as complete. The condition is *hosted-only and unreachable*, not *one of two named tasks*.
 
 **This amendment reopens** if the frozen shape is ever measured and differs from the assumption
@@ -1881,7 +1971,7 @@ a real finding rather than an unobtainable one.
 
 *(A reviewer's final disposition on 2026-07-29 recorded "the explicit `T-066` frozen-artifact
 evidence blocker remains" — written before this amendment and without reference to `OPS-005` or
-`OPS-006`. It stands in `ai/REVIEWS.md` as what was said on the evidence then; this supersedes it
+`OPS-006`. It stands in `docs/project/REVIEWS.md` as what was said on the evidence then; this supersedes it
 rather than erasing it.)*
 
 ---
@@ -2238,7 +2328,7 @@ its platform and signal differ, and `a stack is not a cause` — this entry's ow
 recommendation
 **Date:** 2026-07-29
 **Supersedes:** nothing. **Amends** `REQ-015`, which read *"Per job, support cancel, pause, resume,
-retry, and remove"*. The amendment landed in `ai/REQUIREMENTS.md` on 2026-07-29; this entry is its
+retry, and remove"*. The amendment landed in `docs/project/REQUIREMENTS.md` on 2026-07-29; this entry is its
 rationale, which `P2PLAN-R2` found had no durable home.
 
 ### Context
@@ -2278,7 +2368,7 @@ cancels it first, within the same 2-second budget `REQ-015` sets for cancel.
 - **`_TRANSITIONS`' `PAUSED` edges are now unreachable, and that is a defect to resolve rather than
   a curiosity.** `T-080` owns either removing them or recording why a state nothing reaches is kept.
   An unreachable state reads as capability and is not — the same shape as a guard nobody watches
-  fail (`ai/TESTING.md` §13).
+  fail (`docs/project/TESTING.md` §13).
 - `T-080` must be retitled and rewritten from this decision; `P2PLAN-R1` reports that its Scope
   still quotes the pre-amendment requirement while its acceptance criteria describe queue-level
   behaviour, so an implementer currently receives contradictory instructions.
@@ -2609,7 +2699,7 @@ decision rather than a patch, because the history says the next clever fix will 
 
 ### Decision
 
-**None of the three is closed. The gate stands as it is, and `ai/TESTING.md`'s statement of its
+**None of the three is closed. The gate stands as it is, and `docs/project/TESTING.md`'s statement of its
 promise remains the durable description of what it does not cover.**
 
 ### Rationale
@@ -2633,7 +2723,7 @@ to the module's structure, and the second is the part a reviewer can check.
 - **Five attempts died to enumeration.** `T044-R1` was found six times. Every fix that recognised
   more syntax was beaten by syntax the author had not named, and three attempts to state the
   coverage overclaimed and were disproved. This is the `T-044`/`T-045`/`T-014` failure class, and
-  `ai/TESTING.md` §13 records it.
+  `docs/project/TESTING.md` §13 records it.
 - **The gate catches what it exists to catch.** An accidental `get_ytdlp_version()` appears in
   `vars()` under any binding syntax. That is the defect `ARCHITECTURE.md` §6 cares about.
 - **§6's boundary has two other guards.** The layering test and review both bind it independently, so
@@ -2665,7 +2755,7 @@ set that follows from the gaps' own definitions, rather than for bindings.
 ### Consequences
 
 - `T-047` closes. Nothing in `src/` or `tests/` changed for it.
-- **`T-098`** owns the premise guard and `ai/TESTING.md`'s reopening conditions.
+- **`T-098`** owns the premise guard and `docs/project/TESTING.md`'s reopening conditions.
 - **This decision reopens** if `downloader/environment.py` gains a module-scope guard, an
   import-with-fallback, or any dynamic namespace manipulation — each of which makes one specific gap
   reachable — or if the gate is ever proposed to bind a second module with a different shape.
@@ -3372,7 +3462,7 @@ row keeps §3's anatomy exactly.
   measurement, not a preference**: at 1180 px the step consumes the width that was carrying
   `--ffmpeg-location`, and the extractor's message elides to `--ff…`. That is `NFR-006`'s
   *surfaced, never swallowed* clause paying for `NFR-006`'s *what the user can do* clause, which is
-  not a trade this entry will make. `ai/evidence/2026-08-14-T201-next-step-option-a.png` is the
+  not a trade this entry will make. `docs/project/evidence/2026-08-14-T201-next-step-option-a.png` is the
   rendering.
 - **Replacing the format line on a failed row** was refused because §6 makes plain format text the
   row's only statement of what a download ran as, and a failed row offers Retry — so it is
@@ -3388,7 +3478,7 @@ and is not given up again here.
 **Conditions of the ruling, all of which the correction meets:** the paint and the height derive
 from one role (`ACTION_ROLE`), the selector, progress bar and verbs move down with the line rather
 than being drawn over, and the same text reaches the row's accessible description — `NFR-005` does
-not let a fact be added for the eye alone. `ai/evidence/2026-08-14-T201-next-step-option-c.png` is
+not let a fact be added for the eye alone. `docs/project/evidence/2026-08-14-T201-next-step-option-c.png` is
 the ruled layout at the head that built it; `tools/failed_row_screenshot.py` regenerates it.
 
 **Everything else in this entry stands**, §2's ban on a detail pane included. The line is the row
@@ -3850,7 +3940,7 @@ runs did happen on Ubuntu; rewriting them would falsify the historical record to
 
 ### Consequences
 
-- `ai/TESTING.md` §10 is canonical for what runs where and follows this entry.
+- `docs/project/TESTING.md` §10 is canonical for what runs where and follows this entry.
 - `docs/DEVELOPMENT.md` gains the runner-registration procedure; the labels are part of the
   contract, since `LINUX_RUNNER` names them.
 - Unsetting `LINUX_RUNNER` restores hosted Linux with no other change — the same one-variable
@@ -3876,8 +3966,8 @@ cancellations and no Windows evidence**:
 | `30971854157` | `1d87929` | roadmap prose | success, 17m50s |
 | `30973364969` | `a884035` | **the only source change** | cancelled at 8m56s |
 | `30973765745` | `6b354f0` | roadmap prose | cancelled at 14m46s — `windows desktop` had passed |
-| `30974489596` | `a89ace2` | `ai/TASKS.md` — `T-144` filed | cancelled at 2m27s |
-| `30974585294` | `d6f50a9` | `ai/TASKS.md` — `T-145` filed | superseded in turn |
+| `30974489596` | `a89ace2` | `docs/project/TASKS.md` — `T-144` filed | cancelled at 2m27s |
+| `30974585294` | `d6f50a9` | `docs/project/TASKS.md` — `T-145` filed | superseded in turn |
 
 **Not one of the cancelled runs carried a source change.** `a884035`'s tree stayed byte-identical
 to `main` across `src/`, `tests/`, `packaging/`, `tools/` and `.github/` throughout — every one of
@@ -3888,17 +3978,17 @@ slot, so Windows needs **~19 uninterrupted minutes**; task filings were landing 
 minutes**. Under `cancel-in-progress`, Windows evidence for the source could not complete at all,
 and criterion 8 stayed unevidenced for reasons that had nothing to do with the code.
 
-Two of the offending paths — `ai/roadmap-phase-2.html` and `ai/TASKS.md` — were outside
-`OPS-009`'s list. The roadmap by oversight. **`ai/TASKS.md` deliberately**, because
+Two of the offending paths — `ai/roadmap-phase-2.html` and `docs/project/TASKS.md` — were outside
+`OPS-009`'s list. The roadmap by oversight. **`docs/project/TASKS.md` deliberately**, because
 `tests/unit/test_task_placement.py` (`T-096`) reads it.
 
 ### Decision
 
 1. **Every prose file in the repository is exempt from `ci.yml`**, enumerated in its
-   `paths-ignore` anchor: the eight `ai/*.md` documents, `ai/*.html`, `ai/evidence/**`,
-   `ai/handoffs/**`, `docs/**`, `AGENTS.md`, `README.md` and `LICENSE`. Enumerated rather than
+   `paths-ignore` anchor: the eight `ai/*.md` documents, `docs/project/*.html`, `docs/project/evidence/**`,
+   `docs/project/handoffs/**`, `docs/**`, `AGENTS.md`, `README.md` and `LICENSE`. Enumerated rather than
    globbed as `ai/**`, so that adding a file is a deliberate act.
-2. **`ai/TASKS.md` is exempt too, and its gate moved to `.github/workflows/prose.yml`** — a job
+2. **`docs/project/TASKS.md` is exempt too, and its gate moved to `.github/workflows/prose.yml`** — a job
    that runs `tests/unit/test_task_placement.py` and nothing else. **The coverage is unchanged;
    only its cost is.** The test imports `re`, `pathlib` and `pytest` — verified, not assumed — so
    it needs no package install, no Qt and no Windows, and it completes in seconds against ~19
@@ -3917,7 +4007,7 @@ Every test that ran before still runs, on both platforms, on every commit that c
 test reads. What changes is that a commit which cannot affect any test no longer pretends to be
 evidence — and no longer destroys somebody else's.
 
-The `T-096` placement gate is the case that proves it: the cheap move was to add `ai/TASKS.md` to
+The `T-096` placement gate is the case that proves it: the cheap move was to add `docs/project/TASKS.md` to
 `paths-ignore` and stop, which would have silently deleted a gate as a side effect of a speed
 change. That is the `P2EXIT-R4` shape, and it was refused.
 
@@ -3932,7 +4022,7 @@ change. That is the `P2EXIT-R4` shape, and it was refused.
 
 ### Consequences
 
-- `ai/TESTING.md` §10 is canonical for what runs when and follows this entry.
+- `docs/project/TESTING.md` §10 is canonical for what runs when and follows this entry.
 - The three cancelled runs above need no re-run *as such*: the next push that touches source will
   carry the evidence, and until then `a884035`'s source is unchanged from `main`.
 
@@ -3996,7 +4086,7 @@ comment could not carry.
 
 ### Consequences
 
-- `ai/TESTING.md` §10 is the canonical statement of what runs when, and follows this entry.
+- `docs/project/TESTING.md` §10 is the canonical statement of what runs when, and follows this entry.
 - The `STARBASE coverage` job says when the hosted Windows leg did not run, so the surrender is
   visible in the run rather than only here.
 - **Three Windows jobs serialise on one runner slot**, so a push takes roughly 19 minutes to
@@ -4063,9 +4153,9 @@ some other split. Three considerations, stated so the choice is informed rather 
 
 **Ruled by the maintainer, 2026-08-03**, on all four points, with one addition of theirs:
 
-1. **Documentation commits no longer trigger CI.** `paths-ignore` covers `ai/REVIEWS.md`,
-   `ai/handoffs/**` and `docs/**` — deliberately *not* all of `ai/`, because
-   `tests/unit/test_task_placement.py` reads `ai/TASKS.md` and a filter written against "docs" as
+1. **Documentation commits no longer trigger CI.** `paths-ignore` covers `docs/project/REVIEWS.md`,
+   `docs/project/handoffs/**` and `docs/**` — deliberately *not* all of `ai/`, because
+   `tests/unit/test_task_placement.py` reads `docs/project/TASKS.md` and a filter written against "docs" as
    a category would skip a gate.
 2. **A skipped self-hosted job says so.** The `STARBASE coverage` job always runs, costs seconds
    on Linux, and emits a warning naming what did *not* execute.
@@ -4099,7 +4189,7 @@ Both are larger or safer than moving a job, and neither costs any coverage.
 filter, so editing a file under `ai/` runs the full matrix — including two Windows jobs at 2×. A
 `paths-ignore` for `ai/**` and `docs/**` removes a whole category of spend and weakens no gate,
 because no test reads those files. *(The one caveat: `tests/unit/test_task_placement.py` and the
-schema-drift tests do read `ai/TASKS.md` and `persistence/schema.sql`, so the filter has to be
+schema-drift tests do read `docs/project/TASKS.md` and `persistence/schema.sql`, so the filter has to be
 written against paths nothing asserts on, not against "docs" as a vibe.)*
 
 **`cancel-in-progress: true` discards evidence as readily as it saves minutes.** It is the right
@@ -4203,7 +4293,7 @@ omitted the sidecars that are the actual residue. The mistake was assuming a lim
 measuring one.)*
 
 **One consequence worth naming.** `0009` is the only destructive migration in the project, and it
-inverted a test that had been correct since `T-014`: `ai/TESTING.md` §7's rule that every seeded row
+inverted a test that had been correct since `T-014`: `docs/project/TESTING.md` §7's rule that every seeded row
 survives every migration. That rule now covers `jobs` only, and the purge carries its own regression
 proving the opposite for `history` — including that the plaintext is absent from *every* table
 afterwards, so a future migration that "preserved" the record by relocating it fails rather than
@@ -4510,7 +4600,7 @@ typed field or refusal-list entry for those families may be written until it is 
 ## UX-007 — The Phase 3 surfaces, ruled: all 25 open `[P]` clauses
 
 **Status:** **Accepted** (2026-08-07) — maintainer decision, taken question by question from the
-Planner's recommendations in `ai/handoffs/2026-08-07-ux-spec-ruling-pack.md`
+Planner's recommendations in `docs/project/handoffs/2026-08-07-ux-spec-ruling-pack.md`
 **Date:** 2026-08-07
 **Supersedes:** nothing. **Ratifies** every `[P]` clause in `docs/UX_SPEC.md` §10, which §1 barred
 any task from building until it was ruled on. **Three are ratified against what the file
@@ -4957,7 +5047,7 @@ its job. Then it hit a column no source supplies.
 **`fps` is reported by none of the seven acceptable sources probed** on 2026-08-07: four Wikimedia
 Commons files (Caminandes, Big Buck Bunny, Sintel, Tears of Steel) and three archive.org items.
 Commons supplies codecs and bitrate — which is why `wikimedia_caminandes` was captured — and carries
-`fps` on no format. The constraint is `ai/TESTING.md` §5: sources must be freely licensed, unsigned
+`fps` on no format. The constraint is `docs/project/TESTING.md` §5: sources must be freely licensed, unsigned
 and unlikely to change. A site that reported `fps` and churned weekly would satisfy the criterion's
 letter and break the property §5 chose these sources for.
 
@@ -4995,7 +5085,7 @@ that makes a criterion change checkable after the conversation that produced it 
 ### Consequences
 
 - **`T-107`'s criterion is amended** to the wording above; the task record and
-  `ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md` cite this entry rather than an unattributed
+  `docs/project/evidence/2026-08-07-format-table-vs-yt-dlp-f.md` cite this entry rather than an unattributed
   "the maintainer".
 - **Phase 3 exit criterion 1 is read against the amended wording**, and the board says so.
 - **The general rule, for the criteria still ahead:** a recorded-evidence requirement binds a column
@@ -5009,7 +5099,7 @@ that makes a criterion change checkable after the conversation that produced it 
 - **Reject, and block `T-107` until a source supplies `fps`.** Rejected: seven acceptable sources
   report none, so this blocks the deliverable and its dependents on a search that has already
   failed.
-- **Relax `ai/TESTING.md` §5 to admit a churning source that reports `fps`.** Rejected: it satisfies
+- **Relax `docs/project/TESTING.md` §5 to admit a churning source that reports `fps`.** Rejected: it satisfies
   the criterion's letter by breaking the property the fixture set exists to have.
 - **Time-box it — require `T-185` resolved before Phase 3 exits.** Considered and not taken: the
   criterion would gain a deadline without gaining a source, and `T-185` closing as *"none exists"*
@@ -5295,7 +5385,7 @@ direction that opened it.
 `T-171` was opened on maintainer direction: *"file details are a better candidate for answering what
 settings produced this file than a permanent in-app library, but this is not yet permission to write
 private download context into every output."* It required a measurement before a choice, and
-`ai/evidence/2026-08-06-provenance-survival.md` is that measurement.
+`docs/project/evidence/2026-08-06-provenance-survival.md` is that measurement.
 
 The question is narrow and worth stating exactly, because a wider reading of this decision would be
 wrong: **should this application write its own record of how a file was produced into the file?**

@@ -27,8 +27,8 @@ what the versions are.
 
 `T269-R1` found the first version of this file measuring the wrong thing. It compared
 `importlib.metadata.version()` — the **distribution installed in the interpreter running pytest** —
-while `ai/TESTING.md` §4 and every CI step invoke bare `ruff` and `mypy`, which resolve through
-`PATH`. The reviewer put different executables first on `PATH`; all three tests passed while
+while `docs/project/TESTING.md` §4 and every CI step invoke bare `ruff` and `mypy`, which resolve
+through `PATH`. The reviewer put different executables first on `PATH`; all three tests passed while
 `ruff --version` reported the injected one. The docstring above had explicitly listed *"a tool
 installed globally and shadowing the venv"* as a case this file covers, and it did not.
 
@@ -123,9 +123,9 @@ def test_the_installed_distribution_is_the_declared_one(tool: str) -> None:
 def _version_reported_by(command: str) -> str:
     """The version `command --version` prints, resolved the way a shell resolves it.
 
-    No `sys.executable`, no `.venv/bin` prefix, no `-m`: `ai/TESTING.md` §4 says `ruff check .` and
-    `mypy src`, and CI's steps say the same. Whatever those words resolve to is what gates this
-    project, so that is what gets measured.
+    No `sys.executable`, no `.venv/bin` prefix, no `-m`: `docs/project/TESTING.md` §4 says `ruff
+    check .` and `mypy src`, and CI's steps say the same. Whatever those words resolve to is what
+    gates this project, so that is what gets measured.
     """
     reported = subprocess.run(
         [command, "--version"], capture_output=True, text=True, check=True
@@ -152,7 +152,8 @@ def test_the_command_the_gates_run_is_the_declared_one(tool: str) -> None:
     declared = _declared()[tool]
     resolved = shutil.which(tool)
     assert resolved is not None, (
-        f"no `{tool}` on PATH, so the command `ai/TESTING.md` §4 documents cannot run at all. "
+        f"no `{tool}` on PATH, so the command `docs/project/TESTING.md` §4 documents "
+        "cannot run at all. "
         'Install the dev extra and activate its environment: pip install -e ".[dev]"'
     )
 

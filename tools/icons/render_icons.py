@@ -86,7 +86,8 @@ records all three states rather than being rewritten.
 
 *(The trees at 32 px are soft, and that was measured rather than missed: they read as texture more
 than as three conifers, which `T-275` recorded and this module repeats so the next reader knows
-the cost was priced in. `ai/evidence/` carries the side-by-side and the on-screen before/after.)*
+the cost was priced in. `docs/project/evidence/` carries the side-by-side and the on-screen
+before/after.)*
 
 ## The Standard cut is vendored and never rendered
 

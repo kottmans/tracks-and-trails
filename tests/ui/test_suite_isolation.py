@@ -149,8 +149,8 @@ def test_a_test_that_leaks_a_view_is_the_test_that_fails() -> None:
     `~QAbstractItemView` reached from `_Py_HandlePending`, inside a test whose file constructs no
     view at all: a deferred deletion executing at an arbitrary bytecode boundary. Sixty runs did
     not reproduce it, so what is asserted here is not the segfault — it is that a leak now fails
-    **where it happens**, which is `ai/TESTING.md` §13's rule and the maintainer's reason for
-    authorising the guard.
+    **where it happens**, which is `docs/project/TESTING.md` §13's rule and the maintainer's reason
+    for authorising the guard.
 
     **The subprocess runs the real wiring**, not a copy of it: `_leaks_a_view.py` sits under
     `tests/ui/`, so `conftest.py`'s autouse fixture, the boundary drain and the orphan check all
@@ -192,7 +192,7 @@ def test_a_test_that_leaves_a_pool_thread_running_is_the_test_that_fails() -> No
     discarded whatever the test had made, busy or not — and a `QThreadPool` released with runnables
     in flight is destroyed by whichever thread collects it, where its destructor waits or aborts.
     That segfaulted this suite once inside a test that constructs no pool at all, which is
-    `ai/TESTING.md` §13's shape exactly: the useful signal is the one at the cause.
+    `docs/project/TESTING.md` §13's shape exactly: the useful signal is the one at the cause.
 
     **Two assertions, for the reason the view guard gives.** The run must fail, *and* it must fail
     with this fixture's message — a renamed node id or a fixture reduced to a no-op would otherwise

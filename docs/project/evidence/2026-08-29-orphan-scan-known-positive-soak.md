@@ -2,7 +2,7 @@
 
 **Taken:** 2026-08-29, soak run `33239854571` at `a7beb50`
 **Why:** the test failed on `windows desktop` at `0332a68` and passed at `75cd183`, trees differing
-by a workflow comment and a line in `ai/STATUS.md`. One observation is not a rate, and the test is
+by a workflow comment and a line in `docs/project/STATUS.md`. One observation is not a rate, and the test is
 the one that proves `find_orphans` can see a positive at all — `T-268` turns on what its silence
 means.
 

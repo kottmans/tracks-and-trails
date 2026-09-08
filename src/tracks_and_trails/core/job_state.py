@@ -7,9 +7,9 @@ The legal table lives here and nowhere else. Every component that changes a job'
 the download manager, the persistence layer, the UI — goes through `apply()`, so there is one
 place to read to know what can happen, and one place a mistake can be made.
 
-`ai/TESTING.md` §7 lists the state machine as mandatory coverage: *every* illegal transition
-must raise. The tests assert that over every ordered pair of statuses rather than a sampled
-list, so adding a status without adding its transitions fails the suite instead of quietly
+`docs/project/TESTING.md` §7 lists the state machine as mandatory coverage: *every* illegal
+transition must raise. The tests assert that over every ordered pair of statuses rather than a
+sampled list, so adding a status without adding its transitions fails the suite instead of quietly
 acquiring permissive behavior.
 """
 
@@ -52,7 +52,7 @@ TERMINAL: Final = frozenset({JobStatus.COMPLETED, JobStatus.CANCELLED})
 #:
 #: **The complement of "in flight or finished", written out rather than derived.** Deriving it as
 #: `set(JobStatus) - INTERRUPTED_ON_STARTUP - TERMINAL` would make the three agree
-#: unconditionally, which `ai/TESTING.md` §13 is about: a new status would silently become
+#: unconditionally, which `docs/project/TESTING.md` §13 is about: a new status would silently become
 #: reorderable and no test could tell. `test_the_reorderable_statuses_partition_the_enum` asserts
 #: the partition instead, so adding a status fails the suite until somebody decides its side.
 #:

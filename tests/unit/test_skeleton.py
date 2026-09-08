@@ -62,10 +62,10 @@ def test_entry_point_import_does_not_pull_in_qt() -> None:
 def test_the_root_conftest_does_not_pull_in_qt() -> None:
     """The root `conftest.py` is imported before every suite, including the Qt-free one.
 
-    `ai/TESTING.md` §1 makes `tests/unit/` headless and Qt-free on purpose, and that file's own
-    docstring claims the property — which its pool fixture then quietly retired by importing both
-    Qt-bearing pool modules for every test in the repository just to reset two module globals
-    (`T289-R23`). `sys.modules` answers the same question without loading anything.
+    `docs/project/TESTING.md` §1 makes `tests/unit/` headless and Qt-free on purpose, and that
+    file's own docstring claims the property — which its pool fixture then quietly retired by
+    importing both Qt-bearing pool modules for every test in the repository just to reset two module
+    globals (`T289-R23`). `sys.modules` answers the same question without loading anything.
 
     **In a subprocess, and entering the fixture rather than only importing the file**, for the
     reason `test_entry_point_import_does_not_pull_in_qt` gives one step further: this pytest

@@ -17,7 +17,7 @@
 # recorded under this script's name so far measured.
 #
 # Cores are kept by systemd on this machine, so a death is inspectable afterwards with
-# `coredumpctl list` — no `ulimit` change is needed. See `ai/TASKS.md` T-128.
+# `coredumpctl list` — no `ulimit` change is needed. See `docs/project/TASKS.md` T-128.
 
 set -uo pipefail
 

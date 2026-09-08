@@ -39,7 +39,7 @@ were wider than they were:
 | The option inventory | `yt_dlp.options.create_parser()` — the parser, not the README | Which options exist, their strings, their `dest` | **Yes** |
 | The application-owned keys | `build_options`, exercised over every branch | Which keys the application actually sets | **Yes**, both directions |
 | The forbidden options | `SEC-003` **with its 2026-08-21 amendment**, `SEC-004` and `SEC-005`, **both verdict sides parsed, later table winning** | That every option a decision forbids is `excluded`, that no option a decision **permits** is excluded, that no row is excluded without a decision behind it, and that a clause naming **both** verdicts is refused rather than resolved | **Yes** |
-| The typed decomposition | `ai/TASKS.md` § `T-247`…`T-255`, plus the **built table** below | That the nine tasks and the 21 built rows partition the typed class, and that each built row names a `DownloadRequest` field the model really has | **Yes** |
+| The typed decomposition | `docs/project/TASKS.md` § `T-247`…`T-255`, plus the **built table** below | That the nine tasks and the 21 built rows partition the typed class, and that each built row names a `DownloadRequest` field the model really has | **Yes** |
 | **`typed` versus `hatch`** | **Judgement.** No user has asked for any of these | Which of the 158 user-owned options gets a control | **No** |
 
 > **`T183-R4` is why this table has a fourth column.** The section previously said the test

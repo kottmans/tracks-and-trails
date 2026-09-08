@@ -218,7 +218,7 @@ def test_yt_dlp_screen_output_is_logged_at_info_not_debug() -> None:
 
     yt-dlp calls `logger.debug` for its ordinary screen output. The worker's handler sits at
     `INFO`, so routing that straight to `DEBUG` would create the job log, leave it empty, and look
-    entirely correct — `ai/TESTING.md` §13's "guards that cannot fire" in its other form.
+    entirely correct — `docs/project/TESTING.md` §13's "guards that cannot fire" in its other form.
     """
     seen: list[tuple[int, str]] = []
 
@@ -254,7 +254,7 @@ def test_a_percent_sign_in_yt_dlp_s_output_survives_to_the_file(tmp_path: Path) 
     survived: `logging` applies `%`-formatting only when a record carries args, so both spellings
     behave identically and the defensive form prevents nothing today. The spelling stays as the
     habit that keeps being right if args are ever added; the claim that it prevents a defect does
-    not, because nothing can demonstrate it (`ai/TESTING.md` §13).
+    not, because nothing can demonstrate it (`docs/project/TESTING.md` §13).
 
     What *is* worth asserting is the whole path: a percent sign reaches the file intact, through
     the formatter and the redaction rules, neither of which may consume it.

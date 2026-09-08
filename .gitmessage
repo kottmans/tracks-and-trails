@@ -9,7 +9,7 @@
 
 # - One discrete change per bullet, wrapped at 72 columns.
 # - Budget: ~150 words, at most ~8 bullets. Past that, split the commit
-#   or put the detail in ai/TASKS.md, where it can be revised.
+#   or put the detail in docs/project/TASKS.md, where it can be revised.
 
 # Task: T-0NN
 # Refs: ARC-002, REQ-011

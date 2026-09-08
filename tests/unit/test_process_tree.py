@@ -313,7 +313,7 @@ def test_the_manager_refuses_the_session_rather_than_spawning_uncontained() -> N
     class the manager never touches and the counter could not observe the call it existed to
     count. Under the fail-open mutation it stayed empty for that reason rather than because
     nothing spawned — a gate that cannot see the class it is patching passes for the wrong
-    reason, which is `ai/TESTING.md`'s instrument rule at a patch boundary. `PATCH REACHES
+    reason, which is `docs/project/TESTING.md`'s instrument rule at a patch boundary. `PATCH REACHES
     MANAGER` below closes that: it asserts the patched attribute *is* the one
     `manager._context.Process` resolves, so this cannot silently come apart again.
 
@@ -436,9 +436,9 @@ def test_a_worker_that_cannot_be_contained_refuses_to_run(
 
     Driven in-process rather than through a spawned child, deliberately: the thing under test is
     a decision made *before* the process boundary matters, and forcing a real containment failure
-    on a healthy machine would mean breaking `setsid` for everyone. `ai/TESTING.md` §6 forbids
-    mocking the boundary, and this does not — `run_session` is the far side of the decision, and
-    the point is that it is never reached.
+    on a healthy machine would mean breaking `setsid` for everyone. `docs/project/TESTING.md` §6
+    forbids mocking the boundary, and this does not — `run_session` is the far side of the decision,
+    and the point is that it is never reached.
     """
     from tracks_and_trails.core.errors import ErrorKind
     from tracks_and_trails.downloader import worker

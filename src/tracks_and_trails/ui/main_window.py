@@ -1532,8 +1532,8 @@ class MainWindow(QMainWindow):
         # Three ASCII dots rather than U+2026. The Windows convention for "this opens a dialog"
         # is "...", and the character also has to survive being read back out of UI Automation
         # and printed into a CI log — which is the *only* Windows debugging evidence this project
-        # has (`ai/TESTING.md` §10), and which mangled the ellipsis to a replacement character on
-        # its first run.
+        # has (`docs/project/TESTING.md` §10), and which mangled the ellipsis to a replacement
+        # character on its first run.
         add_action = QAction("&Add URLs...", self)
         add_action.setShortcut(resolve_add_urls_shortcut())
         add_action.setMenuRole(QAction.MenuRole.NoRole)

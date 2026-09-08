@@ -364,8 +364,8 @@ def test_the_about_box_is_captured_for_review(shown_window: MainWindow) -> None:
 #
 # The widget tab-order gate T-026 calls for therefore lands with those widgets, not here.
 # Asserting a focus chain over zero focusable widgets would pass unconditionally and prove
-# nothing, which is precisely the vacuous check this task exists to avoid. `ai/TESTING.md` §9
-# keeps Windows keyboard use on the manual list until that gate is real.
+# nothing, which is precisely the vacuous check this task exists to avoid. `docs/project/TESTING.md`
+# §9 keeps Windows keyboard use on the manual list until that gate is real.
 
 
 def test_the_menu_bar_is_not_native_and_so_is_keyboard_reachable(
@@ -482,7 +482,7 @@ def test_escape_does_not_close_the_main_window(shown_window: MainWindow) -> None
 # The lesson carried forward from `T-016`'s own review: the first draft of the offscreen test
 # derived its expectation from the dialog's own `focus_chain()`, so it proved only that the list
 # equalled itself and the mutation reversing two entries survived. **One side is transcribed by
-# hand here** and the other is walked out of Qt (`ai/TESTING.md` §13).
+# hand here** and the other is walked out of Qt (`docs/project/TESTING.md` §13).
 
 
 #: The add-URL dialog's controls, in the order a user should meet them, transcribed from what the
@@ -505,7 +505,7 @@ EXPECTED_DIALOG_ORDER = (
 )
 
 #: What each dialog state makes available, written by hand from what the dialog is *for* rather
-#: than read back from `_refresh_actions` (`ai/TESTING.md` §13).
+#: than read back from `_refresh_actions` (`docs/project/TESTING.md` §13).
 #:
 #: **`statusMessage` is now one of the controls a state withholds** (`T-294`). The status line is
 #: `NoFocus` while it has nothing to say, so a keyboard no longer stops on an empty full-width

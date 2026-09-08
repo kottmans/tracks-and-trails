@@ -2,7 +2,7 @@
 
 **Purpose:** Define how AI agents must behave in this repository.
 **Authority:** Canonical for agent behavior, roles, file ownership, and required validation.
-**Owner:** Claude Code (Documentation Maintainer role).
+**Owner:** Documentation Maintainer.
 **Maintainer:** Sean Kottman
 **Status:** Active
 **Last updated:** 2026-08-26
@@ -21,8 +21,8 @@ video and audio are equal first-class citizens. Python + PySide6 (Qt 6).
 ## 2. Read before working
 
 1. **This file.**
-2. The exact active task entry in `ai/TASKS.md`.
-3. The snapshot in `ai/STATUS.md`.
+2. The exact active task entry in `docs/project/TASKS.md`.
+3. The snapshot in `docs/project/STATUS.md`.
 4. **Only** the requirement IDs, decision IDs, architecture sections, source paths,
    and tests that your task entry links to.
 
@@ -44,7 +44,7 @@ and may change without changing the roles.
 | Codex | Reviewer |
 
 Review is a **distinct pass by a different agent**. An implementer does not sign off on
-its own change in `ai/REVIEWS.md`.
+its own change in `docs/project/REVIEWS.md`.
 
 **Coordinator / Integrator** exists only while a parallel wave is open (§9). Exactly one
 agent or the maintainer holds it, and it does not implement a worker's task while also
@@ -54,15 +54,15 @@ reviewing it.
 
 | Role | May update | Must not update without explicit instruction |
 |---|---|---|
-| Planner | `AGENTS.md`, `ai/REQUIREMENTS.md`, `ai/ARCHITECTURE.md`, `ai/DECISIONS.md`, `ai/IMPLEMENTATION_PLAN.md`, `ai/TASKS.md`, `ai/STATUS.md` | source, tests, `pyproject.toml`, build config |
-| Implementer | `src/**`, `tests/**`, `pyproject.toml`, build config, `ai/TASKS.md`, `ai/STATUS.md`, `ai/TESTING.md` (to add a check the change introduces) | `ai/REQUIREMENTS.md`, `ai/ARCHITECTURE.md`, `ai/DECISIONS.md`, `ai/IMPLEMENTATION_PLAN.md` |
-| Reviewer | `ai/REVIEWS.md` (or the assigned `ai/reviews/T-0NN.md`), `ai/TESTING.md`, test files, `ai/TASKS.md` (approved follow-ups meeting §10's task threshold only) | reviewed source code, unless asked to fix findings |
-| Release Manager | version sources, `CHANGELOG.md`, release metadata, `ai/STATUS.md` | product scope, during release prep |
-| Documentation Maintainer | `README.md`, `ai/PROMPTS.md`, cross-links, formatting | product or architecture *meaning* |
-| Coordinator / Integrator (wave only) | `ai/TASKS.md`, `ai/STATUS.md`, the `ai/REVIEWS.md` index and integration result, branches/worktrees the maintainer authorized | a reviewer's substantive findings; worker source outside conflict resolution |
+| Planner | `AGENTS.md`, `docs/project/REQUIREMENTS.md`, `docs/project/ARCHITECTURE.md`, `docs/project/DECISIONS.md`, `docs/project/IMPLEMENTATION_PLAN.md`, `docs/project/TASKS.md`, `docs/project/STATUS.md` | source, tests, `pyproject.toml`, build config |
+| Implementer | `src/**`, `tests/**`, `pyproject.toml`, build config, `docs/project/TASKS.md`, `docs/project/STATUS.md`, `docs/project/TESTING.md` (to add a check the change introduces) | `docs/project/REQUIREMENTS.md`, `docs/project/ARCHITECTURE.md`, `docs/project/DECISIONS.md`, `docs/project/IMPLEMENTATION_PLAN.md` |
+| Reviewer | `docs/project/REVIEWS.md` (or the assigned `docs/project/reviews/T-0NN.md`), `docs/project/TESTING.md`, test files, `docs/project/TASKS.md` (approved follow-ups meeting §10's task threshold only) | reviewed source code, unless asked to fix findings |
+| Release Manager | version sources, `CHANGELOG.md`, release metadata, `docs/project/STATUS.md` | product scope, during release prep |
+| Documentation Maintainer | `README.md`, `docs/project/PROMPTS.md`, cross-links, formatting | product or architecture *meaning* |
+| Coordinator / Integrator (wave only) | `docs/project/TASKS.md`, `docs/project/STATUS.md`, the `docs/project/REVIEWS.md` index and integration result, branches/worktrees the maintainer authorized | a reviewer's substantive findings; worker source outside conflict resolution |
 
 **In a parallel wave the assigned exclusive write set overrides this table** (§9). A worker
-writes only its own paths, proposes `ai/TASKS.md` / `ai/STATUS.md` changes instead of applying
+writes only its own paths, proposes `docs/project/TASKS.md` / `docs/project/STATUS.md` changes instead of applying
 them, and never edits another worker's surfaces or the reviewer's findings.
 
 ## 5. Authority order
@@ -70,15 +70,15 @@ them, and never edits another worker's surfaces or the reviewer's findings.
 When sources conflict, in order:
 
 1. The user's direct current instruction.
-2. `ai/REQUIREMENTS.md`
-3. Accepted entries in `ai/DECISIONS.md`
-4. `ai/ARCHITECTURE.md`
-5. `ai/IMPLEMENTATION_PLAN.md`
-6. `ai/TASKS.md`
-7. `ai/STATUS.md`
+2. `docs/project/REQUIREMENTS.md`
+3. Accepted entries in `docs/project/DECISIONS.md`
+4. `docs/project/ARCHITECTURE.md`
+5. `docs/project/IMPLEMENTATION_PLAN.md`
+6. `docs/project/TASKS.md`
+7. `docs/project/STATUS.md`
 8. Existing code
 9. Generated documents
-10. `ai/PROMPTS.md` (never authoritative)
+10. `docs/project/PROMPTS.md` (never authoritative)
 
 **Code shows what happens; requirements state what should happen.** Do not silently treat
 existing behavior as correct when it contradicts an approved requirement — report the
@@ -86,7 +86,7 @@ conflict and let it be resolved deliberately.
 
 **Safety exception.** The user's instruction governs *direction and scope*. It does not
 silently override: secret handling, destructive operations without confirmation, the
-legal-scope exclusions in `REQ-EXCL` (`ai/REQUIREMENTS.md` §8), or a documented
+legal-scope exclusions in `REQ-EXCL` (`docs/project/REQUIREMENTS.md` §8), or a documented
 non-negotiable invariant. If an instruction appears to require that, say so and ask.
 
 ## 6. Current truth vs. historical record
@@ -94,18 +94,18 @@ non-negotiable invariant. If an instruction appears to require that, say so and 
 - **Current truth** (rewrite to reflect reality): `REQUIREMENTS.md`, `ARCHITECTURE.md`,
   `IMPLEMENTATION_PLAN.md`, `TASKS.md`, `STATUS.md`, `TESTING.md`
 - **Historical record** (append; never silently rewrite): `DECISIONS.md`, `REVIEWS.md`,
-  `CHANGELOG.md`, anything under `ai/archive/`
+  `CHANGELOG.md`, anything under `docs/project/archive/`
 - **Convenience** (non-authoritative): `PROMPTS.md`, generated reports, AI summaries
-- **Never committed**: `ai/handoffs/` — messages to a reviewer, `.gitignore`d
+- **Never committed**: `docs/project/handoffs/` — messages to a reviewer, `.gitignore`d
 
 ### Handoffs are messages, not records — and are never committed
 
 **A handoff is one agent talking to another.** It asks for a review, or carries a correction back.
 
-**It is never committed.** `ai/handoffs/` is in `.gitignore`. A handoff may exist as a local
+**It is never committed.** `docs/project/handoffs/` is in `.gitignore`. A handoff may exist as a local
 untracked file so a reviewer working in this checkout can read it, and it may equally be delivered
 to the maintainer as text to paste — **both are fine; a commit is not.** Once its verdict is in
-`ai/REVIEWS.md` the message has done its job, and what is durable is the verdict and the task entry.
+`docs/project/REVIEWS.md` the message has done its job, and what is durable is the verdict and the task entry.
 
 *(This first read "transient, deleted once its verdict is recorded", which still put 64 of them in
 the history. The maintainer's rule is narrower and simpler: **not in the repository at all.**)*
@@ -113,7 +113,7 @@ the history. The maintainer's rule is narrower and simpler: **not in the reposit
 **Durable records cite commits, never handoffs.** A commit SHA identifies a tree that still exists;
 a handoff filename identifies a message that is supposed to stop existing. If a record needs a fact
 that appeared in a handoff — what was claimed, what a Planner recommended, what a submission got
-wrong — **it states the fact.** Writing *"see `ai/handoffs/…`"* means the record has not recorded
+wrong — **it states the fact.** Writing *"see `docs/project/handoffs/…`"* means the record has not recorded
 the thing.
 
 **This was a real defect, found 2026-08-09.** Sixty-four handoffs had accumulated in nine days, and
@@ -125,7 +125,7 @@ control, which is the same failure as a stale current-truth claim.
 
 **Historical records keep their references, and that is not an exception to the rule.** This section
 binds **current-truth** files, which are rewritten to reflect reality. `REVIEWS.md` and
-`DECISIONS.md` are append-only above, and *"a review was requested in `ai/handoffs/X`"* stays true
+`DECISIONS.md` are append-only above, and *"a review was requested in `docs/project/handoffs/X`"* stays true
 after `X` is deleted — it is a statement about the past, not a live pointer. **Rewriting them to
 remove a reference would be the larger error.** So a deleted handoff may leave a name behind in
 history; what it must not leave behind is a current-truth file that cannot answer its own question.
@@ -133,10 +133,10 @@ history; what it must not leave behind is a current-truth file that cannot answe
 ### The roadmap is a published artifact, never a repository file
 
 **The maintainer keeps one roadmap, as a published artifact, for their own reference.** It is
-**never committed** — no `roadmap*.html`, no `roadmap*.md`, nothing under `ai/` or `docs/`. Two
+**never committed** — no `roadmap*.html`, no `roadmap*.md`, nothing under `docs/`. Two
 were removed from this repository on 2026-08-08 for that reason.
 
-**It is derived, not authoritative.** `ai/IMPLEMENTATION_PLAN.md` §Phase *N* and `ai/TASKS.md`
+**It is derived, not authoritative.** `docs/project/IMPLEMENTATION_PLAN.md` §Phase *N* and `docs/project/TASKS.md`
 §`## Proposed — Phase N` remain canonical; the roadmap is a rendering of them. **Where they
 disagree, they are right and it is stale.** Nothing in the repository may cite it, for the reason
 handoffs may not be cited: it is not a home.
@@ -178,11 +178,11 @@ scales an SVG down to its container by default, which shrinks text as the graph 
 
 **Dependencies**
 - Adding, removing, or major-version-bumping a runtime dependency requires an accepted
-  `ai/DECISIONS.md` entry. Dev-only tooling deps do not.
+  `docs/project/DECISIONS.md` entry. Dev-only tooling deps do not.
 - Runtime dependency licenses must stay compatible with the project license (see `LIC-001`).
   PySide6 must remain **dynamically linked** (LGPL condition) — never statically bundle Qt.
 
-**Layering** (enforced by test, see `ai/TESTING.md`)
+**Layering** (enforced by test, see `docs/project/TESTING.md`)
 - `src/tracks_and_trails/core/**` and `src/tracks_and_trails/downloader/worker.py`
   **must not import Qt** (`PySide6`, `shiboken6`). They run in headless child processes
   and must be testable without a display.
@@ -214,8 +214,8 @@ scales an SVG down to its container by default, which shrinks text as the graph 
   - This holds even when the tasks were built in one sitting and share a working tree, which
     is the usual case in serial mode. Stage that task's files and commit before starting the
     next one.
-  - **Coordination files are the exception that proves it.** `ai/TASKS.md`, `ai/STATUS.md`
-    and `ai/IMPLEMENTATION_PLAN.md` accumulate interleaved edits from every task in flight, so
+  - **Coordination files are the exception that proves it.** `docs/project/TASKS.md`, `docs/project/STATUS.md`
+    and `docs/project/IMPLEMENTATION_PLAN.md` accumulate interleaved edits from every task in flight, so
     a hunk-level split is often not clean. Put each task's own entry with that task where it
     separates; where it does not, say so in the commit message rather than silently batching.
   - If several tasks are already finished and uncommitted when the instruction arrives, split
@@ -232,11 +232,11 @@ scales an SVG down to its container by default, which shrinks text as the graph 
 
 ## 8. Validation
 
-`ai/TESTING.md` is authoritative. Default scope:
+`docs/project/TESTING.md` is authoritative. Default scope:
 
 | Change | Required before "complete" |
 |---|---|
-| Docs only (`ai/`, `README.md`, comments) | none |
+| Docs only (`docs/`, `README.md`, comments) | none |
 | Source change | `ruff check` + `ruff format --check` + `mypy src` + the tests relevant to the change |
 | Change touching a platform-guarded module | the above **plus `mypy --platform win32`** — see below |
 | Anything toward a tagged release or distributed build | the full suite + the release gate, regardless of size |
@@ -250,7 +250,7 @@ the failure is on screen while the push happens. This is not hypothetical — it
 
 **A host-only check is not the whole gate.** `mypy` is configured for the host platform, so on
 Linux the bodies of Windows-guarded modules are proved unreachable and never analysed at all.
-`mypy --platform win32` analyses them; `ai/TESTING.md` records which modules need it and why.
+`mypy --platform win32` analyses them; `docs/project/TESTING.md` records which modules need it and why.
 The same asymmetry applies to tests: a test that passes on Linux may encode a Linux assumption
 (temp-path length, `PATHEXT`, `appauthor`), and only the Windows job can tell you.
 
@@ -281,7 +281,7 @@ shared piece first as its own task:
 **Setup — coordinator.** Pick one stable `main` commit as the common base, assign a wave ID
 `PW-###`, and per task: branch `task/T-0NN-slug`, its own worktree, exclusive write set,
 read-only shared surfaces, runtime allocation, review-record path, integration order. Record
-those as fields on the `ai/TASKS.md` entry. Do **not** record worktree paths there — they are
+those as fields on the `docs/project/TASKS.md` entry. Do **not** record worktree paths there — they are
 machine-specific; the branch and starting commit are the durable identifiers. Start a wave at
 two or three workers, not more.
 
@@ -312,7 +312,7 @@ workstream on each machine, each with its own clone. Three reasons specific to t
   job — **a machine registered as a self-hosted runner is not idle**, and its runner service must be
   stopped for the duration or the contention recorded.
 
-**Record which machine produced a measurement** in `ai/STATUS.md` or the evidence artifact:
+**Record which machine produced a measurement** in `docs/project/STATUS.md` or the evidence artifact:
 reproducing a timing-dependent result requires knowing the host, and a baseline taken on one
 machine does not transfer to another. Host names do not belong in a task entry's durable fields,
 for the same reason worktree paths do not.
@@ -341,13 +341,13 @@ for the same reason worktree paths do not.
 the change and report the scope expansion; do not edit it quietly.
 
 **Shared coordination files are frozen for workers.** During a wave the coordinator is the only
-writer of `ai/TASKS.md`, `ai/STATUS.md`, and the wave-level parts of `ai/REVIEWS.md`. Workers
+writer of `docs/project/TASKS.md`, `docs/project/STATUS.md`, and the wave-level parts of `docs/project/REVIEWS.md`. Workers
 propose those updates in the end-of-task report (§11).
 
 **Review records are partitioned during a wave.** The assigned reviewer writes
-`ai/reviews/T-0NN.md` directly, on the task branch, and `ai/REVIEWS.md` links to it as the
+`docs/project/reviews/T-0NN.md` directly, on the task branch, and `docs/project/REVIEWS.md` links to it as the
 index rather than duplicating findings. Serial work continues to use the monolithic
-`ai/REVIEWS.md`. Everything in §10 — severities, blocking rules, verdicts, the pass budget —
+`docs/project/REVIEWS.md`. Everything in §10 — severities, blocking rules, verdicts, the pass budget —
 applies unchanged in either mode.
 
 **Approval freezes one exact head.** Approval reads `Approved at <sha>` and covers that
@@ -362,7 +362,7 @@ resolution that changes behavior is new implementation: keep it as a distinct di
 reviewed, rather than burying it in a merge. Workers never merge or rebase a moving `main` into
 themselves — that silently moves the review boundary.
 
-**Verify the combined tree, not just the branches.** After the wave, run what `ai/TESTING.md`
+**Verify the combined tree, not just the branches.** After the wave, run what `docs/project/TESTING.md`
 §3 requires for the *union* of the layers touched. Branch-local green does not prove the merged
 result works.
 
@@ -430,7 +430,7 @@ fix for a data-loss defect is still Critical:
 - **A Critical finding always blocks. There is no "normally."** It is fixed before approval,
   however late it surfaces and however inconvenient the timing. It may **not** be closed as
   *Accepted Risk* or *Won't Fix* by an agent — only the maintainer can choose to ship known
-  harm, and that belongs in `ai/DECISIONS.md` with its reasoning, not in a review table. Where
+  harm, and that belongs in `docs/project/DECISIONS.md` with its reasoning, not in a review table. Where
   it touches a safety constraint, §5's safety exception applies: report the conflict and ask,
   rather than complying silently.
 - High findings block, especially when functionality is broken. Downgrading one needs a stated
@@ -502,28 +502,28 @@ A worker in a parallel wave (§9) adds, and reports rather than applies:
 9. Its wave ID, branch, and exact base/head
 10. Runtime resources it used, and any still needing isolation
 11. Write-set expansions it needed — granted or requested
-12. **Proposed** `ai/TASKS.md` / `ai/STATUS.md` updates, for the coordinator to apply
+12. **Proposed** `docs/project/TASKS.md` / `docs/project/STATUS.md` updates, for the coordinator to apply
 
 ## 12. Where things go
 
 | Fact | Canonical home |
 |---|---|
-| What the product must do | `ai/REQUIREMENTS.md` |
-| How the system is designed | `ai/ARCHITECTURE.md` |
-| Why a durable choice was made | `ai/DECISIONS.md` |
-| Phase order and exit criteria | `ai/IMPLEMENTATION_PLAN.md` |
-| Concrete actionable work | `ai/TASKS.md` |
-| Where the project stands now | `ai/STATUS.md` |
-| Review findings and evidence | `ai/REVIEWS.md`; in a parallel wave, `ai/reviews/T-0NN.md` with `ai/REVIEWS.md` as the index |
-| Test policy and commands | `ai/TESTING.md` |
-| A review request or correction being sent | **Nowhere in the repository.** A local untracked file under `ai/handoffs/`, or text handed to the maintainer (§6) |
+| What the product must do | `docs/project/REQUIREMENTS.md` |
+| How the system is designed | `docs/project/ARCHITECTURE.md` |
+| Why a durable choice was made | `docs/project/DECISIONS.md` |
+| Phase order and exit criteria | `docs/project/IMPLEMENTATION_PLAN.md` |
+| Concrete actionable work | `docs/project/TASKS.md` |
+| Where the project stands now | `docs/project/STATUS.md` |
+| Review findings and evidence | `docs/project/REVIEWS.md`; in a parallel wave, `docs/project/reviews/T-0NN.md` with `docs/project/REVIEWS.md` as the index |
+| Test policy and commands | `docs/project/TESTING.md` |
+| A review request or correction being sent | **Nowhere in the repository.** A local untracked file under `docs/project/handoffs/`, or text handed to the maintainer (§6) |
 | A visual roadmap of the current phase | **A published artifact, never a repository file** (§6). Derived from the plan and `TASKS.md`, which stay canonical |
 
 Do not copy a fact into a second authoritative-looking place. Link to the canonical home.
-**Never link to `ai/handoffs/`** — it is not a home, it is an outbox.
+**Never link to `docs/project/handoffs/`** — it is not a home, it is an outbox.
 
-Create a `ai/DECISIONS.md` entry only for durable choices and real trade-offs — not as a
-completion note for routine work. Routine fixes belong in `ai/TASKS.md` and `CHANGELOG.md`.
+Create a `docs/project/DECISIONS.md` entry only for durable choices and real trade-offs — not as a
+completion note for routine work. Routine fixes belong in `docs/project/TASKS.md` and `CHANGELOG.md`.
 
 ## 13. Commit messages
 
@@ -571,7 +571,7 @@ Bullets, not paragraphs, once there is more than one thing to report. Wrap at 72
 message stays readable under `git log`'s four-space indent.
 
 **Budget: about 150 words, and at most ~8 bullets.** Past that, the commit is doing too much and
-should have been split, or the detail belongs in `ai/TASKS.md` where it is indexed and editable.
+should have been split, or the detail belongs in `docs/project/TASKS.md` where it is indexed and editable.
 A commit message is an immutable record, so it is the worst place to put anything that will need
 revising.
 

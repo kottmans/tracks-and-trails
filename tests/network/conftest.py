@@ -7,7 +7,7 @@ processing events would observe nothing however long it waited.
 Duplicated rather than shared because these three directories are collected independently and a
 `conftest.py` does not reach sideways. The alternative — hoisting it to `tests/conftest.py` —
 would put a Qt import in front of the unit suite, which runs headless and Qt-free on purpose
-(`ai/TESTING.md` §1).
+(`docs/project/TESTING.md` §1).
 """
 
 import os

@@ -1,4 +1,5 @@
-"""A hard kill mid-write leaves the queue readable (`T-014`, `NFR-003`, `ai/TESTING.md` §7).
+"""A hard kill mid-write leaves the queue readable
+(`T-014`, `NFR-003`, `docs/project/TESTING.md` §7).
 
 **This is the one that has to kill a real process.** The acceptance criterion says so, and the
 reason is specific: closing a connection politely, rolling a transaction back, or raising an
@@ -69,7 +70,8 @@ def _write_until_killed(database: str, ready: mp.synchronize.Event) -> None:
     ),
 )
 def test_a_hard_kill_mid_write_leaves_the_database_readable(tmp_path: Path) -> None:
-    """`ai/TESTING.md` §7's crash-recovery area, at the layer where corruption would occur.
+    """`docs/project/TESTING.md` §7's crash-recovery area, at the layer where corruption would
+    occur.
 
     Three things are asserted after the kill, and the third is the one that matters:
 

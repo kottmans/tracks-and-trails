@@ -42,8 +42,8 @@ Two further conditions keep this from reporting healthy processes:
 
 **This does not identify *whose* worker it is.** Any `multiprocessing` program on the machine
 produces the same command line, so a find is a prompt to look rather than a proof of ours. Said
-here because the first version claimed otherwise, and `ai/TESTING.md`'s rule about instruments that
-report confidently about nothing applies to this one too.
+here because the first version claimed otherwise, and `docs/project/TESTING.md`'s rule about
+instruments that report confidently about nothing applies to this one too.
 """
 
 from __future__ import annotations

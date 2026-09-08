@@ -55,7 +55,7 @@
 # `T-183`'s procedure and a human's judgement about what each new option means. This reports.
 #
 # **It never blocks a push.** It has no `push:` trigger and `main` does not gate on it. It *does*
-# block a baseline bump — `ai/TESTING.md` §8 carries that step — because a bump is exactly the
+# block a baseline bump — `docs/project/TESTING.md` §8 carries that step — because a bump is exactly the
 # moment its answer is the evidence being asked for.
 
 name: yt-dlp canary
@@ -257,7 +257,7 @@ jobs:
             echo 'drift in behaviour or in a list. **File it as a task** — the option audit names'
             echo 'the new options in its own failure message, which is most of an entry written'
             echo 'for whoever files it. Do not bump the pin from this run: that is a decision with'
-            echo 'a release gate attached (`OPS-002`, `ai/TESTING.md` §8).'
+            echo 'a release gate attached (`OPS-002`, `docs/project/TESTING.md` §8).'
           } >> "$GITHUB_STEP_SUMMARY"
 
       # The other half of `T291-R2`: the run still has to say something when it breaks before it

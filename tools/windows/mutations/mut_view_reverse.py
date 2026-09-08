@@ -5,7 +5,7 @@ Reverses what setTabOrder DELIVERS while leaving focus_chain()'s declaration unt
 EXPECTED TO SURVIVE. No state of the progress view offers more than two reachable controls, and
 a two-element cycle is its own reverse: from either control, Tab and Backtab both deliver the
 other one, from any starting point. Recorded rather than answered with an assertion that appears
-to catch it (ai/TESTING.md 12).
+to catch it (docs/project/TESTING.md 12).
 """
 
 from itertools import pairwise

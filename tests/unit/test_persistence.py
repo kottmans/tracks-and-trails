@@ -1,6 +1,6 @@
 """Persistence: schema, migrations, and the job repository (`T-014`).
 
-Covers three of `ai/TESTING.md` §7's mandatory areas — crash recovery, migrations, and the
+Covers three of `docs/project/TESTING.md` §7's mandatory areas — crash recovery, migrations, and the
 settings freeze — plus `REQ-012`'s durable queue order and `REQ-026`'s exclusion of secrets.
 
 The hard kill that `NFR-003` actually turns on lives in `tests/integration/test_crash_kill.py`,
@@ -71,7 +71,8 @@ def _normalise_sql(sql: str) -> str:
     return " ".join(_strip_sql_comments(sql).split())
 
 
-# --- migrations (ai/TESTING.md §7) -----------------------------------------------------------
+# --- migrations (docs/project/TESTING.md §7)
+# -----------------------------------------------------------
 
 
 def test_migrations_are_discovered_from_the_directory_not_a_list() -> None:
@@ -151,7 +152,7 @@ def test_a_frozen_fixture_exists_for_every_schema_version_but_the_latest() -> No
 def test_every_migration_runs_forward_from_real_historical_data(
     tmp_path: Path, version: int, fixture: Path
 ) -> None:
-    """`ai/TESTING.md` §7, against bytes that a past version actually wrote (`T014-R4`).
+    """`docs/project/TESTING.md` §7, against bytes that a past version actually wrote (`T014-R4`).
 
     The fixture is loaded as SQL and migrated by the **current runner only**. No current model,
     serializer or repository touches it before the migration — that is the difference between
@@ -773,13 +774,15 @@ def test_updating_a_job_that_is_not_stored_raises(repository: JobRepository) -> 
         repository.update(a_job("never-added"))
 
 
-# --- the settings freeze (ai/TESTING.md §7, ARCHITECTURE.md §8) ------------------------------
+# --- the settings freeze (docs/project/TESTING.md §7, ARCHITECTURE.md §8)
+# ------------------------------
 
 
 def test_a_retry_uses_the_stored_request_not_the_current_defaults(
     repository: JobRepository,
 ) -> None:
-    """`ai/TESTING.md` §7's settings-freeze area, proven by changing defaults between the two.
+    """`docs/project/TESTING.md` §7's settings-freeze area, proven by changing defaults
+    between the two.
 
     The request is frozen at job creation so a settings change cannot alter a job already
     queued. Asserting the stored request merely *round-trips* would not show this — the test has
@@ -941,15 +944,16 @@ def test_a_browser_name_is_not_a_cookie(repository: JobRepository) -> None:
     assert json.loads(row["request"])["cookies_from_browser"] == "firefox"
 
 
-# --- crash recovery (ai/TESTING.md §7, ARCHITECTURE.md §5) -----------------------------------
+# --- crash recovery (docs/project/TESTING.md §7, ARCHITECTURE.md §5)
+# -----------------------------------
 
 
 def test_the_recovered_statuses_are_the_three_the_architecture_names() -> None:
     """`ARCHITECTURE.md` §5 names PROBING, RUNNING and POST_PROCESSING.
 
-    `T-014`'s own criterion and `ai/TESTING.md` §7 mention only `RUNNING`. The architecture
-    outranks both (`AGENTS.md` §5), and recovering `RUNNING` alone would strand a job in
-    `PROBING` with no path out — transcribed here so narrowing it fails rather than passing.
+    `T-014`'s own criterion and `docs/project/TESTING.md` §7 mention only `RUNNING`. The
+    architecture outranks both (`AGENTS.md` §5), and recovering `RUNNING` alone would strand a job
+    in `PROBING` with no path out — transcribed here so narrowing it fails rather than passing.
     """
     named_by_section_5 = {JobStatus.PROBING, JobStatus.RUNNING, JobStatus.POST_PROCESSING}
     assert named_by_section_5 == INTERRUPTED_ON_STARTUP
@@ -959,7 +963,10 @@ def test_the_recovered_statuses_are_the_three_the_architecture_names() -> None:
 def test_a_job_left_in_flight_is_recovered_to_a_retryable_failure(
     repository: JobRepository, status: JobStatus
 ) -> None:
-    """`ai/TESTING.md` §7. A job cannot be in flight if the application is only now starting."""
+    """`docs/project/TESTING.md` §7.
+
+    A job cannot be in flight if the application is only now starting.
+    """
     repository.add(a_job("stranded", status=status, queue_position=0))
 
     assert repository.recover_interrupted() == ["stranded"]
@@ -1128,8 +1135,8 @@ def test_the_reorderable_statuses_partition_the_enum() -> None:
 
     **The reason `REORDERABLE` is written out rather than derived.** A derived complement would
     agree with the other two unconditionally, so a new status would become reorderable silently and
-    no test could see it — `ai/TESTING.md` §13. This makes adding a status fail here until somebody
-    decides which side it belongs on.
+    no test could see it — `docs/project/TESTING.md` §13. This makes adding a status fail here until
+    somebody decides which side it belongs on.
     """
     covered = REORDERABLE | repositories.INTERRUPTED_ON_STARTUP | TERMINAL
 

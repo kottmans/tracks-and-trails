@@ -1,4 +1,4 @@
-"""`ai/TASKS.md`'s navigation must agree with its own fields (`T-096`).
+"""`docs/project/TASKS.md`'s navigation must agree with its own fields (`T-096`).
 
 **Six review rounds found the same defect.** `COORD-R5` through `COORD-R10` each reported a task
 whose `**Status:**` line said one thing while the `## ` section containing it said another, and each
@@ -22,10 +22,10 @@ from pathlib import Path
 
 import pytest
 
-TASKS = Path(__file__).resolve().parents[2] / "ai" / "TASKS.md"
+TASKS = Path(__file__).resolve().parents[2] / "docs" / "project" / "TASKS.md"
 
-#: The vocabulary `ai/TASKS.md` declares in its own header. Longest first, so `In Review` is matched
-#: before any shorter term could claim its prefix.
+#: The vocabulary `docs/project/TASKS.md` declares in its own header. Longest first, so `In Review`
+#: is matched before any shorter term could claim its prefix.
 VOCABULARY = (
     "In Progress",
     "In Review",
@@ -269,9 +269,9 @@ def test_no_task_id_has_two_entries() -> None:
     second copy landed on top of the first. **The copies were also perfectly well-formed** — same
     section, same valid status line — so no other assertion here had anything to object to.
 
-    A duplicate is not cosmetic. `ai/TASKS.md` is current truth, and two entries for one task are
-    two answers to *"what is its status"* that can drift apart independently, which is the class
-    `AGENTS.md` §6 is written against. This is the only check that can see one.
+    A duplicate is not cosmetic. `docs/project/TASKS.md` is current truth, and two entries for one
+    task are two answers to *"what is its status"* that can drift apart independently, which is the
+    class `AGENTS.md` §6 is written against. This is the only check that can see one.
     """
     positions: dict[str, list[tuple[int, str]]] = {}
     for task, line, section in heading_occurrences():

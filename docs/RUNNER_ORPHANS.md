@@ -7,7 +7,7 @@ them, and what to do if they appear again.
 was ever made for it, and none is outstanding.
 **`T-268` was closed against this file on 2026-09-04, with the cause unidentified.** The seven
 specimens are **released** — the preservation requirement is discharged and they may be reaped
-whenever the machine is next attended. `ai/TASKS.md` `T-268` is current truth for the disposition;
+whenever the machine is next attended. `docs/project/TASKS.md` `T-268` is current truth for the disposition;
 if this file and that entry ever disagree, the entry is right.
 **Last updated:** 2026-09-03.
 
@@ -129,8 +129,8 @@ against a permanently red board.
 
 ## Where the detail lives
 
-- `ai/evidence/2026-08-29-T268-orphan-wait-reasons.md` — the wait-reason measurement, all seven.
-- `ai/evidence/2026-08-29-T268-starbase-orphan-wait-reasons.txt` — the raw report.
-- `ai/TASKS.md` `T-258` — the five observations and the fix built from the wrong reasoning.
-- `ai/TASKS.md` `T-266` — the measurement that showed the reproduced window closes itself.
-- `ai/TASKS.md` `T-268` — the diagnosis, its eliminations, and the three-way discrimination.
+- `docs/project/evidence/2026-08-29-T268-orphan-wait-reasons.md` — the wait-reason measurement, all seven.
+- `docs/project/evidence/2026-08-29-T268-starbase-orphan-wait-reasons.txt` — the raw report.
+- `docs/project/TASKS.md` `T-258` — the five observations and the fix built from the wrong reasoning.
+- `docs/project/TASKS.md` `T-266` — the measurement that showed the reproduced window closes itself.
+- `docs/project/TASKS.md` `T-268` — the diagnosis, its eliminations, and the three-way discrimination.

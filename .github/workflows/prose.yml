@@ -2,7 +2,7 @@
 #
 # **This file exists so that exempting prose from CI did not delete a gate.**
 #
-# `ci.yml`'s `paths-ignore` now covers every prose file in the repository, `ai/TASKS.md`
+# `ci.yml`'s `paths-ignore` now covers every prose file in the repository, `docs/project/TASKS.md`
 # included. That file is the one piece of prose the test suite actually reads:
 # `tests/unit/test_task_placement.py` (`T-096`) checks that every task entry opens with a status
 # from `TASKS.md`'s own declared vocabulary and sits under the section that status names. Dropping
@@ -26,7 +26,7 @@ name: Prose
 on:
   push:
     paths:
-      - "ai/TASKS.md"
+      - "docs/project/TASKS.md"
       - "tests/unit/test_task_placement.py"
       - ".github/workflows/prose.yml"
   # **No `pull_request:` trigger, and its absence is a security control** (`T-262`).

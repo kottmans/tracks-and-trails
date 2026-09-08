@@ -2,8 +2,8 @@
 
 **Real processes, not threads.** The property under test is that the *kernel* refuses a second
 exclusive lock, and threads in one interpreter share a file table — a threaded version of these
-tests would pass against a mechanism with no cross-process guarantee at all. `ai/TESTING.md` §7's
-rule for the crash tests, applied to the same class of claim.
+tests would pass against a mechanism with no cross-process guarantee at all.
+`docs/project/TESTING.md` §7's rule for the crash tests, applied to the same class of claim.
 
 The two cases that matter are the ones `ARC-006`'s amendment names:
 

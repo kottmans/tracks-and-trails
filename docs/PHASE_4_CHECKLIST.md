@@ -42,8 +42,8 @@ git log --oneline -1          # record this: the run is evidence about one head
 ```
 
 Run on the exact candidate head and record it — a run against a head that then moves evidences
-nothing (`P2EXIT-R8`). Record the result in `ai/evidence/` item by item, pass or fail, in the
-format of `ai/evidence/2026-08-05-criterion-8-checklist-run.md`.
+nothing (`P2EXIT-R8`). Record the result in `docs/project/evidence/` item by item, pass or fail, in the
+format of `docs/project/evidence/2026-08-05-criterion-8-checklist-run.md`.
 
 Rows marked **both** are checked in the light **and** dark themes — the selector is in
 `Settings → Settings…` now, so no throwaway launcher is needed. Rows needing the network say so;
@@ -148,7 +148,7 @@ next step on the offer line — and a class with **no honest next step keeps the
 
 ## Recording the run
 
-Copy this table structure into `ai/evidence/<date>-T212-checklist-run.md` with the head SHA,
+Copy this table structure into `docs/project/evidence/<date>-T212-checklist-run.md` with the head SHA,
 platform, runner, and per-row **pass / fail / not run** — a *not run* row states why and what
 would make it runnable, the way the criterion-8 record did for its two. Findings get task entries;
 the evidence file links them the way the 2026-08-05 run linked its eleven.

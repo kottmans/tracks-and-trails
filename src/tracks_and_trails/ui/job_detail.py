@@ -108,7 +108,7 @@ REPAINT_INTERVAL_MS: Final = 100
 
 #: `REQ-014`'s five stages, in `REQ-014`'s own words. Transcribed from the requirement rather
 #: than derived from `Stage`'s member names, so the two are independent statements and a renamed
-#: member cannot silently change what the user is told (`ai/TESTING.md` §13).
+#: member cannot silently change what the user is told (`docs/project/TESTING.md` §13).
 STAGE_TEXT: Final[dict[Stage, str]] = {
     Stage.PROBING: "Probing",
     Stage.DOWNLOADING_VIDEO: "Downloading video",

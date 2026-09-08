@@ -1,4 +1,4 @@
-"""The job state machine (`T-010`, `ai/TESTING.md` §7).
+"""The job state machine (`T-010`, `docs/project/TESTING.md` §7).
 
 §7 requires that *every* illegal transition raises. That guarantee is only worth anything if
 the test knows what "illegal" means **independently of the code under test**.

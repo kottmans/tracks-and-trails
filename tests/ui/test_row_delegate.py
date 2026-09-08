@@ -183,7 +183,7 @@ class RowsModel(QAbstractListModel):
 
     # Qt's override names, hence the camelCase. The index type is the union Qt's own signature
     # uses — narrowing it to `QModelIndex` is a Liskov violation that only the unscoped `mypy`
-    # gate can see (`ai/TESTING.md` §12).
+    # gate can see (`docs/project/TESTING.md` §12).
     def rowCount(self, parent: QModelIndex | _PersistentIndex = QModelIndex()) -> int:  # noqa: B008, N802
         return 0 if parent.isValid() else len(self._rows)
 
@@ -2778,9 +2778,9 @@ def test_every_role_has_its_own_number() -> None:
     branch returns, and both are `Any`.
 
     Derived from the module rather than listed here, so a role added tomorrow is covered the day it
-    appears — `ai/TESTING.md` §13's rule about a test that transcribes rather than re-derives does
-    not apply, because the property *is* "no two of them agree" rather than a specification the
-    test should hold independently.
+    appears — `docs/project/TESTING.md` §13's rule about a test that transcribes rather than
+    re-derives does not apply, because the property *is* "no two of them agree" rather than a
+    specification the test should hold independently.
     """
     roles = {
         name: value
@@ -3317,8 +3317,8 @@ def test_the_delegate_leaves_a_widget_that_is_not_its_own_editor_at_the_row_s_si
     **26 px**. A resize calls `updateGeometries()` once per step, so the panel collapsed and was
     restored once per step, and the view painted the row inside each gap: `paint` draws the
     thumbnail on every row it is given, because an open one is supposed to be covered. Measured
-    under a compositor at `ai/evidence/2026-09-01-T297-panel-collapses-during-resize.md`, where the
-    walk produced 107 collapses in 110 steps.
+    under a compositor at `docs/project/evidence/2026-09-01-T297-panel-collapses-during-resize.md`,
+    where the walk produced 107 collapses in 110 steps.
 
     **Both branches, because the guard is the fix.** A widget that is not this delegate's editor
     keeps the row's rectangle; the delegate's own combo box still gets the control slot it is

@@ -2,7 +2,8 @@
 
 Run by hand:
 
-    QT_QPA_PLATFORM=offscreen .venv/bin/python ai/evidence/T128-cross-thread-timer-probe.py
+    QT_QPA_PLATFORM=offscreen .venv/bin/python \
+        docs/project/evidence/T128-cross-thread-timer-probe.py
 
 **Why this is not in the suite.** It works by leaving an orphaned timer registered against freed
 memory, which arms a use-after-free *in the process running it* — the process then segfaults, which

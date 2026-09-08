@@ -1,4 +1,4 @@
-"""Redirect the per-user directories at every module that binds one (`ai/TESTING.md` §5).
+"""Redirect the per-user directories at every module that binds one (`docs/project/TESTING.md` §5).
 
 **§5 has required this since it was written and nothing implemented it.** The rule says tests must
 not read or write the developer's real config, data or cache directories, and that *"`platformdirs`

@@ -1,4 +1,4 @@
-"""The recorded fixtures, as contracts rather than samples (`T-018`, `ai/TESTING.md` §5).
+"""The recorded fixtures, as contracts rather than samples (`T-018`, `docs/project/TESTING.md` §5).
 
 A fixture earns its maintenance cost only if changing it breaks something. So this file asks
 four questions of the committed files, and none of them is "does it parse":
@@ -63,7 +63,7 @@ def test_the_fixture_directories_are_not_empty() -> None:
 
 @pytest.mark.parametrize("path", all_fixtures(), ids=fixture_id)
 def test_every_fixture_records_where_it_came_from(path: Path) -> None:
-    """`ai/TESTING.md` §5: the yt-dlp version and the capture date, on every fixture.
+    """`docs/project/TESTING.md` §5: the yt-dlp version and the capture date, on every fixture.
 
     Machine-checked because it is checkable. *Why* a fixture changed is a review convention in
     §5 and deliberately not asserted here — a test cannot read an explanation, and pretending
@@ -103,8 +103,8 @@ def test_a_recorded_fixture_names_the_extractor_its_own_source_declares() -> Non
     extractor that had never touched it — provenance that reads exactly like the checked kind.
 
     **The declaration is the transcribed side and the committed file is the derived one**
-    (`ai/TESTING.md` §13). `capture.py` is where a human states where a source comes from; this
-    reads what was actually written. A capture additionally refuses to write when yt-dlp's own
+    (`docs/project/TESTING.md` §13). `capture.py` is where a human states where a source comes from;
+    this reads what was actually written. A capture additionally refuses to write when yt-dlp's own
     `extractor` disagrees with the declaration, which is the half of the check that needs the
     network and therefore cannot live here.
     """
@@ -127,7 +127,7 @@ def test_a_recorded_fixture_names_the_extractor_its_own_source_declares() -> Non
 
 
 def test_the_writer_records_each_source_s_own_extractor() -> None:
-    """The **writer**, not the files it wrote (`T107-R8`, `ai/TESTING.md` §13).
+    """The **writer**, not the files it wrote (`T107-R8`, `docs/project/TESTING.md` §13).
 
     **The committed-fixture test above cannot catch this defect coming back.** It compares files on
     disk against the declarations, and a writer that went back to a hardcoded `"archive.org"` does
@@ -178,10 +178,10 @@ def test_the_recorded_policy_names_every_entry_field_that_is_actually_kept() -> 
     fixture carried the old sentence, so the record of a **data boundary** was wrong in the one
     direction that matters: it claimed less was kept than is.
 
-    **Derived from `CONSUMED_ENTRY`, not transcribed** (`ai/TESTING.md` §13). A sentence written
-    beside a machine-read allowlist is two statements of one fact, and they had already drifted
-    once. Each field is asserted by name, so adding one to the allowlist and not to the sentence
-    fails here.
+    **Derived from `CONSUMED_ENTRY`, not transcribed** (`docs/project/TESTING.md` §13). A sentence
+    written beside a machine-read allowlist is two statements of one fact, and they had already
+    drifted once. Each field is asserted by name, so adding one to the allowlist and not to the
+    sentence fails here.
     """
     from tests.fixtures.capture import CONSUMED_ENTRY, _policy_record
 
@@ -255,7 +255,7 @@ def test_the_recorded_sources_do_not_all_come_from_one_extractor() -> None:
 
 
 def test_a_source_cannot_inherit_another_source_s_extractor_by_omission() -> None:
-    """`T107-R8`'s gate: declaring the extractor is not optional (`ai/TESTING.md` §13).
+    """`T107-R8`'s gate: declaring the extractor is not optional (`docs/project/TESTING.md` §13).
 
     The correction would be worth little if the next source could simply leave the field out and
     pick up a default. `Source` takes it keyword-only and required, so omission is a `TypeError` at
@@ -684,7 +684,8 @@ def test_a_playlist_entry_keeps_only_what_the_adapter_reads(tmp_path: Path) -> N
 
 
 def test_the_gate_refuses_a_shape_record_and_a_populated_entry(tmp_path: Path) -> None:
-    """`ai/TESTING.md` §13: the gate has to be watched refusing what the writer stopped emitting.
+    """`docs/project/TESTING.md` §13: the gate has to be watched refusing what the writer stopped
+    emitting.
 
     Removing the writer's ability to emit a `_schema` is half the fix. This is the half that
     survives somebody restoring it, or hand-editing a fixture.
@@ -762,7 +763,7 @@ def test_a_consumed_field_still_loses_a_user_directory(tmp_path: Path, path_valu
     A key allowlist answers "may this field carry a value?" — it says nothing about *what* the
     value is. `title` is consumed, and a title can be a local path; so can a `url`. Removing
     `clean_scalar`'s user-directory branch left every test green, which is the definition of an
-    unasserted guard (`ai/TESTING.md` §13). Asserted at `write()` rather than against
+    unasserted guard (`docs/project/TESTING.md` §13). Asserted at `write()` rather than against
     `clean_scalar`, because the door is what a future capture goes through.
     """
     from tests.fixtures import capture
@@ -789,7 +790,7 @@ def test_a_consumed_field_still_loses_a_user_directory(tmp_path: Path, path_valu
 
 
 def test_the_gate_rejects_a_fixture_carrying_anything_else(tmp_path: Path) -> None:
-    """`ai/TESTING.md` §13: the gate has to be watched refusing something.
+    """`docs/project/TESTING.md` §13: the gate has to be watched refusing something.
 
     Every spelling that beat a marker list is here — and none of them is recognised by name now.
     They are refused because nothing reads a field called that.
@@ -894,7 +895,8 @@ def test_the_required_error_cases_are_covered(case: str) -> None:
 
 #: `MediaInfo` field → the `info_dict` key it is projected from, and the value it must take when
 #: that key is absent. Transcribed from `project_media`'s contract in `ARCHITECTURE.md` §5, by
-#: hand: reading the mapping out of the adapter would make this a mirror (`ai/TESTING.md` §13).
+#: hand: reading the mapping out of the adapter would make this a mirror (`docs/project/TESTING.md`
+#: §13).
 #:
 #: `title`, `url` and `formats` are absent from the table because each has a documented fallback
 #: chain of its own, tested in `tests/unit/test_ytdlp_adapter.py`.
@@ -998,8 +1000,8 @@ def test_a_single_item_is_not_reported_as_a_playlist(path: Path) -> None:
 
 
 #: yt-dlp's declared multi-item result types, transcribed from its extractor documentation
-#: rather than imported from the adapter (`ai/TESTING.md` §13). Asking the module which types it
-#: handles and then checking it handles them is the `T010-R1` shape.
+#: rather than imported from the adapter (`docs/project/TESTING.md` §13). Asking the module which
+#: types it handles and then checking it handles them is the `T010-R1` shape.
 YT_DLP_MULTI_ITEM_TYPES = ("playlist", "multi_video")
 
 

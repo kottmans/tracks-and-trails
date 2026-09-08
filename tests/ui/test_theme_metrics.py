@@ -46,7 +46,7 @@ def themed(qapp: QApplication) -> Iterator[QApplication]:
 
     Restored because a style sheet is application-wide: leaving it on would silently theme every
     later test in the process, and a test that passes because of what a previous one left behind
-    is the failure `ai/TESTING.md` §13 is about.
+    is the failure `docs/project/TESTING.md` §13 is about.
     """
     previous = qapp.styleSheet()
     qapp.setStyleSheet(theme.stylesheet(theme.LIGHT))

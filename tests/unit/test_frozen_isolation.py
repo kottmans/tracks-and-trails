@@ -145,8 +145,8 @@ def test_the_update_probe_still_runs_and_is_not_the_thing_that_was_disabled() ->
 
     assert any("update works inside the frozen artifact" in name for name in names), (
         "the in-app update probe is gone from the frozen job. Isolating the profile must not be "
-        "achieved by removing the route that needs a profile (T198-R2, ai/TESTING.md release "
-        "gate item 10)"
+        "achieved by removing the route that needs a profile (T198-R2, "
+        "docs/project/TESTING.md release gate item 10)"
     )
 
 

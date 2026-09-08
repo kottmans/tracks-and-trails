@@ -1,6 +1,6 @@
 """The spawned worker (`T-012`).
 
-`ai/TESTING.md` §6: **the process boundary is never mocked here.** A real child process is
+`docs/project/TESTING.md` §6: **the process boundary is never mocked here.** A real child process is
 spawned, real messages cross a real queue, and the worker imports the real yt-dlp. What is
 faked is the *network* — extraction is stubbed at the `ytdlp_adapter` seam or driven from the
 recorded fixture, because a test that fails when a site changes teaches nothing about our code.
@@ -616,7 +616,7 @@ def test_the_preview_equals_the_path_the_download_actually_uses(
     written — silently, and only for the titles where the routes happen to disagree.
 
     So this does not compare `preview_path` against the helper it calls, which would pass
-    however wrong both were (`ai/TESTING.md` §13). It takes the preview, then runs a real
+    however wrong both were (`docs/project/TESTING.md` §13). It takes the preview, then runs a real
     download session and reads the path out of the `Succeeded` message the parent would
     receive. The two must agree, having been observed through different paths.
 
@@ -772,7 +772,7 @@ def test_a_successful_session_reports_which_ytdlp_it_used(
     This is asserted through `run_session` on purpose. The previous tests read `ResolvedYtdlp`
     directly, so they passed while a successful probe emitted only `Progress`, `Probed` and the
     sentinel — the version was computed correctly and thrown away. A fact the parent cannot
-    observe is not reported (`ai/TESTING.md` §13).
+    observe is not reported (`docs/project/TESTING.md` §13).
     """
     from tests.unit.test_ytdlp_adapter import load_fixture
 
@@ -947,7 +947,7 @@ def _run_download(
     Deliberately goes through `run_session` rather than calling `_validated_target` or
     `safe_output_path`. The previous tests called `paths` directly while claiming to test "the
     worker's own helper", so they passed whether or not the worker used the validated result at
-    all — which is exactly how `T012-R4` survived (`ai/TESTING.md` §13).
+    all — which is exactly how `T012-R4` survived (`docs/project/TESTING.md` §13).
     """
 
     def extract_reporting_its_target(
@@ -1175,8 +1175,8 @@ def test_the_worker_runs_in_a_real_spawned_process_with_no_display(
 ) -> None:
     """`ARC-002` end to end, and Phase 1's sixth exit criterion: a **real session, headless**.
 
-    Not mocked (`ai/TESTING.md` §6) — a mocked subprocess cannot fail the way a real one does,
-    and `spawn` re-importing the module is exactly the behaviour under test.
+    Not mocked (`docs/project/TESTING.md` §6) — a mocked subprocess cannot fail the way a real one
+    does, and `spawn` re-importing the module is exactly the behaviour under test.
 
     **This test called its child headless for a long time while inheriting the desktop**
     (`P1EXIT-R1`). `mp.Process` passes `os.environ` down, so `DISPLAY` was set in the child every
@@ -1461,7 +1461,7 @@ def test_a_download_that_fails_releases_its_reservation(
     """The release is wired into the session, not merely available to it.
 
     Driven through `run_session` rather than by calling the helper, because "the download path
-    releases on failure" is a claim about that path (`ai/TESTING.md` §13).
+    releases on failure" is a claim about that path (`docs/project/TESTING.md` §13).
     """
     target = tmp_path / "Clip.mp4"
     monkeypatch.setattr(worker_module, "_validated_target", lambda *a, **k: target)

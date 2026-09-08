@@ -141,7 +141,7 @@ from tracks_and_trails.ui.thumbnails import ThumbnailLoader, ThumbnailStore, cac
 #: The columns, in order, with the header each shows. `REQ-014` names five things a user must be
 #: able to see per job; the sixth is which job it is. Transcribed from the requirement rather than
 #: generated from a field list, so a renamed attribute cannot quietly change what is on screen
-#: (`ai/TESTING.md` §13).
+#: (`docs/project/TESTING.md` §13).
 COLUMN_HEADERS: Final = ("Job", "Status", "Progress", "Size", "Speed", "ETA")
 
 #: What the **title-line chip** reads for each status (`T-130`, `T130-R3`, `UX-005` 2026-08-04).

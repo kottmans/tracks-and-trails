@@ -132,10 +132,10 @@ def _modules_that_spawn() -> dict[str, tuple[ast.AST, set[str]]]:
 def test_the_scan_finds_the_spawn_sites_it_is_meant_to_guard() -> None:
     """The positive control: a rule that matches nothing passes for the wrong reason.
 
-    `ai/TESTING.md`'s instrument rule, applied to a static check. If `_builds_a_process` stopped
-    recognising `context.Process(...)` — a refactor to a factory function would do it — every
-    assertion below would pass over an empty set and this file would report a guarantee it was no
-    longer checking.
+    `docs/project/TESTING.md`'s instrument rule, applied to a static check. If `_builds_a_process`
+    stopped recognising `context.Process(...)` — a refactor to a factory function would do it —
+    every assertion below would pass over an empty set and this file would report a guarantee it was
+    no longer checking.
     """
     spawning = _modules_that_spawn()
 

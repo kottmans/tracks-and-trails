@@ -76,7 +76,7 @@ reconstruction that produces the PNG collapses the panel to 26 px deliberately, 
 on recording through it. **The pre-fix numbers in this file are unaffected and have been
 re-measured on 2026-09-03 with the corrected probe: 107 exposed paints, 214 panel resize events,
 107 collapses, 109 of 110 steps settling — identical.** The *post-fix* numbers recorded in
-`ai/TASKS.md` were not: the walk alone produces **8** panel resize events and **0** collapses, not
+`docs/project/TASKS.md` were not: the walk alone produces **8** panel resize events and **0** collapses, not
 9 and 1. The probe now freezes every counter before the reconstruction and asserts that none of them
 moved.
 

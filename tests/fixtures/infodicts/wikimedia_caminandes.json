@@ -5,7 +5,7 @@
     "captured": "2026-08-07",
     "content_licence": "Caminandes: Llama Drama (c) Blender Foundation, CC BY 3.0. Hosted by Wikimedia Commons; media URLs are unsigned.",
     "extractor": "wikimedia.org",
-    "note": "A contract, not a sample (ai/TESTING.md \u00a75). Changing a projected key must fail the projection test. Refreshing this file is a deliberate act with its own task.",
+    "note": "A contract, not a sample (docs/project/TESTING.md \u00a75). Changing a projected key must fail the projection test. Refreshing this file is a deliberate act with its own task.",
     "policy": "allowlist: only fields ytdlp_adapter reads carry values; each playlist entry keeps exactly url, webpage_url, original_url, title, duration, thumbnail and nothing else; every other key is dropped and nothing about it is kept. URLs lose query, userinfo and fragment; user-directory paths are removed",
     "source_url": "https://commons.wikimedia.org/wiki/File:Caminandes-_Llama_Drama_-_Short_Movie.ogv",
     "why_this_source": "The only recorded source that populates the codec and bitrate columns REQ-003 names (T107-R1). archive.org's derivatives report `unknown` for both, which `yt-dlp -F` confirms, so the columns could only ever be exercised against synthetic values. Wikimedia reports vcodec, acodec and tbr per format, and its sizes are `filesize_approx` - which exercises T107-R7's estimate rendering from a real capture as well. It also has no fps for any format; no boring, freely licensed source found does, which is recorded in T-185 rather than worked around.",

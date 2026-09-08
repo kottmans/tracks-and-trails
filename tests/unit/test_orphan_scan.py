@@ -1,7 +1,7 @@
 """`tools/orphan_scan.py` — the detection half of `T-258`.
 
 **The known positive runs first, and it is the point of this file.** `T-238`'s widget probe
-reported a clean zero twice while measuring nothing, and `ai/TESTING.md` names that shape
+reported a clean zero twice while measuring nothing, and `docs/project/TESTING.md` names that shape
 directly: an instrument that reports confidently about nothing is worse than no instrument,
 because its silence is read as an answer. This scanner's whole output on a healthy machine is
 "none found", so nothing else it says means anything until it has been shown one.

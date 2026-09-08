@@ -1,7 +1,7 @@
 """Built-in presets and the translation into a request (`T-015`, `REQ-006`, `REQ-009`).
 
-Two rules from `ai/TESTING.md` §13 shape this file, and both are here because the project has
-already been burned by their absence:
+Two rules from `docs/project/TESTING.md` §13 shape this file, and both are here because the project
+has already been burned by their absence:
 
 - **The expectation is transcribed from `REQ-006`, not read back out of the module.** A test
   that lists the preset names it expects and compares them with the names the module ships is
@@ -98,7 +98,8 @@ def test_every_case_req_006_names_has_exactly_one_preset(case: str) -> None:
 
 
 def test_no_built_in_preset_is_unaccounted_for() -> None:
-    """The other direction, so this stays an equality rather than a subset (`ai/TESTING.md` §13).
+    """The other direction, so this stays an equality rather than a subset
+    (`docs/project/TESTING.md` §13).
 
     A subset check stays green when a preset is added that nothing describes — and an
     undescribed preset is one whose behaviour no test has an opinion about.

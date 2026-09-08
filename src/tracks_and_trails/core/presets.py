@@ -193,9 +193,9 @@ def check_registry(presets: tuple[Preset, ...]) -> None:
     **The empty and non-string selector cases are not re-checked here**, though `T-015` names
     them: `Preset` already rejects both at construction, so an unusable one cannot be built to
     be caught. Re-implementing the check would add a branch no test could reach, which reads as
-    a guard while protecting nothing — `ai/TESTING.md` §13 has a whole section on that shape.
-    Making the value unrepresentable is the version of this bound that holds, and it is the same
-    lesson `T-014` learned about proxy credentials.
+    a guard while protecting nothing — `docs/project/TESTING.md` §13 has a whole section on that
+    shape. Making the value unrepresentable is the version of this bound that holds, and it is the
+    same lesson `T-014` learned about proxy credentials.
 
     What *is* checkable is the registry: an entry that forgot `built_in`, and two entries sharing
     a name, which would make `by_name` return whichever came first.

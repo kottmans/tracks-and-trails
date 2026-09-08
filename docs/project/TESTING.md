@@ -2,7 +2,7 @@
 
 **Purpose:** Define how the project is verified.
 **Authority:** Canonical for validation policy, required checks, gates, and coverage expectations.
-**Owner:** Reviewer (Codex) — policy; Implementer may add checks a change introduces.
+**Owner:** Reviewer — policy; Implementer may add checks a change introduces.
 **Maintainer:** Sean Kottman
 **Status:** Active
 **Last updated:** 2026-07-28
@@ -14,7 +14,7 @@
 > pass. The suite is still mostly structural — the domain layer (`T-010`) is the first
 > behavior it covers, and nothing downloads yet. Sections
 > §7 (mandatory high-risk coverage) and §8 (release gate) describe the approved target, not
-> current coverage. `ai/STATUS.md` is authoritative for what actually runs today.
+> current coverage. `docs/project/STATUS.md` is authoritative for what actually runs today.
 
 ---
 
@@ -321,7 +321,7 @@ nobody runs is worse than one that omits it, because it is read as coverage.
 | Trigger | What runs |
 |---|---|
 | **push touching anything a test reads** | everything: Linux `check`, the full `windows desktop` suite, `frozen linux`, `frozen windows`, the coverage notice |
-| **push touching prose only** | **nothing** (`OPS-011`), except `prose.yml` when `ai/TASKS.md` changed |
+| **push touching prose only** | **nothing** (`OPS-011`), except `prose.yml` when `docs/project/TASKS.md` changed |
 | **pull request** | **nothing at all** — no workflow carries the trigger (`T-262`) |
 | **nightly (06:00 UTC) and `workflow_dispatch`** | the same as the first row, plus it cannot be cancelled by a push |
 
@@ -375,7 +375,7 @@ read as controlling another job's **destination**.
 | `frozen linux` | `ci.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | matrix leg, unconditional |
 | `frozen windows` | `ci.yml` | literal `[self-hosted, windows, desktop]` | matrix leg, unconditional |
 | `trailers` | `commit-messages.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | every push |
-| `task placement` | `prose.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | push touching `ai/TASKS.md`, its test, or that workflow |
+| `task placement` | `prose.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | push touching `docs/project/TASKS.md`, its test, or that workflow |
 | `repeat on STARBASE` | `t074-repeat.yml` | literal `[self-hosted, windows, desktop]` | `workflow_dispatch` only — never on a push or a schedule |
 
 **Three tenses live in that table and must not be flattened into one.**
@@ -510,7 +510,7 @@ for Windows. `ci.yml`'s `paths-ignore` enumerates the exempt paths; adding one i
 decision, not tidying.
 
 **One gate read prose, and it moved rather than died.**
-`tests/unit/test_task_placement.py` (`T-096`) reads `ai/TASKS.md` — the only prose file the suite
+`tests/unit/test_task_placement.py` (`T-096`) reads `docs/project/TASKS.md` — the only prose file the suite
 opens. It now runs in `.github/workflows/prose.yml`, alone, on `vars.LINUX_RUNNER`, with `pytest` as
 its whole environment: no package install, no Qt, no Windows, seconds rather than ~19 minutes.
 Coverage unchanged; cost changed. If that test ever gains a dependency on the package, this

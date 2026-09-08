@@ -4,7 +4,7 @@
 harness behaviour, and that question has stayed open because it *cannot be inferred from a green
 suite*. This measures the fault's one precondition instead of waiting for the fault.
 
-**The precondition.** `ai/evidence/T238-SEGFAULT-gw7.txt` shows
+**The precondition.** `docs/project/evidence/T238-SEGFAULT-gw7.txt` shows
 `~QAbstractItemView` reached from `Shiboken::BindingManager::runDeletionInMainThread` under
 `_Py_HandlePending`. Shiboken only queues a deletion for the main thread when the wrapper's last
 Python reference was dropped **somewhere else** — so the crash requires a `QWidget` whose refcount
@@ -16,13 +16,14 @@ that final decref, so the precondition is directly observable.
     T238_PROBE_OUT=/tmp/report.txt PYTHONPATH=tools QT_QPA_PLATFORM=offscreen \
         .venv/bin/python -m pytest tests/ui -q -p t238_widget_thread_probe
 
-`ai/evidence/README.md`'s rule puts this here rather than the measurement there: re-running produces
-the report again, so the instrument is what is worth keeping and the number belongs in `T-238`.
+`docs/project/evidence/README.md`'s rule puts this here rather than the measurement there:
+re-running produces the report again, so the instrument is what is worth keeping and the number
+belongs in `T-238`.
 
 ## Two defects this instrument had first, and how they were found
 
-Both are the shape `ai/TESTING.md` warns about — an instrument that reports confidently about
-nothing — and neither was visible in its output.
+Both are the shape `docs/project/TESTING.md` warns about — an instrument that reports confidently
+about nothing — and neither was visible in its output.
 
 1. **Patching `QWidget.__init__` caught nothing.** Shiboken gives every class its own `__init__`
    slot, so the base-class patch never ran for a `QListView`. The first version reported **zero

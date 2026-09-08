@@ -1,13 +1,13 @@
 # DEVELOPMENT.md — Tracks & Trails
 
 **Purpose:** Practical developer setup and local workflow.
-**Authority:** Canonical for setup steps. **Not** authoritative for validation policy — see `ai/TESTING.md`.
+**Authority:** Canonical for setup steps. **Not** authoritative for validation policy — see `docs/project/TESTING.md`.
 **Owner:** Implementer / Documentation Maintainer
 **Maintainer:** Sean Kottman
 **Status:** Active
 **Last updated:** 2026-07-25
 **Update when:** Setup, dependencies, or the local workflow change.
-**Does not contain:** What must be tested or which gates are required (`ai/TESTING.md`).
+**Does not contain:** What must be tested or which gates are required (`docs/project/TESTING.md`).
 
 ---
 
@@ -280,7 +280,7 @@ argued.**
 
 **Nothing shared is written.** Every per-user directory — config, data, cache, downloads — is
 redirected into the test's own `tmp_path` by an autouse fixture in `tests/conftest.py`, which is
-what `ai/TESTING.md` §5 has always required. *Before it existed, one `-n auto tests/unit tests/ui`
+what `docs/project/TESTING.md` §5 has always required. *Before it existed, one `-n auto tests/unit tests/ui`
 run left 241 job logs in the developer's real cache*; it is 0 now, and
 `tests/unit/test_user_directories.py` re-derives the list of consuming modules from `src/` with
 `ast` so a new consumer cannot be missed silently.
@@ -323,9 +323,9 @@ Run all four before considering a source change done:
 ruff check . && ruff format --check . && mypy && pytest
 ```
 
-**These are convenience shortcuts, not policy.** `ai/TESTING.md` §3 defines which checks are
+**These are convenience shortcuts, not policy.** `docs/project/TESTING.md` §3 defines which checks are
 *required* for which kind of change, and §8 defines the release gate. When they disagree with
-this file, `ai/TESTING.md` wins.
+this file, `docs/project/TESTING.md` wins.
 
 ## Repository layout
 
@@ -343,7 +343,7 @@ tests/
   ui/             pytest-qt widget tests
   integration/    real subprocesses, faked yt-dlp
   network/        opt-in, real network (excluded by default)
-ai/               coordination documents -- start with ai/TASKS.md
+docs/project/     coordination documents -- start with docs/project/TASKS.md
 docs/             developer and operator documentation
 packaging/        PyInstaller spec and the frozen smoke test (T-020)
 ```
@@ -512,7 +512,7 @@ pointing at the *wrong* checkout will happily import someone else's code and pas
 worth not settling for — under that workaround the console script stays broken and the imported
 tree is still whatever the `.pth` says.
 
-**`.venv/` is git-ignored and does not survive a clone.** `ai/STATUS.md` records it being missing
+**`.venv/` is git-ignored and does not survive a clone.** `docs/project/STATUS.md` records it being missing
 twice already, so this is a recurring first-five-minutes problem rather than a one-off.
 
 ## Windows
@@ -520,7 +520,7 @@ twice already, so this is a recurring first-five-minutes problem rather than a o
 Windows is verified on **`STARBASE`**, the maintainer's own machine, which is both an interactive
 verification target and a self-hosted runner for the `windows desktop` job (2026-07-28). Setup
 there is the same apart from venv activation. `docs/WINDOWS_VERIFICATION.md` is the procedure.
-Several things still need a human — see `ai/TESTING.md` §9; that list blocks the first public
+Several things still need a human — see `docs/project/TESTING.md` §9; that list blocks the first public
 release.
 
 *(This section said "there is currently no Windows machine available, so Windows is verified

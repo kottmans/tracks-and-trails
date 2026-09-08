@@ -444,7 +444,7 @@ def test_the_default_windows_starter_calls_os_startfile(
 
     The first version scraped `inspect.getsource` for the string `os.startfile` — which appears in
     this function's own docstring, so deleting the call left the test passing. Vacuous, and exactly
-    the class `ai/TESTING.md` §13 records.
+    the class `docs/project/TESTING.md` §13 records.
 
     `os.startfile` is replaced and the dispatch observed — on any platform, because the launcher is
     looked up at call time rather than bound behind a module-level platform split.

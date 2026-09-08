@@ -130,7 +130,7 @@ def temporary_workflows(root: Path, files: dict[str, str]) -> Iterator[Path]:
     """Point the scanner at a directory of `files` built under `tmp_path`.
 
     **The first version wrote probes into the real `.github/workflows/`, and `T264-R1` is what that
-    cost.** `ai/TESTING.md` says tests write nowhere outside `tmp_path`, and CI runs
+    cost.** `docs/project/TESTING.md` says tests write nowhere outside `tmp_path`, and CI runs
     `pytest -n auto`: one worker listed a probe another worker had already deleted, and the file
     failed 1 of 18 in the mode meant to carry it. Worse than the flake, the shared directory let one
     worker's deliberately unsafe probe be seen by another worker's live gate — a security test that

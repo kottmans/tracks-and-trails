@@ -1,11 +1,11 @@
 """The yt-dlp adapter: projection, classification, and options (`T-012`).
 
-Everything here runs against the **recorded fixture**, never the network (`ai/TESTING.md` §2,
-§5). The fixture is a contract: changing a key the projection reads must fail a test, which is
+Everything here runs against the **recorded fixture**, never the network (`docs/project/TESTING.md`
+§2, §5). The fixture is a contract: changing a key the projection reads must fail a test, which is
 the only reason recording it is worth the maintenance.
 
-`ai/TESTING.md` §13 applies throughout — expectations are transcribed from `ARCHITECTURE.md`
-§5 and §7, never read back out of the adapter.
+`docs/project/TESTING.md` §13 applies throughout — expectations are transcribed from
+`ARCHITECTURE.md` §5 and §7, never read back out of the adapter.
 """
 
 import contextlib
@@ -92,7 +92,7 @@ def _nothing_answers(_url: str) -> bool:
 
 
 def test_the_fixture_records_its_provenance() -> None:
-    """`ai/TESTING.md` §5: each fixture records the yt-dlp version and capture date.
+    """`docs/project/TESTING.md` §5: each fixture records the yt-dlp version and capture date.
 
     Without them a failing projection cannot be told from an upstream change, which is most of
     what the fixture is for.
@@ -296,8 +296,9 @@ def test_a_format_without_an_id_is_dropped_rather_than_projected_empty() -> None
 
 # --- classification (ARCHITECTURE.md §7) -----------------------------------------------------
 
-#: Transcribed from `ARCHITECTURE.md` §7, **not** imported from the adapter (`ai/TESTING.md`
-#: §13). Asking the module which kinds it maps and then checking it maps them proves nothing.
+#: Transcribed from `ARCHITECTURE.md` §7, **not** imported from the adapter
+#: (`docs/project/TESTING.md` §13). Asking the module which kinds it maps and then checking it maps
+#: them proves nothing.
 SECTION_7_KINDS = {
     "UNSUPPORTED_URL",
     "EXTRACTOR_ERROR",
@@ -412,7 +413,7 @@ def test_http_failures_classify_by_status_not_by_class(status: int, expected: Er
     that cannot help is worse than saying nothing.
 
     Expectations are transcribed from HTTP semantics, not from `_RETRYABLE_STATUSES`
-    (`ai/TESTING.md` §13).
+    (`docs/project/TESTING.md` §13).
     """
     detail = adapter.classify_exception(_http_error(status))
     assert detail.kind is expected
@@ -531,7 +532,9 @@ def test_a_format_yt_dlp_is_unsure_about_is_not_treated_as_protected() -> None:
 
 
 def test_drm_detection_does_not_read_message_text() -> None:
-    """The prose says DRM; the structure does not. Structure wins (`ai/TESTING.md` §13)."""
+    """The prose says DRM; the structure does not. Structure wins
+    (`docs/project/TESTING.md` §13).
+    """
     assert not adapter.has_drm({"title": "This video is DRM protected", "formats": []})
 
 
@@ -703,7 +706,7 @@ def _constructed(options: dict[str, Any]) -> Any:
     `T012-R5` existed because the previous tests asserted that a key was *present in the input
     dict*. `extractaudio` is an argument-parser flag: `YoutubeDL` accepts it, ignores it, and
     installs nothing. Only the constructed object knows what will really run, so that is what
-    these assert against (`ai/TESTING.md` §13).
+    these assert against (`docs/project/TESTING.md` §13).
     """
     from yt_dlp import YoutubeDL
 
@@ -940,7 +943,7 @@ def test_verbose_is_never_enabled() -> None:
     that cannot fire: yt-dlp's verbose lines are prefixed `[debug]`, `YtdlpLog` sends those to
     `DEBUG`, and the worker's handler sits at `INFO`, so they would be dropped for a second and
     unrelated reason. A test that passes for a reason other than the one it names proves nothing
-    (`ai/TESTING.md` §13).
+    (`docs/project/TESTING.md` §13).
     """
     for options in (
         adapter.build_options(request_for(), "%(title)s.%(ext)s"),

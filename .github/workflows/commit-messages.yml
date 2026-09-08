@@ -1,7 +1,7 @@
 # Commit-message gate — `T-240`.
 #
 # **This runs on every push, with no `paths` filter, and that is the point.** `ci.yml` exempts
-# prose (`OPS-011`) and `prose.yml` covers only `ai/TASKS.md`; a commit message has nothing to do
+# prose (`OPS-011`) and `prose.yml` covers only `docs/project/TASKS.md`; a commit message has nothing to do
 # with which files a commit touched, and the commits most likely to omit a `Task:` trailer —
 # status syncs, review records — are exactly the prose-only ones neither of those workflows would
 # examine.
@@ -108,7 +108,7 @@ jobs:
         run: |
           # **`pipefail`, because the check's exit code is the whole result.** Without it `tee`
           # reports success and the gate passes while printing its own failures — the same shape
-          # `ai/TESTING.md` records for chaining validation into a commit.
+          # `docs/project/TESTING.md` records for chaining validation into a commit.
           set -o pipefail
           mkdir -p reports
           python3 tools/commit_message_check.py \

@@ -1,6 +1,7 @@
 # PROMPTS.md — Tracks & Trails
 
 **Purpose:** Reusable prompts for starting common AI-assisted tasks in this repository.
+Supporting workflow material, not the product's introduction.
 **Authority:** **None.** Convenience templates only.
 **Owner:** Documentation Maintainer
 **Maintainer:** Sean Kottman
@@ -18,7 +19,7 @@
 ```text
 Act as the Implementer for Tracks & Trails.
 
-Read AGENTS.md, then the T-### entry in ai/TASKS.md, then ai/STATUS.md.
+Read AGENTS.md, then the T-### entry in docs/project/TASKS.md, then docs/project/STATUS.md.
 Read only the requirement/decision IDs, architecture sections, source paths, and tests
 that the task entry links to. Do not read the repository front-to-back.
 
@@ -33,7 +34,7 @@ Respect the layering rules in AGENTS.md §7: core/ and downloader/worker.py must
 Qt; ui/ must not import yt_dlp.
 
 Add or update tests for every behavior change. Run the required checks for this change class
-per ai/TESTING.md §3.
+per docs/project/TESTING.md §3.
 
 Do not commit or push. Do not add AI attribution anywhere.
 
@@ -52,12 +53,12 @@ Task(s): T-###
 
 Review the diff against:
 - the task's acceptance criteria and out-of-scope list
-- ai/REQUIREMENTS.md (the specific REQ/NFR IDs the task cites)
-- accepted entries in ai/DECISIONS.md
-- ai/ARCHITECTURE.md, especially the §4 layering rules and the §7 error taxonomy
-- ai/TESTING.md §3 and §7
+- docs/project/REQUIREMENTS.md (the specific REQ/NFR IDs the task cites)
+- accepted entries in docs/project/DECISIONS.md
+- docs/project/ARCHITECTURE.md, especially the §4 layering rules and the §7 error taxonomy
+- docs/project/TESTING.md §3 and §7
 
-Apply the standing risk focus in ai/REVIEWS.md: process lifecycle and orphaned workers,
+Apply the standing risk focus in docs/project/REVIEWS.md: process lifecycle and orphaned workers,
 the IPC boundary, filesystem path safety, log redaction, migrations and crash recovery,
 Qt threading, and REQ-EXCL boundaries.
 
@@ -68,12 +69,12 @@ Do not modify source unless explicitly asked to fix findings.
 
 Report: verdict, findings ordered by severity with file:line, why each matters, recommended
 correction, checks run and their real results, unresolved risks, and a merge readiness call.
-Record the review in ai/REVIEWS.md, then disposition every finding under AGENTS.md §10's
+Record the review in docs/project/REVIEWS.md, then disposition every finding under AGENTS.md §10's
 task-creation threshold: a Note requests no change; a small requested change is a Low
 finding, not a Note; a minor actionable finding rides the current task's completion sync or
 the next existing task; and a new TASKS.md entry is for independently substantial work only.
 Accepted Risk and Won't Fix need the maintainer's explicit no-action decision.
-In a parallel wave, write ai/reviews/T-###.md on the task branch instead, name the exact
+In a parallel wave, write docs/project/reviews/T-###.md on the task branch instead, name the exact
 implementation head you approved, and leave the index and task routing to the coordinator.
 ```
 
@@ -82,8 +83,8 @@ implementation head you approved, and leave the index and task routing to the co
 ```text
 Act as the Planner for Tracks & Trails.
 
-Read AGENTS.md, ai/STATUS.md, ai/IMPLEMENTATION_PLAN.md, and the relevant parts of
-ai/REQUIREMENTS.md, ai/ARCHITECTURE.md, and ai/DECISIONS.md.
+Read AGENTS.md, docs/project/STATUS.md, docs/project/IMPLEMENTATION_PLAN.md, and the relevant parts of
+docs/project/REQUIREMENTS.md, docs/project/ARCHITECTURE.md, and docs/project/DECISIONS.md.
 
 Task: <planning problem>
 
@@ -121,14 +122,14 @@ Then propose, and wait for my approval before creating anything:
   review-record path, integration order
 
 Do not implement any worker's task yourself. Do not create branches or worktrees, or write
-ai/TASKS.md and ai/STATUS.md, until I authorize the wave.
+docs/project/TASKS.md and docs/project/STATUS.md, until I authorize the wave.
 ```
 
 ## Parallel worker
 
 ```text
 Act as the Implementer for Tracks & Trails, as a worker in a parallel wave.
-Read AGENTS.md §9, then the T-### entry in ai/TASKS.md.
+Read AGENTS.md §9, then the T-### entry in docs/project/TASKS.md.
 
 Task: T-###          Wave: PW-###
 Branch: task/T-###-<slug>, already created from main@<sha> — stay on it
@@ -140,7 +141,7 @@ Runtime: run tests as
   and verify once that tracks_and_trails resolves inside this worktree
 
 Do not switch, merge, rebase, or delete branches. Do not edit another worker's paths,
-ai/TASKS.md, ai/STATUS.md, or any review record. If the task turns out to need a file outside
+docs/project/TASKS.md, docs/project/STATUS.md, or any review record. If the task turns out to need a file outside
 your write set, stop that part and report the scope expansion instead of editing it.
 
 Finish with the AGENTS.md §11 report including the worker items (9–12): wave, branch, exact
@@ -184,7 +185,7 @@ user-identifying: cookies, tokens, session or auth query parameters, and persona
 
 If you are REPLACING an existing fixture, state exactly what changed in the dict shape and
 why — a silently refreshed fixture hides the upstream breakage the fixture exists to catch
-(ai/TESTING.md §5). If the shape changed, ytdlp_adapter.py likely needs a corresponding
+(docs/project/TESTING.md §5). If the shape changed, ytdlp_adapter.py likely needs a corresponding
 change, and that is a separate task.
 ```
 
@@ -215,13 +216,13 @@ Act as the Release Manager for Tracks & Trails.
 
 Release candidate: <version / tag / commit>
 
-Work through the ai/TESTING.md §8 release gate item by item, on Linux AND Windows. Do not
+Work through the docs/project/TESTING.md §8 release gate item by item, on Linux AND Windows. Do not
 mark an item passed without the actual evidence.
 
 Also verify: version numbers consistent across sources, CHANGELOG current, the pinned yt-dlp
 baseline recorded (OPS-002), Qt dynamically linked (NFR-009, LIC-001), third-party license
 texts present, and no secrets or personal paths in the artifact.
 
-Record the verdict and any blockers in ai/REVIEWS.md.
+Record the verdict and any blockers in docs/project/REVIEWS.md.
 Do not tag, commit, push, or publish unless explicitly instructed.
 ```

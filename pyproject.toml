@@ -130,7 +130,7 @@ ignore = [
 "tests/*" = ["S301", "S603", "S607"]
 # Evidence scripts shell out to the tools they are measuring; the argv is literal, a few lines
 # above the call, and the whole point of the file is to run ffmpeg and read what it produced.
-"ai/evidence/*" = ["S603", "S607"]
+"docs/project/evidence/*" = ["S603", "S607"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["tracks_and_trails"]
@@ -163,7 +163,7 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 # psutil ships no type information. Used only by tests, and only where a real OS process is the
 # thing under test: T-013's cancellation, crash and orphan criteria are all statements about
-# processes, and a mocked one cannot fail the way a real one does (ai/TESTING.md §6).
+# processes, and a mocked one cannot fail the way a real one does (docs/project/TESTING.md §6).
 module = ["psutil"]
 ignore_missing_imports = true
 

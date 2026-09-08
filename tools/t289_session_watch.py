@@ -429,10 +429,10 @@ def watch_the_update_route(watch: Watch) -> None:
 def self_test() -> int:
     """Prove the watch reports an off-GUI destruction, before anyone trusts a clean session.
 
-    **`ai/TESTING.md` §10: an instrument carries its own positive control**, and this family has
-    produced three that reported confidently about nothing. A session that ends *"nothing off the
-    GUI thread"* is worth exactly as much as this check passing beforehand, so the maintainer can
-    run it in a second, offscreen, and so can a reviewer.
+    **`docs/project/TESTING.md` §10: an instrument carries its own positive control**, and this
+    family has produced three that reported confidently about nothing. A session that ends *"nothing
+    off the GUI thread"* is worth exactly as much as this check passing beforehand, so the
+    maintainer can run it in a second, offscreen, and so can a reviewer.
 
     The subject is the arm this project measured on 2026-08-30: a **Python subclass**, unparented so
     Python owns the C++ object, reachable only through a cycle, collected on a `QThreadPool` thread.

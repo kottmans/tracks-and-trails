@@ -99,11 +99,11 @@ class Parked:
         """A widget the product owns from Python **whose type is defined in Python**.
 
         **The type is part of the discriminator, and leaving it out made this wider than the
-        defect** (`T289-R20`). `ai/TESTING.md` §7 turns on the distinction: a plain Qt type is
-        marshalled to the GUI thread by Shiboken and destroyed safely, and only a type defined in
-        Python is destroyed **in place** on whichever thread collected it. A plain `QWidget` that
-        Python owns classified as a finding here and the verdict would have called it *the tree
-        criterion 2 asks for*, which it is not.
+        defect** (`T289-R20`). `docs/project/TESTING.md` §7 turns on the distinction: a plain Qt
+        type is marshalled to the GUI thread by Shiboken and destroyed safely, and only a type
+        defined in Python is destroyed **in place** on whichever thread collected it. A plain
+        `QWidget` that Python owns classified as a finding here and the verdict would have called it
+        *the tree criterion 2 asks for*, which it is not.
 
         **`valid` is not tested here because `owned` already carries it** — it is computed as
         *valid and `ownedByPython`*, so a dead wrapper can never arrive owned. Stating it twice

@@ -11,14 +11,14 @@ with it.
 runs is the one selected at Add) and `T115-R1` (one ordered admission) all have tests below, and
 each of them describes a defect that shipped once.
 
-**The process boundary is not mocked** (`ai/TESTING.md` §6). Every probe below spawns a real
-process over a real `multiprocessing.Queue`; what the child *is* varies, exactly as in
-`tests/integration/test_manager.py` — a child replaying a recorded fixture, a child that fails
-with recorded text, a child that never answers, and a child that answers only when told to.
+**The process boundary is not mocked** (`docs/project/TESTING.md` §6). Every probe below spawns a
+real process over a real `multiprocessing.Queue`; what the child *is* varies, exactly as in
+`tests/integration/test_manager.py` — a child replaying a recorded fixture, a child that fails with
+recorded text, a child that never answers, and a child that answers only when told to.
 
-What *is* faked is the network: fixtures instead of sites (`ai/TESTING.md` §1), and an injected
-`ThumbnailLoader` over bytes already in this repository. Qt still decodes the pixmap for real.
-The **shipping** loader's failure path is exercised too (`T016-R5`), against a local URL that
+What *is* faked is the network: fixtures instead of sites (`docs/project/TESTING.md` §1), and an
+injected `ThumbnailLoader` over bytes already in this repository. Qt still decodes the pixmap for
+real. The **shipping** loader's failure path is exercised too (`T016-R5`), against a local URL that
 cannot resolve — a loader that can only succeed cannot prove what happens when one does not.
 
 Persistence is real where the claim is about persistence. `FakeSink` is a zero-latency stand-in

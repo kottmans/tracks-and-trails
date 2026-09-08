@@ -5,8 +5,39 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-09-06 — **`## In Review` is empty: `T-289` and `T-271` are both Complete,
-and nothing is awaiting a verdict.** Read this first, then the section below it.
+**Last updated:** 2026-09-08 — **The coordination documents moved from `ai/` to `docs/project/`,
+and the repository is being prepared to go public.** `T-299` is In Review; read this first, then
+the 2026-09-06 section below it, which is still current about Phase 4.
+
+**What changed is where the documents live, not what they say.** `DOC-006` records the adoption of
+convention revision **2026-09-08.1** and its four deliberate deviations. 1473 path references
+across 127 files were rewritten, plus four Python path joins that named `"ai"` as a segment and
+that no string rewrite could have seen. **The full suite passes at 3925 passed / 21 skipped**, and
+`ruff check .`, `ruff format --check .` and `mypy src tests` are clean.
+
+**Content preservation was verified rather than assumed.** Re-wrapping prose moves text between
+lines, so the diff is unreadable as evidence. Every file was compared against `HEAD` under a
+normalization that applies the path rewrite and collapses whitespace and comment markers: 291
+matched exactly, and the 5 that did not are the 5 with deliberate wording changes.
+
+**`README.md` was false and is now the largest piece of new prose here.** It said *"pre-alpha,
+planning only. No code exists yet"* beside 58 source modules and a working application.
+`SECURITY.md` is new at the root and states the CI trust boundary — every runner is self-hosted,
+no workflow carries a pull-request trigger, and `tests/unit/test_workflow_triggers.py` is what
+keeps that true.
+
+**One thing this does not cover, and it is the maintainer's.** The GitHub *repository settings*
+behind the trigger set — fork pull-request approval, who may run workflows, runner-group scope —
+are not files and no test in here can see them. They are unverified and must be set before the
+repository is made public. `T-299`'s last section says so rather than leaving it implied.
+
+**`AGENTS.md` is 628 lines against the convention's ~200–300 trigger and was left alone**, because
+its section numbers are cited from 359 places. `T-300` is filed and Ready.
+
+---
+
+*(2026-09-06:)* **`## In Review` was empty: `T-289` and `T-271` are both Complete,
+and nothing was awaiting a verdict.**
 
 **Both were approved before today and neither had been moved.** `T-289` is Complete at
 `194316c`, the pool-drain round of 2026-08-31, with `T289-R23`'s remaining half and `T289-R25`
@@ -97,7 +128,7 @@ removes is the configuration the teardown reading measured — a pool thread sti
 while the GUI thread destroys widgets — which is a precondition, not the dump's identified cause.
 The section below is unchanged by it.
 
-**The rule** *no Qt widget is destroyed off the GUI thread* is stated in `ai/TESTING.md` §7 and
+**The rule** *no Qt widget is destroyed off the GUI thread* is stated in `docs/project/TESTING.md` §7 and
 enforced at every `tests/ui` boundary.
 
 **What the guard is.** No widget whose type is defined in Python may be owned by Python *and*
@@ -149,7 +180,7 @@ that became garbage at the very end of a test (`T289-R9` corrected a claim that 
 
 **Last updated:** 2026-08-30 — **`T-289`'s mechanism is identified: shiboken destroys a widget in
 place, instead of marshalling it to the GUI thread, when the widget's type is defined in Python.**
-`ai/evidence/2026-08-30-T289-pool-thread-destruction.md`. `T-289` stays **Proposed** — this is a
+`docs/project/evidence/2026-08-30-T289-pool-thread-destruction.md`. `T-289` stays **Proposed** — this is a
 diagnosis, not a fix. *(“Read this section first” stood here until the block above replaced
 it.)*
 
@@ -184,7 +215,7 @@ integration **445 passed**, placement **15**.
 
 **Last updated:** 2026-08-30 — **`T-238`'s criterion 4 is sharper, and the collector-runs-a-Qt-
 destructor route is reproducible on demand for the first time.** Three arms, each deterministic;
-`ai/evidence/2026-08-30-T238-criterion-4-widget-collection.md`. `T-238` stays **Ready** — criterion
+`docs/project/evidence/2026-08-30-T238-criterion-4-widget-collection.md`. `T-238` stays **Ready** — criterion
 4 is not met. *(“Read this section first” stood here until the block above replaced it.)*
 
 **No widget the application's own routes opened was parked while its Qt widget was still alive.**
@@ -285,7 +316,7 @@ It is the nearest live specimen to compare a `T-289` fix against, and it is **no
 
 **One judgement call, made rather than deferred.** The committed `STARBASE` report keeps its CRLF
 endings — it is evidence, and normalising it would make the committed copy something other than
-what the machine produced. `.gitattributes` now exempts `ai/evidence/*.txt` from the
+what the machine produced. `.gitattributes` now exempts `docs/project/evidence/*.txt` from the
 trailing-whitespace check instead, so `git diff --check` stops reporting all 100 lines as a
 finding. Verified both ways in a scratch repository: a CRLF file is flagged without the attribute
 and silent with it.
@@ -341,7 +372,7 @@ left standing under a header that announced it. `T212-R6`.)*
 ### What was actually run, and what was not
 
 **`T212-R1` found this section claiming a "full suite" it had not run and gates "green" that were
-red.** 3,364 unit and UI cases were called the full suite while `ai/TESTING.md` puts integration in
+red.** 3,364 unit and UI cases were called the full suite while `docs/project/TESTING.md` puts integration in
 the default scope, and both all-files mypy commands were failing on `tests/ui/test_queue_view.py`.
 So the commands and their results are written out here, one line each, rather than summarised into
 a word:
@@ -357,7 +388,7 @@ a word:
 | `pytest -q tests/integration` | **445 passed** in 6 m 29 s | Linux, offscreen, serial |
 | `windows desktop`, full suite | **3,796 passed, 36 skipped, 35 deselected**, 29 m 35 s | `STARBASE`, run `33231536419` |
 | `yt-dlp canary`, full suite | **3,801 passed, 21 skipped, 14 deselected** | run `33231851897`, against yt-dlp **2026.08.19** |
-| Rendered scroll bars, real display | **no defect** — `ai/evidence/2026-08-28-T288-real-display-scrollbars.md` | KDE/Wayland, `wayland` plugin over `fusion`, Qt 6.11.1 |
+| Rendered scroll bars, real display | **no defect** — `docs/project/evidence/2026-08-28-T288-real-display-scrollbars.md` | KDE/Wayland, `wayland` plugin over `fusion`, Qt 6.11.1 |
 
 Unit and UI were measured apart at the earlier head — **2,294 / 18 skipped** and **1,073 / 3
 skipped** — before the Windows correction split one case into two.
@@ -496,7 +527,7 @@ already names the new options, which is most of a task entry written for whoever
 recovered.** Updating yt-dlp from the Settings screen **aborted the process**: `double free or
 corruption (!prev)`, at the run's own head `3d1f427`. `T-289` is filed and it is the highest
 priority thing open; the dump is recorded at
-`ai/evidence/2026-08-27-T212-ytdlp-update-double-free.md` because `systemd-coredump` rotates.
+`docs/project/evidence/2026-08-27-T212-ytdlp-update-double-free.md` because `systemd-coredump` rotates.
 
 **The two stacks are the whole finding.** The GUI thread was in `sendPostedEvents` →
 `QLabel::setBuddy` → `QObject::disconnectImpl` → `free`. A **pool thread** was simultaneously in
@@ -991,7 +1022,7 @@ a distinguishing label the runners do not carry. **That ruling is the maintainer
 **`T272-R6`** establishes that the 2026-08-20 *"gone / no specimen"* disposition was false, so the
 struck preservation criterion is **unmet rather than overtaken**, and directs that the capture be
 retained if it survives. **It survives, and it is retained**:
-`ai/evidence/2026-08-25-linux-orphan-still-running-on-spock.md`, three read-only blocks, nothing
+`docs/project/evidence/2026-08-25-linux-orphan-still-running-on-spock.md`, three read-only blocks, nothing
 signalled.
 
 **One clause of `T272-R6` does not hold on this machine.** It reports the specimen as having ended
@@ -1100,8 +1131,8 @@ be true.
 **The measured claim is narrower and was always enough**: the two slots that draw the **window
 icon** resolve to ~21 px and ~31 px, both below 48, so neither was getting the Icon cut. What
 `T-277` buys is the **persistent** slot — the panel, on screen whenever the application runs.
-**Corrected across eleven sites in three files**, not the two the finding quoted: `ai/TASKS.md`
-(five), `ai/STATUS.md` (three) and `tools/icons/render_icons.py` (two). The general principle was
+**Corrected across eleven sites in three files**, not the two the finding quoted: `docs/project/TASKS.md`
+(five), `docs/project/STATUS.md` (three) and `tools/icons/render_icons.py` (two). The general principle was
 rewritten rather than deleted — *legibility at a size is worth nothing if no slot a user looks at
 draws that size* — because that is the actual argument.
 
@@ -1323,7 +1354,7 @@ keeps the Small cut, panel gets the cut without the sound-wave arcs.
 KWin been scaling the titlebar down from the 32 frame, this would have changed it too. Re-measured
 after relaunching on the new assets: titlebar **ink 14x18, green 58, gold 26 — identical**; panel
 green **116 → 183**, coverage **0.1180 → 0.1862**, across `GREEN_FLOOR`.
-`ai/evidence/2026-08-25-T277-icon-in-the-desktop-slots.png` is the before/after at 10x.
+`docs/project/evidence/2026-08-25-T277-icon-in-the-desktop-slots.png` is the before/after at 10x.
 
 **Eleven mutations re-run against the moved band, all caught**, tree hashed back to clean after
 each. `T274-R3`'s escape now fails 4 rather than 2; the arcs returning fails 11.
@@ -1351,7 +1382,7 @@ in `T-277`'s Out of scope so it is on the record.
 launching the application for the measurement above. `tools/orphan_scan.py` on this machine exits
 **1** and reports pid `434366`, started 2026-08-16 01:12:15, **9d10h old**, two threads, dead
 parent `2139` — holding **`pipe:[1629660]`**, the exact inode `T-272` and
-`ai/evidence/2026-08-20-linux-orphans-on-kirk.md` both quote. `432922`, the resource tracker, is
+`docs/project/evidence/2026-08-20-linux-orphans-on-kirk.md` both quote. `432922`, the resource tracker, is
 alive beside it.
 
 **`T-272` is In Review and approved, and states the opposite**: *"Both PIDs are gone from `ps`"*,
@@ -1508,7 +1539,7 @@ mark fails with *"2 separate runs ([10, 1])"*.
 
 **32 px changed sides** — smallest full-mark size to largest reduced one — on the pack's own
 measurement of this artwork rather than `T003-R2`'s of the artwork it replaced.
-`ai/evidence/2026-08-21-T274-cuts-at-icon-sizes.png` is the side-by-side. **The brand palette did
+`docs/project/evidence/2026-08-21-T274-cuts-at-icon-sizes.png` is the side-by-side. **The brand palette did
 not change**: the pack ships `#1E5E47` and `#D9A24C`, `theme.py` is untouched, and no source module
 was modified.
 
@@ -1661,7 +1692,7 @@ accepted decision said**, and they moved only once it said otherwise. Now: **`un
 
 **The gate had to learn to read an amendment, and that is the part worth keeping.**
 `tests/unit/test_option_audit.py` read each decision's verdict table **once**. `AGENTS.md` §6 makes
-`ai/DECISIONS.md` append-only, so an amendment is a *second* table inside the same entry — and a
+`docs/project/DECISIONS.md` append-only, so an amendment is a *second* table inside the same entry — and a
 parser reading only the first would have gone on reporting the superseded verdict while every count
 around it agreed with the new one. It now reads **every** table in document order and lets the later
 one win. **Mutations: parser back to the first table alone fails 2, `SEC-005`'s verdict row deleted
@@ -1818,7 +1849,7 @@ copies of accounts already corrected elsewhere (`T238-R6`, `T272-R4`).
 anywhere in it.** `T272-R3` is Resolved at `c929bc4` and `COORD-R24` at `1624f10`; the original
 correction was approved at `d50eef9`, where `T074-R5`, `T238-R4`, `T272-R1` and `T272-R2` are
 Resolved. **Six findings, three review passes, and nothing product-facing moved** — the whole round
-is `ai/TASKS.md`, `ai/STATUS.md` and two files under `ai/evidence/`.
+is `docs/project/TASKS.md`, `docs/project/STATUS.md` and two files under `docs/project/evidence/`.
 
 **The last two findings were both mine and both were about the gap between a record and its
 evidence**, which is what this round turned out to be about end to end. `T272-R3`: the measurement
@@ -1851,8 +1882,8 @@ unprioritized.
 **Last updated:** 2026-08-20 — **The evidence batch came back Changes requested, all four findings
 are corrected, and the three blocking ones were the same defect wearing three hats.** `T074-R5`,
 `T238-R4` and `T272-R1` (Medium, blocking) and `T272-R2` (Low) are answered at `36677b8`, `cc8dd89`
-and `d50eef9`. The range is **documentation only** — `ai/TASKS.md` and two files under
-`ai/evidence/`, no `src/`, test, workflow, dependency or build path — so nothing about the product
+and `d50eef9`. The range is **documentation only** — `docs/project/TASKS.md` and two files under
+`docs/project/evidence/`, no `src/`, test, workflow, dependency or build path — so nothing about the product
 moved and nothing about it needed to.
 
 **The shape they share is the one this project keeps finding.** Each was a *summary* sentence
@@ -1893,7 +1924,7 @@ the **Windows spawn payload pipe**, which `popen_spawn_win32` creates with `bInh
 for the reason first given. **Withdrawn with it:** that the five's **one-thread** shape was
 reproduced outside Windows. The one thread and 0 s of CPU are the **tracker**; the **worker** has
 **two threads and 157 s of CPU**, and their union is not a process shape. `T272-R2` is folded in —
-the artifact is in `ai/evidence/README.md`'s inventory with its cannot-be-regenerated reason.
+the artifact is in `docs/project/evidence/README.md`'s inventory with its cannot-be-regenerated reason.
 
 **`T-272` is on this board for the first time, and its specimens are already gone** (`f20876a`).
 Filed 2026-08-20: `tools/orphan_scan.py` **already detects Linux orphans, unmodified**, and nothing
@@ -1972,7 +2003,7 @@ at a keyboard can move.
 **Both tasks are Approved and Complete**, 2026-08-20 — `T-270` at `c047767`, `T-269` at
 `166ce39`, **neither with an implementation finding**. `T270-R1`, `T269-R1`, `T269-R2` and
 `T266-R2` are Resolved. The reviewer confirmed the implementation boundary did not move between
-`T-270`'s two reviews: `06745fa`'s only difference from `c047767` is `ai/REVIEWS.md`.
+`T-270`'s two reviews: `06745fa`'s only difference from `c047767` is `docs/project/REVIEWS.md`.
 
 ---
 
@@ -2086,7 +2117,7 @@ region is the outer Job, by luck, per `T-268` above. **POSIX is measured not to 
 window at all** (the child dies within 0.02 s of the parent, on its own broken bootstrap pipe), and
 the application contains itself in a Job object before any worker exists — through **one seam that
 refuses to spawn rather than warn**, at **all three** product-owned spawn sites. The review found
-the first version failing open and covering only the manager, and it was right. `ai/TASKS.md`'s
+the first version failing open and covering only the manager, and it was right. `docs/project/TASKS.md`'s
 `## In Review` section was also found duplicated byte-for-byte since `30b473d`, under a placement
 gate that passes on duplicates.
 *(Previously, 2026-08-16 — **`T-183`, Phase 4.5's option audit, was built and In Review**; it is
@@ -2295,7 +2326,7 @@ glyph keeps the note head, the stem and the gold trail, and drops the trees and 
 drift. 16 px and 24 px come from the reduced master and everything from 32 up is untouched.
 Measured at 16 px, the trail goes from **13 gold pixels to 20**, and a floor between the two is
 gated. **Its first criterion is a side-by-side judgement and is the maintainer's** —
-`ai/evidence/2026-08-15-T021-small-glyph.png` is the evidence, and nothing claims the judgement has
+`docs/project/evidence/2026-08-15-T021-small-glyph.png` is the evidence, and nothing claims the judgement has
 been made.
 
 **`T-240` is in review: the commit-message rules are enforced now, by two halves that fail
@@ -2303,7 +2334,7 @@ differently.** `.githooks/commit-msg` **prevents** — and is skippable with `--
 until `tools/install-hooks.sh` runs; `.github/workflows/commit-messages.yml` **reports**, over the
 pushed range only, and arrives after the history exists. Neither is sufficient, which is why both
 are there. Proved by a deliberately bad commit made and discarded in a scratch clone
-(`ai/evidence/2026-08-15-T240-hook-proof.md`), not by reading the script.
+(`docs/project/evidence/2026-08-15-T240-hook-proof.md`), not by reading the script.
 
 **Two measurements came out of it.** **278 of this repository's 915 commits carry no `Task:`
 trailer** — most predate the requirement, which is why the range is the range and never the whole
@@ -2425,7 +2456,7 @@ step is one line taller, and that line says what the user can do; a failure with
 keeps `UX-005` §3's anatomy exactly. The ruling and both rejected options are recorded as a `UX-005`
 amendment, which is where a row-anatomy decision lives — a reviewer recommendation is not one, and
 this entry is only writing down what the maintainer chose. The ruled layout is rendered at
-`ai/evidence/2026-08-14-T201-next-step-option-c.png`, with `tools/failed_row_screenshot.py` to
+`docs/project/evidence/2026-08-14-T201-next-step-option-c.png`, with `tools/failed_row_screenshot.py` to
 regenerate it.
 
 **`T201-R2` needed a second correction, and the first one is the interesting part.** The wording was
@@ -2564,7 +2595,7 @@ Critical's numeric-password route and the reviewer's own `choose_network` mutati
 the regression it used to pass. **`T196-R5` stays Open, and correctly.** The built label, its
 accessible name and the section explaining segmented streams were all accepted; what was not
 corrected with them were **two current-truth records still carrying the superseded meaning** —
-`ai/STATUS.md`'s own ruling bullet calling `--retries` *per-fragment*, and `ai/TASKS.md`'s
+`docs/project/STATUS.md`'s own ruling bullet calling `--retries` *per-fragment*, and `docs/project/TASKS.md`'s
 acceptance criterion still offering *"fragment retries or job-level retry"* as the choice. **A
 criterion that demands the control name which retry it is was itself naming the wrong one.**
 
@@ -2707,7 +2738,7 @@ one that should collect `T198-R2`'s Windows frozen run.
 and one of the findings is about these records.** The reviewer resolved `T198-R1` and `T198-R4`;
 **`T198-R2` stays Open pending a Windows frozen execution**, **`T198-R3` stays Open** because a
 check at button-press time is not an exclusion across the operation, and **`T198-R5` is new**: this
-file and `ai/TASKS.md` said all four findings were *Resolved*, which is **the Reviewer's
+file and `docs/project/TASKS.md` said all four findings were *Resolved*, which is **the Reviewer's
 disposition to make and was false for two of them**. Corrected below. **Do not push** — the
 reviewer's instruction is to close `T198-R3` and `T198-R5` first so one final head receives both
 frozen jobs.
@@ -2790,7 +2821,7 @@ until run `31657727760`, because that test lives in the Full suite.
 selected only failures and skips, and then described what the job produced — the same shape as
 reporting a truncated `grep` as absence. The step list shows nine successes before the failure.)*
 
-The correction touched only `ai/TASKS.md`, which is in `paths-ignore`, so no push could re-trigger
+The correction touched only `docs/project/TASKS.md`, which is in `paths-ignore`, so no push could re-trigger
 CI and a run had to be **dispatched by hand**.
 
 **Forced and confirmed:** a 0.3 s sleep between those statements fails the test 3 of 3 with the
@@ -2800,10 +2831,10 @@ guard is not, and the timeout was never raised. The `linux` re-run at the same c
 is what a microsecond window predicts. **`T-230`, `T-220` and `T-229` are cleared by name.**
 
 **Last verified against repository:** 2026-08-12 for the block above — commit hashes and the
-CI conclusion read from `git log` and `gh run view`, task states from `ai/TASKS.md` after the
+CI conclusion read from `git log` and `gh run view`, task states from `docs/project/TASKS.md` after the
 placement gate ran, and every figure from the run quoted with its exit code checked rather
 than its summary line. 2026-08-11 for all five 2026-08-11 blocks — commit hashes read
-from `git log`, task states from `ai/TASKS.md` after the placement gate ran, and the figures from
+from `git log`, task states from `docs/project/TASKS.md` after the placement gate ran, and the figures from
 the runs quoted, with exit codes checked rather than summary lines. Earlier blocks were verified on
 their own dates; the Phase 1 and Phase 2 narrative from `## Next` onward was last swept 2026-08-04.
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
@@ -2815,7 +2846,7 @@ their own dates; the Phase 1 and Phase 2 narrative from `## Next` onward was las
 approved at `ccdbd0f` after four exit-review passes; Phase 2 exited 2026-08-05 (commit `38504b3`),
 Phase 1 on 2026-07-29 and Phase 0 on 2026-07-26.
 
-**Phase 4 is decomposed** — `ai/TASKS.md` §`## Proposed — Phase 4`, with every plan deliverable and
+**Phase 4 is decomposed** — `docs/project/TASKS.md` §`## Proposed — Phase 4`, with every plan deliverable and
 exit criterion owned. `T-212` (filed 2026-08-09) closed the one gap: the recorded-checklist-run
 criterion the maintainer added that day had no owner. **The carried-in defect queue is nearly
 through**: the add-dialog chain, `T-209` and `T-203` are Complete, `T-208` waits only on the
@@ -2950,7 +2981,7 @@ proximity invited: that diagnosis gates nothing in the centre column.
 
 **`PATH` is the production boundary and the test was not measuring it.** It compared
 `importlib.metadata.version()` — the distribution installed for the interpreter running pytest —
-while `ai/TESTING.md` §4 and every CI step invoke bare `ruff` and `mypy`. The reviewer put
+while `docs/project/TESTING.md` §4 and every CI step invoke bare `ruff` and `mypy`. The reviewer put
 different executables first on `PATH`: all three tests passed while `ruff --version` reported the
 injected one. **The docstring had listed "a tool installed globally and shadowing the venv" as a
 case the file covered**, which makes this the same class as `T258-R7` — a check that ran, reported
@@ -3164,7 +3195,7 @@ counted `Process.start()` calls to prove a refused spawn starts nothing — by a
 whose `.Process` is `SpawnProcess`; both inherit `start` from `BaseProcess` and **neither
 subclasses the other**. So the counter sat on a class the manager never touches, and under a
 fail-open mutation it stayed empty *because the patch missed*, not because nothing spawned. The
-test passed for a reason unrelated to what it asserts, which is `ai/TESTING.md`'s instrument rule
+test passed for a reason unrelated to what it asserts, which is `docs/project/TESTING.md`'s instrument rule
 arriving at a patch boundary rather than at a probe.
 
 **The probe now patches `SpawnProcess` and checks its own instrument**: it asserts that the
@@ -3490,7 +3521,7 @@ review, one ordinary correction re-review, and one focused pass the maintainer a
 `T262-R2` are Resolved.
 
 **What the third pass was for was a document, not a workflow.** The trigger removal was accepted
-two rounds earlier; what blocked approval was `ai/TESTING.md` still calling `STARBASE coverage` a
+two rounds earlier; what blocked approval was `docs/project/TESTING.md` still calling `STARBASE coverage` a
 hosted `ubuntu-latest` job six days after `ci.yml:486` moved it to `LINUX_RUNNER` — inside the same
 section whose security argument rests on every configured runner being self-hosted. **A policy file
 that names the wrong machine is worse than one that names none**, because the wrong name is what
@@ -3586,7 +3617,7 @@ orphan it had been pointed at. **`T-238`'s probe lesson, arriving a second time 
 costume** — an instrument whose whole output on a healthy machine is silence proves nothing until
 it has been shown a known positive.
 
-**Separately, `ai/TASKS.md`'s entire `## In Review` section was duplicated** — byte-identical, from
+**Separately, `docs/project/TASKS.md`'s entire `## In Review` section was duplicated** — byte-identical, from
 `30b473d`, carried by six commits. `T-096`'s placement gate passes on it, because every duplicated
 status still matches its section: the gate answers *is this entry in the right section*, not *is
 this entry here once*. Removed in its own commit.
@@ -3719,7 +3750,7 @@ identical mistake from a filed task into an amend. The replacement is `3876d0e` 
 trailers §13 requires and which it had been missing.
 
 **What this cost is worth naming: nothing, this time — and that is luck rather than process.**
-The rule is in `AGENTS.md`, the previous violation is written up in `ai/TASKS.md`, and I wrote the
+The rule is in `AGENTS.md`, the previous violation is written up in `docs/project/TASKS.md`, and I wrote the
 trailer anyway because it is my tooling's default. A rule that is only enforced by a reviewer's
 eye is one commit away from being published again.
 
@@ -3814,7 +3845,7 @@ against the installer, nine against the screen and the wiring, one against compo
 
 ## 2026-08-13 (re-review): a check is not an exclusion, and I recorded a verdict that was not mine
 
-**`T198-R5` is the one to record against myself.** `ai/TASKS.md` and this file both said all four
+**`T198-R5` is the one to record against myself.** `docs/project/TASKS.md` and this file both said all four
 findings were **Resolved**, and that *"the reviewer confirmed"* them. **Only the Reviewer resolves a
 finding**, `T198-R3` was demonstrably still open, and `T198-R2` had no Windows evidence. An
 implementer may say *corrected and awaiting a verdict*; saying *Resolved* asserts a gate has been
@@ -3840,7 +3871,7 @@ in-memory index accepted as a legitimate deterministic substitute for PyPI. **Th
 has never run it**, and the instruction is explicitly *not* to push this head merely to get that
 evidence.
 
-**One thing the review noticed that was already fine:** it saw uncommitted edits in `ai/TASKS.md`
+**One thing the review noticed that was already fine:** it saw uncommitted edits in `docs/project/TASKS.md`
 mid-review and left them untouched. Those were this session's rulings pass, uncommitted while the
 review ran and committed at `59686fe`. Nothing was lost and nothing of the reviewer's was disturbed.
 
@@ -3890,7 +3921,7 @@ is where a second is taken deliberately and recorded.
 
 ## 2026-08-13 (review round one): T-198's three corrections, and the one still open
 
-**The verdict was Changes requested and every finding was right.** `ai/REVIEWS.md` holds the record.
+**The verdict was Changes requested and every finding was right.** `docs/project/REVIEWS.md` holds the record.
 Criteria 1, 3, 5 and 6 were confirmed at `21be6a2`.
 
 **`T198-R1` is the one worth recording against myself.** My criterion-2 evidence called
@@ -4003,7 +4034,7 @@ instrument** at worse than 1-in-60.
 `QAbstractItemView::~QAbstractItemView`, reached from Shiboken's `runDeletionInMainThread` under
 `_Py_HandlePending` — a deferred deletion at an arbitrary bytecode boundary. **`test_row_delegate.py`
 imports no view class and constructs no view**, so the destroyed object was not created by the test
-xdist named. Stack kept at `ai/evidence/T238-SEGFAULT-gw7.txt`.
+xdist named. Stack kept at `docs/project/evidence/T238-SEGFAULT-gw7.txt`.
 
 **A second small correction of mine sits in that entry:** having watched saturation reproduce
 `T-228` at 3-in-5, I recommended reproducing this under load. It does not reproduce under load —
@@ -4224,7 +4255,7 @@ because three green runs do not resolve a failure already reproduced under load.
 **Two defects were found inside the work that fixed them**, and both were in evidence rather than
 code. `T-123`'s stray-reaper killed other xdist workers' processes — the *"`still_running` false
 negative"* recorded on 2026-08-04, which was never a `still_running` defect. And the autouse
-redirect that `ai/TESTING.md` §5 has always claimed **did not exist**: one run left **241 job logs
+redirect that `docs/project/TESTING.md` §5 has always claimed **did not exist**: one run left **241 job logs
 in the real user cache**, and it is 0 now.
 
 **The unattended run built five tasks and refused one.**
@@ -4512,7 +4543,7 @@ production fallback works and the *test* fails, on a gate only the Windows job r
 production code was wrong.** Corrected at `2a9d9e1`: the portable test asserts the contract that
 holds on either branch, verified by driving `_directory_from` with both a `~user` value and a
 Windows-shaped absent path; the `RuntimeError` branch keeps its own test, skipped off POSIX with
-the reason stated, because forcing it there would mean mocking `core/` (`ai/TESTING.md` §6) or
+the reason stated, because forcing it there would mean mocking `core/` (`docs/project/TESTING.md` §6) or
 trusting CPython behaviour I cannot run — the very class of claim this finding is.
 
 **The class was swept, not just the instance.** Every test `T-146` added was audited for
@@ -4600,7 +4631,7 @@ is now owned:
   the real display, while its three sibling wrapped labels display whole. The entry demands a
   shown-dialog reproduction (`T-209`'s lesson) and leaves the mechanism to it.
 - **`UX-012` accepted** — the maintainer ruled the three row-menu reports, quoted verbatim in
-  `ai/DECISIONS.md`: the `Choose a format for this URL…` alias leaves the menu (it only focuses
+  `docs/project/DECISIONS.md`: the `Choose a format for this URL…` alias leaves the menu (it only focuses
   the combo already visible on the row); a playlist row's Remove reads
   `Remove this playlist (N items)`; the `⋮` zone is drawn as a visible button. Option G stays
   the recorded fallback, the per-entry playlist gesture stays offered-not-taken, and the
@@ -4615,7 +4646,7 @@ plus `T-021`/`T-191`. The roadmap artifact is revised for this state at its same
 
 ## 2026-08-10 (re-review verdict): T-203 approved at fe1d246, Complete
 
-**Codex's focused re-review returned Approved at `fe1d246`** — `ai/REVIEWS.md` holds the record.
+**Codex's focused re-review returned Approved at `fe1d246`** — `docs/project/REVIEWS.md` holds the record.
 `T203-R3` and `T203-R4` are **Resolved**: the reviewer independently re-ran the gates (ruff,
 format, all three mypy, the four suites at 240 passed) and verified both mutations in isolated
 archives — the new keyboard regression over the pre-correction source opened no menu, and the
@@ -4663,7 +4694,7 @@ instruction during the review — which supersedes the next block's held-locally
 review record reports those runs as queued because they were when it was written; they finished
 after it.
 
-**Codex's combined review returned all three overnight verdicts.** `ai/REVIEWS.md` holds the
+**Codex's combined review returned all three overnight verdicts.** `docs/project/REVIEWS.md` holds the
 record, committed with the placement moves at `6c139e2`; the outcome by task:
 
 - **`T-209` — Approved with follow-up, moved to `## Complete`.** Both panel kinds and the
@@ -4695,7 +4726,7 @@ record, committed with the placement moves at `6c139e2`; the outcome by task:
 **Still held on `T-203`: `T-213`/`T-218`/`T-219`** — same file, now waiting on the correction
 pass rather than the verdict. `T-218` is additionally named by `T203-R4`, so its contract gets
 reconciled before it is built. **All four returned handoffs are deleted** per `AGENTS.md` §6 —
-their verdicts are in `ai/REVIEWS.md`, which is where the durable record lives. **The roadmap
+their verdicts are in `docs/project/REVIEWS.md`, which is where the durable record lives. **The roadmap
 artifact is revised for this state, same URL.**
 
 ## 2026-08-10 (overnight session): T-203 built as option E, T-208 reproduced, T-209's criteria run
@@ -4741,7 +4772,7 @@ review already returned. **The roadmap artifact was revised** for this state, sa
 ## 2026-08-09 (third session): the verdicts, a scope ruling, and T-203 reshaped to option E
 
 **Codex returned both reviews at `9813f19`** — the third focused pass on `T-204`, and the initial
-review of `T-210`/`T-211`/`T-203`. `ai/REVIEWS.md` holds the records; the outcome by task:
+review of `T-210`/`T-211`/`T-203`. `docs/project/REVIEWS.md` holds the records; the outcome by task:
 
 - **`T-204`, `T-207`, `T-211` — Approved, moved to `## Complete`.** `T204-R1`, `T204-R4` and
   `T204-R2` are Resolved. `T-208` (the unreproduced multi-row report) and `T-209` (the broader
@@ -4829,7 +4860,7 @@ not by argument.
 polish, none part of Phase 3's exit. *(The 2026-08-08 block below says it holds only `T-192`. That
 was true when written; `T-193` and `T-194` were filed and built later the same day.)*
 
-**Phase 4 is decomposed** into `ai/TASKS.md` §`## Proposed — Phase 4`, added today. **It had no
+**Phase 4 is decomposed** into `docs/project/TASKS.md` §`## Proposed — Phase 4`, added today. **It had no
 section and one task — `T-146` — against eight plan deliverables.** Ten entries were filed:
 `T-195`–`T-202` against the plan, and `T-203`/`T-204` from the maintainer's review of the add
 dialog. Every deliverable and exit criterion now names an owner, and the map was checked against the
@@ -4858,7 +4889,7 @@ the two corrections that review produced — approved with them. **`## In Review
 ### The pass budget, and the standing authorization that now governs it
 
 `AGENTS.md` §10 caps the ordinary budget at one comprehensive review plus one focused correction
-re-review. **Recorded here because `ai/REVIEWS.md` is the Reviewer's file** under `AGENTS.md` §4 and
+re-review. **Recorded here because `docs/project/REVIEWS.md` is the Reviewer's file** under `AGENTS.md` §4 and
 carries no implementer edit.
 
 - **Third pass — authorized 2026-08-09**, individually: *"authorize the 3rd pass, write the handoff
@@ -4880,14 +4911,14 @@ not carry into Phase 4.
 **`P3EXIT-R1` through `P3EXIT-R4` are all Resolved. Criterion 6 is met.** Phase 3's exit was
 approved at `ccdbd0f`, and the exit coordination at `4aea3dc`.
 
-**`ai/REVIEWS.md` is canonical for every finding's state, and this file no longer restates it.**
+**`docs/project/REVIEWS.md` is canonical for every finding's state, and this file no longer restates it.**
 That is a deliberate structural change rather than a summary being trimmed: **duplicating finding
 state here is what produced `P3EXIT-R4`.** This block previously carried a per-finding table, and
 when the fourth pass resolved `P3EXIT-R3` the table went on saying *"Corrected, unverified"* four
 screens below a snapshot that already said the phase had exited. **A second copy of a fact is a
 second thing that can rot**, and the reviewer proposed the replacement in the approval itself.
 
-Read `ai/REVIEWS.md` for what each finding was, what it required, and who resolved it. **Five
+Read `docs/project/REVIEWS.md` for what each finding was, what it required, and who resolved it. **Five
 submissions were made**, the last at `4aea3dc`; they were handoffs and are deleted per `AGENTS.md`
 §6.
 
@@ -4963,7 +4994,7 @@ and both read as though a ruling had been taken because an argument had been mad
   narrowed it to the `UX-005` §3 anatomy and **deferred size to `T-191`** (Phase 4, Low), because a
   criterion narrowed into nowhere is a criterion deleted. No source changed.
 - **`T180-R1` (High) — `DAT-007`, accepted.** The task's own text required the boundary decision in
-  `ai/DECISIONS.md` **before code moved**, and the code moved first. **`ARC-006` permits an instance
+  `docs/project/DECISIONS.md` **before code moved**, and the code moved first. **`ARC-006` permits an instance
   on a different database and says nothing about where its cache lives**, so a machine-wide cache
   with a coordinated sweep was genuinely available and is now rejected on the record rather than
   passed over. First-launch adoption is recorded as a choice, not a derivation.
@@ -5367,7 +5398,7 @@ over; the guard is written for the `int` and a test pins it.
 
 **`T-109`'s review came back Changes requested** (`T109-R1`..`T109-R7`, at `4cb549d`). Only
 **`T109-R6`** is corrected, at `da7f97b`: its two type errors failed bare `mypy` and
-`mypy --platform win32`, which `ai/TESTING.md` §3 requires of *any* task that edits a test file, so
+`mypy --platform win32`, which `docs/project/TESTING.md` §3 requires of *any* task that edits a test file, so
 they were blocking work unrelated to `T-109`. The other six findings are untouched and are that
 task's correction batch.
 
@@ -5510,7 +5541,7 @@ not merge anyway is advice that cannot help.
 **One new gap, filed as `T-188`.** No acceptable source publishes a video-only **and** an audio-only
 format in one item, so `REQ-008`'s pair is exercised by a declared-synthetic fixture. `media.ccc.de`
 has the shape — `vcodec: 'none'` beside a named `acodec` — and was **rejected**: its API states no
-licence for any event of any conference sampled, and `ai/TESTING.md` §5 asks for freely licensed,
+licence for any event of any conference sampled, and `docs/project/TESTING.md` §5 asks for freely licensed,
 not widely believed to be.
 
 ## 2026-08-07: `T-107` is approved, and the thing that blocked it was authority
@@ -5638,7 +5669,7 @@ criterion asked rather than arguing about it:
   empty objects, predating `T-137` teaching the projection to read them.
 
 **Phase 3's exit criterion 1 is met**, with evidence in
-`ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md`. **Three maintainer decisions** made it
+`docs/project/evidence/2026-08-07-format-table-vs-yt-dlp-f.md`. **Three maintainer decisions** made it
 possible, none of which a task can make for itself: the network capture was authorised, mounting the
 table was re-scoped to `T-108`, and — after the re-review — `T-107`'s every-column criterion was
 amended to *where the source reports it*.
@@ -5714,7 +5745,7 @@ defect, this time committed inside a decision rather than a commit.
 
 ## 2026-08-07: three verdicts, and the shape the two rejections share
 
-Codex reviewed every outstanding boundary on 2026-08-07 (`ai/REVIEWS.md`). One approval, two
+Codex reviewed every outstanding boundary on 2026-08-07 (`docs/project/REVIEWS.md`). One approval, two
 *Changes requested*, all corrected the same day and awaiting re-review.
 
 - **`T-179` — Approved with follow-ups at `1e0d0d5`.** Recorded above.
@@ -5838,7 +5869,7 @@ of its own, and both entries say so. All three are behavior-preserving:
   `T179-R3`, is open against `T-180`.
 
 **Four claims written into this work were wrong, and none of them was caught by reading it** —
-which is the same lesson `ai/TESTING.md` §13 already carries, arriving four more times in one day.
+which is the same lesson `docs/project/TESTING.md` §13 already carries, arriving four more times in one day.
 Two were found by my own mutation runs: `T-177` guarded the empty-status case because `IN ()` "is
 not valid SQL", which is true of standard SQL and not of SQLite; and `T-179`'s comment explained
 why its marker starts at `None` rather than an empty set, with no test holding it.
@@ -5881,7 +5912,7 @@ surfaces — *follows the batch* on one, *no built-in describes this* on the oth
 entry naively would have made a custom-selector row open its control reading the first built-in.
 The role is now surface-declared and the row speaks whenever the control cannot.
 
-**Twelve findings were corrected in this round.** *(Their state is `ai/REVIEWS.md`'s, not this
+**Twelve findings were corrected in this round.** *(Their state is `docs/project/REVIEWS.md`'s, not this
 line's — it read "awaiting re-review" for days after they had been reviewed. A count restated
 here is a second copy that only ever drifts, which is the `COORD-R5` family this file keeps
 feeding. What follows is the reasoning the round produced, which does not expire.)*
@@ -5929,7 +5960,7 @@ garbage.
 
 **Ruled 2026-08-04: the `T-128` prerequisite is satisfied, and a measurement replaces it.** The two
 crashes were not recurrences of `T-074`'s fault, so the premise `OPS-007` was originally made on is
-intact rather than broken. **That soak is done and clean** (2026-08-05): **60 of 60, no test failures and no process deaths**, run on `Spock` against `ef21e34`, giving P = 0.042 against the 2-in-39 baseline. The corrected teardown holds, and **criterion 6's measurement half is met**; the other half — the independent exit review — was requested 2026-08-05 and **signed the phase off at `8de5a72`**. `ai/REVIEWS.md` holds every verdict, and **no tally is kept here** — a count beside the record is a second copy of it, and it drifts the moment another verdict lands. It read *"three times"* against five.
+intact rather than broken. **That soak is done and clean** (2026-08-05): **60 of 60, no test failures and no process deaths**, run on `Spock` against `ef21e34`, giving P = 0.042 against the 2-in-39 baseline. The corrected teardown holds, and **criterion 6's measurement half is met**; the other half — the independent exit review — was requested 2026-08-05 and **signed the phase off at `8de5a72`**. `docs/project/REVIEWS.md` holds every verdict, and **no tally is kept here** — a count beside the record is a second copy of it, and it drifts the moment another verdict lands. It read *"three times"* against five.
 
 *(The paragraph below is kept as written, because it is the reasoning the measurement was chosen by.)* **Phase 2's exit then waited on a clean 60-run Linux soak** against the
 corrected teardown — sized against the measured 2-in-39 baseline, where an unchanged rate gives a
@@ -5967,7 +5998,7 @@ The maintainer ruled it after running the application and producing ten tasks in
 again by `P2EXIT-R12`, both times for a verdict stated over its own evidence, so it is offered to
 the exit review rather than asserted past it. What it waited on was *evidence* rather than work,
 and three runs supplied it: eleven defects found, then 39 of 41, then **40 of 40** on `kirk`
-(`ai/evidence/2026-08-05-criterion-8-third-run.md`), with CI green on the candidate and the
+(`docs/project/evidence/2026-08-05-criterion-8-third-run.md`), with CI green on the candidate and the
 one-platform residual a recorded maintainer ruling. `T-140` was reopened for the accepted criteria it
 did not build (`T140-R5`); **all three are built** as of 2026-08-05, and the task is
 **Complete** — group verbs, removal that names
@@ -5975,14 +6006,14 @@ its own count, and a keyboard-reachable disclosure — with **`Pause all` deferr
 that day's amendment to `UX-005`, since holding one group has no mechanism once `T-080` deleted
 `JobStatus.PAUSED`. **The built-window checklist was run on 2026-08-05 at `f2ec6b7`, and found eleven defects** —
 `T-149` through `T-159`, none of them reported by any gate, against a suite of 2153 tests that
-was green throughout. `ai/evidence/2026-08-05-criterion-8-checklist-run.md` records it. Seven
+was green throughout. `docs/project/evidence/2026-08-05-criterion-8-checklist-run.md` records it. Seven
 are inside criterion 8 and four are Phase 3, **ruled 2026-08-05** — and **all seven are now
 Complete**, `T-157` against a `UX-005` amendment recorded before it was built. **Rows 3.6 and §5 have since been run** on `kirk` — 3.6 caught a
 completed playlist drawing blank blocks, fixed at `6bae7ec`. That run recorded **39 of 41** — the historical result, kept as
 observed: **row 2.7** failed (`T-160`) and **row 3.15** failed (`T-161`). **Both are now
 dispositioned.** `T-161` is corrected; row 2.7 is removed from the checklist by `T161-R1`, its
 property moved to `T-160` unweakened. **That re-run has since happened and passed** — 40 of 40 on `kirk`,
-`ai/evidence/2026-08-05-criterion-8-third-run.md`, with CI green on the candidate and the
+`docs/project/evidence/2026-08-05-criterion-8-third-run.md`, with CI green on the candidate and the
 one-platform residual a recorded maintainer ruling. The ruling's line was: a defect where accepted work
 is *unreachable or drawn wrong* contradicts what the criterion asserts, while one asking for
 something *new* does not. The closed list stays closed — `T-149`, `T-151`, `T-152`, `T-153`,
@@ -5994,7 +6025,7 @@ and `T140-R5` — closed at `083fbe4`; `P2EXIT-R10`, the record finding, closed 
 that evidence now exists: the built application run against a **written checklist** derived from
 `T-132`–`T-141` and the adopted mockups **on the exact candidate head**, plus Windows and Fedora
 evidence on that same candidate. Three runs — eleven defects, then 39 of 41, then **40 of 40** on
-`kirk` (`ai/evidence/2026-08-05-criterion-8-third-run.md`) — and CI green on the candidate.
+`kirk` (`docs/project/evidence/2026-08-05-criterion-8-third-run.md`) — and CI green on the candidate.
 **Met on the maintainer's evidence; the exit review judges whether it carries the criterion.** `P2EXIT-R10` requires the checklist because
 automated checks are not sufficient evidence for a criterion about what the window looks like, and
 that automation does not replace it. *(The measurement `UX-005` said could reopen the playlist shape did come back clear —
@@ -6269,7 +6300,7 @@ and the default concurrency is **3**, the very number the test thought it had co
 `2`, which the default cannot produce.
 
 Both are the same class as the 38 Windows failures: a test that passes for a reason other than the
-one it names. `ai/TESTING.md` §13 exists for this and I keep re-finding it from the inside.
+one it names. `docs/project/TESTING.md` §13 exists for this and I keep re-finding it from the inside.
 
 ## **A fifth boundary lapse: `git add -A tests/` swept in the reviewer's regressions**
 
@@ -6471,7 +6502,7 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 `T-010`, `T-011` and `T-026` are complete. `ARC-003` settled the IPC versioning question.
 
 **Phase 1 exited 2026-07-29, with two residuals explicit rather than resolved.** All eight criteria
-are met and the exit review is recorded in `ai/REVIEWS.md`. It challenged the two decisions that
+are met and the exit review is recorded in `docs/project/REVIEWS.md`. It challenged the two decisions that
 removed the last blockers instead of treating them as fixes, and upheld both: `OPS-007` is genuine
 risk acceptance and **not** evidence that `T-090` fixed the access violation, the 51/361 arithmetic
 checks out, and the High → Medium downgrade satisfies §10. `P1EXIT-R3` was found and resolved in the
@@ -6512,7 +6543,7 @@ counted case-sensitively and missing the risk-register row; the conclusion is un
 was wrong — `COORD-R9`.)* What that gives up is named there — the frozen process-tree shape stays
 reasoned rather than measured, and if the assumption is wrong `T-019`'s reaping evidence may not
 describe the shipped application. *(A reviewer disposition of 2026-07-29 called `T-066` a standing Phase 1
-blocker; it predates the amendment and stands in `ai/REVIEWS.md` as history.)*
+blocker; it predates the amendment and stands in `docs/project/REVIEWS.md` as history.)*
 
 **Two things the phase exits with, named rather than hidden:**
 
@@ -6582,7 +6613,7 @@ blocker; it predates the amendment and stands in `ai/REVIEWS.md` as history.)*
 - **The lesson from T-044 and T-045:** all six defects came from treating an enumerated set as
   exhaustive. The successful corrections were not longer enumerations: T-044 reads the
   interpreter's namespace and states its gaps, while T-045 dropped the completeness claim.
-  `ai/TESTING.md` §13 records the general rule.
+  `docs/project/TESTING.md` §13 records the general rule.
 
 ## In progress
 
@@ -6712,7 +6743,7 @@ say so (2026-07-28): asynchrony is not free at the call site.
 
 **DRM was never the uncovered mandatory area this file claimed.** Reading the tests rather than
 the record found three layers already gating it; `T-017` added the fourth (the UI half), `T-057`
-canaried the yt-dlp field the whole boundary rests on, and `T-058` recounted `ai/TESTING.md` §7 —
+canaried the yt-dlp field the whole boundary rests on, and `T-058` recounted `docs/project/TESTING.md` §7 —
 where the count lives, and where this file now sends you rather than restating it. `T-057` found
 two real divergences on the way: the adapter read `has_drm='maybe'` as protected, and its fallback
 used `all` where `_has_drm` — the branch that actually runs — uses `any`, so the two halves of one
@@ -6770,7 +6801,7 @@ the whole gate" in its exact form, and it needs the Windows job.
   the identical still-attached handler, and `idle` is withheld while the listener thread is alive,
   polled by the existing timer and never joined, with `gave_up_on_the_log` as the bounded escape
   if it wedges past `reap_seconds`. `T013-R2/R3/R4` were re-examined and remain resolved.
-  `ai/TESTING.md` §7's coverage was recounted by `T-058` on 2026-07-28, with the DRM row's four
+  `docs/project/TESTING.md` §7's coverage was recounted by `T-058` on 2026-07-28, with the DRM row's four
   claims each mutation-checked before being recorded. The count itself lives in §12 and is not
   repeated here.
 - **`T-013` closed after three correction passes.** `T013-R1`, `T013-R2` and `T013-R4` were
@@ -6790,7 +6821,7 @@ the whole gate" in its exact form, and it needs the Windows job.
   something was being kept without a reader for it, and the argument for keeping it was always
   "it's only shape / only names / only the parts we recognise". The allowlist survived review
   because it starts from what is *read*. Anything else in a fixture is a liability with a story.
-- **`ai/TESTING.md` §12 holds the mandatory-area coverage count; §7's areas are all in the
+- **`docs/project/TESTING.md` §12 holds the mandatory-area coverage count; §7's areas are all in the
   default local run.**
   `T-013` added Cancellation and Worker crash against real spawned processes; both moved behind
   `-m process_tree` in `9010794`, because `T-019`'s live defect left descendants that wedged later
@@ -6800,7 +6831,7 @@ the whole gate" in its exact form, and it needs the Windows job.
   Log redaction closed with `T-038`'s approval. **DRM was never the uncovered area this file
   claimed it was** — three tests already gated it, and the record had simply never been
   recomputed. `T-058` recounted it; `T-017` added the UI half and `T-057` the upstream contract.
-  The count is now stated in one place, `ai/TESTING.md` §12, and this bullet points at it.
+  The count is now stated in one place, `docs/project/TESTING.md` §12, and this bullet points at it.
 - **The lesson from `T-044`, `T-045` and `T-014`, now three for three:** each blocking finding
   came from filtering unbounded input instead of constraining what the input could be. `T-044`
   stopped parsing for exports and read the interpreter's namespace; `T-045` dropped a completeness
@@ -7032,14 +7063,14 @@ exactly that — the contradiction `T016-R8` reported.)*
    the wrong *scope* — `mypy src` reads 33 files, the `windows desktop` job reads 69 including
    `tests/` — and CI found two real errors, one of which had silently stopped mypy analysing the
    rest of a test. The Windows UI Automation menu contract then caught a File-menu item this task
-   added without declaring it. Each was corrected, and `ai/TESTING.md` §12 now states the scope
+   added without declaring it. Each was corrected, and `docs/project/TESTING.md` §12 now states the scope
    difference that nothing had written down.
 
 5. **`T-017` is implemented** (2026-07-28) and in review, so the critical path to the phase exit
    is now **`T-036` → `T-037`**. `T-036` depends on `T-016` *and* `T-017`, so composition begins
    when both clear review rather than when either does. *(This item used to end "DRM is
    the one uncovered mandatory area and still has no owner". It was neither: see
-   `ai/TESTING.md` §12.)*
+   `docs/project/TESTING.md` §12.)*
 6. **`T-050`** — **Phase 2**, not Phase 1: the `history` table is still empty, and
    `IMPLEMENTATION_PLAN.md` puts `REQ-020`'s history persistence in Phase 2. This file's claim
    that `T-013` owned it was `STATUS.md` running ahead of both the plan and `T-013`'s own scope;
@@ -7055,7 +7086,7 @@ code and produced no error.
 
 The tests that missed them shared a shape too: they asserted on the *input* to a boundary
 rather than on what came out the far side — a key present in an options dict, a local variable
-on the worker's side of the queue. `ai/TESTING.md` §13 now has the general form of this.
+on the worker's side of the queue. `docs/project/TESTING.md` §13 now has the general form of this.
 
 ## Known gaps not yet scheduled
 
@@ -7064,7 +7095,7 @@ on the worker's side of the queue. `ai/TESTING.md` §13 now has the general form
   resolution at worker start and `T-012` therefore needs it immediately.
 - **`T-034` was missing from the plan.** Filename safety and output-path containment
   (`core/paths.py`) belonged to no task, despite `ARCHITECTURE.md` §8 requiring every output
-  path to pass through it and `ai/TESTING.md` §7 listing path safety as mandatory. Found while
+  path to pass through it and `docs/project/TESTING.md` §7 listing path safety as mandatory. Found while
   planning Phase 1; now filed and blocking `T-012`.
 
 - **`T-033` — Complete, approved 2026-08-12 with follow-up `T-233`.** *(This read "implemented,
@@ -7121,7 +7152,7 @@ it called `T-033` blocked on `T033-R4` and the Windows build, then on the hosted
 on its own records — each reading outliving the thing it described. The probe extension landed
 2026-08-12, `REL-002` decided `collect_submodules` on 2026-08-04, `OPS-010`/`OPS-012` moved both
 frozen jobs off hosted runners, and CI `31570861414` and `31607180926` are green on all five jobs.
-The full account is `T-033`'s entry and `ai/REVIEWS.md`; this file records the state, not the
+The full account is `T-033`'s entry and `docs/project/REVIEWS.md`; this file records the state, not the
 history.)*
 
 *(the `T-003` logo blocker cleared on 2026-07-25 when the maintainer supplied the source
@@ -7209,9 +7240,9 @@ corrected by `P2EXIT-R12`: **row 2.7** (`T-160`) and **row 3.15** (`T-161`) fail
 *pass* beside a defect already filed is a verdict stated over its own evidence. **Both are since
 dispositioned** — `T-161` corrected and approved, row 2.7 removed by `T161-R1` — so the next run
 covers 40 rows. The record is
-`ai/evidence/2026-08-05-criterion-8-second-run.md`, which states the head as the range
+`docs/project/evidence/2026-08-05-criterion-8-second-run.md`, which states the head as the range
 `6bae7ec..541b484` rather than a single sha: the maintainer did not record which was checked out,
-and `git diff --stat` across it is `ai/TASKS.md` alone. A range a reader can verify is worth more
+and `git diff --stat` across it is `docs/project/TASKS.md` alone. A range a reader can verify is worth more
 than a sha chosen for tidiness — `P2EXIT-R8` was evidence about a head that moved.
 
 **Rows 3.6 and §5 were run for the first time**, and 3.6 immediately failed: a completed playlist
@@ -7242,7 +7273,7 @@ its proof. Superseded — the current verdict is directly below.)*
 **Current truth, 2026-08-05.** **All eight exit criteria are met and Phase 2 is exited**, signed
 off at `8de5a72`. Criterion 6's review returned six verdicts before approving. Criterion 8's
 evidence is the **40-row run**, a pass on
-`kirk`, recorded in `ai/evidence/2026-08-05-criterion-8-third-run.md` — offered as *met on the
+`kirk`, recorded in `docs/project/evidence/2026-08-05-criterion-8-third-run.md` — offered as *met on the
 maintainer's evidence* and **accepted by the review**. This row has been claimed
 met twice and reset twice, so its limits sit inside the claim: one platform, one runner who also
 accepted the mockups, and four known Phase 3 defects present during the run.
@@ -7251,7 +7282,7 @@ accepted the mockups, and four known Phase 3 defects present during the run.
 
 ## Phase 2 exit review — changes requested, 2026-08-05
 
-**Four blocking findings** (`ai/REVIEWS.md`, 2026-08-05 second submission). At submission,
+**Four blocking findings** (`docs/project/REVIEWS.md`, 2026-08-05 second submission). At submission,
 criteria 1, 6 and 8 were Not met. **`P2EXIT-R11` is since resolved, so criterion 1 is met** — this
 line said *"criteria 1, 6 and 8 are Not met"* after that, which is the finding it sits under.
 **Now: 6 alone** — `P2EXIT-R12` was answered by the 40-row run and criterion 8 is met.
@@ -7282,13 +7313,13 @@ unweakened — it now lives in `T-160`'s acceptance evidence — and the 39/41 r
 was observed rather than being recomputed. Forty rows remain.
 
 *(This said **"row 3.15's defect is fixed and the row is unrun"**, and it was true when written.
-The 40-row run of 2026-08-05 observed it: `ai/evidence/2026-08-05-criterion-8-third-run.md`.
+The 40-row run of 2026-08-05 observed it: `docs/project/evidence/2026-08-05-criterion-8-third-run.md`.
 Superseded, and kept because it is the sentence `P2EXIT-R12` was answered by.)*
 
 ## The 40-row run — 2026-08-05
 
 **Pass, 40 of 40, on `kirk`**, across `376407f..165b6e4`: no file under `src/` or `tests/` differs
-across that range, so it is one build. `ai/evidence/2026-08-05-criterion-8-third-run.md`.
+across that range, so it is one build. `docs/project/evidence/2026-08-05-criterion-8-third-run.md`.
 
 **Row 3.15 is why it existed.** `T-161` was fixed and had never been *observed* fixed, and
 `P2EXIT-R12`'s point was that a fix is not an observation. The three runs are a sequence rather than

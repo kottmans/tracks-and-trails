@@ -23,7 +23,7 @@ run evidences, and the reason is checkable rather than asserted:**
 
 ```
 $ git diff --stat 6bae7ec..541b484
- ai/TASKS.md | 114 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ docs/project/TASKS.md | 114 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  1 file changed, 114 insertions(+)
 ```
 

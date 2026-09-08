@@ -345,8 +345,8 @@ def test_the_forbidden_exec_family_has_a_suppressed_member(option: str) -> None:
 # demonstrated it by moving `--no-check-certificates` from `excluded` to `hatch`, recounting the
 # three totals, and watching all fourteen tests pass. These are the checks that make the claim true.
 
-DECISIONS: Final = Path(__file__).resolve().parents[2] / "ai" / "DECISIONS.md"
-TASKS: Final = Path(__file__).resolve().parents[2] / "ai" / "TASKS.md"
+DECISIONS: Final = Path(__file__).resolve().parents[2] / "docs" / "project" / "DECISIONS.md"
+TASKS: Final = Path(__file__).resolve().parents[2] / "docs" / "project" / "TASKS.md"
 #: Option strings as they appear in prose — short forms (`-u`, `-2`) and the `-I/--long` shorthand
 #: the task entries use, which is split on `/` by the callers.
 _OPTION = re.compile(r"`(--?[A-Za-z0-9][A-Za-z0-9/-]*)`")

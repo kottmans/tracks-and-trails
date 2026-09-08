@@ -89,11 +89,11 @@ from tracks_and_trails.ui.thumbnails import ThumbnailStore, cache_generation
 #: What every surface must call a default MP3 download (`T-156`).
 #:
 #: **The wording is transcribed here and the two values are read from the catalogue**
-#: (`ai/TESTING.md` §13). Writing `"Audio only (MP3), 192 kbps"` outright would restate the preset
-#: name and the bitrate that production already declares, and the test would then pass while the
-#: catalogue said something else; asking `format_name` for the answer would be asking production
-#: what to expect. This states the *rule* — the name, a comma, the bitrate, `kbps` — and takes the
-#: facts from `presets.py`.
+#: (`docs/project/TESTING.md` §13). Writing `"Audio only (MP3), 192 kbps"` outright would restate
+#: the preset name and the bitrate that production already declares, and the test would then pass
+#: while the catalogue said something else; asking `format_name` for the answer would be asking
+#: production what to expect. This states the *rule* — the name, a comma, the bitrate, `kbps` — and
+#: takes the facts from `presets.py`.
 MP3_TEXT: Final = f"{AUDIO_MP3.name}, {MP3_QUALITY} kbps"
 
 

@@ -185,8 +185,8 @@ Date:      <date>
 Result:    <pass, or the numbered rows that failed>
 ```
 
-Put the record where the exit review will read it — `ai/STATUS.md` for the narrative, and
-`ai/evidence/` if there are screenshots worth keeping. **A row that fails is a finding against the
+Put the record where the exit review will read it — `docs/project/STATUS.md` for the narrative, and
+`docs/project/evidence/` if there are screenshots worth keeping. **A row that fails is a finding against the
 closed list**, so it belongs to whichever of `T-132`–`T-141` owns it. **Something new that is not
 on this list is Phase 3**, filed as its own task, unless the maintainer rules otherwise — that edge
 is what keeps criterion 8 falsifiable.

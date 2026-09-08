@@ -56,4 +56,4 @@ cannot drift apart.
 - **`tests/ui` was not run against 2026.08.19 here** — only `tests/unit`. The workflow runs both;
   this dry run stopped at the suite that reaches yt-dlp directly.
 - **A clean canary is not a cleared bump.** `OPS-002` attaches a release gate to changing the pin,
-  and `ai/TESTING.md` §8 step 10a is where the two meet.
+  and `docs/project/TESTING.md` §8 step 10a is where the two meet.

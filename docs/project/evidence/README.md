@@ -1,4 +1,4 @@
-# `ai/evidence/` — artifacts that cannot be regenerated
+# `docs/project/evidence/` — artifacts that cannot be regenerated
 
 **This directory is an exception, and it should stay small.** Everything else in `ai/` is prose,
 and evidence normally lives *inside* the task or review that reasons about it — `T-074` carries its
@@ -24,5 +24,5 @@ What is here now:
 | `2026-08-20-linux-orphans-on-kirk.md` | **⚠ The retention reason below is false and is kept as written; see `T272-R5`/`T272-R6` and the row above.** The processes are **not** gone — they are running on `Spock` as of 2026-08-26 — and the host in the filename is `kirk`, a different machine. The file's *captured* content stands; its framing does not. **Original reason, unedited:** Read-only state of two processes that no longer exist, which is the rule working rather than a caveat on it.** PIDs `432922` and `434366` were orphaned on `kirk` from 2026-08-16; the file captures `/proc`, `ps` and `eu-stack` output taken while they ran. **Both were gone within hours of the capture** — absent from `ps` at `2026-08-20T06:20:48Z`, with no reboot and nothing signalled *by that session* — so the subject no longer exists and nothing regenerates it: the parent was already gone, so even a fresh orphan would be a different specimen. **Why they ended, and whether anybody else inspected or released them, is unknown** (`T272-R3`); what is recorded is that they were **preserved rather than reaped** here (`T258-R4`, `T-272`) and that this file is the whole of what survives. |
 
 **Do not add CI output here.** `reports/` artifacts are uploaded by the workflow and retained for
-30 days (`ai/TESTING.md` §10); if one matters beyond that, quote the part that matters into the
+30 days (`docs/project/TESTING.md` §10); if one matters beyond that, quote the part that matters into the
 task rather than copying the archive.

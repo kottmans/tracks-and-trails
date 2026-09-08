@@ -73,6 +73,6 @@ downloads/
 *.ytdl
 
 # Handoffs are messages to a reviewer, not records (AGENTS.md §6). They may exist locally so the
-# reviewer can read one; they are never committed. What is durable lives in ai/REVIEWS.md and the
+# reviewer can read one; they are never committed. What is durable lives in docs/project/REVIEWS.md and the
 # task entry.
-ai/handoffs/
+docs/project/handoffs/

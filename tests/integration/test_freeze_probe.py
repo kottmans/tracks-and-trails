@@ -134,7 +134,7 @@ def test_an_extractor_that_stays_lazy_fails_the_gate() -> None:
     generated stub would satisfy every other check here and still carry no extractor code.
 
     Written because deleting that check survived the suite — the mutation was reporting a
-    missing test, not dead code (`ai/TESTING.md` §13).
+    missing test, not dead code (`docs/project/TESTING.md` §13).
     """
     result = run_probe_with(
         """

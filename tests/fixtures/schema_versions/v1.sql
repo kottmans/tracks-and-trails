@@ -11,7 +11,7 @@
 --
 -- `request` holds the serialized `DownloadRequest` (`REQ-018`, `ARCHITECTURE.md` §8). It is
 -- persisted *with* the job so a retry after a settings change reproduces the original request
--- rather than current defaults. That is the "settings freeze" area of `ai/TESTING.md` §7.
+-- rather than current defaults. That is the "settings freeze" area of `docs/project/TESTING.md` §7.
 
 CREATE TABLE jobs (
     id             TEXT    PRIMARY KEY NOT NULL,

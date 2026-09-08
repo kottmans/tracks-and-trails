@@ -1,7 +1,7 @@
 """The per-user redirect covers every consumer, and keeps covering them (`T123-R2`).
 
-`ai/TESTING.md` §5's rule existed with no mechanism behind it for the whole project. The mechanism
-is `tests/user_directories.py`; these are the tests that stop it from quietly stopping.
+`docs/project/TESTING.md` §5's rule existed with no mechanism behind it for the whole project. The
+mechanism is `tests/user_directories.py`; these are the tests that stop it from quietly stopping.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def test_every_platformdirs_consumer_is_redirected() -> None:
     missing = found - set(user_directories.CONSUMERS)
     assert not missing, (
         f"{sorted(missing)} import a platformdirs directory and are not in CONSUMERS, so a test "
-        "that reaches them writes to the real machine (`ai/TESTING.md` §5)"
+        "that reaches them writes to the real machine (`docs/project/TESTING.md` §5)"
     )
 
     stale = set(user_directories.CONSUMERS) - found
@@ -123,7 +123,8 @@ def test_a_spawned_child_resolves_its_directories_inside_the_test(tmp_path: Path
     resolved = Path(answer.stdout.strip())
     assert str(resolved).startswith(str(tmp_path)), (
         f"a spawned child resolved its cache directory to {resolved}, outside this test's "
-        f"{tmp_path}. It is writing to the developer's machine, which ai/TESTING.md §5 forbids"
+        f"{tmp_path}. It is writing to the developer's machine, which "
+        "docs/project/TESTING.md §5 forbids"
     )
 
 

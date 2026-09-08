@@ -1,4 +1,4 @@
-"""Filename safety and output-path containment (`T-034`, `ai/TESTING.md` §7).
+"""Filename safety and output-path containment (`T-034`, `docs/project/TESTING.md` §7).
 
 §7 lists path safety as mandatory coverage, and states the property as: *no rendered output
 template escapes the output directory; Windows-illegal names are sanitized on both platforms.*
@@ -196,7 +196,7 @@ def test_defusing_is_stable_across_calls() -> None:
     assert len({sanitize_component("CON.mp4") for _ in range(20)}) == 1
 
 
-#: `ai/TESTING.md` §5's required fixture set.
+#: `docs/project/TESTING.md` §5's required fixture set.
 HOSTILE_TITLES = [
     'Artist - Song: "Live" <2024>',
     "What?! | Really* | Yes",
@@ -231,7 +231,7 @@ def output_dir(tmp_path: Path) -> Path:
 
 @pytest.mark.parametrize("candidate", ESCAPE_ATTEMPTS)
 def test_no_escape_attempt_leaves_the_output_directory(output_dir: Path, candidate: str) -> None:
-    """The property `ai/TESTING.md` §7 makes mandatory.
+    """The property `docs/project/TESTING.md` §7 makes mandatory.
 
     A title-derived path must never resolve outside the directory the user chose. Asserted on
     the *resolved* path, because string prefixing would accept a sibling directory whose name
@@ -368,7 +368,7 @@ def test_candidates_with_nothing_usable_raise(output_dir: Path, candidate: str) 
 
 @pytest.mark.parametrize("char", list('<>:"/\\|?*'))
 def test_every_ntfs_illegal_character_is_replaced(char: str) -> None:
-    """Enforced on Linux too (`ai/TESTING.md` §7).
+    """Enforced on Linux too (`docs/project/TESTING.md` §7).
 
     A name legal on ext4 that becomes unopenable when the directory syncs to Windows is still a
     defect — the file has already been written by then.
