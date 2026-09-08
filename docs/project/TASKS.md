@@ -249,9 +249,10 @@ empties, because a section that disappears is one nobody notices coming back.)*
 
 ### T-299 — Adopt the neutral coordination layout and the public-ready baseline
 
-**Status:** In Review — built 2026-09-08, awaiting a verdict. The convention was revised to
-**2026-09-08.1** and the maintainer decided this repository becomes public; `DOC-006` records the
-adoption and its four deviations.
+**Status:** In Review — corrections returned 2026-09-08 for focused re-review. Reviewed at
+`cca7db2..1d43c21`: **Changes requested**, one High and one Medium, both corrected below. The
+convention was revised to **2026-09-08.1** and the maintainer decided this repository becomes
+public; `DOC-006` records the adoption and its four deviations.
 
 **Owner:** Documentation Maintainer, with the Implementer for the path-dependent code
 **Priority:** High — it gates making the repository public, and it is the kind of change that gets
@@ -282,9 +283,13 @@ One bounded migration, as the convention's retrofit section asks:
 
 #### Acceptance criteria
 
-- No tracked file refers to a coordination document by an `ai/` path, and no reference is left
-  dangling. Bare `ai/` mentions inside historical prose are **deliberately retained** — they
-  describe what was true when written (`AGENTS.md` §6).
+- ~~No tracked file refers to a coordination document by an `ai/` path, and no reference is left
+  dangling. Bare `ai/` mentions inside historical prose are deliberately retained.~~
+  **Amended 2026-09-08 by `T299-R2`.** The original criterion is what produced the finding: it
+  treated *every* `ai/FILE.md` as a link. The residual criterion is that **current-truth documents
+  name the current location, and historical records keep the paths they were written with** — in
+  `REVIEWS.md` and the decision entries a path is often a fact (a command that ran, a review's
+  write set, a `FILE.md:NNN` citation, a handoff filename), and rewriting it changes the record.
 - `pyproject.toml`'s `docs/project/evidence/*` per-file ignore reaches the evidence scripts it is
   written for, rather than silently matching nothing.
 - The four Python path joins that named `"ai"` as a segment — which no string rewrite could see —
@@ -314,6 +319,51 @@ version under a normalization that applies the path rewrite and collapses whites
 markers. 291 files matched exactly; the 5 that did not are the 5 with deliberate wording changes.
 Re-wrapping moves text between lines, so a diff cannot answer this and a review reading 1473
 changed references will not either.
+
+#### Correction round, 2026-09-08
+
+**`T299-R1` — High, false privacy guarantees in `SECURITY.md` and `README.md`. Corrected.**
+
+The review's probes were reproduced before anything was written. `redact()` and a real
+`JobRepository` write, at this head:
+
+| Probe | Result |
+|---|---|
+| `redact("wrote /home/sean/Videos/holiday.mp4")` | **unchanged** — the document claimed home-carrying paths were redacted |
+| `redact("loading cookies from /home/sean/session.txt")` | **unchanged** — recognized only when the name looks like a cookie store |
+| `redact("... https://example.invalid/watch?v=abc123&list=PL9")` | query stripped — the document claimed URLs were logged verbatim |
+| `error_message` = `"download failed: /home/…/cookies.txt"` | **stored verbatim in the raw row** |
+
+**The repository's own record already said so.** `T014-R1` states that `error_message` is an
+unrestricted database sink and that *"T-038 redacts logs; it cannot redact a separate database
+write."* I cited that review in `SECURITY.md` as evidence the boundary was sound, and then wrote a
+guarantee it contradicts. The failure was writing a security claim from the design's intent rather
+than from a probe, in a document whose whole purpose is to be believed.
+
+What is written now is the measured behavior: what is refused at construction (structural), what
+the log's pattern set catches, and the two sinks that are **not** redaction sinks and are
+deliberate. `remember_a_secret()` is unchanged — no production caller registers anything.
+
+**`T299-R2` — Medium, historical evidence rewritten. Corrected.**
+
+`REVIEWS.md` (513 references) and `DECISIONS.md` (48) were restored from `cca7db2` to the paths
+they were written with, and a navigation note at the top of each says where the documents live now.
+Four recorded facts in `TASKS.md` and `STATUS.md` were restored individually — a
+`git checkout -- ai/TASKS.md` that was actually run, a `git diff --stat` describing which file a
+past range touched, and two provenance notes naming where a past reading came from. Live
+navigation in the current-truth documents keeps the new paths.
+
+`DOC-006` deviation 2 is rewritten to the rule this establishes, and says plainly that the original
+version was convenient and untested.
+
+**Non-blocking, corrected:** the machine-address claim in `SECURITY.md` (it asserted an absence
+while two RFC1918 addresses remain in review entries — now stated); the `README.md` timing and
+verification claims (a desktop-specific wall-clock figure removed; "verified on Windows" narrowed
+to what CI runs, since this head has no Windows run); and the last current-policy `ai/` reference,
+in `docs/project/TESTING.md`'s documentation-only row.
+
+**Unchanged by this round:** the suite, lint, formatting and types all still pass, and no source
+behavior was touched. Windows remains unverified at this head.
 
 #### Out of scope
 
@@ -10982,7 +11032,7 @@ finds what removing them strands.
 
 **Status:** **Complete — corrected 2026-08-12**, in the same batch as the `T-033`/`T-223` findings.
 *(Filed by the Reviewer as `T218-R1`, Low and non-blocking. **The Reviewer's own filing of this
-entry was destroyed by the Implementer** — `git checkout -- docs/project/TASKS.md`, undoing an unrelated
+entry was destroyed by the Implementer** — `git checkout -- ai/TASKS.md`, undoing an unrelated
 over-deletion, discarded their uncommitted work. This entry is rewritten from `T218-R1`'s text in
 `docs/project/REVIEWS.md`; if it differs from what they wrote, theirs was the original.)*
 **Owner:** Implementer

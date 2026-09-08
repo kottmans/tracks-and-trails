@@ -6,8 +6,23 @@
 **Maintainer:** Sean Kottman
 **Status:** Active
 **Last updated:** 2026-09-08 — **The coordination documents moved from `ai/` to `docs/project/`,
-and the repository is being prepared to go public.** `T-299` is In Review; read this first, then
+and the repository is being prepared to go public.** `T-299` was reviewed at `cca7db2..1d43c21`,
+**Changes requested**, and its corrections are back for focused re-review. Read this first, then
 the 2026-09-06 section below it, which is still current about Phase 4.
+
+**The High finding is the one worth carrying forward: `SECURITY.md` claimed privacy guarantees the
+code does not provide.** Probes at this head show a home-directory output path is **not** redacted
+in the log, a cookie file with an ordinary name is **not** recognized, a queued URL's query string
+**is** stripped from the log where the document said it was verbatim, and a diagnostic written to
+`error_message` is **stored in the raw row unchanged**. `T014-R1` had already recorded that last
+one, and `SECURITY.md` cited that very review while contradicting it. The document now states the
+measured behavior. **Nothing in the application changed** — the defect was entirely in what was
+claimed about it.
+
+**The Medium finding reversed this migration's most convenient assumption.** `REVIEWS.md` and
+`DECISIONS.md` were restored to the paths they were written with, because there a path is often a
+fact — a command that ran, a review's write set, a `FILE.md:NNN` citation — not a link. Current
+truth names current locations; the historical record does not.
 
 **What changed is where the documents live, not what they say.** `DOC-006` records the adoption of
 convention revision **2026-09-08.1** and its four deliberate deviations. 1473 path references
@@ -2831,10 +2846,10 @@ guard is not, and the timeout was never raised. The `linux` re-run at the same c
 is what a microsecond window predicts. **`T-230`, `T-220` and `T-229` are cleared by name.**
 
 **Last verified against repository:** 2026-08-12 for the block above — commit hashes and the
-CI conclusion read from `git log` and `gh run view`, task states from `docs/project/TASKS.md` after the
+CI conclusion read from `git log` and `gh run view`, task states from `ai/TASKS.md` after the
 placement gate ran, and every figure from the run quoted with its exit code checked rather
 than its summary line. 2026-08-11 for all five 2026-08-11 blocks — commit hashes read
-from `git log`, task states from `docs/project/TASKS.md` after the placement gate ran, and the figures from
+from `git log`, task states from `ai/TASKS.md` after the placement gate ran, and the figures from
 the runs quoted, with exit codes checked rather than summary lines. Earlier blocks were verified on
 their own dates; the Phase 1 and Phase 2 narrative from `## Next` onward was last swept 2026-08-04.
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
@@ -7242,7 +7257,7 @@ dispositioned** — `T-161` corrected and approved, row 2.7 removed by `T161-R1`
 covers 40 rows. The record is
 `docs/project/evidence/2026-08-05-criterion-8-second-run.md`, which states the head as the range
 `6bae7ec..541b484` rather than a single sha: the maintainer did not record which was checked out,
-and `git diff --stat` across it is `docs/project/TASKS.md` alone. A range a reader can verify is worth more
+and `git diff --stat` across it is `ai/TASKS.md` alone. A range a reader can verify is worth more
 than a sha chosen for tidiness — `P2EXIT-R8` was evidence about a head that moved.
 
 **Rows 3.6 and §5 were run for the first time**, and 3.6 immediately failed: a completed playlist

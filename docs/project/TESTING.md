@@ -47,7 +47,7 @@ Three things drive the test strategy, and they come straight from the architectu
 
 | Change | Required before "complete" |
 |---|---|
-| Documentation only — `ai/`, `docs/`, `README.md`, comments | **None.** No behavior changed. |
+| Documentation only — `docs/`, `README.md`, comments | **None.** No behavior changed. |
 | Source change | `ruff check`, `ruff format --check`, `mypy src`, plus the tests relevant to the change |
 | Change that adds or edits a **test** file | The above, plus **bare** `mypy` and `mypy --platform win32`. `mypy src` does not read `tests/`, so a test file's type errors reach no gate before the `windows desktop` CI job — see §12 |
 | Change in `core/`, `downloader/`, or `persistence/` | The above, plus the **full** `tests/unit` and `tests/integration` suites — these layers have cross-cutting effects |

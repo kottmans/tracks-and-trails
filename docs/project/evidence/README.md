@@ -1,6 +1,7 @@
 # `docs/project/evidence/` — artifacts that cannot be regenerated
 
-**This directory is an exception, and it should stay small.** Everything else in `ai/` is prose,
+**This directory is an exception, and it should stay small.** Everything else in `docs/project/`
+is prose,
 and evidence normally lives *inside* the task or review that reasons about it — `T-074` carries its
 361 attempts as a sentence, not as 361 files. That is the right default: a number somebody has read
 and thought about is worth more than a directory nobody opens.

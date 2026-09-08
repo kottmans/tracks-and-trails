@@ -25,7 +25,7 @@ Concretely, that means:
 |---|---|
 | **You can** | clone it, install it, and download things with it today |
 | **You cannot** | install it from a release — there are no installers or packages yet |
-| **Verified on** | Linux (Fedora, x86-64) and Windows 10/11 (x86-64), every push, full suite on both |
+| **Targets** | Linux (Fedora, x86-64) and Windows 10/11 (x86-64). CI runs the full suite on both on every push |
 | **Not supported** | macOS |
 
 [docs/project/STATUS.md](docs/project/STATUS.md) is the only document authoritative for what is
@@ -83,9 +83,11 @@ usage: tracks-and-trails [--version] [--help] [--log-level=LEVEL] [--spawn-probe
   --ytdlp-probe  self-test the bundled yt-dlp and exit
 ```
 
-The log is redacted at every level — cookie paths and proxy credentials never reach it, and
-`--log-level=DEBUG` does not turn on yt-dlp's own verbose output. `--help` prints the log's
-actual path on your machine.
+The log is redacted at every level, and `--log-level=DEBUG` does not turn on yt-dlp's own
+verbose output. Redaction is a pattern set rather than a blanket guarantee — it strips proxy
+credentials, URL query strings and cookie stores named as such, and it does **not** hide your
+output paths. [SECURITY.md](SECURITY.md) has the exact table. `--help` prints the log's actual
+path on your machine.
 
 ### Running the tests
 
@@ -97,9 +99,11 @@ ruff check . && ruff format --check .
 mypy src tests
 ```
 
-That is **3925 tests**, in about three minutes on a desktop. `tests/network/` is opt-in and
-excluded by default; everything else runs offline against recorded yt-dlp `info_dict` fixtures.
-The full suite runs on both Linux and Windows on every push — the Windows machine is the only
+That is **3925 passing tests and 21 skipped**, measured on Linux at the current head.
+`tests/network/` is opt-in and excluded by default; everything else runs offline against recorded
+yt-dlp `info_dict` fixtures.
+
+CI runs the full suite on both Linux and Windows on every push. The Windows machine is the only
 Windows environment this project has, so anything it does not check is genuinely unverified there
 rather than merely unautomated. [docs/project/TESTING.md](docs/project/TESTING.md) is
 authoritative for what must be tested and which gates are required, and
@@ -117,10 +121,12 @@ These are the ones that shaped everything else. Each links to its recorded decis
   against the newer yt-dlp so upstream drift is found here rather than by a user.
 - **The queue is SQLite with one committed statement per write** (`DAT-001`). There is no state
   in which half a job is stored, and the crash test proves it by killing a real process.
-- **Credentials and cookie material are structurally excluded from the database and the log**
-  (`REQ-026`, `DAT-003`). This took four review rounds to get right; the review record for it is
-  in [docs/project/REVIEWS.md](docs/project/REVIEWS.md) and is worth reading as an example of
-  what the process here actually catches.
+- **Cookie paths and proxy credentials are refused at the model boundary** (`REQ-026`,
+  `DAT-003`), so they cannot enter a stored request at all — which is a stronger guarantee than
+  filtering them on the way out, and a narrower one than "the database holds no secrets". It took
+  four review rounds to get right, and the record of those rounds in
+  [docs/project/REVIEWS.md](docs/project/REVIEWS.md) is worth reading as an example of what the
+  process here actually catches.
 - **No pull-request trigger exists in any workflow, and a test enforces it** (`T-262`, `T-264`).
   Every runner is self-hosted, so a fork's pull request would be arbitrary code execution on a
   personal machine.

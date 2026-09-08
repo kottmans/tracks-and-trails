@@ -267,7 +267,7 @@ def test_the_dormant_concurrency_expression_is_left_alone() -> None:
         ),
         (
             "safe: an anchor defined in the block, as ci.yml does",
-            'on:\n  push:\n    paths-ignore: &prose\n      - "ai/**"\n  workflow_dispatch:\n\n'
+            'on:\n  push:\n    paths-ignore: &prose\n      - "docs/project/**"\n  workflow_dispatch:\n\n'
             "jobs: {}\n",
             [],
         ),

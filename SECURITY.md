@@ -34,12 +34,21 @@ will get is an honest answer about whether it is a real finding and whether it w
 Tracks & Trails is a local desktop application. It has no server, no accounts, no network
 listener, and no telemetry of any kind. The sensitive material it touches is all the user's own:
 
-| Material | Where it can appear | Rule |
+| Material | Database | Log |
 |---|---|---|
-| Browser cookies / cookie files | Settings, passed to yt-dlp | Never persisted to the database; never written to the log |
-| Proxy credentials | Settings, `DownloadRequest` | Stripped before a request is serialized; refused at entry |
-| Output paths and filenames | Queue, log, database | Redacted in the log where they can carry a home directory |
-| URLs the user queues | Database, log | Stored verbatim, by explicit decision — this is the one exception, and it is recorded |
+| Cookie paths and browser profiles | **Refused at construction.** `DownloadRequest` raises on a cookie path, so one cannot enter a stored request | Redacted **when the path is recognizable as a cookie store** — `cookies.txt`, `cookies.sqlite`, and the documented patterns. A cookie file with an ordinary name, such as `session.txt`, is **not** recognized and survives |
+| Proxy credentials | **Refused at construction**, including scheme-less and network-path forms | Userinfo stripped from a URL or a bare `user:pass@host` |
+| URLs the user queues | **Stored verbatim**, query string included, by explicit decision | Query string, userinfo and fragment stripped |
+| Output paths and filenames | Stored as given | **Not redacted.** An output path under a home directory appears in full |
+| Diagnostics (`error_message`) | **Stored as given.** The repository does not filter this column | Redacted like any other line |
+
+**The two rows that are not guarantees are deliberate.** An output path is what the user chose and
+is the most useful thing in a bug report; `error_message` carries yt-dlp's own diagnostic, which
+`REQ-019` wants intact. Neither is a redaction sink, so **cookie material placed in a diagnostic by
+a caller would be persisted.** No production caller does that, but this is caller discipline rather
+than structure — the finding that established it is `T014-R1` in
+[docs/project/REVIEWS.md](docs/project/REVIEWS.md), and it is worth reading before adding a new
+write to that column.
 
 The governing requirements are `REQ-026` and `NFR-007`; the structural database boundary is
 `DAT-003`. All three are in [docs/project/REQUIREMENTS.md](docs/project/REQUIREMENTS.md) and
@@ -48,8 +57,14 @@ The governing requirements are `REQ-026` and `NFR-007`; the structural database 
 ### Logging
 
 The application log is **redacted at every level**, including `--log-level=DEBUG`, and `DEBUG`
-does not enable yt-dlp's own verbose output. Redaction is not a filter applied on the way out; it
-is enforced at the sink, so a new caller cannot bypass it by accident.
+does not enable yt-dlp's own verbose output. Redaction is enforced at the sink —
+`RedactingFormatter.format` wraps every record — so a new caller cannot bypass it by accident.
+
+**What it catches is a pattern set, not a category.** It recognizes URLs with an authority, bare
+`user:pass@host` userinfo, cookie headers, cookie stores named as such, and literals registered
+through `remember_a_secret()`. It follows that **a secret it has no pattern for reaches the log**:
+the known gap is a cookie file whose name does not look like one. Treat the log as redacted against
+the listed forms, not as sanitized in general.
 
 This boundary was wrong three times before it was right — a scheme-less proxy, a Unicode host, a
 cookie path that did not look like one — and each failure is recorded with the probe that found
@@ -62,8 +77,11 @@ No credential, token, key, or personal data belongs in version control. `.gitign
 obvious carriers — `cookies.txt`, `*.cookies`, `*.sqlite3`, `.env`, downloaded media — and
 `AGENTS.md` §7 states the rule for anything it does not anticipate.
 
-Machine addresses and account names are not committed either: `tools/windows/run-on-starbase.sh`
-takes its host from `STARBASE_HOST` and refuses to run without it, rather than carrying a default.
+`tools/windows/run-on-starbase.sh` no longer carries an account and a LAN address as its default;
+it takes `STARBASE_HOST` and refuses to run without it. **Two RFC1918 addresses do remain**, in
+review entries in [docs/project/REVIEWS.md](docs/project/REVIEWS.md) that record an SSH attempt
+timing out. They are a statement about a past run on a private network, they are not routable, and
+the historical record is not rewritten to remove them.
 
 ## CI trust boundary
 
