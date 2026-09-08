@@ -222,3 +222,140 @@ unchanged=['src','tests','tools','packaging','.github','pyproject.toml']
 subprocess.run(['git','diff','--exit-code',BASE,'--',*unchanged],check=True)
 print('Source, tests, tools, packaging, CI and dependency configuration unchanged')
 ```
+
+
+## Status evidence relocation — 2026-09-08
+
+**Base:** `d88e62e`; **head:** the follow-up commit containing this supplement.
+**Authority:** The maintainer requested relocation of unique evidence and removal
+of the status archive. Independent review remains pending.
+
+### Retention and audit scope
+
+The removed `docs/project/archive/STATUS-2026-09-08.md` contained 7,425 lines.
+Its SHA-256 at `d88e62e` is
+`e5e746d78559f78402a40db84c5d46c84b45e27ab2d8520a00d427299d4c814c`.
+The [19 dated task supplements](../archive/TASKS-completed-2026-09-08.md#historical-evidence-supplements--2026-09-08)
+retain 38 verbatim excerpts, linked from 38 relevant task entries. The original
+2,193,195-byte task archive is an unchanged prefix; the supplements append 489 lines.
+
+The comparison covered 1,292 source paragraphs and 299 other UTF-8 files from the
+321-file tracked tree; 21 binary/non-UTF-8 files were excluded from text comparison.
+Literal and numeric searches identified candidates; comparison with the relevant
+task, review and decision records determined what needed retaining. The excerpts
+keep adjacent context where necessary, rather than treating every unmatched word
+or number as new evidence.
+
+Retained material includes CI run identities and failures, the first Linux scan,
+Windows process observations, timing estimates, failed mutations, test counts,
+incomplete runs and the historical environment. Two new notes qualify errors in
+the source: 30m39s is 76.625% of 40 minutes, and T-234's apparent test failure was
+later identified as a worker segfault. Original quoted text remains unchanged.
+
+Repeated implementation/review narratives already have their task and review
+records. Current requirements and decisions retain their own authority. Superseded
+queue snapshots, routine push-state updates, regenerable inventories, transient
+handoff names and old personal/external routing do not need another live copy.
+The complete original snapshot remains recoverable with the command in the
+supplements. Historical CI was not re-queried or reclassified as current evidence.
+
+DOC-007 has an appended retention amendment and an index link. STATUS, task
+navigation and the setup guide point to retained evidence. No source, test,
+dependency, workflow, external standard or review finding was changed.
+
+### Checks and limits
+
+- `ruff check .`: passed.
+- `python -m pytest -q tests/unit/test_task_placement.py tests/unit/test_capability_guards.py tests/unit/test_option_audit.py`:
+  **64 passed in 2.39 s**.
+- Activated `.venv`, then `python -m pytest -q -n auto`, Linux with local sockets
+  available: **3925 passed, 21 skipped, 17 warnings in 168.90 s**; exit 0.
+- The instrument below verifies all 38 excerpts against the immutable source,
+  all 297 task IDs/headings, unchanged pre-existing task bodies apart from T-300
+  and navigation, preserved original archives/reviews/decisions/verification text,
+  the removed snapshot and the added local link destinations.
+- `git diff --check` and the commit-message checker: passed.
+- No Windows runtime, real-display session, external CI verification or push.
+  Existing task blockers and independent-review requirements are unchanged.
+
+### Reproduce this retention check
+
+The original instrument above describes `d88e62e` and still requires its full
+snapshot. Run that instrument at that commit. Save the following block to a
+temporary file and run it from the repository root at this follow-up commit to
+check the new preservation boundary. It checks text and navigation; it does not
+independently establish the truth of the historical measurements.
+
+```python
+from pathlib import Path
+from urllib.parse import unquote
+import hashlib
+import re
+import subprocess
+
+BASE = 'd88e62e'
+ARCHIVE = 'docs/project/archive/TASKS-completed-2026-09-08.md'
+STATUS = 'docs/project/archive/STATUS-2026-09-08.md'
+EVIDENCE = 'docs/project/evidence/2026-09-08-T300-documentation-adoption.md'
+
+def before(path):
+    return subprocess.check_output(['git', 'show', f'{BASE}:{path}'])
+
+def current(path):
+    return Path(path).read_bytes()
+
+source = before(STATUS)
+assert hashlib.sha256(source).hexdigest() == 'e5e746d78559f78402a40db84c5d46c84b45e27ab2d8520a00d427299d4c814c'
+assert current(ARCHIVE).startswith(before(ARCHIVE))
+assert current(EVIDENCE).startswith(before(EVIDENCE))
+assert current('docs/project/REVIEWS.md') == before('docs/project/REVIEWS.md')
+marker = b'## DOC-001 \xe2\x80\x94'
+assert current('docs/project/DECISIONS.md').split(marker, 1)[1].startswith(
+    before('docs/project/DECISIONS.md').split(marker, 1)[1])
+print('Original task archive, review record, dated decisions and adoption evidence preserved.')
+
+supplements = current(ARCHIVE)[len(before(ARCHIVE)):].decode()
+excerpts = list(re.finditer(r'^\*\*Source lines (\d+)–(\d+):\*\*\n\n((?:>[^\n]*\n)+)', supplements, re.M))
+assert len(excerpts) == 38
+for match in excerpts:
+    recovered = [line[2:] if line.startswith('> ') else '' for line in match[3].splitlines()]
+    assert recovered == source.decode().splitlines()[int(match[1])-1:int(match[2])], match[0]
+print(f'{len(excerpts)} excerpts match their exact source lines.')
+
+tasks_before = before('docs/project/TASKS.md').decode()
+tasks_after = current('docs/project/TASKS.md').decode()
+ids = r'^### (T-\d+) —.*$'
+assert re.findall(ids, tasks_before, re.M) == re.findall(ids, tasks_after, re.M)
+without_navigation = re.sub(r'\n\nHistorical evidence relocated 2026-09-08:\n[^\n]+', '', tasks_after)
+task300 = r'(?ms)^### T-300 —.*?(?=^### T-299 —)'
+assert re.sub(task300, '', without_navigation) == re.sub(task300, '', tasks_before)
+print(f'{len(re.findall(ids, tasks_after, re.M))} task IDs/headings preserved; other task bodies unchanged.')
+
+allowed = {ARCHIVE, STATUS, EVIDENCE, 'docs/project/TASKS.md', 'docs/project/STATUS.md', 'docs/project/DECISIONS.md', 'docs/DEVELOPMENT.md'}
+changed = subprocess.check_output(['git', 'diff', '--name-only', BASE]).decode().splitlines()
+assert set(changed) <= allowed, changed
+count = 0
+for name in changed:
+    path = Path(name)
+    if not path.exists():
+        continue
+    # Only links added by this change; retained historical prose is not rewritten.
+    diff = subprocess.check_output(['git', 'diff', '--unified=0', BASE, '--', name]).decode()
+    added = '\n'.join(line[1:] for line in diff.splitlines() if line.startswith('+') and not line.startswith('+++'))
+    for target in re.findall(r'(?<!!)\[[^\]\n]+\]\(([^)\s]+)\)', added):
+        if '://' in target or target.startswith('mailto:'):
+            continue
+        destination, _, anchor = unquote(target).partition('#')
+        dest = path.parent / destination if destination else path
+        assert dest.exists(), (name, target)
+        if anchor:
+            text = dest.read_text()
+            headings = re.findall(r'^#{1,6}\s+(.+)$', text, re.M)
+            anchors = set(re.findall(r'<a\s+id="([^"]+)"', text))
+            anchors.update(re.sub(r'[^\w\- ]', '', h.lower()).replace(' ', '-') for h in headings)
+            assert anchor in anchors, (name, target)
+        count += 1
+print(f'{count} added local links resolve; changes confined to the seven authorized documentation paths.')
+assert not Path(STATUS).exists()
+print('Status archive removed; immutable source remains available in Git.')
+```

@@ -41,6 +41,12 @@ for this documentation work: no section renumbering or product correction is nee
 T-299's privacy and transcript findings remain its responsibility and remain open.
 The original brief is retained in the [task archive](archive/TASKS-completed-2026-09-08.md#original-t-300-brief).
 
+The maintainer subsequently requested relocation of unique status evidence and
+removal of the status archive. The [dated evidence supplements](archive/TASKS-completed-2026-09-08.md#historical-evidence-supplements--2026-09-08)
+retain the observations and limitations alongside the task records. This explicitly
+retires the one-time STATUS snapshot; the pre-existing task and review records
+remain intact. DOC-007 records this retention amendment. No external standard changes.
+
 #### Acceptance criteria
 
 - Adopt DOC-007 without applying the web profile to this desktop product.
@@ -54,7 +60,9 @@ The original brief is retained in the [task archive](archive/TASKS-completed-202
 #### Validation and limits
 
 Results are recorded in `docs/project/evidence/2026-09-08-T300-documentation-adoption.md`.
-Review base: `f465688`; implementation head: the commit carrying this entry.
+Overall review base: `f465688`; original adoption: `d88e62e`. The status-retention
+follow-up is the commit carrying this amendment, based on `d88e62e`.
+Both await independent review.
 No application, test, dependency or CI behavior changes. No independent approval,
 Windows runtime validation, publication or push is claimed by this implementation.
 
@@ -1228,6 +1236,9 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 ## Proposed — Phase 4
 
 ### T-212 — The recorded checklist run: the built window against the agreed flow
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t212-validation).
 
 **Carries one row by maintainer direction, 2026-08-13:** the **deferred panel mount**. `T-221` was
 closed on a real-display observation — the maintainer did not see the one-turn transient — and the
@@ -2618,6 +2629,9 @@ figures, retiring the stale *"~165 px"* wording, and exempting the deliberate el
 
 ### T-298 — Frozen probes must not read a runner's user-managed yt-dlp
 
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t298-runner-profile).
+
 **Status:** **Complete — Approved at `a93a53b` on 2026-08-29**, with external evidence current
 through `53b4d02`. The `frozen` job gives itself a per-run profile through all five variables
 `platformdirs` consults, on both matrix legs; the probes run inside it and it is removed on
@@ -2626,6 +2640,9 @@ through `53b4d02`. The `frozen` job gives itself a per-run profile through all f
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-298--frozen-probes-must-not-read-a-runners-user-managed-yt-dlp).
 
 ### T-291 — A canary that runs the suite against the yt-dlp we have not pinned yet
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t291-verdict).
 
 **Status:** **Complete — Approved at `0332a68` on 2026-08-29.** Three findings corrected, and
 `T291-R4` resolved by dispatched run `33231851897`.
@@ -2637,6 +2654,9 @@ push.
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-291--a-canary-that-runs-the-suite-against-the-yt-dlp-we-have-not-pinned-yet).
 
 ### T-288 — The scroll bar is the one control the theme never dressed
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t212-validation).
 
 **Status:** **Complete — Approved at `0332a68` on 2026-08-29.** The rendered check `T288-R1`
 required was taken 2026-08-28 and found no defect. The bar is drawn by the sheet
@@ -2651,6 +2671,9 @@ mistake `T-283` made three hours earlier.
 
 ### T-292 — The download folder can be chosen but not typed, and its caption says nothing worth a line
 
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t212-validation).
+
 **Status:** **Complete — Approved at `0332a68` on 2026-08-29.** Three findings corrected, and
 the relative-path rule is ruled rather than proposed. The folder is a `QLineEdit`
 committing on `editingFinished`; a path that is missing, is a file, or cannot be written to is
@@ -2661,6 +2684,9 @@ line are gone. **Six mutations, all killed.**
 
 ### T-293 — A queued row offers *Remove*, so one playlist entry can go without the playlist
 
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t212-validation).
+
 **Status:** **Complete — Approved at `0332a68` on 2026-08-29.** A queued row offers
 `↑ ↓ Cancel Remove`; one entry's `Remove` goes down the single-job route and the group route is not
 taken. **Four mutations, all killed.**
@@ -2668,6 +2694,9 @@ taken. **Four mutations, all killed.**
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-293--a-queued-row-offers-remove-so-one-playlist-entry-can-go-without-the-playlist).
 
 ### T-285 — The Options dialog offers audio-only containers to a download that keeps its video
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t212-validation).
 
 **Status:** **Complete — Approved at `0332a68` on 2026-08-29.** No implementation finding was
 ever raised; it waited on the shared exact-head Windows run, which `T212-R3` resolved at
@@ -2679,6 +2708,9 @@ guard that keeps a container the preset already carries.
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-285--the-options-dialog-offers-audio-only-containers-to-a-download-that-keeps-its-video).
 
 ### T-283 — The row's painted *Download as* control insets its text 5 px less than the editor
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t212-validation).
 
 **Status:** **Complete — Approved at `0332a68` on 2026-08-29.** No implementation finding was
 ever raised; it waited on the shared exact-head Windows run, which `T212-R3` resolved at
@@ -2692,6 +2724,9 @@ shape and it is why the regression now reads pixels.
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-283--the-rows-painted-download-as-control-insets-its-text-5-px-less-than-the-editor).
 
 ### T-281 — Unavailable playlist entries are carried into the queue as rows that cannot download
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t212-validation).
 
 **Status:** **Complete — Approved at `0332a68` on 2026-08-29.**
 Every discarded input position is recorded now, with the reason it went, and the denominator is the
@@ -2709,6 +2744,9 @@ corrected inside this task, and **no finding became a follow-up task**.
 
 ### T-279 — The orphan scanner calls a live parent dead when it was launched by a console script
 
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t279-mutation).
+
 **Status:** **Complete — Approved at `a0085b5`**, 2026-08-26. **All six findings are closed and
 no follow-up task exists.** `T279-R1`–`R4` Resolved; `T279-R5` and `T279-R6` were handled in this
 completion synchronization under `DOC-005`, which routes a minor actionable finding into the
@@ -2718,6 +2756,9 @@ the reviewer; nothing here re-creates it.**
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-279--the-orphan-scanner-calls-a-live-parent-dead-when-it-was-launched-by-a-console-script).
 
 ### T-272 — The orphan scanner runs only on Windows, and a Linux box has had two orphans for days
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t272-first-dispatch).
 
 **Status:** **Complete — Approved at `12fda3a`**, 2026-08-26, review commit `de0724c`. **All nine
 findings are closed.** `T272-R1`–`R4` were resolved before this round; `T272-R5` resolved on the
@@ -2811,6 +2852,9 @@ Resolved**; `T267-R2` (Low, non-blocking) is **done at completion**, which is wh
 
 ### T-258 — A spawned worker that dies before it is prepared is orphaned forever on Windows
 
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t258-scan-observations).
+
 **Status:** **Complete — Approved at `3947858`**, 2026-08-21, on the record-only focused pass the
 maintainer authorized on 2026-08-19. **`T258-R10` is Resolved**; `T-268` remains separate and
 unaffected, and gates nothing in the centre column.
@@ -2818,6 +2862,9 @@ unaffected, and gates nothing in the centre column.
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-258--a-spawned-worker-that-dies-before-it-is-prepared-is-orphaned-forever-on-windows).
 
 ### T-270 — Quit has no keyboard shortcut on Windows, and the whole Windows gate is red behind it
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t270-version-runs).
 
 **Status:** **Complete — Approved at `c047767`**, 2026-08-20, **no implementation findings**,
 across one initial review and one focused evidence re-review. **`T270-R1` is Resolved by run
@@ -2911,6 +2958,9 @@ another trigger
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-264--make-the-no-untrusted-pr-workflow-policy-executable).
 
 ### T-259 — The Windows job's timeout had four minutes of headroom, and the suite grew into it
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t259-runtime).
 
 **Status:** **Complete — Approved with follow-ups at `322a533`**, 2026-08-17, after two review
 rounds. `T259-R1` is Resolved; `T259-R2` is non-blocking and owned by `T-267`. Corrected after
@@ -3284,6 +3334,9 @@ on CI run `31726615968`, green on all five jobs, in which **both frozen artifact
 
 ### T-208 — Reproduce the multi-row missing-disclosure report
 
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t203-checks).
+
 **Status:** **Complete — closed by maintainer ruling 2026-08-13 on the bounded, verified
 correction.** `T208-R1` had narrowed to one choice, and the maintainer took *close* rather than
 *probe further*: the original gesture is unrecoverable, so further probing has **no oracle to match
@@ -3387,6 +3440,9 @@ that a disk entry is removed when no job names it
 
 ### T-234 — The concurrency control leaves the toolbar
 
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t234-local-checks).
+
 **Status:** **Complete — Approved 2026-08-12 after two focused correction passes.** `T234-R1`,
 `T234-R2`, and `T234-R3` are Resolved. T-235's literal exact-set assertions now gate the remaining
 Windows-accessibility criterion, and run `31642823390` is green on all five jobs.
@@ -3446,6 +3502,9 @@ omission of `QSpinBox`
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-236--the-limits-only-control-has-the-affordance-t-141-ruled-unreadable).
 
 ### T-233 — T-033's packaging comments still give the pre-REL-002 reason
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t234-local-checks).
 
 **Status:** **Complete — Approved with follow-up `T-237`, 2026-08-12.** `T033-R7` is Resolved:
 the two submitted explanations are current and no executable statement changed. `T233-R1` is Low
@@ -3693,6 +3752,9 @@ stays a single declaration made once at construction. The ring is untouched (`T2
 
 ### T-268 — The reproduced parent-death path does not explain the five orphans
 
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t258-scan-observations).
+
 **Status:** **Complete — closed 2026-09-04 against `docs/RUNNER_ORPHANS.md`, with the cause
 unidentified and recorded as such.** Seven `multiprocessing` spawn children outlived their parents
 on `STARBASE` between 2026-08-04 and 2026-08-17 and never exited. **What they are blocked on was
@@ -3713,6 +3775,9 @@ than defaulted. **The mechanism was ruled rather than assumed** — see below.
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-282--a-debug-level-for-the-application-log-reachable-without-editing-code).
 
 ### T-271 — `Add URLs...` relies on the same unguarded standard key `T-270` was filed for
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t271-ci-upload).
 
 **Status:** **Complete — Approved at `7ca8e63` on 2026-09-04**, with **no implementation
 finding** (reviewed at `02b48fa`; `COORD-R27` resolved in `T-282`'s correction at `841e6fc`).
@@ -3738,12 +3803,18 @@ non-blocking Low and were closed in this entry's completion sync** — see the t
 
 ### T-197 — Cookie source, and the redaction gate that has to prove it
 
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t214-correction-checks).
+
 **Status:** **Complete — approved 2026-08-11 at `6a6ce27`.** `T197-R1` and `T197-R7` are
 Resolved; `T197-R2` … `T197-R6` remain Resolved.
 
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-197--cookie-source-and-the-redaction-gate-that-has-to-prove-it).
 
 ### T-222 — The options dialog clips the container note
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t214-correction-checks).
 
 **Status:** **Complete — approved 2026-08-11 at `4d03937`.** The maintainer-authorised extra
 pass resolves T222-R1 and T222-R2.
@@ -3752,17 +3823,26 @@ pass resolves T222-R1 and T222-R2.
 
 ### T-214 — The layering test proves less than the tree actually promises
 
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t214-correction-checks).
+
 **Status:** **Complete — approved 2026-08-11 at `28012ad`.**
 
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-214--the-layering-test-proves-less-than-the-tree-actually-promises).
 
 ### T-217 — Placeholder thumbnails read as intentional, not broken
 
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t214-correction-checks).
+
 **Status:** **Complete — approved 2026-08-11 at `28012ad`.**
 
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-217--placeholder-thumbnails-read-as-intentional-not-broken).
 
 ### T-224 — Draw the ⋮ zone as a button
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t214-correction-checks).
 
 **Status:** **Complete — approved 2026-08-11 at `28012ad`.**
 
@@ -3809,6 +3889,9 @@ stopped, user touching nothing.
 
 ### T-203 — The row's controls: one preset picker, and the one verb that is genuinely per-item
 
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t203-checks).
+
 **Status:** **Complete — approved 2026-08-10 at `fe1d246`.** All four findings are Resolved.
 The pointer door and row-bound menu are correct, and the correction batch answers the last two:
 `_show_row_menu` falls back to
@@ -3836,6 +3919,9 @@ is deleted on close, one widget per opening.
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-203--the-rows-controls-one-preset-picker-and-the-one-verb-that-is-genuinely-per-item).
 
 ### T-209 — Keep an open row panel laid out after a value refresh
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t203-checks).
 
 **Status:** **Complete — Approved with follow-up 2026-08-10 at `5652bf1`.** The correction
 itself — `relayout_panel`'s deferred restore — shipped with `T204-R4`; this task ran the criteria
@@ -4007,6 +4093,9 @@ processes are allowed to collide in this directory at all.)*
 
 ### T-111 — User presets: create, edit, duplicate, delete, set default
 
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t111-checks).
+
 **Status:** **Complete — Approved 2026-08-08.** Reviewed by Codex at `bf30d82` (*Changes
 requested*, three findings), corrected the same day, and **approved on re-review**: `T111-R1`,
 `T111-R2` and `T111-R3` are all **Resolved** and no open finding remains. **The ninth and last
@@ -4015,6 +4104,9 @@ Phase 3 deliverable.**
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-111--user-presets-create-edit-duplicate-delete-set-default).
 
 ### T-113 — Resume a partial download across a restart
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t113-timing).
 
 **Status:** **Complete — Approved at `476cf60`** (2026-08-08). Three findings over two rounds, all
 resolved. `T113-R1` was **Critical** and took two corrections: the first made every traversal
@@ -4912,6 +5004,9 @@ untouched. `P2EXIT-R3` is **Resolved**; two findings from the 2026-08-04 review 
 
 ### T-118 — The add dialog becomes a staging list
 
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t118-third-flap).
+
 **Status:** **Complete — Approved with follow-ups at `53b07ec`**, 2026-08-03, after four rounds of
 changes requested and four corrections. Exact-head run `30859578131` supplied the Windows evidence
 the last gate needed: `STARBASE` passed the full suite and hosted `windows-latest` passed every
@@ -5008,6 +5103,9 @@ schema**. The machinery has never run a second one against a database with rows 
 
 ### T-116 — A metadata lane: probing stops competing with downloads
 
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t083-retry-race).
+
 **Status:** **Complete — Approved at `253bbce`**, 2026-08-03, after `T116-R1` was corrected.
 One job cannot occupy both lanes: direct start refuses, admission parks, the fill loop skips a held
 id, and release re-decides immediately — while different jobs still use the two lanes concurrently.
@@ -5030,6 +5128,9 @@ download pool stalls downloads that are already running
 
 ### T-088 — Prove the phase: three at once, killed mid-queue, nothing left behind
 
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t084-platform-checks).
+
 **Status:** **Complete — Approved at `9e133a6`**, 2026-08-02, after `T088-R4` and `T087-R6`
 were corrected. Five criteria proved against a real composed application in another interpreter;
 the corrected suite passed on hosted Windows and Ubuntu. **It found a High defect that no feature
@@ -5048,6 +5149,9 @@ seventh row for it.
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-088--prove-the-phase-three-at-once-killed-mid-queue-nothing-left-behind).
 
 ### T-086 — Open a completed file, or reveal it in the file manager
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t084-platform-checks).
 
 **Status:** **Complete — implemented at `233c5fd`, approved at `2a41c5f`**, 2026-08-01, after `T086-R1` (High) was corrected. Windows Open no longer
 runs the file manager; it takes the associated-application route the platform documents.
@@ -5069,6 +5173,9 @@ found had no owner; `T-085` for the records beneath it. The queue half needs onl
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-086--open-a-completed-file-or-reveal-it-in-the-file-manager).
 
 ### T-084 — Per-job log capture and a log view
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t084-platform-checks).
 
 **Status:** **Complete — implemented at `75f1c32`, approved at `2a41c5f`**, 2026-08-01, after `T084-R1` (Critical) and
 `T084-R2` (High) were corrected.
@@ -5125,12 +5232,18 @@ the two this task names. **It releases `T-086`**, the last Phase 2 deliverable t
 
 ### T-087 — Single-instance guard
 
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t046-ci-correction).
+
 **Status:** **Complete — Approved at `ea9d752`**, 2026-08-01. **A test defect was corrected the same
 day under `T087-R6`; the guard itself is unchanged and its approval stands.**
 
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-087--single-instance-guard).
 
 ### T-046 — Output path collision policy against the filesystem
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t046-ci-correction).
 
 **Status:** **Complete — Approved at `9c5745a`**, 2026-08-01. All seven findings are **Resolved**:
 `T046-R1` (Critical), `R2`, `R3`, `R4`, `R5`, plus the coordination `R6` and the evidence overclaim
@@ -5170,6 +5283,9 @@ inventing an admission rule to satisfy a reviewer assertion that was later withd
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-081--reorder-pending-jobs-and-clear-completed-ones).
 
 ### T-083 — Bounded retry with backoff, for network failures only
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t083-retry-race).
 
 **Status:** **Complete — Approved at `97f96c0`**, 2026-08-01, and the approval stands. `T083-R1`
 is **Resolved** on the immediate, deferred/full-pool, PROBE and DOWNLOAD paths. It held only
@@ -5819,6 +5935,9 @@ five built-in presets
 
 ### T-063 — The virtualenv cannot run the application it installed
 
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t001-environment).
+
 **Status:** **Complete — approved with follow-up**, 2026-07-28 at `11e1203`. `T063-R1` is carried
 to `T-064`: 39 dependency-owned launchers still name the parent checkout's interpreter, so the
 documented bare `mypy` and `pytest` fail, while module invocations work. Both entry points work without `PYTHONPATH`, and
@@ -6343,6 +6462,9 @@ Resolved, no new findings
 [Archived scope and completion evidence](archive/TASKS-completed-2026-09-08.md#t-003--add-the-application-icon-asset).
 
 ### T-001 — Establish the project skeleton and toolchain
+
+Historical evidence relocated 2026-09-08:
+[Additional historical evidence](archive/TASKS-completed-2026-09-08.md#t001-environment).
 
 **Status:** Complete
 **Completed:** 2026-07-25

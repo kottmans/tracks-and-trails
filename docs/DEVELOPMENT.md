@@ -512,8 +512,9 @@ pointing at the *wrong* checkout will happily import someone else's code and pas
 worth not settling for — under that workaround the console script stays broken and the imported
 tree is still whatever the `.pth` says.
 
-**`.venv/` is git-ignored and does not survive a clone.** `docs/project/STATUS.md` records it being missing
-twice already, so this is a recurring first-five-minutes problem rather than a one-off.
+**`.venv/` is git-ignored and does not survive a clone.** Create it during clone
+setup and rebuild it after moving the checkout. The [historical environment record](project/archive/TASKS-completed-2026-09-08.md#t001-environment)
+preserves the earlier launcher and import-path repair.
 
 ## Windows
 

@@ -34195,3 +34195,492 @@ frozen jobs **green**, and `windows desktop` red on exactly `T-060`'s four known
 in this batch were one sentence — a test asserting something true of the author's machine.
 
 ---
+
+## Historical evidence supplements — 2026-09-08
+
+The maintainer requested relocation of unique evidence and removal of the status
+snapshot. These supplements retain observations missing from the task/review
+records, with enough adjacent context to preserve their scope and limitations.
+The original task records above are unchanged. No task or finding is reopened,
+resolved or approved by this retention pass.
+
+**Source for every excerpt:** commit `d88e62e`,
+`docs/project/archive/STATUS-2026-09-08.md`. Line numbers below address that exact
+blob. Excerpts are verbatim, including original attribution, path spellings and
+claims later corrected. The notes identify known supersessions; current status,
+the task records and dated reviews govern present work. No CI run was rechecked
+against GitHub during this relocation.
+
+Recover the full source with:
+
+```bash
+git show d88e62e:docs/project/archive/STATUS-2026-09-08.md
+```
+
+<a id="t271-ci-upload"></a>
+
+### Evidence for T-271 — CI upload failure alongside passing tests
+
+Entry dated 2026-09-08; observations from September 5–6. This qualifies the scheduled runs
+cited by T-271.
+
+**Source lines 92–96:**
+
+> **One CI red that no record mentions, and it is not the product.** Scheduled run `33958702874`
+> on 2026-09-05 failed `frozen linux` on
+> `getaddrinfo EAI_AGAIN productionresultssa15.blob.core.windows.net` — DNS from `kirk` to
+> GitHub's artifact storage, in the runner's own upload step. **Every test job in that run
+> passed**, `windows desktop` included, and run `34026077248` on 2026-09-06 is green throughout.
+
+<a id="t272-first-dispatch"></a>
+
+### Evidence for T-272 — First Linux scan and dispatch sequencing
+
+2026-08-21. This establishes one execution on kirk. T272-R5/R6 and the later task amendment
+govern the shared-label coverage limit; this is not evidence that every Linux runner was
+scanned.
+
+**Source lines 1740–1746:**
+
+> **One thing that run cost, and it was my sequencing.** The push at `14:40` started its own
+> `windows desktop`, and the dispatch six minutes later **cancelled it at 69 seconds** — the exact
+> contention `OPS-011`'s comment records from 2026-08-05. It cost nothing *here* because the dispatch
+> runs the same matrix **plus** both orphan jobs, so it strictly supersedes what it killed. **The
+> order is what made that true**: dispatching first and pushing second would have killed the dispatch,
+> and with it `Linux orphans`' first execution and the only fresh statement on the specimens. **Push
+> first, then dispatch** — recorded because the reason is not obvious from either job's log.
+
+**Source lines 1748–1752:**
+
+> **`Linux orphans`, first execution, dispatch run `32381523921`:** runner **`kirk`**, `14:48:12Z` →
+> `14:48:20Z`, all five steps green. That proves the three things no local run could: **`LINUX_RUNNER`
+> resolves** to the maintainer's machine rather than a hosted image, **`needs: check` ordered it after
+> the suite**, and the throwaway one-package environment builds on a real runner. The argument for
+> keeping the job was that it costs nothing; **eight seconds** is that argument measured.
+
+<a id="t258-scan-observations"></a>
+
+### Evidence for T-258 / T-268 — Repeated Windows process observations
+
+The first excerpt is from 2026-08-19, run 32268124069; the second is from 2026-08-21. The
+third preserves the full-suite tally for run 32209108844 on August 19. These observations do
+not establish a cause. T-268’s later scoped closure remains unchanged.
+
+**Source lines 2931–2932:**
+
+> **The scan ran again in that same run** — 15:16:32Z, seven orphans, `3400` and `6924` at `1d21h`,
+> 79 and 77 MB. Third unattended report, specimens unchanged.
+
+**Source lines 1732–1738:**
+
+> **The dispatch finished after that paragraph was written, and both scans reported.** Run
+> `32381523921` is **red**, which is the alarm rather than a fault: `STARBASE orphans` found **seven**
+> and preserved its non-zero exit. **`3400` and `6924` are alive at `2d21h`, one thread each, 79 and
+> 77 MB — unchanged again**, eight hours after the 06:52 nightly saw them at `2d13h` with the same
+> resident sets. **Fifth unattended report.** The five originals are at `14d21h` and `15d14h`.
+> `windows desktop` took **33m57s** — 85% of its bound, and the series is 32.3 · 35.0 · 32.3 · 33.9 ·
+> 34.5 · 34.6 · **34.0**, which is flat rather than creeping.
+
+**Source lines 2074–2081:**
+
+> **`T-268` is In Review, and its measurement stands: the region is measured on Windows and the
+> mechanism is not identifiable.** Run `32209108844` on `STARBASE` stopped a real spawned child at
+> three points and killed its parent each time. **Before** the payload read with the outer Job
+> suppressed the child **dies**; **past** the read it **survives with one thread** — the signature of
+> the five; **past** the read with the Job **present** it is **reaped**. The middle result exists
+> only on that side of the read, and the identical kill on the other side produces the opposite
+> outcome, which is what makes the pair a discrimination rather than a demonstration. The suite came
+> back **3691 passed, 30 skipped, 35 deselected**.
+
+<a id="t259-runtime"></a>
+
+### Evidence for T-259 — Additional Windows runtime measurements
+
+2026-08-18 and 2026-08-21. The first excerpt reports 30m39s as 80% of 40 minutes; that
+arithmetic is wrong (76.625%). Preserve the reported duration without adopting the
+percentage. Later task status supersedes the second excerpt’s In Review wording.
+
+**Source lines 3483–3484:**
+
+> **The Windows job took 30m39s — 80% of its 40-minute bound**, down from `T-259`'s 88% the day
+> before, so no warning fired this time.
+
+**Source lines 1861–1863:**
+
+> **`T-259` read 34m33s, 86% of the 40-minute bound.** The series is 32.3 · 35.0 · 32.3 · 33.9 · 34.5
+> · **34.6**. Growth in family rather than a jump, which is what the annotation says to read it as;
+> `T-267` is what stops the threshold itself drifting and is In Review.
+
+<a id="t212-validation"></a>
+
+### Evidence for T-212 batch — Validation scope and failed Windows attempt
+
+2026-08-29. These are the completed correction batch’s checks, not the outstanding final
+checklist run. Preserve the distinction between code head, pushed head and the later
+corrected head.
+
+**Source lines 405–409:**
+
+> **`T212-R1` found this section claiming a "full suite" it had not run and gates "green" that were
+> red.** 3,364 unit and UI cases were called the full suite while `docs/project/TESTING.md` puts integration in
+> the default scope, and both all-files mypy commands were failing on `tests/ui/test_queue_view.py`.
+> So the commands and their results are written out here, one line each, rather than summarised into
+> a word:
+
+**Source lines 411–422:**
+
+> | Command | Result | Where |
+> |---|---|---|
+> | `ruff check .` | **All checks passed** (208 files in scope) | Linux, this checkout |
+> | `ruff format --check .` | **208 files already formatted** | Linux, this checkout |
+> | `mypy src` | **Success: no issues found in 56 source files** | Linux |
+> | `mypy` | **Success: no issues found in 154 source files** | Linux — the scope that reads `tests/` |
+> | `mypy --platform win32` | **Success: no issues found in 154 source files** | Linux, Windows bodies analysed |
+> | `pytest -q -n auto tests/unit tests/ui` | **3,368 passed, 21 skipped** | Linux, offscreen — `ci.yml`'s own invocation |
+> | `pytest -q tests/integration` | **445 passed** in 6 m 29 s | Linux, offscreen, serial |
+> | `windows desktop`, full suite | **3,796 passed, 36 skipped, 35 deselected**, 29 m 35 s | `STARBASE`, run `33231536419` |
+> | `yt-dlp canary`, full suite | **3,801 passed, 21 skipped, 14 deselected** | run `33231851897`, against yt-dlp **2026.08.19** |
+> | Rendered scroll bars, real display | **no defect** — `docs/project/evidence/2026-08-28-T288-real-display-scrollbars.md` | KDE/Wayland, `wayland` plugin over `fusion`, Qt 6.11.1 |
+
+**Source lines 424–425:**
+
+> Unit and UI were measured apart at the earlier head — **2,294 / 18 skipped** and **1,073 / 3
+> skipped** — before the Windows correction split one case into two.
+
+**Source lines 429–438:**
+
+> **`T212-R3` — Windows, obtained at the second attempt.** The first run, at `cb4a36b`, **failed**:
+> `2 failed, 3795 passed, 34 skipped`. Neither failure was a product defect — the screen refused and
+> restored correctly both times — and both were `tests/ui/test_settings_dialog.py` asserting POSIX as
+> the contract. `chmod(0o500)` does not make a *directory* unwritable on Windows, and `expanduser`
+> raises `RuntimeError` for an unknown `~user` only on POSIX, where `ntpath` guesses a sibling of
+> `%USERPROFILE%` instead. **This is `T146-R3` one layer up**, and `tests/unit/test_settings.py`'s own
+> docstring already records making the identical mistake in the identical place. Corrected in
+> `75cd183` with that file's own remedies, and the tallies reconcile exactly: 3,831 → 3,832, the one
+> extra being the case split in two, and the two extra skips being the POSIX-only test and the
+> `geteuid` guard.
+
+**Source lines 511–516:**
+
+> **Pushed 2026-08-29 (UTC), and the two heads are different on purpose** — `T212-R3` asks for them
+> separately. **Code/test head: `37e90ba`**, the last commit touching `src/`, `tests/`, `.github/`,
+> `packaging/`, `tools/` or `pyproject.toml`. **Pushed head: `cb4a36b`**, which adds `0b5d14d`,
+> `747bf3a` and this commit — records only, verified by an empty
+> `git diff 37e90ba..cb4a36b -- src tests .github packaging tools pyproject.toml`. The Windows run
+> therefore tests the exact executable tree even though it is triggered from the later head.
+
+**Source lines 518–520:**
+
+> **Two further commits followed, and both fix defects the runs found in the corrections themselves**
+> — `22fe66e` (the canary's verdict step could not fail) and `75cd183` (two tests asserted Linux as
+> the rule). `origin/main` is `75cd183`, which is the head both green runs below were taken at.
+
+<a id="t291-verdict"></a>
+
+### Evidence for T-291 — A successful workflow with failing tests
+
+2026-08-29. The first attempt supplied no reliable green verdict; the second ran after the
+pipefail correction.
+
+**Source lines 440–448:**
+
+> **`T291-R4` — the canary, also obtained at the second attempt, and the first attempt is why the
+> second can be believed.** Run `33228602891` reported **success** while its own log said
+> `11 failed, 3799 passed`: GitHub's default shell is `bash -e`, not `bash -eo pipefail`, so
+> `pytest | tee` exited with tee's status and **the verdict step could not fail**. Fixed in
+> `22fe66e`. Run `33231851897` is green with the fix in force, and its arithmetic reconciles against
+> the local run: 3,813 passed locally, minus the 12 by-design tests, is the 3,801 the canary reports;
+> 14 deselected is 2 from `addopts` plus those 12. Steps 9 and 10 — *"say what a failure means"* and
+> *"say that this run measured nothing"* — both **skipped**, so neither drift nor infrastructure
+> failure was claimed.
+
+**Source lines 450–452:**
+
+> **The substantive answer to the question that prompted `T-291`:** against yt-dlp **2026.08.19**,
+> newer than the pinned **2026.7.4**, the drift gates find **nothing**. That is now established by a
+> real workflow execution rather than by a hand-run of its logic.
+
+<a id="t298-runner-profile"></a>
+
+### Evidence for T-298 — Runner profile contamination before isolation
+
+2026-08-29 account of the August 27 observations. The historical proposed remedy and
+untouched-machine wording predate T-298’s completed isolation change.
+
+**Source lines 456–462:**
+
+> **`frozen linux` fails on `Spock` and passes on `kirk`**, and the batch is not the cause — nothing
+> in it touches `src/`, `packaging/` or the freeze path. `/home/sean/.local/share/tracksandtrails/`
+> `ytdlp/` on `Spock` holds a **user-managed yt-dlp 2026.8.19, dated 2026-08-27 23:13** — the
+> maintainer's in-app update during `T-212`'s checklist run, the same action that produced `T-289`.
+> The self-hosted runner runs as that user, so a frozen artifact built there resolves the
+> user-managed copy ahead of its bundled pin, exactly as `OPS-002` says it should, and the probe
+> correctly reports that the frozen baseline is not the tested one.
+
+**Source lines 464–468:**
+
+> `Spock` passed this job on 2026-08-27 at 17:29, before that directory existed, and has failed it
+> since. **A build gate whose result depends on which of two machines it lands on is not a gate**, so
+> the durable fix is to isolate the frozen job's user data directory rather than to clean the
+> machine — but that is the maintainer's call, and the copy is their update to remove or keep. Left
+> untouched, and recorded here rather than acted on.
+
+<a id="t279-mutation"></a>
+
+### Evidence for T-279 — A mutation that never applied
+
+2026-08-26. The apparent 21-test success was an unsuccessful edit, not a surviving applied mutation.
+
+**Source lines 878–882:**
+
+> **Mutations, and one of them nearly slipped past me.** Re-swallowing `NoSuchProcess` fails **1 of
+> 21**; reverting to `name()` fails **1 of 21**. My first attempt at the former reported *21 passed*
+> — the replacement string had not matched this codebase's `except A, B:` syntax and **the mutation
+> never applied**. It looked exactly like a test that fails to discriminate. Caught by asserting the
+> edit changed the file, which is now how these are written.
+
+<a id="t270-version-runs"></a>
+
+### Evidence for T-270 — Desktop outcomes around the Qt version change
+
+2026-08-19. Preserve the run times and versions together; later corrections and approval
+remain in T-270’s original record.
+
+**Source lines 2895–2899:**
+
+> | Run | Time | Desktop suite | PySide6 |
+> |---|---|---|---|
+> | `32214730271` | 04:11Z | 33 passed | **6.11.1** |
+> | `32225163769` | 06:58Z | 33 passed | 6.11.1 |
+> | `32268124069` | 15:11Z | **1 failed, 32 passed** | **6.11.2** |
+
+<a id="t234-local-checks"></a>
+
+### Evidence for T-234 / T-233 — Local checks and the crash caveat
+
+2026-08-12. The second excerpt’s word “failed” was subsequently corrected in T-234’s task
+record: the xdist worker segfaulted; no assertion fired. T-238 owns that unresolved crash
+evidence. It is not an established unrelated test failure.
+
+**Source lines 4262–4266:**
+
+> **Gates, exit codes checked rather than summary lines read:** `ruff check`, `ruff format --check`
+> and `mypy` clean over `src` and `tests`; **2716 passed, 18 skipped** on unit+UI `-n auto`;
+> **404 passed** on integration. **Three mutations fail their evidence** — the gate reverted to
+> `concurrency is not None`, a spinner re-added to the bar, and the Settings screen told
+> `CONCURRENCY_DEFAULT` instead of the limit in force.
+
+**Source lines 4168–4171:**
+
+> **Gates:** ruff, format and mypy clean; **2719 passed** unit+UI; **404 passed** integration.
+> **One thing declared rather than buried:** in nine `-n auto` unit+UI runs,
+> `test_deleting_a_closed_store_neither_waits_nor_is_emitted_through` failed **once**, passes in
+> isolation, and sits in a file none of this touches. Not attributed, and not claimed unrelated.
+
+<a id="t214-correction-checks"></a>
+
+### Evidence for T-214 / T-217 / T-222 / T-224 / T-197 — Correction checks
+
+2026-08-11 correction batch at 4c48273. Integration evidence cited here belongs to the
+preceding head.
+
+**Source lines 4447–4449:**
+
+> **Figures at `4c48273`:** `ruff check`, `ruff format`, `mypy` (128 files), `mypy --platform win32
+> src` all clean; `tests/unit` and `tests/ui` **2695 passed, 18 skipped**. Integration and frozen
+> suites not run here; the reviewer ran integration green (391 passed) at the previous head.
+
+<a id="t203-checks"></a>
+
+### Evidence for T-203 / T-208 / T-209 — Local and CI verification
+
+2026-08-10, in execution order: initial local batch, focused T-203 correction, completed CI
+at fe1d246. The transient handoff and roadmap statements are historical context only.
+
+**Source lines 4795–4797:**
+
+> **Figures at the session head**: full suite **2824 passed, 17 skipped, 2 deselected, 4 known
+> warnings** in 389.29 s offscreen with `TRACKSANDTRAILS_REQUIRE_FFMPEG=1`; ruff, format, and all
+> three mypy gates clean at every commit. No CI ran — nothing was pushed.
+
+**Source lines 4714–4718:**
+
+> **Figures**: `ruff check`, `ruff format --check` (163 files), `mypy src` (51 files), bare
+> `mypy` and `mypy --platform win32` (125 files each) all clean; add-dialog, row-delegate,
+> playlist-picker and task-placement suites **240 passed in 132.79 s** offscreen — 239 plus the
+> new regression. **Held on the re-review now, not the correction:** `T-213`/`T-218`/`T-219`,
+> same file. A handoff for the focused re-review is ready untracked.
+
+**Source lines 4688–4692:**
+
+> **Unblocked by this verdict: `T-213`/`T-218`/`T-219`** — the same-file hold is over; `T-218`
+> builds against its reconciled contract. **CI run `31404743641` and Prose run `31404743592` both
+> completed green at `fe1d246`** *(the CI verdict was recorded after its run completed — this block
+> first reported it queued)*. The returned handoff is deleted per `AGENTS.md` §6, and the roadmap
+> artifact is revised for this state at its same URL.
+
+<a id="t111-checks"></a>
+
+### Evidence for T-111 — Initial preset-manager checks
+
+2026-08-08. Preserve the initial test additions and 2370-test unit/UI result; later review
+remains authoritative for acceptance.
+
+**Source lines 5140–5146:**
+
+> All five of `REQ-007`'s verbs exist in `core/settings.py` and are performed on a new
+> `ui/preset_manager.py` — one list with built-ins marked (`P-6`), a list beside a form with every
+> operation as a button (`P-20`), and a default that is always exactly one (`P-7`, resolved by
+> `settings.default_preset_of` rather than stored as a guarantee). The default persists as a
+> top-level `default_preset` key in the existing `settings.toml`; **no new store and no migration**,
+> which is what `T105-R1` settled. 30 new unit cases and 24 new UI cases; `ruff`, `mypy`,
+> `mypy --platform win32` and the 2370-test unit/UI suite all pass.
+
+<a id="t113-timing"></a>
+
+### Evidence for T-113 — Re-measurement withdrew the timing alarm
+
+2026-08-08. The comparison qualifies the earlier slow run; it does not establish a
+performance regression.
+
+**Source lines 5179–5186:**
+
+> **Two things the re-measure corrected, both of them the board's own claims.** The suite-timing
+> alarm the previous revision raised — *"more than doubled in wall clock"*, 2351 tests in 635 s — did
+> not survive being taken again deliberately: **2677 passed in 362 s** at this head, 14% more tests in
+> 57% of the time. That earlier figure carried its own caveat about the machine it was measured on,
+> and the caveat was right. And the closed-entry count came out at 57 on the first attempt by matching
+> *Phase 3* anywhere in a `Phase:` line rather than at its start, which pulls in `T-076` — *Phase 1
+> (pulled forward)*. The real figure is **56**, and it is the same off-by-one that table has already
+> corrected once.
+
+<a id="t083-retry-race"></a>
+
+### Evidence for T-083 / T-116 — Retry timing and the failed combined CI run
+
+2026-08-03. The session costs are estimates reported by the original investigation. The
+corrected test passing did not make the full desktop job pass.
+
+**Source lines 6143–6152:**
+
+> **`test_the_attempt_count_is_bounded_and_the_last_error_survives` was racing a spawn, not catching
+> a defect.** It failed on the `windows desktop` job in runs `30822454998` and `30823595744` —
+> deterministically, both times `assert <JobStatus.PROBING> is <JobStatus.FAILED>` with `attempts=3`
+> and the `NETWORK` message already stored. `attempts` is incremented by the retry that *starts* an
+> attempt, so `attempts >= AUTOMATIC_RETRY_LIMIT` is true a whole session before that session
+> reports; the test then allowed a fixed **1.0 s** for it to finish. A session costs ~0.25 s on the
+> maintainer's Linux box and **~1.07 s on `STARBASE`** — derived from the failing row itself, whose
+> `created_at` and final `started_at` are 3.543 s apart across three completed attempts. It waits for
+> the count *and* the settled `FAILED` now, and holds past a backoff derived from the one in force
+> rather than a literal.
+
+**Source lines 6154–6158:**
+
+> **`T-116`'s barrier was ruled out.** `entering()` recomputes `_ENTRY_STATUS.get(current.status)`
+> when the write runs and `FAILED` is not a key, so nothing can write `PROBING` after a terminal
+> state; the observed `FAILED → QUEUED` gap is the 50 ms backoff, not a wait for `_release`. The
+> `PROBING` row was the last attempt still in flight. **The first completed full-suite run on the
+> real desktop is what exposed it** — the prior desktop run never reached that step.
+
+**Source lines 6168–6176:**
+
+> **Both corrections verified on the runner that found them — and the run as a whole was still red.**
+> Run `30826638984` at `6c38d5f` concluded **failure**. Stated narrowly, which is the only honest
+> form: **the corrected `T-083` test passed** on the **self-hosted** `windows desktop` job, whose full
+> suite ended **1929 passed, 21 skipped, 32 deselected and two teardown errors — job failed**; and
+> **`frozen windows` passed** in 5m18s, the first frozen build `STARBASE` has ever completed, both
+> prior attempts having died in `setup-python` before reaching PyInstaller.
+> *(`COORD-R16`: this read "1929 passed, 0 failed", which is true of the test calls and makes a failed
+> job look green. The teardown errors were disclosed two paragraphs later; the number was not wrong,
+> the framing was.)*
+
+<a id="t118-third-flap"></a>
+
+### Evidence for T-118 — Third hosted timing failure
+
+2026-08-03. The measurement still owed in this excerpt was subsequently dispositioned in
+T-118’s task/review record. Preserve the hosted-machine distinction and the mutation that
+both timing assertions missed.
+
+**Source lines 6198–6209:**
+
+> - **`T118-R10` flapped a third time.** `windows-latest` measured **0.520 s** for 150 URLs against
+>   the test's own 0.5 s allowance. Three hosted measurements of one unchanged path read 0.722 s
+>   (red), pass, 0.520 s (red) — the bound was marginal, and every red run of it cost a Windows job.
+>   **Replaced 2026-08-03** by three assertions rather than one: an absolute budget at 500 URLs with
+>   a 24x margin, a runner-invariant scaling ratio, and a structural count of the per-row controls.
+>   The third is the one that matters — a mutation restoring a widget per row passed *both* timing
+>   tests, because an unshown view lays nothing out. **One Windows measurement at the new absolute
+>   bound is owed and has not been taken** — and it should be taken on `STARBASE` rather than on a
+>   hosted runner, because hosted Actions minutes are nearly exhausted (maintainer, 2026-08-03).
+>   `ci.yml` already routes the Windows `check` job through `vars.WINDOWS_RUNNER`, so that is a
+>   repository variable rather than a workflow change. `STARBASE` is a different machine from the one
+>   the flapping was observed on; the substitution is deliberate and is named as one in `TASKS.md`.
+
+<a id="t084-platform-checks"></a>
+
+### Evidence for T-084 / T-086 / T-088 — Platform corrections and incomplete checks
+
+Early August 2026 Phase 2 investigation. The snapshot gives no exact head for the split
+local invocations. Preserve the incomplete combined run as a limitation; its environmental
+explanation was the original author’s assessment, not a new diagnosis.
+
+**Source lines 6345–6345:**
+
+> *(Corrected in two passes: 37 at `5ea6656`, and the last one — `test_a_missing_launcher_says_which_one`, which hardcoded `xdg-open` where Windows produces `explorer` — after run `30713509567` isolated it. `ubuntu-latest` was green in that run; `windows-latest` failed on that single test.)*
+
+**Source lines 6376–6382:**
+
+> **A hazard worth knowing about, which I walked into twice.** `.github/workflows/ci.yml` sets
+> `cancel-in-progress: true`, so every push supersedes the run before it. Chasing this verdict I
+> pushed coordination commits while the run I needed was in flight and **cancelled the Windows job
+> twice** — runs `30713061006` and `30713168373` both read `cancelled`, and in the second
+> `ubuntu-latest` had already reported success while `windows-latest` was killed mid-run. **A
+> cancelled job is not evidence either way**, which matters because this project has already
+> mistaken a non-failure for a failure once.
+
+**Source lines 6437–6444:**
+
+> **Local evidence, stated as what was actually run.** The Windows corrections above were verified by
+> three separate invocations covering every changed file — `tests/unit` + `tests/ui` (**1584 passed /
+> 11 skipped**), `tests/integration/test_phase_2_exit.py` (**5 passed / 1 xfailed**), and
+> `tests/integration` without that file (**275 passed**, plus the cross-file flake noted above). **A
+> single combined run did not complete**: repeated attempts were killed and restarted by the
+> environment at ~25 s with no CPU used, which is a machine problem rather than a test one — the last
+> clean combined run, before these corrections, was **1865 passed / 11 skipped / 1 xfailed**. CI is
+> the gate that matters here and it runs both platforms.
+
+<a id="t046-ci-correction"></a>
+
+### Evidence for T-046 / T-087 — First returning CI failures and correction boundary
+
+2026-08-01. The correction commit is 6171812; the preceding staging incident is already
+documented in the review record and is retained here to qualify how these tests reached
+main.
+
+**Source lines 6499–6501:**
+
+> **The first working run was red, and everything it caught was mine.** Four failures on both
+> platforms: the original-audio preview (`T046-R4`), `mergeall` (`T046-R5`) and two Windows handle
+> details (`T087-R3`). All are corrected at `6171812`.
+
+**Source lines 6503–6506:**
+
+> **How they reached `main` is the part worth keeping.** `049b595` was a `git add -A` that swept in
+> four reviewer regressions written during the review, and I pushed **without re-running the suite** —
+> which `AGENTS.md` §8 forbids in as many words. The commit's subject and trailers named Phase 2
+> coordination; its contents included four deliberately failing tests.
+
+<a id="t001-environment"></a>
+
+### Evidence for T-001 / T-063 — Reported development environment
+
+The table was headed “verified 2026-07-25” but was edited later, including the July 28 venv
+repair. These are reported historical versions and setup observations, not one newly
+verified environment or current installation instructions.
+
+**Source lines 7210–7212:**
+
+> | `pip` | 26.0.1, installed via `ensurepip --user` into `~/.local` (no sudo, no PEP 668 marker on F44) |
+> | Project venv | `.venv/` — **repaired 2026-07-28** (`T-063`). It had been installed from a parent directory, so the console script's shebang named a missing interpreter and the editable `.pth` pointed one level above the checkout: neither `tracks-and-trails` nor `python -m tracks_and_trails` worked, and every command used `PYTHONPATH=$PWD/src`. Re-running `pip install -e ".[dev]"` from the checkout fixed both; `docs/DEVELOPMENT.md` carries the symptom and the check. Editable install, PySide6 6.11.1, platformdirs 4.11.0. `comtypes` is a Windows-only dev dependency and is absent here by design |
+> | Dev tools | ruff 0.16.0, mypy 2.3.0, pytest 9.1.1, pytest-qt 4.5.0, PyInstaller 6.21.0, psutil — no longer packaging-only, the default suite needs it since `T-013` asserts on real processes |

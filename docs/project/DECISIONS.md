@@ -91,7 +91,7 @@ Current requirements and architecture retain their own canonical authority.
 | [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu) | The row picks a preset; the per-row verbs are the row's own menu | Accepted | — |
 | [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) | The concurrency control leaves the toolbar for Settings | Accepted | — |
 | [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button) | The row's menu says what it removes, and the ⋮ reads as a button | Accepted | — |
-| [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted | — |
+| [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted | [Status retention amendment](#doc-007-status-retention) |
 
 ## Dated decision records
 
@@ -5811,3 +5811,14 @@ commit policy and safety/permission boundaries continue to apply.
 Current documents become smaller while archives retain the original evidence.
 Stable task stubs and the test-consumed T-260 record intentionally keep more than
 only open tasks in TASKS.md. Removing them would break navigation or a live gate.
+
+<a id="doc-007-status-retention"></a>
+
+### Retention amendment — 2026-09-08
+
+The maintainer subsequently requested relocation of unique evidence and removal
+of the one-time STATUS archive. Retain the observations as [dated task supplements](archive/TASKS-completed-2026-09-08.md#historical-evidence-supplements--2026-09-08),
+with exact source references, original result text and limitations. Remove the
+snapshot after checking preservation; its full text remains recoverable at
+`d88e62e`. This supersedes the snapshot-retention choice above and leaves the
+original task and review records intact. It changes no external standard.

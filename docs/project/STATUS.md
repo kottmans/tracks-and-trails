@@ -32,10 +32,11 @@ owns phase deliverables and exit criteria.
 
 ## Verification
 
-For this adoption's documentation tree, the Linux full suite passed with
-**3925 passed / 21 skipped / 17 warnings** in **169.95 s**, using the activated
-project environment. Ruff and the record/navigation checks passed. These are
-implementation checks; independent documentation review remains pending.
+After the status-evidence relocation, the Linux full suite passed with
+**3925 passed / 21 skipped / 17 warnings** in **168.90 s**, using the activated
+project environment. Ruff, 64 documentation-consumer tests and the
+record/navigation checks passed. These are implementation checks; independent
+documentation review remains pending.
 
 This adoption's checks and exact scope are in
 [T-300 evidence](evidence/2026-09-08-T300-documentation-adoption.md).
@@ -62,6 +63,6 @@ Refresh this snapshot at task completion; do not prepend session diaries. Preser
 unique decisions, measurements or findings in their canonical records, then link
 them. Review size if this file grows beyond roughly 200–300 lines.
 
-The [pre-adoption status snapshot](archive/STATUS-2026-09-08.md) preserves the
-accumulated measurement and residual-risk narrative verbatim. It is historical;
-its old present-tense statements are not current instructions.
+The retired status snapshot's unique evidence is in the [dated task supplements](archive/TASKS-completed-2026-09-08.md#historical-evidence-supplements--2026-09-08),
+linked from the relevant tasks. The full snapshot remains recoverable from
+`d88e62e`; its source path and recovery command are recorded with the supplements.
