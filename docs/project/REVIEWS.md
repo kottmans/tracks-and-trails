@@ -24136,3 +24136,102 @@ unchanged. No push or publication is authorized by this review.
    strict host isolation where its process tests need it; record the reason as project policy.
 
 These are suggestions for a future deliberate revision, not amendments adopted by this review.
+
+---
+
+## 2026-09-08 — T-299 focused correction review
+
+**Reviewer:** Codex
+**Task:** T-299
+**Correction base:** `66184fd` (includes the initial review)
+**Correction head:** `23c3d115a927c7c1bfccfa7d87973f8be6f3ed05`
+**Implementation commits:** `e43f58f`, `23c3d11`
+**Work mode:** Serial, `main`; the correction was committed and the tree clean before this append.
+**Verdict:** **Changes requested.** R1 still contains a false privacy assurance, and R2 still
+contains altered captured output. Both remain corrections to the existing findings.
+
+The first inspection occurred while the implementer was finishing the suite. The saved binary
+diff from `66184fd` matched the subsequently committed `66184fd..23c3d11` diff exactly:
+SHA-256 `319847be63a88955e5485acd0a62bb5c9a22163169cc7576718be0a3a61a2a7a`.
+No competing full suite or repository edit was started while that work was in flight.
+
+### Review-record restoration independently verified
+
+`e43f58f` removed the initial T-299 review. `23c3d11` restores the **entire original append**,
+including its leading separator: **132 lines, 14,066 bytes**, byte-for-byte equal to the append
+in `66184fd`, SHA-256
+`a6462874c28809536bf11201d3dd2a5d4810886aad7fbd6567eb2911e210490e`.
+The initial review commit also changed one metadata line; that explains its 133 inserted lines.
+The review's content and R1–R5 are intact. The incident is recorded in TASKS.md and STATUS.md.
+
+This incident is a **Note with no outstanding restoration request**. A clean worktree establishes
+agreement with the current index/HEAD; it does not establish agreement with the older commit used
+as a replacement source. Committing the review made its exact recovery possible. Nothing here
+authorizes whole-file replacement of a reviewer-owned record during a future correction.
+
+### Disposition of the original findings
+
+| ID | Severity | Blocks approval | Verification / remaining correction | Status |
+|---|---|---:|---|---|
+| `T299-R1` | **High** | **Yes** | Storage/logging columns now distinguish URL redaction and verbatim diagnostics, but `SECURITY.md:56–58` still tells someone handling a database/log copy that it “should not contain credentials or cookie contents.” A URL with userinfo survives a real repository round trip, and arbitrary third-party diagnostic text remains unrestricted. That advice contradicts both the corrected table and DAT-003's 2026-07-30 amendment; remove the assurance and explicitly treat the database as potentially containing credentials/sensitive diagnostic text. `SECURITY.md:46–47` also repeats the superseded premise that the application never holds a cookie path: DAT-003's **2026-08-10** amendment puts it in settings and worker arguments while keeping it out of the request model. Finally, `:39` and `:70–74` describe an ordinary `session.txt` path as a general logging gap, but production composition registers configured paths with `remember_a_path()` before logging. A bare `redact()` call with no registration is only a control for shape-based recognition. Distinguish configured/registered literals from unknown third-party text, and correct TASKS.md:345's claim that no production caller registers anything. Keep the application behavior unchanged. | **Partially corrected — Open. Documentation Maintainer, current T-299 correction.** |
+| `T299-R2` | **Medium** | **Yes** | The old review commands, handoff filenames and write sets are restored, and the original T-299 review survives exactly. However, `docs/project/evidence/2026-08-05-criterion-8-second-run.md:25–27` still presents a changed transcript: `git diff --stat 6bae7ec..541b484` is shown returning `docs/project/TASKS.md`. Independently rerunning that exact command returns **`ai/TASKS.md`**, 114 insertions. The corresponding STATUS.md sentence was corrected, but its evidence was not. Restore that captured output and audit any remaining literal captured commands/output in the already-requested evidence scope. The separate current-policy rollback issue is bounded explicitly below. | **Partially corrected — Open. Documentation Maintainer, current T-299 correction.** |
+| `T299-R3` | **Low** | **No** | SECURITY.md now describes the helper's explicit-host behavior and acknowledges retained historical address evidence. The unsupported repository-wide absence guarantee is gone. | **Resolved.** |
+| `T299-R4` | **Low** | **No** | The unqualified “every push” claim and unsupported timing are removed; the displayed command includes `-n auto`. The replacement at `README.md:106–108` still says documentation-only pushes are excluded because no test reads their changes. `prose.yml` explicitly tests TASKS.md-only pushes, and `ci.yml` deliberately does **not** exempt `docs/YTDLP_OPTION_AUDIT.md`, because a test reads it. Say that **enumerated prose paths** skip the full suite, TASKS.md has its separate placement check, and gated documentation can still trigger CI. | **Partially corrected — Open; T-299 completion sync, no independent review blocker.** |
+| `T299-R5` | **Low** | **No** | TESTING.md's documentation-only row and the evidence README now name the current layout. The synthetic YAML fixture is identical to `66184fd`; it remains a parser fixture rather than a live repository path. | **Resolved.** |
+
+No new task is needed. This is the first focused re-review, regardless of the implementer's two
+correction batches. R1 remains High, so AGENTS.md §10 permits another focused correction/review
+without a new approval request. R4 and the minor routing correction below do not independently
+keep T-299 In Review.
+
+### Specific answer on the whole-file rollback
+
+Restoring the old spellings in dated decision/review entries is reasonable with a relocation
+note. A dated entry may still contain useful present-day navigation, but this review does not
+require reclassifying hundreds of old citations or rewriting those entries again.
+
+The concrete over-application is **`docs/project/REVIEWS.md:49`**. Under the undated **“How reviews
+work here”** policy section, it now directs the reviewer to write `ai/reviews/T-0NN.md`.
+That is an instruction for the next review, not a fact about an old one; it must say
+`docs/project/reviews/T-0NN.md`, consistent with AGENTS.md §§4/9/12. Restrict the relocation banner's
+historical description to the dated records beginning under **“Reviews”**, rather than claiming
+everything below the metadata is history. This is **Low, non-blocking current-policy cleanup**
+within R2's correction. No additional current-path rewrite in the old dated DECISIONS.md entries
+is requested.
+
+The amended acceptance criterion is legitimate: the initial review expressly requested the
+historical-evidence exception. DOC-006 now discloses the previous interpretation and why it was
+wrong. Those improvements do not make the remaining transcript or current-policy error correct.
+
+### Independent checks
+
+| Check | Actual result |
+|---|---|
+| Original review append versus `23c3d11` | **Exact equality**, including separator; size/hash above. |
+| `git diff --name-only 66184fd 23c3d11 -- src tests tools packaging .github pyproject.toml` | **Empty**. The net correction is eight documentation files; the intermediate fixture edit is fully reverted. |
+| `python -m pytest -q tests/unit/test_task_placement.py` | **15 passed in 0.68 s**. |
+| `python -m pytest -q tests/unit/test_redaction_gate.py tests/unit/test_log_redaction.py` | **30 passed in 2.74 s**. Both test commands used `.venv/bin/python`. |
+| Synthetic cookie-setting probe | A real temporary `session.txt` is accepted by `settings.load()`. Before registration its path survives `redact`; applying the same `SettingsFile.secrets` → `remember_a_path` loop used at `app.py:499` changes the output to `loading cookies from <redacted>`. Source inspection also confirms the Settings-change registration helper at `app.py:740`. This probes loading/registration, not a full GUI session. |
+| Synthetic SQLite probe | URL userinfo/query and an arbitrary diagnostic containing a fake cookie-header value and cookie path both round-trip unchanged. No real credentials or user files used. |
+| `git diff --stat 6bae7ec..541b484` | **`ai/TASKS.md`, 114 insertions**; disagrees with the captured evidence at the correction head. |
+| Commit-message gate, `--range 66184fd..23c3d11` | **2 commits checked, rc=0**. |
+| `git diff --check 66184fd 23c3d11` | **Passed**. |
+
+The Reviewer did not repeat the full suite, lint or type checks for this documentation-only net
+correction. The handoff reports 3925 passed/21 skipped and successful static checks, but is not
+independent evidence for a final run. The initial reviewed source/test tree already had independent
+full-suite/static verification. Windows execution, repository settings and publication remain
+outside this review's verified boundary.
+
+### Additional suggestion for the external standard — no change applied
+
+Add a **restore precondition** to the migration/correction guidance: before replacing content
+from an older revision, inspect the intervening history for every target and identify which
+changes must survive. Prefer a targeted inverse patch applied to the latest contents; if an
+append-only/shared file must be reconstructed, preserve its current snapshot and mechanically
+verify the protected records afterward. `git status --short` being empty is not this check.
+Require the correction author to read and disposition the canonical finding rows, rather than
+working only from a summary. No external standard or repository rule was edited here.
+
+Only this review append is the Reviewer's repository change. R1/R2 remain open at `23c3d11`;
+submit their corrections together for the next focused review. No push was performed.
