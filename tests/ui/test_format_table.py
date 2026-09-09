@@ -28,7 +28,7 @@ from typing import Any, Final
 
 import pytest
 from PySide6.QtCore import QEvent, Qt
-from PySide6.QtGui import QColor, QImage, QKeyEvent
+from PySide6.QtGui import QColor, QFont, QImage, QKeyEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -54,6 +54,7 @@ from tracks_and_trails.ui.format_table import (
     VIDEO_CODEC_COLUMN,
     FormatTable,
     FormatTableModel,
+    codec_name,
 )
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT
 
@@ -129,7 +130,8 @@ def test_a_recorded_capture_populates_the_codec_column_by_value() -> None:
     is the one that can, and it is asserted here rather than left to the derived fixture.
     """
     model = FormatTableModel(formats_from("archive_org_test_mp3"))
-    assert column_of(model, AUDIO_CODEC_COLUMN) == [UNKNOWN_TEXT, "mp3"]
+    # The cell names the codec; `mp3` is reachable in the tool tip (`T-306`).
+    assert column_of(model, AUDIO_CODEC_COLUMN) == [UNKNOWN_TEXT, "MP3"]
     assert column_of(model, EXT_COLUMN) == ["ogg", "mp3"]
     # archive.org reports `height: 0` for an audio item, which is not a height. `yt-dlp -F` prints
     # `unknown`, and after `T107-R1` so does this (`_as_dimension`).
@@ -298,6 +300,20 @@ def test_the_table_matches_what_yt_dlp_f_reports(fixture_name: str) -> None:
                 )
                 continue
             expected = printed[name]
+            if column in (VIDEO_CODEC_COLUMN, AUDIO_CODEC_COLUMN) and expected != "unknown":
+                # **The codec columns show a name and keep the identifier in the tool tip**
+                # (`T-306`), so the agreement with `yt-dlp -F` moved there rather than weakening.
+                # `codec_name` is applied to what yt-dlp printed and compared with the cell, which
+                # is the same assertion in the table's own vocabulary; where it cannot read the
+                # string the two are still identical.
+                assert display(model, row, column) == codec_name(expected), (
+                    f"the table names {expected!r} as {display(model, row, column)!r} for {id_}"
+                )
+                tip = model.data(model.index(row, column), int(Qt.ItemDataRole.ToolTipRole))
+                assert tip in (expected, None), (
+                    f"the identifier for {id_} is no longer reachable: {tip!r}"
+                )
+                continue
             if expected == "unknown":
                 assert display(model, row, column) == UNKNOWN_TEXT, (
                     f"yt-dlp reports no {name} for {id_} and the table claims one"
@@ -332,8 +348,8 @@ def test_codecs_bitrate_and_estimated_sizes_come_from_a_recorded_capture() -> No
     model = FormatTableModel(formats_from("wikimedia_caminandes"))
     assert model.rowCount() == 5
 
-    assert column_of(model, VIDEO_CODEC_COLUMN)[:4] == ["vp9", "vp9", "theora", "vp9"]
-    assert column_of(model, AUDIO_CODEC_COLUMN)[:4] == ["opus", "opus", "vorbis", "opus"]
+    assert column_of(model, VIDEO_CODEC_COLUMN)[:4] == ["VP9", "VP9", "Theora", "VP9"]
+    assert column_of(model, AUDIO_CODEC_COLUMN)[:4] == ["Opus", "Opus", "Vorbis", "Opus"]
     assert column_of(model, BITRATE_COLUMN)[:4] == [
         "207 kbps",
         "422 kbps",
@@ -404,8 +420,8 @@ def test_fps_and_the_column_shapes_come_through_the_projection(
     assert display(model, 0, FPS_COLUMN) == "24"
     assert display(model, 1, FPS_COLUMN) == "29.97", "a fractional framerate lost its fraction"
     assert display(model, 2, BITRATE_COLUMN) == "16430 kbps"
-    assert display(model, 0, VIDEO_CODEC_COLUMN) == "theora"
-    assert display(model, 0, AUDIO_CODEC_COLUMN) == "vorbis"
+    assert display(model, 0, VIDEO_CODEC_COLUMN) == "Theora"
+    assert display(model, 0, AUDIO_CODEC_COLUMN) == "Vorbis"
 
 
 def test_a_missing_field_reads_the_placeholder_never_an_empty_cell(
@@ -443,7 +459,7 @@ def test_a_missing_field_reads_the_placeholder_never_an_empty_cell(
     [
         (False, None, ABSENT_TEXT, "yt-dlp said 'none': there is no such stream"),
         (None, None, UNKNOWN_TEXT, "yt-dlp was silent: the stream may exist and be unnamed"),
-        (True, "opus", "opus", "yt-dlp named it"),
+        (True, "opus", "Opus", "yt-dlp named it, and the cell shows the known name"),
         (True, None, UNKNOWN_TEXT, "the stream exists and yt-dlp did not name its codec"),
     ],
 )
@@ -490,7 +506,10 @@ def test_a_video_only_row_does_not_claim_its_missing_audio_is_unknown() -> None:
     assert entry.is_video_only, "the fixture is not the case this test is about"
     model = FormatTableModel((entry,))
     assert display(model, 0, AUDIO_CODEC_COLUMN) == ABSENT_TEXT
-    assert display(model, 0, VIDEO_CODEC_COLUMN) == "vp09.00.40.08"
+    assert display(model, 0, VIDEO_CODEC_COLUMN) == "VP9"
+    # The identifier `REQ-009` and every bug report are written in stays reachable.
+    tip = model.data(model.index(0, VIDEO_CODEC_COLUMN), int(Qt.ItemDataRole.ToolTipRole))
+    assert tip == "vp09.00.40.08"
 
 
 def test_a_format_with_no_height_reads_unknown_rather_than_claiming_audio_only(
@@ -655,6 +674,53 @@ def test_choosing_the_current_row_reports_the_format(
     assert len(seen) == 1
     assert isinstance(seen[0], FormatInfo)
     assert seen[0] == table.current_format()
+
+
+def test_the_chosen_row_says_so_in_the_table_and_not_only_in_the_footer(
+    derived: tuple[FormatInfo, ...], qapp: QApplication
+) -> None:
+    """`T-306`: a two-step selection needs a running account of itself near the rows.
+
+    The footer read *"Chosen — video: 137, audio: 140"* and nothing in the table agreed with it,
+    which is the *"no easy way to see what you are picking"* half of the 2026-09-09 report. The
+    row marks itself now, and it does so **through the selection the widget already owns** rather
+    than through a second idea of what is chosen.
+    """
+    table = FormatTable(derived)
+
+    def bold_ids() -> set[str]:
+        marked = set()
+        for row in range(table.model.rowCount()):
+            font = table.model.data(
+                table.model.index(row, FORMAT_COLUMN), int(Qt.ItemDataRole.FontRole)
+            )
+            if isinstance(font, QFont) and font.bold():
+                marked.add(display(table.model, row, FORMAT_COLUMN))
+        return marked
+
+    assert bold_ids() == set(), "nothing is chosen yet, so no row may claim to be"
+    table.choose_current()
+    chosen = table.current_format()
+    assert chosen is not None
+    assert bold_ids() == {chosen.format_id}, "the chosen row is the one the footer names"
+
+
+def test_the_identifier_column_is_drawn_quieter_than_the_row(
+    derived: tuple[FormatInfo, ...], qapp: QApplication
+) -> None:
+    """`T-306`, and `REQ-003` is why it is demoted rather than removed.
+
+    The requirement names the format id column, so it stays and stays selectable by
+    `REQ-008`. What changed is that it no longer reads as the most important thing in a row it is
+    almost never the reason for.
+    """
+    model = FormatTableModel(derived)
+    muted = model.data(model.index(0, FORMAT_COLUMN), int(Qt.ItemDataRole.ForegroundRole))
+    assert muted is not None, "the identifier column no longer answers a foreground of its own"
+    for column in (EXT_COLUMN, RESOLUTION_COLUMN, VIDEO_CODEC_COLUMN):
+        assert model.data(model.index(0, column), int(Qt.ItemDataRole.ForegroundRole)) is None, (
+            f"{COLUMN_HEADERS[column]} is being recoloured too; only the identifier is demoted"
+        )
 
 
 def test_an_empty_table_chooses_nothing_rather_than_raising(qapp: QApplication) -> None:

@@ -40,9 +40,19 @@ from PySide6.QtCore import (
 from PySide6.QtCore import (
     QPersistentModelIndex as _PersistentIndex,
 )
-from PySide6.QtGui import QColor, QFocusEvent, QKeyEvent, QPainter, QPen
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QFocusEvent,
+    QFont,
+    QKeyEvent,
+    QPainter,
+    QPalette,
+    QPen,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QCheckBox,
     QHeaderView,
     QLabel,
@@ -204,6 +214,44 @@ def describe_size(entry: FormatInfo) -> str:
 #: What a cell says when yt-dlp denied the stream outright, as against never mentioning it.
 ABSENT_TEXT: Final = "None"
 
+#: The name a person knows a codec by, keyed on the token yt-dlp puts before the first dot.
+#:
+#: **`REQ-003` asks for codecs and does not say in whose vocabulary** (`T-306`). `avc1.640028` is
+#: an ISO-BMFF sample entry with a profile and level packed into it; `H.264` is the same fact in
+#: the words the format was chosen in. The raw string stays reachable in the cell's tool tip,
+#: because it is what `REQ-009`'s selector syntax and every bug report are written in.
+#:
+#: **Keyed on the leading token only, and only where that token is unambiguous.** `h264-hd` is
+#: archive.org's own derivative name rather than a codec identifier, so it has no dot to split on,
+#: misses this table and is shown as written — which is the honest answer for a string this cannot
+#: read rather than a guess dressed as a translation.
+CODEC_NAMES: Final = {
+    "avc1": "H.264",
+    "avc3": "H.264",
+    "h264": "H.264",
+    "hev1": "H.265",
+    "hvc1": "H.265",
+    "vp09": "VP9",
+    "vp9": "VP9",
+    "vp08": "VP8",
+    "vp8": "VP8",
+    "av01": "AV1",
+    "theora": "Theora",
+    "mp4a": "AAC",
+    "aac": "AAC",
+    "opus": "Opus",
+    "vorbis": "Vorbis",
+    "mp3": "MP3",
+    "flac": "FLAC",
+    "ac-3": "AC-3",
+    "ec-3": "E-AC-3",
+}
+
+
+def codec_name(codec: str) -> str:
+    """`avc1.640028` as `H.264`, or the string unchanged when this cannot read it."""
+    return CODEC_NAMES.get(codec.split(".", 1)[0].casefold(), codec)
+
 
 def describe_codec(codec: str | None, present: bool | None = None) -> str:
     """The codec, or **why there isn't one** — which is two different answers (`T-305`).
@@ -225,7 +273,7 @@ def describe_codec(codec: str | None, present: bool | None = None) -> str:
     """
     if present is False:
         return ABSENT_TEXT
-    return codec if codec else UNKNOWN_TEXT
+    return codec_name(codec) if codec else UNKNOWN_TEXT
 
 
 class FormatTableModel(QAbstractTableModel):
@@ -241,6 +289,9 @@ class FormatTableModel(QAbstractTableModel):
         self._formats: tuple[FormatInfo, ...] = tuple(formats)
         #: The active sort, so a reset can reapply it (`T107-R4`). `None` until something sorts.
         self._sorted_by: tuple[int, Qt.SortOrder] | None = None
+        #: Format ids currently chosen, so a row can mark itself (`T-306`). The widget owns the
+        #: selection; the model is only told, which keeps one place deciding what is chosen.
+        self._chosen: frozenset[str] = frozenset()
 
     def set_formats(self, formats: Sequence[FormatInfo]) -> None:
         """Replace the whole table, **keeping the active sort** (`T107-R4`).
@@ -294,6 +345,29 @@ class FormatTableModel(QAbstractTableModel):
             return self._sort_value(entry, index.column())
         if role == int(Qt.ItemDataRole.DisplayRole):
             return self._text(entry, index.column())
+        if role == int(Qt.ItemDataRole.FontRole) and entry.format_id in self._chosen:
+            # **The chosen rows are marked where the choosing happens** (`T-306`). The footer
+            # said *"Chosen — video: 137, audio: 140"* and nothing in the table agreed with it,
+            # so a two-step selection had no running account of itself anywhere near the rows.
+            font = QFont()
+            font.setBold(True)
+            return font
+        if role == int(Qt.ItemDataRole.ForegroundRole) and index.column() == FORMAT_COLUMN:
+            # **The identifier stays and stops leading the eye** (`T-306`, `REQ-003`). It is the
+            # first column and was the strongest thing in the row, which is backwards: it is what
+            # `REQ-008` selects *by* and almost never what a person is reading the row for.
+            # **Read from the palette in force, not from a theme constant.** `theme.palette()`
+            # sets `PlaceholderText` to the muted role for whichever palette is applied, so this
+            # follows a theme switch; naming `LIGHT.muted` here would paint the light grey into
+            # the dark window and nothing in this module would notice.
+            return QBrush(QApplication.palette().color(QPalette.ColorRole.PlaceholderText))
+        if role == int(Qt.ItemDataRole.ToolTipRole):
+            # **Where the raw codec goes when the cell shows a name** (`T-306`). `REQ-009`'s
+            # selector syntax and every bug report are written in `avc1.640028`, not in `H.264`,
+            # so translating the cell must not put the identifier out of reach. Only the two
+            # codec columns answer: a tool tip that repeated the visible text everywhere would
+            # be noise, and a screen reader would read every cell twice.
+            return self._raw_codec(entry, index.column())
         if role == int(Qt.ItemDataRole.AccessibleTextRole):
             # **The column is named as well as the value** (`NFR-005`). A screen reader moving
             # across a row otherwise reads eight bare values with no way to tell which is the
@@ -301,6 +375,29 @@ class FormatTableModel(QAbstractTableModel):
             # label rather than relying on the header being read once.
             return f"{COLUMN_HEADERS[index.column()]}: {self._text(entry, index.column())}"
         return None
+
+    def set_chosen(self, chosen: frozenset[str]) -> None:
+        """Which format ids are currently picked, so the rows can say so themselves."""
+        if chosen == self._chosen:
+            return
+        self._chosen = chosen
+        if self._formats:
+            self.dataChanged.emit(
+                self.index(0, 0),
+                self.index(len(self._formats) - 1, COLUMN_COUNT - 1),
+                [int(Qt.ItemDataRole.FontRole)],
+            )
+
+    def _raw_codec(self, entry: FormatInfo, column: int) -> str | None:
+        """The codec exactly as yt-dlp reported it, for the columns that now show a name."""
+        if column == VIDEO_CODEC_COLUMN and entry.video_codec:
+            raw = entry.video_codec
+        elif column == AUDIO_CODEC_COLUMN and entry.audio_codec:
+            raw = entry.audio_codec
+        else:
+            return None
+        # Nothing to add where the name and the identifier are the same word.
+        return raw if codec_name(raw) != raw else None
 
     def _text(self, entry: FormatInfo, column: int) -> str:
         """What the cell reads. **Every branch returns a non-empty string** — see `UNKNOWN_TEXT`."""
@@ -358,9 +455,19 @@ class FormatTableModel(QAbstractTableModel):
         if column == FPS_COLUMN:
             return (entry.fps if entry.fps is not None else -1.0, "")
         if column == VIDEO_CODEC_COLUMN:
-            return (0.0, (entry.video_codec or "").casefold())
+            # **Ordered by the name the cell shows** (`T-306`), with the identifier
+            # breaking ties, so every `H.264` sorts together however yt-dlp spelled
+            # it. Still the projection rather than the display string: the value is
+            # derived here, not read back out of the view.
+            raw = entry.video_codec or ""
+            return (0.0, f"{codec_name(raw).casefold()}\x00{raw.casefold()}")
         if column == AUDIO_CODEC_COLUMN:
-            return (0.0, (entry.audio_codec or "").casefold())
+            # **Ordered by the name the cell shows** (`T-306`), with the identifier
+            # breaking ties, so every `H.264` sorts together however yt-dlp spelled
+            # it. Still the projection rather than the display string: the value is
+            # derived here, not read back out of the view.
+            raw = entry.audio_codec or ""
+            return (0.0, f"{codec_name(raw).casefold()}\x00{raw.casefold()}")
         if column == BITRATE_COLUMN:
             return (entry.bitrate_kbps if entry.bitrate_kbps is not None else -1.0, "")
         if column == SIZE_COLUMN:
@@ -749,6 +856,7 @@ class FormatTable(QWidget):
     def _announce(self) -> None:
         """Put the current selection where both a reader and a screen reader will find it."""
         described = self._selection.describe()
+        self.model.set_chosen(frozenset(entry.format_id for entry in self._selection.chosen()))
         self._chosen.setText(f"Chosen — {described}")
         self.setAccessibleDescription(f"{self._selection.mode}. Chosen: {described}")
         self.selection_changed.emit(self._selection)

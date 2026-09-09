@@ -243,6 +243,27 @@ resolved.
 `REQ-003`: *show the available formats for a probed URL in a sortable table (format ID, extension,
 resolution, fps, codecs, bitrate, filesize/estimate, notes).*
 
+### Legibility, ruled 2026-09-09
+
+**[T]** **The codec columns show the name, and keep the identifier in the tool tip.** `avc1.640028`
+reads as `H.264`, `vp09.00.40.08` as `VP9`, `av01.0.08M.08` as `AV1`. `REQ-003` asks for codecs and
+does not say in whose vocabulary; `REQ-009`'s selector syntax and every bug report are written in
+the identifier, so it stays reachable rather than being replaced. A string the table cannot read —
+archive.org's `h264-hd` — is shown as written rather than guessed at.
+
+**[T]** **A chosen row marks itself.** The footer names the selection in words for `NFR-005`, and
+until this the table itself agreed with it nowhere, which made a two-step merge selection a thing
+you had to hold in your head.
+
+**[T]** **The format id column is drawn quieter than the rest of its row.** It stays — `REQ-003`
+names it and `REQ-008` selects by it — but it is almost never why a person is reading the row, and
+it was the strongest thing in it.
+
+*Ruled by the maintainer on 2026-09-09, from a session with the built window: "there isn't an easy
+way to see what you are picking, and most people won't know the number codes". **A fourth option —
+the table recommending a row — was declined** in the same ruling: it would make this surface
+advisory, which is what presets are for. `T-306` carries the work.*
+
 ### Where it lives
 
 **[T]** *(amended 2026-08-09 by `UX-011`; `T-203` builds it)* The table opens from the staging
