@@ -1236,6 +1236,119 @@ reaches for the keyboard — is testable rather than theoretical.
 - `tests/ui/test_colour_is_never_alone.py` still passes, or is amended deliberately with the
   ruling cited — not adjusted to fit.
 
+### T-305 — The table says *Unknown* where it means *none*, and where it means *nothing to say*
+
+**Status:** Proposed — observed 2026-09-09 by the maintainer on the format table.
+**Owner:** Implementer
+**Priority:** Medium — it is most of the "lots of unknowns" complaint, and the data to fix it is
+already in the model
+**Phase:** Phase 4
+**Depends on:** nothing
+**Relevant context:** `T107-R1`; `FormatInfo.is_video_only` / `is_audio_only` and the two-flag
+design at `core/models.py:653–731`; `format_table.describe_codec`; `REQ-003`
+**Affected surfaces:** `src/tracks_and_trails/ui/format_table.py`
+**Risk:** Low
+**Required checks:** `ruff check .` · `ruff format --check .` · `mypy src tests` ·
+`pytest tests/ui/test_format_table.py` · the table read by eye against a real probe
+
+#### What is wrong
+
+`UNKNOWN_TEXT` is doing three different jobs, and the model already tells them apart:
+
+| Cell | Rendered | What is true |
+|---|---|---|
+| **Audio codec**, on a video-only row | `Unknown` | There is **no audio stream**. `entry.is_video_only` is `True` |
+| **Notes**, with no note | `Unknown` | There is **nothing to say**, which is not the same as not knowing |
+| **Size**, absent | `Unknown` | Genuinely unknown — **this one is correct** |
+
+Every row in the maintainer's screenshot sits under *"Merge a separate video and audio stream"* —
+they are video-only by construction — and every one of them reports its audio codec as `Unknown`.
+
+**The model was widened specifically so this could be said correctly.** `T107-R1` is the finding:
+the table once rendered *audio only* for a format whose video codec was merely unknown, because a
+collapsed field could not distinguish *"there is none"* from *"we do not know"*. `FormatInfo`
+carries **two flags** rather than one enum for exactly that reason, and `is_video_only` is written
+`is not False` so an unknown stays unknown. `describe_codec(entry.audio_codec)` then flattens it
+back to `UNKNOWN_TEXT`, which is the same conflation one layer up.
+
+#### Acceptance criteria
+
+- A video-only row says its audio is **absent**, not unknown; an audio-only row says the same of
+  its video. A row where the flag is genuinely `None` still says `Unknown`, and a test covers all
+  three cases rather than the easy two.
+- A row with no note does not claim the note is unknown.
+- **`Size` keeps saying `Unknown`** where it is unknown. The rule the module opens with — a missing
+  field never renders as an empty cell — is not being repealed; it is being told which of three
+  situations it is in.
+- The projection keeps sorting correctly: `SORT_ROLE` is over the underlying value, and a display
+  change must not move sorting into the display string (`T-075`).
+
+#### Out of scope
+
+- The table's legibility and selection, which is `T-306`.
+- Widening `FormatInfo`. The distinction this needs is already there.
+
+### T-306 — The format table is hard to read and hard to choose from
+
+**Status:** Proposed — **the design ruling is the maintainer's.** Raised 2026-09-09 from a real
+session: *"it's just not very user friendly. There isn't an easy way to see what you are picking,
+and most people won't know the number codes."*
+**Owner:** Maintainer to rule; Implementer to build
+**Priority:** Medium — `REQ-008` makes this the surface where a user picks streams by hand, and
+`T-212`'s sitting will meet it
+**Phase:** Phase 4
+**Depends on:** `T-305` should land first — a table with three honest blanks reads very differently
+from one with `Unknown` in every third cell, and the remaining complaint should be measured against
+the fixed version rather than the current one
+**Relevant context:** `REQ-003`, `REQ-008`; `docs/UX_SPEC.md` §4 and its `P-1`/`P-14` rulings;
+`UX-007`
+**Affected surfaces:** `ui/format_table.py`, `docs/UX_SPEC.md` §4, and a decision entry
+**Risk:** Medium — it reopens a specified surface
+
+#### What bounds this before anything is designed
+
+**`REQ-003` names the columns**, format ID included: *"a sortable table (format ID, extension,
+resolution, fps, codecs, bitrate, filesize/estimate, notes)"*. So the number codes cannot simply be
+removed — the requirement asks for them, and `REQ-008` is about selecting *by* them. The available
+move is to stop them being the first thing the eye lands on, not to delete them.
+
+`P-14` already refuses filtering the table, and `P-1` fixed it as an expanding row rather than a
+modal. Neither is reopened here unless the ruling says so.
+
+#### The complaint, separated
+
+1. **Nothing shows what you are picking.** The footer reads `Chosen — none yet`, at the bottom, in
+   ordinary weight. Two-stream selection is a two-step act with no running account of it.
+2. **The identifiers are machine identifiers.** `614`, `399`, `270` mean nothing without yt-dlp,
+   and the codec strings — `vp09.00.40.08`, `av01.0.08M.08`, `avc1.640028` — are worse, because
+   they *look* like they should be readable.
+3. **The rows are near-identical.** Five rows of `1920x1080 · 24` differing only in codec and
+   bitrate, with no indication of which one a person should want.
+
+#### Options, none of them ruled
+
+- **Translate the codec strings** — `avc1…` → `H.264`, `vp09…` → `VP9`, `av01…` → `AV1`, with the
+  raw string still available. Cheapest, and it addresses the half of complaint 2 that `REQ-003`
+  does not pin.
+- **Make the chosen row unmistakable** — the footer states both halves of a merge, and the chosen
+  rows are marked in the table itself rather than only summarised beneath it.
+- **De-emphasise the ID column** without removing it — narrower, secondary weight, no longer the
+  leftmost thing read.
+- **Recommend a row.** The largest change: the table would express an opinion, which no part of
+  this surface currently does, and it overlaps what presets already exist to do.
+
+**Recommendation: the first three, in that order, and not the fourth without a separate ruling.**
+The first three make the table legible; the fourth makes it advisory, which is a different product
+decision and duplicates presets.
+
+#### Acceptance criteria
+
+- Whatever is ruled is recorded against `docs/UX_SPEC.md` §4 with the maintainer's authority, since
+  §4 is the specification this changes.
+- `REQ-003`'s columns all remain reachable, and `REQ-008`'s by-ID selection still works by ID.
+- The *"Chosen"* summary is checked at the sizes `T-212` row 6 uses; the maintainer's screenshot
+  shows it at the bottom edge and whether it clips is unestablished.
+
 ### T-212 — The recorded checklist run: the built window against the agreed flow
 
 Historical evidence relocated 2026-09-08:
