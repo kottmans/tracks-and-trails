@@ -23,9 +23,13 @@ run evidences, and the reason is checkable rather than asserted:**
 
 ```
 $ git diff --stat 6bae7ec..541b484
- docs/project/TASKS.md | 114 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ ai/TASKS.md | 114 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  1 file changed, 114 insertions(+)
 ```
+
+That is the file's path *in those commits*; it is `docs/project/TASKS.md` on today's tree.
+The line is the command's output, so it keeps the spelling the command prints — a
+documentation relocation rewrote it once, which made a transcript disagree with re-running it.
 
 `f54b493` and `541b484` are prose. **No file under `src/` differs across that range**, so a run on
 any of the three is a run on one build of the application. Written this way because `P2EXIT-R8` was

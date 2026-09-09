@@ -125,10 +125,11 @@ the choices below and their amendments.
   in which half a job is stored, and the crash test proves it by killing a real process.
 - **Proxy credentials and cookie paths are refused at the model boundary** (`REQ-026`,
   `DAT-003`) rather than filtered on the way out, so the application cannot put one into a stored
-  request. That is deliberately narrower than "the database holds no secrets": a diagnostic
-  yt-dlp emits is stored verbatim because `NFR-006` requires it intact, and yt-dlp sometimes names
-  a cookie file in one. `DAT-003` is that trade-off, taken explicitly after two attempts to scrub
-  such prose failed. See [DAT-003 and its amendments](docs/project/DECISIONS.md#effective-decision-index)
+  request. That is deliberately narrower than "the database holds no secrets", in two ways: a
+  diagnostic yt-dlp emits is stored verbatim because `NFR-006` requires it intact, and yt-dlp
+  sometimes names a cookie file in one; and the URL you queue is stored whole, so a credential
+  inside one is stored with it. `DAT-003` is the first trade-off, taken explicitly after two
+  attempts to scrub such prose failed. [SECURITY.md](SECURITY.md) states both boundaries in full. See [DAT-003 and its amendments](docs/project/DECISIONS.md#effective-decision-index)
   for the storage/logging boundary and retained diagnostic risk.
 - **No pull-request trigger exists in any workflow, and a test enforces it** (`T-262`, `T-264`).
   Every runner is self-hosted, so a fork's pull request would be arbitrary code execution on a

@@ -290,7 +290,12 @@ than from a probe, in a document whose whole purpose is to be believed.
 
 What is written now is the measured behavior: what is refused at construction (structural), what
 the log's pattern set catches, and the two sinks that are **not** redaction sinks and are
-deliberate. `remember_a_secret()` is unchanged — no production caller registers anything.
+deliberate. `remember_a_secret()`'s own rules are unchanged, but **saying no production caller
+registers anything was itself wrong** and is corrected here: `app.py` registers every configured
+literal — the cookie path included — through `remember_a_path` before the window exists, and that
+call delegates to `remember_a_secret` for a separator-free name; a usable or credential-bearing
+proxy goes to `remember_a_secret` directly. So a bare `redact()` with nothing registered is a
+control for the shape rules alone, never for what a running application redacts.
 
 **`T299-R2` — Medium, historical evidence rewritten. Corrected.**
 
