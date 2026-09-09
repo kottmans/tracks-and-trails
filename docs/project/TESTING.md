@@ -336,9 +336,11 @@ that prose-only pushes stopped triggering a run at all. `OPS-010` and `OPS-011` 
 decisions; the subsections below state them operationally.
 
 **No workflow runs on `pull_request`, and that is a security control rather than an omission**
-(`T-262`, 2026-08-17). Every runner this project uses is self-hosted, and GitHub runs a fork's
-pull request with the fork's own code — so on a public repository the trigger is arbitrary code
-execution on the maintainer's machines. This section said *"every push and pull request"* in three
+(`T-262`, 2026-08-17). GitHub runs a fork's pull request with the fork's own code, so wherever a
+self-hosted runner takes that work the trigger is arbitrary code execution on somebody's machine.
+**This repository is public as of 2026-09-08, so that is a live condition.** Linux moved to hosted
+runners the same day (`OPS-012`, amended); `STARBASE` still takes the Windows desktop jobs, which
+is why the trigger rule and the fork-PR approval policy both remain load-bearing. This section said *"every push and pull request"* in three
 places after the trigger was removed, which `T262-R1` found: a policy file that promises a gate
 nobody runs is worse than one that omits it, because it is read as coverage.
 
@@ -358,7 +360,11 @@ maintainer's ruling: it found `T-268`'s seven preserved specimens every night an
 — which left the board permanently red for a known reason and would have hidden a genuinely new
 orphan behind it. **The cost is that there is no automatic detection on the machine where these
 accumulate**; `docs/RUNNER_ORPHANS.md` is what to read if the condition recurs, and
-`tools/orphan_scan.py` still runs by hand. `Linux orphans` is unaffected and still runs nightly.
+`tools/orphan_scan.py` still runs by hand. **`Linux orphans` no longer runs either**, since
+2026-09-08: it is enabled by `vars.LINUX_RUNNER != ''` and that variable was deleted when Linux
+moved to hosted runners. That follows rather than costs — it scans a persistent machine for
+processes a run left behind, and a hosted runner's VM does not outlive its run. Re-adding the
+variable restores the job with it.
 `tests/unit/test_orphan_scan.py::test_the_windows_scan_stays_removed` asserts the absence, so
 putting it back is a decision rather than a tidy-up.
 
@@ -390,6 +396,10 @@ hosted image and a scan there reports on a machine destroyed after every job.
 computes into `runs-on`. *Enabled by* is the separate condition deciding whether the job exists on
 a given run at all. Collapsing them is how a variable that controls one job's **existence** gets
 read as controlling another job's **destination**.
+
+**The selectors below are exact, but `LINUX_RUNNER` has been unset since 2026-09-08**, so every
+`fromJSON(vars.LINUX_RUNNER || '"ubuntu-latest"')` in this table currently resolves to
+`ubuntu-latest`. `WINDOWS_RUNNER` and `STARBASE_AVAILABLE` are still set.
 
 | Job (board name) | Workflow | `runs-on` selector | Enabled by |
 |---|---|---|---|

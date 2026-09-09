@@ -75,7 +75,7 @@ Current requirements and architecture retain their own canonical authority.
 | [UX-003](#ux-003--nothing-enters-the-queue-unprobed) | Nothing enters the queue unprobed | Accepted | — |
 | [UX-004](#ux-004--the-staging-rows-controls-a-visible-preset-a-menu-for-the-rest) | The staging row's controls: a visible preset, a menu for the rest | Accepted | [Amended 2026-08-02](#amended-2026-08-02--the-control-is-on-the-row-and-the-cost-was-measured) |
 | [UX-005](#ux-005--the-main-window-two-tabs-no-detail-pane-and-the-verbs-on-the-row) | The main window: two tabs, no detail pane, and the verbs on the row | Accepted | [Amended 2026-08-14](#amended-2026-08-14--a-failed-row-is-one-line-taller-when-it-has-something-to-suggest); [Amended 2026-08-06](#amended-2026-08-06--one-tab-because-the-second-ones-contents-are-no-longer-a-product); [Amended 2026-08-05](#amended-2026-08-05--a-finished-playlist-is-one-history-row); [Amended 2026-08-05](#amended-2026-08-05--a-divergent-playlist-says-which-row-got-which); [Amended 2026-08-05](#amended-2026-08-05--pause-all-is-deferred-to-req-017); [Amendment, 2026-08-04](#amendment-2026-08-04--the-toolbar-the-state-badge-and-the-selection-t-130); [Amended 2026-08-04, third](#amended-2026-08-04-third--a-playlist-is-many-rows-in-one-folder); [Amended 2026-08-04, again](#amended-2026-08-04-again--the-toolbars-appearance-and-what-the--carries); [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch); [UX-007](#ux-007--the-phase-3-surfaces-ruled-all-25-open-p-clauses); [UX-010](#ux-010--a-queue-groups-chip-is-progress-done-of-total); [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu); [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button); [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) |
-| [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) | Linux runs on the maintainer's Fedora machines, because it is faster as well as free | Accepted | [Amended 2026-08-05](#amended-2026-08-05--the-linux-jobs-are-named-linux-not-after-a-distribution) |
+| [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) | Linux runs on the maintainer's Fedora machines, because it is faster as well as free | Accepted | [Amended 2026-08-05](#amended-2026-08-05--the-linux-jobs-are-named-linux-not-after-a-distribution); [Amended 2026-09-08](#amended-2026-09-08--linux-returns-to-hosted-for-the-exposure-and-not-the-meter) |
 | [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died) | A prose-only push runs no CI, and the one gate that read prose moved rather than died | Accepted | — |
 | [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously) | Windows runs on `STARBASE`, on every push, and asynchronously | Accepted | [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died); [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
 | [OPS-009](#ops-009--where-each-ci-job-runs-now-that-starbase-is-back-and-minutes-are-metered) | Where each CI job runs, now that `STARBASE` is back and minutes are metered | Partly superseded | [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously); [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died); [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
@@ -4039,6 +4039,52 @@ runs did happen on Ubuntu; rewriting them would falsify the historical record to
   contract, since `LINUX_RUNNER` names them.
 - Unsetting `LINUX_RUNNER` restores hosted Linux with no other change — the same one-variable
   reversal `OPS-009` built for Windows.
+
+### Amended 2026-09-08 — Linux returns to hosted, for the exposure and not the meter
+
+**Status:** **Accepted** (2026-09-08) — maintainer ruling, taken after the repository was made
+public the same day. Recorded here by the implementer; the choice is the maintainer's.
+
+**The measurement above is not disputed and has not been re-run.** Self-hosted Linux was and
+remains the faster machine — 4m29s against hosted's 7m36s on 2026-08-05. What changed is not the
+speed and not the cost: **`kirk` and `Spock` became machines a public repository's workflows can
+reach.** The exposure is closed at the trigger by `tests/unit/test_workflow_triggers.py`, and fork
+pull-request workflows now require approval for all external contributors, but the maintainer chose
+to take the personal Linux machines out of the blast radius rather than rely only on those.
+
+**The mechanism is the one this entry already built.** The `LINUX_RUNNER` repository variable was
+deleted; every Linux job falls back to `ubuntu-latest` on its own, with no file change — which is
+exactly what the consequence above anticipated. Its recorded value was
+`["self-hosted","Linux","fedora"]`.
+
+**`kirk` and `Spock` were then unregistered from the repository**, leaving `STARBASE` as the only
+self-hosted runner attached to it. Unsetting the variable stopped anything *targeting* those two
+machines; unregistering them stops the repository *reaching* them at all, which is the difference
+between unused and out of reach.
+
+**So the reversal is no longer one variable, and saying otherwise would be wrong.** Restoring the
+previous arrangement means re-registering both runners with their original labels — the procedure
+is in `docs/DEVELOPMENT.md`, and it needs a registration token and shell access on each machine —
+**and then** re-adding `LINUX_RUNNER` with the value above. The variable alone would point at
+runners that are no longer there, and every Linux job would queue forever rather than fail.
+
+**What is surrendered, in writing:**
+
+- **About three minutes per Linux run**, by the 2026-08-05 measurement. That is the whole cost.
+- **The Fedora-glibc frozen Linux artifact.** It is now built against Ubuntu's glibc, which is the
+  more portable of the two — so this is arguably a gain, and `OPS-012` had recorded the Fedora
+  build as something surrendered rather than wanted.
+- **The `linux-orphans` job stops running.** It is gated on `LINUX_RUNNER != ''`, so deleting the
+  variable disables it. **That is coherent rather than a loss:** the job scans a persistent machine
+  for worker processes a CI run left behind, and a hosted runner's VM is destroyed after every run,
+  so there is nothing for it to find. The orphan risk on a developer machine is unchanged and
+  `tools/orphan_scan.py` still runs by hand.
+
+**What is not changed.** Windows. `OPS-005` and `OPS-010` stand, `WINDOWS_RUNNER` and
+`STARBASE_AVAILABLE` are untouched, and `STARBASE` keeps the desktop job — which cannot move,
+because no hosted image offers the real desktop session it exists to exercise. **The self-hosted
+exposure is therefore reduced, not eliminated**, and saying otherwise would overstate what this
+amendment does.
 
 ---
 
