@@ -26,6 +26,201 @@ quoted context, outside the operative task catalog.
 
 ## Complete
 
+### T-300 — `AGENTS.md` is 628 lines and is loaded on every task
+
+**Status:** **Complete — Approved at `5eecad9`** on 2026-09-08 by independent review; revision
+2026-09-08.5 adopted. `T300-R1` and `T300-R2` were both Low and non-blocking, were corrected during
+this sync, and were **closed by maintainer ruling without a further review pass** — see the record.
+
+**Read the review record for the disposition, not the notes below.** Earlier entries in this task
+describe superseded heads and say review is pending; the operative verdict is
+[the independent review at `5eecad9`](reviews/T-299.md#t-300-independent-review-5eecad9) and the
+closure note appended after it.
+
+**What completing this does not claim.** The approval covers a documentation reorganisation. No
+product code was in scope — `git diff f465688..5eecad9 -- src pyproject.toml` is empty — so no
+Windows runtime, real-display, frozen-build or installer evidence is implied, and this is neither
+publication approval nor release readiness. The two corrections were written by the reviewer who
+raised them and were not themselves reviewed.
+**Review record:** [T-300 independent review at `5eecad9`](reviews/T-299.md#t-300-independent-review-5eecad9),
+in the shared T-299/T-300 record. Earlier entries there describe superseded heads.
+**Owner:** Documentation Maintainer (Codex for this implementation, by direct request)
+**Priority:** Current maintainer request
+**Phase:** Phase 4 (documentation system; not a plan deliverable)
+**Depends on:** No implementation dependency. T-299 remains In Review with its own blockers.
+**Relevant context:** DOC-007; AGENTS §§1–13; TESTING §§3/14.
+**Affected surfaces:** Both external standards; AGENTS, README, DEVELOPMENT, project
+coordination documents, task-reading tests and workflow guidance/triggers.
+**Risk:** Medium — preserving evidence, task consumers and references during reorganization.
+**Required checks:** Ruff lint/format; mypy on source/tests and Windows-platform bodies;
+full suite; task-placement and documentation-consumer checks;
+mechanical section/record/link preservation checks.
+
+#### Scope amendment — 2026-09-08
+
+The maintainer requested adoption of the revised standards across this project.
+This expands T-300 to reader routes, retention, decision navigation, proportional
+metadata and factual prose. The former dependency on T-299 completion is removed
+for this documentation work: no section renumbering or product correction is needed.
+T-299's privacy and transcript findings remain its responsibility and remain open.
+The original brief is retained in the [task archive](COMPLETED_TASKS.md#original-t-300-brief).
+
+The maintainer subsequently requested relocation of unique status evidence and
+removal of the status archive. The [dated evidence supplements](COMPLETED_TASKS.md#historical-evidence-supplements--2026-09-08)
+retain the observations and limitations alongside the task records. This explicitly
+retires the one-time STATUS snapshot; the pre-existing task and review records
+remain intact. DOC-007 records this retention amendment.
+
+#### Running completed-task record — 2026-09-08
+
+The maintainer replaced dated task archives with one `COMPLETED_TASKS.md` and
+requested transfer at each completion. Both external standards now use revision
+2026-09-08.3. This project consolidates 261 Complete and 8 Cancelled records,
+including T-260, and removes their stubs from TASKS. The 28 unfinished records
+remain here. The old archive's record text, evidence supplements and introductory
+context are preserved; current navigation uses the new location.
+
+The placement gate checks status/section/file agreement and unique IDs across
+both files. Other task readers follow records into either file. Prose CI watches
+both paths; COMPLETED_TASKS remains eligible for full CI because it also feeds
+capability and option-audit checks. There is no change to required review, product
+behavior or the Windows/platform limits of local checks.
+
+#### Shared source and captured formatting — 2026-09-08
+
+The maintainer requested a private shared GitHub home for the standards and
+resolution of the formatting/history conflict. DOC-007 pins revision 2026-09-08.4
+at the exact standards commit. The shared repository keeps the unmodified .3
+import and provides adoption/upgrade instructions for other projects. Required
+working rules remain local to this project; the web profile remains unadopted.
+
+Two paired Ruff HTML controls protect the dated Python instruments in the
+existing adoption evidence. Removing the four added marker lines recovers the
+whole prior file byte-for-byte. No source, tests, tool versions or formatter
+exclusion configuration changed. Maintained examples remain checked; TESTING §4
+records the boundary and verification controls.
+
+#### Acceptance criteria
+
+- Adopt DOC-007 without applying the web profile to this desktop product.
+- Preserve numbered AGENTS sections, safety/permission boundaries and the accepted role mapping.
+- Apply the review-storage amendments: move existing entries byte-for-byte into
+  indexed task/shared-scope records, keeping related rounds together. Keep policy
+  in TESTING and templates in PROMPTS.
+- Preserve dated reviews/decisions and archived records byte-for-byte.
+- Keep the status concise, unfinished task scopes unchanged, and closed records reachable
+  in COMPLETED_TASKS without completed/cancelled stubs in the active queue.
+- Retain documentation inputs consumed by tests and validate the changed navigation.
+- Use neutral factual new prose and honest metadata without rewriting historical provenance.
+
+#### Validation and limits
+
+Earlier results are recorded in the [migration evidence](evidence/2026-09-08-T300-documentation-adoption.md#running-completed-task-record--2026-09-08).
+The shared-source/formatting follow-up is based on `97223e1`; its head is the
+commit carrying this amendment. The inherited whole-tree format failure is
+resolved with capture protection.
+
+- Linux full suite, activated environment with local sockets: **3940 passed,
+  21 skipped, 17 warnings in 169.81 s**.
+- Ruff lint passed; whole-tree formatting passed (**233 files already formatted**).
+  `mypy src` passed (**58 source files**); bare mypy and its Windows-platform run
+  each passed (**164 source files**).
+- The pinned Ruff preserved the two real protected instruments and the captured
+  control. A deliberately malformed maintained example outside the markers failed
+  checking, formatted normally, and then passed; removing protection exposed the
+  malformed capture. All original evidence bytes survived, and other tasks,
+  completed records, reviews and prior dated decisions were preserved. All **10**
+  added local project links/fragments resolved.
+- The shared source's **61 local links/fragments** resolved. The .3 import,
+  earlier changelogs, headings and explicit anchors were preserved. The repository
+  is verified private; main and tag .4 resolve to the pinned source commit, and
+  release .4 is published. Original Downloads files now point to that source;
+  their full contents remain at tag .3.
+
+Overall review base: `f465688`; original adoption: `d88e62e`; status-retention
+follow-up: `39fcc76`; running-file migration: `97223e1`. This follow-up's boundary
+is recorded above. All implementation changes await independent review.
+This follow-up changes only documentation and the captured blocks' outside controls.
+Independent approval and Windows runtime validation remain unverified. The shared
+standards repository was published privately as requested; this application
+repository remains unpushed.
+
+#### Review storage adoption — 2026-09-08
+
+The maintainer requested the proposed task-based review standard be published
+privately and adopted here. DOC-007 now pins revision 2026-09-08.5. TESTING §14
+owns storage; instructions, contributor guidance, templates and the review index
+route there. New formal task reviews use one file per task with all rounds
+together. Existing reviews, including this task's verification and T-299's
+corrections, stay in REVIEWS.md. The dated body is not migrated or rewritten.
+
+This follow-up is documentation-only, based on `cd60bf3`; its head is the commit
+carrying this amendment. Required checks are affected links, preservation,
+current routing, Ruff lint/format and the documentation consumers. The earlier
+full-suite/type results above retain their original scope; no new full-suite,
+Windows execution or independent approval is claimed for this follow-up.
+
+Checks: the three documentation consumers passed **79 tests in 2.78 s**.
+Ruff lint passed and **233 files were already formatted**. All **12 added local
+link occurrences** resolved, with prior anchors retained. The standard's **65
+local links/fragments**, version fields and history checks passed; its private
+release and remote tag match the pinned full commit.
+
+The **2,403,546-byte dated REVIEWS body** matches `cd60bf3` exactly, SHA-256
+`4180bd4b9135b919166230218e53fb728fb0992621cc7f2e41001a803a355b8a`.
+Compare the content after `## Reviews` from that revision with the working file,
+without path or whitespace normalization. Prior dated decisions, retained
+contributor rationale, completed task records and every other active task remain
+unchanged. Existing T-299 corrections in SECURITY.md and its evidence transcript
+are outside this adoption; they are not staged with it or assessed by these checks.
+
+#### Historical review migration — 2026-09-08
+
+The maintainer requested migration of the existing reviews after the initial
+storage adoption. This supersedes the earlier in-place transition choice. The
+381 dated entries from `85422bc` now reside in 105 task/shared-scope files, with
+REVIEWS.md reduced to a 145-line navigation index. Shared reviews and checks
+remain single records; their original per-round scope, attribution and verdicts
+are unchanged. T-299 and this task continue in their indexed shared record.
+
+The manifest retains every original byte range and checksum. Its executable
+checker reconstructs the 2,403,546-byte dated body and compares it with the
+source Git blob. Dated-heading links retain landing points in the index; current
+task/status links point directly to the moved records. Review Markdown receives
+the former single file's prose-only CI treatment; application code and tests do
+not consume the moved records.
+
+This documentation/retention follow-up is based on `85422bc`; the commit carrying
+this amendment is its implementation head. Required checks are reconstruction,
+negative controls, links and navigation, Ruff lint/format, the verifier's type
+check, documentation consumers and workflow-trigger checks. Earlier full-suite
+and platform evidence remains historical; this move grants no new approval.
+
+Checks completed:
+
+- Reconstruction: **381 entries / 105 files / 2,403,546 bytes**, exactly equal
+  to the original dated body. Four negative controls rejected a changed byte,
+  deleted record, unmarked duplicate and reordered rounds. A new round outside
+  the historical markers passed the positive control.
+- Links: **805** local review/index links and fragments and **7** added current
+  navigation links resolved. All **381** former dated-heading anchors, plus
+  the explicit final-verification and open-findings anchors, remain index
+  landing points. Historical file:line references still identify the old revision.
+- Documentation consumers and workflow-trigger tests: **104 passed in 2.90 s**.
+- Whole-tree formatting: **340 files already formatted**. Source mypy:
+  **58 files passed**; the retained verifier's mypy: **1 file passed**.
+- Lint passes with only the unrelated, untracked T-299 security probe excluded.
+  The unrestricted run reports that probe's existing **F401, SIM117 and E501**;
+  this migration does not edit or stage it. No permanent exclusion was added.
+- Prior dated decisions, retained contributor rationale, completed tasks and
+  every other active task remain unchanged. Parsed workflow comparison confirms
+  the only CI semantic change is the new review-Markdown ignore. Source, tests,
+  tools and pyproject.toml are unchanged.
+
+The current security/evidence correction work remains outside this commit and
+outside this verification. No new full-suite, Windows, product-readiness or
+independent-review result is claimed.
+
 ### T-299 — Adopt the neutral coordination layout and the public-ready baseline
 
 **Status:** **Complete — Approved at `7a45fc5` on 2026-09-08.** Four review rounds; the last

@@ -237,7 +237,9 @@ of the status archive. Independent review remains pending.
 The removed `docs/project/archive/STATUS-2026-09-08.md` contained 7,425 lines.
 Its SHA-256 at `d88e62e` is
 `e5e746d78559f78402a40db84c5d46c84b45e27ab2d8520a00d427299d4c814c`.
-The [19 dated task supplements](../archive/TASKS-completed-2026-09-08.md#historical-evidence-supplements--2026-09-08)
+The [19 dated task supplements](../COMPLETED_TASKS.md#historical-evidence-supplements--2026-09-08)
+— written into `archive/TASKS-completed-2026-09-08.md` when this record was made, and moved
+to `COMPLETED_TASKS.md` by `97223e1`, which retired that file —
 retain 38 verbatim excerpts, linked from 38 relevant task entries. The original
 2,193,195-byte task archive is an unchanged prefix; the supplements append 489 lines.
 

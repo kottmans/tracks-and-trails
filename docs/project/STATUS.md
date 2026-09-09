@@ -15,11 +15,13 @@ owns phase deliverables and exit criteria.
 
 ## Active work
 
-- **T-300:** Convention revision 2026-09-08.5 adoption implemented; independent
-  review pending. [DOC-007](DECISIONS.md#doc-007-review-migration) pins the private
-  shared source. Existing review history now lives in task/shared-scope files;
-  REVIEWS.md is the index. TESTING §14 owns storage, and required working rules remain
-  local. This is documentation work, not a Phase 4 deliverable.
+- **T-300 is Complete**, approved at `5eecad9` on 2026-09-08 by independent review and
+  moved to [COMPLETED_TASKS](COMPLETED_TASKS.md). Its two Low findings were corrected
+  during the completion sync and closed by maintainer ruling without a further review
+  pass. [DOC-007](DECISIONS.md#doc-007-review-migration) pins the shared source, which
+  **stays private** — its links in DECISIONS.md are now labelled as provenance rather
+  than navigation. Existing review history lives in task/shared-scope files; REVIEWS.md
+  is the index. Documentation work, not a Phase 4 deliverable.
 - **T-299 is Complete**, approved at `7a45fc5` on 2026-09-08 after four review rounds;
   `R1`, `R2`, `R7` and `R8` are resolved and its record has moved to
   [COMPLETED_TASKS](COMPLETED_TASKS.md). **Publication itself is not done, and was never
@@ -45,7 +47,7 @@ The previous format failure is resolved by controls outside the captured evidenc
 the captured bytes are unchanged. Independent documentation review remains pending.
 
 This follow-up's checks and review boundary are in
-[T-300](TASKS.md#t-300--agentsmd-is-628-lines-and-is-loaded-on-every-task).
+[T-300](COMPLETED_TASKS.md#t-300--agentsmd-is-628-lines-and-is-loaded-on-every-task).
 The later review-storage adoption and historical migration have their own
 documentation-check results in T-300. They preserve those earlier verification boundaries. No new Windows
 execution or release-gate result is claimed here.

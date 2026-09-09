@@ -5910,10 +5910,10 @@ context are preserved; literal historical references remain as written.
 formatting/history conflict and establish a shared version-controlled standards
 repository. The repository is private by explicit instruction.
 
-**Source:** [kottmans/project-standards](https://github.com/kottmans/project-standards).
+**Source:** [kottmans/project-standards](https://github.com/kottmans/project-standards) — **a private repository.** The link records provenance; it does not resolve for readers outside it.
 **Adopted revision/tag:** `2026-09-08.4`.
 **Full source commit:** `d96bace502dc0b27606c0e8f61952ed229297603`.
-**Convention:** [CONVENTION.md at the adopted commit](https://github.com/kottmans/project-standards/blob/d96bace502dc0b27606c0e8f61952ed229297603/CONVENTION.md).
+**Convention:** [CONVENTION.md at the adopted commit](https://github.com/kottmans/project-standards/blob/d96bace502dc0b27606c0e8f61952ed229297603/CONVENTION.md) — in that private repository, so the commit id above is what identifies the adopted revision to anyone who cannot open it.
 **Profile:** Standard; desktop application. The WEB companion is not adopted.
 **Deviations introduced by this amendment:** None.
 
@@ -5944,10 +5944,10 @@ the new boundary, not the truth of past measurements or independent approval.
 
 **Authority:** The maintainer requested publication of the proposed review-storage
 standard and adoption in this project, preserving consolidated history in place.
-**Source:** [kottmans/project-standards](https://github.com/kottmans/project-standards).
+**Source:** [kottmans/project-standards](https://github.com/kottmans/project-standards) — **a private repository.** The link records provenance; it does not resolve for readers outside it.
 **Adopted revision/tag:** `2026-09-08.5`.
 **Full source commit:** `fbc46867bcb80a047e02fd3b5d8dea7bfec86131`.
-**Convention:** [CONVENTION.md at the adopted commit](https://github.com/kottmans/project-standards/blob/fbc46867bcb80a047e02fd3b5d8dea7bfec86131/CONVENTION.md).
+**Convention:** [CONVENTION.md at the adopted commit](https://github.com/kottmans/project-standards/blob/fbc46867bcb80a047e02fd3b5d8dea7bfec86131/CONVENTION.md) — in that private repository, so the commit id above is what identifies the adopted revision to anyone who cannot open it.
 **Profile:** Standard; desktop application. The WEB companion is not adopted.
 **Deviations introduced by this amendment:** None.
 
@@ -5976,7 +5976,7 @@ project push, visibility change or additional implementation scope.
 **Authority:** The maintainer explicitly requested splitting the existing review
 history into task files and leaving REVIEWS.md as a short index.
 **Adopted standard:** `2026-09-08.5`, Standard profile; WEB remains unadopted.
-**Source repository:** [kottmans/project-standards](https://github.com/kottmans/project-standards).
+**Source repository:** [kottmans/project-standards](https://github.com/kottmans/project-standards) — **a private repository.** The link records provenance; it does not resolve for readers outside it.
 **Full standard source commit:** `fbc46867bcb80a047e02fd3b5d8dea7bfec86131`.
 **Deviations introduced:** None; the standard permits a deliberate migration
 with preservation and updated navigation.
