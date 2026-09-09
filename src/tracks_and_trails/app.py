@@ -260,6 +260,10 @@ def run(argv: Sequence[str]) -> int:
     theme.apply(composition.app, theme.THEMES[composition.theme])
 
     composition.window.show()
+    # **After `show()`, which is the whole of `T-308`.** A window-modal dialog opened on a parent
+    # that has not been mapped is stacked behind it by the compositor and still blocks it.
+    if composition.settings_problem is not None:
+        composition.window.report_settings_problem(composition.settings_problem)
     return app.exec()
 
 
@@ -369,6 +373,13 @@ class Composition:
     #: because `compose()` restyling the `QApplication` would restyle the one every other test in
     #: the session shares — the rule the `theme.apply` note in `run()` states. `run()` applies it.
     theme: str
+    #: The settings problem to report, or `None` (`ARC-008`, `T-308`). **Carried rather than
+    #: shown**, for exactly `theme`'s reason one consequence further on: `compose()` opened this as
+    #: a window-modal box on a window that `run()` had not shown yet, so the compositor mapped the
+    #: parent *over* a dialog that had never been a visible transient child. The result was a modal
+    #: nobody could see blocking a window nobody could use — reported from a real launch on
+    #: 2026-09-09. `run()` shows it, after the window.
+    settings_problem: settings_module.SettingsProblem | None
     #: The cache root this database's instance owns alone (`T-180`). Held for `database_path`'s
     #: reason — the partition is a claim about the assembled graph, and a root nothing can reach
     #: is a root nothing can check (`T180-R2`).
@@ -391,11 +402,20 @@ def _joined(
     from tracks_and_trails.core import settings as app_settings
 
     if problem is None:
+        # **Not a read failure** (`T-309`). `problem is None` means the file was read; what is
+        # wrong is an ffmpeg that cannot be run or a template that cannot be used, and announcing
+        # either as *"your settings file could not be read"* was false in both cases.
         return app_settings.SettingsProblem(
-            settings_file if settings_file is not None else app_settings.settings_path(), reason
+            settings_file if settings_file is not None else app_settings.settings_path(),
+            reason,
+            unreadable=False,
         )
     assert isinstance(problem, app_settings.SettingsProblem)
-    return app_settings.SettingsProblem(problem.path, f"{problem.reason}\n\n{reason}")
+    # Joining keeps the existing problem's kind: a file that could not be read is still
+    # unreadable when an ffmpeg problem is added to it.
+    return app_settings.SettingsProblem(
+        problem.path, f"{problem.reason}\n\n{reason}", unreadable=problem.unreadable
+    )
 
 
 def compose(
@@ -1187,7 +1207,9 @@ def compose(
         logging.getLogger("tracksandtrails.app").warning(
             "settings: %s (%s)", settings_problem.reason, settings_problem.path
         )
-        window.report_settings_problem(settings_problem)
+        # **Logged here and shown by `run()`** (`T-308`). Opening it here put a window-modal box
+        # on an unmapped parent; the log entry is what a bug report needs and does not care when
+        # the window appears.
     # After the settings problem, so a user with both sees the one they cannot act on first and the
     # one they can act on second — an offer buried under a warning gets dismissed with it.
     if recovered:
@@ -1283,6 +1305,7 @@ def compose(
         database_path=database_path,
         settings_path=settings_file if settings_file is not None else app_settings.settings_path(),
         theme=settings.theme,
+        settings_problem=settings_problem,
         cache_root=cache_root,
         shutdown=shutdown,
         instance=instance,

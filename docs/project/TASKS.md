@@ -14,6 +14,115 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-308 — The startup warning opens behind the window it blocks
+
+**Status:** In Review — built 2026-09-09, awaiting independent review. The problem is
+**carried** on `Composition` and shown by `run()` after `window.show()`, which is `theme`'s own
+pattern one consequence further on. Restoring the call inside `compose()` fails the new guard.
+
+**Stacking itself is not asserted and cannot be, offscreen.** The guards check that `compose()`
+opens nothing, and that after `show()` the box is visible and a child of the window — which is
+what gives the compositor a parent to keep it above. **The real-display check on Wayland and X11
+is still outstanding**, and `T-288` is why that distinction is written down rather than assumed.
+notification appears behind the main menu, which is completely inaccessible while this notification
+is up."*
+**Owner:** Implementer
+**Priority:** **High** — the application is unusable until a dialog the user may not be able to
+find is dismissed. It fires on every launch for anyone whose settings name a folder that has since
+gone, which is the maintainer's current state
+**Phase:** Phase 4
+**Depends on:** nothing
+**Relevant context:** `ARC-008`; `T-102`; `main_window.report_settings_problem`
+**Affected surfaces:** `src/tracks_and_trails/app.py`'s startup order
+**Risk:** Low to fix; the ordering is two lines apart
+**Required checks:** `pytest tests/ui tests/integration`; a real launch with a settings file naming
+a missing download folder, on Wayland and on X11
+
+#### The cause, located
+
+| Where | What happens |
+|---|---|
+| `app.py:1190`, inside `compose()` | `window.report_settings_problem(...)` — `QMessageBox(self)`, then `box.open()` |
+| `app.py:262`, after `compose()` returns | `composition.window.show()` |
+
+**The dialog is opened before its parent is ever shown.** `open()` makes it window-modal, so it
+blocks the main window — and because the parent is mapped *afterwards*, the compositor puts the
+main window on top of a dialog that was never a visible transient child. The result is a modal
+nobody can see blocking a window nobody can use.
+
+#### Acceptance criteria
+
+- The warning is opened **after** the window it is parented to is shown, and appears above it.
+- **Asserted, not eyeballed.** A test that shows the window, reports a problem, and checks the
+  box is a visible transient of the window rather than merely constructed.
+- Checked on a real display on Wayland **and** X11: stacking is the compositor's, and this project
+  has already been caught once by a Wayland-only behaviour (`T-288`).
+- The existing reason for `open()` over `exec()` is preserved — `exec()` blocks the event loop in
+  a test with nothing to dismiss it.
+
+#### Out of scope
+
+- What the dialog says, which is `T-309`.
+
+### T-309 — The settings warning claims a read failure that did not happen
+
+**Status:** In Review — built 2026-09-09, awaiting independent review. `SettingsProblem` now
+carries whether the **file** was unreadable, and `summary` composes from it; a file that was read
+says *"Some of your settings could not be used… The rest of the file is unchanged"* and names the
+way out. `app._joined`'s `problem is None` branch and the value-fallback constructor both mark
+themselves readable. The discarded download folder is labelled, because the path printed under
+*"downloads will go to the default folder"* was the one being discarded and read as the
+destination.
+
+**The maintainer's own file fixed itself while this was being written**: clicking OK and saving
+settings rewrote it without the stale `[downloads]` section, which is what *"Saving settings will
+overwrite this file"* had meant. The recurrence is therefore no longer reproducible from that
+file, and the tests build the original state rather than relying on it.
+**Owner:** Implementer
+**Priority:** Medium — it fires on every launch, and the first thing it says is false
+**Phase:** Phase 4
+**Depends on:** nothing
+**Relevant context:** `ARC-008` — *"A settings file that exists and cannot be used says so; a
+missing one does not"*; `settings.SettingsProblem.summary`; `app._joined`
+**Affected surfaces:** `src/tracks_and_trails/core/settings.py`, `src/tracks_and_trails/app.py`
+**Risk:** Low
+**Required checks:** `pytest tests/unit/test_settings.py tests/ui`; the wording read back against
+a settings file that is valid but names a missing folder
+
+#### What it says, and what was true
+
+The maintainer's file is valid TOML and **was read**: `concurrency = 3`, `theme = "light"` and
+`default_preset` are all in force. Only `[downloads] directory` names a folder that no longer
+exists. The dialog's first line:
+
+> Your settings file could not be read, so default settings are in use.
+
+**Both halves of that are false here.** `SettingsProblem.summary` at `settings.py:1011` hard-codes
+it, and `app._joined` reuses `SettingsProblem` for problems that are not read failures at all —
+including this one, and an unrunnable ffmpeg. `ARC-008`'s wording is *"exists and cannot be
+used"*; a file whose every other value is in use does not match it.
+
+**It also never says what to do.** The remedy is to choose a download folder in Settings, and the
+sentence offered instead is *"Saving settings will overwrite this file"*, which reads as a threat
+to the file rather than as the way out — and is why it recurs on every launch.
+
+#### Acceptance criteria
+
+- A settings file that **was** read does not claim otherwise. A genuine parse failure still says so
+  plainly, and a test covers both rather than the one that prompted this.
+- A value that fell back names **which** value and what it fell back to, without asserting anything
+  about the rest of the file.
+- The message names the action that ends it.
+- **`SettingsProblem` stops carrying situations it does not describe**, or is renamed to something
+  it does. `_joined` folding an ffmpeg problem into a *"could not be read"* summary is the same
+  defect one caller over.
+
+#### Out of scope
+
+- The dialog's stacking, which is `T-308`.
+- Writing the settings file unasked to stop the warning recurring. That is a data decision and
+  `ARC-008` deliberately does not take it.
+
 ### T-306 — The format table is hard to read and hard to choose from
 
 **Status:** In Review — **changes requested at `2181ee1`, corrected the same day; awaiting
@@ -1285,97 +1394,6 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 ---
 
 ## Proposed — Phase 4
-
-### T-308 — The startup warning opens behind the window it blocks
-
-**Status:** Proposed — reported 2026-09-09 by the maintainer, with a screenshot: *"this
-notification appears behind the main menu, which is completely inaccessible while this notification
-is up."*
-**Owner:** Implementer
-**Priority:** **High** — the application is unusable until a dialog the user may not be able to
-find is dismissed. It fires on every launch for anyone whose settings name a folder that has since
-gone, which is the maintainer's current state
-**Phase:** Phase 4
-**Depends on:** nothing
-**Relevant context:** `ARC-008`; `T-102`; `main_window.report_settings_problem`
-**Affected surfaces:** `src/tracks_and_trails/app.py`'s startup order
-**Risk:** Low to fix; the ordering is two lines apart
-**Required checks:** `pytest tests/ui tests/integration`; a real launch with a settings file naming
-a missing download folder, on Wayland and on X11
-
-#### The cause, located
-
-| Where | What happens |
-|---|---|
-| `app.py:1190`, inside `compose()` | `window.report_settings_problem(...)` — `QMessageBox(self)`, then `box.open()` |
-| `app.py:262`, after `compose()` returns | `composition.window.show()` |
-
-**The dialog is opened before its parent is ever shown.** `open()` makes it window-modal, so it
-blocks the main window — and because the parent is mapped *afterwards*, the compositor puts the
-main window on top of a dialog that was never a visible transient child. The result is a modal
-nobody can see blocking a window nobody can use.
-
-#### Acceptance criteria
-
-- The warning is opened **after** the window it is parented to is shown, and appears above it.
-- **Asserted, not eyeballed.** A test that shows the window, reports a problem, and checks the
-  box is a visible transient of the window rather than merely constructed.
-- Checked on a real display on Wayland **and** X11: stacking is the compositor's, and this project
-  has already been caught once by a Wayland-only behaviour (`T-288`).
-- The existing reason for `open()` over `exec()` is preserved — `exec()` blocks the event loop in
-  a test with nothing to dismiss it.
-
-#### Out of scope
-
-- What the dialog says, which is `T-309`.
-
-### T-309 — The settings warning claims a read failure that did not happen
-
-**Status:** Proposed — reported 2026-09-09 with `T-308`, from the same screenshot.
-**Owner:** Implementer
-**Priority:** Medium — it fires on every launch, and the first thing it says is false
-**Phase:** Phase 4
-**Depends on:** nothing
-**Relevant context:** `ARC-008` — *"A settings file that exists and cannot be used says so; a
-missing one does not"*; `settings.SettingsProblem.summary`; `app._joined`
-**Affected surfaces:** `src/tracks_and_trails/core/settings.py`, `src/tracks_and_trails/app.py`
-**Risk:** Low
-**Required checks:** `pytest tests/unit/test_settings.py tests/ui`; the wording read back against
-a settings file that is valid but names a missing folder
-
-#### What it says, and what was true
-
-The maintainer's file is valid TOML and **was read**: `concurrency = 3`, `theme = "light"` and
-`default_preset` are all in force. Only `[downloads] directory` names a folder that no longer
-exists. The dialog's first line:
-
-> Your settings file could not be read, so default settings are in use.
-
-**Both halves of that are false here.** `SettingsProblem.summary` at `settings.py:1011` hard-codes
-it, and `app._joined` reuses `SettingsProblem` for problems that are not read failures at all —
-including this one, and an unrunnable ffmpeg. `ARC-008`'s wording is *"exists and cannot be
-used"*; a file whose every other value is in use does not match it.
-
-**It also never says what to do.** The remedy is to choose a download folder in Settings, and the
-sentence offered instead is *"Saving settings will overwrite this file"*, which reads as a threat
-to the file rather than as the way out — and is why it recurs on every launch.
-
-#### Acceptance criteria
-
-- A settings file that **was** read does not claim otherwise. A genuine parse failure still says so
-  plainly, and a test covers both rather than the one that prompted this.
-- A value that fell back names **which** value and what it fell back to, without asserting anything
-  about the rest of the file.
-- The message names the action that ends it.
-- **`SettingsProblem` stops carrying situations it does not describe**, or is renamed to something
-  it does. `_joined` folding an ffmpeg problem into a *"could not be read"* summary is the same
-  defect one caller over.
-
-#### Out of scope
-
-- The dialog's stacking, which is `T-308`.
-- Writing the settings file unasked to stop the warning recurring. That is a data decision and
-  `ARC-008` deliberately does not take it.
 
 ### T-301 — Four UI tests break when the application font grows by one point
 

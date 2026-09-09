@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from tracks_and_trails.core import presets as preset_registry
+from tracks_and_trails.core import settings as settings_module
 from tracks_and_trails.core.models import AudioCodec, MediaKind, NetworkOptions, Preset
 from tracks_and_trails.core.settings import (
     CONCURRENCY_DEFAULT,
@@ -1999,3 +2000,56 @@ def test_a_half_typed_credential_is_not_a_valid_proxy(tmp_path: Path) -> None:
 
     assert read.settings.network.proxy is None
     assert read.problem is not None
+
+
+def test_a_file_that_was_read_does_not_claim_it_could_not_be(tmp_path: Path) -> None:
+    """`T-309`: the headline said the file was unreadable for every kind of problem.
+
+    A launch on 2026-09-09 announced *"your settings file could not be read, so default settings
+    are in use"* over a valid file whose concurrency, theme and default preset were all in force.
+    Only `[downloads] directory` had gone. `ARC-008`'s wording is *"exists and cannot be used"*,
+    and a file whose every other value is used does not match it.
+    """
+    target = tmp_path / "settings.toml"
+    target.write_text(
+        'default_preset = "Best video available"\n\n[queue]\nconcurrency = 3\n\n'
+        f'[downloads]\ndirectory = "{tmp_path / "gone"}"\n\n[appearance]\ntheme = "light"\n',
+        encoding="utf-8",
+    )
+
+    read = settings_module.load(target)
+
+    assert read.problem is not None, "a discarded value must still be reported (ARC-008)"
+    assert read.problem.unreadable is False, "the file was read; only a value fell back"
+    assert read.settings.concurrency == 3, "the rest of the file is in force"
+    assert read.settings.theme == "light"
+    summary = read.problem.summary
+    assert "could not be read" not in summary, summary
+    assert "The rest of the file is unchanged" in summary
+    assert "Change them in Settings" in summary, "the message must name the way out"
+
+
+def test_a_file_that_truly_cannot_be_read_still_says_so(tmp_path: Path) -> None:
+    """The other half, so the correction does not swap one false headline for another."""
+    target = tmp_path / "settings.toml"
+    target.write_text("this is not toml at all\n", encoding="utf-8")
+
+    read = settings_module.load(target)
+
+    assert read.problem is not None
+    assert read.problem.unreadable is True, "a parse failure is exactly what the old wording meant"
+    assert "could not be read" in read.problem.summary
+
+
+def test_a_discarded_download_folder_is_labelled_as_the_one_that_was_named(
+    tmp_path: Path,
+) -> None:
+    """`T-309`: the path printed under *"downloads will go to the default folder"* was the
+    discarded one, with nothing saying so — it read as the destination.
+    """
+    missing = tmp_path / "gone"
+    _directory, reason = settings_module._directory_from(str(missing))
+
+    assert reason is not None
+    assert "The folder named in your settings was" in reason, reason
+    assert str(missing) in reason

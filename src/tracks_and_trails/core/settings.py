@@ -486,12 +486,14 @@ def _directory_from(raw: Any) -> tuple[Path | None, str | None]:
         if not candidate.exists():
             return None, (
                 f"The download folder in your settings no longer exists, so downloads will go to "
-                f"the default folder instead.\n{candidate}"
+                f"the default folder instead.\nThe folder named in your settings was "
+                f"{candidate}"
             )
         if not candidate.is_dir():
             return None, (
                 f"The download folder in your settings is a file, not a folder, so downloads "
-                f"will go to the default folder instead.\n{candidate}"
+                f"will go to the default folder instead.\nThe folder named in your "
+                f"settings was {candidate}"
             )
         if not os.access(candidate, os.W_OK):
             return None, (
@@ -1004,13 +1006,35 @@ class SettingsProblem:
     #: better off than the silence this replaces.
     reason: str
 
+    #: Whether the **file** could not be read at all, as against some values in it being unusable
+    #: (`T-309`).
+    #:
+    #: **The headline used to assert the first for both**, and a real launch on 2026-09-09 showed
+    #: what that costs: a valid file whose `[downloads] directory` had gone was announced as *"your
+    #: settings file could not be read, so default settings are in use"* while its concurrency,
+    #: theme and default preset were all in force. `ARC-008`'s wording is *"exists and cannot be
+    #: used"*; a file whose every other value is used does not match it, and neither does an
+    #: unrunnable ffmpeg, which `app._joined` folds into the same type.
+    #:
+    #: Defaults to `True` because the three constructors in `load()`'s `except` arms are exactly
+    #: the case it describes — an unreadable file is the original meaning, not the new one.
+    unreadable: bool = True
+
     @property
     def summary(self) -> str:
         """The sentence a user reads. Composed here so it is testable with no display attached."""
+        if self.unreadable:
+            return (
+                f"Your settings file could not be read, so default settings are in use.\n\n"
+                f"{self.path}\n{self.reason}\n\n"
+                "Saving settings will overwrite this file."
+            )
         return (
-            f"Your settings file could not be read, so default settings are in use.\n\n"
+            f"Some of your settings could not be used, so their defaults are in use. "
+            f"The rest of the file is unchanged.\n\n"
             f"{self.path}\n{self.reason}\n\n"
-            "Saving settings will overwrite this file."
+            "Change them in Settings to stop this message. Saving settings will overwrite "
+            "this file."
         )
 
 
@@ -1178,7 +1202,11 @@ def load(path: Path | None = None) -> SettingsFile:
         )
         if not parts:
             return SettingsFile(settings, secrets=sensitive)
-        return SettingsFile(settings, SettingsProblem(target, "\n\n".join(parts)), sensitive)
+        # **Read, with some values discarded** (`T-309`). `settings` above carries everything
+        # that parsed; only the values in `parts` fell back, so this is not a read failure.
+        return SettingsFile(
+            settings, SettingsProblem(target, "\n\n".join(parts), unreadable=False), sensitive
+        )
 
     table = document.get(_TABLE)
     if table is None:

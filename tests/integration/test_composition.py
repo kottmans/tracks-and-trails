@@ -2054,6 +2054,7 @@ def test_a_corrupt_settings_file_is_reported_through_the_composed_application(
     settings_file.write_text("[queue]\nconcurrency = = 3\n", encoding="utf-8")
 
     composition = composed(settings_file=settings_file)
+    _report_as_run_does(composition)
 
     dialog = composition.window.findChild(QMessageBox, "settingsProblemDialog")
     assert dialog is not None, (
@@ -2534,6 +2535,86 @@ def test_an_unusable_choice_is_refused_the_same_way_however_it_arrives(
         )
 
 
+def test_compose_carries_the_settings_problem_and_does_not_open_it(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """`T-308`: `compose()` may not open a modal on a window nobody has shown yet.
+
+    The maintainer's launch on 2026-09-09 put this dialog **behind** the main window and blocked
+    it: `open()` makes it window-modal, and the parent was mapped afterwards, so the compositor
+    stacked the window over a dialog that had never been a visible transient child.
+
+    Asserted from both ends — the problem is carried, and nothing is shown — because either alone
+    passes for the wrong reason. Carrying it without showing it would be silence, which `ARC-008`
+    forbids; showing it without carrying it is where this started.
+    """
+    settings_file = tmp_path / "settings.toml"
+    settings_file.write_text("this is not toml at all\n", encoding="utf-8")
+
+    composition = composed(settings_file=settings_file)
+    QApplication.processEvents()
+
+    assert composition.settings_problem is not None, (
+        "the file cannot be parsed and nothing was carried; ARC-008 requires a report"
+    )
+    assert not composition.window.findChildren(QMessageBox, "settingsProblemDialog"), (
+        "compose() opened the dialog itself, which is T-308: run() has not shown the window yet"
+    )
+
+
+def test_the_settings_problem_is_a_visible_child_of_a_shown_window(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """`T-308`'s other half: reported *after* the window, and belonging to it.
+
+    **A constructed box is not a shown one**, and the defect was entirely about when. So this
+    shows the window first, reports as `run()` does, and asks Qt what it got: a visible box whose
+    parent is the window, which is what makes it a transient the compositor keeps above.
+
+    **Stacking itself is the compositor's and is not asserted here.** Offscreen has no stacking to
+    read, and `T-288` is this project's reminder that a Wayland-only behaviour is not visible from
+    a headless run. `T-308` requires the real-display check on Wayland and X11 separately.
+    """
+    settings_file = tmp_path / "settings.toml"
+    settings_file.write_text("still not toml\n", encoding="utf-8")
+
+    composition = composed(settings_file=settings_file)
+    composition.window.show()
+    QApplication.processEvents()
+    _report_as_run_does(composition)
+    QApplication.processEvents()
+
+    shown = composition.window.findChildren(QMessageBox, "settingsProblemDialog")
+    assert shown, "nothing was shown after the window appeared"
+    try:
+        box = shown[0]
+        assert box.isVisible(), "the box exists but was never shown"
+        assert box.parent() is composition.window, (
+            "the box is not a child of the window, so the compositor has no parent to keep it above"
+        )
+        assert composition.window.isVisible(), "the window must already be up when this appears"
+    finally:
+        for box in shown:
+            box.close()
+        QApplication.processEvents()
+
+
+def _report_as_run_does(composition: application.Composition) -> None:
+    """Show the carried settings problem the way `run()` does, after the window exists.
+
+    **`compose()` no longer opens the box** (`T-308`): it opened a window-modal dialog on a parent
+    `run()` had not shown yet, so the compositor stacked the window over a dialog that had never
+    been a visible transient child — a modal nobody could see blocking a window nobody could use.
+    The problem is carried and `run()` shows it, so a test about *what the user is told* has to do
+    the same one step. What it must not do is assert that `compose()` shows it, which is the
+    behaviour that was wrong.
+    """
+    if composition.settings_problem is not None:
+        composition.window.report_settings_problem(composition.settings_problem)
+
+
 def test_a_stored_ffmpeg_that_cannot_be_run_is_reported_not_just_logged(
     composed: Callable[..., application.Composition],
     tmp_path: Path,
@@ -2558,6 +2639,7 @@ def test_a_stored_ffmpeg_that_cannot_be_run_is_reported_not_just_logged(
     )
 
     composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+    _report_as_run_does(composition)
     QApplication.processEvents()
 
     assert composition.ffmpeg.path != unrunnable, "an unrunnable file was accepted as ffmpeg"
@@ -2957,6 +3039,7 @@ def test_an_unusable_stored_template_is_reported_and_the_application_still_start
     # corrupt-settings test above has been finding it with `findChild` since `T-102`. A log line is
     # not what `ARC-008` promises.
     composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+    _report_as_run_does(composition)
 
     shown = composition.window.findChild(QMessageBox, "settingsProblemDialog")
     assert shown is not None, "the refused stored template was discarded without telling anyone"
