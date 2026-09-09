@@ -23,10 +23,11 @@ owns phase deliverables and exit criteria.
 - **T-299 is Complete**, approved at `7a45fc5` on 2026-09-08 after four review rounds;
   `R1`, `R2`, `R7` and `R8` are resolved and its record has moved to
   [COMPLETED_TASKS](COMPLETED_TASKS.md). **Publication itself is not done, and was never
-  this task's to do.** The repository is still private. What remains is the maintainer's:
-  the GitHub settings sitting behind the workflow trigger controls, and turning private
-  vulnerability reporting on, which is not automatic on becoming public. Both are listed
-  in that record.
+  this task's to do.** **The repository was made public on 2026-09-08**, after the 18-commit
+  push that first put this work on `origin/main`. The settings the task listed are set and
+  verified: private vulnerability reporting enabled, Dependabot alerts enabled, fork-PR
+  approval at `all_external_contributors`, Actions restricted to GitHub-owned actions, zero
+  secrets configured, and the default workflow token read-only.
 - Phase 4 exit work remains **T-297**, **T-286**, **T-290**, then **T-212**'s recorded
   48-row checklist run at one head and the exit review. See each task for its
   actual status, dependencies and required evidence; listing it here grants no
@@ -58,9 +59,11 @@ execution or release-gate result is claimed here.
 - T-297's product correction was assessed as sound, but its required capture and
   recorded evidence remain incomplete. Follow its dated scope ruling before any
   real-display work.
-- GitHub repository settings (fork approvals, workflow access and runner-group
-  scope) remain unverified before publication. Local workflow files cannot prove
-  those settings. T-299 remains the publication preparation task.
+- GitHub repository settings were verified through the API at publication and are
+  listed under T-299 above. Local workflow files still cannot prove them, so that
+  remains a read-and-check step rather than anything a test covers. **Runner-group
+  scope is not among them** — groups are an organisation feature and these are
+  repository-level runners.
 - Historical CI reports and their platform limits remain historical evidence.
   Nothing in this snapshot claims all platforms passed at the current head.
 

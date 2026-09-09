@@ -149,9 +149,10 @@ Windows desktop — whenever `LINUX_RUNNER`, `WINDOWS_RUNNER`, or `STARBASE_AVAI
 That makes the workflow trigger set a security control rather than a convenience:
 
 - **No workflow carries `pull_request` or `pull_request_target`.** GitHub runs a fork's pull
-  request with the fork's own code, and `pytest` executes whatever Python that fork ships. On a
-  public repository with self-hosted runners, that is arbitrary code execution on a personal
-  machine, on a home network.
+  request with the fork's own code, and `pytest` executes whatever Python that fork ships. With
+  self-hosted runners that is arbitrary code execution on a personal machine, on a home network.
+  **This repository is public as of 2026-09-08, so that is a live condition and not a
+  hypothetical** — the trigger set is the control that closes it.
 - **The rule is enforced by a test, not by prose.** `tests/unit/test_workflow_triggers.py` parses
   every workflow's `on:` block with the same YAML parser GitHub's syntax is defined against, and
   fails if either trigger appears. An earlier text-scanning version was bypassed twice by valid
@@ -161,8 +162,23 @@ That makes the workflow trigger set a security control rather than a convenience
 - Nothing is given up by the absence of `pull_request`. This is a one-checkout project that
   commits straight to `main`; restoring the trigger requires an explicit decision, not a habit.
 
-If this repository ever accepts outside contributions, that trigger set is the thing to revisit
-first, and the answer is not to switch it back on — it is to move public CI to hosted runners.
+**A second layer sits under it**: fork pull-request workflows require approval for
+`all_external_contributors`, so even a restored trigger would not run a stranger's code unattended.
+
+**If this repository starts accepting outside contributions, the trigger set is the thing to
+revisit first, and the answer is not to switch it back on — it is to move public CI to hosted
+runners.**
+
+**What that would cost is speed, not money, and `OPS-012` is explicit that this was never a cost
+decision.** It measured the alternatives on 2026-08-05: hosted `ubuntu-latest` ran the suite in
+**7m36s** against **4m29s** on the maintainer's desktop, and free was a side effect of choosing the
+faster machine rather than the reason. Windows already costs nothing, because `OPS-010` routes it
+to `STARBASE`. So publication changes the metering — hosted runners are free for public
+repositories — without changing the argument the decision actually rests on.
+
+**The Windows desktop job cannot move at all.** It exists to exercise a real desktop session, which
+no hosted image provides; moving it means dropping that coverage, not relocating it. A move is
+therefore partial by construction, and it is the maintainer's call rather than one made here.
 
 ## Dependencies
 
