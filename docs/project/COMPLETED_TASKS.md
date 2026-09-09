@@ -33888,6 +33888,70 @@ or shelling out to `ln -s`; no test does either, and one that started to would b
 
 ## Cancelled
 
+### T-307 — Choosing a format pushes the summary past the list's scroll range
+
+**Status:** **Cancelled — 2026-09-09, the same day it was filed. The defect does not exist.**
+
+**What actually happened.** `T306-R3`'s check asserted the summary was reachable after choosing a
+format. `docs/UX_SPEC.md` §4 specifies that choosing **closes** the panel once the selection names
+a download — the first press in `one format` mode. So the summary was unreachable because the
+panel had correctly shut, and the row's size hint had correctly returned to a closed row's 80px.
+The measurements in this entry are real; the conclusion drawn from them was not.
+
+**Two further wrong turns, recorded because each looked like the finding.** A second version
+scrolled to the list's maximum and failed at 640x400 with the label at `y=-9` — above the
+viewport, because content sits below the summary, so the bottom of the panel is not the summary's
+own position. Reachable means *a* scroll position shows it whole, not the last one.
+
+**The corrected check passes at every size and both modes**, and it has teeth: pinning its search
+to the maximum reproduces the 640x400 failure. It lives in
+`test_the_chosen_summary_stays_reachable_inside_the_expanded_row` and asks only about states in
+which the panel is still open — nothing chosen in either mode, and one half of a pair in
+`video + audio`, which is the case §4 leaves open by design.
+
+**No strict `xfail` markers remain**; the four filed with this task are gone with it.
+**Owner:** Implementer
+**Priority:** Medium — the summary is the only running account of a two-step merge selection, and
+at a short window it cannot be reached once the user starts choosing
+**Phase:** Phase 4
+**Depends on:** nothing
+**Relevant context:** `T306-R3`; `docs/UX_SPEC.md` §5 row 5.7; `UX-007`'s `P-1`
+**Affected surfaces:** `ui/add_dialog.py`'s `RowPanel`/`FormatPanel` sizing, the staging list
+**Risk:** Low
+**Required checks:** `tests/ui/test_add_dialog.py -k chosen_summary`; the four strict `xfail`
+cases turning green is the fix
+
+#### What was measured
+
+`test_the_chosen_summary_stays_visible_inside_the_expanded_row`, across three dialog sizes and
+three selection states, scrolling the staging list to its maximum before asking:
+
+| Dialog | nothing chosen | one chosen | two chosen |
+|---|---|---|---|
+| 900x700 | reachable | reachable | reachable |
+| 640x400 | reachable | **unreachable** | **unreachable** |
+| 900x380 | reachable | **unreachable** | **unreachable** |
+
+At `900x380` with one chosen: the viewport is 68px, the scroll bar is at **12 of 12**, and the
+summary sits at `y=141..158` — seventy-three pixels below the bottom with nowhere left to scroll.
+
+**Choosing is what does it.** With nothing chosen the summary is reachable at every size; the
+panel grows as the selection fills and the list's scroll range does not grow with it. `UX_SPEC`
+§5 row 5.7 promises the opened panel scrolls per pixel, so this is that promise failing rather
+than a layout preference.
+
+#### Acceptance criteria
+
+- The summary is reachable at every size and selection state the test covers, and the four strict
+  `xfail` markers come off. **Strict**, so a repair cannot be announced by an `XPASS` nobody read.
+- Whatever changes, `UX_SPEC` §5 row 5.7's per-pixel scroll is still true.
+- The fix is in the panel's height or the list's scroll range, not in shortening the summary —
+  hiding the symptom would leave the panel's own bottom unreachable.
+
+#### Out of scope
+
+- `T-306`'s legibility work, which is what the check was written for.
+
 ### T-275 — Ship 32 px from a cut that keeps the trees and drops the sound-wave arcs
 
 **Status:** **Cancelled — refused by the maintainer ruling of 2026-08-25**, four days after

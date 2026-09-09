@@ -57,6 +57,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -115,6 +116,7 @@ from tracks_and_trails.ui.add_dialog import (
     selector_candidates,
     split_urls,
 )
+from tracks_and_trails.ui.format_table import MERGE_MODE_TEXT
 from tracks_and_trails.ui.playlist_selection import PlaylistSelection
 from tracks_and_trails.ui.row_delegate import (
     CHOOSE_FORMATS_DATA,
@@ -2829,63 +2831,44 @@ def _staged(
 #: **Named here because nothing else names them.** `T-306`'s acceptance criterion said *"the sizes
 #: `T-212` row 6 uses"*; section 6 of `docs/PHASE_4_CHECKLIST.md` is Settings, and the checklist
 #: specifies no viewport dimensions anywhere — so the criterion could not be executed as written.
-#: These are the dialog's own minimum, its opening size, and a deliberately short window, which is
-#: the case a footer at the bottom edge actually fails at.
+#: These are a small dialog, its opening size, and a deliberately short window, which is the case a
+#: footer at the bottom edge would fail at.
 CHOSEN_SUMMARY_SIZES: Final = ((640, 400), (900, 700), (900, 380))
 
 
-#: The cases `T-307` owns: a short dialog, with something chosen, cannot reach the summary.
-#:
-#: **Strict, so a repair announces itself** — `T-115`'s marker is the precedent, and the same file
-#: records what an unconditional `pytest.xfail()` cost: a defect reported fixed that never was.
-CHOSEN_SUMMARY_UNREACHABLE: Final = frozenset(
-    {(640, 400, 1), (640, 400, 2), (900, 380, 1), (900, 380, 2)}
-)
-
-
-def _chosen_summary_cases() -> list[object]:
-    return [
-        pytest.param(
-            width,
-            height,
-            pick,
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="T-307: choosing grows the panel past the list's scroll range",
-            )
-            if (width, height, pick) in CHOSEN_SUMMARY_UNREACHABLE
-            else (),
-            id=f"{width}x{height}-{pick}-chosen",
-        )
-        for width, height in CHOSEN_SUMMARY_SIZES
-        for pick in (0, 1, 2)
-    ]
-
-
-@pytest.mark.parametrize(("width", "height", "pick"), _chosen_summary_cases())
-def test_the_chosen_summary_stays_visible_inside_the_expanded_row(
+@pytest.mark.parametrize(("width", "height"), CHOSEN_SUMMARY_SIZES, ids=lambda v: str(v))
+@pytest.mark.parametrize("merging", [False, True], ids=["one format", "video + audio"])
+def test_the_chosen_summary_stays_reachable_inside_the_expanded_row(
     width: int,
     height: int,
-    pick: int,
+    merging: bool,
     qapp: QApplication,
     managers: Callable[..., DownloadManager],
     dialogs: Callable[..., AddUrlDialog],
     spin: Callable[..., bool],
 ) -> None:
-    """`T306-R3`: the summary is checked **inside the expanded staging row**, not on a bare table.
+    """`T306-R3`: checked **inside the expanded staging row**, not on a bare table.
 
-    The maintainer's 2026-09-09 screenshot showed *Chosen — none yet* against the bottom edge, and
-    whether it was clipped was unestablished. A standalone `FormatTable` cannot answer that: the
-    table is mounted as the row itself (`UX-007`'s `P-1`), so what decides visibility is the row's
-    height inside the list viewport, not the widget's own layout.
+    The maintainer's 2026-09-09 screenshot showed *Chosen — none yet* against the bottom edge and
+    whether it was clipped was unestablished. A standalone `FormatTable` cannot answer it: the
+    table is mounted as the row itself (`UX-007`'s `P-1`), so visibility is decided by the row's
+    height inside the list viewport rather than by the widget's own layout.
 
-    Asserted across three dialog sizes and all three selection states, because the summary changes
-    length as it fills — *"none yet"* is far shorter than a video and audio pair, and a footer that
-    fits empty can be pushed out when it has something to say.
+    **Reachable, not necessarily on screen at rest.** `docs/UX_SPEC.md` §5 row 5.7 promises the
+    opened panel scrolls per pixel, so a summary below the fold at a short window is the panel
+    being taller than the list rather than a defect.
 
-    **This establishes layout, not perception.** It runs offscreen, so it says the label occupies
-    visible space inside the viewport at these sizes; it is not a person looking at the window, and
-    `T-212`'s sitting is still where that happens.
+    **Only states in which the panel is still open are asked about, and getting that wrong filed a
+    defect that did not exist.** §4 specifies that choosing *closes* once the selection names a
+    download — the first press in `one format` mode, the second in `video + audio`. An earlier
+    version of this test chose in `one format` mode and then asserted the summary was reachable;
+    it was not, because the panel had correctly shut. `T-307` was filed on that and withdrawn.
+    So: nothing chosen in either mode, and in `video + audio` one half chosen, which leaves the
+    panel open by design.
+
+    **This establishes layout, not perception.** It runs offscreen, so it says the summary occupies
+    reachable space inside the viewport at these sizes; `T-212`'s sitting is still where a person
+    looks at the window.
     """
     dialog, _row = _staged(dialogs, managers, spin)
     dialog.resize(width, height)
@@ -2897,34 +2880,45 @@ def test_the_chosen_summary_stays_visible_inside_the_expanded_row(
         panel = dialog.open_format_panel
         assert panel is not None, "the row did not open into the format table"
         table = panel.table
-        for _ in range(pick):
+
+        if merging:
+            mode = next(
+                box for box in table.findChildren(QCheckBox) if box.text() == MERGE_MODE_TEXT
+            )
+            mode.setChecked(True)
+            qapp.processEvents()
             table.choose_current()
             qapp.processEvents()
+            assert dialog.open_format_panel is not None, (
+                "one half of a pair completed the selection; the panel should still be open"
+            )
 
         summary = table.findChild(QLabel, "formatChosenLabel")
         assert summary is not None, "the Chosen summary is gone from the panel"
-        assert summary.isVisible(), f"the summary is not visible at {width}x{height}"
         assert summary.text().strip(), "the summary is visible but says nothing"
 
         listing = staging_list(dialog)
         viewport = listing.viewport()
+        bar = listing.verticalScrollBar()
 
-        def summary_rect() -> QRect:
+        def placed_at(value: int) -> QRect:
+            bar.setValue(value)
+            qapp.processEvents()
             return QRect(summary.mapTo(viewport, summary.rect().topLeft()), summary.size())
 
-        # **Reachable, not necessarily on screen at rest.** `docs/UX_SPEC.md` §5's row 5.7 promises
-        # the opened panel scrolls per pixel, so a summary below the fold at a short window height
-        # is the panel being taller than the list rather than a defect. What would be a defect is a
-        # summary that cannot be brought into view at all — measured, because the first version of
-        # this check demanded visibility at rest and failed six of nine cases on a promise the
-        # product never made.
-        bar = listing.verticalScrollBar()
-        bar.setValue(bar.maximum())
-        qapp.processEvents()
-        assert viewport.rect().contains(summary_rect()), (
-            f"the Chosen summary cannot be scrolled into view at {width}x{height} with {pick} "
-            f"chosen: label {summary_rect()} against viewport {viewport.rect()}, scroll at "
-            f"{bar.value()} of {bar.maximum()}"
+        # **Some scroll position must show it whole, which is not the same as the last one.**
+        # Scrolling to the maximum was the previous assertion and it failed at 640x400 with the
+        # label at `y=-9`: there is content below the summary, so the bottom of the panel is not
+        # the summary's own position. Reachable means a position exists, and the search is over
+        # the real scroll range rather than a guess at which one it is.
+        steps = sorted(
+            {0, bar.maximum(), *range(0, bar.maximum() + 1, max(1, bar.pageStep() // 4))}
+        )
+        reachable = [value for value in steps if viewport.rect().contains(placed_at(value))]
+        assert reachable, (
+            f"no scroll position shows the Chosen summary whole at {width}x{height} "
+            f"(merging={merging}): tried {len(steps)} positions over a range of {bar.maximum()}, "
+            f"viewport {viewport.rect()}, label last seen at {placed_at(bar.maximum())}"
         )
     finally:
         dialog.close()

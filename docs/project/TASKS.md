@@ -32,13 +32,19 @@ re-review.** Ruled by the maintainer on 2026-09-09: legibility only.
   to the input, and the tool-tip assertion is exact in both columns rather than accepting `None`.
   Both mutations the review reported surviving now fail, as does classifying `mp4a` by its first
   token.
-- **`T306-R3` (Medium, blocking) — check performed; it failed, and the failure is `T-307`.** The
-  criterion could not be executed as written — it named *"the sizes `T-212` row 6 uses"*, section 6
-  of the checklist is Settings, and the checklist specifies no viewport dimensions anywhere. That
-  wording was mine and it was wrong. Three sizes are now named in the test, and the check runs
-  inside the **expanded staging row** rather than on a standalone table. It found the summary
-  unreachable at short heights once anything is chosen; `T-307` owns that, and four strict `xfail`
-  markers hold the line meanwhile. Translate the
+- **`T306-R3` (Medium, blocking) — check performed; it passes.** The criterion could not be
+  executed as written: it named *"the sizes `T-212` row 6 uses"*, section 6 of the checklist is
+  Settings, and the checklist specifies no viewport dimensions anywhere. That wording was mine and
+  it was wrong. Three sizes are named in the test now, and the check runs inside the **expanded
+  staging row** rather than on a standalone table, over both selection modes.
+
+  **It took three attempts and the first two filed or nearly filed a defect that does not exist.**
+  Choosing a format *closes* the panel once the selection names a download (`UX_SPEC` §4), so
+  asserting reachability after a completing choice measured a panel that had correctly shut; that
+  became `T-307` and `T-307` is **Cancelled**. Scrolling to the list's maximum then failed at
+  640x400 with the label above the viewport, because content sits below the summary. The check now
+  asks whether *a* scroll position shows it whole, in states where the panel is open — and it has
+  teeth: pinning the search to the maximum reproduces that failure. Translate the
 codec strings, mark what is chosen, demote the ID column; **the fourth option — a recommended row
 — is declined**, as it makes the surface advisory and duplicates presets. Still gated on `T-305`
 landing first. Raised 2026-09-09 from a real session: *"it's just not very user friendly. There isn't an easy way to see what you are picking,
@@ -1279,51 +1285,6 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 ---
 
 ## Proposed — Phase 4
-
-### T-307 — Choosing a format pushes the summary past the list's scroll range
-
-**Status:** Proposed — found 2026-09-09 by performing `T306-R3`'s required check.
-**Owner:** Implementer
-**Priority:** Medium — the summary is the only running account of a two-step merge selection, and
-at a short window it cannot be reached once the user starts choosing
-**Phase:** Phase 4
-**Depends on:** nothing
-**Relevant context:** `T306-R3`; `docs/UX_SPEC.md` §5 row 5.7; `UX-007`'s `P-1`
-**Affected surfaces:** `ui/add_dialog.py`'s `RowPanel`/`FormatPanel` sizing, the staging list
-**Risk:** Low
-**Required checks:** `tests/ui/test_add_dialog.py -k chosen_summary`; the four strict `xfail`
-cases turning green is the fix
-
-#### What was measured
-
-`test_the_chosen_summary_stays_visible_inside_the_expanded_row`, across three dialog sizes and
-three selection states, scrolling the staging list to its maximum before asking:
-
-| Dialog | nothing chosen | one chosen | two chosen |
-|---|---|---|---|
-| 900x700 | reachable | reachable | reachable |
-| 640x400 | reachable | **unreachable** | **unreachable** |
-| 900x380 | reachable | **unreachable** | **unreachable** |
-
-At `900x380` with one chosen: the viewport is 68px, the scroll bar is at **12 of 12**, and the
-summary sits at `y=141..158` — seventy-three pixels below the bottom with nowhere left to scroll.
-
-**Choosing is what does it.** With nothing chosen the summary is reachable at every size; the
-panel grows as the selection fills and the list's scroll range does not grow with it. `UX_SPEC`
-§5 row 5.7 promises the opened panel scrolls per pixel, so this is that promise failing rather
-than a layout preference.
-
-#### Acceptance criteria
-
-- The summary is reachable at every size and selection state the test covers, and the four strict
-  `xfail` markers come off. **Strict**, so a repair cannot be announced by an `XPASS` nobody read.
-- Whatever changes, `UX_SPEC` §5 row 5.7's per-pixel scroll is still true.
-- The fix is in the panel's height or the list's scroll range, not in shortening the summary —
-  hiding the symptom would leave the panel's own bottom unreachable.
-
-#### Out of scope
-
-- `T-306`'s legibility work, which is what the check was written for.
 
 ### T-301 — Four UI tests break when the application font grows by one point
 
