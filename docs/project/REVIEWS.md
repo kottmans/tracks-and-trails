@@ -129,6 +129,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | <a id="2026-08-28--t-293-initial-review"></a>[T-293](reviews/T-293.md) | T-293 | 1 |
 | <a id="2026-09-08--t-299-convention-adoption-initial-review"></a><a id="2026-09-08--t-299-focused-correction-review"></a><a id="2026-09-08--final-project-verification-at-5e4b3fc"></a><a id="final-verification-5e4b3fc"></a>[T-299](reviews/T-299.md) | T-299, T-300 | 3 |
 | [T-303](reviews/T-303.md) | T-303 | 0 |
+| [T-305](reviews/T-305.md) | T-305 | 0 |
 | <a id="2026-07-26--note-commit-shas-in-this-file-were-remapped"></a>[commit-reference-remap](reviews/commit-reference-remap.md) | T-033 | 1 |
 | <a id="2026-07-29--coord-r7-authorized-final-documentation-re-review"></a>[coordination-2026-07-29](reviews/coordination-2026-07-29.md) | coordination 2026 07 29 | 1 |
 | <a id="2026-08-05--history--row-layout-merge-review"></a>[history-row-layout-integration](reviews/history-row-layout-integration.md) | history row layout integration | 1 |
