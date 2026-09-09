@@ -74,10 +74,19 @@ jobs:
           python -m pip install -e ".[dev]"
 
       - name: Run the suite repeatedly
+        # **The inputs arrive as environment variables, not as `${{ }}` inside the script**, which
+        # is what `flake-soak.yml` and `starbase-orphan-inspect.yml` already do and what this file
+        # did not. An input interpolated into a `run:` block is substituted before bash sees it,
+        # so its content becomes shell source on a **self-hosted Windows desktop**; through `env:`
+        # it is only ever data. Dispatching needs write access, so this was a habit rather than a
+        # hole — and the habit is what stops the hole existing the day a trigger changes.
+        env:
+          ITERATIONS_INPUT: ${{ inputs.iterations }}
+          TARGET_INPUT: ${{ inputs.target }}
         run: |
           mkdir -p reports
-          ITERATIONS="${{ github.event.inputs.iterations }}"
-          TARGET="${{ github.event.inputs.target }}"
+          ITERATIONS="$ITERATIONS_INPUT"
+          TARGET="$TARGET_INPUT"
           crashes=0
           failures=0
           for i in $(seq 1 "$ITERATIONS"); do

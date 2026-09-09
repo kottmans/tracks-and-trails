@@ -21,17 +21,24 @@ section will name which of them receive fixes.
 
 ## Reporting a vulnerability
 
-**Open an issue on this repository.** It is private, so an issue on it is visible only to its
-collaborators.
+**Both the route and this section depend on the repository's visibility, not on a release** — so
+check which of these describes what you are looking at. Written this way deliberately: visibility can change on
+any day, and a section that named only one route would be wrong from that moment until someone
+noticed.
 
-**There is deliberately no email address here, and GitHub's private vulnerability reporting is not
-available** — that feature is a public-repository one, and this repository is private.
+**If this repository is public:** use *Security → Report a vulnerability*. That is GitHub's private
+vulnerability reporting, and it opens an advisory only the maintainer can see.
 
-**Both depend on the repository's visibility, not on a release.** If it is ever made public, an
-issue stops being private, and this section stops being correct on that day rather than at some
-later milestone. A confidential route has to exist and be verified *before* that change, not
-after: `T-299` carries it as a before-publication prerequisite alongside the repository settings
-no test in here can see.
+**If it is private:** open an issue. Only collaborators can see the repository at all, so only they
+can see the issue.
+
+**If it is public and there is no *Report a vulnerability* button**, private reporting has not been
+turned on — it is a setting rather than a default, and enabling it is a recorded prerequisite of
+publication (`T-299`). Please still do not put the details in a public issue. Open one saying only
+that you have a security report and no private route is available; that is the most useful thing
+you can do with what you have.
+
+**There is deliberately no email address here.**
 
 There is no bounty, and no guaranteed response time — this is one person's project. What you
 will get is an honest answer about whether it is a real finding and whether it will be fixed.
@@ -125,9 +132,15 @@ obvious carriers — `cookies.txt`, `*.cookies`, `*.sqlite3`, `.env`, downloaded
 
 `tools/windows/run-on-starbase.sh` no longer carries an account and a LAN address as its default;
 it takes `STARBASE_HOST` and refuses to run without it. **Two RFC1918 addresses do remain**, in
-review entries in [docs/project/REVIEWS.md](docs/project/REVIEWS.md) that record an SSH attempt
-timing out. They are a statement about a past run on a private network, they are not routable, and
-the historical record is not rewritten to remove them.
+[docs/project/reviews/T-064.md](docs/project/reviews/T-064.md), recording an SSH attempt that timed
+out. They are a statement about a past run on a private network, they are not routable, and the
+historical record is not rewritten to remove them. *(They were in `REVIEWS.md` until `T-300` split
+that file into per-task records; this pointer followed them rather than the file.)*
+
+**What "no personal data" does and does not cover.** It is a rule about what this project writes
+into files. It is not a claim about Git metadata: commit author names and addresses are part of
+published history, and dated evidence in `docs/project/` quotes real home-directory and Windows
+account paths from the machines the runs happened on.
 
 ## CI trust boundary
 

@@ -20,11 +20,13 @@ owns phase deliverables and exit criteria.
   shared source. Existing review history now lives in task/shared-scope files;
   REVIEWS.md is the index. TESTING §14 owns storage, and required working rules remain
   local. This is documentation work, not a Phase 4 deliverable.
-- **T-299:** Changes requested in the [focused correction review](reviews/T-299.md#migrated-review-0380)
-  at `23c3d11`. R1 (High) still requires correction of SECURITY.md's credential and
-  cookie-path assurances. R2 (Medium) still requires the captured evidence output
-  to match its historical command. Both remain blocking. The review-policy path
-  and README CI wording are updated by T-300; only a Reviewer may resolve findings.
+- **T-299 is Complete**, approved at `7a45fc5` on 2026-09-08 after four review rounds;
+  `R1`, `R2`, `R7` and `R8` are resolved and its record has moved to
+  [COMPLETED_TASKS](COMPLETED_TASKS.md). **Publication itself is not done, and was never
+  this task's to do.** The repository is still private. What remains is the maintainer's:
+  the GitHub settings sitting behind the workflow trigger controls, and turning private
+  vulnerability reporting on, which is not automatic on becoming public. Both are listed
+  in that record.
 - Phase 4 exit work remains **T-297**, **T-286**, **T-290**, then **T-212**'s recorded
   48-row checklist run at one head and the exit review. See each task for its
   actual status, dependencies and required evidence; listing it here grants no

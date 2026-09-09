@@ -5821,7 +5821,7 @@ only open tasks in TASKS.md. Removing them would break navigation or a live gate
 ### Retention amendment — 2026-09-08
 
 The maintainer subsequently requested relocation of unique evidence and removal
-of the one-time STATUS archive. Retain the observations as [dated task supplements](archive/TASKS-completed-2026-09-08.md#historical-evidence-supplements--2026-09-08),
+of the one-time STATUS archive. Retain the observations as [dated task supplements](COMPLETED_TASKS.md#historical-evidence-supplements--2026-09-08),
 with exact source references, original result text and limitations. Remove the
 snapshot after checking preservation; its full text remains recoverable at
 `d88e62e`. This supersedes the snapshot-retention choice above and leaves the
