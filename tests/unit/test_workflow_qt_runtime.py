@@ -43,17 +43,23 @@ def workflow_files() -> list[Path]:
     return found
 
 
-def steps_of(job: dict) -> list[dict]:
-    return [step for step in job.get("steps", []) or [] if isinstance(step, dict)]
+def steps_of(job: dict[str, object]) -> list[dict[str, object]]:
+    """The job's step mappings. YAML gives back `object`, so the shape is checked, not assumed."""
+    steps = job.get("steps")
+    if not isinstance(steps, list):
+        return []
+    return [step for step in steps if isinstance(step, dict)]
 
 
-def run_text(job: dict) -> str:
+def run_text(job: dict[str, object]) -> str:
     return "\n".join(str(step.get("run", "")) for step in steps_of(job))
 
 
-def is_windows_only(job: dict) -> bool:
+def is_windows_only(job: dict[str, object]) -> bool:
     runs_on = job.get("runs-on", "")
-    rendered = " ".join(runs_on) if isinstance(runs_on, list) else str(runs_on)
+    rendered = (
+        " ".join(str(part) for part in runs_on) if isinstance(runs_on, list) else str(runs_on)
+    )
     # A matrix naming both platforms is not Windows-only, whatever the expression says.
     if "matrix" in rendered and WINDOWS_ONLY.search(str(job.get("strategy", ""))):
         return "ubuntu" not in str(job.get("strategy", "")).lower()
