@@ -236,10 +236,10 @@ CODEC_FAMILIES: Final = {
 #:
 #: **`mp4a` entries are enumerated one object type at a time, and only where the mapping is
 #: established.** `40` is the MPEG-4 audio object type indicator and the byte after it selects the
-#: codec — `.2` AAC-LC, `.5` HE-AAC, `.29` HE-AACv2 — while `69` and `6b` are MPEG audio layer 3
-#: and `a5`/`a6` are Dolby. Anything else, `mp4a.40` object types included, falls through to the
-#: raw string: **not every MPEG-4 audio object type is AAC**, and a name this table cannot
-#: establish is worse than the identifier it replaced.
+#: codec — `.2` AAC-LC, `.5` HE-AAC, `.29` HE-AACv2 — while `69` and `6b` are MPEG audio whose
+#: **layer they do not state**, and `a5`/`a6` are Dolby. Anything else, `mp4a.40` object types
+#: included, falls through to the raw string: **not every MPEG-4 audio object type is AAC**, and a
+#: name this table cannot establish is worse than the identifier it replaced.
 CODEC_NAMES: Final = {
     "h264": "H.264",
     "vp9": "VP9",
@@ -255,8 +255,13 @@ CODEC_NAMES: Final = {
     "mp4a.40.2": "AAC",
     "mp4a.40.5": "HE-AAC",
     "mp4a.40.29": "HE-AAC v2",
-    "mp4a.69": "MP3",
-    "mp4a.6b": "MP3",
+    # **`MPEG audio`, not `MP3`** (`T306-R1`, third pass). Object type `0x69` is ISO/IEC 13818-3
+    # and `0x6b` is ISO/IEC 11172-3 — MPEG-2 and MPEG-1 Part 3 — and **both cover Layers I, II
+    # and III**. Naming them `MP3` assumed Layer III, so an MP2 stream was labelled MP3: the same
+    # over-reading of an identifier that put every `mp4a.*` at AAC one round earlier. The family
+    # is established; the layer is not, so the family is what is said.
+    "mp4a.69": "MPEG audio",
+    "mp4a.6b": "MPEG audio",
     "mp4a.a5": "AC-3",
     "mp4a.a6": "E-AC-3",
 }

@@ -128,6 +128,28 @@ to the file rather than as the way out — and is why it recurs on every launch.
 **Status:** In Review — **changes requested at `2181ee1`, corrected the same day; awaiting
 re-review.** Ruled by the maintainer on 2026-09-09: legibility only.
 
+#### Correction round 2, 2026-09-09 — third pass, maintainer-authorized
+
+**`T306-R1` (Medium, still blocking at `b76595d`) — corrected.** The conservative AAC fallback was
+accepted; the new labels were not. Object type `0x69` is ISO/IEC 13818-3 and `0x6b` is ISO/IEC
+11172-3 — MPEG-2 and MPEG-1 Part 3 — and **both cover Layers I, II and III**, so naming them `MP3`
+assumed Layer III and labelled an MP2 stream as MP3. They read **`MPEG audio`** now: the family the
+identifier establishes, without the layer it does not. Restoring `MP3` fails the literal
+expectations.
+
+**That is the same defect twice on one table.** First every `mp4a.*` at AAC, then two object types
+at MP3. The mappings were not the problem; reading an identifier as more specific than it is was.
+
+**Minor cleanup, as directed.** The check's sizes are now `MainWindow.DEFAULT_SIZE`, half its
+height, and 640x400 — grounded in the application rather than invented — and the checklist
+reference is corrected: the format table is rows **5.4**, **5.6** and **5.7**, not section 6, which
+is Settings. The unexecutable *"sizes `T-212` row 6 uses"* wording was the implementer's.
+
+**The third pass was authorized by the maintainer on 2026-09-09**, per `TESTING.md` §14, after the
+reviewer stopped the loop and asked. The implementer declined to authorize it: §14 puts that with
+the maintainer, and an implementer authorizing another pass on their own work is the loop the rule
+exists to break.
+
 #### Correction round, 2026-09-09
 
 - **`T306-R1` (Medium, blocking) — corrected.** `mp4a` is a container-level identifier, not a

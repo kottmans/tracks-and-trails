@@ -117,6 +117,7 @@ from tracks_and_trails.ui.add_dialog import (
     split_urls,
 )
 from tracks_and_trails.ui.format_table import MERGE_MODE_TEXT
+from tracks_and_trails.ui.main_window import DEFAULT_SIZE
 from tracks_and_trails.ui.playlist_selection import PlaylistSelection
 from tracks_and_trails.ui.row_delegate import (
     CHOOSE_FORMATS_DATA,
@@ -2828,12 +2829,18 @@ def _staged(
 
 #: Dialog sizes the *Chosen* summary is required to survive (`T306-R3`).
 #:
-#: **Named here because nothing else names them.** `T-306`'s acceptance criterion said *"the sizes
-#: `T-212` row 6 uses"*; section 6 of `docs/PHASE_4_CHECKLIST.md` is Settings, and the checklist
-#: specifies no viewport dimensions anywhere — so the criterion could not be executed as written.
-#: These are a small dialog, its opening size, and a deliberately short window, which is the case a
-#: footer at the bottom edge would fail at.
-CHOSEN_SUMMARY_SIZES: Final = ((640, 400), (900, 700), (900, 380))
+#: **Grounded in the application rather than invented.** `T-306`'s acceptance criterion asked for
+#: *"the sizes `T-212` row 6 uses"* — section 6 of `docs/PHASE_4_CHECKLIST.md` is Settings, the
+#: format table is rows **5.4**, **5.6** and **5.7**, and none of them names a dimension. That
+#: wording was the implementer's and it could not be executed. So: `MainWindow.DEFAULT_SIZE`, the
+#: window this dialog opens over; half that height, which is the case a footer at the bottom edge
+#: would fail at; and 640x400, kept because it is the size that exposed a wrong assertion in an
+#: earlier version of this check.
+CHOSEN_SUMMARY_SIZES: Final = (
+    (DEFAULT_SIZE.width(), DEFAULT_SIZE.height()),
+    (DEFAULT_SIZE.width(), DEFAULT_SIZE.height() // 2),
+    (640, 400),
+)
 
 
 @pytest.mark.parametrize(("width", "height"), CHOSEN_SUMMARY_SIZES, ids=lambda v: str(v))

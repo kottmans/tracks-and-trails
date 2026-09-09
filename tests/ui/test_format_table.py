@@ -691,8 +691,11 @@ def test_choosing_the_current_row_reports_the_format(
         ("mp4a.40.5", "HE-AAC"),
         ("mp4a.40.29", "HE-AAC v2"),
         # `mp4a` is a container-level identifier and these are not AAC at all (`T306-R1`).
-        ("mp4a.69", "MP3"),
-        ("mp4a.6B", "MP3"),
+        # **And they are not MP3 either** (`T306-R1`, third pass): `0x69` and `0x6b` are MPEG-2
+        # and MPEG-1 Part 3, both of which cover Layers I, II and III, so an MP2 stream was
+        # being labelled MP3. The family is established; the layer is not.
+        ("mp4a.69", "MPEG audio"),
+        ("mp4a.6B", "MPEG audio"),
         ("mp4a.a5", "AC-3"),
         # Neither table establishes these, so the identifier stands.
         ("mp4a.E1", "mp4a.E1"),
