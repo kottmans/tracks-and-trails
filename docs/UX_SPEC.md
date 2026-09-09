@@ -288,7 +288,10 @@ is the one that reuses something already built.
   after `720p` and `144p`, and `~12.4 MB` sorts as a number. Derived from `T-075`, which is the
   defect of a table sorting its own text.
 - **[D]** A format missing a field renders the placeholder the rest of the window already uses
-  (`UNKNOWN_TEXT`), never an empty cell and never `None`. Derived from `_text_or_absent`'s rule.
+  (`UNKNOWN_TEXT`), never an empty cell and never `None`. **A field yt-dlp denied reads `None`
+  rather than *unknown*** (`ABSENT_TEXT`, `T-305`): a video-only format has no audio codec and a
+  format with nothing noted has no note, and reporting either as unknown is a claim about
+  something the extractor stated. Derived from `_text_or_absent`'s rule.
 - **[D]** The table reads a `FormatInfo` projection, never raw `info_dict` keys. Derived from
   `NFR-008` and `ARCHITECTURE.md`'s declared-fields-only rule.
 

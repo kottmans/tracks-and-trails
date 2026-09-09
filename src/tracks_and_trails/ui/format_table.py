@@ -13,12 +13,13 @@ Three rules shape everything here, and each exists because of a specific defect:
   must sort above `720p` above `144p`, and `~12.4 MB` must sort as a number. The model answers
   `SORT_ROLE` with the underlying value and the view sorts on that role, so there is exactly one
   place the ordering can be wrong.
-- **A missing field renders `UNKNOWN_TEXT`**, never an empty cell and never `None`. yt-dlp
-  genuinely omits these — a live stream has no filesize, an audio-only format has no height — so
-  the absence is information rather than an error, and the window already has a word for it.
-  **Rendering the placeholder is frequently the *correct* answer rather than a gap**: archive.org
-  reports no codec, bitrate or fps for its derivatives, and `yt-dlp -F` prints nothing for them
-  either, so agreeing means showing nothing too.
+- **A missing field renders a word, never an empty cell and never `None`** — and **which** word
+  says why it is missing (`T-305`). `UNKNOWN_TEXT` is for a value yt-dlp did not report: a live
+  stream has no filesize, archive.org reports no bitrate or fps for its derivatives, and `yt-dlp
+  -F` prints nothing for them either, so agreeing means showing nothing too. `ABSENT_TEXT` is for
+  something yt-dlp **denied** — a video-only format's audio codec, a format with nothing noted.
+  The absence is information either way; saying *unknown* about a stream that was reported absent
+  is a claim, and it made a table of merge candidates read as mostly unknown.
 
 **Selection is deliberately absent.** `T-107` builds the table; `T-108` (`REQ-008`) is what makes a
 chosen format mean something, and `docs/UX_SPEC.md` §4 keeps *download from the table* out
@@ -214,30 +215,36 @@ def describe_size(entry: FormatInfo) -> str:
 #: What a cell says when yt-dlp denied the stream outright, as against never mentioning it.
 ABSENT_TEXT: Final = "None"
 
-#: The name a person knows a codec by, keyed on the token yt-dlp puts before the first dot.
+#: Codec identifiers whose **first token alone** establishes the family, and the name for it.
 #:
-#: **`REQ-003` asks for codecs and does not say in whose vocabulary** (`T-306`). `avc1.640028` is
-#: an ISO-BMFF sample entry with a profile and level packed into it; `H.264` is the same fact in
-#: the words the format was chosen in. The raw string stays reachable in the cell's tool tip,
-#: because it is what `REQ-009`'s selector syntax and every bug report are written in.
-#:
-#: **Keyed on the leading token only, and only where that token is unambiguous.** `h264-hd` is
-#: archive.org's own derivative name rather than a codec identifier, so it has no dot to split on,
-#: misses this table and is shown as written — which is the honest answer for a string this cannot
-#: read rather than a guess dressed as a translation.
-CODEC_NAMES: Final = {
+#: **A four-character code earns a place here only when it decides the codec by itself** (`T-306`,
+#: `T306-R1`). `avc1` is always H.264 and `av01` is always AV1, whatever profile and level follow.
+#: `mp4a` is **not** such a code and was in this table: it identifies MPEG-4 audio at the container
+#: level and defers the codec to the object type after it, so classifying every `mp4a.*` as AAC
+#: told a user selecting formats that `mp4a.69` — which is MP3 — was AAC.
+CODEC_FAMILIES: Final = {
     "avc1": "H.264",
     "avc3": "H.264",
-    "h264": "H.264",
     "hev1": "H.265",
     "hvc1": "H.265",
     "vp09": "VP9",
-    "vp9": "VP9",
     "vp08": "VP8",
-    "vp8": "VP8",
     "av01": "AV1",
+}
+
+#: Identifiers that name a codec exactly, matched whole rather than by prefix.
+#:
+#: **`mp4a` entries are enumerated one object type at a time, and only where the mapping is
+#: established.** `40` is the MPEG-4 audio object type indicator and the byte after it selects the
+#: codec — `.2` AAC-LC, `.5` HE-AAC, `.29` HE-AACv2 — while `69` and `6b` are MPEG audio layer 3
+#: and `a5`/`a6` are Dolby. Anything else, `mp4a.40` object types included, falls through to the
+#: raw string: **not every MPEG-4 audio object type is AAC**, and a name this table cannot
+#: establish is worse than the identifier it replaced.
+CODEC_NAMES: Final = {
+    "h264": "H.264",
+    "vp9": "VP9",
+    "vp8": "VP8",
     "theora": "Theora",
-    "mp4a": "AAC",
     "aac": "AAC",
     "opus": "Opus",
     "vorbis": "Vorbis",
@@ -245,12 +252,28 @@ CODEC_NAMES: Final = {
     "flac": "FLAC",
     "ac-3": "AC-3",
     "ec-3": "E-AC-3",
+    "mp4a.40.2": "AAC",
+    "mp4a.40.5": "HE-AAC",
+    "mp4a.40.29": "HE-AAC v2",
+    "mp4a.69": "MP3",
+    "mp4a.6b": "MP3",
+    "mp4a.a5": "AC-3",
+    "mp4a.a6": "E-AC-3",
 }
 
 
 def codec_name(codec: str) -> str:
-    """`avc1.640028` as `H.264`, or the string unchanged when this cannot read it."""
-    return CODEC_NAMES.get(codec.split(".", 1)[0].casefold(), codec)
+    """`avc1.640028` as `H.264`, or the string unchanged when this cannot establish the codec.
+
+    Whole-string matches are tried before family prefixes, because the specific mapping is the
+    one that carries the object type. A string neither table establishes is returned as written —
+    `UX_SPEC.md` §4's raw fallback, and the behaviour `T306-R1` found missing for `mp4a`.
+    """
+    folded = codec.casefold()
+    if folded in CODEC_NAMES:
+        return CODEC_NAMES[folded]
+    family = CODEC_FAMILIES.get(folded.split(".", 1)[0])
+    return family if family is not None else codec
 
 
 def describe_codec(codec: str | None, present: bool | None = None) -> str:

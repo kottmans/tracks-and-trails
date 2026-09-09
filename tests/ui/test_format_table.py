@@ -310,9 +310,16 @@ def test_the_table_matches_what_yt_dlp_f_reports(fixture_name: str) -> None:
                     f"the table names {expected!r} as {display(model, row, column)!r} for {id_}"
                 )
                 tip = model.data(model.index(row, column), int(Qt.ItemDataRole.ToolTipRole))
-                assert tip in (expected, None), (
-                    f"the identifier for {id_} is no longer reachable: {tip!r}"
-                )
+                if codec_name(expected) != expected:
+                    # **Exact, not `in (expected, None)`** (`T306-R2`). Permitting `None` let a
+                    # mutation that suppressed every audio tool tip pass the whole module.
+                    assert tip == expected, (
+                        f"the identifier {expected!r} for {id_} is not reachable: {tip!r}"
+                    )
+                else:
+                    assert tip is None, (
+                        f"{id_} shows {expected!r} unchanged and should add no tool tip: {tip!r}"
+                    )
                 continue
             if expected == "unknown":
                 assert display(model, row, column) == UNKNOWN_TEXT, (
@@ -674,6 +681,79 @@ def test_choosing_the_current_row_reports_the_format(
     assert len(seen) == 1
     assert isinstance(seen[0], FormatInfo)
     assert seen[0] == table.current_format()
+
+
+@pytest.mark.parametrize(
+    ("raw", "shown"),
+    [
+        # Established, one object type at a time.
+        ("mp4a.40.2", "AAC"),
+        ("mp4a.40.5", "HE-AAC"),
+        ("mp4a.40.29", "HE-AAC v2"),
+        # `mp4a` is a container-level identifier and these are not AAC at all (`T306-R1`).
+        ("mp4a.69", "MP3"),
+        ("mp4a.6B", "MP3"),
+        ("mp4a.a5", "AC-3"),
+        # Neither table establishes these, so the identifier stands.
+        ("mp4a.E1", "mp4a.E1"),
+        ("mp4a.future", "mp4a.future"),
+        ("mp4a", "mp4a"),
+        # A four-character code that does decide the codec by itself.
+        ("avc1.640028", "H.264"),
+        ("av01.0.08M.08", "AV1"),
+        ("vp09.00.40.08", "VP9"),
+        ("opus", "Opus"),
+        ("h264-hd", "h264-hd"),
+    ],
+)
+def test_a_codec_is_named_only_where_the_identifier_establishes_it(raw: str, shown: str) -> None:
+    """`T306-R1`: every expectation here is **written out**, not computed by the code under test.
+
+    The first version of this coverage asserted `display(...) == codec_name(expected)`, which
+    compares production with itself: replacing a label with `WRONG CODEC` passed all 48 tests.
+    These are literals, so a wrong name is a failing test.
+
+    **`mp4a` is the case the batch got wrong.** It identifies MPEG-4 audio at the container level
+    and defers to the object type after it. `40.2` is AAC-LC; `69` and `6b` are MPEG audio layer
+    3; `E1` is none of the above. Classifying the first token alone reported MP3 as AAC to
+    somebody choosing a format by it.
+    """
+    assert codec_name(raw) == shown
+
+
+@pytest.mark.parametrize("column", [VIDEO_CODEC_COLUMN, AUDIO_CODEC_COLUMN])
+def test_a_renamed_codec_keeps_its_identifier_in_the_tool_tip(
+    column: int, qapp: QApplication
+) -> None:
+    """`T306-R2`: **both** columns, exactly — suppressing the audio tool tip once passed the suite.
+
+    `REQ-009`'s selector syntax and every bug report are written in the identifier, so a cell that
+    shows a name has to keep it. A cell that shows the identifier unchanged adds nothing, because
+    a tool tip repeating its own cell is noise a screen reader reads twice.
+    """
+    entry = FormatInfo(
+        format_id="probe",
+        extension="mp4",
+        video_codec="avc1.640028",
+        has_video=True,
+        audio_codec="mp4a.40.2",
+        has_audio=True,
+    )
+    model = FormatTableModel((entry,))
+    tip = model.data(model.index(0, column), int(Qt.ItemDataRole.ToolTipRole))
+    expected = "avc1.640028" if column == VIDEO_CODEC_COLUMN else "mp4a.40.2"
+    assert tip == expected, f"{COLUMN_HEADERS[column]} lost the identifier behind its name: {tip!r}"
+
+    plain = FormatInfo(
+        format_id="plain",
+        extension="webm",
+        video_codec="h264-hd",
+        has_video=True,
+        audio_codec="h264-hd",
+        has_audio=True,
+    )
+    unchanged = FormatTableModel((plain,))
+    assert unchanged.data(unchanged.index(0, column), int(Qt.ItemDataRole.ToolTipRole)) is None
 
 
 def test_the_chosen_row_says_so_in_the_table_and_not_only_in_the_footer(
