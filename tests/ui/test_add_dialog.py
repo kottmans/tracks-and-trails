@@ -59,6 +59,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,
+    QDialogButtonBox,
     QLabel,
     QListView,
     QMenu,
@@ -2728,15 +2729,35 @@ def test_the_dialog_can_still_be_made_narrower_than_it_opens(
     dialog = dialogs(managers())
     dialog.show()
     opens_at = dialog.sizeHint().width()
+    floor = dialog.minimumSizeHint().width()
 
-    dialog.resize(320, dialog.height())
+    dialog.resize(floor, dialog.height())
 
-    assert dialog.width() == 320, (
-        f"the dialog refused to narrow past {dialog.width()}px, so the width it opens at has "
-        "become a floor the user cannot get under"
+    assert dialog.width() == floor, (
+        f"the dialog refused to narrow to its own stated minimum of {floor}px, reaching only "
+        f"{dialog.width()}px, so the minimum it reports is not one a user can actually get to"
     )
-    assert dialog.minimumSizeHint().width() < opens_at, (
+    assert opens_at - floor >= opens_at // 3, (
+        f"the dialog opens at {opens_at}px and will not go below {floor}px, so the opening width "
+        "has become a floor in all but name"
+    )
+    assert floor < opens_at, (
         "the dialog's minimum grew to its opening width, which is the same floor by another route"
+    )
+
+    # **What stops it must be the buttons, and this is the half a pixel count could not say.**
+    # `tools/dialog_width_floor_probe.py` measured the floor as the button box's own minimum plus
+    # the layout's margins, on two fonts. A content widget overtaking it is the failure `T-150`
+    # names: the staging list or the preset box refusing to shrink puts `T-135`'s overflow and
+    # `T-160`'s narrowing control out of reach, which is what a floor costs. The buttons cannot be
+    # narrowed and are not supposed to be.
+    widest = max(dialog.findChildren(QWidget), key=lambda child: child.minimumSizeHint().width())
+    buttons = dialog.findChild(QDialogButtonBox, "dialogButtons")
+    assert buttons is not None, "the dialog's button box lost its object name"
+    assert widest is buttons, (
+        f"{type(widest).__name__}(#{widest.objectName()}) now demands "
+        f"{widest.minimumSizeHint().width()}px, more than the button box's "
+        f"{buttons.minimumSizeHint().width()}px — content is setting the floor, not the buttons"
     )
 
 

@@ -3925,25 +3925,33 @@ def test_the_step_costs_the_extractors_own_remedy_nothing(
 ) -> None:
     """**The measurement the ruling turned on**, encoded (`T201-R3`, option A refused).
 
-    yt-dlp's own ffmpeg diagnostic ends in the flag that fixes it. At 1180 px, appending the next
-    step to that line elides `--ffmpeg-location` to `--ff…` — so stating the remedy this table
-    writes would have cost the remedy the extractor supplied, which is the content `NFR-006`
-    protects hardest.
+    yt-dlp's own ffmpeg diagnostic ends in the flag that fixes it. At a width where that line
+    fits, appending the next step to it elides `--ffmpeg-location` to `--ff…` — so stating the
+    remedy this table writes would have cost the remedy the extractor supplied, which is the
+    content `NFR-006` protects hardest.
 
     Both halves are asserted at the row's **own** text width, taken from the delegate rather than
     guessed: that the drawn line keeps the flag, and that the composed alternative does not. The
     second is what makes this a measurement rather than a restatement.
 
-    **A measurement is font-dependent, and this one says so rather than degrading quietly.** The
-    width is the default view font's; at a larger one the reason elides on its own and the
-    comparison stops meaning anything. So the precondition — the whole reason fits — is asserted
-    first, and it fails with that explanation rather than leaving a green test that measures
-    nothing.
+    **A measurement is font-dependent, and this one used to say so by failing.** The width was
+    pinned at 1180 px, which is the default view font's; at a wider one the reason elided on its
+    own, the precondition fired, and a real finding read as a broken test. That is exactly what
+    `ubuntu-latest` did on 2026-09-08 when Linux CI moved to hosted runners — the same commit
+    passed on Fedora and failed on Ubuntu, and `tools/dialog_width_floor_probe.py` measured why.
+
+    **So the width is now built from the text instead of pinned.** The row is sized to hold the
+    reason with two spaces to spare, at whatever font is in force, which is the condition the
+    ruling actually turned on. The precondition stays, because a sizing bug would otherwise pass
+    silently, and one assertion below checks that the step is longer than that slack — without it
+    the final elision would follow from the sizing rather than from the step.
     """
     message = (
         "ERROR: You have requested merging of multiple formats but ffmpeg is not "
         "installed; pass its location with --ffmpeg-location"
     )
+    # The extractor's own remedy, at the very end of its message — what the step costs.
+    remedy = "--ffmpeg-location"
     view, detail = a_failed_row(
         queue, views, managers, tmp_path, kind=ErrorKind.FFMPEG_MISSING, message=message
     )
@@ -3951,12 +3959,33 @@ def test_the_step_costs_the_extractors_own_remedy_nothing(
 
     delegate = view.table.itemDelegate()
     assert isinstance(delegate, RowDelegate)
+    index = view.model.index(0, JOB_COLUMN)
     option = QStyleOptionViewItem()
-    option.rect = QRect(0, 0, 1180, 90)
     option.font = view.table.font()
     option.fontMetrics = QFontMetrics(option.font)
-    _body, text_area = delegate._verb_area(option, view.model.index(0, JOB_COLUMN))
     metrics = option.fontMetrics
+
+    # **The row is sized from the text, and 1180 px was one instance of that width rather than
+    # the point.** Pinned at 1180 this measured nothing on any system whose font is wider than
+    # the one it was written on: the reason elided by itself, the precondition below fired, and
+    # a real finding looked like a broken test — which is what `ubuntu-latest` did on 2026-09-08.
+    # What the ruling turned on is a width where the reason *fits* and the reason-plus-step does
+    # not, so that is what is built here, at whatever font is in force.
+    probe = QStyleOptionViewItem()
+    probe.rect = QRect(0, 0, 1180, 90)
+    probe.font = option.font
+    probe.fontMetrics = option.fontMetrics
+    _probe_body, probe_area = delegate._verb_area(probe, index)
+    chrome = 1180 - probe_area.width()
+    # **The headroom is the remedy's own width, and that choice is what keeps the last assertion
+    # a measurement.** Sized to the reason with a couple of spaces to spare, *any* step longer
+    # than a rounding pixel elides the tail far enough to break the exact flag, so the assertion
+    # would pass for a one-character step and prove nothing — checked by mutation, and it
+    # survived. Given the remedy's own width of headroom instead, only a step at least that wide
+    # costs the remedy, which is the claim the ruling actually rests on.
+    slack = metrics.horizontalAdvance(remedy)
+    option.rect = QRect(0, 0, metrics.horizontalAdvance(detail) + slack + chrome, 90)
+    _body, text_area = delegate._verb_area(option, index)
 
     drawn = metrics.elidedText(detail, Qt.TextElideMode.ElideRight, text_area.width())
     # **Option A's own order**, which is the half of the finding that makes it bite: the step goes
@@ -3973,10 +4002,18 @@ def test_the_step_costs_the_extractors_own_remedy_nothing(
         f"the reason's line does not fit in {text_area.width()}px at this font, so the comparison "
         f"below measures nothing: {drawn!r}"
     )
-    assert "--ffmpeg-location" in drawn, (
-        f"the reason's line lost the extractor's own remedy at 1180 px: {drawn!r}"
+    assert remedy in drawn, (
+        f"the reason's line lost the extractor's own remedy at {text_area.width()}px: {drawn!r}"
     )
-    assert "--ffmpeg-location" not in composed, (
+    # **The step has to cost more than the slack, or the last assertion proves nothing.** Sizing
+    # the row to the reason makes anything longer elide; what the finding claims is that the step
+    # is long enough to take `--ffmpeg-location` with it, and that is only a claim while the step
+    # is the reason it overflowed.
+    assert metrics.horizontalAdvance(f" · {action}") > slack, (
+        f"the next step is narrower than {remedy!r} itself, so it can no longer be what pushes "
+        "the remedy off the end — the elision below would follow from the sizing instead"
+    )
+    assert remedy not in composed, (
         "appending the step to this line no longer elides the extractor's remedy, so this test no "
         "longer measures what refused option A — re-measure before trusting the ruling's premise"
     )
