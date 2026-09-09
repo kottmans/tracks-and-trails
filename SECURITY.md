@@ -21,15 +21,17 @@ section will name which of them receive fixes.
 
 ## Reporting a vulnerability
 
-**Open an issue on this repository.** It is private, so an issue on it is already visible only to
-its collaborators — who are also the only people who can read the code, and therefore the only
-people positioned to find a vulnerability in it.
+**Open an issue on this repository.** It is private, so an issue on it is visible only to its
+collaborators.
 
 **There is deliberately no email address here, and GitHub's private vulnerability reporting is not
-available.** That feature is a public-repository one; this repository is private. Both change at
-the same moment: when Phase 5 makes the repository public and ships a release, private reporting
-gets enabled and this section is rewritten to point at it, because an issue will no longer be
-private and a reporter will no longer be a collaborator.
+available** — that feature is a public-repository one, and this repository is private.
+
+**Both depend on the repository's visibility, not on a release.** If it is ever made public, an
+issue stops being private, and this section stops being correct on that day rather than at some
+later milestone. A confidential route has to exist and be verified *before* that change, not
+after: `T-299` carries it as a before-publication prerequisite alongside the repository settings
+no test in here can see.
 
 There is no bounty, and no guaranteed response time — this is one person's project. What you
 will get is an honest answer about whether it is a real finding and whether it will be fixed.
@@ -57,31 +59,42 @@ cookie path is redacted by its literal value, not by its shape:** it is register
 load and before any refusal naming it is composed, because guessing which filenames look like
 cookie jars is the enumeration failure `DAT-003` records twice.
 
-What is left outside both is a path this application never supplied. `error_message` is stored
-verbatim because `NFR-006` requires the extractor's original message intact — and **yt-dlp does
-sometimes name a browser cookie database inside one**, for instance when a profile cannot be read.
-That path is the accepted residue, not an oversight; two attempts to scrub such prose both failed,
-and one corrupted a user's output directory into a relative path.
+**What is left outside both mechanisms is anything this application did not supply.**
+`error_message` is stored verbatim because `NFR-006` requires the extractor's original message
+intact — and **yt-dlp does sometimes name a browser cookie database inside one**, for instance
+when a profile cannot be read. That is the accepted residue, not an oversight; two attempts to
+scrub such prose both failed, and one corrupted a user's output directory into a relative path.
+`DAT-003`'s 2026-07-30 amendment scopes the boundary to values this application supplies, and
+makes **no claim at all** about what a third party's diagnostic contains.
 
 An output path is likewise stored and logged as given: it is what the user chose, and it is the
 most useful line in a bug report.
 
-**So the practical rule differs by artifact, and the database is the more sensitive of the two.**
+### What is actually verified
 
-**Treat a copy of the database as capable of containing credentials.** `jobs.url` holds the
-address the user pasted, exactly as pasted — the serialized `request` beside it holds the same
-string a second time — so userinfo or a credential-bearing query parameter in a queued URL is
-stored. Nothing rejects it: `DownloadRequest` refuses a credential in the **proxy** field, not in
-the URL being downloaded. `error_message` is likewise stored as the extractor wrote it, including
-any path or URL that diagnostic quotes.
+**Each row is a mechanism with a check behind it. No row says what *cannot* appear** — three
+corrections of this section were each undone by a categorical sentence, so there are none here.
 
-**Treat a copy of the log as containing local file paths.** Every URL loses its userinfo, query
-and fragment there, so the queued-URL credential does not reach it; what survives is paths —
-an output path in full, and a cookie path that this application did not configure and whose name
-the pattern set does not recognize.
+| Value | Database | Log |
+|---|---|---|
+| A cookie path **this application supplies** | Unrepresentable: `cookies_from_browser` takes a browser specification, and the cookie *file* is a `settings.toml` value the database never stores | Registered by literal value and replaced, however ordinary its name |
+| A proxy carrying a credential | Refused at construction | Registered by literal value; a bare `user:pass@host` is also matched by shape |
+| A URL the user queues | Stored whole, and a second time inside the serialized `request` | Userinfo, query and fragment removed — **scheme, host and path remain** |
+| A diagnostic (`error_message`) | Stored exactly as the extractor wrote it, with no filter | Passed through the same pattern set as any other line |
+| An output path | Stored as given | Not redacted |
 
-Neither artifact stores cookie *contents*. Read `DAT-003` before adding a new write to
-`error_message`.
+**Redaction recognizes forms, and a credential can arrive in another one.** The forms are a URL's
+userinfo, query and fragment; a bare `user:pass@host`; cookie-store filename patterns; and the
+exact literals this application registered. A token carried in a URL's **path** is not one of
+them and survives into the log. Neither is arbitrary text inside a diagnostic — an
+`Authorization: Bearer …` line reaches the log as written.
+
+**The database is the wider of the two, because `error_message` has no filter at all.** Whatever
+an extractor writes is stored: a cookie *value* it quotes back as readily as a cookie path.
+
+**So, before sharing a copy of either:** treat the database as potentially holding credentials and
+arbitrary third-party text, and the log as a redacted — not sanitized — version of the same
+material. Read `DAT-003` before adding a new write to `error_message`.
 
 The governing requirements are `REQ-026` and `NFR-007`; the structural database boundary is
 `DAT-003`. All three are in [docs/project/REQUIREMENTS.md](docs/project/REQUIREMENTS.md) and

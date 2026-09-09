@@ -34,6 +34,17 @@ from tracks_and_trails.persistence.repositories import JobRepository  # noqa: E4
 URL = "https://alice:hunter2@host.invalid/v?token=SECRETTOKEN#frag"
 #: A diagnostic naming a cookie file whose name the shape rules cannot recognize.
 DIAGNOSTIC = "ERROR: could not read /home/u/session.txt"
+#: A credential in the URL *path*, which is not one of the forms redaction recognizes (`T299-R1`).
+PATH_CREDENTIAL_URL = (
+    "https://example.invalid/download/SYNTHETIC_PATH_TOKEN?t=SYNTHETIC_QUERY_TOKEN"
+)
+#: Arbitrary third-party text in a diagnostic. `error_message` has no filter at all (`T299-R1`).
+COOKIE_DIAGNOSTIC = "upstream response Cookie: session=SYNTHETIC_COOKIE_VALUE"
+BEARER_DIAGNOSTIC = "Authorization: Bearer SYNTHETIC_BEARER_TOKEN"
+#: The soak report whose unfenced claim about two past trees the relocation rewrote (`T299-R2`).
+SOAK = "docs/project/evidence/2026-08-29-orphan-scan-known-positive-soak.md"
+#: The two commits that report describes. Neither contains the relocated spelling.
+SOAK_COMMITS = ("0332a68", "75cd183")
 #: The evidence file whose captured transcript a documentation relocation rewrote.
 TRANSCRIPT = "docs/project/evidence/2026-08-05-criterion-8-second-run.md"
 #: The command that transcript records. Re-running it is the whole point of recording it.
@@ -42,8 +53,13 @@ TRANSCRIPT_COMMAND = ("git", "diff", "--stat", "6bae7ec..541b484")
 failures: list[str] = []
 
 
+#: Every claim attempted, so the total is counted here rather than by a reader (`T299-R7`).
+attempted: list[str] = []
+
+
 def check(condition: object, claim: str) -> None:
     """Record one claim's verdict, and keep going — a batch is more useful than a first failure."""
+    attempted.append(claim)
     print(f"{'PASS' if condition else 'FAIL'}  {claim}")
     if not condition:
         failures.append(claim)
@@ -101,6 +117,17 @@ def check_the_database_table() -> None:
     check(URL in stored[1], "the serialized request holds the same URL a second time")
     check(stored[2] == DIAGNOSTIC, "error_message holds the diagnostic exactly as written")
 
+    # `T299-R1`: the sink has no filter, so a cookie *value* is stored as readily as a path.
+    with (
+        tempfile.TemporaryDirectory() as directory,
+        db.open_database(pathlib.Path(directory) / "probe2.sqlite3") as connection,
+    ):
+        JobRepository(connection).add(
+            Job(id="j2", url=URL, request=request, error_message=COOKIE_DIAGNOSTIC)
+        )
+        kept = connection.execute("SELECT error_message FROM jobs").fetchone()[0]
+    check(kept == COOKIE_DIAGNOSTIC, "a cookie VALUE inside a diagnostic is stored verbatim too")
+
 
 def check_the_log_table() -> None:
     """The `Log` column, with the positive control that proves the probe sees a redaction."""
@@ -134,6 +161,27 @@ def check_the_log_table() -> None:
         "an output path is not redacted, as the table says",
     )
 
+    # `T299-R1`: three claims about what redaction does *not* reach. The positive controls
+    # above have already shown the instrument reporting a real redaction.
+    app_logging.forget_the_secrets()
+    line = formatted(f"Extracting URL: {PATH_CREDENTIAL_URL}")
+    check(
+        "SYNTHETIC_QUERY_TOKEN" not in line,
+        "POSITIVE CONTROL: the query token is removed from that same URL",
+    )
+    check(
+        "SYNTHETIC_PATH_TOKEN" in line,
+        "a credential in a URL PATH survives the log — redaction recognizes forms, not secrets",
+    )
+    check(
+        "<redacted>" in formatted(COOKIE_DIAGNOSTIC),
+        "POSITIVE CONTROL: a Cookie header value IS recognized in the log",
+    )
+    check(
+        "SYNTHETIC_BEARER_TOKEN" in formatted(BEARER_DIAGNOSTIC),
+        "an Authorization: Bearer line in a diagnostic survives the log unrecognized",
+    )
+
     # `remember_a_path` hands a separator-free name to `remember_a_secret`, which is why
     # "no production caller registers anything" was false in two places at once.
     app_logging.forget_the_secrets()
@@ -160,7 +208,23 @@ def check_the_documents(root: pathlib.Path) -> None:
         "SECURITY.md no longer offers a reporting route this private repository lacks (T299-R6)",
     )
     check(
-        "registered by exact value with `remember_a_path`" in security,
+        "what survives is paths" not in security,
+        "SECURITY.md no longer concludes that only paths survive into the log (T299-R1)",
+    )
+    check(
+        "Neither artifact stores cookie" not in security,
+        "SECURITY.md no longer guarantees that neither artifact holds cookie contents (T299-R1)",
+    )
+    check(
+        "the only people positioned to find a vulnerability" not in security,
+        "SECURITY.md no longer claims only collaborators can find a vulnerability (T299-R8)",
+    )
+    check(
+        "depend on the repository's visibility, not on a release" in security,
+        "SECURITY.md ties the reporting route to visibility, not a release (T299-R8)",
+    )
+    check(
+        "Registered by literal value and replaced" in security,
         "SECURITY.md distinguishes a configured cookie path from one it never supplied (T299-R1)",
     )
 
@@ -174,6 +238,25 @@ def check_the_documents(root: pathlib.Path) -> None:
         "the URL you queue is stored whole" in readme,
         "README states the queued-URL boundary, not only the diagnostic one (T299-R1)",
     )
+
+    soak = (root / SOAK).read_text(encoding="utf-8")
+    check(
+        "by a workflow comment and a line in `ai/STATUS.md`" in soak,
+        f"{SOAK} names the path its two commits actually contain (T299-R2)",
+    )
+    for revision in SOAK_COMMITS:
+        present = subprocess.run(
+            ("git", "cat-file", "-e", f"{revision}:ai/STATUS.md"), cwd=REPO, capture_output=True
+        )
+        absent = subprocess.run(
+            ("git", "cat-file", "-e", f"{revision}:docs/project/STATUS.md"),
+            cwd=REPO,
+            capture_output=True,
+        )
+        check(
+            present.returncode == 0 and absent.returncode != 0,
+            f"{revision} contains ai/STATUS.md and not docs/project/STATUS.md",
+        )
 
     captured = subprocess.run(
         TRANSCRIPT_COMMAND, cwd=REPO, capture_output=True, text=True, check=True
@@ -199,13 +282,16 @@ def main() -> int:
     check_the_log_table()
     check_the_documents(arguments.root)
 
+    # **The script counts, not the person writing it up** (`T299-R7`). The correction record
+    # said "16 of 16" twice for a probe that ran 18 checks, because the total was counted by
+    # hand from an enumeration rather than read off the run.
     print()
+    print(f"{len(attempted) - len(failures)} of {len(attempted)} claims held.")
     if failures:
-        print(f"{len(failures)} claim(s) failed:")
+        print(f"{len(failures)} failed:")
         for claim in failures:
             print(f"  - {claim}")
         return 1
-    print("Every claim held.")
     return 0
 
 

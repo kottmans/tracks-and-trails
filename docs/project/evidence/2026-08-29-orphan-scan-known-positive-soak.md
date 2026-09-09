@@ -2,9 +2,15 @@
 
 **Taken:** 2026-08-29, soak run `33239854571` at `a7beb50`
 **Why:** the test failed on `windows desktop` at `0332a68` and passed at `75cd183`, trees differing
-by a workflow comment and a line in `docs/project/STATUS.md`. One observation is not a rate, and the test is
+by a workflow comment and a line in `ai/STATUS.md`. One observation is not a rate, and the test is
 the one that proves `find_orphans` can see a positive at all — `T-268` turns on what its silence
 means.
+
+*(`ai/STATUS.md` is the path in those two trees, and the sentence is a claim about what they
+contain — `git cat-file -e 0332a68:ai/STATUS.md` succeeds and `docs/project/STATUS.md` is absent
+from both. The file is `docs/project/STATUS.md` on today's tree. A documentation relocation
+rewrote the spelling here once, which made a checkable statement about two commits false;
+`T299-R2` found it outside a fenced block, where the first class audit did not look.)*
 
 ## Result
 

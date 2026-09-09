@@ -380,6 +380,14 @@ The trigger set is enforced in-repository by `tests/unit/test_workflow_triggers.
 runner-group scope — are GitHub state, not files, and no test here can see them. They are the
 maintainer's to set before the repository is made public, and this task does not claim them done.
 
+**The reporting route belongs to that same list** (`T299-R8`). `SECURITY.md` currently directs a
+reporter to open an issue, which is confidential only while the repository is private. Making it
+public breaks that in the same instant, so before the visibility change: verify a confidential
+route is available — GitHub's private vulnerability reporting has to be **enabled**, it is not
+automatic on becoming public — and replace the private-issue advice with it. The trigger is the
+visibility change, not a release or a phase. A manual prerequisite is sufficient; nothing here
+proposes a settings gate, and no task is created for it.
+
 
 ## Ready
 
