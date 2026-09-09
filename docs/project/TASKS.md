@@ -1110,6 +1110,132 @@ ends badly — the shape `2026-08-27-T212-ytdlp-update-double-free.md` recorded.
 - Reversing the runner move.
 - `T-268`'s seven preserved specimens, which remain its own.
 
+### T-303 — A focused check box shifts its own text, and its ring is clipped
+
+**Status:** Proposed — observed 2026-09-09 by the maintainer in *Options → Embed in the file*,
+then measured.
+**Owner:** Implementer
+**Priority:** Medium — it is visible on every check box in the application, on the surface Phase 4
+added, and `T-212`'s sitting will meet it on several rows
+**Phase:** Phase 4
+**Depends on:** nothing
+**Relevant context:** `T202-R1`; `ui/theme.py`'s `BORDERED_CONTROLS`, `STATE_RULES` and the
+`*:focus` rule; `tests/ui/test_colour_is_never_alone.py`
+**Affected surfaces:** `src/tracks_and_trails/ui/theme.py`, and a test that closes the class
+**Risk:** Low to fix, and the fix must not remove the ring — see below
+**Required checks:** `ruff check .` · `ruff format --check .` · `mypy src tests` ·
+`pytest tests/ui` · the affected rows re-run by eye in both themes
+
+#### What was observed, and what it measures as
+
+The maintainer reported the *Embed in the file* group looking clipped on its left edge, and the
+label text moving when a box is toggled. Measured on the real style sheet, light theme:
+
+| state | text `x` | indicator `x` |
+|---|---|---|
+| unfocused | 19 | 0 |
+| focused | **21** | **1** |
+
+**Checked and unchecked are identical**; only focus moves anything. Clicking a box both focuses
+and toggles it, which is why it reads as the toggle doing it.
+
+#### The cause
+
+`*:focus` gives a **2px border** to any control that has none of its own. That is deliberate:
+`STATE_RULES` records the ring as the *non-colour* channel for focus, so it survives a greyscale
+or monochrome reading. Every other such control compensates the border with padding:
+
+```
+QPushButton:focus                    { padding: 3px 9px; }
+QComboBox:focus, QLineEdit:focus     { padding: 2px 5px; }
+QListView:focus, QTableView:focus, … { padding: 0px; }
+```
+
+**`theme.py` contains no `QCheckBox` rule at all.** The ring is therefore added to a widget whose
+layout reserved no room for it: content shifts 2px right, and the ring draws at `x=0..1` where the
+indicator already sits flush to the group box's content margin, which is the clipped left edge.
+
+**This is the shape `BorderedControl`'s own docstring exists to prevent**, recurring one list over.
+That inventory was built because an earlier correction "thickened the border on `QPushButton`,
+`QComboBox` and `QLineEdit` — the three controls the finding named — and left every other bordered
+control" behind. The **padding-compensation list is a separate, hand-maintained list with no such
+guard**, and it has the same gap.
+
+#### Acceptance criteria
+
+- A focused check box draws its ring **without moving its indicator or its text**, and without the
+  ring being clipped by the container's margin. Measured, not eyeballed: the `x` of both
+  sub-element rects is equal focused and unfocused.
+- **The ring still appears.** Deleting it would satisfy the symptom and break the rule it serves;
+  `T-304` is where whether it appears *on a mouse click* is decided, and this task must not
+  pre-empt that.
+- Radio buttons and any other borderless focusable control are checked for the same gap rather
+  than assumed clear.
+- **A test closes the class, not the instance.** Every control receiving the `*:focus` border has
+  a compensating rule, derived from one list rather than two — a padding list that can drift from
+  the border list is how this arrived.
+
+#### Out of scope
+
+- Changing when focus rings are drawn at all — that is `T-304`.
+- The group box's own margins, unless the measurement shows them to be the cause rather than the
+  missing compensation.
+
+### T-304 — Should a focus ring appear when the control was clicked?
+
+**Status:** Proposed — **the ruling is the maintainer's**; this entry records the question, the
+options and what each costs. Nothing here is decided.
+**Owner:** Maintainer to rule; Implementer to build
+**Priority:** Low — it is a comfort question, not a defect. Raised 2026-09-09: *"I don't
+necessarily think that mode should be enabled by default — if you are clicking around with a
+mouse all of the highlighted boxes are distracting."*
+**Phase:** Phase 4 (accessibility and polish)
+**Depends on:** `T-303` should land first, so the ring is correct before its trigger is argued
+**Relevant context:** `T202-R1`; `STATE_RULES` in `ui/theme.py`;
+`tests/ui/test_colour_is_never_alone.py`; `NFR-005`
+**Affected surfaces:** `ui/theme.py`, the application's input handling, and the accessibility tests
+**Risk:** Medium — it changes a rule that currently has a test and a recorded rationale
+
+#### The question
+
+Qt shows the focus ring wherever focus lands, including a mouse click, because `QCheckBox` and
+friends take `StrongFocus`. The web solved this with `:focus-visible`: ring for keyboard, none for
+pointer. **Qt has no native equivalent**, so it would be built — track the last input device and
+carry it as a dynamic property the style sheet selects on.
+
+#### What makes it a decision rather than a tweak
+
+The ring is not decoration here. `STATE_RULES` records it as the **geometry** channel for focus,
+adopted so that focus reads without colour — *"ink against background, which needs no colour to
+read"* — and `tests/ui/test_colour_is_never_alone.py` enforces that every state has a non-colour
+channel. **No numbered decision governs it**: its authority is review finding `T202-R1` and the
+test. So a ruling here would be the first time this is written down as a decision rather than as
+code.
+
+#### Options
+
+1. **Leave it.** Every focus is drawn. Costs nothing, and the maintainer finds it distracting.
+2. **Keyboard-only ring (`:focus-visible`).** Mouse focus draws no ring; keyboard focus does.
+   Standard on the web and in modern toolkits. **It does not weaken the keyboard case**, which is
+   what `NFR-005` and the accessibility pass are about. It does mean a control can hold focus with
+   nothing showing it, which matters to a mouse user who then reaches for the keyboard — the
+   handover is the case to check, not the steady state.
+3. **Keep the ring, reduce it** — thinner, or a lower-contrast hue — for every focus. Keeps one
+   code path and one rule; likely fails the contrast floor that made it 2px.
+
+**Recommendation: (2), after `T-303`.** It is what the maintainer asked for, it leaves the
+keyboard route untouched, and the objection it must answer — focus invisible until the user
+reaches for the keyboard — is testable rather than theoretical.
+
+#### Acceptance criteria
+
+- Whatever is ruled is **recorded as a decision with the maintainer's authority**, since the
+  current rule's authority is a review finding and this would supersede it in one direction.
+- If (2): pressing a key after clicking reveals the ring on the already-focused control, and that
+  handover is asserted by a test rather than described.
+- `tests/ui/test_colour_is_never_alone.py` still passes, or is amended deliberately with the
+  ruling cited — not adjusted to fit.
+
 ### T-212 — The recorded checklist run: the built window against the agreed flow
 
 Historical evidence relocated 2026-09-08:
