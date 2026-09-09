@@ -53,6 +53,30 @@ def rules(message: str) -> list[str]:
     return [fault.rule for fault in check.check_message(message)]
 
 
+#: The trailer names `AUTHOR_TRAILER` recognizes. Spelled here because the regex is one pattern and
+#: a test that reused it would assert the implementation against itself.
+TRAILER_KEYS: Final = ("Co-Authored-By", "Co-authored-by", "Signed-off-by")
+
+
+def ai_trailer(marker: str | None = None, key: str = TRAILER_KEYS[0]) -> str:
+    """One forbidden trailer, **assembled from the rule's own marker list rather than written out**.
+
+    Every version of this file before 2026-09-08 spelled the real lines — a named vendor, its real
+    address, in the exact shape `AGENTS.md` §7 forbids. That put the forbidden line into the
+    repository, where anyone grepping to check the rule was kept found the test suite breaking it,
+    and it duplicated a list that lives in `commit_message_check.py`.
+
+    Building the value instead does three things: no such line appears in this file, the string the
+    checker sees is identical to what tooling appends, and the cases follow `AI_AUTHOR_MARKERS`
+    rather than a copy of it that can drift.
+
+    **The vendor names themselves are not removable, and are not what was removed.**
+    `AI_AUTHOR_MARKERS` *is* the rule — a gate that cannot name what it rejects does not work — so
+    the names stay there, one word each, rather than as trailers that read as real attribution.
+    """
+    return f"{key}: {(marker or check.AI_AUTHOR_MARKERS[0]).title()} <bot@example.invalid>"
+
+
 def test_a_conforming_message_passes() -> None:
     """The baseline, without which every assertion below could pass by rejecting everything."""
     assert check.check_message(GOOD) == []
@@ -61,31 +85,26 @@ def test_a_conforming_message_passes() -> None:
 # --- §7: no AI tool named as an author ---------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "trailer",
-    [
-        "Co-Authored-By: Claude <noreply@anthropic.com>",
-        "Co-authored-by: Claude Opus 5 <noreply@anthropic.com>",
-        "Co-Authored-By: GitHub Copilot <copilot@github.com>",
-        "Co-Authored-By: Cursor Agent <agent@cursor.sh>",
-        "Signed-off-by: OpenAI Codex <codex@openai.com>",
-    ],
-)
-def test_an_ai_authorship_trailer_is_rejected(trailer: str) -> None:
-    """`fb41895`'s defect, and `12dff92`'s before it.
+@pytest.mark.parametrize("key", TRAILER_KEYS)
+@pytest.mark.parametrize("marker", check.AI_AUTHOR_MARKERS)
+def test_an_ai_authorship_trailer_is_rejected(key: str, marker: str) -> None:
+    """`fb41895`'s defect, and `12dff92`'s before it — the trailer the tooling appends by default.
 
-    The first of these is the exact line both commits carried, and the one the tooling appends
-    unless it is stopped.
+    **Every marker, not five hand-picked ones.** The previous version listed five real trailers as
+    literals; deriving them from `AI_AUTHOR_MARKERS` covers the whole list, and a marker added to
+    the rule without a test arrives already tested rather than silently uncovered.
+
+    See `ai_trailer` for why no such line is spelled out in this file.
     """
-    assert "§7" in rules(GOOD.replace("Task: T-027", f"{trailer}\nTask: T-027"))
+    assert "§7" in rules(GOOD.replace("Task: T-027", f"{ai_trailer(marker, key)}\nTask: T-027"))
 
 
 @pytest.mark.parametrize(
     "footer",
     [
-        "🤖 Generated with Claude Code",
+        "🤖 Generated with an AI coding tool",
         "Generated with an AI assistant",
-        "Co-authored with GPT-5",
+        "Co-authored with a language model",
     ],
 )
 def test_a_generated_with_footer_is_rejected(footer: str) -> None:
@@ -122,7 +141,7 @@ def test_a_trailer_quoted_inside_a_bullet_is_not_a_trailer() -> None:
     """
     message = GOOD.replace(
         "- Reject bools",
-        "- Reject a Co-Authored-By: Claude <noreply@anthropic.com> line\n- Reject bools",
+        f"- Reject a {ai_trailer()} line\n- Reject bools",
     )
     assert check.check_message(message) == []
 
@@ -186,7 +205,7 @@ def test_comment_lines_are_ignored() -> None:
 
     A hook that read them would see the template's own example trailers and pass every message.
     """
-    message = "Do a thing\n\n# Task: T-999\n# Co-Authored-By: Claude <noreply@anthropic.com>\n"
+    message = f"Do a thing\n\n# Task: T-999\n# {ai_trailer()}\n"
     assert rules(message) == ["§13"]
 
 
@@ -199,11 +218,11 @@ def test_a_fault_names_the_offending_line() -> None:
     A gate that says only *"this message is wrong"* sends the author back to read the whole of
     §13, and the two rules it actually enforces are a small part of it.
     """
-    trailer = "Co-Authored-By: Claude <noreply@anthropic.com>"
+    trailer = ai_trailer()
     faults = check.check_message(GOOD.replace("Task: T-027", f"{trailer}\nTask: T-027"))
     assert len(faults) == 1
     assert trailer in str(faults[0])
-    assert "claude" in str(faults[0])
+    assert check.AI_AUTHOR_MARKERS[0] in str(faults[0]).lower()
 
 
 # --- the range half, over real repositories (T240-R1) ------------------------------------------
@@ -214,7 +233,7 @@ GOOD_MESSAGE: Final = (
 )
 BAD_TRAILER: Final = (
     "Do a thing badly\n\nWith a trailer the tooling appends by default.\n\n"
-    "Co-Authored-By: Claude <noreply@anthropic.com>\nTask: T-240\n"
+    f"{ai_trailer()}\nTask: T-240\n"
 )
 
 
