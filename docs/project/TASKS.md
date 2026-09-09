@@ -1078,10 +1078,26 @@ A hosted runner's VM is destroyed after every job, so a scan there finds nothing
 Putting a self-hosted Linux runner back would undo the exposure reduction the maintainer chose the
 same day.
 
+#### First measurement, 2026-09-09 — not from clean suite runs on this machine
+
+`tools/t302_orphan_accumulation_sampler.sh` ran nine rounds on `Spock` over two hours: a full
+`tests/integration` + `tests/ui` pass each round, then two scans, at age 0 and again 90 seconds
+later. **Nine suite exits of `0`, nineteen scans, no orphan reported**, with the known positive
+passing first so that zero can be read. Rounds 5 to 9 ran alongside a live application session,
+which the record treats as a property of the evidence rather than noise.
+
+[The record](evidence/2026-09-09-T302-orphan-accumulation-sampling.md) states its own limits: a
+run that exits cleanly is not the route that orphaned `T-268`'s specimens, two hours is not a
+distribution, and the scanner only sees a process whose parent died. **So the first criterion is
+answered by elimination rather than satisfied**, and the remaining candidate is a session that
+ends badly — the shape `2026-08-27-T212-ytdlp-update-double-free.md` recorded.
+
 #### Acceptance criteria
 
 - Establish **where orphans actually accumulate now** that Linux CI is ephemeral. The working
-  assumption is a developer's own machine, and it is an assumption until measured.
+  assumption was a developer's own machine; the 2026-09-09 sampling rules out clean suite runs on
+  one, and the next measurement belongs on a session that ends badly rather than on more rounds of
+  the same.
 - Propose a detector that runs there — a pre-push hook, a periodic local run, or a documented
   manual step — and say plainly what it does **not** cover.
 - **Prove it sees a known positive before any clean result is reported.** A blind scan prints the
