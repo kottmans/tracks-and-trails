@@ -1002,6 +1002,98 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 ## Proposed — Phase 4
 
+### T-301 — Four UI tests break when the application font grows by one point
+
+**Status:** Proposed — found on 2026-09-08 while repairing the two that `ubuntu-latest` broke.
+**Owner:** Implementer
+**Priority:** Low — contained test debt with no user-facing evidence behind it. It is recorded so
+the measurement is not lost, not because it blocks anything.
+**Phase:** Phase 4 (test infrastructure; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `OPS-012`'s 2026-09-08 amendment, `tools/bigger_font_plugin.py`,
+`tools/dialog_width_floor_probe.py`
+**Affected surfaces:** `tests/ui/test_row_verb_wiring.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Low
+**Required checks:** `ruff check .` · `ruff format --check .` · `pytest tests/ui` at the default
+font **and** under `tools/bigger_font_plugin.py`
+
+#### Scope
+
+Four tests fail at one point larger than the default font:
+
+```
+tests/ui/test_row_verb_wiring.py::test_the_drawn_verbs_are_where_the_click_is_tested
+tests/ui/test_row_verb_wiring.py::test_the_overflow_keeps_its_place_as_the_state_changes
+tests/ui/test_row_verb_wiring.py::test_the_verbs_leave_the_message_its_width
+tests/ui/test_add_dialog.py::test_the_menu_key_reaches_the_current_rows_menu
+```
+
+Three are one cluster — where verbs and the overflow land as a row narrows — and probably share a
+cause. Reproduce with `PYTHONPATH=tools python -m pytest -q -p bigger_font_plugin tests/ui`.
+
+#### Acceptance criteria
+
+- For each, establish **product or test** by measurement, the way
+  `tools/dialog_width_floor_probe.py` established the add-dialog floor. A pixel that moved is not
+  by itself a defect, and an assertion that was only ever true at one font is not by itself sound.
+- Repair whichever is wrong. **Do not loosen an assertion to reach green** — the two repaired on
+  2026-09-08 were re-expressed as the property each was actually protecting.
+- Record what a larger font does to verb placement, whichever way it goes.
+
+#### Out of scope
+
+- **Wiring the font lever into CI.** Gating on a standard nobody has established the product meets
+  would leave the board red for a known reason, which is what removed the `STARBASE orphans` job.
+- The other UI tests. **A 45-failure figure recorded earlier that day was wrong** — the lever that
+  produced it did not restore the font between tests, so it compounded a point per test. At a true
+  one point the count is four, and every accessibility-sounding test named in that figure passes.
+
+<a id="t-302"></a>
+
+### T-302 — Nothing detects orphaned workers automatically on either platform
+
+**Status:** Proposed — the gap opened 2026-09-08 and is recorded rather than accepted silently.
+**Owner:** Implementer, with the maintainer for where a scan is allowed to run
+**Priority:** Medium — process lifecycle and orphaned workers are the first item in
+`TESTING.md` §14's standing risk focus, and there is now no automatic signal for either.
+**Phase:** Phase 4 (operations; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `OPS-012` as amended 2026-09-08, `OPS-010`, `docs/RUNNER_ORPHANS.md`,
+`tools/orphan_scan.py`, `T-268`, `T-272`
+**Affected surfaces:** `tools/orphan_scan.py`, possibly a local hook or schedule; **not**
+`.github/workflows/` unless the maintainer rules otherwise
+**Risk:** Medium — a detector that runs where orphans do not accumulate is worse than none,
+because it reports a clean zero
+**Required checks:** whatever the design needs; a **known positive** before any clean result is
+trusted (`2026-08-29-orphan-scan-known-positive-soak.md` is the precedent)
+
+#### Scope
+
+`STARBASE orphans` was removed 2026-09-03 because it found `T-268`'s seven preserved specimens
+every night and correctly failed, leaving the board permanently red. `Linux orphans` stopped on
+2026-09-08 when `LINUX_RUNNER` was deleted and `kirk` and `Spock` were unregistered.
+
+**Restoring either is not the answer, and this task exists because the obvious fix is unavailable.**
+A hosted runner's VM is destroyed after every job, so a scan there finds nothing by construction.
+Putting a self-hosted Linux runner back would undo the exposure reduction the maintainer chose the
+same day.
+
+#### Acceptance criteria
+
+- Establish **where orphans actually accumulate now** that Linux CI is ephemeral. The working
+  assumption is a developer's own machine, and it is an assumption until measured.
+- Propose a detector that runs there — a pre-push hook, a periodic local run, or a documented
+  manual step — and say plainly what it does **not** cover.
+- **Prove it sees a known positive before any clean result is reported.** A blind scan prints the
+  zero the author wanted.
+- Do not reintroduce a nightly job that fails on known specimens; that is the shape `2026-09-03`
+  removed.
+
+#### Out of scope
+
+- Reversing the runner move.
+- `T-268`'s seven preserved specimens, which remain its own.
+
 ### T-212 — The recorded checklist run: the built window against the agreed flow
 
 Historical evidence relocated 2026-09-08:

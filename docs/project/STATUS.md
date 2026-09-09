@@ -37,6 +37,14 @@ owns phase deliverables and exit criteria.
 - T-238 remains Ready with an unreproduced crash condition and incomplete product
   evidence. Existing blocked/platform work remains in the [task queue](TASKS.md).
 
+- **No automatic orphan detection runs on either platform**, since 2026-09-08. `STARBASE orphans`
+  was removed 2026-09-03; `Linux orphans` stopped when Linux CI moved to hosted runners, whose
+  VMs do not outlive a run. `T-302` owns designing detection that survives that;
+  `tools/orphan_scan.py` runs by hand meanwhile. Process lifecycle is the first item in
+  TESTING §14's standing risk focus, so this is recorded as an open gap rather than a tidy-up.
+- **Four UI tests fail one point above the default font** (`T-301`), found while repairing the two
+  that `ubuntu-latest` broke. Contained test debt; reproduce with `tools/bigger_font_plugin.py`.
+
 ## Verification
 
 After the shared-source/formatting follow-up, the Linux full suite passed with

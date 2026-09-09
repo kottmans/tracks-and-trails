@@ -362,9 +362,16 @@ orphan behind it. **The cost is that there is no automatic detection on the mach
 accumulate**; `docs/RUNNER_ORPHANS.md` is what to read if the condition recurs, and
 `tools/orphan_scan.py` still runs by hand. **`Linux orphans` no longer runs either**, since
 2026-09-08: it is enabled by `vars.LINUX_RUNNER != ''` and that variable was deleted when Linux
-moved to hosted runners. That follows rather than costs — it scans a persistent machine for
-processes a run left behind, and a hosted runner's VM does not outlive its run. Re-adding the
-variable restores the job with it.
+moved to hosted runners.
+
+**So there is now no automatic orphan detection on either platform, and that is a structural
+consequence rather than an oversight.** The job scans a persistent machine for worker processes a
+run left behind; a hosted runner's VM does not outlive its run, so on hosted CI there is nothing
+for it to find. Restoring it is not a matter of re-adding the variable — `kirk` and `Spock` were
+unregistered the same day, so it would need both of them back and the runner move reversed with
+them. **`T-302` owns designing detection that survives this**, because the orphans that matter
+accumulate on a developer's machine rather than on a runner, and process lifecycle is the first
+item in §14's standing risk focus.
 `tests/unit/test_orphan_scan.py::test_the_windows_scan_stays_removed` asserts the absence, so
 putting it back is a decision rather than a tidy-up.
 
