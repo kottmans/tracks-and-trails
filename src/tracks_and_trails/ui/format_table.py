@@ -201,7 +201,30 @@ def describe_size(entry: FormatInfo) -> str:
     return rendered
 
 
-def describe_codec(codec: str | None) -> str:
+#: What a cell says when yt-dlp denied the stream outright, as against never mentioning it.
+ABSENT_TEXT: Final = "None"
+
+
+def describe_codec(codec: str | None, present: bool | None = None) -> str:
+    """The codec, or **why there isn't one** — which is two different answers (`T-305`).
+
+    `FormatInfo` carries `has_video` and `has_audio` as separate tri-state flags rather than one
+    kind, because `T107-R1` cost exactly this distinction: a format whose video codec was merely
+    unknown was reported as having no video at all. `present` is that flag, and the three cases
+    are kept apart here rather than collapsed back into one word:
+
+    - `False` — yt-dlp said `'none'`. There is no such stream, and `UNKNOWN_TEXT` would be a
+      claim of ignorance about something it stated. Every row under *merge a separate video and
+      audio stream* is this case for audio, which is what made the table read as mostly unknown.
+    - `None` — yt-dlp was silent. `UNKNOWN_TEXT`, and correctly so: media.ccc.de omits `acodec`
+      for recordings that certainly have sound.
+    - `True`, or the caller not saying — the codec if it is named, `UNKNOWN_TEXT` if it is not.
+
+    The module's rule that a missing field never renders as an empty cell is unchanged. This says
+    which of three things is missing, not that nothing is.
+    """
+    if present is False:
+        return ABSENT_TEXT
     return codec if codec else UNKNOWN_TEXT
 
 
@@ -290,15 +313,19 @@ class FormatTableModel(QAbstractTableModel):
         if column == FPS_COLUMN:
             return describe_fps(entry.fps)
         if column == VIDEO_CODEC_COLUMN:
-            return describe_codec(entry.video_codec)
+            return describe_codec(entry.video_codec, entry.has_video)
         if column == AUDIO_CODEC_COLUMN:
-            return describe_codec(entry.audio_codec)
+            return describe_codec(entry.audio_codec, entry.has_audio)
         if column == BITRATE_COLUMN:
             return describe_bitrate(entry.bitrate_kbps)
         if column == SIZE_COLUMN:
             return describe_size(entry)
         if column == NOTES_COLUMN:
-            return entry.note or UNKNOWN_TEXT
+            # **A note nobody wrote is not a fact nobody knows** (`T-305`). yt-dlp's `format_note`
+            # is free prose it supplies when it has something to add; its absence says there was
+            # nothing to add, and claiming ignorance of it made a third of this table read as
+            # unknown when only the size column ever was.
+            return entry.note or ABSENT_TEXT
         return UNKNOWN_TEXT
 
     def _sort_value(self, entry: FormatInfo, column: int) -> tuple[float, str]:

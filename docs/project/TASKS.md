@@ -14,7 +14,182 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-305 — The table says *Unknown* where it means *none*, and where it means *nothing to say*
+
+**Status:** In Review — built 2026-09-09, awaiting independent review. Both codec cells and
+the notes cell now distinguish *absent* from *unknown*; `describe_codec` takes the stream flag,
+and `ABSENT_TEXT` is the word for a stream yt-dlp denied. Mutating either half back kills the new
+tests.
+**Owner:** Implementer
+**Priority:** Medium — it is most of the "lots of unknowns" complaint, and the data to fix it is
+already in the model
+**Phase:** Phase 4
+**Depends on:** nothing
+**Relevant context:** `T107-R1`; `FormatInfo.is_video_only` / `is_audio_only` and the two-flag
+design at `core/models.py:653–731`; `format_table.describe_codec`; `REQ-003`
+**Affected surfaces:** `src/tracks_and_trails/ui/format_table.py`
+**Risk:** Low
+**Required checks:** `ruff check .` · `ruff format --check .` · `mypy src tests` ·
+`pytest tests/ui/test_format_table.py` · the table read by eye against a real probe
+
+#### What is wrong
+
+`UNKNOWN_TEXT` is doing three different jobs, and the model already tells them apart:
+
+| Cell | Rendered | What is true |
+|---|---|---|
+| **Audio codec**, on a video-only row | `Unknown` | There is **no audio stream**. `entry.is_video_only` is `True` |
+| **Notes**, with no note | `Unknown` | There is **nothing to say**, which is not the same as not knowing |
+| **Size**, absent | `Unknown` | Genuinely unknown — **this one is correct** |
+
+Every row in the maintainer's screenshot sits under *"Merge a separate video and audio stream"* —
+they are video-only by construction — and every one of them reports its audio codec as `Unknown`.
+
+**The model was widened specifically so this could be said correctly.** `T107-R1` is the finding:
+the table once rendered *audio only* for a format whose video codec was merely unknown, because a
+collapsed field could not distinguish *"there is none"* from *"we do not know"*. `FormatInfo`
+carries **two flags** rather than one enum for exactly that reason, and `is_video_only` is written
+`is not False` so an unknown stays unknown. `describe_codec(entry.audio_codec)` then flattens it
+back to `UNKNOWN_TEXT`, which is the same conflation one layer up.
+
+#### Acceptance criteria
+
+- A video-only row says its audio is **absent**, not unknown; an audio-only row says the same of
+  its video. A row where the flag is genuinely `None` still says `Unknown`, and a test covers all
+  three cases rather than the easy two.
+- A row with no note does not claim the note is unknown.
+- **`Size` keeps saying `Unknown`** where it is unknown. The rule the module opens with — a missing
+  field never renders as an empty cell — is not being repealed; it is being told which of three
+  situations it is in.
+- The projection keeps sorting correctly: `SORT_ROLE` is over the underlying value, and a display
+  change must not move sorting into the display string (`T-075`).
+
+#### Out of scope
+
+- The table's legibility and selection, which is `T-306`.
+- Widening `FormatInfo`. The distinction this needs is already there.
+
 ## Ready
+
+### T-304 — Should a focus ring appear when the control was clicked?
+
+**Status:** Ready — **ruled by the maintainer on 2026-09-09: option (2), the keyboard-only
+ring.** The options and their costs are kept below as the reasoning the ruling was made on. The
+decision entry recording it is part of this task, since the rule it supersedes has a review
+finding and a test for authority and no numbered decision.
+**Owner:** Maintainer to rule; Implementer to build
+**Priority:** Low — it is a comfort question, not a defect. Raised 2026-09-09: *"I don't
+necessarily think that mode should be enabled by default — if you are clicking around with a
+mouse all of the highlighted boxes are distracting."*
+**Phase:** Phase 4 (accessibility and polish)
+**Depends on:** `T-303` should land first, so the ring is correct before its trigger is argued
+**Relevant context:** `T202-R1`; `STATE_RULES` in `ui/theme.py`;
+`tests/ui/test_colour_is_never_alone.py`; `NFR-005`
+**Affected surfaces:** `ui/theme.py`, the application's input handling, and the accessibility tests
+**Risk:** Medium — it changes a rule that currently has a test and a recorded rationale
+
+#### The question
+
+Qt shows the focus ring wherever focus lands, including a mouse click, because `QCheckBox` and
+friends take `StrongFocus`. The web solved this with `:focus-visible`: ring for keyboard, none for
+pointer. **Qt has no native equivalent**, so it would be built — track the last input device and
+carry it as a dynamic property the style sheet selects on.
+
+#### What makes it a decision rather than a tweak
+
+The ring is not decoration here. `STATE_RULES` records it as the **geometry** channel for focus,
+adopted so that focus reads without colour — *"ink against background, which needs no colour to
+read"* — and `tests/ui/test_colour_is_never_alone.py` enforces that every state has a non-colour
+channel. **No numbered decision governs it**: its authority is review finding `T202-R1` and the
+test. So a ruling here would be the first time this is written down as a decision rather than as
+code.
+
+#### Options
+
+1. **Leave it.** Every focus is drawn. Costs nothing, and the maintainer finds it distracting.
+2. **Keyboard-only ring (`:focus-visible`).** Mouse focus draws no ring; keyboard focus does.
+   Standard on the web and in modern toolkits. **It does not weaken the keyboard case**, which is
+   what `NFR-005` and the accessibility pass are about. It does mean a control can hold focus with
+   nothing showing it, which matters to a mouse user who then reaches for the keyboard — the
+   handover is the case to check, not the steady state.
+3. **Keep the ring, reduce it** — thinner, or a lower-contrast hue — for every focus. Keeps one
+   code path and one rule; likely fails the contrast floor that made it 2px.
+
+**Recommendation: (2), after `T-303`.** It is what the maintainer asked for, it leaves the
+keyboard route untouched, and the objection it must answer — focus invisible until the user
+reaches for the keyboard — is testable rather than theoretical.
+
+#### Acceptance criteria
+
+- Whatever is ruled is **recorded as a decision with the maintainer's authority**, since the
+  current rule's authority is a review finding and this would supersede it in one direction.
+- If (2): pressing a key after clicking reveals the ring on the already-focused control, and that
+  handover is asserted by a test rather than described.
+- `tests/ui/test_colour_is_never_alone.py` still passes, or is amended deliberately with the
+  ruling cited — not adjusted to fit.
+
+### T-306 — The format table is hard to read and hard to choose from
+
+**Status:** Ready — **ruled by the maintainer on 2026-09-09: legibility only.** Translate the
+codec strings, mark what is chosen, demote the ID column; **the fourth option — a recommended row
+— is declined**, as it makes the surface advisory and duplicates presets. Still gated on `T-305`
+landing first. Raised 2026-09-09 from a real session: *"it's just not very user friendly. There isn't an easy way to see what you are picking,
+and most people won't know the number codes."*
+**Owner:** Maintainer to rule; Implementer to build
+**Priority:** Medium — `REQ-008` makes this the surface where a user picks streams by hand, and
+`T-212`'s sitting will meet it
+**Phase:** Phase 4
+**Depends on:** `T-305` should land first — a table with three honest blanks reads very differently
+from one with `Unknown` in every third cell, and the remaining complaint should be measured against
+the fixed version rather than the current one
+**Relevant context:** `REQ-003`, `REQ-008`; `docs/UX_SPEC.md` §4 and its `P-1`/`P-14` rulings;
+`UX-007`
+**Affected surfaces:** `ui/format_table.py`, `docs/UX_SPEC.md` §4, and a decision entry
+**Risk:** Medium — it reopens a specified surface
+
+#### What bounds this before anything is designed
+
+**`REQ-003` names the columns**, format ID included: *"a sortable table (format ID, extension,
+resolution, fps, codecs, bitrate, filesize/estimate, notes)"*. So the number codes cannot simply be
+removed — the requirement asks for them, and `REQ-008` is about selecting *by* them. The available
+move is to stop them being the first thing the eye lands on, not to delete them.
+
+`P-14` already refuses filtering the table, and `P-1` fixed it as an expanding row rather than a
+modal. Neither is reopened here unless the ruling says so.
+
+#### The complaint, separated
+
+1. **Nothing shows what you are picking.** The footer reads `Chosen — none yet`, at the bottom, in
+   ordinary weight. Two-stream selection is a two-step act with no running account of it.
+2. **The identifiers are machine identifiers.** `614`, `399`, `270` mean nothing without yt-dlp,
+   and the codec strings — `vp09.00.40.08`, `av01.0.08M.08`, `avc1.640028` — are worse, because
+   they *look* like they should be readable.
+3. **The rows are near-identical.** Five rows of `1920x1080 · 24` differing only in codec and
+   bitrate, with no indication of which one a person should want.
+
+#### Options, none of them ruled
+
+- **Translate the codec strings** — `avc1…` → `H.264`, `vp09…` → `VP9`, `av01…` → `AV1`, with the
+  raw string still available. Cheapest, and it addresses the half of complaint 2 that `REQ-003`
+  does not pin.
+- **Make the chosen row unmistakable** — the footer states both halves of a merge, and the chosen
+  rows are marked in the table itself rather than only summarised beneath it.
+- **De-emphasise the ID column** without removing it — narrower, secondary weight, no longer the
+  leftmost thing read.
+- **Recommend a row.** The largest change: the table would express an opinion, which no part of
+  this surface currently does, and it overlaps what presets already exist to do.
+
+**Recommendation: the first three, in that order, and not the fourth without a separate ruling.**
+The first three make the table legible; the fourth makes it advisory, which is a different product
+decision and duplicates presets.
+
+#### Acceptance criteria
+
+- Whatever is ruled is recorded against `docs/UX_SPEC.md` §4 with the maintainer's authority, since
+  §4 is the specification this changes.
+- `REQ-003`'s columns all remain reachable, and `REQ-008`'s by-ID selection still works by ID.
+- The *"Chosen"* summary is checked at the sizes `T-212` row 6 uses; the maintainer's screenshot
+  shows it at the bottom edge and whether it clips is unestablished.
 
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 
@@ -1180,174 +1355,6 @@ guard**, and it has the same gap.
 - Changing when focus rings are drawn at all — that is `T-304`.
 - The group box's own margins, unless the measurement shows them to be the cause rather than the
   missing compensation.
-
-### T-304 — Should a focus ring appear when the control was clicked?
-
-**Status:** Proposed — **the ruling is the maintainer's**; this entry records the question, the
-options and what each costs. Nothing here is decided.
-**Owner:** Maintainer to rule; Implementer to build
-**Priority:** Low — it is a comfort question, not a defect. Raised 2026-09-09: *"I don't
-necessarily think that mode should be enabled by default — if you are clicking around with a
-mouse all of the highlighted boxes are distracting."*
-**Phase:** Phase 4 (accessibility and polish)
-**Depends on:** `T-303` should land first, so the ring is correct before its trigger is argued
-**Relevant context:** `T202-R1`; `STATE_RULES` in `ui/theme.py`;
-`tests/ui/test_colour_is_never_alone.py`; `NFR-005`
-**Affected surfaces:** `ui/theme.py`, the application's input handling, and the accessibility tests
-**Risk:** Medium — it changes a rule that currently has a test and a recorded rationale
-
-#### The question
-
-Qt shows the focus ring wherever focus lands, including a mouse click, because `QCheckBox` and
-friends take `StrongFocus`. The web solved this with `:focus-visible`: ring for keyboard, none for
-pointer. **Qt has no native equivalent**, so it would be built — track the last input device and
-carry it as a dynamic property the style sheet selects on.
-
-#### What makes it a decision rather than a tweak
-
-The ring is not decoration here. `STATE_RULES` records it as the **geometry** channel for focus,
-adopted so that focus reads without colour — *"ink against background, which needs no colour to
-read"* — and `tests/ui/test_colour_is_never_alone.py` enforces that every state has a non-colour
-channel. **No numbered decision governs it**: its authority is review finding `T202-R1` and the
-test. So a ruling here would be the first time this is written down as a decision rather than as
-code.
-
-#### Options
-
-1. **Leave it.** Every focus is drawn. Costs nothing, and the maintainer finds it distracting.
-2. **Keyboard-only ring (`:focus-visible`).** Mouse focus draws no ring; keyboard focus does.
-   Standard on the web and in modern toolkits. **It does not weaken the keyboard case**, which is
-   what `NFR-005` and the accessibility pass are about. It does mean a control can hold focus with
-   nothing showing it, which matters to a mouse user who then reaches for the keyboard — the
-   handover is the case to check, not the steady state.
-3. **Keep the ring, reduce it** — thinner, or a lower-contrast hue — for every focus. Keeps one
-   code path and one rule; likely fails the contrast floor that made it 2px.
-
-**Recommendation: (2), after `T-303`.** It is what the maintainer asked for, it leaves the
-keyboard route untouched, and the objection it must answer — focus invisible until the user
-reaches for the keyboard — is testable rather than theoretical.
-
-#### Acceptance criteria
-
-- Whatever is ruled is **recorded as a decision with the maintainer's authority**, since the
-  current rule's authority is a review finding and this would supersede it in one direction.
-- If (2): pressing a key after clicking reveals the ring on the already-focused control, and that
-  handover is asserted by a test rather than described.
-- `tests/ui/test_colour_is_never_alone.py` still passes, or is amended deliberately with the
-  ruling cited — not adjusted to fit.
-
-### T-305 — The table says *Unknown* where it means *none*, and where it means *nothing to say*
-
-**Status:** Proposed — observed 2026-09-09 by the maintainer on the format table.
-**Owner:** Implementer
-**Priority:** Medium — it is most of the "lots of unknowns" complaint, and the data to fix it is
-already in the model
-**Phase:** Phase 4
-**Depends on:** nothing
-**Relevant context:** `T107-R1`; `FormatInfo.is_video_only` / `is_audio_only` and the two-flag
-design at `core/models.py:653–731`; `format_table.describe_codec`; `REQ-003`
-**Affected surfaces:** `src/tracks_and_trails/ui/format_table.py`
-**Risk:** Low
-**Required checks:** `ruff check .` · `ruff format --check .` · `mypy src tests` ·
-`pytest tests/ui/test_format_table.py` · the table read by eye against a real probe
-
-#### What is wrong
-
-`UNKNOWN_TEXT` is doing three different jobs, and the model already tells them apart:
-
-| Cell | Rendered | What is true |
-|---|---|---|
-| **Audio codec**, on a video-only row | `Unknown` | There is **no audio stream**. `entry.is_video_only` is `True` |
-| **Notes**, with no note | `Unknown` | There is **nothing to say**, which is not the same as not knowing |
-| **Size**, absent | `Unknown` | Genuinely unknown — **this one is correct** |
-
-Every row in the maintainer's screenshot sits under *"Merge a separate video and audio stream"* —
-they are video-only by construction — and every one of them reports its audio codec as `Unknown`.
-
-**The model was widened specifically so this could be said correctly.** `T107-R1` is the finding:
-the table once rendered *audio only* for a format whose video codec was merely unknown, because a
-collapsed field could not distinguish *"there is none"* from *"we do not know"*. `FormatInfo`
-carries **two flags** rather than one enum for exactly that reason, and `is_video_only` is written
-`is not False` so an unknown stays unknown. `describe_codec(entry.audio_codec)` then flattens it
-back to `UNKNOWN_TEXT`, which is the same conflation one layer up.
-
-#### Acceptance criteria
-
-- A video-only row says its audio is **absent**, not unknown; an audio-only row says the same of
-  its video. A row where the flag is genuinely `None` still says `Unknown`, and a test covers all
-  three cases rather than the easy two.
-- A row with no note does not claim the note is unknown.
-- **`Size` keeps saying `Unknown`** where it is unknown. The rule the module opens with — a missing
-  field never renders as an empty cell — is not being repealed; it is being told which of three
-  situations it is in.
-- The projection keeps sorting correctly: `SORT_ROLE` is over the underlying value, and a display
-  change must not move sorting into the display string (`T-075`).
-
-#### Out of scope
-
-- The table's legibility and selection, which is `T-306`.
-- Widening `FormatInfo`. The distinction this needs is already there.
-
-### T-306 — The format table is hard to read and hard to choose from
-
-**Status:** Proposed — **the design ruling is the maintainer's.** Raised 2026-09-09 from a real
-session: *"it's just not very user friendly. There isn't an easy way to see what you are picking,
-and most people won't know the number codes."*
-**Owner:** Maintainer to rule; Implementer to build
-**Priority:** Medium — `REQ-008` makes this the surface where a user picks streams by hand, and
-`T-212`'s sitting will meet it
-**Phase:** Phase 4
-**Depends on:** `T-305` should land first — a table with three honest blanks reads very differently
-from one with `Unknown` in every third cell, and the remaining complaint should be measured against
-the fixed version rather than the current one
-**Relevant context:** `REQ-003`, `REQ-008`; `docs/UX_SPEC.md` §4 and its `P-1`/`P-14` rulings;
-`UX-007`
-**Affected surfaces:** `ui/format_table.py`, `docs/UX_SPEC.md` §4, and a decision entry
-**Risk:** Medium — it reopens a specified surface
-
-#### What bounds this before anything is designed
-
-**`REQ-003` names the columns**, format ID included: *"a sortable table (format ID, extension,
-resolution, fps, codecs, bitrate, filesize/estimate, notes)"*. So the number codes cannot simply be
-removed — the requirement asks for them, and `REQ-008` is about selecting *by* them. The available
-move is to stop them being the first thing the eye lands on, not to delete them.
-
-`P-14` already refuses filtering the table, and `P-1` fixed it as an expanding row rather than a
-modal. Neither is reopened here unless the ruling says so.
-
-#### The complaint, separated
-
-1. **Nothing shows what you are picking.** The footer reads `Chosen — none yet`, at the bottom, in
-   ordinary weight. Two-stream selection is a two-step act with no running account of it.
-2. **The identifiers are machine identifiers.** `614`, `399`, `270` mean nothing without yt-dlp,
-   and the codec strings — `vp09.00.40.08`, `av01.0.08M.08`, `avc1.640028` — are worse, because
-   they *look* like they should be readable.
-3. **The rows are near-identical.** Five rows of `1920x1080 · 24` differing only in codec and
-   bitrate, with no indication of which one a person should want.
-
-#### Options, none of them ruled
-
-- **Translate the codec strings** — `avc1…` → `H.264`, `vp09…` → `VP9`, `av01…` → `AV1`, with the
-  raw string still available. Cheapest, and it addresses the half of complaint 2 that `REQ-003`
-  does not pin.
-- **Make the chosen row unmistakable** — the footer states both halves of a merge, and the chosen
-  rows are marked in the table itself rather than only summarised beneath it.
-- **De-emphasise the ID column** without removing it — narrower, secondary weight, no longer the
-  leftmost thing read.
-- **Recommend a row.** The largest change: the table would express an opinion, which no part of
-  this surface currently does, and it overlaps what presets already exist to do.
-
-**Recommendation: the first three, in that order, and not the fourth without a separate ruling.**
-The first three make the table legible; the fourth makes it advisory, which is a different product
-decision and duplicates presets.
-
-#### Acceptance criteria
-
-- Whatever is ruled is recorded against `docs/UX_SPEC.md` §4 with the maintainer's authority, since
-  §4 is the specification this changes.
-- `REQ-003`'s columns all remain reachable, and `REQ-008`'s by-ID selection still works by ID.
-- The *"Chosen"* summary is checked at the sizes `T-212` row 6 uses; the maintainer's screenshot
-  shows it at the bottom edge and whether it clips is unestablished.
 
 ### T-212 — The recorded checklist run: the built window against the agreed flow
 

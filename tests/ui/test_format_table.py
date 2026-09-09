@@ -37,6 +37,7 @@ from tracks_and_trails.downloader import ytdlp_adapter as adapter
 from tracks_and_trails.ui import theme
 from tracks_and_trails.ui.format_selection import SelectionMode
 from tracks_and_trails.ui.format_table import (
+    ABSENT_TEXT,
     AUDIO_CODEC_COLUMN,
     BITRATE_COLUMN,
     COLUMN_COUNT,
@@ -282,9 +283,16 @@ def test_the_table_matches_what_yt_dlp_f_reports(fixture_name: str) -> None:
         for name, column in columns.items():
             if name not in printed:
                 # yt-dlp printed no such column for this source. The table has one for every
-                # `REQ-003` field always, and it must read the placeholder rather than invent a
+                # `REQ-003` field always, and it must read a placeholder rather than invent a
                 # value — which is the same agreement as any other, one step weaker.
-                assert display(model, row, column) == UNKNOWN_TEXT, (
+                #
+                # **Which placeholder depends on what the silence means** (`T-305`). yt-dlp omits
+                # `format_note` when a format has nothing noted, so no note column is the source
+                # saying there are none — `ABSENT_TEXT`. For every other column its silence is
+                # ignorance and `UNKNOWN_TEXT` is the honest word. This branch asserted the latter
+                # for all of them, which is the conflation `T-305` corrects.
+                expected_absence = ABSENT_TEXT if column == NOTES_COLUMN else UNKNOWN_TEXT
+                assert display(model, row, column) == expected_absence, (
                     f"yt-dlp printed no {name} column and the table claims "
                     f"{display(model, row, column)!r} for {id_}"
                 )
@@ -403,10 +411,15 @@ def test_fps_and_the_column_shapes_come_through_the_projection(
 def test_a_missing_field_reads_the_placeholder_never_an_empty_cell(
     derived: tuple[FormatInfo, ...],
 ) -> None:
-    """`docs/UX_SPEC.md` §4: `UNKNOWN_TEXT`, never blank and never `None`.
+    """`docs/UX_SPEC.md` §4: a word, never blank and never `None`.
 
     The `hls-480` row of the derived fixture has no fps, no bitrate, no size and no note — four
     absences in one row, which is what a real HLS manifest entry looks like.
+
+    **Three of those are ignorance and one is not** (`T-305`). fps, bitrate and size are values
+    yt-dlp did not report; a missing note is yt-dlp reporting that there is nothing to note. The
+    cell must still say something — that rule is unchanged — but saying *unknown* about a note
+    nobody wrote is a claim, and it is most of why this table read as mostly unknown.
     """
     model = FormatTableModel(derived)
     row = next(
@@ -414,12 +427,70 @@ def test_a_missing_field_reads_the_placeholder_never_an_empty_cell(
         for index in range(model.rowCount())
         if display(model, index, FORMAT_COLUMN) == "hls-480"
     )
-    for column in (FPS_COLUMN, BITRATE_COLUMN, SIZE_COLUMN, NOTES_COLUMN):
+    for column in (FPS_COLUMN, BITRATE_COLUMN, SIZE_COLUMN):
         assert display(model, row, column) == UNKNOWN_TEXT, (
             f"{COLUMN_HEADERS[column]} rendered {display(model, row, column)!r} for an absent value"
         )
+    assert display(model, row, NOTES_COLUMN) == ABSENT_TEXT, (
+        f"Notes rendered {display(model, row, NOTES_COLUMN)!r} for a format with nothing noted"
+    )
     for column in range(COLUMN_COUNT):
         assert display(model, row, column), f"{COLUMN_HEADERS[column]} rendered an empty cell"
+
+
+@pytest.mark.parametrize(
+    ("has_stream", "codec", "expected", "why"),
+    [
+        (False, None, ABSENT_TEXT, "yt-dlp said 'none': there is no such stream"),
+        (None, None, UNKNOWN_TEXT, "yt-dlp was silent: the stream may exist and be unnamed"),
+        (True, "opus", "opus", "yt-dlp named it"),
+        (True, None, UNKNOWN_TEXT, "the stream exists and yt-dlp did not name its codec"),
+    ],
+)
+def test_a_codec_cell_tells_absent_apart_from_unknown(
+    has_stream: bool | None, codec: str | None, expected: str, why: str
+) -> None:
+    """`T-305`: three states, not two, and the fourth is the one a two-way split gets wrong.
+
+    `FormatInfo` carries `has_video` and `has_audio` as tri-state flags rather than one kind
+    because `T107-R1` cost exactly this: a format whose video codec was merely unknown was
+    reported as having no video at all. Rendering `'none'` and silence with the same word puts
+    that conflation back one layer up, where it made every row of a merge pair claim its audio
+    codec was unknown.
+
+    **The `True, None` row is why this is parametrised.** A fix that only asked *"is the stream
+    absent?"* would pass the first three and still be wrong about a present stream with an unnamed
+    codec, which is the archive.org case the module already documents.
+    """
+    entry = FormatInfo(
+        format_id="probe",
+        extension="mp4",
+        audio_codec=codec,
+        has_audio=has_stream,
+        video_codec="avc1",
+        has_video=True,
+    )
+    model = FormatTableModel((entry,))
+    assert display(model, 0, AUDIO_CODEC_COLUMN) == expected, why
+
+
+def test_a_video_only_row_does_not_claim_its_missing_audio_is_unknown() -> None:
+    """The maintainer's 2026-09-09 observation, as it arrived: a whole table of them.
+
+    Every row under *merge a separate video and audio stream* is video-only, and every one of them
+    reported `Unknown` for a stream yt-dlp had explicitly denied.
+    """
+    entry = FormatInfo(
+        format_id="614",
+        extension="mp4",
+        video_codec="vp09.00.40.08",
+        has_video=True,
+        has_audio=False,
+    )
+    assert entry.is_video_only, "the fixture is not the case this test is about"
+    model = FormatTableModel((entry,))
+    assert display(model, 0, AUDIO_CODEC_COLUMN) == ABSENT_TEXT
+    assert display(model, 0, VIDEO_CODEC_COLUMN) == "vp09.00.40.08"
 
 
 def test_a_format_with_no_height_reads_unknown_rather_than_claiming_audio_only(
