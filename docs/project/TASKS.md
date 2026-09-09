@@ -16,8 +16,11 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ### T-300 — `AGENTS.md` is 628 lines and is loaded on every task
 
-**Status:** In Review — revision 2026-09-08.5 adopted; independent review pending.
-**Review record:** [Shared verification and continuing review](reviews/T-299.md#migrated-review-0381).
+**Status:** In Review — **approved at `5eecad9`** on 2026-09-08 by independent review; revision
+2026-09-08.5 adopted. Two Low findings, `T300-R1` and `T300-R2`, neither blocking; both ride this
+task's completion sync. It stays In Review until that sync is done.
+**Review record:** [T-300 independent review at `5eecad9`](reviews/T-299.md#t-300-independent-review-5eecad9),
+in the shared T-299/T-300 record. Earlier entries there describe superseded heads.
 **Owner:** Documentation Maintainer (Codex for this implementation, by direct request)
 **Priority:** Current maintainer request
 **Phase:** Phase 4 (documentation system; not a plan deliverable)
