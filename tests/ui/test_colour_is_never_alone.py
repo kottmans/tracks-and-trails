@@ -39,6 +39,7 @@ from PySide6.QtGui import QAccessible, QColor, QImage, QPainter, QPalette, QPen
 from PySide6.QtWidgets import (
     QAbstractScrollArea,
     QApplication,
+    QCheckBox,
     QComboBox,
     QGroupBox,
     QLineEdit,
@@ -47,6 +48,9 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QRadioButton,
+    QStyle,
+    QStyleOptionButton,
     QTableView,
     QTextEdit,
     QToolBar,
@@ -519,6 +523,8 @@ def build(selector: str, host: QWidget) -> QWidget:
 
 #: The plain one-class selectors, resolved to the class the sheet names.
 CLASSES: Final[dict[str, type[QWidget]]] = {
+    "QCheckBox": QCheckBox,
+    "QRadioButton": QRadioButton,
     "QPushButton": QPushButton,
     "QComboBox": QComboBox,
     "QLineEdit": QLineEdit,
@@ -700,6 +706,72 @@ def test_focus_is_visible_without_reading_its_colour(
         f"{control.selector!r} in {theme.name} changes {change} pixels in brightness when "
         f"focused, under the {floor:.0f} its size asks for — focus is being drawn by changing "
         "a colour rather than by changing the edge"
+    )
+
+
+#: The controls whose contents sit *inside* their own rectangle, and the style sub-elements that
+#: say where. `QStyle` names these per class, so there is no generic way to ask the question — and
+#: these two are the pair whose contents were measured moving (`T-303`).
+CONTENTS_SUB_ELEMENTS: Final = {
+    "QCheckBox": (QStyle.SubElement.SE_CheckBoxContents, QStyle.SubElement.SE_CheckBoxIndicator),
+    "QRadioButton": (
+        QStyle.SubElement.SE_RadioButtonContents,
+        QStyle.SubElement.SE_RadioButtonIndicator,
+    ),
+}
+
+
+@pytest.mark.parametrize("theme", THEMES, ids=lambda theme: theme.name)
+@pytest.mark.parametrize("selector", sorted(CONTENTS_SUB_ELEMENTS))
+def test_focus_does_not_move_what_the_control_draws(
+    qapp: QApplication, theme: ui_theme.Theme, selector: str
+) -> None:
+    """The contents must not move **inside** the widget either (`T-303`).
+
+    `test_focus_does_not_move_the_control` checks geometry, size hint and viewport — where the
+    control sits in its layout. **None of those see a control whose contents reflow inside an
+    unchanged rectangle**, which is what a check box did: the widget stayed put while its
+    indicator moved from x=0 to x=1 and its label from 19 to 21, because `*:focus` added a border
+    to a box that had reserved no room for one.
+
+    **The gap was measured, not guessed.** Reserving *one* pixel against the two-pixel ring leaves
+    geometry and hint exactly as they were and the older test still passes; this one fails. That
+    is the difference between guarding the property and guarding a symptom of it.
+
+    **Exact rectangles rather than a pixel diff.** A rendered comparison was tried first and
+    flagged every bordered control in both themes — focus legitimately repaints a control, and an
+    image cannot tell a repaint from a reflow. `QStyle` names contents sub-elements per class, so
+    the question is only askable for the classes that have them; these are the two the defect was
+    found on, and a control added here has to bring its sub-elements with it.
+    """
+    dress(qapp, theme)
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    elsewhere = QPushButton("elsewhere", host)
+    layout.addWidget(elsewhere)
+    widget = build(selector, host)
+    host.resize(260, 200)
+    host.show()
+    qapp.processEvents()
+
+    def rects() -> tuple[QRect, ...]:
+        qapp.processEvents()
+        option = QStyleOptionButton()
+        assert isinstance(widget, QCheckBox | QRadioButton)
+        widget.initStyleOption(option)
+        return tuple(
+            widget.style().subElementRect(element, option, widget)
+            for element in CONTENTS_SUB_ELEMENTS[selector]
+        )
+
+    elsewhere.setFocus()
+    idle = rects()
+    widget.setFocus()
+    focused = rects()
+
+    assert idle == focused, (
+        f"{selector} moves its own contents when focus arrives: {idle} idle against {focused} "
+        "focused. The ring is allowed to appear; the label underneath it is not allowed to shift."
     )
 
 

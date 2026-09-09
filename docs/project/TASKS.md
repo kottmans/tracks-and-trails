@@ -14,6 +14,87 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-303 — A focused check box shifts its own text, and its ring is clipped
+
+**Status:** In Review — built 2026-09-09, awaiting independent review. `QCheckBox` and
+`QRadioButton` carry a **transparent** 2px border idle and join `BORDERED_CONTROLS`, so focus
+recolours an edge that was already reserved instead of adding one. Contents are stable in both
+themes, measured on the style's sub-element rects, and the ring still appears.
+
+**The existing class guard did not close this, which was found by mutation rather than assumed.**
+`test_focus_does_not_move_the_control` checks geometry, size hint and viewport — where a control
+sits in its layout. Reserving *one* pixel against the two-pixel ring passes all three and still
+moves the label, because none of them can see contents reflowing inside an unchanged rectangle.
+`test_focus_does_not_move_what_the_control_draws` is the added half and kills that mutant. A
+rendered pixel comparison was tried first and rejected: it flagged every bordered control in both
+themes, because an image cannot tell a repaint from a reflow.
+**Owner:** Implementer
+**Priority:** Medium — it is visible on every check box in the application, on the surface Phase 4
+added, and `T-212`'s sitting will meet it on several rows
+**Phase:** Phase 4
+**Depends on:** nothing
+**Relevant context:** `T202-R1`; `ui/theme.py`'s `BORDERED_CONTROLS`, `STATE_RULES` and the
+`*:focus` rule; `tests/ui/test_colour_is_never_alone.py`
+**Affected surfaces:** `src/tracks_and_trails/ui/theme.py`, and a test that closes the class
+**Risk:** Low to fix, and the fix must not remove the ring — see below
+**Required checks:** `ruff check .` · `ruff format --check .` · `mypy src tests` ·
+`pytest tests/ui` · the affected rows re-run by eye in both themes
+
+#### What was observed, and what it measures as
+
+The maintainer reported the *Embed in the file* group looking clipped on its left edge, and the
+label text moving when a box is toggled. Measured on the real style sheet, light theme:
+
+| state | text `x` | indicator `x` |
+|---|---|---|
+| unfocused | 19 | 0 |
+| focused | **21** | **1** |
+
+**Checked and unchecked are identical**; only focus moves anything. Clicking a box both focuses
+and toggles it, which is why it reads as the toggle doing it.
+
+#### The cause
+
+`*:focus` gives a **2px border** to any control that has none of its own. That is deliberate:
+`STATE_RULES` records the ring as the *non-colour* channel for focus, so it survives a greyscale
+or monochrome reading. Every other such control compensates the border with padding:
+
+```
+QPushButton:focus                    { padding: 3px 9px; }
+QComboBox:focus, QLineEdit:focus     { padding: 2px 5px; }
+QListView:focus, QTableView:focus, … { padding: 0px; }
+```
+
+**`theme.py` contains no `QCheckBox` rule at all.** The ring is therefore added to a widget whose
+layout reserved no room for it: content shifts 2px right, and the ring draws at `x=0..1` where the
+indicator already sits flush to the group box's content margin, which is the clipped left edge.
+
+**This is the shape `BorderedControl`'s own docstring exists to prevent**, recurring one list over.
+That inventory was built because an earlier correction "thickened the border on `QPushButton`,
+`QComboBox` and `QLineEdit` — the three controls the finding named — and left every other bordered
+control" behind. The **padding-compensation list is a separate, hand-maintained list with no such
+guard**, and it has the same gap.
+
+#### Acceptance criteria
+
+- A focused check box draws its ring **without moving its indicator or its text**, and without the
+  ring being clipped by the container's margin. Measured, not eyeballed: the `x` of both
+  sub-element rects is equal focused and unfocused.
+- **The ring still appears.** Deleting it would satisfy the symptom and break the rule it serves;
+  `T-304` is where whether it appears *on a mouse click* is decided, and this task must not
+  pre-empt that.
+- Radio buttons and any other borderless focusable control are checked for the same gap rather
+  than assumed clear.
+- **A test closes the class, not the instance.** Every control receiving the `*:focus` border has
+  a compensating rule, derived from one list rather than two — a padding list that can drift from
+  the border list is how this arrived.
+
+#### Out of scope
+
+- Changing when focus rings are drawn at all — that is `T-304`.
+- The group box's own margins, unless the measurement shows them to be the cause rather than the
+  missing compensation.
+
 ### T-305 — The table says *Unknown* where it means *none*, and where it means *nothing to say*
 
 **Status:** In Review — built 2026-09-09, awaiting independent review. Both codec cells and
@@ -1284,77 +1365,6 @@ ends badly — the shape `2026-08-27-T212-ytdlp-update-double-free.md` recorded.
 
 - Reversing the runner move.
 - `T-268`'s seven preserved specimens, which remain its own.
-
-### T-303 — A focused check box shifts its own text, and its ring is clipped
-
-**Status:** Proposed — observed 2026-09-09 by the maintainer in *Options → Embed in the file*,
-then measured.
-**Owner:** Implementer
-**Priority:** Medium — it is visible on every check box in the application, on the surface Phase 4
-added, and `T-212`'s sitting will meet it on several rows
-**Phase:** Phase 4
-**Depends on:** nothing
-**Relevant context:** `T202-R1`; `ui/theme.py`'s `BORDERED_CONTROLS`, `STATE_RULES` and the
-`*:focus` rule; `tests/ui/test_colour_is_never_alone.py`
-**Affected surfaces:** `src/tracks_and_trails/ui/theme.py`, and a test that closes the class
-**Risk:** Low to fix, and the fix must not remove the ring — see below
-**Required checks:** `ruff check .` · `ruff format --check .` · `mypy src tests` ·
-`pytest tests/ui` · the affected rows re-run by eye in both themes
-
-#### What was observed, and what it measures as
-
-The maintainer reported the *Embed in the file* group looking clipped on its left edge, and the
-label text moving when a box is toggled. Measured on the real style sheet, light theme:
-
-| state | text `x` | indicator `x` |
-|---|---|---|
-| unfocused | 19 | 0 |
-| focused | **21** | **1** |
-
-**Checked and unchecked are identical**; only focus moves anything. Clicking a box both focuses
-and toggles it, which is why it reads as the toggle doing it.
-
-#### The cause
-
-`*:focus` gives a **2px border** to any control that has none of its own. That is deliberate:
-`STATE_RULES` records the ring as the *non-colour* channel for focus, so it survives a greyscale
-or monochrome reading. Every other such control compensates the border with padding:
-
-```
-QPushButton:focus                    { padding: 3px 9px; }
-QComboBox:focus, QLineEdit:focus     { padding: 2px 5px; }
-QListView:focus, QTableView:focus, … { padding: 0px; }
-```
-
-**`theme.py` contains no `QCheckBox` rule at all.** The ring is therefore added to a widget whose
-layout reserved no room for it: content shifts 2px right, and the ring draws at `x=0..1` where the
-indicator already sits flush to the group box's content margin, which is the clipped left edge.
-
-**This is the shape `BorderedControl`'s own docstring exists to prevent**, recurring one list over.
-That inventory was built because an earlier correction "thickened the border on `QPushButton`,
-`QComboBox` and `QLineEdit` — the three controls the finding named — and left every other bordered
-control" behind. The **padding-compensation list is a separate, hand-maintained list with no such
-guard**, and it has the same gap.
-
-#### Acceptance criteria
-
-- A focused check box draws its ring **without moving its indicator or its text**, and without the
-  ring being clipped by the container's margin. Measured, not eyeballed: the `x` of both
-  sub-element rects is equal focused and unfocused.
-- **The ring still appears.** Deleting it would satisfy the symptom and break the rule it serves;
-  `T-304` is where whether it appears *on a mouse click* is decided, and this task must not
-  pre-empt that.
-- Radio buttons and any other borderless focusable control are checked for the same gap rather
-  than assumed clear.
-- **A test closes the class, not the instance.** Every control receiving the `*:focus` border has
-  a compensating rule, derived from one list rather than two — a padding list that can drift from
-  the border list is how this arrived.
-
-#### Out of scope
-
-- Changing when focus rings are drawn at all — that is `T-304`.
-- The group box's own margins, unless the measurement shows them to be the cause rather than the
-  missing compensation.
 
 ### T-212 — The recorded checklist run: the built window against the agreed flow
 

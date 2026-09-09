@@ -327,6 +327,25 @@ class BorderedControl:
 #: bordered control to the sheet cannot silently skip the focus question.
 BORDERED_CONTROLS: Final = (
     BorderedControl(
+        selector="QCheckBox",
+        takes_focus=True,
+        reason=(
+            "**Bordered only so that focusing it moves nothing** (`T-303`). It has no border to "
+            "the eye: the idle one is `transparent`, and focus recolours it exactly as it "
+            "recolours every other entry here. Before that, `*:focus` added two pixels to a box "
+            "that had reserved none — the indicator moved from x=0 to x=1 and the label from 19 "
+            "to 21, and the ring drew against the container's margin, which is the clipped left "
+            "edge reported on 2026-09-09. Reserving the space is what lets the ring appear "
+            "without the row shifting under it, and the ring is still ink where there was none, "
+            "so the non-colour channel `STATE_RULES` requires is intact."
+        ),
+    ),
+    BorderedControl(
+        selector="QRadioButton",
+        takes_focus=True,
+        reason="The same control one shape over; it had the same gap and takes the same fix.",
+    ),
+    BorderedControl(
         selector="QPushButton",
         takes_focus=True,
         reason="A button is a tab stop; this is the control the finding measured 414 pixels on.",
@@ -1313,6 +1332,16 @@ QComboBox:focus, QLineEdit:focus {{
 }}
 QListView:focus, QTableView:focus, QTreeView:focus, QPlainTextEdit:focus, QTextEdit:focus {{
     padding: 0px;
+}}
+QCheckBox, QRadioButton {{
+    /* **Idle padding that exists only so focus has something to give back** (`T-305`… `T-303`).
+       Every other compensation below reduces padding a control already had. A check box had
+       none and no border either, so `*:focus` added two pixels to a box that had reserved
+       nothing: the indicator moved from x=0 to x=1, the label from 19 to 21, and the ring drew
+       hard against the group box's content margin, which is the clipped left edge the maintainer
+       reported on 2026-09-09. Reserving the two pixels here is what makes the pair below
+       arithmetic rather than a guess. */
+    border: 2px solid transparent;
 }}
 QToolButton[stepButton="true"]:focus {{
     /* Vertical only: `min-width` and `max-width` pin the *contents* box at 15px, so the sides are
