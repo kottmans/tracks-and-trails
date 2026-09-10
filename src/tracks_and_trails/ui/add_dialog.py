@@ -2320,11 +2320,16 @@ class AddUrlDialog(QDialog):
             return
         if not selection.is_complete:
             return
-        selector = selection.selector()
-        row.preset = preset_registry.custom_preset(selector, name=selector)
-        # **The statement, kept beside the selector it produced** — see `Row.format_selection`.
-        # `REQ-024`'s refusal needs to know a merge was *chosen*, and reading that back out of
-        # `137+140` means scanning for a `+`, which is `T-061`'s defect returning by the front door.
+        # **Only the streams are written** (`T-311`, ruled 2026-09-10). This used to put
+        # `custom_preset(selector)` on the row as well — a `Preset` built from nothing, which
+        # silently discarded the row's conversion, its filename pattern and its media kind. The
+        # selector is not a preset; it is one field of whichever preset governs, and `preset_for`
+        # is where the two are joined.
+        #
+        # `Row.format_selection` was already written here and already carried the *decision*
+        # `REQ-024`'s refusal reads — recovering that from `137+140` would mean scanning for a `+`,
+        # which is `T-061`'s defect returning by the front door. It is now the single record of the
+        # choice rather than a second one kept beside a preset.
         row.format_selection = selection
         self.refresh()
 
@@ -3167,7 +3172,16 @@ class AddUrlDialog(QDialog):
         bitrates satisfy.
         """
         chosen = row.preset
-        return self.effective(chosen) if isinstance(chosen, Preset) else self.selected_preset
+        governing = self.effective(chosen) if isinstance(chosen, Preset) else self.selected_preset
+        # **The row's own streams, over whichever preset governs** (`T-311`). The two are different
+        # facts: the preset is *how* to download, the selection is *what*. Joining them here rather
+        # than baking the selector into a preset at choosing time is what lets the batch control
+        # keep reaching a row that has picked streams — and what stops picking streams from
+        # discarding everything else the row was set up with.
+        picked = row.format_selection
+        if isinstance(picked, FormatSelection) and picked.is_complete:
+            return preset_registry.with_format_selector(governing, picked.selector())
+        return governing
 
     # --- closing ------------------------------------------------------------------------
 

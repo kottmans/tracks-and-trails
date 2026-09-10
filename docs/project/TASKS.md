@@ -274,6 +274,116 @@ nobody can see blocking a window nobody can use.
 
 ## Ready
 
+### T-311 — The batch preset control looks like it governs a row it cannot touch
+
+**Status:** In Progress — **ruled by the maintainer on 2026-09-10 from four rendered sequences**
+(`tools/preset_override_mockup.py`): *"go with the fourth one"* — **fix the loss and the control**,
+which is option (1) in its `E2` shape and what the reviewer independently recommended.
+
+Reported by the maintainer on 2026-09-09 from the built window, in the same session as `T-310`:
+*"there is a preset selection at the bottom of that screen that doesn't do anything."* **What the
+mockups then found is worse than the report**: picking a format by hand calls
+`presets.custom_preset(selector)`, which builds a `Preset` from nothing — so a row set to *Audio
+only (MP3)* with a typed filename pattern loses **both**, silently. The reviewer confirmed it on a
+real submitted request. The inert control is the symptom; the discarded preset is the defect.
+
+#### What was ruled, and the three questions it forces
+
+**The row records only which streams were picked**, in `Row.format_selection` — which it already
+stores — and `preset_for` applies that over whichever preset governs. Nothing is written to
+`row.preset` by the format panel at all.
+
+1. **Does an explicit conversion still apply to hand-picked streams?** **Yes.**
+   `ui/format_selection.py` says a chosen stream is downloaded *"as served"*, without adding
+   extraction — but that clause is about the app **inferring** a conversion from the fact that the
+   chosen format is audio-only, which is why `media_kind` stays `VIDEO` for such a choice. A preset
+   the user selected is an instruction rather than an inference, and honouring it is what makes the
+   control mean what it says. **This changes documented behaviour and is recorded here as the
+   decision it is** — every option except *leave it alone* makes the same change, and the two that
+   snapshot make it silently.
+2. **How is a stream choice cleared?** Through the row's own preset editor, whose *follow the
+   batch* entry already clears `format_selection` (`T310-R4`'s audit put it there). There is a route
+   back; `T-310`'s review corrected an earlier claim in this file that there was not.
+3. **Do explicit row overrides survive?** **Yes, and this is the part to test rather than assume.**
+   A preset written by the row editor or the options dialog is the row's own and the batch must not
+   reach it; the stream choice composes over whichever preset applies, not over the batch's alone.
+   The reviewer noted the mockup's unconditional switch does not demonstrate this, and it does not.
+
+#### What the row will say
+
+Unchanged: `ui/format_text.format_name` matches a built-in on **every** identifying field, so a
+preset carrying a hand-picked selector matches none and falls through to the literal. Measured
+before building: a composed preset over *Audio only (MP3)* names itself `137+140`, exactly as the
+discarded custom preset did. The shared naming rule absorbs this without being told.
+**Owner:** Maintainer to rule; Implementer to build
+**Priority:** Medium — it is a control that silently does nothing, which `UX-005` §5 names as a
+defect in its own right, and it is on the screen a user reaches while choosing formats
+**Phase:** Phase 4 (accessibility and polish)
+**Depends on:** nothing. `T-310` is where it was found, not where it lives.
+**Relevant context:** `UX-004` (a row inherits the batch preset unless it has its own);
+`ui/add_dialog.py` `preset_for`, `_on_preset_changed`, `_show_selector`; `UX-005` §5
+**Affected surfaces:** `ui/add_dialog.py`'s *Download as* group
+**Risk:** Medium — every option changes what the batch control means, which `UX-004` ruled
+
+#### What happens
+
+The *Download as* combo is the **batch's** control: a row uses it unless the row carries a preset
+of its own (`UX-004`). Choosing formats in the panel writes one of its own — `row.preset =
+custom_preset(selector)` — and from then on:
+
+- `preset_for(row)` returns the row's, so changing the combo **changes nothing** for that row;
+- the combo still displays the batch preset's name, so it reads as a description of what will be
+  downloaded when it is not;
+- `_show_selector` does tell the truth underneath — *"This row · Format selector: 137+140"* — so
+  the screen contradicts itself rather than merely omitting something.
+
+With a single staged row, which is the common case, the combo is inert and looks authoritative.
+
+#### Options
+
+1. **The combo tells the truth about the row in hand.** When the current row carries its own
+   choice it shows a `Custom formats` entry, and picking a real preset from it **replaces** that
+   choice. The control becomes accurate *and* acquires an effect, and it is the way back from a
+   custom selection, which there is currently no control for at all.
+   *Cost:* the combo becomes row-aware, which narrows `UX-004`'s batch semantics.
+
+   > **Corrected 2026-09-10 by `T310-R8`.** This option was written up as *"the way back from a
+   > custom selection, which there is currently no control for at all"*, and that is false: the
+   > row's own preset editor and `StagingModel.setData` already offer both a preset and a return to
+   > the batch. What is actually wrong is their **discoverability** and the batch control's
+   > misleading presentation, which is a narrower and more honest subject. The claim was made in
+   > this file and repeated to the maintainer; it is corrected in both.
+2. **Disable it while the current row overrides**, with the reason stated where it sits.
+   *Cost:* wrong for a multi-row batch — the combo still governs every other row, so disabling it
+   takes away a working control to explain one that is not.
+3. **Leave it and strengthen the line beneath** to say the row is using formats the user chose.
+   *Cost:* cheapest and least honest — the combo still looks like the answer.
+4. **Remove it from the dialog.** Refused: `UX-004` rules the batch control, and most sessions
+   never open a format panel at all.
+
+**Recommendation: (1)** — on narrower grounds than it was first written on. The original argument
+was that it is *"the only option that leaves the user a way back"*, and the correction above
+withdrew that: the row's preset editor and `StagingModel.setData` already offer one. What survives
+is that (1) is the only option where the control **means what it appears to mean** — the combo
+names what the row will use, and picking a preset does what a person expects. `UX-005` §6's
+*Download as* retarget on the queue row is the same gesture one surface over.
+
+**The reviewer recommends option (1) in its `E2` shape** (`docs/project/reviews/T-310.md`,
+2026-09-10) — stream choices and processing settings represented independently, explicit row
+overrides preserved, and batch changes reaching only the rows the batch governs unless `UX-004`
+itself is changed. It also names a policy question this task must answer rather than assume:
+`ui/format_selection.py` documents individually chosen streams as downloaded **as served, without
+adding audio extraction**, so preserving an MP3 conversion across a format choice is a *new design*
+rather than a restored one. The output-template reset has no such justification and is loss either
+way.
+
+#### Acceptance criteria
+
+- With a row carrying its own formats, the combo and the selector line **agree**.
+- Whatever is ruled, the control either has an effect on the row it appears to describe or says
+  why it has none. A third state — displaying a preset the row is not using — is the defect.
+- A multi-row batch keeps a working batch control.
+
 ### T-304 — Should a focus ring appear when the control was clicked?
 
 **Status:** Ready — **ruled by the maintainer on 2026-09-09: option (2), the keyboard-only
@@ -1316,80 +1426,6 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 ---
 
 ## Proposed — Phase 4
-
-### T-311 — The batch preset control looks like it governs a row it cannot touch
-
-**Status:** Proposed — reported by the maintainer on 2026-09-09 from the built window, in the same
-session as `T-310`: *"there is a preset selection at the bottom of that screen that doesn't do
-anything."*
-**Owner:** Maintainer to rule; Implementer to build
-**Priority:** Medium — it is a control that silently does nothing, which `UX-005` §5 names as a
-defect in its own right, and it is on the screen a user reaches while choosing formats
-**Phase:** Phase 4 (accessibility and polish)
-**Depends on:** nothing. `T-310` is where it was found, not where it lives.
-**Relevant context:** `UX-004` (a row inherits the batch preset unless it has its own);
-`ui/add_dialog.py` `preset_for`, `_on_preset_changed`, `_show_selector`; `UX-005` §5
-**Affected surfaces:** `ui/add_dialog.py`'s *Download as* group
-**Risk:** Medium — every option changes what the batch control means, which `UX-004` ruled
-
-#### What happens
-
-The *Download as* combo is the **batch's** control: a row uses it unless the row carries a preset
-of its own (`UX-004`). Choosing formats in the panel writes one of its own — `row.preset =
-custom_preset(selector)` — and from then on:
-
-- `preset_for(row)` returns the row's, so changing the combo **changes nothing** for that row;
-- the combo still displays the batch preset's name, so it reads as a description of what will be
-  downloaded when it is not;
-- `_show_selector` does tell the truth underneath — *"This row · Format selector: 137+140"* — so
-  the screen contradicts itself rather than merely omitting something.
-
-With a single staged row, which is the common case, the combo is inert and looks authoritative.
-
-#### Options
-
-1. **The combo tells the truth about the row in hand.** When the current row carries its own
-   choice it shows a `Custom formats` entry, and picking a real preset from it **replaces** that
-   choice. The control becomes accurate *and* acquires an effect, and it is the way back from a
-   custom selection, which there is currently no control for at all.
-   *Cost:* the combo becomes row-aware, which narrows `UX-004`'s batch semantics.
-
-   > **Corrected 2026-09-10 by `T310-R8`.** This option was written up as *"the way back from a
-   > custom selection, which there is currently no control for at all"*, and that is false: the
-   > row's own preset editor and `StagingModel.setData` already offer both a preset and a return to
-   > the batch. What is actually wrong is their **discoverability** and the batch control's
-   > misleading presentation, which is a narrower and more honest subject. The claim was made in
-   > this file and repeated to the maintainer; it is corrected in both.
-2. **Disable it while the current row overrides**, with the reason stated where it sits.
-   *Cost:* wrong for a multi-row batch — the combo still governs every other row, so disabling it
-   takes away a working control to explain one that is not.
-3. **Leave it and strengthen the line beneath** to say the row is using formats the user chose.
-   *Cost:* cheapest and least honest — the combo still looks like the answer.
-4. **Remove it from the dialog.** Refused: `UX-004` rules the batch control, and most sessions
-   never open a format panel at all.
-
-**Recommendation: (1)** — on narrower grounds than it was first written on. The original argument
-was that it is *"the only option that leaves the user a way back"*, and the correction above
-withdrew that: the row's preset editor and `StagingModel.setData` already offer one. What survives
-is that (1) is the only option where the control **means what it appears to mean** — the combo
-names what the row will use, and picking a preset does what a person expects. `UX-005` §6's
-*Download as* retarget on the queue row is the same gesture one surface over.
-
-**The reviewer recommends option (1) in its `E2` shape** (`docs/project/reviews/T-310.md`,
-2026-09-10) — stream choices and processing settings represented independently, explicit row
-overrides preserved, and batch changes reaching only the rows the batch governs unless `UX-004`
-itself is changed. It also names a policy question this task must answer rather than assume:
-`ui/format_selection.py` documents individually chosen streams as downloaded **as served, without
-adding audio extraction**, so preserving an MP3 conversion across a format choice is a *new design*
-rather than a restored one. The output-template reset has no such justification and is loss either
-way.
-
-#### Acceptance criteria
-
-- With a row carrying its own formats, the combo and the selector line **agree**.
-- Whatever is ruled, the control either has an effect on the row it appears to describe or says
-  why it has none. A third state — displaying a preset the row is not using — is the defect.
-- A multi-row batch keeps a working batch control.
 
 ### T-301 — Four UI tests break when the application font grows by one point
 

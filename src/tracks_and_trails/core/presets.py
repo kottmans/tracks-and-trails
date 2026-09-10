@@ -310,6 +310,25 @@ POST_PROCESSING_FIELDS: Final[frozenset[str]] = frozenset(
 )
 
 
+def with_format_selector(preset: Preset, selector: str) -> Preset:
+    """`preset`, downloading `selector` instead of its own streams (`REQ-008`, `T-311`).
+
+    **The third of these, and the one whose absence was a defect.** `with_audio_quality` and
+    `with_output_template` both exist because their field is preset-owned and `to_request` refuses
+    to override a preset-owned field — so changing one means deriving a preset rather than patching
+    a request. `format_selector` is preset-owned for the same reason and had no such function, so
+    the format panel reached for `custom_preset` instead: a `Preset` built from nothing, which
+    discarded the row's conversion, its filename pattern and its media kind without saying so.
+
+    Refuses an empty selector rather than letting `DownloadRequest` refuse it later, which is
+    `with_output_template`'s rule for the same reason: an empty selector means yt-dlp's *default*,
+    not *no choice* (`T-010`).
+    """
+    if not selector.strip():
+        raise ValueError("a format selector cannot be empty")
+    return replace(preset, format_selector=selector)
+
+
 def with_post_processing(
     preset: Preset,
     *,

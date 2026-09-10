@@ -3068,7 +3068,7 @@ def test_the_open_row_is_the_only_one_that_grows(
     )
 
 
-def test_choosing_one_format_writes_it_as_the_rows_own_request(
+def test_choosing_one_format_becomes_what_the_row_downloads(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],
     dialogs: Callable[..., AddUrlDialog],
@@ -3090,8 +3090,12 @@ def test_choosing_one_format_writes_it_as_the_rows_own_request(
     take_format(panel, "137")
     QApplication.processEvents()
 
-    assert isinstance(row.preset, Preset)
-    assert row.preset.format_selector == "137"
+    # **The row records the streams, not a preset** (`T-311`, ruled 2026-09-10). It used to be
+    # handed `custom_preset(selector)`, which is a preset built from nothing — and that is what
+    # discarded the row's conversion and filename pattern. What must be true is unchanged: the
+    # download runs `137`, and the row says so.
+    assert row.preset is None, "the format panel wrote a preset onto the row"
+    assert dialog.preset_for(row).format_selector == "137"
     assert "137" in item_texts(dialog)[0], item_texts(dialog)[0]
 
     # **The panel stays open, and that is `T-310` rather than a regression.** `137` is the video
@@ -3109,9 +3113,9 @@ def test_choosing_one_format_writes_it_as_the_rows_own_request(
     QApplication.processEvents()
     closed = dialog.open_panel
     assert closed is None, "Done left the panel open"
-    kept = row.preset
-    assert isinstance(kept, Preset)
-    assert kept.format_selector == "137", "Done changed the choice it was meant to keep"
+    assert dialog.preset_for(row).format_selector == "137", (
+        "Done changed the choice it was meant to keep"
+    )
 
 
 def test_choosing_a_format_never_closes_the_row_on_its_own(
@@ -3146,7 +3150,7 @@ def test_choosing_a_format_never_closes_the_row_on_its_own(
     still_open = dialog.open_panel
     assert still_open is panel, "choosing closed the panel, which the maintainer ruled against"
     # The choice is written as it is made, so nothing is lost by staying open.
-    assert isinstance(row.preset, Preset)
+    assert row.format_selection is not None
 
     panel.done_button.click()
     QApplication.processEvents()
@@ -3265,6 +3269,85 @@ def test_the_mounted_format_panel_fits_the_dialog_it_asked_for(
         qapp.setFont(original)
 
 
+def test_picking_formats_keeps_everything_else_the_row_was_set_up_with(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """`T-311`, ruled 2026-09-10: **the silent loss, and the test that names each field.**
+
+    Set a row to *Audio only (MP3)* with a filename pattern of its own, then pick a format by hand.
+    Until this ruling the row was handed `custom_preset(selector)` — a `Preset` built from nothing —
+    so the conversion, the pattern, the media kind and the bitrate all disappeared, and nothing on
+    screen said so. Codex confirmed it on a real submitted request.
+
+    Each field is asserted by name rather than by comparing whole presets, so a future change that
+    drops exactly one of them fails on that one.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    mp3 = next(preset for preset in dialog.presets if "MP3" in preset.name)
+    row.preset = preset_registry.with_output_template(mp3, "%(uploader)s/%(title)s.%(ext)s")
+    before = dialog.preset_for(row)
+
+    control = open_row_editor(dialog, 0)
+    choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
+    panel = dialog.open_format_panel
+    assert panel is not None
+    take_format(panel, "137")
+    QApplication.processEvents()
+
+    after = dialog.preset_for(row)
+    assert after.format_selector == "137", "the chosen stream did not reach the download"
+    assert after.output_template == before.output_template, "the filename pattern was discarded"
+    assert after.audio_codec == before.audio_codec, "the conversion was discarded"
+    assert after.audio_quality == before.audio_quality, "the bitrate was discarded"
+    assert after.media_kind == before.media_kind, "the media kind was discarded"
+
+
+def test_changing_the_preset_reaches_a_row_that_picked_formats(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """`T-311`: the control the maintainer reported as doing nothing now does something.
+
+    *"There is a preset selection at the bottom of that screen that doesn't do anything"* — and it
+    did not, because picking a format gave the row a preset of its own, which the batch control
+    cannot reach (`UX-004`). The row now records only **which streams**, so the batch preset still
+    governs it and the streams survive the change.
+
+    **The streams surviving is half the assertion and the easier half to lose.** A retarget that
+    reached the row by discarding its selection would satisfy the first check and defeat the point.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    control = open_row_editor(dialog, 0)
+    choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
+    panel = dialog.open_format_panel
+    assert panel is not None
+    take_format(panel, "137")
+    panel.done_button.click()
+    QApplication.processEvents()
+
+    # **Switched to a preset that differs in more than its name.** An earlier version of this test
+    # took whichever preset came next and compared the media kind and the codec — and passed under
+    # a mutation that restored the defect, because the discarded custom preset happens to agree
+    # with a video preset on both. The comparison is now every field but the streams, against a
+    # preset chosen for being different.
+    wanted = next(preset for preset in dialog.presets if "MP3" in preset.name)
+    choose_preset(dialog, wanted.name)
+    QApplication.processEvents()
+
+    now = dialog.preset_for(row)
+    assert now.format_selector == "137", (
+        f"changing the preset threw the chosen stream away: {now.format_selector!r}"
+    )
+    assert replace(now, format_selector=wanted.format_selector) == wanted, (
+        f"the row ignored the preset control: it runs {now}, not {wanted}"
+    )
+
+
 def test_escape_puts_back_the_selection_as_well_as_the_preset(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],
@@ -3350,8 +3433,7 @@ def test_a_chosen_pair_becomes_one_merging_request(
     # **The panel stays open** (`T-310`, ruled 2026-09-09). The choice is written as it is made;
     # closing is only ever asked for.
     assert dialog.open_panel is not None, "completing the pair closed the panel on its own"
-    assert isinstance(row.preset, Preset)
-    assert row.preset.format_selector == "137+140"
+    assert dialog.preset_for(row).format_selector == "137+140"
     panel.done_button.click()
     QApplication.processEvents()
 
@@ -3373,19 +3455,19 @@ def test_escape_closes_the_table_and_keeps_the_format_that_was_there_before(
     **"Nothing" has to mean the row is as it was**, not merely that the widget is gone: leaving the
     selection applied would make `Esc` a confirm with extra steps.
 
-    **The panel no longer closes on a choice at all** (`T-310`, ruled 2026-09-09), so any choice
-    leaves it open and `Esc` is always reachable. That was not always so: until the ruling a
-    finished selection closed the panel itself, and the first version of this test pressed `Esc`
-    after the row had already closed — passing for that reason rather than for the right one. The
-    docstring described that vanished behaviour after the ruling reversed it (`T310-R8`).
+    **Measured on what the row will download**, which is the whole of "as it was" and is stronger
+    than the field this used to compare. `T-311` made the difference visible: choosing a format no
+    longer replaces the row's preset, so an assertion about `row.preset` alone now passes whether or
+    not `Esc` undoes anything at all — it was never touched. `preset_for` is what actually runs.
 
-    Taking the *video* half writes `137` to the row, which is the written choice `Esc` has to undo.
-    `test_escape_puts_back_the_selection_as_well_as_the_preset` covers the other half of what `Esc`
-    restores.
+    The panel no longer closes on a choice either (`T-310`, 2026-09-09), so `Esc` is always
+    reachable; until that ruling a finished selection closed the panel itself and the first version
+    of this test pressed `Esc` after the row had already gone.
     """
     dialog, row = _staged(dialogs, managers, spin)
     was = dialog.presets[2]
     row.preset = was
+    before = dialog.preset_for(row)
 
     control = open_row_editor(dialog, 0)
     choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
@@ -3393,21 +3475,24 @@ def test_escape_closes_the_table_and_keeps_the_format_that_was_there_before(
     assert panel is not None
     take_format(panel, "137")
     QApplication.processEvents()
-    # **Each read goes into its own local before being compared.** Two identity assertions about
-    # the same attribute narrow it to whatever the first one proved, and everything after the
-    # second then types as unreachable — the idiom this project already hit once, in the very test
-    # that documents it.
+
     still_open = dialog.open_format_panel
     assert still_open is panel, "the panel closed before Esc could be pressed"
-    chosen_instead = row.preset
-    assert chosen_instead is not was, "nothing was chosen, so the rest of this proves nothing"
+    chosen = dialog.preset_for(row)
+    assert chosen != before, "nothing was chosen, so the rest of this proves nothing"
+    assert chosen.format_selector == "137"
+    # **And the rest of the row survived the choice** (`T-311`). This is the defect that ruling
+    # was about: the preset used to be replaced wholesale, so a row set up by hand lost its
+    # conversion and its filename pattern the moment a format was picked.
+    assert chosen.output_template == before.output_template
+    assert chosen.audio_codec == before.audio_codec
 
     QTest.keyClick(panel, Qt.Key.Key_Escape)
     QApplication.processEvents()
     closed = dialog.open_format_panel
     assert closed is None, "Esc left the table open"
-    restored = row.preset
-    assert restored is was, f"Esc kept the choice: the row now runs {restored}"
+    restored = dialog.preset_for(row)
+    assert restored == before, f"Esc kept the choice: the row now runs {restored}"
 
 
 def test_without_ffmpeg_the_merge_mode_is_not_drawn_and_the_reason_is(
