@@ -116,7 +116,7 @@ from tracks_and_trails.ui.add_dialog import (
     selector_candidates,
     split_urls,
 )
-from tracks_and_trails.ui.format_selection import FormatKind, kind_of
+from tracks_and_trails.ui.format_selection import FormatKind, FormatSelection, kind_of
 from tracks_and_trails.ui.main_window import DEFAULT_SIZE
 from tracks_and_trails.ui.playlist_selection import PlaylistSelection
 from tracks_and_trails.ui.row_delegate import (
@@ -6248,3 +6248,151 @@ def test_the_status_line_is_a_tab_stop_only_while_it_has_something_to_say(
 
     # The declared order is unchanged by any of this: the widget never leaves the chain.
     assert [widget.objectName() for widget in dialog.focus_chain()] == list(EXPECTED_TAB_ORDER)
+
+
+def _pick_a_pair(dialog: AddUrlDialog, row: Row) -> str:
+    """Choose a video and an audio format for `row` through the panel, and return the selector."""
+    control = open_row_editor(dialog, 0)
+    choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
+    panel = dialog.open_format_panel
+    assert panel is not None, "the row did not open into its format panel"
+    QApplication.processEvents()
+    for listing, wanted in (
+        (panel.table.video, FormatKind.VIDEO_ONLY),
+        (panel.table.audio, FormatKind.AUDIO_ONLY),
+    ):
+        assert listing is not None, f"the panel has no {wanted.value} list to choose from"
+        panel.table.choose(next(e for e in listing.model.formats() if kind_of(e) is wanted))
+    QApplication.processEvents()
+    dialog.close_panel(keep=True)
+    QApplication.processEvents()
+    selection = row.format_selection
+    assert isinstance(selection, FormatSelection) and selection.is_complete
+    return selection.selector()
+
+
+def test_committing_the_preset_control_unchanged_keeps_the_chosen_formats(
+    qapp: QApplication,
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-313`.** *"The format reverted back to 'best video available' despite me not actually
+    selecting it in the dropdown."*
+
+    **Qt commits an open editor on every refresh**, and for a row that *inherits* the batch preset
+    the committed value is the inherited entry's `None` — indistinguishable, to the old guard, from
+    a user choosing *follow the batch*. So opening the control and clicking elsewhere reached the
+    clear and silently discarded a hand-picked format.
+
+    **`T-311` opened the gap by design.** It stopped writing the pick into `row.preset` so the batch
+    control could keep reaching a row that had picked streams; the cost was that an inheriting row
+    *with* a pick answers `PRESET_ROLE` exactly as an untouched one does. The guard now compares
+    against `PRESET_ROLE` itself rather than against `row.preset`, which is `T126-R3`'s rule on the
+    queue — *the guard is on the value, not on the caller* — brought one dialog over.
+
+    Driven through `commit_and_close_editor` because that is the method every refresh path calls,
+    and it is what a click elsewhere reaches; nothing here reaches into the model directly.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    dialog.show()
+    qapp.processEvents()
+    try:
+        selector = _pick_a_pair(dialog, row)
+
+        open_row_editor(dialog, 0)
+        delegate = staging_list(dialog).itemDelegate()
+        assert isinstance(delegate, RowDelegate)
+        assert delegate.commit_and_close_editor(), (
+            "no editor was open, so committing one proves nothing"
+        )
+        qapp.processEvents()
+
+        kept = row.format_selection
+        assert isinstance(kept, FormatSelection), (
+            "committing the preset control unchanged discarded the chosen formats"
+        )
+        assert kept.selector() == selector, f"the pick changed from {selector} to {kept.selector()}"
+        assert dialog.preset_for(row).format_selector == selector, (
+            "the row no longer downloads what was picked"
+        )
+    finally:
+        dialog.close()
+
+
+def test_following_the_batch_still_gives_up_a_chosen_format(
+    qapp: QApplication,
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """The way back from a hand-picked format survives the guard above (`T-311`'s question 2).
+
+    **This is the half a value-guard could quietly take away**, and `T-310`'s review already caught
+    one false claim in this file that no route back existed. The row is given its *own* preset
+    first, so *follow the batch* is a real change to what the row says rather than a re-statement
+    of it — which is exactly the distinction the guard is drawn on.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    dialog.show()
+    qapp.processEvents()
+    try:
+        _pick_a_pair(dialog, row)
+        own = next(preset for preset in dialog.presets)
+        control = open_row_editor(dialog, 0)
+        choose_in_editor(dialog, control, own.name)
+        qapp.processEvents()
+
+        control = open_row_editor(dialog, 0)
+        choose_in_editor(dialog, control, None)
+        qapp.processEvents()
+
+        assert row.preset is None, "the row kept an override after being told to follow the batch"
+        assert row.format_selection is None, (
+            "there is no way back from a hand-picked format: following the batch left it in place"
+        )
+    finally:
+        dialog.close()
+
+
+def test_naming_a_preset_keeps_the_hand_picked_streams(
+    qapp: QApplication,
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-313`**, restoring what `T-311` ruled: *"the row remembers only which streams you
+    picked, and whichever preset governs is applied over it."*
+
+    The fourth rendered sequence — the one the maintainer chose — showed a row keeping its streams
+    while the preset changed around them. **As built it did the opposite**, discarding the pick on
+    every preset change, which is the same silent loss reported one route over.
+
+    **The preset's other settings must actually arrive**, or this passes on a row that simply
+    ignored the control; the media kind is asserted for that reason, alongside the selector.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    dialog.show()
+    qapp.processEvents()
+    try:
+        selector = _pick_a_pair(dialog, row)
+        wanted = next(
+            preset for preset in dialog.presets if preset.media_kind is not MediaKind.VIDEO
+        )
+
+        control = open_row_editor(dialog, 0)
+        choose_in_editor(dialog, control, wanted.name)
+        qapp.processEvents()
+
+        kept = row.format_selection
+        assert isinstance(kept, FormatSelection), (
+            f"naming {wanted.name!r} discarded the streams that were picked by hand"
+        )
+        assert kept.selector() == selector, f"the pick changed from {selector} to {kept.selector()}"
+        composed = dialog.preset_for(row)
+        assert composed.format_selector == selector, "the row stopped downloading what was picked"
+        assert composed.media_kind is wanted.media_kind, (
+            "the chosen preset did not reach the row, so keeping the streams proves nothing"
+        )
+    finally:
+        dialog.close()

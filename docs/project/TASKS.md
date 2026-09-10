@@ -166,6 +166,83 @@ than growing a second answer to the same question.
 - The dialog still narrows to 320px, which `tests/ui/test_add_dialog.py` asserts today.
 - `docs/UX_SPEC.md` §4 and §5 record the ruling with the maintainer's authority.
 
+### T-313 — The preset control discards a hand-picked format, and Notes repeats the row
+
+**Status:** In Review — **built 2026-09-10**, both halves ruled by the maintainer the same day
+from the built window while `T-312` was in review.
+
+**Owner:** Implementer
+**Priority:** High — the first half is silent data loss on the screen a user reaches immediately
+after choosing formats, and it fires without any gesture at all
+**Phase:** Phase 4 (accessibility and polish)
+**Depends on:** nothing. `T-311` is where the first half came from and `T-310` the second.
+**Relevant context:** `UX-004` (a row inherits the batch preset unless it has its own); `T-311`'s
+ruled fourth sequence; `REQ-003` (the table shows notes); `T310-R1` (removing the field is a High
+finding); `T126-R3` (the queue's value guard)
+**Affected surfaces:** `ui/add_dialog.py`'s *Download as* control; `ui/format_table.py`'s two lists
+**Risk:** Low — both are narrowings of behaviour that already existed, and the route back from a
+hand-picked format is the part that had to be held in place rather than changed
+
+#### 1 · A chosen format is discarded without being asked to be
+
+*"The format reverted back to 'best video available' despite me not actually selecting it in the
+dropdown."*
+
+**Two causes, and the second was not reported.**
+
+**(a) Qt commits an open editor on every refresh**, and for a row that *inherits* the batch preset
+the committed value is the inherited entry's `None` — which the guard could not tell apart from a
+user choosing *follow the batch*. Opening the control and clicking elsewhere silently discarded a
+hand-picked format. **`T-311` opened this by design**: it stopped writing the pick into
+`row.preset` so the batch control could keep reaching a row that had picked streams, and the cost
+was that an inheriting row *with* a pick answers `PRESET_ROLE` exactly as an untouched one does.
+
+The fix is `T126-R3`'s, brought one dialog over — **the guard is on the value, not on the caller**,
+comparing against `PRESET_ROLE` itself so the two cannot drift. It subsumes `T-108`'s narrower
+case, which is the same shape one state over.
+
+**(b) Naming a preset also discarded the pick**, which contradicts the fourth sequence the
+maintainer ruled on 2026-09-10: *"changing Preset now reaches the row and keeps your streams."*
+The clearing line predates `T-311` and was correct when written — the format panel then wrote its
+selector into `row.preset`, so naming a preset really did replace what the row would download —
+and it was never reconciled with the ruling. **Found while tracing (a), reported rather than
+changed, and ruled by the maintainer:** *"yes, match the ruling."*
+
+Only *follow the batch* clears now, which is `T-311`'s own answer to *"how is a stream choice
+cleared?"* — and that route is reachable from every state precisely because naming a preset no
+longer consumes it. `test_following_the_batch_still_gives_up_a_chosen_format` holds it there;
+`T-310`'s review already caught one false claim in this repository that no route back existed.
+
+#### 2 · A note that only repeats the row
+
+*"For video, it just repeats the resolution, and for audio I'm not even sure what it's trying to
+say. Seems like a redundant or useless field right now."*
+
+**Measured on the maintainer's own probe:** the video notes read `1080p`, `720p`, `480p` beside a
+**Quality** column saying `1080p`, `720p`, `480p`; the audio notes read `medium`, `medium`, `low`,
+`low`, `low` beside bitrates that already ordered them exactly.
+
+**The column is suppressed, not removed** — ruled from three options, *"show it only when it says
+something."* `REQ-003` names notes and `T310-R1` called their removal a High finding, and it was
+right for a reason that survives: on archive.org the note is the only thing distinguishing two
+rows of identical quality, codec and container, one marked `original` and the next `derivative`.
+
+So a note is dropped when every word of it is already on the row — an exact match against yt-dlp's
+ordinal audio words, against the two phrases that restate which list the row is in, or against the
+Quality cell itself — and the **column** goes when no format in that list has anything left. On
+YouTube it disappears and gives its width back to the columns being read; on archive.org it
+appears. Matching is exact, never by substring, so `medium, original` keeps both halves.
+
+#### Acceptance criteria
+
+- Committing the preset control without choosing anything changes nothing, for a row that inherits
+  the batch preset as well as one with its own.
+- Naming a preset keeps the streams and applies the preset's other settings over them.
+- *Follow the batch* still gives up a hand-picked format, from every state a row can be in.
+- A note that repeats the row is not shown, one that adds something is, and the column is present
+  exactly when some row in that list has something to show.
+- Each is asserted by a test that **fails against the behaviour it replaces**, run and recorded.
+
 ### T-312 — A panel opened inside a list row never has the room it needs
 
 **Status:** In Review — **built 2026-09-10** at the second attempt; the first was set down
@@ -476,6 +553,12 @@ stores — and `preset_for` applies that over whichever preset governs. Nothing 
 2. **How is a stream choice cleared?** Through the row's own preset editor, whose *follow the
    batch* entry already clears `format_selection` (`T310-R4`'s audit put it there). There is a route
    back; `T-310`'s review corrected an earlier claim in this file that there was not.
+
+   > **Corrected 2026-09-10 by `T-313`.** As built, **every** preset change cleared it, not only
+   > that entry — so naming a preset silently discarded the streams, which is the opposite of what
+   > the ruled fourth sequence showed. Worse, Qt commits an open editor on every refresh, and for
+   > an inheriting row that commit *is* the *follow the batch* value: the clear fired with no
+   > gesture at all. Both are fixed there; the route named above is the only one that clears.
 3. **Do explicit row overrides survive?** **Yes, and this is the part to test rather than assume.**
    A preset written by the row editor or the options dialog is the row's own and the batch must not
    reach it; the stream choice composes over whichever preset applies, not over the batch's alone.

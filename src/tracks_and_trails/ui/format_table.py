@@ -510,6 +510,66 @@ def describe_quality(entry: FormatInfo) -> str:
     return f"{entry.height}p" if entry.height is not None else UNKNOWN_TEXT
 
 
+#: yt-dlp's own ordinal words for audio quality, which its `format_note` carries on YouTube.
+#:
+#: **They restate the bitrate column, less precisely.** *medium* above *low* is the ordering
+#: `130 kbps` above `64 kbps` already gives, so the note adds a coarser copy of a fact the row
+#: states exactly. Matched in full rather than by substring: *"medium quality, original"* says
+#: something these do not.
+TIER_NOTES: Final = frozenset({"tiny", "ultralow", "low", "medium", "high"})
+
+#: Notes that restate **which of the two lists the row is already in** (`T-310`).
+#:
+#: One grid could not say this any other way, and before the split these earned their place. A row
+#: under *Video* headed *video only* is being told where it is.
+SPLIT_NOTES: Final = frozenset({"video only", "audio only"})
+
+
+def informative_note(entry: FormatInfo) -> str:
+    """What `entry`'s note says that the rest of its row does not — `""` when nothing (`T-313`).
+
+    **`REQ-003` asks for notes, and this still shows them.** What it stops showing is a note whose
+    every word is already on the row, which the maintainer reported from the built window: *"for
+    video, it just repeats the resolution, and for audio I'm not even sure what it's trying to
+    say. Seems like a redundant or useless field right now."* Measured on that probe — the video
+    notes were `1080p`, `720p`, `480p` beside a **Quality** column saying `1080p`, `720p`, `480p`,
+    and the audio notes were `medium`, `medium`, `low`, `low`, `low` beside bitrates that already
+    ordered them.
+
+    **The column is not dropped, because on other extractors the note is the only thing that
+    distinguishes two rows.** archive.org marks one copy `original` and the next `derivative` —
+    same quality, same codec, same container — and nothing else in the row tells them apart. That
+    is why `REQ-003` names the field and why `T310-R1` called its removal a High finding.
+
+    **Suppression is by exact match, never by substring**, so a note that merely *contains* one of
+    these words survives intact.
+    """
+    note = (entry.note or "").strip()
+    folded = note.casefold()
+    if folded in SPLIT_NOTES or folded in TIER_NOTES:
+        return ""
+    # **Compared against the cell, not against a format string.** The Quality column renders
+    # `describe_quality`, so asking it is what keeps the two from drifting into disagreeing about
+    # what counts as a repeat. Guarded on a known height because its other branches answer
+    # `Unknown` and `None`, and a note that happens to read *"unknown"* is not a repeat of them.
+    if entry.height is not None and folded == describe_quality(entry).casefold():
+        return ""
+    return note
+
+
+def columns_for(base: Sequence[Column], formats: Sequence[FormatInfo]) -> tuple[Column, ...]:
+    """`base`, minus the Notes column when no format in `formats` has a note worth showing.
+
+    **A column of nothing but `None` is worse than no column** on this surface, which is already
+    two tables competing for one dialog's width — every pixel it holds is taken from a column
+    being read. Decided per list from the formats that list will hold, so the sound list can drop
+    it while the video list keeps it.
+    """
+    if any(informative_note(entry) for entry in formats):
+        return tuple(base)
+    return tuple(column for column in base if column.field != NOTES_COLUMN)
+
+
 def carries_nothing(entry: FormatInfo) -> bool:
     """yt-dlp **denied both streams**: a storyboard or a thumbnail track, not a download.
 
@@ -767,7 +827,10 @@ class FormatTableModel(QAbstractTableModel):
             # is free prose it supplies when it has something to add; its absence says there was
             # nothing to add, and claiming ignorance of it made a third of this table read as
             # unknown when only the size column ever was.
-            return entry.note or ABSENT_TEXT
+            #
+            # **A note saying only what the row already says is the same nothing** (`T-313`), so
+            # it renders as the same absence rather than as a second copy of a neighbouring cell.
+            return informative_note(entry) or ABSENT_TEXT
         if column == SOUND_COLUMN:
             return describe_sound(entry)
         return UNKNOWN_TEXT
@@ -822,7 +885,9 @@ class FormatTableModel(QAbstractTableModel):
             # `10.1 MB`, and an estimate and an exact size are both just numbers here.
             return (float(entry.filesize) if entry.filesize is not None else -1.0, "")
         if column == NOTES_COLUMN:
-            return (0.0, (entry.note or "").casefold())
+            # Sorted on what the column **shows** (`T-313`), not on the raw note: ordering a
+            # visibly empty cell by hidden text is an ordering a user reads as random.
+            return (0.0, informative_note(entry).casefold())
         if column == SOUND_COLUMN:
             # The group, then the word — so sorting this column orders *finished, needs a half,
             # nothing stated* rather than alphabetising three unrelated phrases.
@@ -1243,10 +1308,11 @@ class FormatTable(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         lists = QHBoxLayout()
 
+        video = video_formats(self._formats)
         self._video = FormatList(
             VIDEO_LIST_TITLE,
-            video_formats(self._formats),
-            VIDEO_LIST_COLUMNS,
+            video,
+            columns_for(VIDEO_LIST_COLUMNS, video),
             verb=self._video_verb,
             parent=self,
             group_key=sound_group,
@@ -1338,7 +1404,7 @@ class FormatTable(QWidget):
             self._audio = FormatList(
                 AUDIO_LIST_TITLE,
                 audio,
-                AUDIO_LIST_COLUMNS,
+                columns_for(AUDIO_LIST_COLUMNS, audio),
                 verb=self._audio_verb,
                 parent=self,
             )

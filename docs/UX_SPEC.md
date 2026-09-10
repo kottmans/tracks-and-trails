@@ -255,6 +255,24 @@ archive.org's `h264-hd` — is shown as written rather than guessed at.
 until this the table itself agreed with it nowhere, which made a two-step merge selection a thing
 you had to hold in your head.
 
+**[T]** **A note is shown only when it says something the row does not already say, and the
+column goes when nothing in that list does** *(ruled by the maintainer on 2026-09-10, `T-313`,
+from three options)*.
+
+*From the built window: "for video, it just repeats the resolution, and for audio I'm not even sure
+what it's trying to say. Seems like a redundant or useless field right now."* Measured on that
+probe: the video notes read `1080p`, `720p`, `480p` beside a **Quality** column saying the same
+three words, and the audio notes read `medium`/`low` beside bitrates that already ordered them
+exactly.
+
+**[D]** **Suppressed rather than removed, and the difference is `REQ-003`.** The requirement names
+notes and `T310-R1` called their disappearance a High finding — rightly, for a reason that outlives
+YouTube: on archive.org the note is the only thing telling two rows of identical quality, codec and
+container apart, one `original` and the next `derivative`. So the field is dropped per *row* when
+every word of it is already in a neighbouring cell, and the *column* only when no row in that list
+has anything left. Matching is exact and never by substring, so `medium, original` keeps both
+halves. On this surface a column of nothing but `None` is width taken from a column being read.
+
 **[T]** **The format id column is drawn quieter than the rest of its row.** It stays — `REQ-003`
 names it and `REQ-008` selects by it — but it is almost never why a person is reading the row, and
 it was the strongest thing in it.

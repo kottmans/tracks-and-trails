@@ -59,6 +59,7 @@ from tracks_and_trails.ui.format_table import (
     FormatTableModel,
     carries_nothing,
     codec_name,
+    informative_note,
     listable,
     says_nothing,
     sound_group,
@@ -1546,6 +1547,92 @@ def test_notes_are_reachable_from_both_live_lists(qapp: QApplication) -> None:
                 identifier = display(one.model, row, one.model.column_for(FORMAT_COLUMN))
                 seen[identifier] = display(one.model, row, column)
         assert seen == {"137": "1080p60 HDR", "140": "Default"}, seen
+    finally:
+        table.close()
+
+
+def test_a_note_that_only_repeats_the_row_is_not_shown(qapp: QApplication) -> None:
+    """`T-313`: *"for video it just repeats the resolution, and for audio I'm not even sure what
+    it's trying to say. Seems like a redundant or useless field right now."*
+
+    **Each case is one the maintainer's own probe produced**, so this is the reported screen rather
+    than an invented one: YouTube writes the resolution into a video's `format_note` and one of its
+    ordinal words into an audio's, and the split lists made *video only* a statement of where the
+    row already is.
+
+    **The last case is the one that keeps the column honest.** Suppression is by exact match, so a
+    note that merely *contains* a suppressed word still says something and still shows.
+    """
+    repeats_quality = FormatInfo(
+        "137", "mp4", height=1080, width=1920, has_video=True, has_audio=False, note="1080p"
+    )
+    ordinal = FormatInfo(
+        "140", "m4a", bitrate_kbps=130.0, has_video=False, has_audio=True, note="medium"
+    )
+    says_where_it_is = FormatInfo(
+        "248", "webm", height=1080, has_video=True, has_audio=False, note="video only"
+    )
+    says_something = FormatInfo(
+        "h264", "mp4", height=480, has_video=True, has_audio=True, note="original"
+    )
+    contains_a_word = FormatInfo(
+        "251", "webm", bitrate_kbps=128.0, has_video=False, has_audio=True, note="medium, original"
+    )
+
+    assert informative_note(repeats_quality) == "", "the Quality column already says 1080p"
+    assert informative_note(ordinal) == "", "the Bitrate column already orders these, exactly"
+    assert informative_note(says_where_it_is) == "", "the list this row is in already says so"
+    assert informative_note(says_something) == "original", (
+        "archive.org's original/derivative is the only thing telling two such rows apart"
+    )
+    assert informative_note(contains_a_word) == "medium, original", (
+        "suppression matched a substring, which throws away the half that says something"
+    )
+
+
+def test_the_notes_column_appears_only_when_a_note_says_something(qapp: QApplication) -> None:
+    """`T-313`: a column of nothing but `None` is width taken from a column being read.
+
+    **`REQ-003` is met by showing notes when there are notes**, which is why the field is
+    suppressed rather than removed — `T310-R1` called its removal a High finding, and it was
+    right: on archive.org the note is all that distinguishes two rows of identical quality, codec
+    and container.
+
+    Asked through `FormatTable.lists()`, for `T310-R1`'s reason: the live models are the ones that
+    decide what the running window shows, and a test of the default layout would pass either way.
+    """
+    youtube = (
+        FormatInfo(
+            "137", "mp4", height=1080, width=1920, has_video=True, has_audio=False, note="1080p"
+        ),
+        FormatInfo(
+            "140", "m4a", bitrate_kbps=130.0, has_video=False, has_audio=True, note="medium"
+        ),
+    )
+    archive = (
+        FormatInfo("h264", "mp4", height=480, has_video=True, has_audio=True, note="original"),
+        FormatInfo("h264-hd", "mp4", height=480, has_video=True, has_audio=True, note="derivative"),
+    )
+
+    table = FormatTable(youtube)
+    try:
+        for one in table.lists():
+            assert one.model.column_for(NOTES_COLUMN) == -1, (
+                f"the {one.view.accessibleName()} list keeps a Notes column that can only say None"
+            )
+    finally:
+        table.close()
+
+    table = FormatTable(archive)
+    try:
+        shown = {}
+        for one in table.lists():
+            column = one.model.column_for(NOTES_COLUMN)
+            assert column >= 0, f"the {one.view.accessibleName()} list dropped a note that speaks"
+            for row in range(one.model.rowCount()):
+                identifier = display(one.model, row, one.model.column_for(FORMAT_COLUMN))
+                shown[identifier] = display(one.model, row, column)
+        assert shown == {"h264": "original", "h264-hd": "derivative"}, shown
     finally:
         table.close()
 

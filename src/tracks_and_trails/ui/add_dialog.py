@@ -1205,22 +1205,53 @@ class StagingModel(QAbstractListModel):
             self._dialog.open_preset_manager()
             return True
         name = value if isinstance(value, str) else None
-        own = row.preset
-        if name is not None and isinstance(own, Preset) and own.name == name:
-            # **The row's own chosen formats, re-selected** (`T-108`). `createEditor` offers a row's
-            # non-catalogue preset as an entry so the control can show what the row actually picked;
-            # choosing that entry must be a no-op, and the lookup below would instead find no preset
-            # by that name and clear the format the user chose from the table. Compared by name
-            # because that is what the control carries, and the name of a chosen selection *is* its
-            # selector, so two rows can share one without either being the other's.
+        if name == self.data(index, PRESET_ROLE):
+            # **A commit that re-states what the row already says is not a gesture** (`T126-R3`,
+            # brought to this dialog by `T-313`). The queue settled this and its reasoning holds
+            # here: *the guard is on the value, not on the caller* — knowing **how** `setData` was
+            # reached would be state about the call rather than about the row, and it would have to
+            # be right at every future call site, while "the row already says this" is true or
+            # false on its own.
+            #
+            # **Compared against `PRESET_ROLE` itself**, which is what filled the editor being
+            # committed, so the two cannot drift into disagreeing about what the row says.
+            #
+            # **What it fixes.** Qt commits an open editor on every refresh, and for a row that
+            # *inherits* the batch preset the committed value is the inherited entry's `None` — so
+            # merely opening the control and clicking elsewhere reached the clear below and
+            # **silently discarded a hand-picked format**. Reported from the built window: *"the
+            # format reverted back to 'best video available' despite me not actually selecting it
+            # in the dropdown."* `T-311` created the gap by design — it stopped writing the pick
+            # into `row.preset`, so an inheriting row with a pick answers `None` here exactly as an
+            # untouched one does, and the old guard below could not tell them apart.
+            #
+            # It also subsumes `T-108`'s narrower case, which is the same shape one state over: a
+            # row whose *own* non-catalogue preset is offered as an entry and re-selected.
             self.dataChanged.emit(index, index)
             return True
-        # **The stored selection goes with the preset it belonged to** (`T310-R4`'s audit). Naming
-        # a preset here replaces whatever the row was going to download, so a `format_selection`
-        # left over from the format panel would outlive the selector it produced and keep
-        # answering `REQ-024`'s *"was a merge chosen?"* about a choice that is gone.
         row.preset = next((preset for preset in self._dialog.presets if preset.name == name), None)
-        row.format_selection = None
+        if name is None:
+            # **Only *follow the batch* gives up a hand-picked format** (`T-313`, restoring what
+            # `T-311` ruled). This cleared on **every** preset change, which `T310-R4`'s audit was
+            # right about at the time: the format panel then wrote its selector into `row.preset`,
+            # so naming a preset really did replace what the row would download and a surviving
+            # `format_selection` would have kept answering `REQ-024`'s *"was a merge chosen?"*
+            # about a choice that was gone.
+            #
+            # **`T-311` made those two facts independent and this line was not reconciled with
+            # it.** The preset is *how* to download and the selection is *what*; `preset_for`
+            # composes them. So naming a preset now keeps the streams and applies the preset over
+            # them — the fourth rendered sequence, ruled by the maintainer on 2026-09-10: *"the row
+            # remembers only which streams you picked, and whichever preset governs is applied over
+            # it."* As built it did the opposite, silently, which is the same data loss the
+            # maintainer reported one route over.
+            #
+            # **The way back is this branch and it is unchanged**, which is `T-311`'s answer to
+            # *"how is a stream choice cleared?"*: the inherited entry means *stop using what I
+            # picked*, and it is reachable from every state because naming a preset no longer
+            # consumes it. The guard above is what makes choosing it distinguishable from Qt
+            # committing an untouched control.
+            row.format_selection = None
         self.dataChanged.emit(index, index)
         self._dialog.refresh()
         return True
