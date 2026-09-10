@@ -391,7 +391,12 @@ are choices about scope rather than consequences of it.
 
   > **[D]** **Separating video from sound is not a filter** (2026-09-09, `T-310`). A filter is a
   > control the user operates to hide rows. These are permanent, labelled, simultaneously visible
-  > lists, and nothing is ever hidden from any of them. The clause stands unamended.
+  > lists, and no row is hidden from the list it belongs to. The clause stands unamended.
+  >
+  > **Two kinds of entry are not listed at all**, ruled separately and named above: one carrying
+  > neither stream, and one with nothing to choose it by. Those are decisions about what counts as
+  > a format this surface offers, not a control that hides rows from a list — which is what `P-14`
+  > refuses.
 
 ---
 

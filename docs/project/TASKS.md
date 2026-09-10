@@ -87,7 +87,10 @@ Two lists side by side, each carrying only the columns its kind has, and **no mo
   the source did not classify) is the whole download and says so.
 
 **`P-14`'s *no filtering* is untouched.** A filter is a control the user operates to hide rows;
-these are permanent, labelled, simultaneously visible lists, and nothing is ever hidden.
+these are permanent, labelled, simultaneously visible lists. **Two kinds of entry are excluded**,
+by later ruling and by name — one carrying neither stream, and one with nothing to choose it by
+(`docs/UX_SPEC.md` §4) — and neither is a filter: they are not hidden from a list, they are not
+formats this surface offers.
 
 **`P-15`'s *no automatic pairing suggestion* is untouched.** Nothing here recommends a row.
 
@@ -1329,10 +1332,21 @@ With a single staged row, which is the common case, the combo is inert and looks
 4. **Remove it from the dialog.** Refused: `UX-004` rules the batch control, and most sessions
    never open a format panel at all.
 
-**Recommendation: (1).** It is the only option that leaves the user a way back from a custom
-selection, and *"pick a preset and it replaces what you chose"* is what a person would expect the
-control to do. `UX-005` §6's *Download as* retarget on the queue row is the same gesture one
-surface over, so the vocabulary already exists.
+**Recommendation: (1)** — on narrower grounds than it was first written on. The original argument
+was that it is *"the only option that leaves the user a way back"*, and the correction above
+withdrew that: the row's preset editor and `StagingModel.setData` already offer one. What survives
+is that (1) is the only option where the control **means what it appears to mean** — the combo
+names what the row will use, and picking a preset does what a person expects. `UX-005` §6's
+*Download as* retarget on the queue row is the same gesture one surface over.
+
+**The reviewer recommends option (1) in its `E2` shape** (`docs/project/reviews/T-310.md`,
+2026-09-10) — stream choices and processing settings represented independently, explicit row
+overrides preserved, and batch changes reaching only the rows the batch governs unless `UX-004`
+itself is changed. It also names a policy question this task must answer rather than assume:
+`ui/format_selection.py` documents individually chosen streams as downloaded **as served, without
+adding audio extraction**, so preserving an MP3 conversion across a format choice is a *new design*
+rather than a restored one. The output-template reset has no such justification and is loss either
+way.
 
 #### Acceptance criteria
 

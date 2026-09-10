@@ -9,9 +9,18 @@ counted only when a sound list occupied it. Each was found by measuring, and non
     .venv/bin/python tools/format_panel_fit_probe.py
 
 Reports, for every committed capture, at three font sizes and in both palettes: the width the
-widget states, whether either list scrolls at exactly that width, and the same for the panel as
-mounted in a row. **A non-zero scrollbar maximum is a failure**, and the number is in scroll units
-rather than pixels — it says *that* a column is off the edge, not by how much.
+widget states, whether either list scrolls at exactly that width, and the same one level up for a
+standalone `FormatPanel`. **A non-zero scrollbar maximum is a failure**, and the number is in
+scroll units rather than pixels — it says *that* a column is off the edge, not by how much.
+
+**What this tool does not cover, and where that lives instead** (`T310-R9`). It never constructs an
+`AddUrlDialog`, so it exercises neither `_mount_panel` nor `_widen_for` — the reviewer disabled the
+widening outright and this tool still reported a clean sheet while all nine mounted-fit tests
+failed. The mounting boundary is
+`tests/ui/test_add_dialog.py::test_the_mounted_format_panel_fits_the_dialog_it_asked_for`, across
+three captures and three font sizes with a substituted screen; the standalone axes are
+`test_the_stated_width_is_enough_for_both_lists` and `test_the_stated_height_shows_every_row`.
+This is the diagnostic you reach for when one of those fails and you want the numbers.
 
 **It carries its own positive control.** A probe that only ever printed zeros would report a clean
 sheet whether or not it was looking at anything, which is this project's recorded way of being
@@ -72,10 +81,12 @@ def measure(app: QApplication, name: str, points: int) -> tuple[int, list[int], 
     standalone = (table.sizeHint().width(), overflow(table))
     table.close()
 
-    # **Mounted, because the widget and the row it lands in are different measurements.** The panel
-    # receives the list's viewport, not its own hint, and `_widen_for` reads chrome that changes
-    # when it acts on it. `FormatPanel` is built directly here rather than through the dialog: the
-    # dialog needs a manager and a staged probe, and what is being measured is the panel's fit.
+    # **A standalone panel, and calling this "mounted" was a false claim** (`T310-R9`). It builds a
+    # `FormatPanel` directly and resizes it to its own hint: no `AddUrlDialog`, no `_mount_panel`,
+    # no `_widen_for`. The reviewer showed what that costs — disabling `_widen_for` entirely leaves
+    # this tool reporting the same clean sheet while all nine mounted-fit tests fail. So it
+    # measures the panel's own layout, one level up from the bare table, and the widening is
+    # covered by `test_the_mounted_format_panel_fits_the_dialog_it_asked_for` instead.
     row = Row(url="https://example.invalid/probe", generation=1)
     row.media = MediaInfo(url="https://example.invalid/probe", title="probe", formats=formats)
     panel = FormatPanel(row, row_summary(row), ffmpeg_available=True)
@@ -100,7 +111,7 @@ def main() -> int:
                 failures += bad
                 print(
                     f"  {name:28} {points:>2}pt  widget {width:>5}px bars={bars}"
-                    f"   panel {panel_width:>5}px bars={panel_bars}"
+                    f"   standalone panel {panel_width:>5}px bars={panel_bars}"
                     f"{'   <-- DOES NOT FIT' if bad else ''}"
                 )
 
