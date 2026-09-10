@@ -259,12 +259,30 @@ def run(argv: Sequence[str]) -> int:
     # before the window is visible so there is no flash of the other theme.
     theme.apply(composition.app, theme.THEMES[composition.theme])
 
+    present(composition)
+    return app.exec()
+
+
+def present(composition: Composition) -> None:
+    """Show the window, then anything `compose()` carried for it — **in that order** (`T-308`).
+
+    **A window-modal dialog opened on a parent that has not been mapped is stacked behind it by
+    the compositor and still blocks it.** That is what a real launch found on 2026-09-09: the
+    warning was invisible and the window it blocked was unusable.
+
+    **Extracted so the order is testable at all** (`T308-R2`). It lived inline in `run()`, which
+    constructs its own `QApplication` and therefore cannot be called from a test session that
+    already has one — so the guards called the reporting themselves and passed even with the
+    production branch deleted. Everything `run()` does between composing and `exec()` is here, and
+    a test drives this.
+
+    **What is still uncovered, stated rather than implied:** `run()`'s one-line call to this
+    function. Deleting *that* is not caught by any test, and closing it needs `run()` itself to
+    become callable.
+    """
     composition.window.show()
-    # **After `show()`, which is the whole of `T-308`.** A window-modal dialog opened on a parent
-    # that has not been mapped is stacked behind it by the compositor and still blocks it.
     if composition.settings_problem is not None:
         composition.window.report_settings_problem(composition.settings_problem)
-    return app.exec()
 
 
 def waiting_jobs(repository: JobRepository) -> list[tuple[str, JobStatus]]:

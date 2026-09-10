@@ -2011,9 +2011,14 @@ def test_a_file_that_was_read_does_not_claim_it_could_not_be(tmp_path: Path) -> 
     and a file whose every other value is used does not match it.
     """
     target = tmp_path / "settings.toml"
+    # **`json.dumps`, not interpolation** (`T309-R2`). A TOML basic string treats `\\` as an
+    # escape, so an ordinary Windows path — `C:\\Users\\...` — made the fixture unparseable and
+    # the test measured a parse failure instead of a missing folder. This is the serializer the
+    # rest of this file already uses for paths.
     target.write_text(
         'default_preset = "Best video available"\n\n[queue]\nconcurrency = 3\n\n'
-        f'[downloads]\ndirectory = "{tmp_path / "gone"}"\n\n[appearance]\ntheme = "light"\n',
+        f"[downloads]\ndirectory = {json.dumps(str(tmp_path / 'gone'))}\n\n"
+        '[appearance]\ntheme = "light"\n',
         encoding="utf-8",
     )
 
@@ -2026,7 +2031,66 @@ def test_a_file_that_was_read_does_not_claim_it_could_not_be(tmp_path: Path) -> 
     summary = read.problem.summary
     assert "could not be read" not in summary, summary
     assert "The rest of the file is unchanged" in summary
+    assert "defaults are in use" not in summary, (
+        "a clamped value is not a default; the headline must not assert which (T309-R1)"
+    )
     assert "Change them in Settings" in summary, "the message must name the way out"
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ("[network]\nrate_limit_bytes = 1\n", "1024 bytes per second is in use"),
+        ("[network]\nretries = 999999\n", "100 is in use"),
+    ],
+    ids=["clamped rate limit", "clamped retries"],
+)
+def test_a_clamped_value_is_not_described_as_a_default(
+    body: str, expected: str, tmp_path: Path
+) -> None:
+    """`T309-R1`: the headline said *"their defaults are in use"* over values that were clamped.
+
+    `rate_limit_bytes = 1` becomes **1024** and `retries = 999999` becomes **100**, while both
+    defaults are `None`. The reasons beneath already named the effective value, so the headline was
+    contradicting the text under it — the same false-headline defect this task exists for, surviving
+    for a narrower trigger.
+
+    **Expectations are the effective values, written out**, not derived from the settings object,
+    so a change in the clamp is a failing test rather than a quietly agreeing one.
+    """
+    target = tmp_path / "settings.toml"
+    target.write_text(body, encoding="utf-8")
+
+    read = settings_module.load(target)
+
+    assert read.problem is not None
+    assert read.problem.unreadable is False
+    summary = read.problem.summary
+    assert expected in summary, summary
+    assert "defaults are in use" not in summary, (
+        f"the value was clamped, not defaulted, and the headline still claims otherwise: {summary}"
+    )
+    assert "adjusted" in summary, "the headline must say something happened without saying what"
+
+
+def test_a_windows_form_path_still_reaches_the_missing_folder_branch(tmp_path: Path) -> None:
+    """`T309-R2`: an unescaped Windows path made the fixture unparseable, not the folder missing.
+
+    Reproduced on Linux with Windows-form input, which is where the finding was found: the test
+    measured a TOML parse failure and its assertion about a readable file failed for a reason
+    unrelated to what it was checking.
+    """
+    target = tmp_path / "settings.toml"
+    windows_form = "C:" + chr(92) + "Users" + chr(92) + "Reviewer" + chr(92) + "Gone"
+    target.write_text(f"[downloads]\ndirectory = {json.dumps(windows_form)}\n", encoding="utf-8")
+
+    read = settings_module.load(target)
+
+    assert read.problem is not None, "the fixture did not parse; the escaping is wrong again"
+    assert read.problem.unreadable is False, (
+        "a Windows-form path produced a read failure, which is the R2 regression"
+    )
+    assert "download folder" in read.problem.reason, read.problem.reason
 
 
 def test_a_file_that_truly_cannot_be_read_still_says_so(tmp_path: Path) -> None:

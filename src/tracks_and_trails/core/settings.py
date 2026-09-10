@@ -1029,8 +1029,14 @@ class SettingsProblem:
                 f"{self.path}\n{self.reason}\n\n"
                 "Saving settings will overwrite this file."
             )
+        # **Neutral about *what* replaced the value, because not every path uses a default**
+        # (`T309-R1`). `network.rate_limit_bytes = 1` becomes **1024** and `retries = 999999`
+        # becomes **100**; both defaults are `None`, so *"their defaults are in use"* contradicted
+        # the reasons printed directly beneath it. The reasons already name the effective value in
+        # every case — *"1024 bytes per second is in use"* — so the headline's job is to say that
+        # something was adjusted and stop asserting which way.
         return (
-            f"Some of your settings could not be used, so their defaults are in use. "
+            f"Some of your settings could not be used as written, so they have been adjusted. "
             f"The rest of the file is unchanged.\n\n"
             f"{self.path}\n{self.reason}\n\n"
             "Change them in Settings to stop this message. Saving settings will overwrite "

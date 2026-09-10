@@ -62,6 +62,7 @@ from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo, NetworkOptions
 from tracks_and_trails.core.paths import thumbnail_cache_path
+from tracks_and_trails.core.settings import SettingsProblem
 from tracks_and_trails.downloader import ytdlp_adapter as adapter
 from tracks_and_trails.downloader.protocol import (
     Failed,
@@ -76,6 +77,7 @@ from tracks_and_trails.downloader.ytdlp_service import Resolution, YtdlpService
 from tracks_and_trails.persistence import db
 from tracks_and_trails.persistence.repositories import JobRepository
 from tracks_and_trails.ui import theme as ui_theme
+from tracks_and_trails.ui.main_window import MainWindow
 from tracks_and_trails.ui.preset_manager import (
     NO_FFMPEG_REASON,
     PRESET_LIST_NAME,
@@ -2599,6 +2601,48 @@ def test_the_settings_problem_is_a_visible_child_of_a_shown_window(
         for box in shown:
             box.close()
         QApplication.processEvents()
+
+
+def test_present_shows_the_window_before_it_reports(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`T308-R2`: driven through the production sequence, not through a helper in this file.
+
+    The first guards called the reporting themselves, so **deleting `run()`'s branch passed all
+    seven of them** — the reviewer's finding, and a fair one: a test that performs the step it is
+    checking measures nothing about production. `app.present` is that sequence extracted, because
+    `run()` builds its own `QApplication` and cannot be called from a session that has one.
+
+    **The recorded fact is visibility at the moment of reporting**, which is the property. Removing
+    the report fails this because nothing is recorded; moving it before `show()` fails it because
+    the window is not up yet. Both are the defect, and neither was caught before.
+    """
+    settings_file = tmp_path / "settings.toml"
+    settings_file.write_text("not toml\n", encoding="utf-8")
+    composition = composed(settings_file=settings_file)
+
+    seen: list[bool] = []
+    original = type(composition.window).report_settings_problem
+
+    def recording(window: MainWindow, problem: SettingsProblem) -> object:
+        seen.append(window.isVisible())
+        return original(window, problem)
+
+    monkeypatch.setattr(type(composition.window), "report_settings_problem", recording)
+
+    application.present(composition)
+    QApplication.processEvents()
+
+    assert seen, "present() never reported the carried problem"
+    assert seen == [True], (
+        "the warning was reported while the window was still hidden, which is T-308: a "
+        "window-modal dialog on an unmapped parent is stacked behind it and still blocks it"
+    )
+    for box in composition.window.findChildren(QMessageBox, "settingsProblemDialog"):
+        box.close()
+    QApplication.processEvents()
 
 
 def _report_as_run_does(composition: application.Composition) -> None:

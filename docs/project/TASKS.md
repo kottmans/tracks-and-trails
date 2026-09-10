@@ -16,9 +16,25 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ### T-308 — The startup warning opens behind the window it blocks
 
-**Status:** In Review — built 2026-09-09, awaiting independent review. The problem is
-**carried** on `Composition` and shown by `run()` after `window.show()`, which is `theme`'s own
-pattern one consequence further on. Restoring the call inside `compose()` fails the new guard.
+**Status:** In Review — **changes requested 2026-09-09, corrected the same day; awaiting
+re-review.** The problem is **carried** on `Composition`; `run()` calls `present()`, which shows
+the window and then reports.
+
+#### Correction round, 2026-09-09
+
+- **`T308-R1` (Medium, blocking) — the required checks were run.**
+  [Both platforms recorded](evidence/2026-09-09-T308-warning-stacking.md): on Wayland and on X11
+  the dialog is exposed, active, `WindowModal`, a **transient of the window**, centred in its
+  rectangle, dismissible by its own `OK`, and the window is enabled afterwards. **Stacking order
+  itself is not read and cannot be from inside a Wayland client**, and whether a person *finds* it
+  is perceptual — both are stated as unestablished rather than implied. KDE only.
+- **`T308-R2` (Low) — corrected, and the finding was right.** The guards called the reporting
+  themselves, so deleting the production branch passed all seven. `run()`'s inline sequence is now
+  `app.present()`, extracted because `run()` builds its own `QApplication` and cannot be called
+  from a test session. A test drives `present()` and records **whether the window was visible at
+  the moment of reporting**: removing the report fails it, and moving it before `show()` fails it.
+  Both mutations the finding names are now killed. **`run()`'s one-line call to `present()` is
+  still uncovered**, and the function's docstring says so.
 
 **Stacking itself is not asserted and cannot be, offscreen.** The guards check that `compose()`
 opens nothing, and that after `show()` the box is visible and a child of the window — which is
@@ -66,8 +82,23 @@ nobody can see blocking a window nobody can use.
 
 ### T-309 — The settings warning claims a read failure that did not happen
 
-**Status:** In Review — built 2026-09-09, awaiting independent review. `SettingsProblem` now
-carries whether the **file** was unreadable, and `summary` composes from it; a file that was read
+**Status:** In Review — **changes requested 2026-09-09, corrected the same day; awaiting
+re-review.**
+
+#### Correction round, 2026-09-09
+
+- **`T309-R1` (Medium, blocking) — corrected.** The readable-file headline said *"their defaults
+  are in use"* over values that were **clamped**: `rate_limit_bytes = 1` becomes 1024 and
+  `retries = 999999` becomes 100, while both defaults are `None`. It contradicted the reasons
+  printed directly beneath it, which already name the effective value. The headline now says the
+  settings *"could not be used as written, so they have been adjusted"* and asserts nothing about
+  what replaced them. **That is this task's own defect surviving for a narrower trigger**, which
+  the finding said plainly and which is worth repeating here.
+- **`T309-R2` (Medium, blocking) — corrected.** The new fixture interpolated a path into a TOML
+  basic string, so an ordinary Windows path made it unparseable and the test measured a parse
+  failure. It uses `json.dumps` now, and a Windows-form case is asserted directly.
+
+`SettingsProblem` carries whether the **file** was unreadable, and `summary` composes from it; a file that was read
 says *"Some of your settings could not be used… The rest of the file is unchanged"* and names the
 way out. `app._joined`'s `problem is None` branch and the value-fallback constructor both mark
 themselves readable. The discarded download folder is labelled, because the path printed under
