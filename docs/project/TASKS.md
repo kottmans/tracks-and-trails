@@ -35,13 +35,20 @@ the window and then reports.
   On the machine that produced the original measurements the defect did not fire: both variables
   were unset and the real database's mtime is 2026-09-03, six days earlier. **That is luck about
   one environment, not a property of the tool.**
-- **`T308-R1` (Medium) — still open, and it is not mine to close.** The probe activates the default
-  button through `QAbstractButton.click()`, which is a call rather than a click; it demonstrates
-  nothing about pointer or keyboard input reaching the dialog, and nothing about what a person
-  sees. Neither is available from inside the client. **The evidence record now says the "centred
-  inside its parent" claim was wrong on X11** — the window is at `(480, 211)` and the dialog at
-  `(220, 150)`, and the two coordinate spaces are not comparable — and that position relative to
-  the parent is unestablished on both platforms.
+- **`T308-R1` (Medium) — the visual half is now observed; the input half is not.** The composited
+  desktop was photographed on Wayland and again under `xcb`, and read: on **both** platforms the
+  warning is drawn **over** the main window, centred in its visible rectangle, with its own
+  titlebar and `OK`, and the window visible around it rather than hidden. The rendered text is the
+  corrected `T-309` wording, so that correction is confirmed as drawn and not merely composed.
+  **This supersedes the first amendment's "position relative to the parent is not established"** —
+  it came from comparing two coordinate spaces that are not comparable, and a photograph does not
+  have that problem.
+  **The images are not committed**: they are full-desktop captures containing unrelated windows,
+  and this repository is public.
+  **What is still open is normal input.** `xdotool`, `ydotool` and `wtype` are all absent from this
+  machine, so pointer and keyboard events cannot be delivered through the display server;
+  `QAbstractButton.click()` remains a call rather than a click. Installing an injection tool is a
+  change to the maintainer's machine and was not made unasked.
 - **`T308-R2` — resolved at `10e079c`** by the reviewer.
 
 #### Correction round, 2026-09-09

@@ -90,3 +90,42 @@ relative to the parent is **not established on either platform**.
 button through `QAbstractButton.click()`, which is a call rather than a click: it does not
 demonstrate that pointer or keyboard input reaches the dialog, nor that a person looking at the
 screen finds it. Neither is available from inside the client, and that half remains open.
+
+---
+
+## Second amendment, 2026-09-09 — the visual half of `T308-R1`, observed
+
+**Method.** An isolated profile as above, `compose()` then `present()`, the window held up for
+twelve seconds, and the **composited desktop** photographed with `spectacle` — once in the session's
+native Wayland and once with `QT_QPA_PLATFORM=xcb`. The captures were then read.
+
+| | **Wayland** | **X11 (`xcb`)** |
+|---|---|---|
+| The warning is drawn **over** the main window | **yes** | **yes** |
+| Centred within the window's visible rectangle | **yes** | **yes** |
+| The main window is visible around it, not hidden | yes | yes |
+| Its own titlebar and `OK` button are drawn | yes | yes |
+| The corrected `T-309` text is what is rendered | yes | yes |
+
+Both captures show *"Some of your settings could not be used as written, so they have been
+adjusted. The rest of the file is unchanged"*, the profile path, *"The folder named in your
+settings was …/gone/nowhere"*, and *"Change them in Settings to stop this message."* — so the
+`T-309` corrections are confirmed as rendered rather than only as composed strings.
+
+**This supersedes the first amendment's "position relative to the parent is not established".** It
+is established, on both platforms, by looking: the earlier conclusion came from comparing
+coordinates across two coordinate spaces that are not comparable, and a photograph does not have
+that problem.
+
+**The images are deliberately not committed.** They are full-desktop captures and contain unrelated
+application windows belonging to the maintainer; this repository is public. The observation is
+recorded here instead. A cropped capture of the application alone could be committed if the record
+wants a picture.
+
+## What remains open in `T308-R1`
+
+**Normal input.** No input-injection tool is installed on this machine — `xdotool`, `ydotool` and
+`wtype` are all absent — so pointer and keyboard events cannot be delivered through the display
+server. `QAbstractButton.click()` remains a call, not a click. **Whether real input reaches the
+dialog and the window behind it is still unobserved**, and installing a tool to inject it is a
+change to the maintainer's machine rather than something to do unasked.
