@@ -1558,6 +1558,21 @@ class QueueView(QWidget):
     #: permits**, because they are not asking about the row's width.
     more_requested = Signal(str, object)
 
+    #: `(job_id)` — the row's `⋮` was pressed. **Not `more_requested`, and that is the point**
+    #: (`T-315`).
+    #:
+    #: The two controls hold different things. `⋯` holds the verbs the row had no room to draw,
+    #: and the keyboard routes hold every verb the state permits; both are about **the row's own
+    #: line**. The `⋮` is the door to what can be done to *this download* — its formats and its
+    #: options — which is what it opens on the staging list and what the maintainer asked for
+    #: here: *"I think it should give you options/choose formats like it does when you do it on
+    #: the add urls."*
+    #:
+    #: Wiring it to `more_requested` instead is what `T-135` had already fixed one control over:
+    #: the menu then offers the four verbs the row is **already showing as buttons**, which is the
+    #: redundancy that was reported.
+    item_menu_requested = Signal(str)
+
     def __init__(
         self,
         *,
@@ -1646,20 +1661,15 @@ class QueueView(QWidget):
         # widget, and the delegate's own filter watches the viewport for pointer events.
         self._list.installEventFilter(self)
         self._delegate.verb_triggered.connect(self._on_verb)
-        # **The `⋮` opens the row's menu here too** (`T-314`). The delegate paints the zone on
-        # every editable row and `AddUrlDialog` connected this; the queue never did, so pressing
-        # it emitted into nothing — *"the vertical 3 dot button doesn't seem to do anything on the
-        # queue screen. It doesn't give you any options."* `UX-005` §5 names an offered control
-        # that does nothing as a defect in its own right.
+        # **The `⋮` opens this row's own menu** (`T-314` connected it at all; `T-315` says to
+        # what). The delegate paints the zone on every editable row and `AddUrlDialog` connected
+        # it; the queue, which shares the delegate, did not — so pressing it emitted into nothing.
         #
-        # **Into `_row_menu_asked_for`, which is where right-click and the Menu key already go.**
-        # The signal carries a viewport position for exactly this reason, so the pointer's two
-        # doors resolve the row through one line of code and cannot disagree about which row they
-        # opened. It is deliberately **not** wired to `⋯`'s slot: that one carries
-        # `overflowing()` — only what the last paint had no room to draw — which on a wide window
-        # is empty, and an empty menu is what "doesn't give you any options" looks like from the
-        # inside. The `⋮` is a door to the whole menu, as it is on the staging list.
-        self._delegate.menu_requested.connect(self._row_menu_asked_for)
+        # **Its own signal rather than `more_requested`.** Routed to the overflow's slot it
+        # offered `verbs_of` — the four verbs the row already draws as buttons — which is
+        # `T-135`'s redundancy reproduced one control over and exactly what was reported:
+        # *"the options from that button seem completely redundant."*
+        self._delegate.menu_requested.connect(self._item_menu_asked_for)
         # **Rows are no longer uniform, and that is spent deliberately** (`T-140`, `UX-005`
         # row 9c). `setUniformItemSizes` lets the view compute the visible range arithmetically
         # instead of measuring every row, and `T118-R10` is the record of what per-row cost buys
@@ -1891,6 +1901,25 @@ class QueueView(QWidget):
                     # asked for, not a request for the list's default horizontal scroll.
                     return True
         return bool(super().eventFilter(watched, event))
+
+    def _item_menu_asked_for(self, position: QPoint) -> None:
+        """The row's `⋮` was pressed: ask the shell for **this download's** menu (`T-315`).
+
+        **Resolved from the point, exactly as `_row_menu_asked_for` resolves it**, so the two
+        pointer doors cannot name different rows. It does not take that method's keyboard
+        fallback, because there is no keyboard route *to the zone* — the painted `⋮` has no
+        accessibility node by design, and the Menu key already reaches the row's verbs through the
+        other slot. A fallback here would make a key press open a menu the key was not aimed at.
+
+        The contents are the shell's to decide, for `more_requested`'s reason: what can be done to
+        a download is a shell question, and this widget knows only which row was asked about.
+        """
+        index = self._list.indexAt(position)
+        if not index.isValid():
+            return
+        job_id = self._model.data(index, JOB_ID_ROLE)
+        if isinstance(job_id, str) and job_id:
+            self.item_menu_requested.emit(job_id)
 
     def _row_menu_asked_for(self, position: QPoint) -> None:
         """The Menu key, Shift+F10 or a right-click asked for a row's overflow (`T124-R1`).

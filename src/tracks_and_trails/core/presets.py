@@ -487,6 +487,38 @@ def format_choice_of(source: DownloadRequest | Preset) -> FormatChoice:
     return FormatChoice(**{name: getattr(source, name) for name in PRESET_OWNED_FIELDS})
 
 
+def preset_of(request: DownloadRequest, *, name: str) -> Preset:
+    """The preset `request` **is** — the inverse of `to_request` (`T-315`).
+
+    **Built for editing a download that is already queued.** `OptionsDialog` and the format table
+    both take a `Preset`, and the only preset a queued job has is the one implied by its request.
+    Opening either on anything else — a catalogue preset matched by name, or a fresh
+    `custom_preset` — would show the user settings the job does not have and write them back on
+    OK, which is `T-313`'s silent discard arriving from a different direction.
+
+    **By name from `PRESET_OWNED_FIELDS`, exactly as `format_choice_of` narrows the other way**,
+    so the two directions cannot disagree about which fields a preset owns and a field joining the
+    intersection is carried the day it appears. Everything a request holds outside that set is a
+    credential, a network setting or a location; none of it belongs to a preset, and
+    `with_connection_of` is what carries it across a retarget instead.
+
+    **Not an identity in the other direction, and it must not be treated as one.** A preset
+    stating an empty `output_template` means *"whatever the caller's default is"*, so `to_request`
+    resolves it and the request records the concrete string — information the preset never held.
+    Every shipped preset states none, so `preset_of(to_request(p))` differs from `p` in exactly
+    that field. **Request → preset → request is lossless**, which is the direction a retarget
+    travels, and `test_a_request_round_trips_through_the_preset_it_implies` asserts that one.
+
+    `built_in=False`: this describes one job's request, and nothing that came out of a request is
+    something the application ships.
+    """
+    return Preset(
+        name=name,
+        built_in=False,
+        **{field: getattr(request, field) for field in PRESET_OWNED_FIELDS},
+    )
+
+
 class PresetOverrideError(ValueError):
     """An override that would make the request disagree with the preset that was shown.
 

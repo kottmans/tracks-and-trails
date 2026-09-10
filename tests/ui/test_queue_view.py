@@ -4370,28 +4370,29 @@ def test_only_line_separators_are_touched_in_the_extractors_message(
     )
 
 
-def test_the_row_menu_zone_opens_the_queue_rows_menu(
+def test_the_row_menu_zone_asks_for_this_downloads_own_menu(
     queue: FakeQueue,
     managers: Callable[..., DownloadManager],
     views: Callable[..., QueueView],
     tmp_path: Path,
     qapp: QApplication,
 ) -> None:
-    """**`T-314`.** *"The vertical 3 dot button doesn't seem to do anything on the queue screen
-    when it is pressed. It doesn't give you any options."*
+    """**`T-314`**, amended by **`T-315`**: the `⋮` asks, and asks for the right menu.
 
-    `RowDelegate` paints the `⋮` on every editable row and emits `menu_requested` when it is
+    `RowDelegate` paints the zone on every editable row and emits `menu_requested` when it is
     pressed. `AddUrlDialog` connected that signal; **the queue, which shares the delegate, never
-    did** — so the zone was drawn, took the press, released, and emitted into nothing. `UX-005` §5
-    names an offered control that does nothing as a defect in its own right.
+    did** — so the zone drew, took the press, released, and emitted into nothing. `UX-005` §5 names
+    an offered control that does nothing as a defect in its own right.
+
+    **`T-314` wired it to the overflow's slot and that was the wrong menu.** It carried
+    `verbs_of` — the four verbs the row *already draws as buttons* — which is `T-135`'s redundancy
+    reproduced one control over, and what the maintainer reported next: *"the options from that
+    button seem completely redundant."* So the zone has its own signal, and this asserts which one
+    fires: the item menu, and **not** `more_requested`.
 
     **The two halves of the route are tested where each lives**: that a press on the zone emits is
     `test_the_zone_comes_back_up_before_the_menu_opens`, one file over; this is the half that was
     missing, so it starts from the signal.
-
-    **The payload is asserted, not only its arrival.** Wiring the zone to `⋯`'s slot instead would
-    have carried `overflowing()` — only what the last paint had no room for, which on a window
-    this wide is nothing — and an empty menu is indistinguishable from the defect being fixed.
     """
     queue.add(make_job("job-1", tmp_path, queue_position=0))
     view = views(jobs=queue, manager=managers(running=False))
@@ -4399,17 +4400,16 @@ def test_the_row_menu_zone_opens_the_queue_rows_menu(
     view.show()
     qapp.processEvents()
 
-    asked: list[tuple[str, tuple[Verb, ...]]] = []
-    view.more_requested.connect(lambda job_id, verbs: asked.append((job_id, verbs)))
+    asked: list[str] = []
+    overflowed: list[str] = []
+    view.item_menu_requested.connect(asked.append)
+    view.more_requested.connect(lambda job_id, _verbs: overflowed.append(job_id))
 
     index = view.model.index(0, 0)
     view._delegate.menu_requested.emit(view._list.visualRect(index).center())
     qapp.processEvents()
 
-    assert asked, "pressing the row's ⋮ emitted into nothing, so no menu could open"
-    job_id, offered = asked[0]
-    assert job_id == "job-1", f"the menu opened for {job_id!r}"
-    assert offered == view.verbs_of("job-1"), (
-        "the ⋮ offered something other than the row's own verbs"
+    assert asked == ["job-1"], f"the row's ⋮ asked for {asked}, so no menu could open for job-1"
+    assert not overflowed, (
+        "the ⋮ went to the overflow's slot, which offers the verbs the row already draws"
     )
-    assert offered, "the menu opened with no entries in it, which is the reported symptom"

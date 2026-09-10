@@ -50,19 +50,36 @@ from PySide6.QtWidgets import (
 from tracks_and_trails import __version__
 from tracks_and_trails.core import presets, settings
 from tracks_and_trails.core.job_state import REORDERABLE
-from tracks_and_trails.core.models import MediaInfo, NetworkOptions, Preset
+from tracks_and_trails.core.models import Job, MediaInfo, NetworkOptions, Preset
 from tracks_and_trails.core.paths import APP_SLUG
 from tracks_and_trails.core.settings import SettingsProblem
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.ytdlp_service import YtdlpService
 from tracks_and_trails.ui.add_dialog import AddUrlDialog, JobSink
 from tracks_and_trails.ui.file_actions import MESSAGE_TIMEOUT_MS, FileActions
+from tracks_and_trails.ui.format_dialog import FormatDialog
 from tracks_and_trails.ui.job_detail import JobReader
 from tracks_and_trails.ui.keyboard import route_is_elsewhere
-from tracks_and_trails.ui.options_dialog import PresetSink
+from tracks_and_trails.ui.options_dialog import OptionsDialog, PresetSink
 from tracks_and_trails.ui.queue_view import QueueReader, QueueView, build_queue_view
+from tracks_and_trails.ui.row_delegate import CHOOSE_FORMATS_TEXT, OPTIONS_TEXT
 from tracks_and_trails.ui.row_verbs import LABELS, Verb
 from tracks_and_trails.ui.settings_dialog import SettingsDialog
+
+#: The heading over a queue row's per-item commands (`T-315`). **The staging list's own wording**
+#: (`UX-011`), because it is the same menu opened from the same painted `⋮` on the same row
+#: anatomy, and two names for one thing is how a user learns they are two things.
+JUST_THIS_ITEM: Final = "Just this item"
+
+#: What the status bar says while a queued URL is being read again for its formats.
+READING_AGAIN: Final = "Reading this URL again for its formats…"
+
+#: The three ways that read can end without a table. Each says what happened rather than that
+#: something failed, because the download the user already has is untouched in all three
+#: (`NFR-006`).
+COULD_NOT_READ: Final = "Could not read this URL again:"
+NO_FORMATS: Final = "This URL no longer offers any formats to choose from"
+STARTED_MEANWHILE: Final = "This download started while its formats were being read"
 
 APP_NAME: Final = "Tracks & Trails"
 
@@ -602,6 +619,14 @@ class MainWindow(QMainWindow):
         #: Where `P-4`'s *Save as preset…* writes (`T109-R5`). Composition owns `settings.toml`
         #: (`ARC-007`), so it supplies this rather than the window reading the file.
         self._save_preset = save_preset
+        #: Probe id → the queued job whose formats are being re-read (`T-315`).
+        #:
+        #: **Keyed by the probe rather than by the job**, because `media_probed` and `job_failed`
+        #: arrive with the *staged* id and the add dialog stages its own on the same two signals.
+        #: Membership is what says "this one is ours"; the values are what answer "and for whom".
+        #: Entries are removed as they are answered, so a second press on a row already being read
+        #: is refused rather than opening a second table over the first.
+        self._reading: dict[str, str] = {}
         #: How `docs/UX_SPEC.md` §8's *Manage presets…* opens (`T-111`). Passed straight through to
         #: the add dialog, which draws the entry only where there is one — this window does not
         #: learn what a preset store is, for `save_preset`'s reason.
@@ -730,6 +755,12 @@ class MainWindow(QMainWindow):
         # deletes its collaborators.
         self._queue = build_queue_view(queue, self._manager, None, cache_root=self._cache_root)
         self._connect_row_verbs(self._queue)
+        # **The re-read a row's *Choose specific formats…* starts, answered here** (`T-315`).
+        # Connected beside the queue rather than at construction because both handlers need it:
+        # a result arriving with no queue to write to has nowhere to go. Both signals are shared
+        # with every other probe in the process, which is why `_reading` is keyed on the probe id.
+        self._manager.media_probed.connect(self._on_formats_read)
+        self._manager.job_failed.connect(self._on_formats_unread)
         self.setCentralWidget(self._queue)
         self._attach_file_actions()
 
@@ -816,6 +847,7 @@ class MainWindow(QMainWindow):
         view.open_requested.connect(lambda job_id: self._file_verb(job_id, reveal=False))
         view.reveal_requested.connect(lambda job_id: self._file_verb(job_id, reveal=True))
         view.more_requested.connect(self._show_row_menu)
+        view.item_menu_requested.connect(self._show_item_menu)
         view.model.preset_chosen.connect(self._retarget_job)
 
     def _retry_each_of(self, job_id: str) -> None:
@@ -870,6 +902,21 @@ class MainWindow(QMainWindow):
             # quietly falling back to "best video" would download something nobody asked for.
             self._report_transiently(f"{preset_name} is not a format this version offers")
             return
+        self._retarget_to(job_id, preset)
+
+    def _retarget_to(self, job_id: str, preset: Preset) -> None:
+        """Write `preset` onto a queued job, keeping what a preset does not own.
+
+        **One route, three callers** (`T-315`). The row's preset control, its *Options…* and its
+        *Choose specific formats…* all end here, so the two carried-over fields below cannot be
+        remembered on one path and forgotten on another — which is exactly the shape of the defect
+        each was written for.
+        """
+        if self._manager is None or self._queue is None:
+            return
+        job = self._queue.model.job_for(job_id)
+        if job is None:
+            return
         self._manager.retarget(
             job_id,
             # **The new format, the old connection** (`T197-R4`). A preset describes a format; a
@@ -914,6 +961,167 @@ class MainWindow(QMainWindow):
             default_output_template=template,
         )
         return self._manager.preview_output_path(request, _TEMPLATE_PROBE).refusal
+
+    def _show_item_menu(self, job_id: str) -> QMenu | None:
+        """This download's own menu, opened from the row's `⋮` (`T-315`).
+
+        **What can be done to the *item*, not to its line.** The row already draws its verbs as
+        buttons and `⋯` holds whichever of them did not fit, so listing them here offered the same
+        four actions twice — reported from the built window as *"the options from that button seem
+        completely redundant"*, and the same thing `T-135` had already fixed one control over.
+
+        **The same two entries the staging list's `⋮` opens**, which is what was asked for: *"it
+        should give you options/choose formats like it does when you do it on the add urls."* The
+        texts come from `row_delegate` rather than being retyped, so the two surfaces cannot come
+        to call the same command different things.
+
+        **Nothing when the job can no longer take a new request.** Both entries end in `retarget`,
+        which a started job refuses — `UX-005` §5 asks that such a thing not be offered at all.
+        The delegate already gates the zone on the same fact, so this is the second of two rather
+        than the only one; it is here because *this* method is what decides the contents.
+        """
+        if self._queue is None or self._manager is None:
+            return None
+        job = self._queue.model.job_for(job_id)
+        if job is None or job.status not in Job.RETARGETABLE:
+            return None
+
+        menu = QMenu(self._queue)
+        menu.setObjectName("rowItemMenu")
+        menu.addSection(JUST_THIS_ITEM)
+        formats = menu.addAction(CHOOSE_FORMATS_TEXT)
+        formats.setObjectName("rowItemFormats")
+        formats.triggered.connect(partial(self._choose_job_formats, job_id))
+        options = menu.addAction(OPTIONS_TEXT)
+        options.setObjectName("rowItemOptions")
+        options.triggered.connect(partial(self._edit_job_options, job_id))
+        # `popup`, not `exec`: `_row_menu` gives the reason — `exec` starts a nested event loop a
+        # test cannot leave, so an `exec`'d menu is a route with unreachable actions.
+        menu.popup(QCursor.pos())
+        return menu
+
+    def _edit_job_options(self, job_id: str) -> None:
+        """`REQ-010`'s options for one queued download (`T-315`).
+
+        **Opened on the preset the job's request *implies*, never on a catalogue preset matched by
+        name.** A queued request is whatever the add dialog composed — a hand-picked selector, an
+        embedded thumbnail, a subtitle language — and a catalogue preset agreeing on the format
+        need not agree on any of it. Opening on that one would show settings the job does not have
+        and write them back on OK, which is `T-313`'s silent discard arriving from a new direction.
+        `presets.preset_of` is the inverse `to_request` never had, and its round trip is asserted.
+
+        **No subtitle languages are offered**, because the job does not carry the ones the site
+        listed — they belong to the probe, and only the format table pays for a probe here. The
+        dialog already treats an empty sequence as *nothing to offer* rather than as *none exist*.
+        """
+        if self._queue is None:
+            return
+        job = self._queue.model.job_for(job_id)
+        if job is None or job.status not in Job.RETARGETABLE:
+            return
+        dialog = OptionsDialog(
+            presets.preset_of(job.request, name=job.title or job.request.url),
+            save_preset=self._save_preset,
+            parent=self,
+            # `REQ-024`, `T-199`: what ffmpeg performs is not offered when ffmpeg is absent, which
+            # is the same answer the add dialog gates the same seven options on.
+            ffmpeg_available=self._ffmpeg_available,
+        )
+        # `open`, not `exec`, for `_show_add_dialog`'s reason: a nested event loop is one a test
+        # cannot leave, so the accepted branch below would be unreachable.
+        dialog.accepted.connect(lambda: self._retarget_to(job_id, dialog.result_preset()))
+        dialog.open()
+
+    def _choose_job_formats(self, job_id: str) -> None:
+        """Re-read the URL, then open its formats (`T-315`, ruled by the maintainer 2026-09-10).
+
+        **A queued job does not carry its formats.** `Job` holds the request, the title, the
+        uploader, the duration and the thumbnail; the probe's format list lives in the add
+        dialog's `MediaInfo` and is discarded when that dialog closes, and no migration ever
+        persisted it. So the table has nothing to show until the URL is read again.
+
+        **Read again rather than stored**, ruled from two options. Storing the list would open the
+        table instantly, at the cost of a migration, a blob per job and a list that can go stale —
+        and a stale list fails *at download time*, silently, long after the choice. A re-read costs
+        a second and is true at the moment it is chosen from.
+
+        **Staged, not queued** (`UX-003`, `T118-R1`): `stage` reads a URL without creating a job,
+        which is exactly this — the job already exists and is not being added.
+        """
+        if self._manager is None or self._queue is None:
+            return
+        job = self._queue.model.job_for(job_id)
+        if job is None or job.status not in Job.RETARGETABLE:
+            return
+        if job_id in self._reading.values():
+            # Already reading this one. A second press would stage a second probe whose result
+            # opens a second table over the first, and whichever is answered last would win.
+            return
+        self._reading[self._manager.stage(job.request)] = job_id
+        self._report_transiently(READING_AGAIN)
+
+    def _on_formats_read(self, probe_id: str, media: object) -> None:
+        """A re-read finished: open the table on what it found (`T-315`).
+
+        **Keyed on the probe's own id**, so this ignores every `media_probed` that is not one of
+        ours — the add dialog stages its own and they arrive on the same signal.
+        """
+        job_id = self._reading.pop(probe_id, None)
+        if job_id is None or self._manager is None:
+            return
+        self._manager.unstage(probe_id)
+        if not isinstance(media, MediaInfo) or not media.formats:
+            self._report_transiently(NO_FORMATS)
+            return
+        self._open_formats_for(job_id, media)
+
+    def _on_formats_unread(self, probe_id: str, _kind: object, message: str) -> None:
+        """A re-read failed. Said in the status bar, in the extractor's own words (`NFR-006`).
+
+        **Not a modal.** The download the user already has is untouched and still correct, so this
+        is *"that did not work"* rather than *"something is wrong"* — the same judgement
+        `_retarget_job` records for a job that started a moment too early.
+        """
+        job_id = self._reading.pop(probe_id, None)
+        if job_id is None or self._manager is None:
+            return
+        self._manager.unstage(probe_id)
+        self._report_transiently(f"{COULD_NOT_READ} {message}")
+
+    def _open_formats_for(self, job_id: str, media: MediaInfo) -> None:
+        """The format table, for a job that is still there to receive the answer."""
+        if self._queue is None:
+            return
+        job = self._queue.model.job_for(job_id)
+        if job is None or job.status not in Job.RETARGETABLE:
+            # It started, or left the queue, while the URL was being read. Nothing to write to.
+            self._report_transiently(STARTED_MEANWHILE)
+            return
+        dialog = FormatDialog(
+            media.formats,
+            title=job.title or job.request.url,
+            ffmpeg_available=self._ffmpeg_available,
+            parent=self,
+        )
+
+        def use() -> None:
+            selection = dialog.selection()
+            if not selection.is_complete:
+                return
+            # **The chosen streams over the request the job already has** (`T-311`'s rule, one
+            # surface over). The preset says *how* to download and the selection says *what*, so
+            # composing keeps the options, the naming and the conversion this job was queued with
+            # instead of replacing them with a bare selector.
+            self._retarget_to(
+                job_id,
+                presets.with_format_selector(
+                    presets.preset_of(job.request, name=selection.selector()),
+                    selection.selector(),
+                ),
+            )
+
+        dialog.accepted.connect(use)
+        dialog.open()
 
     def _show_row_menu(self, job_id: str, verbs: object) -> QMenu | None:
         """The queue row's menu, holding whatever the view said to hold.

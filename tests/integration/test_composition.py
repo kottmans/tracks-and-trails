@@ -887,13 +887,27 @@ def test_every_manager_signal_the_ui_needs_has_exactly_one_connection(
         "watching, and nothing else records it (REQ-020 withdrawn)"
     )
 
+    # **One each, and it is the window's** (`T-315`). These were **zero** until a queue row's
+    # *Choose specific formats…* had to re-read its URL: a queued `Job` does not carry its format
+    # list, so the window stages a probe and listens for the answer on the same two signals every
+    # other probe uses. It is keyed on the probe's own id and ignores results it did not ask for,
+    # which `test_a_probe_this_window_did_not_start_is_ignored` asserts from the other side.
+    for name in ("media_probed", "job_failed"):
+        assert connection_count(manager, name) == 1, (
+            f"{name} should have exactly the window's re-read listener before the dialog opens"
+        )
+
     dialog = composition.window.open_add_dialog()
     # The dialog adds its own four. Named individually rather than counted in bulk, so a signal
     # gaining a second listener is reported as itself. `job_changed` is **two** here — the queue
     # model's and the dialog's — where it was three before `UX-005` removed the detail pane's.
+    #
+    # `media_probed` and `job_failed` are **two** for the same shape of reason: the window's
+    # re-read listener above, and the dialog's own (`T-315`). Both stage their own probes and
+    # both filter on the id they were given, so neither acts on the other's result.
     for name, expected in (
-        ("media_probed", 1),
-        ("job_failed", 1),
+        ("media_probed", 2),
+        ("job_failed", 2),
         ("persistence_failed", 1),
         ("start_rejected", 1),
         ("job_changed", 2),

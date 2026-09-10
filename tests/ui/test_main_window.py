@@ -6,6 +6,7 @@ round-trips its geometry. Whether the icon *looks* right in a real Windows taskb
 automatable and stays an `OPS-003` known gap.
 """
 
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
@@ -25,17 +26,20 @@ from PySide6.QtWidgets import (
 )
 
 from tracks_and_trails import __version__
+from tracks_and_trails.core import presets
 from tracks_and_trails.core.job_state import JobStatus
-from tracks_and_trails.core.models import DownloadRequest, Job
+from tracks_and_trails.core.models import DownloadRequest, FormatInfo, Job, MediaInfo
 from tracks_and_trails.core.paths import APP_SLUG
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui import main_window, theme
+from tracks_and_trails.ui.format_dialog import FormatDialog
 from tracks_and_trails.ui.main_window import (
     _MAX_COORD,
     ACTIONABLE_STATUS_PROPERTY,
     ADD_URLS_SHORTCUT_FALLBACK,
     APP_NAME,
     CLEAR_FINISHED_SHORTCUT,
+    COULD_NOT_READ,
     DEFAULT_SIZE,
     QUIT_SHORTCUT_FALLBACK,
     RUN_SHORTCUT,
@@ -51,7 +55,9 @@ from tracks_and_trails.ui.main_window import (
     resolve_quit_shortcut,
     save_geometry,
 )
-from tracks_and_trails.ui.row_verbs import Verb
+from tracks_and_trails.ui.options_dialog import OptionsDialog
+from tracks_and_trails.ui.row_delegate import CHOOSE_FORMATS_TEXT, OPTIONS_TEXT
+from tracks_and_trails.ui.row_verbs import LABELS, Verb
 
 
 @pytest.fixture
@@ -1509,3 +1515,280 @@ def test_a_dialog_closed_while_minimized_does_not_come_back(composed: MainWindow
     QApplication.processEvents()
 
     assert not dialog.isVisible(), "a dialog closed while the window was minimized was re-shown"
+
+
+def _manager_of(window: MainWindow) -> DownloadManager:
+    """The window's manager, as a non-optional handle. Composition always supplies one here."""
+    manager = window._manager
+    assert manager is not None, "this window was built without a manager"
+    return manager
+
+
+@dataclass
+class _Intercepted:
+    """What the window tried to do to the queue, captured instead of performed.
+
+    A real `DownloadManager` over `_EmptyJobStore` finds no job to revise, so a retarget would
+    succeed silently and prove nothing; and `stage` would admit a real probe session. Both are
+    replaced so the test observes the *intent*, which is what these paths are about.
+    """
+
+    staged: list[DownloadRequest] = field(default_factory=list)
+    unstaged: list[str] = field(default_factory=list)
+    written: list[tuple[str, DownloadRequest]] = field(default_factory=list)
+
+
+def _intercept(window: MainWindow, *, probe_id: str = "probe-1") -> _Intercepted:
+    record = _Intercepted()
+    manager = _manager_of(window)
+
+    def stage(request: DownloadRequest) -> str:
+        record.staged.append(request)
+        return f"{probe_id}-{len(record.staged)}" if len(record.staged) > 1 else probe_id
+
+    def unstage(job_id: str) -> None:
+        record.unstaged.append(job_id)
+
+    def retarget(
+        job_id: str,
+        request: DownloadRequest,
+        *,
+        then: object = None,
+        otherwise: object = None,
+    ) -> None:
+        record.written.append((job_id, request))
+
+    manager.stage = stage  # type: ignore[method-assign]
+    manager.unstage = unstage  # type: ignore[method-assign]
+    manager.retarget = retarget  # type: ignore[method-assign]
+    return record
+
+
+def _job_with(request: DownloadRequest, job_id: str = "a") -> Job:
+    """A queued job carrying `request`, so a test can say what the job was queued *with*."""
+    return Job(
+        id=job_id,
+        url=request.url,
+        request=request,
+        status=JobStatus.QUEUED,
+        queue_position=0,
+        title="A clip",
+    )
+
+
+def _formats() -> tuple[FormatInfo, ...]:
+    """One video-only stream and one audio-only stream, so a merge can be composed."""
+    return (
+        FormatInfo(
+            "137",
+            "mp4",
+            height=1080,
+            width=1920,
+            video_codec="avc1.4d",
+            has_video=True,
+            has_audio=False,
+            bitrate_kbps=4200.0,
+        ),
+        FormatInfo(
+            "140",
+            "m4a",
+            audio_codec="mp4a.40.2",
+            has_video=False,
+            has_audio=True,
+            bitrate_kbps=128.0,
+        ),
+    )
+
+
+def test_the_rows_item_menu_offers_this_downloads_own_commands(qapp: QApplication) -> None:
+    """`T-315`: the `⋮` holds what can be done to the **item**, not to its line.
+
+    *"The options from that button seem completely redundant. I think it should give you
+    options/choose formats like it does when you do it on the add urls."*
+
+    `T-314` wired the zone to the overflow's slot, so it offered `verbs_of` — the four verbs the
+    row already draws as buttons. **The verbs are asserted absent**, not merely the two entries
+    present: a menu holding both would still be the redundancy that was reported.
+    """
+    window = _window_over([_job("a", 0)])
+    menu = window._show_item_menu("a")
+    assert menu is not None, "the row's ⋮ produced no menu"
+    try:
+        offered = [action.text() for action in menu.actions() if action.text()]
+        assert CHOOSE_FORMATS_TEXT in offered, offered
+        assert OPTIONS_TEXT in offered, offered
+        verbs = {LABELS[verb] for verb in Verb}
+        assert not verbs & set(offered), (
+            f"the item menu repeats the row's own buttons: {sorted(verbs & set(offered))}"
+        )
+    finally:
+        menu.close()
+
+
+def test_a_started_download_is_offered_no_item_menu(qapp: QApplication) -> None:
+    """Both entries end in `retarget`, which a started job refuses (`UX-005` §5).
+
+    Offering them anyway would be a menu whose every entry fails — the defect `UX-005` §5 names,
+    and the one the `⋮` was reported for in the first place.
+    """
+    window = _window_over([_job("a", 0, status=JobStatus.RUNNING)])
+    assert window._show_item_menu("a") is None, "a running download was offered a way to retarget"
+
+
+def test_choosing_formats_reads_the_url_again_rather_than_guessing(qapp: QApplication) -> None:
+    """`T-315`, **ruled by the maintainer on 2026-09-10**: re-read rather than store.
+
+    A queued `Job` carries its request, title, uploader, duration and thumbnail — **not its format
+    list**, which lives in the add dialog's `MediaInfo` and is discarded when that dialog closes.
+    So the table has nothing to show until the URL is read again.
+
+    **Staged, not queued** (`UX-003`): `stage` reads a URL without creating a job, which is what
+    this is — the job already exists.
+    """
+    window = _window_over([_job("a", 0)])
+    record = _intercept(window)
+
+    window._choose_job_formats("a")
+
+    assert len(record.staged) == 1, "choosing formats did not read the URL again"
+    assert record.staged[0].url == "https://example.invalid/clip"
+    assert window._reading == {"probe-1": "a"}, window._reading
+
+
+def test_a_second_press_while_reading_does_not_start_a_second_read(qapp: QApplication) -> None:
+    """Two tables over one row would each write, and whichever was answered last would win."""
+    window = _window_over([_job("a", 0)])
+    record = _intercept(window)
+
+    window._choose_job_formats("a")
+    window._choose_job_formats("a")
+
+    assert len(record.staged) == 1, f"{len(record.staged)} reads were started for one row"
+
+
+def test_the_chosen_formats_compose_over_the_request_the_job_already_has(
+    qapp: QApplication,
+) -> None:
+    """`T-315`: the streams change and **nothing else does** (`T-311`'s rule, one surface over).
+
+    A queued request is whatever the add dialog composed for it — here an embedded thumbnail, a
+    subtitle language and a naming pattern, none of which any shipped preset states. Rebuilding
+    the request from a bare selector would discard all three, which is `T-313` arriving from a new
+    direction; composing over `preset_of(job.request)` keeps them.
+
+    Driven the whole way: the read is started, its result delivered on the manager's own signal,
+    and the dialog answered by choosing in the table the way a user does.
+    """
+    request = replace(
+        _job("a", 0).request,
+        embed_thumbnail=True,
+        subtitle_languages=("en",),
+        output_template="%(uploader)s/%(title)s.%(ext)s",
+    )
+    window = _window_over([_job_with(request)])
+    record = _intercept(window)
+
+    window._choose_job_formats("a")
+    window._on_formats_read(
+        "probe-1", MediaInfo(url=request.url, title="A clip", formats=_formats())
+    )
+    qapp.processEvents()
+
+    dialog = window.findChild(FormatDialog)
+    assert dialog is not None, "the read finished and no format table opened"
+    try:
+        for entry in _formats():
+            dialog.table.choose(entry)
+        dialog.accept()
+        qapp.processEvents()
+    finally:
+        dialog.close()
+
+    assert len(record.written) == 1, f"the chosen formats produced {len(record.written)}"
+    job_id, new = record.written[0]
+    assert job_id == "a"
+    assert new.format_selector == "137+140", new.format_selector
+    assert new.embed_thumbnail is True, "the job's own options were discarded"
+    assert new.subtitle_languages == ("en",), "the job's subtitle choice was discarded"
+    assert new.output_template == "%(uploader)s/%(title)s.%(ext)s", "the naming was discarded"
+
+
+def test_a_failed_re_read_says_so_and_leaves_the_download_alone(qapp: QApplication) -> None:
+    """`NFR-006`: the download the user already has is untouched, so this is not a modal.
+
+    **The message reaches the status bar and no retarget is written.** A failure that silently did
+    nothing would leave the user pressing a menu entry that never opens anything.
+    """
+    window = _window_over([_job("a", 0)])
+    record = _intercept(window)
+
+    window._choose_job_formats("a")
+    window._on_formats_unread("probe-1", None, "HTTP Error 403: Forbidden")
+
+    said = window.statusBar().currentMessage()
+    assert COULD_NOT_READ in said, said
+    assert "403" in said, f"the extractor's own words were not passed on: {said!r}"
+    assert record.written == [], "a failed read still rewrote the download"
+    assert window._reading == {}, "the failed read is still remembered as in flight"
+
+
+def test_a_probe_this_window_did_not_start_is_ignored(qapp: QApplication) -> None:
+    """`media_probed` and `job_failed` are shared with every other probe in the process.
+
+    The add dialog stages its own on these very signals, so membership of `_reading` — keyed on
+    the **probe's** id — is what says a result is this window's to act on.
+    """
+    window = _window_over([_job("a", 0)])
+    record = _intercept(window)
+
+    window._on_formats_read("someone-elses", MediaInfo(url="x", title="x", formats=_formats()))
+    qapp.processEvents()
+    assert window.findChild(FormatDialog) is None, "a table opened for somebody else's probe"
+
+    # **`job_failed` is the half that carries the real risk**, because it also fires for genuine
+    # queue jobs — every failed download in the application arrives here. Reporting one as a
+    # failed re-read would put the wrong words in the status bar for something the user *was*
+    # told about properly elsewhere.
+    window._on_formats_unread("job-that-really-failed", None, "HTTP Error 500")
+    assert COULD_NOT_READ not in window.statusBar().currentMessage(), (
+        "a download's own failure was reported as a failed re-read"
+    )
+    assert record.unstaged == [], "a job this window never staged was unstaged"
+
+
+def test_accepting_the_options_editor_unchanged_changes_nothing(qapp: QApplication) -> None:
+    """`T-315`: *Options…* opens on the request the job **actually has**.
+
+    **The strongest form of the claim: open it, accept it, change nothing.** If the editor opened
+    on a catalogue preset matched by name — or on a fresh one — then pressing OK would write that
+    preset's settings over the job's, and every field below would come back wrong. That is
+    `T-313`'s silent discard arriving from a new direction, and `presets.preset_of` is what
+    prevents it.
+
+    The request deliberately agrees with no shipped preset: an embedded thumbnail, a subtitle
+    language and a naming pattern, none of which any built-in states.
+    """
+    request = replace(
+        _job("a", 0).request,
+        embed_thumbnail=True,
+        subtitle_languages=("en",),
+        output_template="%(uploader)s/%(title)s.%(ext)s",
+    )
+    window = _window_over([_job_with(request)])
+    record = _intercept(window)
+
+    window._edit_job_options("a")
+    qapp.processEvents()
+    dialog = window.findChild(OptionsDialog)
+    assert dialog is not None, "the item menu's Options… opened nothing"
+    try:
+        dialog.accept()
+        qapp.processEvents()
+    finally:
+        dialog.close()
+
+    assert len(record.written) == 1, f"accepting the options wrote {len(record.written)}"
+    _job_id, kept = record.written[0]
+    assert presets.format_choice_of(kept) == presets.format_choice_of(request), (
+        "accepting the options editor without changing anything changed the download"
+    )

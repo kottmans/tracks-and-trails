@@ -166,6 +166,82 @@ than growing a second answer to the same question.
 - The dialog still narrows to 320px, which `tests/ui/test_add_dialog.py` asserts today.
 - `docs/UX_SPEC.md` §4 and §5 record the ruling with the maintainer's authority.
 
+### T-315 — A queue row's `⋮` offers what the row already shows
+
+**Status:** In Review — **built 2026-09-10**; both design questions ruled by the maintainer the
+same day from the built queue window.
+
+**Owner:** Implementer
+**Priority:** Medium — the control works since `T-314` and now opens a menu whose every entry
+repeats a button beside it, which is `UX-005` §5's defect one step on from the one just fixed
+**Phase:** Phase 4 (accessibility and polish)
+**Depends on:** `T-314` connected the zone at all. `T-311` is where the composition rule comes
+from and `T-135` is where this redundancy was fixed on the other control.
+**Relevant context:** `UX-011` option *E* (the staging list's row menu); `T-135` (the `⋯` overflow
+holds only what did not fit); `UX-003` (a job enters the queue once it has been read); `T-311`
+(streams and preset are different facts); `UX-005` §5
+**Affected surfaces:** `ui/queue_view.py`'s row wiring; `ui/main_window.py`'s row menu; new
+`ui/format_dialog.py`; `core/presets.py`
+**Risk:** Medium — a new asynchronous surface with three ways to end without a table, and two
+editors that write a whole request back
+
+#### What was reported, and what it turned out to be
+
+*"The options from that button seem completely redundant. I think it should give you options/choose
+formats like it does when you do it on the add urls."*
+
+`T-314` wired the `⋮` to `_row_menu_asked_for`, which carries `verbs_of` — **everything the row's
+state permits**, which on any window wide enough is exactly the four buttons already drawn on the
+row. `main_window.py` records `T-135` fixing this same redundancy on the `⋯`, and the fix
+reproduced it one control over. The zone now has its own signal: `⋯` holds what the row could not
+draw, the keyboard routes hold every verb, and `⋮` holds what can be done to **this download**.
+
+#### The two things that had to be ruled
+
+1. **A queued job does not carry its formats.** `Job` holds the request, title, uploader, duration
+   and thumbnail; the probe's list lives in the add dialog's `MediaInfo` and is discarded when that
+   dialog closes, and no migration ever persisted it. **Ruled: re-read the URL when the entry is
+   picked.** The alternative — storing the list — opens the table instantly at the cost of a
+   migration, a blob per job, and a list that can go stale; a stale list fails *at download time*,
+   silently, long after the choice was made. A re-read costs a second and is true at the moment it
+   is chosen from.
+2. **Whether the menu also lists the row's verbs**, as the staging list's menu does under its
+   *"Just this item"* section. **Ruled: per-item commands only** — the verbs are already buttons,
+   and `⋯` exists for whichever of them a narrow window could not draw.
+
+#### What that needed underneath
+
+**`presets.preset_of` — the inverse `to_request` never had.** Both entries write a whole request
+back, and both must open on **the preset the job's request implies** rather than on a catalogue
+preset matched by name: a queued request is whatever the add dialog composed for it, and a preset
+agreeing on the format need not agree on the thumbnail, the subtitles or the naming. Opening on
+the wrong one would show settings the job does not have and write them back on OK — `T-313`'s
+silent discard from a new direction. Built by name from `PRESET_OWNED_FIELDS`, exactly as
+`format_choice_of` narrows the other way, so the two directions cannot disagree.
+
+**It is not an identity in both directions, and the test says which one holds.** A preset stating
+an empty `output_template` means *"whatever the caller's default is"*, so `to_request` resolves it
+and the request records the concrete string — information the preset never held. Every shipped
+preset states none, so `preset_of(to_request(p))` differs from `p` in exactly that field.
+**Request → preset → request is lossless**, which is the direction a retarget travels, and that is
+what is asserted. The first version of the test asserted the other direction and failed.
+
+**One retarget route, three callers.** The preset control, *Options…* and *Choose specific
+formats…* all end in `_retarget_to`, so `T197-R4`'s carried-over connection and `T-195`'s
+carried-over naming cannot be remembered on one path and forgotten on another.
+
+#### Acceptance criteria
+
+- The `⋮` offers *Choose specific formats…* and *Options…*, and **none of the row's verbs**.
+- A job that can no longer be retargeted is offered no menu at all.
+- Picking formats re-reads the URL, opens the table on what it found, and composes the chosen
+  streams over the request the job already has — options, subtitles and naming all survive.
+- Accepting *Options…* without changing anything changes nothing.
+- A read that fails, finds no formats, or finishes after the job started says so in the status bar
+  and writes nothing.
+- A probe this window did not start is ignored, since both signals are shared with the add dialog.
+- Each is asserted by a test that **fails against the behaviour it replaces**.
+
 ### T-314 — The queue's `⋮` opens nothing, and the dropdown covers it
 
 **Status:** In Review — **built 2026-09-10**, both reported by the maintainer from the built queue

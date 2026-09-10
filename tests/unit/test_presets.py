@@ -796,3 +796,67 @@ def test_every_network_option_survives_a_retarget() -> None:
         name: getattr(kept, name) for name, value in samples.items() if getattr(kept, name) != value
     }
     assert not dropped, f"a retarget dropped network options the job was queued with: {dropped}"
+
+
+def test_a_request_round_trips_through_the_preset_it_implies() -> None:
+    """`T-315`: `preset_of` is the inverse of `to_request` on every field a preset owns.
+
+    **This is what lets a queued job be edited without losing anything.** The queue's *Options…*
+    and *Choose specific formats…* both open on `preset_of(job.request, …)` and write the result
+    back through `retarget`, so a field this dropped would be a setting silently discarded on OK —
+    `T-313`'s defect arriving from a different direction.
+
+    **Compared through `format_choice_of`, which is the boundary itself.** Asserting field by field
+    would be a third list to keep in step with `PRESET_OWNED_FIELDS`; asking the narrowing means a
+    field joining the intersection is covered the day it appears. The names differ by design — the
+    round trip is about what a download *is*, and `preset_of` is told what to call it.
+    """
+    for preset in presets.BUILT_IN_PRESETS:
+        request = presets.to_request(
+            preset, url="https://example.invalid/one", output_directory="."
+        )
+        recovered = presets.preset_of(request, name=preset.name)
+        # **Request → preset → request, which is the direction a retarget travels.** The other
+        # direction is *not* an identity and must not be asserted as one: a preset stating an
+        # empty `output_template` means *"whatever the caller's default is"*, so `to_request`
+        # resolves it and the request records the concrete string. That is information the preset
+        # never held, and every shipped preset states none — measured, this is the only field of
+        # the fourteen that differs.
+        again = presets.to_request(
+            recovered,
+            url=request.url,
+            output_directory=request.output_directory,
+            default_output_template=request.output_template,
+        )
+        assert presets.format_choice_of(again) == presets.format_choice_of(request), (
+            f"{preset.name}'s request did not survive the round trip through the preset it implies"
+        )
+
+
+def test_the_preset_a_request_implies_carries_options_no_catalogue_preset_has() -> None:
+    """The case the round trip above cannot show: a request nothing in the catalogue matches.
+
+    A queued job's request is whatever the add dialog composed for it — a hand-picked selector, an
+    embedded thumbnail, a subtitle language. **Matching it back to a built-in by name and opening
+    the editor on that** is exactly the discard this function exists to prevent, so the fields are
+    read off a request that deliberately agrees with no preset.
+    """
+    base = presets.to_request(
+        presets.BUILT_IN_PRESETS[0],
+        url="https://example.invalid/one",
+        output_directory=".",
+    )
+    request = replace(
+        base,
+        format_selector="137+140",
+        embed_thumbnail=True,
+        subtitle_languages=("en", "ja"),
+        output_template="%(uploader)s/%(title)s.%(ext)s",
+    )
+
+    recovered = presets.preset_of(request, name="137+140")
+    assert recovered.format_selector == "137+140"
+    assert recovered.embed_thumbnail is True
+    assert recovered.subtitle_languages == ("en", "ja")
+    assert recovered.output_template == "%(uploader)s/%(title)s.%(ext)s"
+    assert not recovered.built_in, "a preset read off one job's request is not one this app ships"

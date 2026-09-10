@@ -209,6 +209,22 @@ resolved.
   menu already holds. The menu opens **two ways**: from a `⋮` zone drawn on the trailing
   edge of the row's format control, and by the routes the row's context menu already answers —
   right-click, the Menu key, Shift+F10. One menu, not two lookalikes.
+- **[T]** *(ruled 2026-09-10, `T-315`)* **The queue row's `⋮` opens the same two commands, and
+  none of the row's verbs.** *"The options from that button seem completely redundant. I think it
+  should give you options/choose formats like it does when you do it on the add urls."* The queue
+  shares this row anatomy, so it shares this menu; what it must not share is the `⋯` overflow's
+  contents, which are the verbs the row **already draws as buttons**. `⋯` holds what did not fit,
+  the keyboard routes hold every verb the state permits, and `⋮` holds what can be done to the
+  download itself. `T-135` had already ruled this for the overflow; this is the same rule reaching
+  the second control.
+
+  **[D]** **A queued job's formats are read again rather than stored** *(ruled the same day, from
+  two options)*. `Job` carries the request, title, uploader, duration and thumbnail — not the
+  probe's format list, which the add dialog discards when it closes. Storing it would open the
+  table instantly, at the cost of a migration, a blob per job and a list that can go stale; a
+  stale list fails **at download time**, silently, long after the choice. A re-read costs a second
+  and is true at the moment it is chosen from. It is a `stage`, not a queue entry (`UX-003`): the
+  job already exists.
 - **[T]** *(ruled 2026-08-10, `UX-012`; `T-223` builds it)* **The menu holds nothing that only
   focuses a visible control.** The `Choose a format for this URL…` entry — `T118-R9`'s
   discoverability alias for the keyboard editor route — is gone: the combo is visibly on the row,
