@@ -274,6 +274,125 @@ nobody can see blocking a window nobody can use.
 
 ## Ready
 
+### T-312 — A panel opened inside a list row never has the room it needs
+
+**Status:** Ready — **ruled by the maintainer on 2026-09-10**; a first attempt was made the same
+day and **set down deliberately rather than committed**, with what it established recorded below.
+Ruled from the built window: *"there is
+just not enough room to display everything when it's crammed into the middle like this. I think it
+would make more sense if this particular screen filled the whole window, and then went back to the
+other window once selections were made."* Option **(1)** of three offered: **a page swap inside the
+add dialog**.
+**Owner:** Implementer
+**Priority:** High — it is the surface `REQ-003` and `REQ-008` are about, and it is where a
+disproportionate share of this project's layout defects have come from
+**Phase:** Phase 4 (accessibility and polish)
+**Depends on:** nothing. `T-310` and `T-311` land first and are unaffected in substance.
+**Relevant context:** `UX-007`'s `P-1` and `P-19`; `docs/UX_SPEC.md` §4 *Where it lives*;
+`T-210`, `T-296`, `T193-R1`, `T310-R2`
+**Affected surfaces:** `ui/add_dialog.py`'s panel machinery and all three panels, and their tests
+**Risk:** High — it replaces how three surfaces are presented, and `P-19` made them one mechanism
+on purpose
+
+#### A first attempt, set down 2026-09-10 — read this before starting
+
+An implementation was taken far enough to be worth recording and then **discarded rather than
+committed**, on the maintainer's call: *"let's set it down here and start fresh."* Nothing of it is
+in the tree. What it established:
+
+**The shape works.** A `QStackedWidget` with two pages — the staging content, and an empty page a
+panel is added to — took roughly twenty lines. `_open_panel` adds the panel to the page and
+switches; `close_panel` removes it, switches back, and calls `setCurrentIndex`/`scrollTo` on the
+row that was open so returning does not lose your place. With that in place,
+`panel_height_for`, `_widen_for`, `WIDEN_PASSES` and `_mount_panel` all delete cleanly, and
+`FORMAT_PANEL_HEIGHT_ROLE` can answer `0` for every row.
+
+**The page switch must still be deferred a turn.** `T108-R2` deferred the *mount* because
+`setIndexWidget` destroyed the combo box Qt was mid-`commitData` on. There is no `setIndexWidget`
+any more, and the deferral is still needed: this is reached from `StagingModel.setData` while that
+combo is live, and hiding the list under it is a different injury with the same cause.
+
+**The unresolved defect, and three fixes that did not work.** After returning from a panel,
+reopening *any* row's format control fails: `edit_row` returns `True`, Qt logs `edit: editing
+failed`, and no control appears. Verified at the point of failure — the list is visible, the dialog
+is visible, the view is in `NoState`, the index is valid and `ItemIsEditable`, the delegate is
+attached, and `PRESET_CHOICES_ROLE` is non-empty. **The working theory was that hiding the list
+strands the row's open editor, and it is unconfirmed**: moving focus to the panel before the
+switch, calling `RowDelegate.commit_and_close_editor()` before it (the method `QueueView` uses
+before a model reset, for the analogous case), and showing the dialog first all left it failing.
+
+**Do not make a fourth attempt on that theory.** The next step is to find what Qt's `shouldEdit`
+path actually rejects for this view, rather than to reason from outside it.
+
+**The tests split three ways**, and the split is most of the work:
+
+- **Retire** — their failure mode cannot exist on a page: `T-296`'s scroll-undoing-geometry,
+  `T204-R4`'s value-refresh leaving the panel behind (both the playlist and format-table copies),
+  and `T210-R1`'s panel-versus-viewport bound.
+- **Replace them with one test of what outlives them**: the panel is given the page's whole size
+  and both ways out stay on screen, at four dialog sizes including 640x480 — the size the old
+  mechanism failed at. This was written and passes.
+- **Re-point at the page** — seven tests whose subject survives: the playlist disclosure, an open
+  playlist showing entries and a way back, the theme test, the open table surviving a URL retype,
+  reopening after a reset, the reachable-failed path, and
+  `test_the_mounted_format_panel_fits_the_dialog_it_asked_for`. **That last one is `T310-R2`'s and
+  it asserts the dialog *widens* for the panel** — a promise this task deliberately retires, so it
+  is re-pointed rather than kept.
+
+A helper is worth keeping in mind: `_mounted_on` became `_showing_for`, asking whether the panel is
+the dialog's open panel for that row and the staging list is hidden. That rewrite was correct and
+fixed several tests at once.
+
+#### What is ruled, and what it reverses
+
+**`P-1` said the table opens as the staging row itself, expanded — "not as a modal dialog", because
+"a modal opened from the add dialog is a modal over a modal".** That reasoning is untouched: a page
+swap is **not** a second modal. The same window shows the panel full-bleed and then shows the
+staging list again. What is reversed is `P-1`'s *conclusion*, not its argument.
+
+#### Why this is more than room
+
+The room is the reported symptom. The cause is that a live widget lives inside a `QListView` item,
+and nearly every layout defect this surface has had comes from that:
+
+- `panel_height_for` caps the panel to the **list viewport**, which is one of five things sharing
+  the dialog's height. The panel can never be taller than a list that is itself squeezed.
+- `_widen_for` measures chrome outside the viewport that **changes when it acts on it** — the loop
+  in it exists for that (`T310-R2`).
+- `_mount_panel` must scroll *then* set geometry, or the panel is crushed to its unmounted minimum
+  (`T-296`); it must defer a turn or it destroys the editor Qt is mid-way through (`T108-R2`); and
+  it must re-lay the items before handing Qt the widget or the table comes out zero pixels tall.
+- `T-210` moved *Done* to the top because a tall row put it below the fold.
+- `T193-R1` is an unlaid-out viewport reporting a meaningless height.
+
+**A page needs none of it.** It is given the dialog's size directly.
+
+#### Scope — all three panels, not just the format table
+
+`P-19` made the format table and the playlist picker **one mechanism** deliberately, and the
+template editor joined it. Converting only the format table splits exactly what that ruling exists
+to prevent, so all three become pages. `RowPanel` stays the shared shape; what changes is where it
+is put.
+
+#### Acceptance criteria
+
+- The panel fills the dialog. `panel_height_for`, `_widen_for` and `_mount_panel` are gone, along
+  with the tests that exist only to guard their arithmetic — **and the guards that outlive them**
+  (that no list scrolls sideways, that every row is reachable) are re-expressed against the page.
+- *Done* and `Esc` return to the staging list; neither closes the dialog. `Esc` still discards.
+- The row the panel belongs to is identifiable on return — a user who opened row 4 of 12 must not
+  come back to the top of an unmarked list.
+- The keyboard route in and out is unbroken (`NFR-005`), including `Tab` order on both pages.
+- `docs/UX_SPEC.md` §4's *Where it lives* records the reversal with the maintainer's authority, and
+  §7's playlist clause and `T-112`'s template clause follow it.
+
+#### Filed with it
+
+**The open row still answers `ToolTipRole` with its collapsed summary** (`add_dialog.py:1150`), so
+hovering the panel pops the row's description over the table being read — visible in the
+maintainer's 2026-09-10 screenshot. It is independent of this change and small; fix it here since
+this is the code being touched.
+
 ### T-311 — The batch preset control looks like it governs a row it cannot touch
 
 **Status:** In Progress — **ruled by the maintainer on 2026-09-10 from four rendered sequences**
