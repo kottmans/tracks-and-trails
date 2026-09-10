@@ -1,9 +1,16 @@
-"""Sortable format table for a probed URL (`REQ-003`, `T-107`).
+"""Sortable format lists for a probed URL (`REQ-003`, `REQ-008`, `T-107`, `T-310`).
 
 `REQ-003`: *show the available formats for a probed URL in a sortable table (format ID, extension,
 resolution, fps, codecs, bitrate, filesize/estimate, notes).* `docs/UX_SPEC.md` §4 is the surface.
 
-Three rules shape everything here, and each exists because of a specific defect:
+**Two lists, not one grid** (`T-310`, ruled 2026-09-09 from the built window). Video on the left,
+sound on the right, each carrying only the columns its own kind has. One grid forced one set of
+columns, so a video-only row had to answer *audio codec* and an audio-only row had to answer
+*resolution*; and one grid invited a **mode** to say which kind was being picked, which is what
+refused the two formats that already carried both streams and needed no merge at all. Separate
+lists need neither: nothing is routed, so nothing is refused.
+
+Four rules shape everything here, and each exists because of a specific defect:
 
 - **The table reads a `FormatInfo`, never a raw `info_dict` key.** `NFR-008` confines yt-dlp's
   churn to the adapter, and a widget indexing `entry["vcodec"]` puts that churn straight into
@@ -17,17 +24,23 @@ Three rules shape everything here, and each exists because of a specific defect:
   says why it is missing (`T-305`). `UNKNOWN_TEXT` is for a value yt-dlp did not report: a live
   stream has no filesize, archive.org reports no bitrate or fps for its derivatives, and `yt-dlp
   -F` prints nothing for them either, so agreeing means showing nothing too. `ABSENT_TEXT` is for
-  something yt-dlp **denied** — a video-only format's audio codec, a format with nothing noted.
-  The absence is information either way; saying *unknown* about a stream that was reported absent
-  is a claim, and it made a table of merge candidates read as mostly unknown.
+  something yt-dlp **denied** — a format with nothing noted, or a picture on a stream declared to
+  have none. The absence is information either way; saying *unknown* about a stream that was
+  reported absent is a claim, and it made a table of merge candidates read as mostly unknown.
+- **Every format the probe returned is in exactly one list** (`T-310`). `video_formats` and
+  `audio_formats` are complements for that reason: a routing rule covering three of `FormatKind`'s
+  four states would drop every unclassified format silently, and `ui/format_selection.py` records
+  that *"most formats from most sources are `UNKNOWN`"*.
 
-**Selection is deliberately absent.** `T-107` builds the table; `T-108` (`REQ-008`) is what makes a
-chosen format mean something, and `docs/UX_SPEC.md` §4 keeps *download from the table* out
-entirely (`P-14`). What this module offers is a current row, a keyboard that moves it, and a signal
-saying which format it names — the seam `T-108` consumes.
+**The selection is a consequence, not a mode.** `FormatSelection` is unchanged and still holds both
+of `P-2`'s shapes; what changed is that `FormatTable._compose` derives which one applies from what
+has been picked. A format carrying both streams is the whole download; one half on its own is the
+whole download too — a silent video is a legitimate thing to want — and two halves are a merge,
+which is the only shape `REQ-024`'s ffmpeg refusal applies to.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import Final
 
 from PySide6.QtCore import (
@@ -35,6 +48,7 @@ from PySide6.QtCore import (
     QModelIndex,
     QObject,
     QRect,
+    QSize,
     Qt,
     Signal,
 )
@@ -54,9 +68,10 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
-    QCheckBox,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
+    QPushButton,
     QTableView,
     QVBoxLayout,
     QWidget,
@@ -65,9 +80,11 @@ from PySide6.QtWidgets import (
 from tracks_and_trails.core.models import FormatInfo
 from tracks_and_trails.ui import theme
 from tracks_and_trails.ui.format_selection import (
+    FormatKind,
     FormatSelection,
     SelectionMode,
-    UnplaceableFormatError,
+    kind_of,
+    merge_refusal,
     pairable,
 )
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT, format_bytes
@@ -88,6 +105,69 @@ COLUMN_HEADERS: Final = (
     "Notes",
 )
 
+#: What each list is called. **Sound rather than Audio**: the video list's own column says
+#: `included`/`add one` about the same thing, and one word for one fact reads better than two.
+VIDEO_LIST_TITLE: Final = "Video"
+AUDIO_LIST_TITLE: Final = "Sound"
+
+#: How surplus width is shared once each list has the width it asked for.
+#:
+#: **Not a proportion of the whole**, which is what these were and what made the widget's own
+#: `sizeHint` a number it could not honour: a 3:2 split gave the video list 60% of whatever there
+#: was, so at the widget's stated hint the wider list was still short and scrolled sideways. With
+#: both lists reporting an honest hint (`FormatList.sizeHint`), the layout satisfies both first and
+#: these decide only where extra room goes — and the video list, with three more columns, is where
+#: extra room is worth more.
+VIDEO_LIST_SHARE: Final = 3
+AUDIO_LIST_SHARE: Final = 2
+
+#: What a list's button says when the list has no current row to act on.
+NOTHING_TO_CHOOSE: Final = "Nothing to choose"
+
+#: What a list's button says, given the row it would take. `format_id` is the only field.
+USE_VIDEO: Final = "Use {format_id} for the video"
+USE_SOUND: Final = "Use {format_id} for the sound"
+USE_COMPLETE: Final = "Use {format_id} — it has sound already"
+USE_UNCLASSIFIED: Final = "Use {format_id} on its own"
+
+#: Why the sound list is disabled while a format carrying both streams is chosen (`UX-005` §5).
+SOUND_ALREADY_INCLUDED: Final = "That format has sound already"
+
+#: How many rows a column samples to size itself (`T107-R6`). `ResizeToContents` otherwise asks the
+#: model for every row of every column: the repaint gate measured 44,019 model reads to paint
+#: fourteen visible rows of a 200-format table.
+SIZING_SAMPLE: Final = 32
+
+
+def video_formats(formats: Sequence[FormatInfo]) -> tuple[FormatInfo, ...]:
+    """Everything the video list holds: video-only, already-complete, and unclassified.
+
+    **The complement of `audio_formats`, so between them every format the probe returned appears
+    in exactly one list.** A format that belongs to neither would vanish from a surface `REQ-003`
+    requires to show what the source offers, and vanishing silently is the failure this pair of
+    functions exists to make impossible.
+    """
+    return tuple(entry for entry in formats if kind_of(entry) is not FormatKind.AUDIO_ONLY)
+
+
+def audio_formats(formats: Sequence[FormatInfo]) -> tuple[FormatInfo, ...]:
+    """Everything the sound list holds: the audio halves, and nothing else."""
+    return tuple(entry for entry in formats if kind_of(entry) is FormatKind.AUDIO_ONLY)
+
+
+#: The `Sound` column `T-310` adds, and the reason it is not one of `REQ-003`'s eight.
+#:
+#: `REQ-003` names what a format *is*; this names what taking it would leave you needing. It exists
+#: only in the video list, where two kinds of row sit together and one of them is already finished
+#: — *"if someone wants to individually select the video and audio track separately, why would they
+#: pick one that had both below?"* They would not, unless the row says which it is.
+SOUND_COLUMN: Final = len(COLUMN_HEADERS)
+
+#: What the `Sound` column reads, by what the projection was told.
+SOUND_INCLUDED: Final = "included"
+SOUND_ADD_ONE: Final = "add one"
+SOUND_NOT_STATED: Final = "not stated"
+
 FORMAT_COLUMN: Final = 0
 EXT_COLUMN: Final = 1
 RESOLUTION_COLUMN: Final = 2
@@ -99,6 +179,55 @@ SIZE_COLUMN: Final = 7
 NOTES_COLUMN: Final = 8
 
 COLUMN_COUNT: Final = len(COLUMN_HEADERS)
+
+
+@dataclass(frozen=True)
+class Column:
+    """One column of one list: which fact it shows, and what that list calls it.
+
+    **Two names for one fact, and both are needed** (`T-310`). `field` addresses the model's own
+    `_text` and `_sort_value`, which `T-107`, `T-075`, `T-305` and `T-306` all built and tested
+    against the global column ids — so splitting the table into lists reuses that work rather than
+    restating it. `header` is what *this* list calls it, because the same fact is called different
+    things in different lists: a video's `Quality` is its resolution and a sound's `Quality` is its
+    bitrate, and each list has exactly one `Codec`.
+    """
+
+    field: int
+    header: str
+
+
+#: The video list, and its order is the ruling (`docs/UX_SPEC.md` §4, 2026-09-09).
+#:
+#: **Decision, then compatibility, then provenance.** `Quality` and `Size` are what two rows are
+#: compared on, so they lead — and `Quality` leads *every* list, so the eye reads down one left
+#: edge rather than a different first column per list. `Bitrate`, `File type` and `ID` come last:
+#: each is a fact `REQ-003` requires and none of them is why anyone clicks. `ID` is last of all,
+#: which carries `T-306`'s quieter-ink ruling from emphasis into position.
+VIDEO_LIST_COLUMNS: Final = (
+    Column(RESOLUTION_COLUMN, "Quality"),
+    Column(SOUND_COLUMN, "Sound"),
+    Column(FPS_COLUMN, "FPS"),
+    Column(SIZE_COLUMN, "Size"),
+    Column(VIDEO_CODEC_COLUMN, "Codec"),
+    Column(BITRATE_COLUMN, "Bitrate"),
+    Column(EXT_COLUMN, "File type"),
+    Column(FORMAT_COLUMN, "ID"),
+)
+
+#: The sound list. **Shorter because it asks nothing an audio stream cannot answer** — no
+#: resolution, no frame rate, no video codec. That is what splitting the lists buys, and it is why
+#: `no picture` and `no sound` cells no longer need to exist.
+#:
+#: `Quality` is the bitrate here. An audio stream's quality *is* its rate, and giving the column
+#: the same name it has in the video list keeps the shared left edge the ruling asks for.
+AUDIO_LIST_COLUMNS: Final = (
+    Column(BITRATE_COLUMN, "Quality"),
+    Column(SIZE_COLUMN, "Size"),
+    Column(AUDIO_CODEC_COLUMN, "Codec"),
+    Column(EXT_COLUMN, "File type"),
+    Column(FORMAT_COLUMN, "ID"),
+)
 
 #: How thick the current section's edge is drawn, in pixels (`T202-R1`).
 #:
@@ -123,21 +252,24 @@ FORMAT_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 2
 #: column still reads as a column of sizes.
 ESTIMATE_PREFIX: Final = "~"
 
-#: What the merge mode's control reads (`REQ-008`, `UX-007`'s `P-2`).
+#: Why a pair cannot be merged here, stated where somebody assembling one will read it.
 #:
-#: A checkbox rather than a two-entry combo, because `docs/UX_SPEC.md` §5 declares **`Space`
-#: switches mode** — which is what `Space` does to a checkbox and is not what it does to a combo,
-#: where it opens a popup.
-MERGE_MODE_TEXT: Final = "Merge a separate video and audio stream"
-
-#: Why the merge mode is not drawn, when it is not (`P-13`, `UX-005` §5).
-#:
-#: **Stated where the mode would have been**, which is `P-13`'s wording. The ruling covers the
-#: ffmpeg case; the second sentence is derived from `UX-005` §5's never-draw-what-would-be-refused
-#: rule, because a mode no format in this table could complete is refused just as certainly.
+#: **`P-13`'s ffmpeg sentence, and it outlived the control it was written for** (`T-310`). The
+#: ruling withheld the merge *mode* when ffmpeg was absent; there is no mode now, and withholding
+#: the sound list in its place would be a worse answer than the one it replaced — an audio-only
+#: format is a perfectly good download and needs no ffmpeg to fetch. So both lists stay, this is
+#: stated beside them, and `merge_refusal` refuses the pair itself at commit (`REQ-024`).
 NO_MERGE_WITHOUT_FFMPEG: Final = (
     "Merging a separate video and audio stream needs ffmpeg, which was not found."
 )
+#: Why there is no sound list at all, stated in its place (`P-13`'s shape, `T-310`).
+#:
+#: **The ordinary case, not an edge one.** `ui/format_selection.py` records that *"most formats
+#: from most sources are `UNKNOWN`"* — archive.org and PeerTube name no codecs — so a source with
+#: nothing to put in a sound list is what those sites look like every time.
+#:
+#: Kept separate from the ffmpeg sentence for `P-13`'s own reason: telling somebody to install
+#: ffmpeg for a source that would not merge anyway is advice that cannot help.
 NO_MERGE_WITHOUT_A_PAIR: Final = (
     "This source offers no separate video and audio streams to merge — every format it lists "
     "carries both, or does not say."
@@ -304,6 +436,59 @@ def describe_codec(codec: str | None, present: bool | None = None) -> str:
     return codec_name(codec) if codec else UNKNOWN_TEXT
 
 
+def describe_quality(entry: FormatInfo) -> str:
+    """`1080p` — the name people use for a picture (`T-310`).
+
+    **`describe_resolution` is unchanged and still right about what it says.** It renders
+    `1920x1080` where both dimensions are known, on the ground that *"rendering `1080p` for a
+    format that also knows its width would throw away a fact the projection carries"*. That was
+    true of a column headed *Resolution*; it is the wrong trade for one headed **Quality**, whose
+    job is to distinguish rows at a glance — and on a real YouTube probe four consecutive rows
+    carry `1920x1080` and the column stops distinguishing anything.
+
+    The fact is not thrown away: the exact pixels are the cell's tool tip, which is where `T-306`
+    already put the raw codec identifier for the same reason.
+    """
+    if entry.has_video is False:
+        # An audio stream has no picture, and it is in the sound list where nothing asks. This
+        # branch is for a video list holding something unclassified.
+        return ABSENT_TEXT
+    return f"{entry.height}p" if entry.height is not None else UNKNOWN_TEXT
+
+
+def sound_group(entry: FormatInfo) -> int:
+    """Which band of the video list `entry` belongs to (`T-310`, `docs/UX_SPEC.md` §4).
+
+    `0` needs a sound half, `1` already has one, `2` the source never said. **Ruled by the
+    maintainer on 2026-09-09** — *"list the video with attached audio last in the list together"* —
+    and the third band follows from it rather than extending it: a format nobody classified is not
+    *"video with attached audio"*, and putting it in that band would be claiming something the
+    projection refuses to claim.
+    """
+    kind = kind_of(entry)
+    if kind is FormatKind.COMPLETE:
+        return 1
+    if kind is FormatKind.UNKNOWN:
+        return 2
+    return 0
+
+
+def describe_sound(entry: FormatInfo) -> str:
+    """What taking this row would leave you needing (`T-310`).
+
+    The one column `REQ-003` does not name, and the one that answers the maintainer's question:
+    *"if someone wants to individually select the video and audio track separately, why would they
+    pick one that had both below?"* Every row in the video list says which it is.
+    """
+    kind = kind_of(entry)
+    if kind is FormatKind.COMPLETE:
+        named = codec_name(entry.audio_codec) if entry.audio_codec else None
+        return f"{SOUND_INCLUDED} · {named}" if named else SOUND_INCLUDED
+    if kind is FormatKind.UNKNOWN:
+        return SOUND_NOT_STATED
+    return SOUND_ADD_ONE
+
+
 class FormatTableModel(QAbstractTableModel):
     """Every format a probe found, one row each.
 
@@ -312,14 +497,55 @@ class FormatTableModel(QAbstractTableModel):
     repaint machinery is needed here.
     """
 
-    def __init__(self, formats: Sequence[FormatInfo] = (), parent: QObject | None = None) -> None:
+    #: The layout a model takes when nobody names one: every `REQ-003` column, in `REQ-003`'s
+    #: order, under its own name. **`T-310` splits the surface into two lists and does not remove
+    #: this**, because it is the projection's own full shape and this module's tests address it.
+    DEFAULT_COLUMNS: Final = tuple(
+        Column(field, header) for field, header in enumerate(COLUMN_HEADERS)
+    )
+
+    def __init__(
+        self,
+        formats: Sequence[FormatInfo] = (),
+        parent: QObject | None = None,
+        *,
+        columns: Sequence[Column] | None = None,
+        group_key: Callable[[FormatInfo], int] | None = None,
+    ) -> None:
         super().__init__(parent)
         self._formats: tuple[FormatInfo, ...] = tuple(formats)
+        #: Which facts this list shows and what it calls them (`T-310`).
+        self._columns: tuple[Column, ...] = tuple(
+            columns if columns is not None else self.DEFAULT_COLUMNS
+        )
+        #: Rows sort within their group and groups keep their order (`T-310`). `None` for no
+        #: grouping, which is every list but the video one.
+        self._group_key = group_key
         #: The active sort, so a reset can reapply it (`T107-R4`). `None` until something sorts.
         self._sorted_by: tuple[int, Qt.SortOrder] | None = None
         #: Format ids currently chosen, so a row can mark itself (`T-306`). The widget owns the
         #: selection; the model is only told, which keeps one place deciding what is chosen.
         self._chosen: frozenset[str] = frozenset()
+
+    @property
+    def columns(self) -> tuple[Column, ...]:
+        return self._columns
+
+    def field_of(self, column: int) -> int:
+        """The global column id this list's `column` shows, for `_text` and `_sort_value`."""
+        return self._columns[column].field if 0 <= column < len(self._columns) else -1
+
+    def column_for(self, field: int) -> int:
+        """Where this list shows `field`, or `-1` if it does not show it at all.
+
+        The inverse of `field_of`, and the seam a caller needs once the same fact lives at
+        different positions in different lists — `RESOLUTION_COLUMN` is column 0 of the video list
+        and is absent from the sound list entirely.
+        """
+        for position, column in enumerate(self._columns):
+            if column.field == field:
+                return position
+        return -1
 
     def set_formats(self, formats: Sequence[FormatInfo]) -> None:
         """Replace the whole table, **keeping the active sort** (`T107-R4`).
@@ -345,7 +571,7 @@ class FormatTableModel(QAbstractTableModel):
         return 0 if parent.isValid() else len(self._formats)
 
     def columnCount(self, parent: QModelIndex | _PersistentIndex = _ROOT) -> int:
-        return 0 if parent.isValid() else COLUMN_COUNT
+        return 0 if parent.isValid() else len(self._columns)
 
     def headerData(
         self,
@@ -355,8 +581,8 @@ class FormatTableModel(QAbstractTableModel):
     ) -> object:
         if orientation is not Qt.Orientation.Horizontal:
             return None
-        if role == int(Qt.ItemDataRole.DisplayRole) and 0 <= section < COLUMN_COUNT:
-            return COLUMN_HEADERS[section]
+        if role == int(Qt.ItemDataRole.DisplayRole) and 0 <= section < len(self._columns):
+            return self._columns[section].header
         return None
 
     def data(
@@ -370,9 +596,9 @@ class FormatTableModel(QAbstractTableModel):
         if role == FORMAT_ROLE:
             return entry
         if role == SORT_ROLE:
-            return self._sort_value(entry, index.column())
+            return self._sort_value(entry, self.field_of(index.column()))
         if role == int(Qt.ItemDataRole.DisplayRole):
-            return self._text(entry, index.column())
+            return self._text(entry, self.field_of(index.column()))
         if role == int(Qt.ItemDataRole.FontRole) and entry.format_id in self._chosen:
             # **The chosen rows are marked where the choosing happens** (`T-306`). The footer
             # said *"Chosen — video: 137, audio: 140"* and nothing in the table agreed with it,
@@ -380,7 +606,8 @@ class FormatTableModel(QAbstractTableModel):
             font = QFont()
             font.setBold(True)
             return font
-        if role == int(Qt.ItemDataRole.ForegroundRole) and index.column() == FORMAT_COLUMN:
+        showing_id = self.field_of(index.column()) == FORMAT_COLUMN
+        if role == int(Qt.ItemDataRole.ForegroundRole) and showing_id:
             # **The identifier stays and stops leading the eye** (`T-306`, `REQ-003`). It is the
             # first column and was the strongest thing in the row, which is backwards: it is what
             # `REQ-008` selects *by* and almost never what a person is reading the row for.
@@ -390,18 +617,22 @@ class FormatTableModel(QAbstractTableModel):
             # the dark window and nothing in this module would notice.
             return QBrush(QApplication.palette().color(QPalette.ColorRole.PlaceholderText))
         if role == int(Qt.ItemDataRole.ToolTipRole):
+            if self.field_of(index.column()) == RESOLUTION_COLUMN:
+                exact = describe_resolution(entry)
+                return exact if exact != describe_quality(entry) else None
             # **Where the raw codec goes when the cell shows a name** (`T-306`). `REQ-009`'s
             # selector syntax and every bug report are written in `avc1.640028`, not in `H.264`,
             # so translating the cell must not put the identifier out of reach. Only the two
             # codec columns answer: a tool tip that repeated the visible text everywhere would
             # be noise, and a screen reader would read every cell twice.
-            return self._raw_codec(entry, index.column())
+            return self._raw_codec(entry, self.field_of(index.column()))
         if role == int(Qt.ItemDataRole.AccessibleTextRole):
             # **The column is named as well as the value** (`NFR-005`). A screen reader moving
             # across a row otherwise reads eight bare values with no way to tell which is the
             # bitrate and which the size — the same reason `T-060` made state text carry its own
             # label rather than relying on the header being read once.
-            return f"{COLUMN_HEADERS[index.column()]}: {self._text(entry, index.column())}"
+            named = self._columns[index.column()].header
+            return f"{named}: {self._text(entry, self.field_of(index.column()))}"
         return None
 
     def set_chosen(self, chosen: frozenset[str]) -> None:
@@ -412,7 +643,7 @@ class FormatTableModel(QAbstractTableModel):
         if self._formats:
             self.dataChanged.emit(
                 self.index(0, 0),
-                self.index(len(self._formats) - 1, COLUMN_COUNT - 1),
+                self.index(len(self._formats) - 1, len(self._columns) - 1),
                 [int(Qt.ItemDataRole.FontRole)],
             )
 
@@ -434,7 +665,7 @@ class FormatTableModel(QAbstractTableModel):
         if column == EXT_COLUMN:
             return entry.extension
         if column == RESOLUTION_COLUMN:
-            return describe_resolution(entry)
+            return describe_quality(entry)
         if column == FPS_COLUMN:
             return describe_fps(entry.fps)
         if column == VIDEO_CODEC_COLUMN:
@@ -451,6 +682,8 @@ class FormatTableModel(QAbstractTableModel):
             # nothing to add, and claiming ignorance of it made a third of this table read as
             # unknown when only the size column ever was.
             return entry.note or ABSENT_TEXT
+        if column == SOUND_COLUMN:
+            return describe_sound(entry)
         return UNKNOWN_TEXT
 
     def _sort_value(self, entry: FormatInfo, column: int) -> tuple[float, str]:
@@ -504,6 +737,10 @@ class FormatTableModel(QAbstractTableModel):
             return (float(entry.filesize) if entry.filesize is not None else -1.0, "")
         if column == NOTES_COLUMN:
             return (0.0, (entry.note or "").casefold())
+        if column == SOUND_COLUMN:
+            # The group, then the word — so sorting this column orders *finished, needs a half,
+            # nothing stated* rather than alphabetising three unrelated phrases.
+            return (float(sound_group(entry)), describe_sound(entry).casefold())
         return (0.0, "")
 
     def sort(self, column: int, order: Qt.SortOrder = Qt.SortOrder.AscendingOrder) -> None:
@@ -519,7 +756,7 @@ class FormatTableModel(QAbstractTableModel):
         keys here are Python tuples. Sorting them in Python is one line and leaves nothing to
         infer about how two variants compare.
         """
-        if not 0 <= column < COLUMN_COUNT:
+        if not 0 <= column < len(self._columns):
             return
         self.layoutAboutToBeChanged.emit()
         # **Persistent indexes are remapped, which is what keeps a selection on its own row**
@@ -546,14 +783,24 @@ class FormatTableModel(QAbstractTableModel):
     def _ordered(
         self, formats: tuple[FormatInfo, ...], column: int, order: Qt.SortOrder
     ) -> tuple[FormatInfo, ...]:
-        """`formats` in `column` order. One implementation, so `sort` and a reset cannot differ."""
-        return tuple(
-            sorted(
-                formats,
-                key=lambda entry: self._sort_value(entry, column),
-                reverse=order is Qt.SortOrder.DescendingOrder,
-            )
+        """`formats` in `column` order, **then grouped**. One implementation, so `sort` and a
+        reset cannot differ.
+
+        **Two passes, and Python's stable sort is what makes the second one correct** (`T-310`).
+        The maintainer ruled that formats already carrying sound *"list … last in the list
+        together"*, and a compound key of `(group, column_value)` cannot express that: `reverse`
+        applies to the whole key, so any descending sort would float the group to the **top** —
+        the opposite of the ruling. Sorting by the column first and then by the group alone leaves
+        the column's order intact inside each group.
+        """
+        ordered = sorted(
+            formats,
+            key=lambda entry: self._sort_value(entry, self.field_of(column)),
+            reverse=order is Qt.SortOrder.DescendingOrder,
         )
+        if self._group_key is not None:
+            ordered.sort(key=self._group_key)
+        return tuple(ordered)
 
 
 class SortableHeader(QHeaderView):
@@ -647,25 +894,219 @@ class SortableHeader(QHeaderView):
         super().keyPressEvent(event)
 
 
-class FormatTable(QWidget):
-    """The table and its keyboard, over a `FormatTableModel` (`docs/UX_SPEC.md` §4).
+class FormatList(QWidget):
+    """One kind's formats: a heading, a sortable list, and the one button that takes a row.
 
-    **A `QWidget` wrapping a `QTableView` rather than a `QTableView` subclass**, so the surface
-    that embeds it — `T-108`'s expanded staging row — composes rather than inherits, and so the
-    buttons `UX_SPEC` §4's keyboard path names can join it without this class becoming a dialog.
+    **The unit `T-310` splits the table into.** Each list carries only the columns its kind has —
+    a video list never asks a video for its audio codec, a sound list never asks an audio stream
+    for its resolution — which is what removes the `no sound` and `no picture` cells that a single
+    shared grid made unavoidable.
+
+    A widget rather than a bare `QTableView` because the heading and the button are part of what
+    makes it a list rather than a pane: `UX-005` §5 forbids a control that silently does nothing,
+    and a button whose words change with the current row is how this surface says what taking that
+    row would do.
     """
 
-    #: `FormatInfo` — the current row named a format. **Reported, never acted on** (`P-14` keeps
-    #: *download from the table* out entirely; the dialog's button still commits).
+    #: `FormatInfo` — the user took this row from this list.
+    chosen = Signal(object)
+
+    def __init__(
+        self,
+        title: str,
+        formats: Sequence[FormatInfo],
+        columns: Sequence[Column],
+        *,
+        verb: Callable[[FormatInfo], str],
+        parent: QWidget | None = None,
+        group_key: Callable[[FormatInfo], int] | None = None,
+        sort_column: int = 0,
+    ) -> None:
+        super().__init__(parent)
+        self._verb = verb
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self._title = QLabel(title, self)
+        self._title.setObjectName("formatListTitle")
+        heading_font = QFont(self._title.font())
+        heading_font.setBold(True)
+        self._title.setFont(heading_font)
+        layout.addWidget(self._title)
+
+        self._model = FormatTableModel(formats, self, columns=columns, group_key=group_key)
+        self._view = QTableView(self)
+        self._view.setObjectName("formatListView")
+        self._view.setModel(self._model)
+        self._view.setSortingEnabled(True)
+        self._view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._view.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._view.setAccessibleName(title)
+        self._view.verticalHeader().setVisible(False)
+        # `Tab` must leave the list rather than walk its cells — `T107-R3`, unchanged by the split.
+        self._view.setTabKeyNavigation(False)
+
+        header = SortableHeader(Qt.Orientation.Horizontal, self._view)
+        self._view.setHorizontalHeader(header)
+        header.sort_requested.connect(self.sort_by)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header.setResizeContentsPrecision(SIZING_SAMPLE)
+        header.setSortIndicatorShown(True)
+        header.setAccessibleName(f"Sort {title.lower()} by column")
+        self._header = header
+        layout.addWidget(self._view)
+
+        self._button = QPushButton(self)
+        self._button.setObjectName("formatListChoose")
+        self._button.clicked.connect(self.choose_current)
+        layout.addWidget(self._button, 0, Qt.AlignmentFlag.AlignLeft)
+
+        # `Enter` or a double-click still chooses, and now there is a visible control that says so
+        # (`docs/UX_SPEC.md` §4's keyboard row, and the maintainer's 2026-09-09 finding that the
+        # gesture was the only route in).
+        self._view.activated.connect(lambda _index: self.choose_current())
+
+        self._view.sortByColumn(sort_column, Qt.SortOrder.DescendingOrder)
+        self._select_first_row()
+        self._view.selectionModel().currentRowChanged.connect(lambda *_a: self._relabel())
+        self._relabel()
+
+    # Qt's override name, hence the camelCase.
+    def sizeHint(self) -> QSize:
+        """Wide enough for the columns this list actually has (`T-310`).
+
+        **`QTableView.sizeHint()` is a fixed default and says nothing about the content.** It
+        answers about 256px whatever is in the model, so a list of eight sized columns reported a
+        width less than half of what it needed — and `AddUrlDialog._widen_for`, which asks the
+        panel how much room to make, would have widened the dialog to a number with no relationship
+        to the table inside it. Measured on 2026-09-09: the widget hinted **518px** for a surface
+        that first renders without truncation at **1060px**.
+
+        `sizeHintForColumn` is the view's own answer to *how wide must this column be for its
+        contents*, which is the same question `ResizeToContents` asks — so this reports what the
+        layout will actually produce rather than a second opinion about it.
+        """
+        base = super().sizeHint()
+        # **`header.length()`, not a sum of cell hints.** `ResizeToContents` sizes each section to
+        # the wider of its content and its own *label*, and on this table the labels usually win —
+        # `Quality`, `File type` and `Bitrate` are all longer than the values under them. Summing
+        # `sizeHintForColumn` alone reported 408px for a video list whose header measures 628px,
+        # and the 220px difference was entirely headings. `length()` is the header's own total and
+        # is stable before the widget is ever shown, which is when the dialog asks.
+        header = self._view.horizontalHeader()
+        columns = max(
+            header.length(),
+            sum(
+                max(self._view.sizeHintForColumn(column), header.sectionSizeHint(column))
+                for column in range(self._model.columnCount())
+            ),
+        )
+        # **Room for the vertical scrollbar, whether or not one is showing.** A probe with more
+        # formats than fit puts one there, and a width measured without it is a width that starts
+        # scrolling sideways the moment the list gets long — which is exactly the case a format
+        # table is for. Measured at 35px short across all three font sizes without this, on a
+        # widget with two lists.
+        chrome = 2 * self._view.frameWidth() + self._view.verticalScrollBar().sizeHint().width()
+        return QSize(max(base.width(), columns + chrome), base.height())
+
+    @property
+    def view(self) -> QTableView:
+        return self._view
+
+    @property
+    def model(self) -> FormatTableModel:
+        return self._model
+
+    @property
+    def header(self) -> SortableHeader:
+        return self._header
+
+    @property
+    def button(self) -> QPushButton:
+        return self._button
+
+    def set_formats(self, formats: Sequence[FormatInfo]) -> None:
+        self._model.set_formats(formats)
+        self._select_first_row()
+        self._relabel()
+
+    def set_chosen(self, chosen: frozenset[str]) -> None:
+        self._model.set_chosen(chosen)
+
+    def current_format(self) -> FormatInfo | None:
+        index = self._view.currentIndex()
+        if not index.isValid():
+            return None
+        carried = self._model.data(index, FORMAT_ROLE)
+        return carried if isinstance(carried, FormatInfo) else None
+
+    def choose_current(self) -> None:
+        """Report the current row. **Nothing is refused** (`T-310`, `docs/UX_SPEC.md` §5)."""
+        entry = self.current_format()
+        if entry is not None:
+            self.chosen.emit(entry)
+
+    def sort_by(self, column: int) -> None:
+        """Sort by `column`, reversing if it is already the sorted one (`docs/UX_SPEC.md` §4).
+
+        The one place the "again reverses" rule lives, so the header click and the key press
+        cannot disagree about it.
+        """
+        if not 0 <= column < len(self._model.columns):
+            return
+        current = self._header.sortIndicatorSection()
+        ascending = Qt.SortOrder.AscendingOrder
+        descending = Qt.SortOrder.DescendingOrder
+        if current == column and self._header.sortIndicatorOrder() is ascending:
+            order = descending
+        else:
+            order = ascending
+        self._view.sortByColumn(column, order)
+
+    def set_dimmed(self, dimmed: bool, reason: str = "") -> None:
+        """Greyed **with the reason on the control**, never silently inert (`UX-005` §5)."""
+        self._view.setEnabled(not dimmed)
+        self._button.setEnabled(not dimmed)
+        if dimmed and reason:
+            self._button.setText(reason)
+        else:
+            self._relabel()
+
+    def _relabel(self) -> None:
+        entry = self.current_format()
+        self._button.setEnabled(entry is not None)
+        self._button.setText(self._verb(entry) if entry is not None else NOTHING_TO_CHOOSE)
+
+    def _select_first_row(self) -> None:
+        """Give the list a current row as soon as it has one (`T-152`, `docs/UX_SPEC.md` §4)."""
+        if self._model.rowCount():
+            self._view.setCurrentIndex(self._model.index(0, 0))
+
+
+class FormatTable(QWidget):
+    """Two lists over one selection (`REQ-003`, `REQ-008`, `docs/UX_SPEC.md` §4 and §5).
+
+    **One grid became two lists and the mode disappeared** (`T-310`, ruled 2026-09-09). The mode
+    was what asked a user to declare *video + audio* before they had anything to declare it about,
+    and it was what refused the two formats needing no merge at all. With the kinds in separate
+    lists nothing has to be routed, so nothing is refused: taking a row from the video list fills
+    the video half, taking one from the sound list fills the sound half, and taking a format that
+    already carries both — or one the source never classified — is the whole download.
+
+    **`FormatSelection` is unchanged and still holds the answer.** Its two modes remain; what
+    changed is that they are now reached by *what was picked* rather than by a checkbox, so
+    `choose` is only ever called on a format its mode can place and `UnplaceableFormatError` is
+    unreachable from here.
+    """
+
+    #: `FormatInfo` — the current row named a format. **Reported, never acted on** (`P-14`).
     format_chosen = Signal(object)
 
-    #: `FormatSelection` — what is chosen now, after any change (`T-108`). Emitted for a mode
-    #: switch as well as a choice, because a mode switch can drop a half that no longer fits.
+    #: `FormatSelection` — what is chosen now, after any change (`T-108`).
     selection_changed = Signal(object)
 
-    #: `str` — a choice the current mode cannot place, in the words the user should see.
-    #: Reported rather than shown here: this widget has no status line, and the surface embedding
-    #: it does (`UX-005` §5 — a control that silently does nothing is the defect).
+    #: `str` — why the current selection cannot be committed, in the words the user should see.
+    #: Reported rather than shown here (`UX-005` §5); today only ffmpeg's absence produces one.
     selection_refused = Signal(str)
 
     def __init__(
@@ -677,241 +1118,332 @@ class FormatTable(QWidget):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("formatTable")
-        self._model = FormatTableModel(formats, self)
         self._ffmpeg_available = ffmpeg_available
+        self._formats: tuple[FormatInfo, ...] = tuple(formats)
+        #: The three things that can be picked, held apart and composed into a `FormatSelection`
+        #: on demand. **Held apart because the mode is now derived** — see `_compose`.
+        self._picked_video: FormatInfo | None = None
+        self._picked_audio: FormatInfo | None = None
+        self._picked_whole: FormatInfo | None = None
         self._selection = FormatSelection()
 
-        self._table = QTableView(self)
-        self._table.setObjectName("formatTableView")
-        self._table.setModel(self._model)
-        self._table.setSortingEnabled(True)
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.setAccessibleName("Available formats")
-        self._table.verticalHeader().setVisible(False)
-        # **Tab must leave the table rather than walk its cells** (`T107-R3`). `QTableView`
-        # consumes Tab for cell navigation by default, so the declared route — body, then header —
-        # could not exist: Tab moved the current cell and focus never left the view.
-        self._table.setTabKeyNavigation(False)
-        header = SortableHeader(Qt.Orientation.Horizontal, self._table)
-        self._table.setHorizontalHeader(header)
-        header.sort_requested.connect(self.sort_by)
-        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        # **Sample a bounded number of rows when sizing a column** (`T107-R6`).
-        # `ResizeToContents` asks the model for *every* row of *every* column to decide a width:
-        # the repaint gate measured **44,019** model reads to paint fourteen visible rows of a
-        # 200-format table. A playlist entry with dozens of formats is the ordinary case, so this
-        # is a real cost rather than a synthetic one. Qt exposes the bound for exactly this, and
-        # 32 rows is plenty to size a column of format ids and codecs.
-        header.setResizeContentsPrecision(32)
-        header.setSortIndicatorShown(True)
-        # **The header takes focus, which is what makes the declared keyboard route exist**
-        # (`T107-R3`, `docs/UX_SPEC.md` §4, `NFR-005`). Qt gives a horizontal header `NoFocus` by
-        # default, so `Tab` from the body returned to the same view and `Space` on a header was a
-        # route described in the spec and reachable only with a pointer. `T-152` is the same
-        # defect one surface over, and its lesson was that a declared route which needs a click
-        # first is not a route.
-        header.setAccessibleName("Sort formats by column")
-        self._header = header
-
-        # **A layout, so the view actually fills the widget** (`T107-R2`). Without one the child
-        # keeps whatever geometry it was constructed with: the reviewer resized the wrapper to
-        # 320x180 and the `QTableView` stayed 256x192, and the wrapper reported a `-1 x -1` size
-        # hint — so any surface embedding this would clip or collapse it.
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self._build_mode_control(layout)
-        layout.addWidget(self._table)
+        lists = QHBoxLayout()
 
-        # **What is chosen, in words** (`docs/UX_SPEC.md` §5, `NFR-005`). The spec asks for the pair
-        # to be *announced* as "video: 137, audio: 140" rather than shown by highlight alone, so
-        # this is a visible label as well as the widget's accessible description — a screen-reader
-        # user and a sighted user read the same sentence.
+        self._video = FormatList(
+            VIDEO_LIST_TITLE,
+            video_formats(self._formats),
+            VIDEO_LIST_COLUMNS,
+            verb=self._video_verb,
+            parent=self,
+            group_key=sound_group,
+        )
+        self._video.chosen.connect(self.choose)
+        lists.addWidget(self._video, VIDEO_LIST_SHARE)
+
+        self._audio: FormatList | None = None
+        self._no_audio: QLabel | None = None
+        self._build_sound_list(lists)
+        layout.addLayout(lists)
+
+        # **`P-13`'s ffmpeg sentence, and it is *not* what suppresses a list** (`T-310`). The
+        # ruling hid the merge *mode* when ffmpeg was absent; there is no mode now, and hiding the
+        # sound list instead would be a worse answer than the one it replaced — an audio-only
+        # format is a perfectly good download and needs no ffmpeg to fetch. So the lists stay, the
+        # sentence is stated where somebody assembling a pair will read it, and `merge_refusal`
+        # refuses the pair itself at commit (`REQ-024`).
+        self._no_merge: QLabel | None = None
+        if not ffmpeg_available and pairable(self._formats):
+            stated = QLabel(NO_MERGE_WITHOUT_FFMPEG, self)
+            stated.setObjectName("formatNoMerge")
+            stated.setAccessibleName("Why merging is not offered")
+            stated.setWordWrap(True)
+            stated.setTextFormat(Qt.TextFormat.PlainText)
+            self._no_merge = stated
+            layout.addWidget(stated)
+
+        # **What is chosen, in words** (`docs/UX_SPEC.md` §5, `NFR-005`). Unchanged by the split:
+        # the spec asks for the pair to be *announced* rather than shown by highlight alone, so a
+        # screen-reader user and a sighted user read the same sentence.
         self._chosen = QLabel(self)
         self._chosen.setObjectName("formatChosenLabel")
         self._chosen.setAccessibleName("Chosen formats")
         self._chosen.setWordWrap(True)
         layout.addWidget(self._chosen)
 
-        # **Mode first, then body, then header** (`docs/UX_SPEC.md` §5): *"a mode that changes what
-        # `Enter` does must be reachable before the thing it changes"*. §4's body-then-header order
-        # is unchanged and this sits in front of it. Set explicitly rather than left to creation
-        # order, because the header is a child of the view and would otherwise come first.
-        if self._mode_control is not None:
-            QWidget.setTabOrder(self._mode_control, self._table)
-        QWidget.setTabOrder(self._table, self._header)
-        # **Opens sorted by resolution, best first**, which is the order somebody opening a format
-        # table is looking for. `sortByColumn` drives the model's own `sort` — see it for why the
-        # model implements one rather than relying on Qt's default, which silently does nothing.
-        self._table.sortByColumn(RESOLUTION_COLUMN, Qt.SortOrder.DescendingOrder)
-
-        # `Enter` on the body chooses the current row (`docs/UX_SPEC.md` §4). `activated` is Qt's
-        # own name for that gesture, so the key does not have to be intercepted — and a subclass
-        # that swallowed `Return` would be a second place the keyboard contract lives.
-        self._table.activated.connect(lambda _index: self.choose_current())
-
-        self._select_first_row()
+        for earlier, later in zip(self.focus_chain(), self.focus_chain()[1:], strict=False):
+            QWidget.setTabOrder(earlier, later)
         self._announce()
 
-    def _build_mode_control(self, layout: QVBoxLayout) -> None:
-        """The merge mode, **or the reason it is not offered, in the same slot** (`P-13`).
+    # Qt's override name, hence the camelCase.
+    def sizeHint(self) -> QSize:
+        """The width at which **every** list gets what it asked for (`T-310`).
 
-        `UX-007` ruled `P-13`: *"`Merge` is offered only while ffmpeg is present. Absent, the mode
-        is **not drawn**, and the reason is stated where the mode would have been."* Putting it
-        in the mode's own place is what keeps the layout still — a control that vanishes and leaves
-        a gap moves everything under it, and a user who looked away has no way to know why.
+        **A stretch factor makes the sum of the children's hints the wrong answer.** The lists sit
+        in a `QHBoxLayout` with shares 3 and 2, so a child with share `s` of a total `S` receives
+        `width * s / S` however much it asked for — and the widest list was still one pixel short
+        at the width `QHBoxLayout` derived from the hints alone. So the requirement is inverted per
+        child: for each, `width >= hint * S / s`, and the answer is the largest of those.
 
-        **A second reason is checked here and it is derived rather than ruled**: a source whose
-        formats contain no video-only and no audio-only stream can never complete a pair, so
-        offering the mode would be offering something certain to be refused (`UX-005` §5). The two
-        reasons are worded separately on purpose — telling a user to install ffmpeg for a source
-        that would not merge anyway is advice that cannot help.
+        This matters because `AddUrlDialog._widen_for` asks the panel how much room to make. A hint
+        that is a pixel short is a horizontal scrollbar on a table that was resized precisely to fit
+        — which is what the first three attempts at this produced, at 220px, 35px and finally 1px.
         """
-        self._mode_control: QCheckBox | None = None
-        reason = self._why_no_merge()
-        if reason is None:
-            control = QCheckBox(MERGE_MODE_TEXT, self)
-            control.setObjectName("mergeModeCheck")
-            control.setAccessibleName(MERGE_MODE_TEXT)
-            control.setAccessibleDescription(
-                "Choose one video-only and one audio-only format, and yt-dlp will merge them into "
-                "a single file."
+        base = super().sizeHint()
+        shares = [(self._video, VIDEO_LIST_SHARE)]
+        if self._audio is not None:
+            shares.append((self._audio, AUDIO_LIST_SHARE))
+        total = sum(share for _, share in shares)
+        layout = self.layout()
+        spacing = layout.spacing() * (len(shares) - 1) if layout is not None else 0
+        needed = max(-(-panel.sizeHint().width() * total // share) for panel, share in shares)
+        return QSize(max(base.width(), needed + spacing), base.height())
+
+    def _build_sound_list(self, lists: QHBoxLayout) -> None:
+        """The sound list, **or the reason there is none, in the same place** (`P-13`'s rule).
+
+        **The condition is whether this source lists any audio-only stream — not whether a merge
+        is possible.** Those are different questions and an earlier draft of this conflated them:
+        it suppressed the list when `pairable` was false, which on a podcast — audio formats and
+        no video ones — would have hidden every format the source offered. And it suppressed the
+        list when ffmpeg was absent, which would have made an audio-only download impossible on a
+        machine that needs no ffmpeg to perform one.
+
+        **ffmpeg belongs to the pair, not to the list**, and `merge_refusal` already says so in
+        `REQ-024`'s own words. It is asked on every change and reported through
+        `selection_refused`, so the refusal arrives when a user has actually stated a merge.
+        """
+        audio = audio_formats(self._formats)
+        if audio:
+            self._audio = FormatList(
+                AUDIO_LIST_TITLE,
+                audio,
+                AUDIO_LIST_COLUMNS,
+                verb=self._audio_verb,
+                parent=self,
             )
-            control.toggled.connect(self._on_mode_toggled)
-            self._mode_control = control
-            layout.addWidget(control)
+            self._audio.chosen.connect(self.choose)
+            lists.addWidget(self._audio, AUDIO_LIST_SHARE)
             return
 
-        stated = QLabel(reason, self)
-        stated.setObjectName("mergeModeUnavailable")
-        stated.setAccessibleName("Why merging is not offered")
+        stated = QLabel(NO_MERGE_WITHOUT_A_PAIR, self)
+        stated.setObjectName("formatNoSoundList")
+        stated.setAccessibleName("Why there is no sound list")
         stated.setWordWrap(True)
-        # Plain text because the sentence can name what a source reported. `T016-R6` is the rule
-        # this follows; the label is registered there rather than formatted here.
+        stated.setAlignment(Qt.AlignmentFlag.AlignTop)
+        # Plain text because the sentence can name what a source reported (`T016-R6`'s rule).
         stated.setTextFormat(Qt.TextFormat.PlainText)
-        layout.addWidget(stated)
+        self._no_audio = stated
+        lists.addWidget(stated, AUDIO_LIST_SHARE)
 
-    def _why_no_merge(self) -> str | None:
-        """The reason the merge mode is not offered, or `None` when it is.
+    # --- what the buttons say ------------------------------------------------------------
 
-        Order matters: **ffmpeg first**, because it is the one the user can act on and it is true
-        regardless of the source. Reporting "this source offers no pair" to somebody without ffmpeg
-        would send them looking for a different video.
+    def _video_verb(self, entry: FormatInfo) -> str:
+        """**The button answers the row**, which is what makes one list hold two kinds of thing.
+
+        *Use 22 — it has sound already* and *Use 614 for the video* are different actions, and a
+        single fixed verb would have to be wrong for one of them.
         """
-        if not self._ffmpeg_available:
-            return NO_MERGE_WITHOUT_FFMPEG
-        if not pairable(self._model.formats()):
-            return NO_MERGE_WITHOUT_A_PAIR
-        return None
+        kind = kind_of(entry)
+        if kind is FormatKind.COMPLETE:
+            return USE_COMPLETE.format(format_id=entry.format_id)
+        if kind is FormatKind.UNKNOWN:
+            return USE_UNCLASSIFIED.format(format_id=entry.format_id)
+        return USE_VIDEO.format(format_id=entry.format_id)
+
+    def _audio_verb(self, entry: FormatInfo) -> str:
+        return USE_SOUND.format(format_id=entry.format_id)
+
+    # --- the selection ---------------------------------------------------------------------
+
+    def choose(self, entry: FormatInfo) -> None:
+        """Take `entry` into the selection. **Nothing is refused** (`docs/UX_SPEC.md` §5).
+
+        `P-2`'s routing is kept in full — a row goes to whichever slot its own kind matches — and
+        the *mode* is derived by `_compose` from what has been picked rather than declared in
+        advance. That is what makes the refusal unreachable.
+
+        A format carrying both streams — or one nothing was said about — **replaces** the whole
+        selection rather than joining it. It is the entire download, so a half left over from an
+        earlier pick would be a second answer to a question already answered.
+        """
+        kind = kind_of(entry)
+        if kind in (FormatKind.COMPLETE, FormatKind.UNKNOWN):
+            self._picked_video = self._picked_audio = None
+            self._picked_whole = entry
+        elif kind is FormatKind.AUDIO_ONLY:
+            self._picked_whole = None
+            self._picked_audio = entry
+        else:
+            self._picked_whole = None
+            self._picked_video = entry
+        self._selection = self._compose()
+        # **`selection_changed` before `format_chosen`, and the order is load-bearing** (`T-108`).
+        # A listener on `format_chosen` may close the surface this table lives in; a listener on
+        # `selection_changed` is what *writes the choice down*. Emitted the other way round,
+        # closing tears the panel off its row first and the write finds nothing to write to.
+        self._announce()
+        self.format_chosen.emit(entry)
+
+    @property
+    def awaiting_other_half(self) -> bool:
+        """One half is picked and the other list could still complete the pair (`T-310`).
+
+        **The surface embedding this closes on a finished selection, and `is_complete` alone stopped
+        being able to say when that is.** Under the old mode a lone video half sat in `PAIR`, where
+        `is_complete` was false, so the panel stayed open by accident of the mode. `_compose` makes
+        a lone half `SINGLE` — which is right, because a silent video is a download — and that same
+        correction would have slammed the panel shut the instant a user picked the picture, before
+        they could reach the sound list.
+
+        So the question the panel actually needs answering is asked directly: *is there another
+        half still to come?* It is false as soon as there is nowhere to get one from, which is why
+        a source with no sound list closes on the first pick exactly as it should.
+        """
+        if self._picked_whole is not None:
+            return False
+        if self._picked_video is not None and self._picked_audio is not None:
+            return False
+        if self._picked_video is not None:
+            return self._audio is not None
+        if self._picked_audio is not None:
+            return any(
+                kind_of(entry) is FormatKind.VIDEO_ONLY for entry in self._video.model.formats()
+            )
+        return False
+
+    def _compose(self) -> FormatSelection:
+        """What has been picked, as a `FormatSelection`. **The mode is an outcome here.**
+
+        **One half on its own is `SINGLE`, and getting that wrong was a real regression.** An
+        earlier draft put every video-only pick into `PAIR`, where `is_complete` needs both slots
+        filled — so choosing one video-only format and pressing *Done* named no download at all,
+        and a silent-video download that `REQ-008` has always allowed became impossible. The mode
+        is not a statement about the row's kind; it is a statement about how many things are
+        being joined.
+
+        `PAIR` therefore means exactly what `is_merge` reads it as: two streams the user has
+        explicitly asked to be joined. `REQ-024`'s ffmpeg refusal rests on that, so widening
+        `PAIR` to cover a half-filled selection would have made it fire on a download that needs
+        no ffmpeg at all.
+        """
+        if self._picked_whole is not None:
+            return FormatSelection(mode=SelectionMode.SINGLE, single=self._picked_whole)
+        if self._picked_video is not None and self._picked_audio is not None:
+            return FormatSelection(
+                mode=SelectionMode.PAIR, video=self._picked_video, audio=self._picked_audio
+            )
+        lone = self._picked_video or self._picked_audio
+        return FormatSelection(mode=SelectionMode.SINGLE, single=lone)
+
+    def _announce(self) -> None:
+        """Put the current selection where both a reader and a screen reader will find it."""
+        described = self._selection.describe()
+        picked = frozenset(entry.format_id for entry in self._selection.chosen())
+        for panel in self.lists():
+            panel.set_chosen(picked)
+        self._chosen.setText(f"Chosen — {described}")
+        self.setAccessibleDescription(f"{self._selection.mode}. Chosen: {described}")
+        if self._audio is not None:
+            # A format that already carries sound leaves nothing for the sound list to add, and a
+            # control that silently does nothing is what `UX-005` §5 forbids — so it is disabled
+            # *with the reason on it* rather than left live and pointless.
+            self._audio.set_dimmed(self._picked_whole is not None, SOUND_ALREADY_INCLUDED)
+        self.selection_changed.emit(self._selection)
+        refusal = merge_refusal(self._selection, ffmpeg_available=self._ffmpeg_available)
+        if refusal is not None:
+            self.selection_refused.emit(refusal)
 
     # --- the seam a surface embedding this uses ------------------------------------------
 
+    def lists(self) -> list[FormatList]:
+        """Every list on this surface, in reading order. One or two, never none."""
+        return [panel for panel in (self._video, self._audio) if panel is not None]
+
+    def focus_chain(self) -> list[QWidget]:
+        """The keyboard order, stated rather than left to construction order (`NFR-005`).
+
+        Each list is body, then header, then its button — `docs/UX_SPEC.md` §4's body-then-header
+        order, with the visible verb after the thing it acts on.
+        """
+        chain: list[QWidget] = []
+        for panel in self.lists():
+            chain.extend((panel.view, panel.header, panel.button))
+        return chain
+
+    @property
+    def video(self) -> FormatList:
+        return self._video
+
+    @property
+    def audio(self) -> FormatList | None:
+        """The sound list, or `None` when the reason stands in its place."""
+        return self._audio
+
+    @property
+    def no_sound_reason(self) -> QLabel | None:
+        """Why there is no sound list, or `None` when there is one."""
+        return self._no_audio
+
+    @property
+    def no_merge_reason(self) -> QLabel | None:
+        """Why a pair cannot be merged here, or `None` when one can (`P-13`)."""
+        return self._no_merge
+
     @property
     def table(self) -> QTableView:
-        """The view, for a caller that needs to focus it or read its current row."""
-        return self._table
+        """The video list's view. **The surface's first focus**, and what `T-152` is about."""
+        return self._video.view
 
     @property
     def model(self) -> FormatTableModel:
-        return self._model
+        return self._video.model
 
     @property
     def header(self) -> SortableHeader:
-        """The header, for a caller that needs to focus it or read its current column."""
-        return self._header
+        return self._video.header
 
     def set_formats(self, formats: Sequence[FormatInfo]) -> None:
-        self._model.set_formats(formats)
-        self._select_first_row()
+        """Replace what both lists show.
+
+        **The sound list is not rebuilt**, so a source that had none still has none: whether it
+        exists is decided once, at construction, from the formats the probe returned. A probe
+        answers once (`FormatTableModel.set_formats`), so there is no second answer to take.
+        """
+        self._formats = tuple(formats)
+        self._video.set_formats(video_formats(self._formats))
+        if self._audio is not None:
+            self._audio.set_formats(audio_formats(self._formats))
+        # A selection naming formats this probe no longer offers is a claim about rows that are
+        # gone. `T107-R4` made the *sort* survive a repopulation; what must not survive is a
+        # choice of something no longer listed.
+        self._picked_video = self._picked_audio = self._picked_whole = None
+        self._selection = self._compose()
+        self._announce()
 
     @property
     def selection(self) -> FormatSelection:
         """What is chosen now (`T-108`). The dialog reads this when it builds the request."""
         return self._selection
 
-    @property
-    def mode_control(self) -> QCheckBox | None:
-        """The merge control, or `None` when `P-13` says it is not drawn."""
-        return self._mode_control
-
     def chosen_text(self) -> str:
         """The sentence the label and the accessible description both carry."""
         return self._chosen.text()
 
     def current_format(self) -> FormatInfo | None:
-        """The `FormatInfo` the current row names, or `None` when there is no current row."""
-        index = self._table.currentIndex()
-        if not index.isValid():
-            return None
-        carried = self._model.data(index, FORMAT_ROLE)
-        return carried if isinstance(carried, FormatInfo) else None
+        """The current row of the list the keyboard is in, or of the video list."""
+        for panel in self.lists():
+            if panel.view.hasFocus():
+                return panel.current_format()
+        return self._video.current_format()
 
     def choose_current(self) -> None:
-        """Take the current row into the selection, and say what happened (`REQ-008`).
-
-        **A refusal is reported, never swallowed.** In `PAIR` mode a format that is neither
-        video-only nor audio-only cannot be placed, and `Enter` on it must produce a sentence
-        rather than nothing — `UX-005` §5, and `T-075` is what silence costs.
-
-        `format_chosen` still fires with the `FormatInfo`, as `T-107` built it: it says *this row
-        was chosen*, which is true whether it went into one slot or the other.
-        """
-        chosen = self.current_format()
-        if chosen is None:
-            return
-        try:
-            self._selection = self._selection.choose(chosen)
-        except UnplaceableFormatError as refusal:
-            self.selection_refused.emit(str(refusal))
-            return
-        # **`selection_changed` before `format_chosen`, and the order is load-bearing.** A listener
-        # on `format_chosen` may close the surface this table lives in — the dialog does exactly
-        # that once the selection is complete — and a listener on `selection_changed` is what
-        # *writes the choice down*. Emitted the other way round, closing tears the panel off its row
-        # first and the write then finds nothing to write to: the format is chosen, the row keeps
-        # its old one, and the download runs as whatever it was before. That is this project's
-        # recurring defect — a value computed correctly and then not acted on — and it was live here
-        # until the dialog tests caught it.
-        self._announce()
-        self.format_chosen.emit(chosen)
-
-    def _on_mode_toggled(self, merging: bool) -> None:
-        """Switch mode, keeping whichever half survives the switch (`FormatSelection.with_mode`)."""
-        wanted = SelectionMode.PAIR if merging else SelectionMode.SINGLE
-        self._selection = self._selection.with_mode(wanted)
-        self._announce()
-
-    def _announce(self) -> None:
-        """Put the current selection where both a reader and a screen reader will find it."""
-        described = self._selection.describe()
-        self.model.set_chosen(frozenset(entry.format_id for entry in self._selection.chosen()))
-        self._chosen.setText(f"Chosen — {described}")
-        self.setAccessibleDescription(f"{self._selection.mode}. Chosen: {described}")
-        self.selection_changed.emit(self._selection)
+        """Take the current row of whichever list has focus (`REQ-008`)."""
+        entry = self.current_format()
+        if entry is not None:
+            self.choose(entry)
 
     def sort_by(self, column: int) -> None:
-        """Sort by `column`, reversing if it is already the sorted one (`docs/UX_SPEC.md` §4).
-
-        The one place the "again reverses" rule lives, so the header click and the key press
-        cannot disagree about it.
-        """
-        if not 0 <= column < COLUMN_COUNT:
-            return
-        current = self._header.sortIndicatorSection()
-        ascending = Qt.SortOrder.AscendingOrder
-        descending = Qt.SortOrder.DescendingOrder
-        if current == column and self._header.sortIndicatorOrder() is ascending:
-            order = descending
-        else:
-            order = ascending
-        self._table.sortByColumn(column, order)
-
-    def _select_first_row(self) -> None:
-        """Give the table a current row as soon as it has one (`T-152`, `docs/UX_SPEC.md` §4).
-
-        **A declared keyboard route that needs a click first is not one.** `T-152` is exactly this
-        defect one surface over: the row menu resolved `currentIndex()` and nothing ever set one,
-        so the keyboard route did nothing until a pointer had been used.
-        """
-        if self._model.rowCount():
-            self._table.setCurrentIndex(self._model.index(0, FORMAT_COLUMN))
+        """Sort the video list. Each list owns its own sorting; this is the surface's default."""
+        self._video.sort_by(column)

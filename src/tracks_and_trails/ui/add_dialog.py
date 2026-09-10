@@ -876,11 +876,13 @@ class FormatPanel(RowPanel):
         return self._table
 
     def focus_chain(self) -> list[QWidget]:
-        controls: list[QWidget] = []
-        mode = self._table.mode_control
-        if mode is not None:
-            controls.append(mode)
-        return [*controls, self._table.table, self._table.header, self._close]
+        """Both lists, each body-then-header-then-button, then the way out (`T-310`).
+
+        The mode control this used to lead with is gone; `docs/UX_SPEC.md` §5's reason for putting
+        it first — *"a mode that changes what `Enter` does must be reachable before the thing it
+        changes"* — went with it, because nothing changes what `Enter` does any more.
+        """
+        return [*self._table.focus_chain(), self._close]
 
     def initial_focus(self) -> QWidget:
         """The table body, which is what `docs/UX_SPEC.md` §4's *current row* is about."""
@@ -1761,6 +1763,39 @@ class AddUrlDialog(QDialog):
         # widget over. The floor makes both cases the same answer: show the panel's controls.
         return max(self._panel.minimumSizeHint().height(), min(wanted, available))
 
+    def _widen_for(self, panel: RowPanel) -> None:
+        """Grow the dialog if the panel needs more width than it has (`T-310`).
+
+        **The dialog does not open this wide, and that is the point.** `T-310` put two lists side
+        by side in the format panel, and two lists need roughly 1100px at the 10pt control font
+        before a column truncates. Making *every* add-a-URL dialog that wide to serve a panel most
+        sessions never open would be paying the cost in the common case for the rare one, so the
+        dialog grows when the panel arrives and stays where the user leaves it.
+
+        **Grows only.** Shrinking back on close would move a window the user may have sized
+        deliberately, and `T-150`'s rule that the opening width is a hint rather than a floor is
+        unaffected either way — `minimumSizeHint` is untouched, so the dialog still narrows to the
+        button box exactly as `test_the_dialog_can_still_be_made_narrower_than_it_opens` asserts.
+
+        **Bounded by the screen**, because a panel is free to want more room than exists and a
+        dialog wider than the display is one whose buttons cannot be reached.
+        """
+        # **The panel's need plus whatever the dialog spends outside the list viewport**, measured
+        # rather than modelled. A constant here would have to account for the dialog's margins, the
+        # list's frame, its scrollbar and the row panel's own layout — four numbers that change
+        # with the style and the font, which is the kind of promise `T118-R15` records this project
+        # breaking. The difference between the dialog and its viewport *is* that total, and asking
+        # for it costs nothing.
+        outside = self.width() - self._list.viewport().width()
+        wanted = panel.sizeHint().width() + outside + PANEL_VIEWPORT_MARGIN
+        if wanted <= self.width():
+            return
+        screen = self.screen()
+        if screen is not None:
+            wanted = min(wanted, screen.availableGeometry().width())
+        if wanted > self.width():
+            self.resize(wanted, self.height())
+
     @property
     def expanded_row(self) -> Row | None:
         """The row that is open, if any. Read by `StagingModel` for `EXPANDED_ROLE`."""
@@ -1973,6 +2008,7 @@ class AddUrlDialog(QDialog):
         panel = build()
         panel.closed.connect(self._on_panel_closed)
         self._panel = panel
+        self._widen_for(panel)
 
         # **Uniform sizes is a promise this row breaks** (`T118-R10`). The list sets it because a
         # paste is unbounded and measuring every row costs; one open row makes the sizes genuinely
@@ -2208,7 +2244,11 @@ class AddUrlDialog(QDialog):
         which is the same sentence for the mode the spec was describing.
         """
         panel = self.open_format_panel
-        if panel is not None and panel.table.selection.is_complete:
+        # **A half is not a finish** (`T-310`). `is_complete` says the selection names *a*
+        # download, which a lone video half now does — so closing on it alone would shut the panel
+        # the moment a user picked the picture, before they could reach the sound list beside it.
+        awaiting = panel is not None and panel.table.awaiting_other_half
+        if panel is not None and panel.table.selection.is_complete and not awaiting:
             self.close_panel(keep=True)
 
     def _on_selection_changed(self, selection: object) -> None:

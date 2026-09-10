@@ -23,6 +23,7 @@ yt-dlp reports nothing, which is most of what these sources say about fps and co
 """
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Final
 
@@ -35,7 +36,7 @@ from PySide6.QtWidgets import QApplication
 from tracks_and_trails.core.models import FormatInfo
 from tracks_and_trails.downloader import ytdlp_adapter as adapter
 from tracks_and_trails.ui import theme
-from tracks_and_trails.ui.format_selection import SelectionMode
+from tracks_and_trails.ui.format_selection import FormatKind, SelectionMode, kind_of
 from tracks_and_trails.ui.format_table import (
     ABSENT_TEXT,
     AUDIO_CODEC_COLUMN,
@@ -51,10 +52,13 @@ from tracks_and_trails.ui.format_table import (
     RESOLUTION_COLUMN,
     SIZE_COLUMN,
     SORT_ROLE,
+    SOUND_COLUMN,
+    SOUND_NOT_STATED,
     VIDEO_CODEC_COLUMN,
     FormatTable,
     FormatTableModel,
     codec_name,
+    sound_group,
 )
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT
 
@@ -98,6 +102,34 @@ def test_every_column_req_003_names_is_present() -> None:
         assert named in headers, f"REQ-003 names {named} and no column carries it"
 
 
+def by_band[Comparable: (int, float, str)](
+    formats: tuple[FormatInfo, ...], value: Callable[[FormatInfo], Comparable]
+) -> list[list[Comparable]]:
+    """`value` for each format, split by `T-310`'s bands and in row order.
+
+    **Every ordering assertion about the video list is now a per-band one.** The maintainer ruled
+    that formats already carrying sound *"list … last in the list together"*, so the list is sorted
+    by the chosen column and then grouped — and a globally-ordered assertion would be asserting the
+    ruling away rather than testing the sort.
+    """
+    bands: dict[int, list[Comparable]] = {}
+    for entry in formats:
+        bands.setdefault(sound_group(entry), []).append(value(entry))
+    return [bands[band] for band in sorted(bands)]
+
+
+def video_column(table: FormatTable, field: int) -> int:
+    """Where the video list shows `field` (`T-310`).
+
+    The lists carry different columns in different orders, so a global column id is no longer a
+    view position. Asked of the model rather than written down here, because a second copy of the
+    layout is a second thing to keep in step.
+    """
+    position = table.video.model.column_for(field)
+    assert position >= 0, f"the video list does not show column {field}"
+    return position
+
+
 def test_the_columns_are_populated_from_a_recorded_fixture_by_value() -> None:
     """The fields `T-018`'s **recorded** capture carries, asserted as values rather than shapes.
 
@@ -110,7 +142,14 @@ def test_the_columns_are_populated_from_a_recorded_fixture_by_value() -> None:
     ids = column_of(model, FORMAT_COLUMN)
     assert ids == ["0", "1", "2"], ids
     assert column_of(model, EXT_COLUMN) == ["ogv", "mp4", "avi"]
-    assert column_of(model, RESOLUTION_COLUMN) == ["533x300", "640x360", "1280x720"]
+    # **`300p`, and `533x300` is the tool tip** (`T-310`). The column is headed *Quality* now and
+    # its job is to distinguish rows at a glance; the exact pixels are kept rather than dropped,
+    # in the place `T-306` already established for a cell's longer truth.
+    assert column_of(model, RESOLUTION_COLUMN) == ["300p", "360p", "720p"]
+    assert [
+        model.data(model.index(row, RESOLUTION_COLUMN), int(Qt.ItemDataRole.ToolTipRole))
+        for row in range(model.rowCount())
+    ] == ["533x300", "640x360", "1280x720"]
     assert display(model, 0, SIZE_COLUMN) == "44.8 MB", display(model, 0, SIZE_COLUMN)
     assert column_of(model, NOTES_COLUMN) == ["derivative"] * 3
 
@@ -300,6 +339,18 @@ def test_the_table_matches_what_yt_dlp_f_reports(fixture_name: str) -> None:
                 )
                 continue
             expected = printed[name]
+            if column == RESOLUTION_COLUMN and expected != "unknown":
+                # **The same move the codec columns made** (`T-306`, extended by `T-310`): the
+                # cell shows the name people use and the exact string yt-dlp printed stays
+                # reachable in the tool tip. So the agreement is that yt-dlp's own answer is on
+                # the row *somewhere*, not that it is the cell text.
+                shown = display(model, row, column)
+                tip = model.data(model.index(row, column), int(Qt.ItemDataRole.ToolTipRole))
+                assert expected in (shown, tip), (
+                    f"yt-dlp printed {expected!r} for {id_} and the table shows {shown!r} with "
+                    f"tool tip {tip!r}, so its answer is not reachable at all"
+                )
+                continue
             if column in (VIDEO_CODEC_COLUMN, AUDIO_CODEC_COLUMN) and expected != "unknown":
                 # **The codec columns show a name and keep the identifier in the tool tip**
                 # (`T-306`), so the agreement with `yt-dlp -F` moved there rather than weakening.
@@ -534,7 +585,17 @@ def test_a_format_with_no_height_reads_unknown_rather_than_claiming_audio_only(
     row = next(
         index for index in range(model.rowCount()) if display(model, index, FORMAT_COLUMN) == "140"
     )
-    assert display(model, row, RESOLUTION_COLUMN) == UNKNOWN_TEXT
+    entry = next(item for item in derived if item.format_id == "140")
+    # **The tri-state reaches this column too, which `T-310` fixed and `T-305` had not.**
+    # `describe_resolution` read `height` and never looked at `has_video`, so a format whose video
+    # stream yt-dlp had *denied* reported its resolution as *unknown* — a claim of ignorance about
+    # something the extractor stated, beside a video-codec cell correctly reading `None`. Three
+    # columns describing one denied stream and two of them disagreeing with the third.
+    #
+    # `T107-R1`'s property is unchanged and is the other half of this: absence may be asserted only
+    # from an explicit `'none'`, never from silence.
+    expected = ABSENT_TEXT if entry.has_video is False else UNKNOWN_TEXT
+    assert display(model, row, RESOLUTION_COLUMN) == expected
 
 
 # --- sorting is over the projection (`T-075`) ----------------------------------------------
@@ -666,8 +727,16 @@ def test_the_table_opens_sorted_by_resolution_best_first(
     rows alone. This fails if the model stops implementing `sort`.
     """
     table = FormatTable(derived)
-    heights = [entry.height or -1 for entry in table.model.formats()]
-    assert heights == sorted(heights, reverse=True), heights
+    formats = table.model.formats()
+    assert formats, "the video list is empty, so this measured nothing"
+
+    # **Descending within each band, and the bands keep their order** (`T-310`). The maintainer
+    # ruled that formats already carrying sound *"list … last in the list together"*, so a globally
+    # descending assertion would now be asserting the ruling away.
+    groups = [sound_group(entry) for entry in formats]
+    assert groups == sorted(groups), f"the bands are out of order: {groups}"
+    for heights in by_band(formats, lambda entry: entry.height or -1):
+        assert heights == sorted(heights, reverse=True), heights
 
 
 def test_choosing_the_current_row_reports_the_format(
@@ -770,15 +839,16 @@ def test_the_chosen_row_says_so_in_the_table_and_not_only_in_the_footer(
     than through a second idea of what is chosen.
     """
     table = FormatTable(derived)
+    identifier = video_column(table, FORMAT_COLUMN)
 
     def bold_ids() -> set[str]:
         marked = set()
         for row in range(table.model.rowCount()):
             font = table.model.data(
-                table.model.index(row, FORMAT_COLUMN), int(Qt.ItemDataRole.FontRole)
+                table.model.index(row, identifier), int(Qt.ItemDataRole.FontRole)
             )
             if isinstance(font, QFont) and font.bold():
-                marked.add(display(table.model, row, FORMAT_COLUMN))
+                marked.add(display(table.model, row, identifier))
         return marked
 
     assert bold_ids() == set(), "nothing is chosen yet, so no row may claim to be"
@@ -930,28 +1000,43 @@ def test_the_wrapper_gives_the_table_its_whole_size(
     a fixed-height view inside a taller wrapper is the same defect with a smaller gap.
     """
     table = FormatTable(derived)
-    table.resize(320, 180)
+    table.resize(720, 300)
     table.show()
     qapp.processEvents()
     try:
         assert table.sizeHint().isValid(), f"the wrapper has no size hint: {table.sizeHint()}"
-        assert table.table.width() == table.width(), (
-            f"the view is {table.table.width()}px inside a {table.width()}px wrapper"
-        )
-        siblings = table.height() - table.table.height()
-        assert 0 < siblings < table.height(), (
-            f"the view takes {table.table.height()}px of {table.height()}px, leaving {siblings}px "
-            "for the mode control and the chosen line"
+
+        # **Two lists share the width now** (`T-310`), so *"the view is exactly the wrapper's
+        # width"* stopped being the right statement — it was true only while there was one view.
+        # What `T107-R2` actually asks is that a child fills the space it is given, and the space
+        # each list is given is its own panel, so that is what is asserted. Together they take the
+        # width, which is the other half of the same property.
+        panels = table.lists()
+        assert len(panels) == 2, "the derived fixture has an audio half, so there are two lists"
+        for panel in panels:
+            assert panel.view.width() == panel.width(), (
+                f"{panel.view.accessibleName()} is {panel.view.width()}px inside a "
+                f"{panel.width()}px list"
+            )
+        spread = sum(panel.width() for panel in panels)
+        assert spread > table.width() // 2, (
+            f"the two lists take {spread}px of a {table.width()}px wrapper, so they are not "
+            "filling it"
         )
 
-        was = table.table.height()
-        table.resize(320, 360)
+        for panel in panels:
+            siblings = panel.height() - panel.view.height()
+            assert 0 < siblings < panel.height(), (
+                f"{panel.view.accessibleName()} takes {panel.view.height()}px of "
+                f"{panel.height()}px, leaving {siblings}px for its heading and its button"
+            )
+
+        before = table.video.view.height()
+        table.resize(table.width(), table.height() * 2)
         qapp.processEvents()
-        assert table.table.height() == was + 180, (
-            "the wrapper grew by 180px and the table did not follow, so it is not the stretching "
-            "child"
+        assert table.video.view.height() > before, (
+            "the list did not grow with the wrapper, so it is not the stretching child"
         )
-        assert table.table.width() == table.width()
     finally:
         table.close()
 
@@ -1066,6 +1151,52 @@ def test_the_current_section_is_drawn_in_the_theme_that_is_applied(
         qapp.processEvents()
 
 
+@pytest.mark.parametrize("points", [9, 10, 11], ids=lambda size: f"{size}pt")
+def test_the_stated_width_is_enough_for_both_lists(
+    qapp: QApplication, derived: tuple[FormatInfo, ...], points: int
+) -> None:
+    """`T-310`: resized to exactly what it asks for, nothing scrolls sideways.
+
+    **This is the assertion three wrong implementations passed the reviewer's eye on.**
+    `AddUrlDialog._widen_for` asks the panel how much room to make, so a hint that understates is a
+    horizontal scrollbar on a table sized precisely to fit — and the understatement is invisible in
+    the source every time:
+
+    1. `QTableView.sizeHint()` is a fixed default that ignores the model. **518px** for a surface
+       needing over a thousand.
+    2. Summing `sizeHintForColumn` ignores the *headers*, and `ResizeToContents` sizes a section to
+       the wider of content and label. **220px** short, all of it headings.
+    3. Summing the children ignores the `QHBoxLayout` **stretch**: a child with share `s` of total
+       `S` gets `width * s / S` however much it asked for. **1px** short, which scrolls just as
+       surely as a hundred.
+
+    **Three font sizes, because one machine's font is one data point.** `OPS-012`'s move to
+    `ubuntu-latest` reddened two assertions for exactly this reason.
+    """
+    original = qapp.font()
+    font = QFont(original)
+    font.setPointSize(points)
+    qapp.setFont(font)
+    try:
+        table = FormatTable(derived)
+        table.resize(table.sizeHint())
+        table.show()
+        qapp.processEvents()
+        try:
+            assert len(table.lists()) == 2, "this fixture should produce both lists"
+            for one in table.lists():
+                view = one.view
+                over = view.horizontalScrollBar().maximum()
+                assert over == 0, (
+                    f"{view.accessibleName()} scrolls sideways at the widget's own stated "
+                    f"width of {table.sizeHint().width()}px: {over}px over"
+                )
+        finally:
+            table.close()
+    finally:
+        qapp.setFont(original)
+
+
 def test_the_keyboard_chooses_a_column_and_sorts_that_one(
     qapp: QApplication, derived: tuple[FormatInfo, ...]
 ) -> None:
@@ -1078,29 +1209,31 @@ def test_the_keyboard_chooses_a_column_and_sorts_that_one(
     table.show()
     qapp.processEvents()
     try:
-        table.table.sortByColumn(RESOLUTION_COLUMN, Qt.SortOrder.DescendingOrder)
+        quality = video_column(table, RESOLUTION_COLUMN)
+        size = video_column(table, SIZE_COLUMN)
+        table.table.sortByColumn(quality, Qt.SortOrder.DescendingOrder)
         table.table.setFocus()
         _press(qapp, Qt.Key.Key_Tab)
         assert qapp.focusWidget() is table.header
-        assert table.header.current_section() == RESOLUTION_COLUMN, (
+        assert table.header.current_section() == quality, (
             "the header did not arrive on the column the table is sorted by"
         )
 
-        while table.header.current_section() != SIZE_COLUMN:
+        while table.header.current_section() != size:
             before = table.header.current_section()
             _press(qapp, Qt.Key.Key_Right)
             assert table.header.current_section() != before, "Right did not move the column"
 
         _press(qapp, Qt.Key.Key_Space)
-        assert table.header.sortIndicatorSection() == SIZE_COLUMN, (
+        assert table.header.sortIndicatorSection() == size, (
             "Space sorted a column other than the one the keyboard had selected"
         )
-        ascending = [entry.filesize for entry in table.model.formats()]
+        ascending = by_band(table.model.formats(), lambda entry: entry.filesize or -1)
 
         _press(qapp, Qt.Key.Key_Space)
-        assert [entry.filesize for entry in table.model.formats()] == list(reversed(ascending)), (
-            "a second Space did not reverse the sort"
-        )
+        reversed_bands = [list(reversed(band)) for band in ascending]
+        after = by_band(table.model.formats(), lambda entry: entry.filesize or -1)
+        assert after == reversed_bands, "a second Space did not reverse the sort"
     finally:
         table.close()
 
@@ -1140,12 +1273,12 @@ def test_sorting_keeps_the_selection_on_its_own_format(
     `current_format()` answered `a`.
     """
     table = FormatTable(derived)
-    table.table.sortByColumn(SIZE_COLUMN, Qt.SortOrder.AscendingOrder)
-    table.table.setCurrentIndex(table.model.index(1, FORMAT_COLUMN))
+    table.table.sortByColumn(video_column(table, SIZE_COLUMN), Qt.SortOrder.AscendingOrder)
+    table.table.setCurrentIndex(table.model.index(1, video_column(table, FORMAT_COLUMN)))
     chosen = table.current_format()
     assert chosen is not None
 
-    table.table.sortByColumn(SIZE_COLUMN, Qt.SortOrder.DescendingOrder)
+    table.table.sortByColumn(video_column(table, SIZE_COLUMN), Qt.SortOrder.DescendingOrder)
     after = table.current_format()
     assert after == chosen, (
         f"the current format changed from {chosen.format_id} to "
@@ -1163,14 +1296,15 @@ def test_populating_the_table_reapplies_the_active_sort(
     calls a moving indicator over unchanged rows worse than no sorting; the setter recreated it.
     """
     table = FormatTable(())
-    table.table.sortByColumn(RESOLUTION_COLUMN, Qt.SortOrder.DescendingOrder)
+    quality = table.video.model.column_for(RESOLUTION_COLUMN)
+    table.table.sortByColumn(quality, Qt.SortOrder.DescendingOrder)
     table.set_formats(derived)
 
-    heights = [entry.height or -1 for entry in table.model.formats()]
-    assert heights == sorted(heights, reverse=True), (
-        f"rows are {heights} under a descending indicator"
-    )
-    assert table.table.horizontalHeader().sortIndicatorSection() == RESOLUTION_COLUMN
+    for heights in by_band(table.model.formats(), lambda entry: entry.height or -1):
+        assert heights == sorted(heights, reverse=True), (
+            f"rows are {heights} under a descending indicator"
+        )
+    assert table.table.horizontalHeader().sortIndicatorSection() == quality
 
 
 def test_an_estimated_size_is_marked_and_an_exact_one_is_not(
@@ -1280,62 +1414,107 @@ def test_the_repaint_gate_would_reject_an_unbounded_implementation() -> None:
 # --- T-108: the mode, its keyboard, and what it announces (REQ-008, UX_SPEC §5) ---------------
 
 
-def test_the_mode_is_reachable_before_the_thing_it_changes(
+def test_every_format_appears_in_exactly_one_list(
     qapp: QApplication, derived: tuple[FormatInfo, ...]
 ) -> None:
-    """`docs/UX_SPEC.md` §5: the mode joins the `Tab` order **ahead of the header row**.
+    """`T-310`'s first acceptance criterion, and the failure it exists to prevent.
 
-    The spec gives the reason and it is the assertion: *"a mode that changes what `Enter` does must
-    be reachable before the thing it changes"*. §4's body-then-header order is unchanged, so the
-    whole route is mode → body → header → out.
+    **A format that vanishes is the defect.** Splitting one grid into two lists means each format
+    is routed somewhere, and a routing rule that covers three of `FormatKind`'s four states drops
+    every unclassified format on the floor — which `ui/format_selection.py` records as *"most
+    formats from most sources"*, not an edge case. `REQ-003` asks the table to show what the
+    source offers, and a silent omission is that requirement failing without a symptom.
     """
     table = FormatTable(derived)
-    table.show()
-    qapp.processEvents()
     try:
-        mode = table.mode_control
-        assert mode is not None, "the derived fixture has a pair, so the mode should be offered"
-        mode.setFocus()
-        qapp.processEvents()
-        assert qapp.focusWidget() is mode
-
-        _press(qapp, Qt.Key.Key_Tab)
-        assert qapp.focusWidget() is table.table, (
-            f"Tab from the mode reached {qapp.focusWidget()!r}, not the table body"
+        listed = [entry.format_id for panel in table.lists() for entry in panel.model.formats()]
+        assert sorted(listed) == sorted(entry.format_id for entry in derived), (
+            f"the lists show {sorted(listed)} for a probe of "
+            f"{sorted(entry.format_id for entry in derived)}"
         )
-        _press(qapp, Qt.Key.Key_Tab)
-        assert qapp.focusWidget() is table.header
+        assert len(listed) == len(set(listed)), f"a format is in both lists: {listed}"
     finally:
         table.close()
 
 
-def test_space_switches_mode(qapp: QApplication, derived: tuple[FormatInfo, ...]) -> None:
-    """`docs/UX_SPEC.md` §5: *"`Space` switches mode"*.
+def test_an_unclassified_format_is_listed_and_choosable(qapp: QApplication) -> None:
+    """The `UNKNOWN` kind is a first-class row, not a leftover (`T-310`).
 
-    **Which is why the control is a checkbox and not a two-entry combo box.** `Space` on a combo
-    opens a popup; on a checkbox it toggles, which is what the spec describes. Driven through the
-    focused widget rather than by calling `setChecked`, because the claim is about the key.
+    archive.org and PeerTube name no codecs at all, so `kind_of` answers `UNKNOWN` for everything
+    they publish. Those formats go in the video list — the general one — saying `not stated` about
+    their sound, and choosing one is the whole download, because nothing about pairing it can be
+    asserted.
+    """
+    formats = formats_from("archive_org_big_buck_bunny")
+    assert {kind_of(entry) for entry in formats} == {FormatKind.UNKNOWN}, (
+        "this fixture no longer exercises the unclassified case"
+    )
+    table = FormatTable(formats)
+    try:
+        assert table.audio is None, "a source with no audio half should list no sound panel"
+        assert table.no_sound_reason is not None, "the reason must stand where the list would"
+        assert table.video.model.rowCount() == len(formats)
+
+        sound = table.video.model.column_for(SOUND_COLUMN)
+        assert display(table.video.model, 0, sound) == SOUND_NOT_STATED
+
+        table.choose_current()
+        assert table.selection.is_complete, "an unclassified format named no download"
+        assert table.selection.mode is SelectionMode.SINGLE
+    finally:
+        table.close()
+
+
+def test_no_choice_is_ever_refused(qapp: QApplication, derived: tuple[FormatInfo, ...]) -> None:
+    """`T-310`: the mode is gone and so is the refusal it required.
+
+    **This is the inverse of the test it replaces.** Until 2026-09-09 a format carrying both
+    streams was *refused out loud* in `PAIR` mode — the two formats needing no merge at all were
+    the two the merge mode would not accept. The maintainer found it in the built window: *"the
+    options with audio AND video aren't even selectable"*. With the kinds in separate lists
+    nothing is routed, so nothing can fail to route.
+
+    `merge_refusal` still speaks, and it is a different fact: ffmpeg's absence refuses a **pair**,
+    not a format, and it is asserted by its own tests.
     """
     table = FormatTable(derived)
-    table.show()
-    qapp.processEvents()
+    refusals: list[str] = []
+    table.selection_refused.connect(refusals.append)
     try:
-        mode = table.mode_control
-        assert mode is not None
-        mode.setFocus()
-        qapp.processEvents()
-        # **Each mode read goes into its own local.** Asserting `table.selection.mode is X` twice
-        # narrows the property to the first `X`, and the second comparison then types as
-        # impossible — the same narrowing that made an earlier `Esc` test read as unreachable.
-        opened = table.selection.mode
-        assert opened is SelectionMode.SINGLE
+        for row in range(table.video.model.rowCount()):
+            table.table.setCurrentIndex(table.video.model.index(row, 0))
+            table.choose_current()
+            chosen = table.video.model.formats()[row]
+            assert table.selection.is_complete, (
+                f"choosing {chosen.format_id} ({kind_of(chosen)}) named no download"
+            )
+        assert refusals == [], f"something was refused: {refusals}"
+    finally:
+        table.close()
 
-        _click(qapp, Qt.Key.Key_Space)
-        switched = table.selection.mode
-        assert switched is SelectionMode.PAIR, "Space did not switch the mode"
-        _click(qapp, Qt.Key.Key_Space)
-        back = table.selection.mode
-        assert back is SelectionMode.SINGLE, "Space did not switch back"
+
+def test_a_lone_video_half_still_names_a_download(
+    qapp: QApplication, derived: tuple[FormatInfo, ...]
+) -> None:
+    """A silent video is a download `REQ-008` has always allowed (`T-310`).
+
+    **This is a regression that reached a running build before it was caught.** An earlier draft
+    put every video-only pick into `PAIR`, where `is_complete` requires both slots — so choosing
+    one video-only format and pressing *Done* named nothing at all. The mode is a statement about
+    how many streams are being joined, not about the kind of the row that was picked.
+    """
+    table = FormatTable(derived)
+    try:
+        video_only = next(
+            entry
+            for entry in table.video.model.formats()
+            if kind_of(entry) is FormatKind.VIDEO_ONLY
+        )
+        table.choose(video_only)
+        assert table.selection.is_complete, "a lone video half named no download"
+        assert table.selection.mode is SelectionMode.SINGLE
+        assert not table.selection.is_merge, "one stream is not a merge and must not need ffmpeg"
+        assert table.selection.selector() == video_only.format_id
     finally:
         table.close()
 
@@ -1350,50 +1529,16 @@ def test_the_chosen_pair_is_announced_in_words_on_the_widget(
     """
     table = FormatTable(derived)
     try:
-        mode = table.mode_control
-        assert mode is not None
-        mode.setChecked(True)
+        # **No mode is set first, which is the change.** The pair is assembled by taking one row
+        # from each list, and `PAIR` is what having both halves *means* rather than something
+        # declared in advance.
         for format_id in ("137", "140"):
-            row = next(
-                index
-                for index in range(table.model.rowCount())
-                if table.model.formats()[index].format_id == format_id
-            )
-            table.table.setCurrentIndex(table.model.index(row, FORMAT_COLUMN))
-            table.choose_current()
+            entry = next(item for item in derived if item.format_id == format_id)
+            table.choose(entry)
 
+        assert table.selection.mode is SelectionMode.PAIR
         assert "video: 137, audio: 140" in table.chosen_text()
         assert "video: 137, audio: 140" in table.accessibleDescription()
-    finally:
-        table.close()
-
-
-def test_a_format_that_cannot_be_paired_is_refused_out_loud(
-    qapp: QApplication, derived: tuple[FormatInfo, ...]
-) -> None:
-    """A press that does nothing must say why (`UX-005` §5; `T-075` is what silence costs).
-
-    The refusal is reported rather than shown here, because this widget has no status line — the
-    surface embedding it does, and giving the table one would put two message areas in one dialog.
-    """
-    table = FormatTable(derived)
-    refusals: list[str] = []
-    table.selection_refused.connect(refusals.append)
-    try:
-        mode = table.mode_control
-        assert mode is not None
-        mode.setChecked(True)
-        complete = next(
-            index
-            for index in range(table.model.rowCount())
-            if table.model.formats()[index].format_id == "0"
-        )
-        table.table.setCurrentIndex(table.model.index(complete, FORMAT_COLUMN))
-        table.choose_current()
-
-        assert refusals, "a format that cannot be paired was silently ignored"
-        assert "0" in refusals[0]
-        assert not table.selection.is_complete, "the refused format was placed anyway"
     finally:
         table.close()
 

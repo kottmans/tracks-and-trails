@@ -1706,23 +1706,21 @@ def choose_pair_and_queue(composition: application.Composition, url: str) -> str
 
     panel = dialog.open_format_panel
     assert panel is not None, "the row did not open into its format table"
-    mode = panel.table.mode_control
-    assert mode is not None, (
-        "the merge mode was not offered for a presentation that has a video-only and an "
-        "audio-only format — the routing rule disagrees with what yt-dlp reported"
+    # **`T-310` deleted the mode; the pair is now assembled from the two lists.** That a pair is
+    # *possible* is still the thing this asserts — it is a claim about what yt-dlp reported for a
+    # real presentation — so it is asked of the lists themselves rather than of a checkbox.
+    assert panel.table.audio is not None, (
+        "no sound list was drawn for a presentation that has a video-only and an audio-only "
+        "format — the routing rule disagrees with what yt-dlp reported"
     )
-    mode.setChecked(True)
 
-    formats = panel.table.model.formats()
+    formats = tuple(entry for one in panel.table.lists() for entry in one.model.formats())
     kinds = {kind_of(entry_): entry_ for entry_ in formats}
     assert FormatKind.VIDEO_ONLY in kinds and FormatKind.AUDIO_ONLY in kinds, (
         f"yt-dlp reported {[(f.format_id, str(kind_of(f))) for f in formats]}, which is not a pair"
     )
     for kind in (FormatKind.VIDEO_ONLY, FormatKind.AUDIO_ONLY):
-        wanted = kinds[kind]
-        row = next(index for index in range(len(formats)) if formats[index] is wanted)
-        panel.table.table.setCurrentIndex(panel.table.model.index(row, 0))
-        panel.table.choose_current()
+        panel.table.choose(kinds[kind])
         composition.app.processEvents()
 
     assert dialog.open_panel is None, "the pair completed and the panel stayed open"

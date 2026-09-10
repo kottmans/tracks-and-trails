@@ -14,6 +14,89 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-310 — The format table is one grid for three kinds of thing
+
+**Status:** In Review — built 2026-09-09. **Ruled by the maintainer on 2026-09-09 from ten mockups built on the
+real widget**, in four rounds: how to choose a row at all (`A`–`D`), how to present the two-slot
+merge (`E`–`H`), whether the mode should exist (`I`–`J`), what a row should say (`K`–`M`), and
+finally how to separate the kinds (`N`–`P`). `N` was ruled.
+`tools/split_tables_mockup.py` keeps `N` and the two it was chosen over; the rest were superseded
+by the ruling and their arguments are recorded below rather than in dead code.
+**Owner:** Maintainer ruled; Implementer to build
+**Priority:** High — it is the surface `REQ-003` and `REQ-008` are both about, and the maintainer
+could not use it: *"there isn't an easy way to see what you are picking"*, *"the video and audio
+codecs aren't clearly separated (all just in one big list)"*, *"the options with audio AND video
+aren't even selectable"*.
+**Phase:** Phase 4 (accessibility and polish)
+**Depends on:** nothing. `T-305` and `T-306` landed the vocabulary this builds on.
+**Relevant context:** `docs/UX_SPEC.md` §4 and §5; `UX-007`'s `P-2`, `P-13`, `P-14`, `P-15`;
+`ui/format_selection.py`; `T-306`'s 2026-09-09 legibility ruling
+**Affected surfaces:** `ui/format_table.py`, `ui/add_dialog.py`, and their tests
+**Risk:** High — it replaces the widget half of a module with 44 tests of its own, and changes
+`AddUrlDialog`'s opening width
+
+#### The defect, and its single cause
+
+Three different kinds of thing shared one grid, and everything else followed from that.
+
+- **A shared grid forces shared columns.** A video-only row had to answer *audio codec* — `None`,
+  softened to `no sound` and still not information anyone wanted — and an audio-only row had to
+  answer *resolution* and *fps*. `T-305` fixed the vocabulary of those cells; it could not remove
+  the question, because one grid asks every column of every row.
+- **A shared grid invites a mode** to say which kind is being picked. That mode is what refused
+  formats that already carry both streams: `FormatSelection.choose` **raises** on them in `PAIR`
+  (`ui/format_selection.py:194`) — the two formats needing no merge at all were the two the merge
+  mode would not accept.
+
+#### What is built
+
+Two lists side by side, each carrying only the columns its kind has, and **no mode**.
+
+- **Video** — video-only formats, then those that already carry sound **grouped last**, then those
+  the source did not classify. A `Sound` column reads `add one`, `included · AAC`, or `not stated`.
+- **Sound** — audio-only formats.
+- Nothing is refused, because nothing is routed: picking from the video list fills the video half,
+  picking from the sound list fills the sound half, and picking a format that carries both (or one
+  the source did not classify) is the whole download and says so.
+
+**`P-14`'s *no filtering* is untouched.** A filter is a control the user operates to hide rows;
+these are permanent, labelled, simultaneously visible lists, and nothing is ever hidden.
+
+**`P-15`'s *no automatic pairing suggestion* is untouched.** Nothing here recommends a row.
+
+**The unclassified case is `P-13`'s rule applied again.** `ui/format_selection.py` records that
+*"most formats from most sources are `UNKNOWN`"* — archive.org and PeerTube name no codecs — so on
+those sources there is no audio half to list. `P-13` already decided what to do with a merge a
+source cannot complete: *"the mode is **not drawn**, and the reason is stated where the mode would
+have been."* The sound list follows it, reusing `pairable` and `NO_MERGE_WITHOUT_A_PAIR` rather
+than growing a second answer to the same question.
+
+#### The ruling's other three clauses
+
+1. **The codec column is the codec.** An earlier revision glossed it — `VP9 — smaller, widely
+   played`. Ruled out: *"anyone hand selecting the audio/video stream will hopefully know what
+   they are doing"*, which is a statement about who reaches this surface, and the right one —
+   §4's route here is a row menu's *Choose specific formats…*, and the presets are the path for
+   everyone else. `T-306`'s tool tip keeps `avc1.640028` reachable.
+2. **Columns run decision, then compatibility, then provenance**, and `Quality` leads every list
+   so the eye reads down one left edge. `Bitrate`, `File type` and `ID` are last; `ID` last of
+   all, which carries `T-306`'s quieter-ink ruling from emphasis into position.
+3. **Formats that already carry sound are grouped last**, and the grouping survives every sort:
+   the column sort runs first, then a second stable pass sinks the group.
+
+#### Acceptance criteria
+
+- Two lists, each with only its own columns; every format the probe returned appears in exactly
+  one of them, including unclassified ones. **A format that vanishes is the defect to test for.**
+- No selection is ever refused. `UnplaceableFormatError` becomes unreachable from this surface.
+- The grouping holds under every column sort, ascending and descending.
+- The sound list states the reason in its own place when the source offers no audio half.
+- `AddUrlDialog` opens wide enough that no column truncates and no list scrolls sideways at the
+  **10pt** control font, not merely at this machine's 9pt — measured, with the measurement
+  committed as a tool, the way `tools/dialog_width_floor_probe.py` already does it.
+- The dialog still narrows to 320px, which `tests/ui/test_add_dialog.py` asserts today.
+- `docs/UX_SPEC.md` §4 and §5 record the ruling with the maintainer's authority.
+
 ### T-308 — The startup warning opens behind the window it blocks
 
 **Status:** In Review — **changes requested 2026-09-09, corrected the same day; awaiting

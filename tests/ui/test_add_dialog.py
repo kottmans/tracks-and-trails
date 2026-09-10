@@ -57,7 +57,6 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
     QApplication,
-    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -116,7 +115,7 @@ from tracks_and_trails.ui.add_dialog import (
     selector_candidates,
     split_urls,
 )
-from tracks_and_trails.ui.format_table import MERGE_MODE_TEXT
+from tracks_and_trails.ui.format_selection import FormatKind, kind_of
 from tracks_and_trails.ui.main_window import DEFAULT_SIZE
 from tracks_and_trails.ui.playlist_selection import PlaylistSelection
 from tracks_and_trails.ui.row_delegate import (
@@ -656,6 +655,26 @@ def role_values(dialog: AddUrlDialog, role: int) -> list[Any]:
 def item_texts(dialog: AddUrlDialog) -> list[str]:
     """What each row reads as, whole — headline, detail and state, and what it downloads as."""
     return [str(value) for value in role_values(dialog, Qt.ItemDataRole.DisplayRole)]
+
+
+def take_format(panel: FormatPanel, format_id: str) -> None:
+    """Choose `format_id` from whichever of the panel's lists holds it (`T-310`).
+
+    **One helper because there are two lists now.** Before the split every test reached for
+    `table.model` and a row index; a format id no longer says which list it is in, and a test that
+    guessed would silently choose nothing on half the ids. Driven through the widget's own
+    `choose`, which is the route the button and `Enter` both take.
+    """
+    table = panel.table
+    for entry in (
+        *table.video.model.formats(),
+        *(table.audio.model.formats() if table.audio else ()),
+    ):
+        if entry.format_id == format_id:
+            table.choose(entry)
+            return
+    listed = [entry.format_id for panel_ in table.lists() for entry in panel_.model.formats()]
+    raise AssertionError(f"no list holds format {format_id!r}; they hold {listed}")
 
 
 def open_row_editor(dialog: AddUrlDialog, index: int) -> QComboBox:
@@ -2890,12 +2909,15 @@ def test_the_chosen_summary_stays_reachable_inside_the_expanded_row(
         table = panel.table
 
         if merging:
-            mode = next(
-                box for box in table.findChildren(QCheckBox) if box.text() == MERGE_MODE_TEXT
+            # **The half-chosen state, reached without a mode** (`T-310`). Taking the video half
+            # leaves the panel open because the sound list can still complete the pair, which is
+            # the same state the merge checkbox used to reach by being ticked first.
+            video_half = next(
+                entry
+                for entry in table.video.model.formats()
+                if kind_of(entry) is FormatKind.VIDEO_ONLY
             )
-            mode.setChecked(True)
-            qapp.processEvents()
-            table.choose_current()
+            table.choose(video_half)
             qapp.processEvents()
             assert dialog.open_format_panel is not None, (
                 "one half of a pair completed the selection; the panel should still be open"
@@ -2980,11 +3002,19 @@ def test_choosing_that_entry_opens_the_row_into_the_format_table(
         qapp.processEvents()
         table = panel.table
         assert table.width() > 0 and table.height() > 0, "the table was collapsed"
-        assert table.table.width() == table.width(), (
-            "the view does not fill the widget it was given (T107-R2)"
-        )
+        # **Two lists share the width** (`T-310`), so the criterion is asserted per list: each
+        # view fills the panel it was given, which is what `T107-R2` was ever about.
+        for one in table.lists():
+            assert one.view.width() == one.width(), (
+                f"{one.view.accessibleName()} does not fill the widget it was given (T107-R2)"
+            )
         assert isinstance(row.media, MediaInfo)
-        assert table.model.rowCount() == len(row.media.formats)
+        # **Both lists, because `T-310` split them** — and this is the assertion that would catch
+        # a format falling between the two, which is the one way the split can lose data.
+        listed = sum(one.model.rowCount() for one in table.lists())
+        assert listed == len(row.media.formats), (
+            f"the probe returned {len(row.media.formats)} formats and the lists show {listed}"
+        )
     finally:
         dialog.close()
 
@@ -3042,24 +3072,108 @@ def test_choosing_one_format_writes_it_as_the_rows_own_request(
     assert panel is not None
 
     assert isinstance(row.media, MediaInfo)
-    chosen = next(entry for entry in row.media.formats if entry.format_id == "137")
-    panel.table.table.setCurrentIndex(
-        panel.table.model.index(
-            next(
-                index
-                for index in range(panel.table.model.rowCount())
-                if panel.table.model.formats()[index] is chosen
-            ),
-            0,
-        )
-    )
-    panel.table.choose_current()
+    take_format(panel, "137")
     QApplication.processEvents()
 
     assert isinstance(row.preset, Preset)
     assert row.preset.format_selector == "137"
-    assert dialog.open_panel is None, "one format was chosen and the row stayed open"
     assert "137" in item_texts(dialog)[0], item_texts(dialog)[0]
+
+    # **The panel stays open, and that is `T-310` rather than a regression.** `137` is the video
+    # half of a source that also publishes an audio one, so the sound list beside it can still
+    # complete the pair — closing here would shut the panel the moment a user picked the picture.
+    # The selector is written either way, which is what this test is about: pressing *Done* now
+    # keeps `137` on its own, and that is a silent-video download `REQ-008` allows.
+    # **Each read goes into its own local before being compared** — the idiom this module already
+    # records, because a second identity assertion about the same attribute narrows it to whatever
+    # the first one proved and everything after types as unreachable.
+    still_open = dialog.open_panel
+    assert still_open is panel, "the panel closed before the sound half could be picked"
+    assert panel.table.awaiting_other_half
+
+    panel.done_button.click()
+    QApplication.processEvents()
+    closed = dialog.open_panel
+    assert closed is None, "Done left the panel open"
+    kept = row.preset
+    assert isinstance(kept, Preset)
+    assert kept.format_selector == "137", "Done changed the choice it was meant to keep"
+
+
+def test_choosing_a_format_that_needs_nothing_further_closes_the_row(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """The other half of `awaiting_other_half` (`T-310`).
+
+    A source publishing complete files only has no sound list, so there is no other half to wait
+    for and the first choice finishes the job. Asserted separately because the two branches of that
+    property are the whole of it, and a test that only ever saw the waiting one would pass with the
+    panel wedged permanently open.
+    """
+    dialog, row = _staged(dialogs, managers, spin, fixture="wikimedia_caminandes")
+    control = open_row_editor(dialog, 0)
+    choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
+    panel = dialog.open_format_panel
+    assert panel is not None
+    assert panel.table.audio is None, "this fixture is meant to have no sound list"
+
+    panel.table.choose_current()
+    QApplication.processEvents()
+
+    assert not panel.table.awaiting_other_half
+    assert dialog.open_panel is None, "nothing further could be picked and the row stayed open"
+    assert isinstance(row.preset, Preset)
+
+
+def test_opening_the_format_panel_widens_the_dialog_to_fit_it(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """`T-310`: two lists need room the add dialog does not open with.
+
+    **The dialog does not open this wide and should not.** Most sessions never open a format panel,
+    and paying its width in every add-a-URL dialog would be the rare case taxing the common one. So
+    the panel asks for room when it mounts, and this asserts that the ask reaches the dialog.
+
+    **Bounded by the screen, which is why this asserts a relationship rather than a number.** The
+    offscreen platform reports an 800px display, so the dialog cannot always reach the width the
+    panel wants — and a test naming a pixel figure would be asserting the test environment. What
+    must hold is that the dialog grew toward it and stopped only where the screen did. Whether the
+    panel's *stated* need is itself sufficient is `test_format_table.py`'s question, asked of the
+    widget where a screen cannot confound it.
+    """
+    dialog, _row = _staged(dialogs, managers, spin)
+    dialog.show()
+    qapp.processEvents()
+    try:
+        before = dialog.width()
+        control = open_row_editor(dialog, 0)
+        choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
+        panel = dialog.open_format_panel
+        assert panel is not None
+        qapp.processEvents()
+
+        wanted = panel.sizeHint().width()
+        assert wanted > before, (
+            f"the panel wants {wanted}px and the dialog already had {before}px, so this test "
+            "cannot tell whether the widening happens at all"
+        )
+        # The offscreen platform reports an 800px display, and `_widen_for` will not make a
+        # dialog wider than the screen it is on — a dialog whose buttons are past the edge is
+        # worse than a narrow one.
+        ceiling = dialog.screen().availableGeometry().width()
+        assert dialog.width() >= min(wanted, ceiling), (
+            f"the panel wants {wanted}px, the screen allows {ceiling}px, and the dialog stopped "
+            f"at {dialog.width()}px"
+        )
+        assert dialog.width() > before, "opening the panel did not widen the dialog at all"
+    finally:
+        dialog.close()
 
 
 def test_a_chosen_pair_becomes_one_merging_request(
@@ -3080,18 +3194,10 @@ def test_a_chosen_pair_becomes_one_merging_request(
     choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
     panel = dialog.open_format_panel
     assert panel is not None
-    mode = panel.table.mode_control
-    assert mode is not None, "the merge mode was not offered for a source that has a pair"
-    mode.setChecked(True)
-
+    # **No mode is set.** `T-310` deleted the control; taking one row from each list *is* the
+    # statement that a merge is wanted, which is what `is_merge` now reads.
     for format_id in ("137", "140"):
-        index = next(
-            position
-            for position in range(panel.table.model.rowCount())
-            if panel.table.model.formats()[position].format_id == format_id
-        )
-        panel.table.table.setCurrentIndex(panel.table.model.index(index, 0))
-        panel.table.choose_current()
+        take_format(panel, format_id)
     QApplication.processEvents()
 
     assert dialog.open_panel is None, "the pair completed and the row stayed open"
@@ -3116,12 +3222,16 @@ def test_escape_closes_the_table_and_keeps_the_format_that_was_there_before(
     **"Nothing" has to mean the row is as it was**, not merely that the widget is gone: leaving the
     selection applied would make `Esc` a confirm with extra steps.
 
-    **Reached through the one route that leaves a written choice on an open panel.** In *one format*
-    mode a choice completes the selection and the panel closes itself, so there is no open panel
-    left to press `Esc` on — the first version of this test pressed it after the row had already
-    closed and passed for that reason. Choosing the video half in *video + audio* and then leaving
-    the mode writes `137` to the row while the panel is still open, which is exactly the state
-    `Esc` has to undo.
+    **Reached through the one route that leaves a written choice on an open panel.** Choosing a
+    format that needs nothing further closes the panel itself, so there would be no open panel left
+    to press `Esc` on — the first version of this test pressed it after the row had already closed
+    and passed for that reason.
+
+    **`T-310` kept that route and changed how it is reached.** Taking the *video* half writes `137`
+    to the row and leaves the panel open, because the sound list beside it can still complete the
+    pair (`FormatTable.awaiting_other_half`). No mode is toggled: the panel stays open because
+    there is visibly another half to pick, which is the same state the old two-step reached by
+    declaring a mode first.
     """
     dialog, row = _staged(dialogs, managers, spin)
     was = dialog.presets[2]
@@ -3131,17 +3241,10 @@ def test_escape_closes_the_table_and_keeps_the_format_that_was_there_before(
     choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
     panel = dialog.open_format_panel
     assert panel is not None
-    mode = panel.table.mode_control
-    assert mode is not None
-    mode.setChecked(True)
-    index = next(
-        position
-        for position in range(panel.table.model.rowCount())
-        if panel.table.model.formats()[position].format_id == "137"
+    take_format(panel, "137")
+    assert panel.table.awaiting_other_half, (
+        "the video half did not leave the pair open, so the panel will have closed itself"
     )
-    panel.table.table.setCurrentIndex(panel.table.model.index(index, 0))
-    panel.table.choose_current()
-    mode.setChecked(False)
     QApplication.processEvents()
     # **Each read goes into its own local before being compared.** Two identity assertions about
     # the same attribute narrow it to whatever the first one proved, and everything after the
@@ -3178,10 +3281,18 @@ def test_without_ffmpeg_the_merge_mode_is_not_drawn_and_the_reason_is(
     panel = dialog.open_format_panel
     assert panel is not None
 
-    assert panel.table.mode_control is None, "the merge mode was drawn without ffmpeg"
-    stated = panel.findChild(QLabel, "mergeModeUnavailable")
-    assert stated is not None, "the mode is gone and nothing says why"
+    # **`T-310` deleted the control and kept both halves of the ruling.** The reason is stated
+    # beside the lists rather than where a checkbox used to be, because that is where somebody
+    # assembling a pair will read it.
+    stated = panel.table.no_merge_reason
+    assert stated is not None, "the merge is impossible and nothing says why"
     assert "ffmpeg" in stated.text()
+
+    # **And the sound list is still there**, which is the half an earlier draft of this change got
+    # wrong. An audio-only format is a perfectly good download and needs no ffmpeg to fetch, so
+    # hiding the list would have made those formats unreachable on exactly the machines least able
+    # to work around it. `P-13` withheld a mode, not a catalogue.
+    assert panel.table.audio is not None, "the sound list vanished with ffmpeg"
 
 
 def test_a_source_with_no_pair_says_so_rather_than_blaming_ffmpeg(
@@ -3202,9 +3313,12 @@ def test_a_source_with_no_pair_says_so_rather_than_blaming_ffmpeg(
     panel = dialog.open_format_panel
     assert panel is not None
 
-    assert panel.table.mode_control is None
-    stated = panel.findChild(QLabel, "mergeModeUnavailable")
+    # This source publishes complete files only, so there is no sound list to draw and the reason
+    # stands in its place — `P-13`'s own shape on the surface that replaced the mode (`T-310`).
+    assert panel.table.audio is None, "a source with no audio half drew a sound list anyway"
+    stated = panel.table.no_sound_reason
     assert stated is not None
+    assert panel.table.no_merge_reason is None, "ffmpeg is present; it must not be blamed"
     assert "ffmpeg" not in stated.text(), (
         f"a source with no pair was blamed on ffmpeg: {stated.text()!r}"
     )
@@ -3229,17 +3343,8 @@ def test_a_stated_merge_is_refused_before_the_download_when_ffmpeg_goes_missing(
     choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
     panel = dialog.open_format_panel
     assert panel is not None
-    mode = panel.table.mode_control
-    assert mode is not None
-    mode.setChecked(True)
     for format_id in ("137", "140"):
-        index = next(
-            position
-            for position in range(panel.table.model.rowCount())
-            if panel.table.model.formats()[position].format_id == format_id
-        )
-        panel.table.table.setCurrentIndex(panel.table.model.index(index, 0))
-        panel.table.choose_current()
+        take_format(panel, format_id)
     QApplication.processEvents()
 
     dialog._ffmpeg_available = False

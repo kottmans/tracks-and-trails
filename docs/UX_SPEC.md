@@ -280,10 +280,54 @@ takes the same shape for the playlist picker, so the two surfaces are **one mech
 two. `UX-005` §2's ban on a detail pane ruled out the obvious home and left three candidates; this
 is the one that reuses something already built.
 
+### Two lists, not one grid, ruled 2026-09-09
+
+**[T]** **Video and sound are separate lists, side by side, each carrying only the columns its own
+kind has.** A video list does not ask a video what its audio codec is; a sound list does not ask an
+audio stream for its resolution or its frame rate.
+
+*Ruled by the maintainer on 2026-09-09, from ten mockups built on the real widget
+(`tools/split_tables_mockup.py`, option `N`): "the video and audio codecs aren't clearly separated
+(all just in one big list)" and "the options with audio AND video aren't even selectable". `T-310`
+carries the work.*
+
+**The two findings had one cause and this is it.** One grid forces one set of columns, so a
+video-only row had to answer *audio codec* — and `T-305` could fix that cell's vocabulary but not
+remove the question. One grid also invites a **mode** to say which kind is being picked, and that
+mode is what refused the formats already carrying both streams (§5).
+
+- **[T]** The **Video** list holds video-only formats, then formats that already carry sound
+  **grouped last**, then formats the source did not classify. A `Sound` column reads `add one`,
+  `included · <codec>`, or `not stated`. *The grouping is the maintainer's: "list the video with
+  attached audio last in the list together."* It survives every sort — the column sort runs first,
+  then a second stable pass sinks the group, because a compound key would float the group to the
+  top on any descending sort.
+- **[T]** The **Sound** list holds audio-only formats. **[D]** When a source offers no audio half
+  at all, the list is replaced by the reason **in its own place** — `P-13`'s rule, applied to the
+  surface that replaced the mode `P-13` was written about. `ui/format_selection.py` records that
+  *"most formats from most sources are `UNKNOWN`"*, so this is the ordinary case on archive.org and
+  PeerTube, not an edge. **Absent ffmpeg is not this case** and does not remove the list — see §5.
+- **[T]** **Every format the probe returned appears in exactly one list**, including one nothing
+  was said about. A format that vanishes because it could not be classified would be this surface
+  failing `REQ-003` quietly.
+
+**[T]** **Columns run decision, then compatibility, then provenance.** `Quality` leads *every*
+list, so the eye reads down one left edge rather than a different first column per list; `Size`
+follows. `Bitrate`, `File type` and `ID` come last — each is a fact `REQ-003` requires and none of
+them is why anyone clicks. `ID` is last of all, carrying `T-306`'s quieter-ink ruling from emphasis
+into position.
+
+**[T]** **The codec column is the codec.** An earlier revision glossed it — `VP9 — smaller, widely
+played`. *Ruled out by the maintainer the same day: "anyone hand selecting the audio/video stream
+will hopefully know what they are doing."* That is a statement about who arrives here, and the
+right one: this table is reached through a row menu's `Choose specific formats…`, and the presets
+are the path for everyone else. `T-306`'s tool tip keeps the raw identifier reachable.
+
 ### What it shows
 
-- **[T]** One row per format, with every column `REQ-003` names: format ID, extension, resolution,
-  fps, codecs, bitrate, filesize or estimate, notes.
+- **[T]** Every column `REQ-003` names — format ID, extension, resolution, fps, codecs, bitrate,
+  filesize or estimate, notes — **in the list where it means something**, rather than every column
+  on every row.
 - **[T]** Sortable. **[D]** Sorting is over the **projection**, not the display string: `1080p` sorts
   after `720p` and `144p`, and `~12.4 MB` sorts as a number. Derived from `T-075`, which is the
   defect of a table sorting its own text.
@@ -322,6 +366,10 @@ are choices about scope rather than consequences of it.
 - **No filtering or search.** A filter is a second interaction to learn for a list that is dozens of
   rows at worst.
 
+  > **[D]** **Separating video from sound is not a filter** (2026-09-09, `T-310`). A filter is a
+  > control the user operates to hide rows. These are permanent, labelled, simultaneously visible
+  > lists, and nothing is ever hidden from any of them. The clause stands unamended.
+
 ---
 
 ## 5 · Choosing video + audio — `REQ-008`, built by `T-108`
@@ -332,8 +380,46 @@ video and audio stream to be merged.*
 - **[T]** *(ruled `P-2`, `UX-007`)* The table has two selection modes: **one format**, and **video + audio**. In the second,
   a row is chosen into whichever of the two slots its own kind matches, and the dialog shows the
   pair it will merge before it is committed.
+
+  > **[T]** **Narrowed 2026-09-09 by `T-310`: the two selections remain and the *mode* does not.**
+  > `P-2`'s routing is kept in full — a row still goes to whichever slot its own kind matches, and
+  > the pair is still shown before it is committed. What is deleted is the **control** that asked
+  > the user to declare which mode they were in before they had anything to declare it about, and
+  > with it the refusal that control required.
+  >
+  > **The refusal is the reason.** `FormatSelection.choose` raises `UnplaceableFormatError` in
+  > `PAIR` for a format that carries both streams — so the two formats needing no merge at all were
+  > the two the merge mode would not accept. The maintainer found it from the built window and
+  > named it exactly: *"the options with audio AND video aren't even selectable"*, and then *"if
+  > someone wants to individually select the video and audio track separately, why would they pick
+  > one that had both below?"* They would not; the question is not one to ask them.
+  >
+  > So the selection is now a **consequence of what was picked**, and nothing is refused. A format
+  > carrying both streams is the whole download. One carrying video alone fills the video half. One
+  > carrying audio alone fills the sound half. One the source did not classify is the whole
+  > download too, because nothing about pairing it can be asserted — which is `kind_of`'s own
+  > reading of `UNKNOWN`, not a new one.
+  >
+  > `UnplaceableFormatError` stays in `ui/format_selection.py`. It is unreachable from this surface
+  > and it is still the honest answer for any caller that routes into a declared slot.
 - **[T]** *(ruled `P-13`, `UX-007`)* `Merge` is offered only while ffmpeg is present. Absent, the mode is **not drawn**, and
-  the reason is stated where the mode would have been. `UX-005` §5's never-draw-what-would-be-refused
+  the reason is stated where the mode would have been.
+
+  > **[D]** **The rule outlived the control it was written about** (2026-09-09, `T-310`), and both
+  > its sentences survive it. There is no mode to draw or not draw, so:
+  >
+  > - **ffmpeg absent** — the reason is stated beside the lists, where somebody assembling a pair
+  >   will read it, and `merge_refusal` refuses the pair itself at commit (`REQ-024`).
+  >   **The sound list is not hidden.** An earlier draft of this amendment said it was, and that
+  >   was wrong in a way worth recording: an audio-only format is a perfectly good download and
+  >   needs no ffmpeg to fetch, so suppressing the list would have made those formats unreachable
+  >   on exactly the machines least able to work around it. `P-13` withheld a **mode**, not a
+  >   catalogue.
+  > - **The source offers no audio half** — there is no sound list to draw, and the reason stands
+  >   in its place. This is `P-13`'s own shape, and the sentence is the one `pairable` already had.
+  >
+  > The two stay separate for `P-13`'s own reason: telling somebody to install ffmpeg for a source
+  > that would not merge anyway is advice that cannot help. `UX-005` §5's never-draw-what-would-be-refused
   rule makes *some* treatment necessary; it does not choose between hiding the mode, showing the
   table without it, or admitting the choice and refusing at commit. `REQ-024` owns the detection.
 
@@ -358,10 +444,13 @@ video and audio stream to be merged.*
 
 ### Keyboard path
 
-**[D]** The mode is a control in the table's own frame, so it joins the `Tab` order ahead of the
-header row — a mode that changes what `Enter` does must be reachable before the thing it changes.
-`Space` switches mode; in **video + audio** the two chosen rows are announced as *"video: 137,
-audio: 140"* rather than shown by highlight alone (`NFR-005`, no colour-only state).
+**[D]** *(superseded 2026-09-09 by `T-310`; the original is kept because the announcement rule it
+carries is unchanged and still load-bearing.)* ~~The mode is a control in the table's own frame, so
+it joins the `Tab` order ahead of the header row — a mode that changes what `Enter` does must be
+reachable before the thing it changes. `Space` switches mode~~ — **there is no mode control**, so
+`Tab` runs video list, sound list, then the panel's own way out, and each list's `Enter` chooses
+from that list. In **video + audio** the two chosen rows are announced as *"video: 137, audio:
+140"* rather than shown by highlight alone (`NFR-005`, no colour-only state), which is unchanged.
 
 ### Deliberately not offered
 
