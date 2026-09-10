@@ -129,3 +129,29 @@ wants a picture.
 server. `QAbstractButton.click()` remains a call, not a click. **Whether real input reaches the
 dialog and the window behind it is still unobserved**, and installing a tool to inject it is a
 change to the maintainer's machine rather than something to do unasked.
+
+---
+
+## Third amendment, 2026-09-09 — normal input, on X11
+
+`xdotool` was installed at the maintainer's hand after the second amendment recorded its absence,
+which makes **XTEST** input available: events delivered by the X server itself, not synthesised
+inside the client.
+
+**Sequence, on `QT_QPA_PLATFORM=xcb`, isolated profile as before.**
+
+| Step | Real input | Observed |
+|---|---|---|
+| Locate the windows | — | Two: main at `480,211 960x640`, dialog at `220,150 500x260` |
+| Activate the dialog and press `Return` | `xdotool key --clearmodifiers Return` | `xdotool search --onlyvisible` then lists **only the main window** |
+| Photograph | — | The warning is gone; the main window is drawn in its normal empty state — *"Nothing queued. Use File > Add URLs… to add a download"*, both status lines present |
+| Click in the main window | `xdotool mousemove --sync … click 1` | **The `+ Add URLs` dialog opened**, fully rendered: URL field, *"What you pasted"*, preset `Best video available`, `192 kbps`, the effective format selector, and its own buttons |
+
+**All three clauses of `T308-R1` are therefore observed on X11**: the warning appears above its
+parent, it is dismissed by real keyboard input, and the main window takes real pointer input
+afterwards. The click was aimed at the `File` menu and landed on `+ Add URLs`; that it opened a
+working dialog is the stronger result, so the aim is recorded rather than corrected.
+
+**Wayland is observed for stacking only.** Its input half is still not done: `ydotool` and `wtype`
+remain absent, and Wayland gives a client no way to inject events. Closing it needs `ydotool` with
+`uinput` permissions, or a person at the keyboard.

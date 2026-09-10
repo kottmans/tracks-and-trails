@@ -45,10 +45,14 @@ the window and then reports.
   have that problem.
   **The images are not committed**: they are full-desktop captures containing unrelated windows,
   and this repository is public.
-  **What is still open is normal input.** `xdotool`, `ydotool` and `wtype` are all absent from this
-  machine, so pointer and keyboard events cannot be delivered through the display server;
-  `QAbstractButton.click()` remains a call rather than a click. Installing an injection tool is a
-  change to the maintainer's machine and was not made unasked.
+  **Normal input is now observed on X11.** `xdotool` was installed at the maintainer's hand, so
+  events come from the X server rather than from inside the client: a real `Return` left
+  `--onlyvisible` listing only the main window, and a real pointer click then opened `+ Add URLs`
+  fully rendered. All three clauses — above its parent, dismissible, window usable afterwards —
+  are observed there.
+  **Wayland's input half is not done.** `ydotool` and `wtype` are absent and Wayland gives a client
+  no way to inject events; closing it needs `ydotool` with `uinput` permissions, or a person at the
+  keyboard.
 - **`T308-R2` — resolved at `10e079c`** by the reviewer.
 
 #### Correction round, 2026-09-09
