@@ -2,7 +2,7 @@
 
 **Purpose:** Navigation to canonical task and shared-scope review records.
 **Owner:** Reviewer; Coordinator / Integrator owns shared routing during a wave.
-**Last updated:** 2026-09-09
+**Last updated:** 2026-09-10
 **Update when:** A review record is introduced or its navigation changes.
 
 ## Current navigation
@@ -133,6 +133,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-306](reviews/T-306.md) | T-306 | 0 |
 | [T-308](reviews/T-308.md) | T-308, T-309 | 0 |
 | [T-310](reviews/T-310.md) | T-310 | 0 |
+| [T-311](reviews/T-311.md) | T-311, T-313 | 0 |
 | <a id="2026-07-26--note-commit-shas-in-this-file-were-remapped"></a>[commit-reference-remap](reviews/commit-reference-remap.md) | T-033 | 1 |
 | <a id="2026-07-29--coord-r7-authorized-final-documentation-re-review"></a>[coordination-2026-07-29](reviews/coordination-2026-07-29.md) | coordination 2026 07 29 | 1 |
 | <a id="2026-08-05--history--row-layout-merge-review"></a>[history-row-layout-integration](reviews/history-row-layout-integration.md) | history row layout integration | 1 |
