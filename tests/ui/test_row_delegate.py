@@ -3254,6 +3254,64 @@ def test_the_pressed_face_differs_from_the_hover_face(qapp: QApplication) -> Non
     assert held != hovered, "pressed and hovered paint the same, so the press is not its own state"
 
 
+def test_the_open_editor_leaves_the_menu_zone_alone(qapp: QApplication) -> None:
+    """**`T-314`.** *"I don't like that when you click on the drop down, that the button completely
+    disappears."*
+
+    **Two faults produced one symptom, and either alone would still hide it.**
+
+    `updateEditorGeometry` placed the live editor at `_control_of` — the whole control slot — while
+    the paint had carved `MENU_ZONE_WIDTH` off its own rectangle since `T-203`. So the combo *grew*
+    by 16 px at the moment it was clicked and landed on top of the `⋮`, which is the very thing
+    `T118-R12` gave the two one rectangle to prevent. And the zone was painted at the tail of
+    `_paint_control`, which the paint pass suppresses under a live editor — correct for the combo,
+    which the editor covers, and wrong for the zone, which it no longer does.
+
+    Both are asserted: the geometry, and the ink.
+    """
+    delegate = RowDelegate()
+    model = _row_with_a_control()
+    option = _selectable_row_option()
+    index = model.index(0, 0)
+    zone = delegate._menu_zone_of(option, index)
+
+    # Held in a local, for the reason `test_the_control_offers_the_rows_own_preset` gives: a
+    # temporary parent is destroyed at the end of the expression and takes the editor with it.
+    parent = QWidget()
+    editor = delegate.createEditor(parent, option, index)
+    try:
+        delegate.updateEditorGeometry(editor, option, index)
+        assert not editor.geometry().intersects(zone), (
+            f"the editor at {editor.geometry()} covers the ⋮ zone at {zone}"
+        )
+        assert editor.geometry().united(zone) == delegate._control_of(option, index), (
+            "the editor and the zone no longer tile the control slot between them"
+        )
+    finally:
+        editor.deleteLater()
+
+    # **`createEditor` above already set `_editing_row`, so clear it before measuring at rest.**
+    # Without this line both paints are taken with the editor open, they agree trivially, and the
+    # assertion below passes against the very defect it names — which is how the mutation run
+    # caught it.
+    delegate._editing_row = None
+
+    # **The same row, painted as the view paints it while its editor is open.** `_editing_row` is
+    # what `_is_being_edited` reads, and it is the only thing separating this paint from the one
+    # every other zone test makes.
+    at_rest = _zone_pixels(paint_rows(model, delegate, 0), zone)
+    assert len(set(at_rest)) > 1, "nothing is drawn in the zone at rest, so this proves nothing"
+    delegate._editing_row = 0
+    try:
+        while_editing = _zone_pixels(paint_rows(model, delegate, 0), zone)
+    finally:
+        delegate._editing_row = None
+
+    assert while_editing == at_rest, (
+        "the ⋮ is drawn differently while the dropdown is open; it used to vanish entirely"
+    )
+
+
 def test_the_zone_comes_back_up_before_the_menu_opens(qapp: QApplication) -> None:
     """A button left sunken behind a menu is worse than one that never moved.
 

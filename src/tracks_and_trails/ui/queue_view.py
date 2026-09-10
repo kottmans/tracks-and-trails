@@ -1646,6 +1646,20 @@ class QueueView(QWidget):
         # widget, and the delegate's own filter watches the viewport for pointer events.
         self._list.installEventFilter(self)
         self._delegate.verb_triggered.connect(self._on_verb)
+        # **The `⋮` opens the row's menu here too** (`T-314`). The delegate paints the zone on
+        # every editable row and `AddUrlDialog` connected this; the queue never did, so pressing
+        # it emitted into nothing — *"the vertical 3 dot button doesn't seem to do anything on the
+        # queue screen. It doesn't give you any options."* `UX-005` §5 names an offered control
+        # that does nothing as a defect in its own right.
+        #
+        # **Into `_row_menu_asked_for`, which is where right-click and the Menu key already go.**
+        # The signal carries a viewport position for exactly this reason, so the pointer's two
+        # doors resolve the row through one line of code and cannot disagree about which row they
+        # opened. It is deliberately **not** wired to `⋯`'s slot: that one carries
+        # `overflowing()` — only what the last paint had no room to draw — which on a wide window
+        # is empty, and an empty menu is what "doesn't give you any options" looks like from the
+        # inside. The `⋮` is a door to the whole menu, as it is on the staging list.
+        self._delegate.menu_requested.connect(self._row_menu_asked_for)
         # **Rows are no longer uniform, and that is spent deliberately** (`T-140`, `UX-005`
         # row 9c). `setUniformItemSizes` lets the view compute the visible range arithmetically
         # instead of measuring every row, and `T118-R10` is the record of what per-row cost buys

@@ -940,8 +940,12 @@ class RowDelegate(QStyledItemDelegate):
         #
         # Suppressed only under the live editor, which occupies the same rectangle — otherwise the
         # painted affordance shows through the real control's edges.
-        if self._editable(index) and not self._is_being_edited(index):
-            self._paint_control(painter, option, index)
+        if self._editable(index):
+            # **The zone outlives the editor; the combo does not** (`T-314`). They shared this one
+            # condition, so opening the dropdown erased the `⋮` beside it — see `_paint_menu_zone`.
+            if not self._is_being_edited(index):
+                self._paint_control(painter, option, index)
+            self._paint_menu_zone(painter, option, index)
 
         verbs_left = self._paint_verbs(painter, text_area, body, option, index)
         self._paint_text(
@@ -1093,6 +1097,23 @@ class RowDelegate(QStyledItemDelegate):
             MENU_ZONE_WIDTH,
             control.height(),
         )
+
+    def _combo_rect(
+        self, option: QStyleOptionViewItem, index: QModelIndex | _PersistentIndex
+    ) -> QRect:
+        """Where the **Download as** combo goes: the control slot, less the `⋮` zone (`T-314`).
+
+        **`T118-R12`'s rule, which the zone had quietly broken.** That correction gave the painted
+        affordance and the live editor one rectangle *"so the control does not move at the moment
+        the user clicks it"* — then `T-203` carved the zone out of the paint side only. The editor
+        went on taking the whole slot, so clicking the combo grew it by `MENU_ZONE_WIDTH` and it
+        landed **on top of the `⋮`**: reported from the built window as *"when you click on the
+        drop down, the button completely disappears."*
+
+        Both callers ask here now, which is what makes the rule true rather than stated.
+        """
+        control = self._control_of(option, index)
+        return control.adjusted(0, 0, -self._menu_zone_of(option, index).width(), 0)
 
     def _verbs_of(self, index: QModelIndex | _PersistentIndex) -> tuple[Verb, ...]:
         """What the model says this row offers. Empty on a surface that offers nothing."""
@@ -1583,9 +1604,8 @@ class RowDelegate(QStyledItemDelegate):
         # is carved from the control's own rect rather than laid out beside it, so the row's
         # anatomy — text area, verbs, control slot — is unchanged by its existence; what the zone
         # takes, it takes from the combo's width, which is why `MENU_ZONE_WIDTH` is fixed.
-        zone = self._menu_zone_of(option, index)
         box = QStyleOptionComboBox()
-        box.rect = self._control_of(option, index).adjusted(0, 0, -zone.width(), 0)
+        box.rect = self._combo_rect(option, index)
         box.palette = option.palette
         box.currentText = label
         box.state = QStyle.StateFlag.State_Enabled
@@ -1628,6 +1648,22 @@ class RowDelegate(QStyledItemDelegate):
         )
         style.drawControl(QStyle.ControlElement.CE_ComboBoxLabel, shifted, painter, widget)
 
+    def _paint_menu_zone(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | _PersistentIndex,
+    ) -> None:
+        """Draw the row's `⋮` — **the one part of the control slot that outlives the editor**.
+
+        **Split out of `_paint_control` by `T-314`.** It used to be drawn at the tail of that
+        method, which the paint pass suppresses while the live editor is open *"because it occupies
+        the same rectangle"* — true of the combo and, since `T-203` carved the zone out of the
+        slot, false of the zone. So opening the dropdown took the `⋮` with it, which the maintainer
+        reported as the button disappearing. The combo is still suppressed under its editor; only
+        this is not, and `_combo_rect` is what keeps the editor off it.
+        """
+        zone = self._menu_zone_of(option, index)
         # **The menu's painted door, drawn as a door** (`UX-011`, `UX-012`, `T-224`). Still an
         # affordance with no accessibility node — acceptable on the disclosure triangle's
         # precedent, because the same menu is reachable by right-click, the Menu key and
@@ -2401,9 +2437,10 @@ class RowDelegate(QStyledItemDelegate):
         if not isinstance(editor, QComboBox):
             super().updateEditorGeometry(editor, option, index)
             return
-        # **The same rectangle the affordance was painted in** (`T118-R12`). One definition, so the
-        # control does not move at the moment the user clicks it.
-        editor.setGeometry(self._control_of(option, index))
+        # **The same rectangle the affordance was painted in** (`T118-R12`), which since `T-314`
+        # means `_combo_rect` rather than the whole control slot — the `⋮` zone is carved out of
+        # both sides now, so the control neither moves nor covers the zone when it is clicked.
+        editor.setGeometry(self._combo_rect(option, index))
 
 
 def _text(index: QModelIndex | _PersistentIndex, role: int) -> str:

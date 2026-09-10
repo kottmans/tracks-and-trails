@@ -166,6 +166,71 @@ than growing a second answer to the same question.
 - The dialog still narrows to 320px, which `tests/ui/test_add_dialog.py` asserts today.
 - `docs/UX_SPEC.md` §4 and §5 record the ruling with the maintainer's authority.
 
+### T-314 — The queue's `⋮` opens nothing, and the dropdown covers it
+
+**Status:** In Review — **built 2026-09-10**, both reported by the maintainer from the built queue
+window.
+
+**Owner:** Implementer
+**Priority:** Medium — neither loses data, but one is a control that does nothing when pressed,
+which `UX-005` §5 names as a defect in its own right
+**Phase:** Phase 4 (accessibility and polish)
+**Depends on:** nothing. `T-203`/`UX-011` added the zone; `T118-R12` set the rule the second half
+broke.
+**Relevant context:** `UX-005` §5 (nothing offered that would be refused); `UX-011` option *E*;
+`T118-R12` (the painted affordance and the live editor share one rectangle); `T-135` (the `⋯`
+overflow, which is a different control)
+**Affected surfaces:** `ui/row_delegate.py`'s control slot; `ui/queue_view.py`'s row wiring
+**Risk:** Low — one signal connection and one rectangle, both with the paint and the hit-test
+already sharing a single definition
+
+#### 1 · The `⋮` on a queue row emits into nothing
+
+*"The vertical 3 dot button doesn't seem to do anything on the queue screen when it is pressed. It
+doesn't give you any options."*
+
+`RowDelegate` paints the zone on **every** editable row and emits `menu_requested` when it is
+pressed. `AddUrlDialog` connects that signal; **the queue, which shares the delegate, never did** —
+so the zone drew, took the press, released, and emitted into a signal with no receiver.
+
+**Wired to `_row_menu_asked_for`**, which is where right-click and the Menu key already go, so the
+pointer's two doors resolve the row through one line and cannot disagree about which row they
+opened. Deliberately **not** `⋯`'s slot: that carries `overflowing()` — only what the last paint
+had no room to draw — which on the maintainer's window was empty, and an empty menu is
+indistinguishable from the reported symptom.
+
+#### 2 · Clicking the dropdown hides the `⋮`
+
+*"I don't like that when you click on the drop down, that the button completely disappears."*
+
+**Two faults, and either alone still hides it.**
+
+- `updateEditorGeometry` placed the live editor at `_control_of` — the whole control slot — while
+  the paint had carved `MENU_ZONE_WIDTH` off its own rectangle ever since `T-203`. The combo
+  therefore **grew by 16px at the moment it was clicked**, landing on the zone. `T118-R12` gave
+  the affordance and the editor one rectangle precisely so the control could not move under the
+  click; the zone was carved out of one side only and the rule quietly stopped holding.
+- The zone was painted at the tail of `_paint_control`, which the paint pass suppresses under a
+  live editor *"because it occupies the same rectangle"* — true of the combo, and false of the
+  zone once `T-203` moved it out from under.
+
+`_combo_rect` is now the one definition both sides ask, and `_paint_menu_zone` is split out so the
+zone outlives the editor the combo does not.
+
+**A note on the test.** The regression's *at rest* paint was initially taken **after**
+`createEditor`, which sets `_editing_row` — so both paints were made with the editor open, agreed
+trivially, and the assertion passed against the defect it names. The mutation run is what caught
+it; the test now clears the field first and asserts something is drawn at rest before comparing.
+
+#### Acceptance criteria
+
+- Pressing a queue row's `⋮` opens that row's menu, holding the row's own verbs rather than the
+  overflow.
+- The live editor does not overlap the zone, and the two tile the control slot between them.
+- The zone is drawn identically whether or not the editor is open.
+- Each is asserted by a test that **fails against the behaviour it replaces** — verified per fault,
+  not per fix.
+
 ### T-313 — The preset control discards a hand-picked format, and Notes repeats the row
 
 **Status:** In Review — **built 2026-09-10**, both halves ruled by the maintainer the same day

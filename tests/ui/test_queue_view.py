@@ -4368,3 +4368,48 @@ def test_only_line_separators_are_touched_in_the_extractors_message(
         f"the row drew {detail!r}; {drawn!r} is the message with its line separators joined and "
         "every other character left alone"
     )
+
+
+def test_the_row_menu_zone_opens_the_queue_rows_menu(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """**`T-314`.** *"The vertical 3 dot button doesn't seem to do anything on the queue screen
+    when it is pressed. It doesn't give you any options."*
+
+    `RowDelegate` paints the `⋮` on every editable row and emits `menu_requested` when it is
+    pressed. `AddUrlDialog` connected that signal; **the queue, which shares the delegate, never
+    did** — so the zone was drawn, took the press, released, and emitted into nothing. `UX-005` §5
+    names an offered control that does nothing as a defect in its own right.
+
+    **The two halves of the route are tested where each lives**: that a press on the zone emits is
+    `test_the_zone_comes_back_up_before_the_menu_opens`, one file over; this is the half that was
+    missing, so it starts from the signal.
+
+    **The payload is asserted, not only its arrival.** Wiring the zone to `⋯`'s slot instead would
+    have carried `overflowing()` — only what the last paint had no room for, which on a window
+    this wide is nothing — and an empty menu is indistinguishable from the defect being fixed.
+    """
+    queue.add(make_job("job-1", tmp_path, queue_position=0))
+    view = views(jobs=queue, manager=managers(running=False))
+    view.resize(900, 300)
+    view.show()
+    qapp.processEvents()
+
+    asked: list[tuple[str, tuple[Verb, ...]]] = []
+    view.more_requested.connect(lambda job_id, verbs: asked.append((job_id, verbs)))
+
+    index = view.model.index(0, 0)
+    view._delegate.menu_requested.emit(view._list.visualRect(index).center())
+    qapp.processEvents()
+
+    assert asked, "pressing the row's ⋮ emitted into nothing, so no menu could open"
+    job_id, offered = asked[0]
+    assert job_id == "job-1", f"the menu opened for {job_id!r}"
+    assert offered == view.verbs_of("job-1"), (
+        "the ⋮ offered something other than the row's own verbs"
+    )
+    assert offered, "the menu opened with no entries in it, which is the reported symptom"
