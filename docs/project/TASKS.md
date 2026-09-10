@@ -2017,6 +2017,15 @@ One observation on one machine is evidence about that machine; this run is where
 deliberately, in front of the whole built window, and **recorded** in `docs/project/evidence/`. Both panel
 kinds, since `T-209`'s audit found both spend that turn at 190×26.
 
+> **The mechanism that direction aimed at no longer exists** (2026-09-10, `T-312`). A panel is a
+> **page of the add dialog** now rather than a widget mounted into a list row, so there is no
+> `setIndexWidget` turn at 190×26 for either kind and the specific transient cannot occur. The
+> direction is **not treated as discharged by that**: row `5.6` still asks for the look, on the
+> mechanism that replaced it, because what the maintainer asked to see confirmed was *that nothing
+> flashes at the wrong size before the panel lands* — a question a page swap can answer badly too.
+> **Whether that satisfies the 2026-08-13 direction is the maintainer's to say**, and this note is
+> here so the run does not quietly decide it.
+
 **Status:** Proposed — filed 2026-08-09, owning the exit criterion the maintainer added the same
 day; **the checklist half is written**, 2026-08-16, at `docs/PHASE_4_CHECKLIST.md` — before the
 run, which is this task's first acceptance criterion. **Forty-eight** rows across seven sections

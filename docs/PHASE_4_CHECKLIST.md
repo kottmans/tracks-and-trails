@@ -4,14 +4,17 @@
 *"the built window matches the flow that was agreed"* exit criterion.
 **Owner:** Maintainer runs it; `T-212` owns it.
 **Status:** Written 2026-08-16, ahead of the run — which is `T-212`'s first acceptance criterion,
-so that the run executes a list rather than improvises one.
+so that the run executes a list rather than improvises one. **Kept current since**: a row describing
+a window the application no longer has would fail the run for the wrong reason, and a surface added
+after the list was written would not be looked at at all. Last reconciled 2026-09-10.
 **Required by:** `IMPLEMENTATION_PLAN.md` §Phase 4 exit criteria (added 2026-08-09 by maintainer
 ruling).
-**Rows:** **48**, across seven sections — counted from this file, not estimated. *(47 when written; `6.1a` was added 2026-08-28 with `T-292`, which gave the download folder a behaviour the list did not previously describe.)*
+**Rows:** **54**, across seven sections — counted from this file, not estimated. *(47 when written; `6.1a` was added 2026-08-28 with `T-292`, which gave the download folder a behaviour the list did not previously describe. Six more on 2026-09-10: the queue row grew a menu of its own and the add dialog's panels stopped being rows, so the list described a window that no longer exists — `T-310` through `T-315`.)*
 **Derived from:** `docs/UX_SPEC.md` §2, §3, §8, §11, §12; the accepted criteria of the surfaces
 Phase 4 added or reshaped — `T-146`, `T-195`–`T-202`, the `T-203` row chain (`T-204`, `T-207`,
 `T-209`, `T-210`, `T-211`, `T-223`, `T-224`), `T-216`, `T-217`, `T-234`, `T-243`, `T-244`,
-`T-246`, `T-021`; and `docs/CRITERION_8_CHECKLIST.md`, whose shape and guards this follows.
+`T-246`, `T-021`; the 2026-09 chain that reshaped the format surface and the queue row's menu
+(`T-310`–`T-315`); and `docs/CRITERION_8_CHECKLIST.md`, whose shape and guards this follows.
 
 ---
 
@@ -101,6 +104,10 @@ everything else runs offline. §8's arranged failures say how to arrange each on
 | 4.8 | A row's media-kind mark is legible at row size: hollow film frame for video, and it does not overlap text (**both**) | `T-217` |
 | 4.9 | `Clear finished` removes completed and cancelled rows only; failed rows stay; **the status bar says files are kept** | `UX-001`, `T-132` |
 | 4.10 | **The list never scrolls sideways** at any window width; long titles elide | `T-151` |
+| 4.11 | A queued row's **⋮ opens this download's own commands** — `Choose specific formats…` and `Options…` — and **not** the verbs already drawn as buttons beside it. A **playlist header has no ⋮ at all**, and a running row has none either (**all three**) | `T-315`, `UX-005` §5 |
+| 4.12 | Click the row's **Download as** dropdown: the **⋮ stays visible** beside it and does not move as the control opens | `T-314`, `T118-R12` |
+| 4.13 | Right-click a queued row, or press the Menu key on it: the **same two commands appear above** `↑ ↓ Cancel Remove` — the keyboard reaches everything the ⋮ does | `T-315`, `NFR-005` |
+| 4.14 | `Choose specific formats…` on a queued row **says it is reading the URL again**, then opens the table; choosing streams changes **only** the streams — the row's naming, conversion and options survive *(network)* | `T-315`, `T-311` |
 
 ## 5 · The add dialog — the reshaped row
 
@@ -108,11 +115,13 @@ everything else runs offline. §8's arranged failures say how to arrange each on
 |---|---|---|
 | 5.1 | Paste one URL: the box keeps a **capped height** and the staged row appears below with title, channel and thumbnail after its probe *(network)* | `T-210`, `UX-003` |
 | 5.2 | The row's **Download as control holds presets and nothing else** — no entry opens a window, and an unoverridden row shows the inherited preset **by name**, never blank. Opened, its first entry reads that name followed by *— following the batch* | `UX-011`, `T-203`, `T-284` |
+| 5.2a | After picking formats by hand, the control **names what the row will download** (`137+140`), and choosing the *— following the batch* entry **gives those formats up**. Open the control and click away without choosing: the pick is **still there** (**both**) | `T-313` |
 | 5.3 | The **⋮ zone is drawn as a button** — border, hover, pressed — and opens the row menu; right-click, the Menu key and `Shift+F10` open **the same menu**, anchored to that row | `T-224`, `UX-012` |
 | 5.4 | The menu's *Just this item* group holds `Choose specific formats…`, `Options…`, `Naming and folders…`; a playlist row's Remove reads **`Remove this playlist (N items)`** with the real count | `UX-011`, `UX-012` |
 | 5.5 | `Manage presets…` is in the **dialog footer**, not on any row | `UX-009` |
-| 5.6 | **Watch the row's panel at the exact moment it opens — both kinds** (the format table via `Choose specific formats…`, and a playlist's entry panel): no small box flashes at the top-left before the panel lands. *(Maintainer-directed row: both panel kinds spend one event-loop turn at 190×26 offscreen; the first real-display observation saw nothing, and this is the deliberate second — `T-221` was closed on the strength of the first.)* | `T-221`, `T-209` |
-| 5.7 | The opened panel **covers its row with a visible way out at the top**, and the wheel scrolls the list **smoothly per pixel**, never catapulting past the panel | `T-210` |
+| 5.6 | **Watch the panel at the exact moment it opens — both kinds** (the format table via `Choose specific formats…`, and a playlist's entry panel): it arrives at full size, with nothing small flashing first. *(Maintainer-directed row, and still worth the look although what it was aimed at has gone: both kinds used to spend one event-loop turn at 190×26 while being mounted **into the row**, and `T-221` was closed on a single real-display observation that saw nothing. `T-312` replaced that mounting with a page swap, so the old transient cannot occur — this is now the second observation of the same concern on the mechanism that replaced it.)* | `T-221`, `T-209`, `T-312` |
+| 5.7 | The opened panel **fills the window** rather than sitting inside a row, with a visible way out at the top; *Done* and `Esc` **return to the staged list** without closing the dialog, and the row you opened is the one you come back to (**all three**) | `T-312`, `T-210` |
+| 5.7a | In the format table: **two lists side by side**, video and sound, neither scrolling sideways at the window it opens at. The **Notes** column is absent where every note would only repeat its row — and present, with words in it, on a source that has something to say (**both**) | `T-310`, `T-313`, `REQ-003` |
 | 5.8 | A URL that will not probe **stays in the dialog** with the extractor's message verbatim and its own retry; *Add to queue* counts only what resolved | `UX-003`, `NFR-006` |
 | 5.9 | The template preview is labelled as the **intended** path where the container is yt-dlp's to choose | `REQ-011` |
 
