@@ -518,11 +518,17 @@ def describe_quality(entry: FormatInfo) -> str:
 #: something these do not.
 TIER_NOTES: Final = frozenset({"tiny", "ultralow", "low", "medium", "high"})
 
-#: Notes that restate **which of the two lists the row is already in** (`T-310`).
+#: Each note that restates a row's own kind, and the kind that makes it a restatement (`T-310`).
 #:
-#: One grid could not say this any other way, and before the split these earned their place. A row
-#: under *Video* headed *video only* is being told where it is.
-SPLIT_NOTES: Final = frozenset({"video only", "audio only"})
+#: **A mapping rather than a set, because the redundancy is conditional** (`T313-R2`). *Audio only*
+#: says nothing new in the sound list, whose every row is an audio half; *video only* says nothing
+#: new beside a **Sound** column already reading *"add one"*. But the video list also holds rows
+#: whose streams yt-dlp never classified, and for one of those the note is the only statement of
+#: what it is. So the note goes only when the row's own flags already establish it.
+SPLIT_NOTES: Final = {
+    "video only": FormatKind.VIDEO_ONLY,
+    "audio only": FormatKind.AUDIO_ONLY,
+}
 
 
 def informative_note(entry: FormatInfo) -> str:
@@ -546,7 +552,16 @@ def informative_note(entry: FormatInfo) -> str:
     """
     note = (entry.note or "").strip()
     folded = note.casefold()
-    if folded in SPLIT_NOTES or folded in TIER_NOTES:
+    # **Only where the row actually states the same thing** (`T313-R2`). The first version
+    # suppressed every ordinal word outright, and the reviewer found what that costs: two
+    # audio-only Opus formats whose bitrate and size are both unknown, noted `low` and `high`,
+    # lost their notes *and* the column — and nothing else on either row distinguished them.
+    # Matching a string never established redundancy; the neighbouring cell does.
+    if folded in TIER_NOTES:
+        # The sound list heads its bitrate column **Quality**, and the video list carries one too,
+        # so an ordinal word is a coarser copy of it — when there is one to copy.
+        return "" if entry.bitrate_kbps is not None else note
+    if SPLIT_NOTES.get(folded) is kind_of(entry):
         return ""
     # **Compared against the cell, not against a format string.** The Quality column renders
     # `describe_quality`, so asking it is what keeps the two from drifting into disagreeing about

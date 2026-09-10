@@ -351,6 +351,25 @@ PRESET_INHERITABLE_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 12
 #:
 #: **Absent means the surface has no batch**, which is how a model that never heard of this role
 #: gets the honest answer.
+MENU_AVAILABLE_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 26
+"""Whether this row's `⋮` would open anything (`T315-R2`).
+
+**A painted affordance must have an implemented action for its row kind.** The zone was drawn on
+every row carrying a preset control, which on the queue includes a **playlist header** — and a
+header's `JOB_ID_ROLE` is the playlist id, which `job_for` cannot resolve, so the menu came back
+empty and the press did nothing. The reviewer reproduced it: two grouped jobs gave a dead button
+where two ungrouped ones opened a menu.
+
+**Asked of the model rather than inferred here**, because which rows have an item menu is a
+property of the surface: the staging list's rows always do, and the queue's group headers never
+will while a format id belongs to one video (`T-110`'s rule, one surface over). A delegate deciding
+it would be a second opinion about what a row is.
+
+`_menu_zone_of` answers an **empty rectangle** when this is false, which is what makes every
+consumer follow from one definition — the combo takes the whole slot back, `contains` refuses every
+point, and the paint is skipped.
+"""
+
 PRESET_INHERITED_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 25
 
 #: What the editor's inherited entry appends to that name (`UX-004`, ruled 2026-08-30 by the
@@ -945,7 +964,8 @@ class RowDelegate(QStyledItemDelegate):
             # condition, so opening the dropdown erased the `⋮` beside it — see `_paint_menu_zone`.
             if not self._is_being_edited(index):
                 self._paint_control(painter, option, index)
-            self._paint_menu_zone(painter, option, index)
+            if index.data(MENU_AVAILABLE_ROLE):
+                self._paint_menu_zone(painter, option, index)
 
         verbs_left = self._paint_verbs(painter, text_area, body, option, index)
         self._paint_text(
@@ -1090,6 +1110,12 @@ class RowDelegate(QStyledItemDelegate):
         begins. This is the delegate's paint-and-hit-test seam — `T107-R2`, `T108-R2` and
         `T-204` are its record — which is why the zone has one definition and its own regression.
         """
+        if not index.data(MENU_AVAILABLE_ROLE):
+            # **No menu, no zone** (`T315-R2`). Empty is the answer that carries: `contains`
+            # refuses every point, `_combo_rect` gives the control its full slot back, and `paint`
+            # skips the glyph — so one check here settles the paint, the hover and both hit-tests
+            # rather than four that could disagree.
+            return QRect()
         control = self._control_of(option, index)
         return QRect(
             control.right() - MENU_ZONE_WIDTH + 1,

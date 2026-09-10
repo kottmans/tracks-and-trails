@@ -1579,9 +1579,23 @@ def test_a_note_that_only_repeats_the_row_is_not_shown(qapp: QApplication) -> No
         "251", "webm", bitrate_kbps=128.0, has_video=False, has_audio=True, note="medium, original"
     )
 
+    # `T313-R2`: **the same words, where the row does not say it** — the cases the first version
+    # suppressed anyway. A tier word beside no bitrate is the only quality signal the row has, and
+    # a stream yt-dlp never classified is not told what it is by the list it was sorted into.
+    tier_with_nothing_to_repeat = FormatInfo(
+        "251", "webm", audio_codec="opus", has_video=False, has_audio=True, note="low"
+    )
+    unclassified = FormatInfo("hls-x", "mp4", note="video only")
+
     assert informative_note(repeats_quality) == "", "the Quality column already says 1080p"
     assert informative_note(ordinal) == "", "the Bitrate column already orders these, exactly"
     assert informative_note(says_where_it_is) == "", "the list this row is in already says so"
+    assert informative_note(tier_with_nothing_to_repeat) == "low", (
+        "the only thing this row says about its quality was suppressed as a repeat of nothing"
+    )
+    assert informative_note(unclassified) == "video only", (
+        "a stream yt-dlp did not classify lost the note that was the only statement of what it is"
+    )
     assert informative_note(says_something) == "original", (
         "archive.org's original/derivative is the only thing telling two such rows apart"
     )
@@ -1613,6 +1627,29 @@ def test_the_notes_column_appears_only_when_a_note_says_something(qapp: QApplica
         FormatInfo("h264", "mp4", height=480, has_video=True, has_audio=True, note="original"),
         FormatInfo("h264-hd", "mp4", height=480, has_video=True, has_audio=True, note="derivative"),
     )
+
+    # `T313-R2`'s reproduction: two audio halves distinguished by **nothing but their notes**.
+    # Same codec, same container, and neither bitrate nor size known — so suppressing the tier
+    # words takes the column with them and the two rows become indistinguishable.
+    opus_by_tier = (
+        FormatInfo("249", "webm", audio_codec="opus", has_video=False, has_audio=True, note="low"),
+        FormatInfo("251", "webm", audio_codec="opus", has_video=False, has_audio=True, note="high"),
+    )
+    table = FormatTable(opus_by_tier)
+    try:
+        sound = table.audio
+        assert sound is not None, "the sound list was not built for two audio-only formats"
+        column = sound.model.column_for(NOTES_COLUMN)
+        assert column >= 0, "the sound list dropped the only column telling these two rows apart"
+        told_apart = {
+            display(sound.model, row, sound.model.column_for(FORMAT_COLUMN)): display(
+                sound.model, row, column
+            )
+            for row in range(sound.model.rowCount())
+        }
+        assert told_apart == {"249": "low", "251": "high"}, told_apart
+    finally:
+        table.close()
 
     table = FormatTable(youtube)
     try:

@@ -230,6 +230,57 @@ what is asserted. The first version of the test asserted the other direction and
 formats…* all end in `_retarget_to`, so `T197-R4`'s carried-over connection and `T-195`'s
 carried-over naming cannot be remembered on one path and forgotten on another.
 
+#### Corrected 2026-09-10 after review — `T315-R1` to `T315-R4`
+
+**`T315-R1` — the item commands were reachable by pointer only.** The `⋮` is a painted affordance
+with no accessibility node, and that is allowed *because the same menu is reachable by right-click,
+the Menu key and Shift+F10* — a justification this task made untrue by giving the zone its own
+signal and leaving the keyboard route on `verbs_of` alone. The reviewer measured it: a
+keyboard-reason context event opened `↑ ↓ Cancel Remove` and neither new command (`NFR-005`).
+
+**One builder, two menus, differing only in the company the commands keep.** `_add_item_commands`
+fills both; the `⋮` opens the commands alone, as ruled, because a pointer user can see the verbs
+as buttons, and the keyboard route opens them **above** the verbs, as the staging list does.
+
+**`T315-R2` — a playlist header offered a `⋮` that opened nothing.** The header paints a preset
+control (`UX-005` row 13 defines retargeting across members), so the zone was drawn beside it — but
+its `JOB_ID_ROLE` is the *playlist* id, which `job_for` cannot resolve. The offer is withdrawn
+rather than implemented, and the reason is the commands themselves: **a format id names one
+video's stream**, so applying one member's choice to the others would be wrong rather than merely
+unbuilt (`T-110`'s rule, which the staging list already follows by omitting the entry there).
+
+`MENU_AVAILABLE_ROLE` is how a model says a row has an item menu; `_menu_zone_of` answers an
+**empty rectangle** when it does not, which is what makes the paint, the hover and both hit-tests
+follow from one definition instead of four that could disagree.
+
+**`T315-R3` — the Options editor was lossy for audio qualities it does not itself offer**, so this
+task's promise of lossless editing was not kept and the download's encoding could change silently.
+Two causes: `_show_preset` fell back to index `0` when `findData` missed, showing `320 kbps` for a
+request asking for `96`; and `_chosen_audio` cleared any non-MP3 quality even when the codec had
+not changed. The reviewer's matrix — MP3 at `0`, at `96`, at nothing, and AAC at `3` — is now a
+parametrised regression with the passing `192` case kept as its control.
+
+**The fix is `T-313`'s own rule, one dialog over:** a group nobody touched decides nothing, so the
+request keeps what it arrived with; a codec the user actually changed still clears a bitrate that
+belonged to the old one (`T076-R1`). The bitrate control also shows the value the download carries,
+inserting an entry only when it describes the current state — `RowDelegate`'s rule for a row's own
+non-catalogue preset. **The defect predates this task and reaches the staging list's editor by the
+same code**, which is why both the fix and its tests sit on the dialog.
+
+**Auditing the staging caller, as the finding asked, turned up a distinction worth recording.** Only
+half the matrix can reach that surface: `preset_for` runs every MP3 preset through `effective`,
+which replaces its bitrate with the one the dialog's own control shows (`T118-R6`), so an unlisted
+MP3 quality is normalised before the editor is built. A first version of that test used MP3 at `0`,
+got `192` back, and was measuring that derivation rather than the defect. `effective` returns a
+non-MP3 preset untouched, so the **codec** half is reachable there and is what the staging
+regression uses.
+
+**`T315-R4` — the probe tests called their slots directly** while describing themselves as
+delivering the manager's signal, and neither the *no formats* nor the *started meanwhile* ending
+had a test at all. All four now emit on `media_probed` / `job_failed`, so the connection is part of
+the claim, and both endings are covered — the race by mutating the queue the window reads and
+calling the refresh the window itself calls, rather than by arranging the model directly.
+
 #### Acceptance criteria
 
 - The `⋮` offers *Choose specific formats…* and *Options…*, and **none of the row's verbs**.
@@ -373,6 +424,29 @@ ordinal audio words, against the two phrases that restate which list the row is 
 Quality cell itself — and the **column** goes when no format in that list has anything left. On
 YouTube it disappears and gives its width back to the columns being read; on archive.org it
 appears. Matching is exact, never by substring, so `medium, original` keeps both halves.
+
+#### Corrected 2026-09-10 after review — `T313-R1`, `T313-R2`
+
+**`T313-R1` — the clear-route was inert from the one state it was promised for.** The guard returns
+early when the committed value equals `PRESET_ROLE`, and a row that **inherits** the batch preset
+while holding a pick answered `None` there — exactly as an untouched row does. So *follow the
+batch*, this task's own answer to *"how is a stream choice cleared?"*, changed nothing from that
+state. The committed clear-route test assigned an owned preset first and so never entered it.
+
+**Fixed by making the two states differ in value, not by a second guard about how `setData` was
+reached.** `PRESET_ROLE` now answers what the row will actually download — the composed name — so
+an untouched commit re-states `137+140` and clears nothing, while the inherited entry is a
+different value and clears the pick. It also makes the control agree with the row, which already
+painted *"Download as: 137+140 — following the batch"*, and revives `RowDelegate.createEditor`'s
+branch for a row's own non-catalogue preset that `T-311` had left unreachable.
+
+**`T313-R2` — suppressing a tier note is only honest where the row states the tier.** Every ordinal
+word went regardless of whether the row had a bitrate to repeat, and the reviewer found the cost:
+two audio-only Opus formats with unknown bitrate *and* size, noted `low` and `high`, lost both
+notes and the column, and nothing else on either row told them apart. **Exact string matching never
+established redundancy** — the neighbouring cell does. A tier note now goes only where a bitrate is
+shown, and a *video only* / *audio only* note only where the row's own flags already establish it,
+which leaves it standing on a stream yt-dlp never classified.
 
 #### Acceptance criteria
 

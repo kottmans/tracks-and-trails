@@ -37,12 +37,15 @@ from tracks_and_trails.ui import theme
 from tracks_and_trails.ui.format_text import FORMAT_PREFIX
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT
 from tracks_and_trails.ui.main_window import (
+    JUST_THIS_ITEM,
     MainWindow,
 )
 from tracks_and_trails.ui.queue_view import PROGRESS_COLUMN
 from tracks_and_trails.ui.row_delegate import (
+    CHOOSE_FORMATS_TEXT,
     DETAIL_ROLE,
     INHERITED_SUFFIX,
+    OPTIONS_TEXT,
     PADDING,
     PRESET_CHOICES_ROLE,
     PRESET_ROLE,
@@ -1919,3 +1922,56 @@ def test_an_empty_queue_claims_no_keyboard_it_cannot_use(
         )
     finally:
         window.close()
+
+
+def test_the_keyboard_reaches_this_downloads_own_commands(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`T315-R1`: the item commands were reachable by pointer only, which `NFR-005` forbids.
+
+    **The `⋮` that opens them is a painted affordance with no accessibility node** — deliberately,
+    on the disclosure triangle's precedent, *because the same menu is reachable by right-click, the
+    Menu key and Shift+F10*. `T-315` wired the zone to a new signal and left that second half
+    unbuilt, so the justification for the painted-only control stopped being true. The reviewer
+    measured it: a keyboard-reason context event on a selected queued row opened `↑ ↓ Cancel
+    Remove` and neither new command.
+
+    **The verbs are still there, below them.** The maintainer ruled the *pointer* menu holds the
+    item commands alone, because the row draws its verbs as buttons a pointer user can see; a
+    keyboard user has no such shortcut, so this route holds both. Asserted in that order, which is
+    the staging list's own (`UX-011`).
+
+    Driven on a **shown** view through the event the Menu key produces — see `_press_the_menu_key`
+    for why the literal key press cannot be sent under `offscreen`.
+    """
+    queue = _MutableQueue([_job("job-1", 0, JobStatus.QUEUED)])
+    window = _shown_window(queue, tmp_path)
+    view = window.queue_view
+    assert view is not None
+    _bring_to_front(window, view)
+    assert view.select("job-1")
+    view.table.setFocus()
+
+    _press_the_menu_key(view.table)
+
+    menu = next(
+        (child for child in window.findChildren(QMenu) if child.objectName() == "rowVerbsMenu"),
+        None,
+    )
+    assert menu is not None, "the Menu key raised no menu at all"
+    try:
+        offered = [action.text() for action in menu.actions() if action.text()]
+        assert CHOOSE_FORMATS_TEXT in offered, (
+            f"the keyboard cannot reach the format table; the menu held {offered}"
+        )
+        assert OPTIONS_TEXT in offered, (
+            f"the keyboard cannot reach this download's options; the menu held {offered}"
+        )
+        # The whole sequence, including the section heading, because *order* is the claim: the
+        # item commands sit above the entries the menu already held (`UX-011`), and the verbs are
+        # all still there — a route that gained the new commands by losing the old ones would
+        # satisfy two `in` checks and be a regression.
+        verbs = [LABELS[verb] for verb in view.verbs_of("job-1")]
+        assert offered == [JUST_THIS_ITEM, CHOOSE_FORMATS_TEXT, OPTIONS_TEXT, *verbs], offered
+    finally:
+        menu.close()

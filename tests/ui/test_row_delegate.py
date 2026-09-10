@@ -66,6 +66,7 @@ from tracks_and_trails.ui.row_delegate import (
     INDENT,
     JOB_ID_ROLE,
     MEDIA_KIND_ROLE,
+    MENU_AVAILABLE_ROLE,
     MENU_ZONE_INSET,
     MERGED_BLOCKS,
     MIN_BLOCK_WIDTH,
@@ -575,7 +576,14 @@ def test_an_unoverridden_row_draws_the_preset_it_would_follow(qapp: QApplication
     blank.
     """
     delegate = RowDelegate()
-    blank: dict[int, Any] = {HEADLINE_ROLE: "", DETAIL_ROLE: "", STATE_ROLE: "", HUE_ROLE: 0}
+    # Both rows carry a `⋮`, so both are painted with the same label field (`T315-R2`).
+    blank: dict[int, Any] = {
+        HEADLINE_ROLE: "",
+        DETAIL_ROLE: "",
+        STATE_ROLE: "",
+        HUE_ROLE: 0,
+        MENU_AVAILABLE_ROLE: True,
+    }
     choices = ("Best video", "Audio only")
 
     def row(roles: dict[int, Any]) -> RowsModel:
@@ -680,7 +688,17 @@ def test_a_name_too_wide_for_the_field_is_elided_rather_than_clipped(qapp: QAppl
     elided = metrics.elidedText(widest, Qt.TextElideMode.ElideRight, field)
     assert elided != widest and elided.endswith("…"), f"nothing was elided from {widest!r}"
 
-    blank: dict[int, Any] = {HEADLINE_ROLE: "", DETAIL_ROLE: "", STATE_ROLE: "", HUE_ROLE: 0}
+    # **The same row shape `field` was measured from** (`T315-R2`). The zone is only drawn where
+    # the `⋮` opens something, so a row that stays silent about `MENU_AVAILABLE_ROLE` gets its
+    # 16 px back — and these rows would then be painted into a field 16 px wider than the one
+    # `field` describes, which is *"measuring the wrong rectangle"* again, one row over.
+    blank: dict[int, Any] = {
+        HEADLINE_ROLE: "",
+        DETAIL_ROLE: "",
+        STATE_ROLE: "",
+        HUE_ROLE: 0,
+        MENU_AVAILABLE_ROLE: True,
+    }
 
     def painted(name: str) -> QImage:
         rows = RowsModel([{**blank, PRESET_CHOICES_ROLE: (name,), PRESET_ROLE: name}])
@@ -2824,6 +2842,11 @@ def _row_with_a_control() -> RowsModel:
     draws no combo and therefore no `⋮` zone — and a zone test on such a row asserts against an
     empty rectangle. The first draft of these tests did exactly that and one of them passed on ink
     belonging to the row behind.
+
+    **`MENU_AVAILABLE_ROLE` is the second half of the same condition** (`T315-R2`). A row whose
+    `⋮` would open nothing is not given one, so a model that stays silent about the role describes
+    a row with no zone — and every zone test on it would assert against an empty rectangle again,
+    which is the trap above wearing a new hat.
     """
     return RowsModel(
         [
@@ -2834,6 +2857,7 @@ def _row_with_a_control() -> RowsModel:
                 HUE_ROLE: 0,
                 PRESET_CHOICES_ROLE: ("Best video available", "Audio only (MP3)"),
                 PRESET_ROLE: "Best video available",
+                MENU_AVAILABLE_ROLE: True,
             }
         ]
     )

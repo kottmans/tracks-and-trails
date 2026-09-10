@@ -4413,3 +4413,59 @@ def test_the_row_menu_zone_asks_for_this_downloads_own_menu(
     assert not overflowed, (
         "the ⋮ went to the overflow's slot, which offers the verbs the row already draws"
     )
+
+
+def test_a_playlist_header_is_given_no_menu_zone_to_press(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """`T315-R2`: a rendered affordance must have an implemented action for its row kind.
+
+    **The header paints a preset control**, because `UX-005` row 13 defines retargeting across a
+    playlist's members — so `_editable` was true and the `⋮` was drawn beside it. But a header's
+    `JOB_ID_ROLE` is the *playlist*, which `job_for` cannot resolve, so the menu came back empty
+    and the press did nothing. The reviewer reproduced exactly this: two grouped jobs gave a dead
+    button where two ungrouped ones opened a menu.
+
+    **It stays withdrawn rather than becoming a group command**, and the reason is the commands
+    themselves: a format id names one video's stream, so applying one member's choice to the others
+    would be wrong rather than merely unimplemented. That is `T-110`'s rule — a playlist's formats
+    belong to its entries — which the staging list already follows by omitting the entry there.
+
+    **The ordinary row is the positive control**, without which this passes on a delegate that
+    stopped drawing the zone anywhere.
+    """
+    for job in _playlist_jobs(tmp_path, 2, playlist_id="list-1"):
+        queue.add(replace(job, status=JobStatus.QUEUED))
+    queue.add(make_job("alone", tmp_path, queue_position=9))
+    view = views(jobs=queue, manager=managers(running=False))
+    view.resize(900, 300)
+    view.show()
+    qapp.processEvents()
+
+    delegate = view._list.itemDelegate()
+    assert isinstance(delegate, RowDelegate)
+    option = QStyleOptionViewItem()
+    option.initFrom(view._list)
+
+    # **A header is a row whose id names no job**, which is the condition that made the menu dead
+    # rather than a proxy for it: the header answers `JOB_ID_ROLE` with the *playlist* id — not
+    # `None`, which is what a first draft of this test assumed — and `job_for` resolves individual
+    # jobs only, so `_show_item_menu` found nothing to build a menu for.
+    kinds: dict[str, QRect] = {}
+    for row in range(view.model.rowCount()):
+        index = view.model.index(row, 0)
+        option.rect = view._list.visualRect(index)
+        job_id = view.model.data(index, JOB_ID_ROLE)
+        names_a_job = isinstance(job_id, str) and view.model.job_for(job_id) is not None
+        kinds.setdefault("row" if names_a_job else "header", delegate._menu_zone_of(option, index))
+
+    assert kinds.get("row") is not None and not kinds["row"].isEmpty(), (
+        "an ordinary queued row has no menu zone, so this proves nothing about the header"
+    )
+    assert kinds["header"].isEmpty(), (
+        f"the playlist header still offers a ⋮ at {kinds['header']}, and pressing it opens nothing"
+    )

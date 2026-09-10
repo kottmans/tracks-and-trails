@@ -75,6 +75,7 @@ from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import (
+    AudioCodec,
     DownloadRequest,
     FormatInfo,
     Job,
@@ -118,6 +119,7 @@ from tracks_and_trails.ui.add_dialog import (
 )
 from tracks_and_trails.ui.format_selection import FormatKind, FormatSelection, kind_of
 from tracks_and_trails.ui.main_window import DEFAULT_SIZE
+from tracks_and_trails.ui.options_dialog import OptionsDialog
 from tracks_and_trails.ui.playlist_selection import PlaylistSelection
 from tracks_and_trails.ui.row_delegate import (
     CHOOSE_FORMATS_DATA,
@@ -6394,5 +6396,101 @@ def test_naming_a_preset_keeps_the_hand_picked_streams(
         assert composed.media_kind is wanted.media_kind, (
             "the chosen preset did not reach the row, so keeping the streams proves nothing"
         )
+    finally:
+        dialog.close()
+
+
+def test_following_the_batch_clears_a_pick_on_a_row_that_already_inherits(
+    qapp: QApplication,
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T313-R1`.** The promised way back was inert from the one state it was promised for.
+
+    `T-313`'s guard returns early when the committed value equals `PRESET_ROLE`. A row that
+    inherits the batch preset **and** has picked `137+140` answered `None` there — exactly as an
+    untouched row does — so deliberately choosing *follow the batch* changed nothing.
+    `T-311` opened that gap by design when it stopped writing the selector into `row.preset`.
+
+    **This starts from that state directly**, which is what the committed clear-route test does
+    not: it assigns an owned preset first, so *follow the batch* is a change to `row.preset` and
+    the guard never sees the equal case. Both are kept — this one covers the state, that one covers
+    the route from a row with its own preset.
+
+    The fix is not a second guard about *how* `setData` was reached. `PRESET_ROLE` now answers what
+    the row will actually download, so the two states differ by **value** and the same comparison
+    tells them apart.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    dialog.show()
+    qapp.processEvents()
+    try:
+        selector = _pick_a_pair(dialog, row)
+        assert row.preset is None, "this row was given its own preset, so it is not the state"
+
+        model = dialog.model
+        index = model.index(model.shown.index(row), 0)
+        assert index.data(PRESET_ROLE) == selector, (
+            "the control does not name what the row downloads, so choosing the inherited entry "
+            f"is indistinguishable from committing an untouched one: {index.data(PRESET_ROLE)!r}"
+        )
+
+        control = open_row_editor(dialog, 0)
+        choose_in_editor(dialog, control, None)
+        qapp.processEvents()
+
+        assert row.format_selection is None, (
+            "following the batch left the hand-picked formats in place, so there is no way back "
+            "from a pick on a row that inherits"
+        )
+        assert row.preset is None, "the row gained an override from being told to follow the batch"
+        assert dialog.preset_for(row).format_selector != selector, (
+            "the row still downloads the streams it was told to give up"
+        )
+    finally:
+        dialog.close()
+
+
+def test_the_staging_options_editor_also_keeps_a_quality_it_cannot_offer(
+    qapp: QApplication,
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`T315-R3`'s audit of the **other consumer** of the shared editor.
+
+    The finding was measured on the queue's new Options route, but the lossy branches are the
+    dialog's own and the staging list has been reaching them since long before `T-315`. A row set
+    to a preset carrying a bitrate this editor does not list — yt-dlp's VBR quality `0` — had it
+    silently rewritten to `320` by opening the editor and pressing OK.
+
+    **The MP3 half of the reviewer's matrix cannot reach this surface, and that is worth writing
+    down.** `preset_for` runs every MP3 preset through `effective`, which replaces its bitrate with
+    the one the dialog's own control shows (`T118-R6`) — so an unlisted MP3 quality is normalised
+    before the editor is built. A first version of this test used MP3 at `0` and got `192` back,
+    which is that derivation working, not the defect. `effective` returns a non-MP3 preset
+    untouched, so the codec half **is** reachable here, and that is what this uses.
+
+    **Only the modal loop is stubbed**, because `_show_options` calls `exec()` and a test that
+    entered that loop would never reach its assertions (`T-203`'s reason for `popup` over `exec`,
+    met from the other side). The dialog is really built, on the preset this caller really passes,
+    and `result_preset()` is really asked — which is the whole of what this audits.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    row.preset = replace(preset_registry.AUDIO_MP3, audio_codec=AudioCodec.AAC, audio_quality="3")
+    monkeypatch.setattr(OptionsDialog, "exec", lambda _self: int(QDialog.DialogCode.Accepted))
+    dialog.show()
+    qapp.processEvents()
+    try:
+        dialog.open_options(row)
+        qapp.processEvents()
+
+        assert isinstance(row.preset, Preset)
+        assert row.preset.audio_quality == "3", (
+            f"the staging editor rewrote this row's quality to {row.preset.audio_quality!r}"
+        )
+        assert row.preset.audio_codec is AudioCodec.AAC, "the codec changed too"
     finally:
         dialog.close()

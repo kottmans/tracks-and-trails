@@ -101,6 +101,25 @@ CONTAINER_RECODE_NAME: Final = "optionsContainerRecode"
 CONTAINER_CHOICE_NAME: Final = "optionsContainerChoice"
 AUDIO_CODEC_NAME: Final = "optionsAudioCodec"
 AUDIO_QUALITY_NAME: Final = "optionsAudioQuality"
+
+#: What the bitrate control says for a value it does not itself offer (`T315-R3`).
+#:
+#: **The raw value, and no unit**, because the scale is not knowable here: `MP3_BITRATES` are kbps,
+#: but a request may carry yt-dlp's VBR quality `0` in the same field, and labelling that
+#: *"0 kbps"* would be this dialog inventing a fact about a download it did not configure.
+UNOFFERED_QUALITY_SUFFIX: Final = " (as this download has it)"
+
+#: What it says when the download names no bitrate at all.
+NO_QUALITY_LABEL: Final = "Whatever the converter chooses"
+
+
+def _quality_label(quality: str | None) -> str:
+    """How the bitrate control names a value it does not offer as a choice."""
+    if quality is None:
+        return NO_QUALITY_LABEL
+    return f"{quality}{UNOFFERED_QUALITY_SUFFIX}"
+
+
 EMBED_THUMBNAIL_NAME: Final = "optionsEmbedThumbnail"
 EMBED_METADATA_NAME: Final = "optionsEmbedMetadata"
 EMBED_CHAPTERS_NAME: Final = "optionsEmbedChapters"
@@ -495,8 +514,26 @@ class OptionsDialog(QDialog):
     def _show_preset(self, preset: Preset) -> None:
         """Open showing what the preset already asks for, so nothing is lost by opening it."""
         self._audio_codec.setCurrentIndex(self._audio_codec.findData(preset.audio_codec))
+        # **The quality this request actually carries, even when this dialog cannot offer it**
+        # (`T315-R3`). `findData` misses a value outside `MP3_BITRATES` — a custom preset's `0`,
+        # `96`, or none at all — and the fallback to index `0` then showed **`320 kbps` for a
+        # request asking for something else**, which `_chosen_audio` wrote on OK. Measured by the
+        # reviewer: MP3 at `0`, at `96` and at nothing all became `320`.
+        #
+        # **Inserted only when it describes the current state**, which is `row_delegate`'s rule for
+        # a row's own non-catalogue preset one surface over: the entry exists because the download
+        # has that value, so the control's domain is not widened for anything else.
         quality = self._audio_quality.findData(preset.audio_quality)
-        self._audio_quality.setCurrentIndex(quality if quality >= 0 else 0)
+        if quality < 0:
+            self._audio_quality.insertItem(
+                0, _quality_label(preset.audio_quality), preset.audio_quality
+            )
+            quality = 0
+        self._audio_quality.setCurrentIndex(quality)
+        #: Which entry `preset` itself put there, so `_chosen_audio` can tell *untouched* from
+        #: *chosen to be the same*. Compared by index rather than by value because the two differ
+        #: only for the inserted entry above, and that is exactly the case this protects.
+        self._shown_quality = quality
 
         if preset.remux_container is not None:
             self._container_remux.setChecked(True)
@@ -701,10 +738,20 @@ class OptionsDialog(QDialog):
         if not self._audio_group.isEnabled():
             return self._preset.audio_codec, self._preset.audio_quality
         codec = self.chosen_codec()
+        if codec is self._preset.audio_codec and self._audio_quality.currentIndex() == (
+            self._shown_quality
+        ):
+            # **Nothing in this group was touched, so nothing in it is this dialog's to rewrite**
+            # (`T315-R3`). The clearing below is for a codec *change*; applied to a request that
+            # merely passed through the editor it silently re-encoded the download — the reviewer
+            # measured AAC at quality `3` coming back as none, and every unlisted MP3 bitrate
+            # coming back as `320`. This is the same guard `T-313` put on the preset control one
+            # dialog over: a commit that re-states what the row already says is not a gesture.
+            return self._preset.audio_codec, self._preset.audio_quality
         if codec is not AudioCodec.MP3:
             return codec, None
         quality = self._audio_quality.currentData()
-        return codec, quality if isinstance(quality, str) else self._preset.audio_quality
+        return codec, quality if isinstance(quality, str) else None
 
     def _chosen_subtitles(self) -> tuple[tuple[str, ...], bool]:
         """The languages and the embed flag — or the preset's own, where the list was disabled.

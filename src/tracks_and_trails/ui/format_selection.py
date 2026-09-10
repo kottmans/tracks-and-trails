@@ -24,15 +24,26 @@ therefore offered but refuses what it cannot place, and says which format it cou
 
 ## The selector is yt-dlp's own syntax, and nothing here interprets it
 
-A pair becomes `137+140`, a single choice becomes `137`. `presets.custom_preset` carries it
-unchanged (`REQ-009`) and `format_text.format_name` renders it — for a selector no built-in
-describes, that is the literal, which is what `UX_SPEC` §5 means by *"the shared naming rule's
-answer, not the raw selector"*: the rule is asked, and its answer here happens to be the literal.
+A pair becomes `137+140`, a single choice becomes `137`. **`presets.with_format_selector` composes
+it over whichever preset governs the row** (`T-311`), and `format_text.format_name` renders the
+result — for a selector no built-in describes, that is the literal, which is what `UX_SPEC` §5
+means by *"the shared naming rule's answer, not the raw selector"*: the rule is asked, and its
+answer here happens to be the literal.
 
-**`media_kind` stays `VIDEO` even for an audio-only choice**, which looks wrong and is not.
+*(This named `presets.custom_preset`, which built a preset from **nothing** — so picking a format
+discarded the row's conversion and its filename pattern, silently. `T-311` replaced that with
+composition and this description was left behind; `T311-R2` is the finding.)*
+
+**Nothing here infers a conversion from an audio-only choice**, which looks wrong and is not.
 `MediaKind.AUDIO` is what installs `FFmpegExtractAudio` — it means *convert this to an audio file*,
 not *this is audio*. A user who picked format `140` asked for that stream as served; adding an
 extraction step would re-encode what they chose and require ffmpeg to do it.
+
+**An explicit conversion still applies, and that is a different thing** (`T-311`, ruled
+2026-09-10). The clause above is about the application *inferring* a conversion from the fact that
+a chosen format carries no picture. A preset the user selected is an instruction rather than an
+inference, so a row set to *Audio only (MP3)* that then picks `140` by hand converts — the streams
+are what changed, and the preset composed over them is untouched.
 """
 
 from dataclasses import dataclass, replace

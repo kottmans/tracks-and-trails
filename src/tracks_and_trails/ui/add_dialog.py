@@ -160,6 +160,7 @@ from tracks_and_trails.ui.row_delegate import (
     MANAGE_PRESETS_DATA,
     MANAGE_PRESETS_TEXT,
     MEDIA_KIND_ROLE,
+    MENU_AVAILABLE_ROLE,
     OPTIONS_AVAILABLE_ROLE,
     OPTIONS_DATA,
     OPTIONS_TEXT,
@@ -1045,8 +1046,35 @@ class StagingModel(QAbstractListModel):
             media = row.media
             return media.thumbnail_url if isinstance(media, MediaInfo) else None
         if role == PRESET_ROLE:
+            picked = row.format_selection
+            if isinstance(picked, FormatSelection) and picked.is_complete:
+                # **What this row will actually download, which is what the control must show**
+                # (`T313-R1`). `T-311` stopped writing a hand-picked selector into `row.preset`, so
+                # a row that had picked streams answered here **exactly as an untouched one does**
+                # — and `T-313`'s guard, which compares the committed value against this role,
+                # therefore read the user deliberately choosing *follow the batch* as Qt committing
+                # an editor nobody touched. The promised way back was inert from the one state it
+                # was promised for.
+                #
+                # Answering with the composed name separates them by *value*, which is the guard
+                # the queue settled on (`T126-R3`) rather than a second one about how `setData` was
+                # reached: an untouched commit re-states `137+140` and changes nothing, while the
+                # inherited entry is now a different value and clears the pick.
+                #
+                # It also makes the control agree with the row, which paints
+                # *"Download as: 137+140 — following the batch"* on its detail line — and revives
+                # `RowDelegate.createEditor`'s branch for a row's own non-catalogue preset, which
+                # `T-311` left unreachable.
+                return format_name(format_choice_of(self._dialog.preset_for(row)))
             own = row.preset
             return own.name if isinstance(own, Preset) else None
+        if role == MENU_AVAILABLE_ROLE:
+            # **Always, on this list** (`T315-R2`). Every staging row's menu holds something —
+            # `row_menu` draws the per-item section when the row offers one and the line's own
+            # entries regardless — so the `⋮` here never opens nothing. Answered explicitly rather
+            # than left to the role's absence, because "the model said nothing" and "the model said
+            # no" would then be the same answer, and the queue relies on them differing.
+            return True
         if role == PRESET_CHOICES_ROLE:
             # **A row that cannot be committed cannot usefully be retargeted either**, and a row
             # whose commit is already in flight must not change the request being written. An
@@ -1816,9 +1844,10 @@ class AddUrlDialog(QDialog):
 
         # **`Esc` puts back *both* halves of the row's earlier format choice** (`T310-R4`).
         #
-        # `_on_selection_changed` writes two fields — the preset that carries the selector, and
-        # `row.format_selection`, the *decision* `REQ-024`'s ffmpeg gate reads. This restored only
-        # the first, so abandoning a pair left the decision behind: the reviewer opened the panel
+        # `_on_selection_changed` wrote two fields when this was found — the preset that carried
+        # the selector, and `row.format_selection`, the *decision* `REQ-024`'s ffmpeg gate reads.
+        # This restored only the first, so abandoning a pair left the decision behind: the reviewer
+        # opened the panel
         # without ffmpeg, chose `137` and `140`, pressed `Esc`, and *Add* then submitted no job and
         # reported that merging needs ffmpeg — for a row whose preset `Esc` had correctly returned
         # to `None`. A refusal about a choice the user had just abandoned.
@@ -1826,6 +1855,11 @@ class AddUrlDialog(QDialog):
         # **`T-310` is what made it reachable.** A finished pair used to close the panel itself, so
         # there was no open panel left to press `Esc` on; now the panel stays open and the route
         # exists. The two fields are one fact and are restored as one.
+        #
+        # **Both are still restored, and still for `T310-R4`'s reason** (`T311-R2`). `T-311` stopped
+        # the panel writing `row.preset`, so on this route it is usually unchanged — but the
+        # options editor and the row's own preset control both reach a row while its panel is open,
+        # and restoring one field of a pair is what this finding was about in the first place.
         before_preset = row.preset if isinstance(row.preset, Preset) else None
         before_selection = row.format_selection
 
@@ -2189,16 +2223,21 @@ class AddUrlDialog(QDialog):
         """
 
     def _on_selection_changed(self, selection: object) -> None:
-        """Write the chosen formats onto the row, as its own preset (`REQ-008`, `REQ-009`).
+        """Write the chosen **streams** onto the row (`REQ-008`, `REQ-009`, `T-311`).
 
-        **A custom preset, through `custom_preset`, so the selector reaches the request unchanged.**
-        The row's third line then reads whatever `format_text.format_name` says about it — which for
-        a selector no built-in describes is the literal, and that is `UX_SPEC` §5's rule honoured by
-        *asking* the shared naming rule rather than by writing the selector out here (`T140-R3`,
-        `T126-R2`, `T-159` were all this same defect).
+        **The streams alone — the preset is not this method's to touch.** `preset_for` composes the
+        two through `with_format_selector`, so the selector reaches the request unchanged while the
+        row keeps the conversion, the filename pattern and the media kind it was set up with. The
+        row's third line then reads whatever `format_text.format_name` says about the *composed*
+        preset — which for a selector no built-in describes is the literal, and that is `UX_SPEC`
+        §5's rule honoured by *asking* the shared naming rule rather than by writing the selector
+        out here (`T140-R3`, `T126-R2`, `T-159` were all this same defect).
 
-        An incomplete selection writes nothing: half a pair is not a download, and `custom_preset`
-        would be handed `137` for a merge the user has not finished stating.
+        An incomplete selection writes nothing: half a pair is not a download, and a selector built
+        from one half would name `137` for a merge the user has not finished stating.
+
+        *(This docstring described writing a `custom_preset` onto the row, which is what `T-311`
+        removed and what `T311-R2` found still described here.)*
         """
         row = self._expanded
         if row is None or not isinstance(selection, FormatSelection):

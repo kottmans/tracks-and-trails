@@ -121,6 +121,7 @@ from tracks_and_trails.ui.row_delegate import (
     HUE_ROLE,
     JOB_ID_ROLE,
     MEDIA_KIND_ROLE,
+    MENU_AVAILABLE_ROLE,
     PRESET_CHOICES_ROLE,
     PRESET_PLACEHOLDER_ROLE,
     PRESET_ROLE,
@@ -700,6 +701,16 @@ class QueueModel(QAbstractTableModel):
             if row.job.status not in Job.RETARGETABLE:
                 return None
             return tuple(preset.name for preset in BUILT_IN_PRESETS)
+        if role == MENU_AVAILABLE_ROLE:
+            # **An ordinary row, yes; a playlist header, no** (`T315-R2`). The header reaches this
+            # method through the `Group` branch above and never gets here, which is the answer:
+            # its `JOB_ID_ROLE` is the *playlist* id, `job_for` resolves individual jobs only, and
+            # the menu came back empty. **The commands themselves are the reason it stays that
+            # way** — a format id names one video's stream, so applying one member's choice to the
+            # others would be wrong rather than merely unimplemented (`T-110`'s rule, one surface
+            # over). The group keeps its preset control, which `UX-005` row 13 does define across
+            # members.
+            return row.job.status in Job.RETARGETABLE
         if role == PRESET_ROLE:
             # What this row's request currently *is*, matched back to a preset by selector. `None`
             # means no built-in describes it — a custom selector, which the row still shows as

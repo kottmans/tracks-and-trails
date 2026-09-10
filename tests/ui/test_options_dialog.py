@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 
 from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.models import AudioCodec, Preset
+from tracks_and_trails.core.presets import MP3_BITRATES
 from tracks_and_trails.downloader.environment import FfmpegFeature
 from tracks_and_trails.ui.options_dialog import (
     AUDIO_CODEC_NAME,
@@ -996,4 +997,95 @@ def test_nothing_scrolls_when_the_screen_can_show_it_all(
 
     assert scroller.verticalScrollBar().maximum() == 0, (
         "the dialog scrolls at its opening size on a screen with room for all of it"
+    )
+
+
+#: The reviewer's own matrix for `T315-R3`, plus the control that already passed.
+#:
+#: **All five are accepted domain values.** `audio_quality` is `str | None` on both `Preset` and
+#: `DownloadRequest`, so a custom preset can carry yt-dlp's VBR quality `0`, a bitrate outside
+#: `MP3_BITRATES` such as `96`, or an AAC quality — none of which this dialog offers as a choice
+#: and none of which it may therefore rewrite.
+UNCHANGED_AUDIO: Final = (
+    (AudioCodec.MP3, "0"),
+    (AudioCodec.MP3, None),
+    (AudioCodec.MP3, "96"),
+    (AudioCodec.AAC, "3"),
+    (AudioCodec.MP3, "192"),
+)
+
+
+@pytest.mark.parametrize(("codec", "quality"), UNCHANGED_AUDIO, ids=lambda v: str(v))
+def test_accepting_unchanged_keeps_an_audio_quality_this_dialog_cannot_offer(
+    editor: Callable[..., OptionsDialog],
+    codec: AudioCodec,
+    quality: str | None,
+) -> None:
+    """`T315-R3`: opening the editor and pressing OK must not re-encode the download.
+
+    **Two branches produced this, and either alone still loses the value.** `_show_preset` fell
+    back to index `0` when `findData` missed — so a request asking for `96` displayed `320 kbps` —
+    and `_chosen_audio` cleared any non-MP3 quality even when the codec had not changed.
+
+    **Measured by the reviewer against the queue's new Options route**, where `T-315` promises
+    lossless editing of an arbitrary queued request. The defect predates that route and reaches the
+    staging list's editor by the same code, which is why the fix and this test are on the dialog.
+
+    The last row is the control that passed throughout: a listed MP3 bitrate. Without it a test
+    that trivially returned its input would look like a fix.
+    """
+    preset = replace(preset_registry.AUDIO_MP3, audio_codec=codec, audio_quality=quality)
+    dialog = editor(preset, ffmpeg_available=True)
+
+    result = dialog.result_preset()
+
+    assert result.audio_codec is codec, f"the codec changed to {result.audio_codec}"
+    assert result.audio_quality == quality, (
+        f"{codec.value} at {quality!r} came back as {result.audio_quality!r}"
+    )
+
+
+def test_the_bitrate_control_shows_a_value_it_does_not_offer(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """The display half of `T315-R3`: the control said `320 kbps` for a request asking for `96`.
+
+    **A control that misreports is worse than one that refuses**, because the user has no way to
+    know. The entry is inserted only when it describes the current state — `row_delegate`'s rule
+    for a row's own non-catalogue preset, one surface over — so nothing widens the choices offered
+    to a request whose bitrate this dialog does list.
+    """
+    preset = replace(preset_registry.AUDIO_MP3, audio_codec=AudioCodec.MP3, audio_quality="96")
+    dialog = editor(preset, ffmpeg_available=True)
+
+    control = combo(dialog, AUDIO_QUALITY_NAME)
+    assert "96" in control.currentText(), (
+        f"the bitrate control says {control.currentText()!r} for a download asking for 96"
+    )
+
+    listed = editor(preset_registry.AUDIO_MP3, ffmpeg_available=True)
+    assert combo(listed, AUDIO_QUALITY_NAME).count() == len(MP3_BITRATES), (
+        "a request whose bitrate is offered gained an extra entry it does not need"
+    )
+
+
+def test_changing_the_codec_still_clears_a_quality_that_belonged_to_the_old_one(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """The half `T315-R3` must **not** break (`T076-R1`, `T-089`).
+
+    `MP3_BITRATES` are MP3's scale, and yt-dlp reads a `preferredquality` above 10 as `-b:a 192k`
+    for AAC, Opus and Vorbis alike — so carrying a bitrate through a codec change is a hidden
+    control quietly changing the output. The preservation above is for a group nobody touched;
+    this is a codec the user actually changed.
+    """
+    preset = replace(preset_registry.AUDIO_MP3, audio_codec=AudioCodec.MP3, audio_quality="192")
+    dialog = editor(preset, ffmpeg_available=True)
+    codecs = combo(dialog, AUDIO_CODEC_NAME)
+    codecs.setCurrentIndex(codecs.findData(AudioCodec.AAC))
+
+    result = dialog.result_preset()
+    assert result.audio_codec is AudioCodec.AAC
+    assert result.audio_quality is None, (
+        f"MP3's 192 followed the codec change to AAC as {result.audio_quality!r}"
     )

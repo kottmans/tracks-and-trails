@@ -980,14 +980,40 @@ class MainWindow(QMainWindow):
         The delegate already gates the zone on the same fact, so this is the second of two rather
         than the only one; it is here because *this* method is what decides the contents.
         """
-        if self._queue is None or self._manager is None:
+        if self._queue is None:
             return None
-        job = self._queue.model.job_for(job_id)
-        if job is None or job.status not in Job.RETARGETABLE:
-            return None
-
         menu = QMenu(self._queue)
         menu.setObjectName("rowItemMenu")
+        if not self._add_item_commands(menu, job_id):
+            menu.deleteLater()
+            return None
+        # `popup`, not `exec`: `_row_menu` gives the reason — `exec` starts a nested event loop a
+        # test cannot leave, so an `exec`'d menu is a route with unreachable actions.
+        menu.popup(QCursor.pos())
+        return menu
+
+    def _add_item_commands(self, menu: QMenu, job_id: str) -> bool:
+        """Put this download's own commands on `menu`. `False` if it has none (`T-315`).
+
+        **One builder, two menus, and they deliberately differ in what surrounds it** (`T315-R1`).
+        The `⋮` opens these alone — ruled by the maintainer, because the row already draws its
+        verbs as buttons a pointer user can see. The keyboard and context routes open these
+        **above** the verbs, because a keyboard user has no `⋮` to aim at: the painted zone has no
+        accessibility node by design, so a command reachable only through it is reachable only by
+        pointer, which is `NFR-005` exactly. The reviewer measured it — a keyboard-reason context
+        event on a selected queued row opened `↑ ↓ Cancel Remove` and neither new command.
+
+        Sharing the builder is what keeps the two from drifting into offering different commands;
+        what they may differ on is the company those commands keep.
+
+        **Nothing for a job that can no longer take a new request.** Both entries end in
+        `retarget`, which a started job refuses — `UX-005` §5 asks that such a thing not be offered.
+        """
+        if self._queue is None:
+            return False
+        job = self._queue.model.job_for(job_id)
+        if job is None or job.status not in Job.RETARGETABLE:
+            return False
         menu.addSection(JUST_THIS_ITEM)
         formats = menu.addAction(CHOOSE_FORMATS_TEXT)
         formats.setObjectName("rowItemFormats")
@@ -995,10 +1021,7 @@ class MainWindow(QMainWindow):
         options = menu.addAction(OPTIONS_TEXT)
         options.setObjectName("rowItemOptions")
         options.triggered.connect(partial(self._edit_job_options, job_id))
-        # `popup`, not `exec`: `_row_menu` gives the reason — `exec` starts a nested event loop a
-        # test cannot leave, so an `exec`'d menu is a route with unreachable actions.
-        menu.popup(QCursor.pos())
-        return menu
+        return True
 
     def _edit_job_options(self, job_id: str) -> None:
         """`REQ-010`'s options for one queued download (`T-315`).
@@ -1149,10 +1172,19 @@ class MainWindow(QMainWindow):
         than two that drift". There is one tab since `T-169`/`T-170`; the argument survives it,
         because what it prevents is a **second** caller drifting from this one — `T-186`.)*
         """
-        if not offered:
-            return None
         menu = QMenu(view)
         menu.setObjectName("rowVerbsMenu")
+        # **This download's own commands, above the line's** (`T315-R1`, and it is the staging
+        # list's own order — `UX-011`'s *Just this item* section sits above the entries the menu
+        # already held). This route is reached by right-click, the Menu key and Shift+F10, so it
+        # is the **only** keyboard route to the item commands: the `⋮` that opens them for a
+        # pointer is a painted affordance with no accessibility node.
+        has_item_commands = self._add_item_commands(menu, row_id)
+        if has_item_commands and offered:
+            menu.addSeparator()
+        if not offered and not has_item_commands:
+            menu.deleteLater()
+            return None
         for verb in offered:
             action = menu.addAction(LABELS[verb])
             action.setObjectName(f"rowVerb_{verb.value}")

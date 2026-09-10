@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 
 from tracks_and_trails import __version__
 from tracks_and_trails.core import presets
+from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, FormatInfo, Job, MediaInfo
 from tracks_and_trails.core.paths import APP_SLUG
@@ -41,8 +42,10 @@ from tracks_and_trails.ui.main_window import (
     CLEAR_FINISHED_SHORTCUT,
     COULD_NOT_READ,
     DEFAULT_SIZE,
+    NO_FORMATS,
     QUIT_SHORTCUT_FALLBACK,
     RUN_SHORTCUT,
+    STARTED_MEANWHILE,
     TOOLBAR_SPACER_PROPERTY,
     YTDLP_DISPLAY_NAME,
     MainWindow,
@@ -1689,7 +1692,10 @@ def test_the_chosen_formats_compose_over_the_request_the_job_already_has(
     record = _intercept(window)
 
     window._choose_job_formats("a")
-    window._on_formats_read(
+    # **Delivered on the manager's own signal** (`T315-R4`). Calling the slot would prove the slot
+    # works and say nothing about whether anything is connected to it — which is the half of
+    # `T-315` that a reviewer had to check by hand.
+    _manager_of(window).media_probed.emit(
         "probe-1", MediaInfo(url=request.url, title="A clip", formats=_formats())
     )
     qapp.processEvents()
@@ -1723,7 +1729,8 @@ def test_a_failed_re_read_says_so_and_leaves_the_download_alone(qapp: QApplicati
     record = _intercept(window)
 
     window._choose_job_formats("a")
-    window._on_formats_unread("probe-1", None, "HTTP Error 403: Forbidden")
+    # Through the manager, for `T315-R4`'s reason: the connection is part of the claim.
+    _manager_of(window).job_failed.emit("probe-1", ErrorKind.NETWORK, "HTTP Error 403: Forbidden")
 
     said = window.statusBar().currentMessage()
     assert COULD_NOT_READ in said, said
@@ -1741,7 +1748,8 @@ def test_a_probe_this_window_did_not_start_is_ignored(qapp: QApplication) -> Non
     window = _window_over([_job("a", 0)])
     record = _intercept(window)
 
-    window._on_formats_read("someone-elses", MediaInfo(url="x", title="x", formats=_formats()))
+    manager = _manager_of(window)
+    manager.media_probed.emit("someone-elses", MediaInfo(url="x", title="x", formats=_formats()))
     qapp.processEvents()
     assert window.findChild(FormatDialog) is None, "a table opened for somebody else's probe"
 
@@ -1749,7 +1757,7 @@ def test_a_probe_this_window_did_not_start_is_ignored(qapp: QApplication) -> Non
     # queue jobs — every failed download in the application arrives here. Reporting one as a
     # failed re-read would put the wrong words in the status bar for something the user *was*
     # told about properly elsewhere.
-    window._on_formats_unread("job-that-really-failed", None, "HTTP Error 500")
+    manager.job_failed.emit("job-that-really-failed", ErrorKind.NETWORK, "HTTP Error 500")
     assert COULD_NOT_READ not in window.statusBar().currentMessage(), (
         "a download's own failure was reported as a failed re-read"
     )
@@ -1792,3 +1800,51 @@ def test_accepting_the_options_editor_unchanged_changes_nothing(qapp: QApplicati
     assert presets.format_choice_of(kept) == presets.format_choice_of(request), (
         "accepting the options editor without changing anything changed the download"
     )
+
+
+def test_a_re_read_that_finds_no_formats_says_so_and_opens_nothing(qapp: QApplication) -> None:
+    """`T315-R4`: one of the two endings no committed test exercised.
+
+    A URL that still reads but offers nothing to choose from is an ordinary outcome — a video made
+    private, a live stream that ended. Opening an empty table would be `UX-005` §5's defect; saying
+    nothing would leave a menu entry that appears to do nothing at all.
+    """
+    window = _window_over([_job("a", 0)])
+    record = _intercept(window)
+
+    window._choose_job_formats("a")
+    _manager_of(window).media_probed.emit("probe-1", MediaInfo(url="x", title="x", formats=()))
+    qapp.processEvents()
+
+    assert window.findChild(FormatDialog) is None, "an empty format table opened"
+    assert NO_FORMATS in window.statusBar().currentMessage()
+    assert record.written == [], "a read that found nothing still rewrote the download"
+    assert record.unstaged == ["probe-1"], "the probe was left staged"
+
+
+def test_a_download_that_starts_while_being_read_is_not_retargeted(qapp: QApplication) -> None:
+    """`T315-R4`: the other ending, and the one with a real race behind it.
+
+    The re-read takes a second or two, and the queue is running throughout. A job that starts in
+    that window is past `Job.RETARGETABLE`, so opening the table would offer a choice `retarget`
+    would refuse — and the user would believe the format changed.
+    """
+    jobs = [_job("a", 0)]
+    window = _window_over(jobs)
+    record = _intercept(window)
+
+    window._choose_job_formats("a")
+    # **The job starts while the URL is being read**, through the list the window reads and the
+    # refresh the window itself calls after a write — rather than by reaching into the model, which
+    # would be this test arranging the state instead of reaching it.
+    jobs[0] = _job("a", 0, status=JobStatus.RUNNING)
+    window.refresh_queue()
+
+    _manager_of(window).media_probed.emit(
+        "probe-1", MediaInfo(url="x", title="x", formats=_formats())
+    )
+    qapp.processEvents()
+
+    assert window.findChild(FormatDialog) is None, "a table opened for a download already running"
+    assert STARTED_MEANWHILE in window.statusBar().currentMessage()
+    assert record.written == [], "a running download was retargeted"
