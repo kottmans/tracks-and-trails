@@ -62,6 +62,22 @@ clean sheet.
 alone with a note saying the product diverges and why — changing it would falsify the record of the
 ruling.
 
+#### Corrections — round 2, 2026-09-10
+
+The focused re-review verified every code correction: `R1`, `R3`, `R4`, `R5`, `R6` and `R7`
+**resolved**, each with a guard that fails under the old behaviour. `R8` and `R9` were completion
+cleanup and are done — `T-311`'s recommendation no longer rests on the claim its own correction
+withdrew, the "nothing is ever hidden" wording names the two exceptions, and
+`tools/format_panel_fit_probe.py` no longer calls a standalone panel *mounted* (the reviewer showed
+that disabling `_widen_for` left that tool reporting a clean sheet while all nine mounted-fit tests
+failed).
+
+`R2`'s **code** was verified too; what remained was an acceptance boundary the maintainer had to
+rule on, because restoring a required field had made an unqualified criterion unmeetable on a
+1366px screen. **Ruled 2026-09-10: accept the bounded criterion**, recorded above with the
+measurements that bound it and with the declined alternative kept as a mockup. Nothing about the
+implementation changed for it.
+
 #### The defect, and its single cause
 
 Three different kinds of thing shared one grid, and everything else followed from that.
@@ -125,8 +141,28 @@ than growing a second answer to the same question.
 - The grouping holds under every column sort, ascending and descending.
 - The sound list states the reason in its own place when the source offers no audio half.
 - `AddUrlDialog` opens wide enough that no column truncates and no list scrolls sideways at the
-  **10pt** control font, not merely at this machine's 9pt — measured, with the measurement
-  committed as a tool, the way `tools/dialog_width_floor_probe.py` already does it.
+  **10pt** control font, not merely at this machine's 9pt — **whenever the screen can accommodate
+  the width the panel asks for** — measured, with the measurement committed as a tool, the way
+  `tools/dialog_width_floor_probe.py` already does it.
+
+  > **[T]** **Bounded by the screen, ruled by the maintainer on 2026-09-10** (`T310-R2`): *"just do
+  > A for now."* The clause was unqualified when it was written, and `T310-R1` then made it
+  > unmeetable on a common display: restoring the `Notes` field `REQ-003` requires took the derived
+  > capture from about 1100px to **1506px** at 10pt, so a 1366px laptop cannot show every column
+  > and scrolls to reach `Notes` and `ID`.
+  >
+  > **What is accepted is narrow.** The reviewer's 360-case sweep — three captures, both palettes,
+  > four font sizes, five screen capacities, three heights — found **zero** cases scrolling while
+  > room remained to widen, and **176** that reached the screen cap and scrolled anyway. This
+  > clause now promises the first and admits the second. It is not a licence for the panel to ask
+  > for more width than it needs: a case that scrolls *with room to spare* is still a defect, and
+  > that is the half the committed tests and `tools/format_panel_fit_probe.py` measure.
+  >
+  > **The alternative is built and declined rather than unexamined.** `tools/narrow_layout_mockup.py`
+  > renders option `C` — the lists stacked below one another when the screen is narrow — which fits
+  > 1366px with every column at full width and nothing scrolling. Its cost is measured there too:
+  > about **three** rows visible per list against nine, in a 420px panel. The maintainer took the
+  > horizontal scroll over the row count *for now*, which leaves `C` as the answer if this bites.
 - The dialog still narrows to 320px, which `tests/ui/test_add_dialog.py` asserts today.
 - `docs/UX_SPEC.md` §4 and §5 record the ruling with the maintainer's authority.
 
