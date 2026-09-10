@@ -627,6 +627,15 @@ class SideBySideVariant(SplitVariant):
         layout.addLayout(row)
 
     def after_sync(self) -> None:
+        """**The product does not do this any more** (`T310-R3`), and the mockup is left as it was.
+
+        `N` was approved with the sound list dimmed once a complete format is taken, and that is
+        what the maintainer ruled on — so changing it here would falsify the record of what was
+        agreed. The implementation diverges deliberately: `choose` accepts an audio-only row as a
+        *replacement* for a whole one, and disabling the control put that supported transition out
+        of reach while claiming *"that video already has sound"* about formats nothing was said
+        about. Read this line as the mockup's, not the product's.
+        """
         complete = self.outcome.whole is not None
         self.audio.set_dimmed(complete, "That video already has sound")
 

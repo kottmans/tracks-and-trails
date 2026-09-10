@@ -307,9 +307,10 @@ mode is what refused the formats already carrying both streams (§5).
   surface that replaced the mode `P-13` was written about. `ui/format_selection.py` records that
   *"most formats from most sources are `UNKNOWN`"*, so this is the ordinary case on archive.org and
   PeerTube, not an edge. **Absent ffmpeg is not this case** and does not remove the list — see §5.
-- **[T]** **Every format the probe returned appears in exactly one list**, including one nothing
-  was said about. A format that vanishes because it could not be classified would be this surface
-  failing `REQ-003` quietly.
+- **[T]** **Every format the probe returned appears in exactly one list — with the two exceptions
+  ruled below and no others.** One nothing was said about is *not* an exception: it goes in the
+  video list. A format that vanishes because it could not be classified would be this surface
+  failing `REQ-003` quietly, which is the failure this clause exists to forbid.
 
 **[T]** **Columns run decision, then compatibility, then provenance.** `Quality` leads *every*
 list, so the eye reads down one left edge rather than a different first column per list; `Size`
@@ -349,11 +350,33 @@ are the path for everyone else. `T-306`'s tool tip keeps the raw identifier reac
 | `Tab` | Moves between the header row, the table body and the buttons |
 | `↑` `↓` | Move the current format |
 | `Space` on a header | Sorts by that column; again reverses |
-| `Enter` | Chooses the current format and closes |
+| `Enter` | Chooses the current format. **Does not close** — see below |
 | `Esc` | Closes, choosing nothing |
 
 The table opens with a **current row** already set, because a declared keyboard route that needs a
 click first is not one (`T-152`).
+
+**[T]** **Choosing never closes the panel** *(amended 2026-09-09 by `T-310`; this row read "chooses
+the current format and closes")*. That was written for a single grid where one press ended the
+interaction. With two lists a choice is rarely the last thing a person wants to do, and closing on
+it takes the surface away mid-task — most sharply on the second half of a pair, where the panel
+vanished the instant the audio row was taken. *Ruled by the maintainer from the built window: "the
+user should have to say 'Done' or 'Apply' before that happens."* Closing is only ever asked for:
+`Done`, the disclosure triangle, or `Esc`. Nothing is lost by staying open — the choice is written
+to the row as it is made, and `Esc` still undoes it.
+
+**[T]** **Two kinds of entry are not listed at all** *(2026-09-09, `T-310`)*, and both are the
+maintainer's ruling from the built window rather than a filter `P-14` would refuse:
+
+- **An entry carrying neither stream** — yt-dlp wrote `vcodec: 'none'` **and** `acodec: 'none'`,
+  so it is a storyboard or a thumbnail sheet rather than a format. *"If you can't select them, why
+  are they even there?"* **[D]** Read from the explicit denial, never from `kind_of`'s `UNKNOWN`:
+  that state also means *nothing was said*, which is what archive.org and PeerTube report for
+  everything they publish, and refusing on the kind would empty this surface on those sites.
+- **A row with nothing to choose it by** — no codec, no bitrate and no size, so every column that
+  could tell it apart reads *Unknown*. *"To the typical user those are just noise and additional
+  clutter."* **[D]** Kept when they are all a list has: a real HLS audio rendition arrives with no
+  codec named, and on a source served entirely over HLS those rows are the only sound there is.
 
 ### Deliberately not offered
 

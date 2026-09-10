@@ -1208,7 +1208,12 @@ class StagingModel(QAbstractListModel):
             # selector, so two rows can share one without either being the other's.
             self.dataChanged.emit(index, index)
             return True
+        # **The stored selection goes with the preset it belonged to** (`T310-R4`'s audit). Naming
+        # a preset here replaces whatever the row was going to download, so a `format_selection`
+        # left over from the format panel would outlive the selector it produced and keep
+        # answering `REQ-024`'s *"was a merge chosen?"* about a choice that is gone.
         row.preset = next((preset for preset in self._dialog.presets if preset.name == name), None)
+        row.format_selection = None
         self.dataChanged.emit(index, index)
         self._dialog.refresh()
         return True
@@ -1763,6 +1768,15 @@ class AddUrlDialog(QDialog):
         # widget over. The floor makes both cases the same answer: show the panel's controls.
         return max(self._panel.minimumSizeHint().height(), min(wanted, available))
 
+    #: How many times `_widen_for` may re-measure before giving up (`T310-R2`).
+    #:
+    #: **It is a loop because the answer changes when it is acted on.** Widening the dialog makes
+    #: the staging list taller, which can take its vertical scrollbar away — so the chrome outside
+    #: the viewport is *not* the same width after the resize as it was before, and a single pass
+    #: computed from the narrow dialog left the panel six pixels short of its own stated hint. Two
+    #: passes converge; three is headroom, and the loop exits as soon as nothing more is wanted.
+    WIDEN_PASSES: Final = 3
+
     def _widen_for(self, panel: RowPanel) -> None:
         """Grow the dialog if the panel needs more width than it has (`T-310`).
 
@@ -1784,17 +1798,26 @@ class AddUrlDialog(QDialog):
         # rather than modelled. A constant here would have to account for the dialog's margins, the
         # list's frame, its scrollbar and the row panel's own layout — four numbers that change
         # with the style and the font, which is the kind of promise `T118-R15` records this project
-        # breaking. The difference between the dialog and its viewport *is* that total, and asking
-        # for it costs nothing.
-        outside = self.width() - self._list.viewport().width()
-        wanted = panel.sizeHint().width() + outside + PANEL_VIEWPORT_MARGIN
-        if wanted <= self.width():
-            return
-        screen = self.screen()
-        if screen is not None:
-            wanted = min(wanted, screen.availableGeometry().width())
-        if wanted > self.width():
+        # breaking. The difference between the dialog and its viewport *is* that total.
+        #
+        # **Measured again after each resize** (`T310-R2`). That difference is not a constant of the
+        # dialog: widening it can remove the list's vertical scrollbar, so the chrome shrinks and
+        # the figure computed from the narrow window is wrong by exactly that much. Measured on the
+        # reviewer's own case — `outside` was 48px before the resize and 62px after, and the panel
+        # arrived six pixels short of the width it had asked for, which is a horizontal scrollbar.
+        for _ in range(self.WIDEN_PASSES):
+            outside = self.width() - self._list.viewport().width()
+            wanted = panel.sizeHint().width() + outside + PANEL_VIEWPORT_MARGIN
+            wanted = min(wanted, self.screen().availableGeometry().width())
+            if wanted <= self.width():
+                return
             self.resize(wanted, self.height())
+            # **Force the layout rather than wait for the event loop.** The next measurement is
+            # taken immediately, and an un-activated layout would answer with the geometry the
+            # dialog had before the resize — which is the loop reading its own stale input.
+            layout = self.layout()
+            if layout is not None:
+                layout.activate()
 
     @property
     def expanded_row(self) -> Row | None:
@@ -1816,9 +1839,26 @@ class AddUrlDialog(QDialog):
             panel.table.selection_refused.connect(self._show_message)
             return panel
 
-        # `Esc` puts the row's earlier format back, which is what *"choosing nothing"* means.
-        before = row.preset if isinstance(row.preset, Preset) else None
-        self._open_panel(row, build, kind=FormatPanel, undo=lambda: setattr(row, "preset", before))
+        # **`Esc` puts back *both* halves of the row's earlier format choice** (`T310-R4`).
+        #
+        # `_on_selection_changed` writes two fields — the preset that carries the selector, and
+        # `row.format_selection`, the *decision* `REQ-024`'s ffmpeg gate reads. This restored only
+        # the first, so abandoning a pair left the decision behind: the reviewer opened the panel
+        # without ffmpeg, chose `137` and `140`, pressed `Esc`, and *Add* then submitted no job and
+        # reported that merging needs ffmpeg — for a row whose preset `Esc` had correctly returned
+        # to `None`. A refusal about a choice the user had just abandoned.
+        #
+        # **`T-310` is what made it reachable.** A finished pair used to close the panel itself, so
+        # there was no open panel left to press `Esc` on; now the panel stays open and the route
+        # exists. The two fields are one fact and are restored as one.
+        before_preset = row.preset if isinstance(row.preset, Preset) else None
+        before_selection = row.format_selection
+
+        def restore() -> None:
+            row.preset = before_preset
+            row.format_selection = before_selection
+
+        self._open_panel(row, build, kind=FormatPanel, undo=restore)
 
     def open_playlist_picker(self, row: Row) -> None:
         """Open `row` into its playlist's entries (`REQ-004`, `docs/UX_SPEC.md` §7, `T-110`).
@@ -2008,7 +2048,6 @@ class AddUrlDialog(QDialog):
         panel = build()
         panel.closed.connect(self._on_panel_closed)
         self._panel = panel
-        self._widen_for(panel)
 
         # **Uniform sizes is a promise this row breaks** (`T118-R10`). The list sets it because a
         # paste is unbounded and measuring every row costs; one open row makes the sizes genuinely
@@ -2064,6 +2103,17 @@ class AddUrlDialog(QDialog):
         # Scrolling first costs nothing: the scroll is computed from the *row's* size hint, which
         # the `dataChanged` above has already made true, and not from the widget's geometry.
         self._list.scrollTo(index, QAbstractItemView.ScrollHint.EnsureVisible)
+        panel.setGeometry(self._list.visualRect(index))
+
+        # **Widened last, and that ordering is the whole of `T310-R2`'s second boundary.** The
+        # measurement depends on whether the staging list is showing a vertical scrollbar; the
+        # scrollbar depends on the row's height; and the row is only this tall once the panel is on
+        # it with its geometry set. Asked at `_open_panel`, or even at the top of this method, the
+        # figure came from a list whose tallest row was still closed — the loop then converged
+        # immediately on a stale `outside` of 48px where the settled value was 62, and the panel
+        # arrived six pixels short of its own hint, which is a horizontal scrollbar on a table that
+        # had asked for exactly enough.
+        self._widen_for(panel)
         panel.setGeometry(self._list.visualRect(index))
         for earlier, later in pairwise(panel.focus_chain()):
             self.setTabOrder(earlier, later)
@@ -2236,20 +2286,22 @@ class AddUrlDialog(QDialog):
         return QModelIndex()
 
     def _on_format_chosen(self, _chosen: object) -> None:
-        """A row was taken into the selection. Close once the selection names a download.
+        """A row was taken into the selection. **The panel does not close** (`T-310`).
 
-        `docs/UX_SPEC.md` §4: *"`Enter` chooses the current format and closes"*. In **one format**
-        mode that is the first press, exactly as written. In **video + audio** it cannot be, because
-        one press has filled one slot — so the rule is *closes when the selection is complete*,
-        which is the same sentence for the mode the spec was describing.
+        *Ruled by the maintainer on 2026-09-09 from the built window: "double clicking on both
+        selections will also close the window, and I don't think that should happen. The user
+        should have to say 'Done' or 'Apply' before that happens."*
+
+        **This supersedes `docs/UX_SPEC.md` §4's "chooses the current format and closes".** That
+        sentence was written for a single grid where one press ended the interaction; with two
+        lists a choice is rarely the last thing a person wants to do, and closing on it takes the
+        surface away mid-task — most sharply on the second half of a pair, where the panel vanished
+        the instant the audio row was taken and there was no way back without reopening.
+
+        Closing is now only ever asked for: *Done*, the disclosure triangle, or `Esc`. The choice
+        is written to the row as it is made (`_on_selection_changed`), so nothing is lost by the
+        panel staying open, and `Esc` still undoes it.
         """
-        panel = self.open_format_panel
-        # **A half is not a finish** (`T-310`). `is_complete` says the selection names *a*
-        # download, which a lone video half now does — so closing on it alone would shut the panel
-        # the moment a user picked the picture, before they could reach the sound list beside it.
-        awaiting = panel is not None and panel.table.awaiting_other_half
-        if panel is not None and panel.table.selection.is_complete and not awaiting:
-            self.close_panel(keep=True)
 
     def _on_selection_changed(self, selection: object) -> None:
         """Write the chosen formats onto the row, as its own preset (`REQ-008`, `REQ-009`).

@@ -57,7 +57,10 @@ from tracks_and_trails.ui.format_table import (
     VIDEO_CODEC_COLUMN,
     FormatTable,
     FormatTableModel,
+    carries_nothing,
     codec_name,
+    listable,
+    says_nothing,
     sound_group,
 )
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT
@@ -1197,6 +1200,50 @@ def test_the_stated_width_is_enough_for_both_lists(
         qapp.setFont(original)
 
 
+@pytest.mark.parametrize("points", [9, 10, 11], ids=lambda size: f"{size}pt")
+def test_the_stated_height_shows_every_row(
+    qapp: QApplication, derived: tuple[FormatInfo, ...], points: int
+) -> None:
+    """`T-310`: resized to what it asks for, neither list scrolls vertically.
+
+    **The height is the same defect as the width and it shipped past the first fix.** The
+    maintainer opened the built window and found *"a ton of whitespace underneath the audio/video
+    selections, but you have to scroll to select them"* — `AddUrlDialog.panel_height_for` gives the
+    open row `min(panel.sizeHint().height(), available)`, so a view reporting Qt's fixed default
+    asked for two thirds of the room it had and the rest was drawn as empty space.
+
+    **Then the fix itself was wrong in the same shape.** `sizeHintForRow` answers the bare text
+    height — 18px — while the view *draws* rows at the vertical header's section size, 30px under
+    this application's style sheet. Sizing on the smaller number still left the panel scrolling
+    with room to spare, and read perfectly sensibly.
+
+    So the assertion is the outcome rather than the arithmetic: at the width and height the widget
+    states, every row is on screen.
+    """
+    original = qapp.font()
+    font = QFont(original)
+    font.setPointSize(points)
+    qapp.setFont(font)
+    try:
+        table = FormatTable(derived)
+        table.resize(table.sizeHint())
+        table.show()
+        qapp.processEvents()
+        try:
+            for one in table.lists():
+                view = one.view
+                over = view.verticalScrollBar().maximum()
+                assert over == 0, (
+                    f"{view.accessibleName()} scrolls vertically at the widget's own stated "
+                    f"height of {table.sizeHint().height()}px, hiding {over}px of "
+                    f"{one.model.rowCount()} rows"
+                )
+        finally:
+            table.close()
+    finally:
+        qapp.setFont(original)
+
+
 def test_the_keyboard_chooses_a_column_and_sorts_that_one(
     qapp: QApplication, derived: tuple[FormatInfo, ...]
 ) -> None:
@@ -1414,25 +1461,212 @@ def test_the_repaint_gate_would_reject_an_unbounded_implementation() -> None:
 # --- T-108: the mode, its keyboard, and what it announces (REQ-008, UX_SPEC §5) ---------------
 
 
-def test_every_format_appears_in_exactly_one_list(
-    qapp: QApplication, derived: tuple[FormatInfo, ...]
+@pytest.mark.parametrize(
+    ("fixture", "expected"),
+    [
+        # Stated by hand from each capture, **not** derived from `listable` (`T310-R7`). An oracle
+        # built from the predicate under test agrees with it by construction, including when both
+        # are wrong: the reviewer's counterexample is the row below, where the product correctly
+        # keeps sparse audio through the per-list fallback and a whole-catalogue `listable` would
+        # have dropped it — so the test would have demanded the *defect*.
+        # Nothing excluded: every entry is unclassified but states a height and a size.
+        ("archive_org_big_buck_bunny", ["0", "1", "2"]),
+        # Four complete entries plus `source`, which is unclassified and states both.
+        ("wikimedia_caminandes", ["0", "1", "2", "3", "source"]),
+        # `storyboard` is the one exclusion: `vcodec` and `acodec` both `'none'`. `hls-audio`
+        # stays — it names no codec and no size, but it does state a bitrate.
+        (
+            "derived_format_columns",
+            ["0", "1", "137", "140", "2", "h264-hd", "hls-480", "hls-audio"],
+        ),
+    ],
+)
+def test_every_format_worth_showing_appears_in_exactly_one_list(
+    qapp: QApplication, fixture: str, expected: list[str]
 ) -> None:
     """`T-310`'s first acceptance criterion, and the failure it exists to prevent.
 
-    **A format that vanishes is the defect.** Splitting one grid into two lists means each format
-    is routed somewhere, and a routing rule that covers three of `FormatKind`'s four states drops
-    every unclassified format on the floor — which `ui/format_selection.py` records as *"most
-    formats from most sources"*, not an edge case. `REQ-003` asks the table to show what the
-    source offers, and a silent omission is that requirement failing without a symptom.
+    **A format that vanishes *silently* is the defect.** Splitting one grid into two lists means
+    each format is routed somewhere, and a routing rule covering three of `FormatKind`'s four
+    states drops every unclassified format on the floor — which `ui/format_selection.py` records
+    as *"most formats from most sources"*, not an edge case.
+
+    Two exclusions are ruled and named (`docs/UX_SPEC.md` §4); anything else going missing is this
+    test's subject.
     """
-    table = FormatTable(derived)
+    formats = formats_from(fixture)
+    table = FormatTable(formats)
     try:
-        listed = [entry.format_id for panel in table.lists() for entry in panel.model.formats()]
-        assert sorted(listed) == sorted(entry.format_id for entry in derived), (
-            f"the lists show {sorted(listed)} for a probe of "
-            f"{sorted(entry.format_id for entry in derived)}"
+        listed = [entry.format_id for one in table.lists() for entry in one.model.formats()]
+        assert sorted(listed) == sorted(expected), (
+            f"{fixture} shows {sorted(listed)}, expected {sorted(expected)}"
         )
         assert len(listed) == len(set(listed)), f"a format is in both lists: {listed}"
+    finally:
+        table.close()
+
+
+def test_notes_are_reachable_from_both_live_lists(qapp: QApplication) -> None:
+    """`T310-R1`: `REQ-003` names notes and the split dropped them from the product.
+
+    **Every test of the field passed while the application lost it**, which is the shape worth
+    remembering. `FormatTableModel`'s default layout still carried `NOTES_COLUMN`, so the model
+    tests were untouched; neither *live* column set did, so `column_for` answered `-1` on both and
+    yt-dlp's own words about a format were unreachable from the running window.
+
+    Asked through `FormatTable.lists()` for that reason: the live models are the ones that were
+    wrong, and only a test that goes through them can say so.
+    """
+    video = FormatInfo(
+        "137",
+        "mp4",
+        height=1080,
+        width=1920,
+        video_codec="avc1.640028",
+        has_video=True,
+        has_audio=False,
+        note="1080p60 HDR",
+    )
+    sound = FormatInfo(
+        "140",
+        "m4a",
+        audio_codec="mp4a.40.2",
+        bitrate_kbps=129.0,
+        has_video=False,
+        has_audio=True,
+        note="Default",
+    )
+    table = FormatTable((video, sound))
+    try:
+        seen = {}
+        for one in table.lists():
+            column = one.model.column_for(NOTES_COLUMN)
+            assert column >= 0, f"the {one.view.accessibleName()} list has no Notes column"
+            for row in range(one.model.rowCount()):
+                identifier = display(one.model, row, one.model.column_for(FORMAT_COLUMN))
+                seen[identifier] = display(one.model, row, column)
+        assert seen == {"137": "1080p60 HDR", "140": "Default"}, seen
+    finally:
+        table.close()
+
+
+def test_bundled_audio_keeps_its_raw_codec_in_the_sound_cell(qapp: QApplication) -> None:
+    """`T310-R5`: the `Sound` column renders an audio codec, so it owes the raw identifier.
+
+    `T-306` ruled that a cell showing a codec *name* keeps the identifier in its tool tip, because
+    `REQ-009`'s selector syntax and every bug report are written in `mp4a.40.5` rather than in
+    `HE-AAC`. The split moved a complete format's audio codec out of the audio-codec column and
+    into the `Sound` cell, and left the rule behind — so the only row that shows it stopped
+    offering it.
+
+    **The literal is written out here rather than derived from `codec_name`.** Comparing the
+    tooltip with a function of the same input is how `T306-R2` passed while asserting nothing.
+    """
+    complete = FormatInfo(
+        "22",
+        "mp4",
+        height=720,
+        width=1280,
+        video_codec="avc1.64001F",
+        audio_codec="mp4a.40.5",
+        has_video=True,
+        has_audio=True,
+    )
+    table = FormatTable((complete,))
+    try:
+        model = table.video.model
+        sound = model.column_for(SOUND_COLUMN)
+        assert display(model, 0, sound) == "included · HE-AAC", display(model, 0, sound)
+        tip = model.data(model.index(0, sound), int(Qt.ItemDataRole.ToolTipRole))
+        assert tip == "mp4a.40.5", (
+            f"the raw identifier is not reachable from the Sound cell: {tip!r}"
+        )
+    finally:
+        table.close()
+
+
+@pytest.mark.parametrize(
+    ("entry", "expected", "why"),
+    [
+        (
+            FormatInfo("known-audio", "mp4", audio_codec="aac"),
+            False,
+            "a codec was supplied, so something is known",
+        ),
+        (
+            FormatInfo("known-video", "mp4", video_codec="h264"),
+            False,
+            "likewise for the other stream",
+        ),
+        (
+            FormatInfo("known-height", "mp4", height=720),
+            False,
+            "a resolution distinguishes it from every other height",
+        ),
+        (
+            FormatInfo("known-rate", "mp4", bitrate_kbps=128.0),
+            False,
+            "a bitrate is the sound list's own Quality column",
+        ),
+        (
+            FormatInfo("known-size", "mp4", filesize=1024),
+            False,
+            "a size is what two rows are compared on",
+        ),
+        (FormatInfo("bare", "mp4"), True, "nothing at all was reported"),
+    ],
+    ids=lambda value: value.format_id if isinstance(value, FormatInfo) else "",
+)
+def test_says_nothing_is_about_what_was_reported_not_about_the_kind(
+    entry: FormatInfo, expected: bool, why: str
+) -> None:
+    """`T310-R6`: one known field is enough to keep a row, whichever field it is.
+
+    **This branched on `kind_of` and that was the error.** It asked an `UNKNOWN` entry only about
+    its *video* codec, so a format reporting `acodec: 'aac'` and no `vcodec` answered *"nothing
+    known"* and was dropped with a codec sitting in it. `kind_of` answers `UNKNOWN` for that entry
+    precisely because nothing may be inferred about which stream it carries — which is exactly why
+    a kind-shaped question was the wrong one to ask.
+
+    The partially-known cases are parametrised one field at a time so that a predicate which
+    silently stops consulting any one of them fails on that field alone.
+    """
+    assert says_nothing(entry) is expected, why
+
+
+def test_the_fallback_is_per_list_not_per_catalogue(qapp: QApplication) -> None:
+    """`T310-R7`'s counterexample, as a test rather than as a remark.
+
+    A video format with everything known, beside audio rows with nothing known. The sound list has
+    only those sparse rows, so its fallback keeps them — a source whose only audio says nothing
+    still has to offer sound. A `listable` applied to the **whole catalogue** never reaches its
+    fallback, because the video row alone satisfies it, and would drop both audio rows.
+
+    That is why the inventory expectations above are written out by hand.
+    """
+    video = FormatInfo(
+        "137",
+        "mp4",
+        height=1080,
+        width=1920,
+        video_codec="avc1.640028",
+        filesize=80_300_000,
+        has_video=True,
+        has_audio=False,
+    )
+    sparse = (
+        FormatInfo("233", "mp4", has_video=False, has_audio=True, note="Default"),
+        FormatInfo("234", "mp4", has_video=False, has_audio=True, note="Default"),
+    )
+    assert [entry.format_id for entry in listable((video, *sparse))] == ["137"], (
+        "the whole-catalogue reading no longer differs from the per-list one, so this test's "
+        "subject has gone"
+    )
+
+    table = FormatTable((video, *sparse))
+    try:
+        listed = sorted(entry.format_id for one in table.lists() for entry in one.model.formats())
+        assert listed == ["137", "233", "234"], listed
     finally:
         table.close()
 
@@ -1465,6 +1699,132 @@ def test_an_unclassified_format_is_listed_and_choosable(qapp: QApplication) -> N
         table.close()
 
 
+def test_a_format_carrying_neither_stream_is_not_listed(qapp: QApplication) -> None:
+    """`T-310`, ruled from the built window: *"if you can't select them, why are they even there?"*
+
+    YouTube publishes `mhtml` storyboards with `vcodec: 'none'` **and** `acodec: 'none'` — the
+    extractor stating the entry carries no media at all. An earlier revision listed them greyed and
+    unselectable; the maintainer's question is the better answer, and taking it removed a `flags()`
+    override, a word in the `Sound` column and a muted-ink branch that existed only to explain a
+    row nobody wanted.
+    """
+    real = FormatInfo(
+        "137",
+        "mp4",
+        height=1080,
+        width=1920,
+        video_codec="avc1.640028",
+        has_video=True,
+        has_audio=False,
+    )
+    board = FormatInfo(
+        "sb0",
+        "mhtml",
+        height=45,
+        width=80,
+        fps=0.5,
+        note="storyboard",
+        has_video=False,
+        has_audio=False,
+    )
+    assert carries_nothing(board) and not carries_nothing(real)
+
+    table = FormatTable((real, board))
+    try:
+        listed = [entry.format_id for one in table.lists() for entry in one.model.formats()]
+        assert listed == ["137"], f"the storyboard is still on screen: {listed}"
+    finally:
+        table.close()
+
+
+def test_a_row_with_nothing_to_choose_it_by_is_not_listed(qapp: QApplication) -> None:
+    """`T-310`: *"to the typical user those are just noise and additional clutter in the list."*
+
+    YouTube's `233` and `234` are real HLS audio renditions with no codec, no bitrate and no size,
+    so the row reads `Unknown · Unknown · Unknown` and there is nothing on it to prefer it by.
+    """
+    named = FormatInfo(
+        "140",
+        "m4a",
+        audio_codec="mp4a.40.2",
+        bitrate_kbps=129.0,
+        filesize=2_500_000,
+        has_video=False,
+        has_audio=True,
+    )
+    bare = FormatInfo("233", "mp4", has_video=False, has_audio=True, note="Default")
+    assert says_nothing(bare) and not says_nothing(named)
+
+    table = FormatTable((named, bare))
+    try:
+        assert table.audio is not None
+        listed = [entry.format_id for entry in table.audio.model.formats()]
+        assert listed == ["140"], f"the unlabelled rendition is still on screen: {listed}"
+    finally:
+        table.close()
+
+
+def test_unlabelled_rows_stay_when_they_are_all_there_is(qapp: QApplication) -> None:
+    """The guard on `says_nothing`, and it is the half that keeps HLS-only sources working.
+
+    **`FormatInfo.is_audio_only` records why**: a real `EXT-X-MEDIA:TYPE=AUDIO` rendition arrives
+    with *no codec named at all*, because the codec list lives on the variant rather than on the
+    group. On a source served entirely over HLS those rows are the only audio there is, and
+    dropping them would leave a user with a picture and no way to get sound.
+
+    Noise is only noise beside signal. With nothing better to show, the bare rows stay.
+    """
+    bare = (
+        FormatInfo("233", "mp4", has_video=False, has_audio=True, note="Default"),
+        FormatInfo("234", "mp4", has_video=False, has_audio=True, note="Default"),
+    )
+    video = FormatInfo(
+        "137",
+        "mp4",
+        height=1080,
+        width=1920,
+        video_codec="avc1.640028",
+        has_video=True,
+        has_audio=False,
+    )
+    table = FormatTable((video, *bare))
+    try:
+        assert table.audio is not None, (
+            "every audio row said nothing and the whole list was dropped, so this source offers "
+            "a picture and no way to get sound"
+        )
+        listed = [entry.format_id for entry in table.audio.model.formats()]
+        assert sorted(listed) == ["233", "234"], listed
+    finally:
+        table.close()
+
+
+def test_a_format_nobody_classified_is_still_choosable(qapp: QApplication) -> None:
+    """The other side of `carries_nothing`, and the reason it is not `kind_of(...) is UNKNOWN`.
+
+    **`False` and `None` are different answers and conflating them empties archive.org.**
+    `kind_of` returns `UNKNOWN` both for *yt-dlp denied both streams* and for *yt-dlp said
+    nothing*, and `ui/format_selection.py` records that the second is *"most formats from most
+    sources"* — archive.org and PeerTube name no codecs for anything they publish. Refusing on the
+    kind rather than on the denial would have made this surface useless on those sites, and it
+    would have looked exactly as reasonable in the source.
+    """
+    silent = FormatInfo("0", "ogv", height=300, width=533, note="derivative")
+    assert kind_of(silent) is FormatKind.UNKNOWN, "this fixture no longer exercises the case"
+    assert not carries_nothing(silent), "nothing was said; nothing was denied"
+
+    table = FormatTable((silent,))
+    try:
+        model = table.video.model
+        assert bool(model.index(0, 0).flags() & Qt.ItemFlag.ItemIsSelectable)
+        sound = model.column_for(SOUND_COLUMN)
+        assert display(model, 0, sound) == SOUND_NOT_STATED
+        table.choose_current()
+        assert table.selection.is_complete, "an unclassified format named no download"
+    finally:
+        table.close()
+
+
 def test_no_choice_is_ever_refused(qapp: QApplication, derived: tuple[FormatInfo, ...]) -> None:
     """`T-310`: the mode is gone and so is the refusal it required.
 
@@ -1489,6 +1849,61 @@ def test_no_choice_is_ever_refused(qapp: QApplication, derived: tuple[FormatInfo
                 f"choosing {chosen.format_id} ({kind_of(chosen)}) named no download"
             )
         assert refusals == [], f"something was refused: {refusals}"
+    finally:
+        table.close()
+
+
+@pytest.mark.parametrize("first", ["complete", "unclassified"])
+def test_sound_can_replace_a_whole_format_through_its_own_button(
+    qapp: QApplication, first: str
+) -> None:
+    """`T310-R3`: a supported transition was put out of reach by a disabled control.
+
+    Choosing a format that already carries sound used to disable the sound list, on the reasoning
+    that such a format leaves it nothing to **add**. True — and irrelevant, because `choose` has
+    always accepted an audio-only row as a *replacement*, clearing the whole one. The control was
+    disabled for a transition the model supports.
+
+    On an unclassified entry the wording was wrong as well as the state: *"that format has sound
+    already"* is a claim about a format nothing was said about.
+
+    **Driven through the real button, not `choose`.** `table.choose(audio)` reaches past exactly
+    the control that was broken, so a test written that way passes on the defect — which is what
+    `test_no_choice_is_ever_refused` did by traversing only the video list.
+    """
+    whole = (
+        FormatInfo(
+            "22",
+            "mp4",
+            height=720,
+            width=1280,
+            video_codec="avc1.64001F",
+            audio_codec="mp4a.40.2",
+            has_video=True,
+            has_audio=True,
+        )
+        if first == "complete"
+        else FormatInfo("h264-hd", "mp4", height=1080, video_codec="h264", filesize=128_700_000)
+    )
+    audio = FormatInfo(
+        "140", "m4a", audio_codec="mp4a.40.2", bitrate_kbps=129.0, has_video=False, has_audio=True
+    )
+    table = FormatTable((whole, audio))
+    table.show()
+    qapp.processEvents()
+    try:
+        table.choose(whole)
+        assert table.selection.selector() == whole.format_id
+
+        assert table.audio is not None
+        assert table.audio.view.isEnabled(), "the sound list is disabled after a whole format"
+        assert table.audio.button.isEnabled(), "the sound button is disabled after a whole format"
+
+        QTest.mouseClick(table.audio.button, Qt.MouseButton.LeftButton)
+        qapp.processEvents()
+        assert table.selection.selector() == "140", (
+            f"clicking the sound button left the selection at {table.selection.selector()!r}"
+        )
     finally:
         table.close()
 

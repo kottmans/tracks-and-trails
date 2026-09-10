@@ -130,8 +130,6 @@ USE_SOUND: Final = "Use {format_id} for the sound"
 USE_COMPLETE: Final = "Use {format_id} — it has sound already"
 USE_UNCLASSIFIED: Final = "Use {format_id} on its own"
 
-#: Why the sound list is disabled while a format carrying both streams is chosen (`UX-005` §5).
-SOUND_ALREADY_INCLUDED: Final = "That format has sound already"
 
 #: How many rows a column samples to size itself (`T107-R6`). `ResizeToContents` otherwise asks the
 #: model for every row of every column: the repaint gate measured 44,019 model reads to paint
@@ -139,20 +137,73 @@ SOUND_ALREADY_INCLUDED: Final = "That format has sound already"
 SIZING_SAMPLE: Final = 32
 
 
+def says_nothing(entry: FormatInfo) -> bool:
+    """Every column that could tell this row apart is empty (`T-310`).
+
+    **Not the same question as `carries_nothing`.** That one asks whether yt-dlp *denied* both
+    streams; this asks whether it said anything a person could choose on. YouTube's `233` and
+    `234` are the case: real HLS audio renditions with no codec, no bitrate and no size, so the
+    row reads `Unknown · Unknown · Unknown` and offers nothing to prefer it by.
+
+    *Ruled by the maintainer on 2026-09-09 from the built window: "to the typical user those are
+    just noise and additional clutter in the list."*
+    """
+    if entry.bitrate_kbps is not None or entry.filesize is not None:
+        return False
+    # **Both codecs, whatever the kind** (`T310-R6`). This branched on `kind_of` and asked an
+    # `UNKNOWN` entry only about its *video* codec — so a format reporting `acodec: 'aac'` and no
+    # `vcodec` at all answered *"nothing known"* and was dropped, with a codec sitting right there
+    # in it. `kind_of` answers `UNKNOWN` for that entry precisely because nothing may be inferred
+    # about which stream it carries, so asking a kind-shaped question of it was the error: what
+    # matters here is whether *anything* was reported, not which half it belongs to.
+    if entry.video_codec is not None or entry.audio_codec is not None:
+        return False
+    return entry.height is None
+
+
+def listable(formats: Sequence[FormatInfo]) -> tuple[FormatInfo, ...]:
+    """`formats` with the noise removed — **unless removing it would leave nothing**.
+
+    Two exclusions, both ruled from the built window on 2026-09-09:
+
+    - `carries_nothing` — yt-dlp denied both streams, so the entry is a storyboard or a thumbnail
+      sheet. *"Remove the greyed out video selections. If you can't select them, why are they even
+      there?"* An earlier revision listed them greyed; the maintainer's question is the better
+      answer, and it removes the `flags()`, the extra word and the muted ink that listing them
+      needed.
+    - `says_nothing` — nothing on the row distinguishes it.
+
+    **The guard is what makes the second exclusion safe.** `FormatInfo.is_audio_only` records that
+    a real HLS `EXT-X-MEDIA:TYPE=AUDIO` rendition arrives with no codec named at all, and on a
+    source served entirely over HLS those rows are the *only* audio there is. Dropping them there
+    would leave a user with video and no way to get sound — so on a list where everything says
+    nothing, everything stays. Noise is only noise beside signal.
+    """
+    kept = tuple(
+        entry for entry in formats if not carries_nothing(entry) and not says_nothing(entry)
+    )
+    if kept:
+        return kept
+    return tuple(entry for entry in formats if not carries_nothing(entry))
+
+
 def video_formats(formats: Sequence[FormatInfo]) -> tuple[FormatInfo, ...]:
     """Everything the video list holds: video-only, already-complete, and unclassified.
 
-    **The complement of `audio_formats`, so between them every format the probe returned appears
-    in exactly one list.** A format that belongs to neither would vanish from a surface `REQ-003`
-    requires to show what the source offers, and vanishing silently is the failure this pair of
-    functions exists to make impossible.
+    **The complement of `audio_formats` over what `listable` keeps**, so between them every format
+    worth showing appears in exactly one list. A format that belonged to neither would vanish from
+    a surface `REQ-003` requires to show what the source offers, and vanishing *silently* is the
+    failure this pair of functions exists to make impossible — as distinct from the two deliberate
+    exclusions `listable` makes and documents.
     """
-    return tuple(entry for entry in formats if kind_of(entry) is not FormatKind.AUDIO_ONLY)
+    return listable(
+        tuple(entry for entry in formats if kind_of(entry) is not FormatKind.AUDIO_ONLY)
+    )
 
 
 def audio_formats(formats: Sequence[FormatInfo]) -> tuple[FormatInfo, ...]:
     """Everything the sound list holds: the audio halves, and nothing else."""
-    return tuple(entry for entry in formats if kind_of(entry) is FormatKind.AUDIO_ONLY)
+    return listable(tuple(entry for entry in formats if kind_of(entry) is FormatKind.AUDIO_ONLY))
 
 
 #: The `Sound` column `T-310` adds, and the reason it is not one of `REQ-003`'s eight.
@@ -167,6 +218,7 @@ SOUND_COLUMN: Final = len(COLUMN_HEADERS)
 SOUND_INCLUDED: Final = "included"
 SOUND_ADD_ONE: Final = "add one"
 SOUND_NOT_STATED: Final = "not stated"
+
 
 FORMAT_COLUMN: Final = 0
 EXT_COLUMN: Final = 1
@@ -212,6 +264,7 @@ VIDEO_LIST_COLUMNS: Final = (
     Column(VIDEO_CODEC_COLUMN, "Codec"),
     Column(BITRATE_COLUMN, "Bitrate"),
     Column(EXT_COLUMN, "File type"),
+    Column(NOTES_COLUMN, "Notes"),
     Column(FORMAT_COLUMN, "ID"),
 )
 
@@ -226,6 +279,7 @@ AUDIO_LIST_COLUMNS: Final = (
     Column(SIZE_COLUMN, "Size"),
     Column(AUDIO_CODEC_COLUMN, "Codec"),
     Column(EXT_COLUMN, "File type"),
+    Column(NOTES_COLUMN, "Notes"),
     Column(FORMAT_COLUMN, "ID"),
 )
 
@@ -456,6 +510,30 @@ def describe_quality(entry: FormatInfo) -> str:
     return f"{entry.height}p" if entry.height is not None else UNKNOWN_TEXT
 
 
+def carries_nothing(entry: FormatInfo) -> bool:
+    """yt-dlp **denied both streams**: a storyboard or a thumbnail track, not a download.
+
+    **The distinction that makes this safe is `False` against `None`** (`T-310`, from the built
+    window on 2026-09-09: *"there are unknown codecs for audio that have no data. Seems like we
+    shouldn't even allow selecting those? Similar issue with the video selections (the mhtml files
+    specifically)"*).
+
+    `kind_of` answers `UNKNOWN` for two very different situations and this separates them:
+
+    - **Both denied** — yt-dlp wrote `vcodec: 'none'` *and* `acodec: 'none'`. It is stating that
+      the entry carries no media at all. YouTube's `mhtml` storyboards are this, and so are
+      thumbnail tracks. `kind_of`'s own docstring says as much: *"a format with `'none'` for both
+      — a storyboard or a thumbnail track — is neither half"*.
+    - **Nothing said** — both keys absent. archive.org and PeerTube name no codecs for anything
+      they publish, so **every** format they offer lands here. Those are ordinary downloads and
+      refusing them would empty this surface on those sites entirely.
+
+    Only the first is refused. Reading `kind_of(entry) is UNKNOWN` instead would refuse both, and
+    the second is the commoner case by a wide margin.
+    """
+    return entry.has_video is False and entry.has_audio is False
+
+
 def sound_group(entry: FormatInfo) -> int:
     """Which band of the video list `entry` belongs to (`T-310`, `docs/UX_SPEC.md` §4).
 
@@ -648,10 +726,18 @@ class FormatTableModel(QAbstractTableModel):
             )
 
     def _raw_codec(self, entry: FormatInfo, column: int) -> str | None:
-        """The codec exactly as yt-dlp reported it, for the columns that now show a name."""
+        """The codec exactly as yt-dlp reported it, for the columns that now show a name.
+
+        **`SOUND_COLUMN` is one of them, which `T310-R5` caught.** The video list no longer shows
+        an audio-codec column at all; a complete entry's audio codec is rendered *inside* the
+        `Sound` cell as `included · HE-AAC`, and this method knew nothing about that column — so
+        the raw `mp4a.40.5` became unreachable from the only row that shows it. `UX_SPEC` §4
+        retains `T-306`'s rule that the identifier stays available, and the split moved the cell
+        without moving the rule with it.
+        """
         if column == VIDEO_CODEC_COLUMN and entry.video_codec:
             raw = entry.video_codec
-        elif column == AUDIO_CODEC_COLUMN and entry.audio_codec:
+        elif column in (AUDIO_CODEC_COLUMN, SOUND_COLUMN) and entry.audio_codec:
             raw = entry.audio_codec
         else:
             return None
@@ -973,7 +1059,7 @@ class FormatList(QWidget):
 
     # Qt's override name, hence the camelCase.
     def sizeHint(self) -> QSize:
-        """Wide enough for the columns this list actually has (`T-310`).
+        """Wide enough for the columns, and tall enough for the rows (`T-310`).
 
         **`QTableView.sizeHint()` is a fixed default and says nothing about the content.** It
         answers about 256px whatever is in the model, so a list of eight sized columns reported a
@@ -1007,7 +1093,37 @@ class FormatList(QWidget):
         # table is for. Measured at 35px short across all three font sizes without this, on a
         # widget with two lists.
         chrome = 2 * self._view.frameWidth() + self._view.verticalScrollBar().sizeHint().width()
-        return QSize(max(base.width(), columns + chrome), base.height())
+
+        # **The height is the same defect one axis over, and the maintainer found it in the built
+        # window**: *"there is a ton of whitespace underneath the audio/video selections, but you
+        # have to scroll to select them."* `AddUrlDialog.panel_height_for` gives the open row
+        # `min(panel.sizeHint().height(), available)` — so a view reporting Qt's fixed default
+        # asked for 366px of a 520px row, and the difference was drawn as empty space beneath a
+        # list that was scrolling. Asking for the rows it has lets the panel's own cap decide.
+        # **Every row, uncapped, and the cap this replaces is why.** A sixteen-row limit still
+        # left the maintainer's complaint intact — 42px of empty panel beneath a list showing
+        # fifteen of eighteen formats — because a cap bites in exactly the case the complaint is
+        # about. `panel_height_for` already clamps this to the room the staging list has, so
+        # asking for everything cannot make the row too tall; it can only stop it being too short
+        # while there is room going spare. A two-hundred-format probe asks for an absurd number
+        # and is given the viewport, which is the right answer to both.
+        rows = self._model.rowCount()
+        # **`defaultSectionSize`, not `sizeHintForRow`.** The view draws its rows at the vertical
+        # header's section size — 30px under this application's style sheet — while
+        # `sizeHintForRow` answers 18px, the bare text height with none of the sheet's padding.
+        # Sizing on the smaller number asked for two thirds of the height the rows actually take,
+        # which left the panel scrolling with room to spare and looked correct in the source.
+        row_height = max(
+            self._view.verticalHeader().defaultSectionSize(),
+            self._view.sizeHintForRow(0) if rows else 0,
+        )
+        wanted = (
+            self._view.horizontalHeader().sizeHint().height()
+            + rows * row_height
+            + 2 * self._view.frameWidth()
+        )
+        height = base.height() + max(0, wanted - self._view.sizeHint().height())
+        return QSize(max(base.width(), columns + chrome), max(base.height(), height))
 
     @property
     def view(self) -> QTableView:
@@ -1063,22 +1179,18 @@ class FormatList(QWidget):
             order = ascending
         self._view.sortByColumn(column, order)
 
-    def set_dimmed(self, dimmed: bool, reason: str = "") -> None:
-        """Greyed **with the reason on the control**, never silently inert (`UX-005` §5)."""
-        self._view.setEnabled(not dimmed)
-        self._button.setEnabled(not dimmed)
-        if dimmed and reason:
-            self._button.setText(reason)
-        else:
-            self._relabel()
-
     def _relabel(self) -> None:
         entry = self.current_format()
         self._button.setEnabled(entry is not None)
         self._button.setText(self._verb(entry) if entry is not None else NOTHING_TO_CHOOSE)
 
     def _select_first_row(self) -> None:
-        """Give the list a current row as soon as it has one (`T-152`, `docs/UX_SPEC.md` §4)."""
+        """Give the list a current row as soon as it has one (`T-152`, `docs/UX_SPEC.md` §4).
+
+        **A declared keyboard route that needs a click first is not one.** Every listed row can be
+        chosen — `listable` removes the ones that could not — so row zero is always a valid place
+        to open on.
+        """
         if self._model.rowCount():
             self._view.setCurrentIndex(self._model.index(0, 0))
 
@@ -1191,9 +1303,16 @@ class FormatTable(QWidget):
         — which is what the first three attempts at this produced, at 220px, 35px and finally 1px.
         """
         base = super().sizeHint()
-        shares = [(self._video, VIDEO_LIST_SHARE)]
-        if self._audio is not None:
-            shares.append((self._audio, AUDIO_LIST_SHARE))
+        # **Whatever occupies the second slot, not only a sound list** (`T310-R2`). When a source
+        # offers no audio half, `_build_sound_list` puts the explanation there **with the same
+        # stretch** — so the row still divides 3:2 while this counted a total of 3 and handed the
+        # video list every pixel it asked for. The video list then received three fifths of that
+        # and scrolled sideways, on exactly the sources where the panel is simplest. The share is a
+        # property of the slot, so the slot is what is asked.
+        second: QWidget | None = self._audio if self._audio is not None else self._no_audio
+        shares: list[tuple[QWidget, int]] = [(self._video, VIDEO_LIST_SHARE)]
+        if second is not None:
+            shares.append((second, AUDIO_LIST_SHARE))
         total = sum(share for _, share in shares)
         layout = self.layout()
         spacing = layout.spacing() * (len(shares) - 1) if layout is not None else 0
@@ -1286,33 +1405,6 @@ class FormatTable(QWidget):
         self._announce()
         self.format_chosen.emit(entry)
 
-    @property
-    def awaiting_other_half(self) -> bool:
-        """One half is picked and the other list could still complete the pair (`T-310`).
-
-        **The surface embedding this closes on a finished selection, and `is_complete` alone stopped
-        being able to say when that is.** Under the old mode a lone video half sat in `PAIR`, where
-        `is_complete` was false, so the panel stayed open by accident of the mode. `_compose` makes
-        a lone half `SINGLE` — which is right, because a silent video is a download — and that same
-        correction would have slammed the panel shut the instant a user picked the picture, before
-        they could reach the sound list.
-
-        So the question the panel actually needs answering is asked directly: *is there another
-        half still to come?* It is false as soon as there is nowhere to get one from, which is why
-        a source with no sound list closes on the first pick exactly as it should.
-        """
-        if self._picked_whole is not None:
-            return False
-        if self._picked_video is not None and self._picked_audio is not None:
-            return False
-        if self._picked_video is not None:
-            return self._audio is not None
-        if self._picked_audio is not None:
-            return any(
-                kind_of(entry) is FormatKind.VIDEO_ONLY for entry in self._video.model.formats()
-            )
-        return False
-
     def _compose(self) -> FormatSelection:
         """What has been picked, as a `FormatSelection`. **The mode is an outcome here.**
 
@@ -1345,11 +1437,13 @@ class FormatTable(QWidget):
             panel.set_chosen(picked)
         self._chosen.setText(f"Chosen — {described}")
         self.setAccessibleDescription(f"{self._selection.mode}. Chosen: {described}")
-        if self._audio is not None:
-            # A format that already carries sound leaves nothing for the sound list to add, and a
-            # control that silently does nothing is what `UX-005` §5 forbids — so it is disabled
-            # *with the reason on it* rather than left live and pointless.
-            self._audio.set_dimmed(self._picked_whole is not None, SOUND_ALREADY_INCLUDED)
+        # **The sound list is never disabled** (`T310-R3`). It was, whenever a whole format was
+        # chosen — on the reasoning that such a format leaves the sound list nothing to add. That
+        # is true of what the sound list would *add* and false of what it can *replace*: `choose`
+        # has always accepted an audio-only row as a new selection, clearing the whole one, and
+        # disabling the control put a supported transition out of reach. The wording made it worse
+        # on an unclassified entry, claiming *"that format has sound already"* about a format
+        # nothing was said about.
         self.selection_changed.emit(self._selection)
         refusal = merge_refusal(self._selection, ffmpeg_available=self._ffmpeg_available)
         if refusal is not None:

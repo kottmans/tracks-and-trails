@@ -1723,7 +1723,15 @@ def choose_pair_and_queue(composition: application.Composition, url: str) -> str
         panel.table.choose(kinds[kind])
         composition.app.processEvents()
 
-    assert dialog.open_panel is None, "the pair completed and the panel stayed open"
+    # **The panel stays open until it is dismissed** (`T-310`, ruled 2026-09-09: *"the user should
+    # have to say 'Done' or 'Apply' before that happens"*). This asserted the opposite until then,
+    # so the click below is the step the old behaviour performed on the user's behalf.
+    still_open = dialog.open_panel
+    assert still_open is not None, "completing the pair closed the panel on its own"
+    panel.done_button.click()
+    composition.app.processEvents()
+    closed = dialog.open_panel
+    assert closed is None, "Done left the panel open"
     dialog.add_to_queue()
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline and not dialog.queued_job_ids:

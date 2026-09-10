@@ -35,6 +35,33 @@ aren't even selectable"*.
 **Risk:** High — it replaces the widget half of a module with 44 tests of its own, and changes
 `AddUrlDialog`'s opening width
 
+#### Corrections — round 1, 2026-09-10
+
+`docs/project/reviews/T-310.md` requested changes with six blocking findings. All eight are
+addressed; dispositions are the Reviewer's.
+
+| Finding | What was wrong | What changed |
+|---|---|---|
+| `R1` **High** | `REQ-003` names notes and **neither live list carried them**. `column_for(NOTES_COLUMN)` answered `-1` on both. | `Notes` restored to both column sets, with the provenance group. Asserted through `FormatTable.lists()`, because the full-model tests passed throughout. |
+| `R2` **High** | Two width boundaries. The label standing in for an absent sound list takes that slot's stretch, which the hint counted only for a real list; and `_widen_for` measured the chrome outside the viewport **before** resizing, which changes it. | The hint asks the *slot*, not the list. `_widen_for` loops until it converges and runs at the end of `_mount_panel`, once the row's height — and so the list's scrollbar — is real. |
+| `R3` | Dimming the sound list after a whole format blocked a replacement `choose` supports, and claimed *"that format has sound already"* of an unclassified one. | The list is never disabled; `set_dimmed` and its wording are gone. Tested through the real button, since `choose` reaches past the control that was broken. |
+| `R4` | `Esc` restored the preset but not `Row.format_selection`, so an abandoned pair still answered `REQ-024`'s *"was a merge chosen?"* and `Add` refused it. | Both fields restored as one. `StagingModel.setData` clears the selection with the preset it belonged to. |
+| `R5` | The `Sound` cell renders an audio codec name, and `T-306`'s raw-identifier tool tip did not follow it there. | `_raw_codec` answers for `SOUND_COLUMN`. The literal is written out in the test rather than derived from `codec_name` — `T306-R2`'s lesson. |
+| `R6` | `says_nothing` branched on `kind_of` and asked an `UNKNOWN` entry only about its *video* codec, dropping a format with `acodec` reported. | It asks what was **reported**, not which half it belongs to. Parametrised one known field at a time. |
+| `R7` | Two inventory tests used `listable` over the whole catalogue as their oracle — the same predicate the product applies per list, so they agreed with it by construction. | Expectations read off each capture by hand. **Two of the three were wrong when first written**, which is the argument for stating them. The per-list fallback has its own test. |
+| `R8` | Prose still claimed unconditional inclusion; `awaiting_other_half` had no production caller; the `Esc` docstring described the vanished auto-close; `T-311` claimed there is no route back from a custom selection. | All four corrected. The last was also said to the maintainer in conversation and is withdrawn: the row preset editor and `StagingModel.setData` both offer one, and only their discoverability is at issue. |
+
+**`tools/format_panel_fit_probe.py` is new**, because `R2` observed that the acceptance criterion
+asks for a committed measurement and `tools/split_tables_mockup.py` measures a design comparison
+rather than the product. It reports production geometry across three captures, three font sizes and
+both palettes, and **carries a positive control**: it starves a widget to two thirds of its stated
+width and expects the scrollbars, so a probe that cannot see a failure reports that instead of a
+clean sheet.
+
+`tools/split_tables_mockup.py` still dims the sound list. That is what was approved, so it is left
+alone with a note saying the product diverges and why — changing it would falsify the record of the
+ruling.
+
 #### The defect, and its single cause
 
 Three different kinds of thing shared one grid, and everything else followed from that.
@@ -87,7 +114,10 @@ than growing a second answer to the same question.
 #### Acceptance criteria
 
 - Two lists, each with only its own columns; every format the probe returned appears in exactly
-  one of them, including unclassified ones. **A format that vanishes is the defect to test for.**
+  one of them, including unclassified ones — **except** an entry carrying neither stream and a row
+  with nothing to choose it by, both excluded by name and by ruling (`docs/UX_SPEC.md` §4). **A
+  format that vanishes for any other reason is the defect to test for**, and the test's expectation
+  must be stated independently rather than derived from the same predicate the product uses.
 - No selection is ever refused. `UnplaceableFormatError` becomes unreachable from this surface.
 - The grouping holds under every column sort, ascending and descending.
 - The sound list states the reason in its own place when the source offers no audio half.
@@ -1247,6 +1277,69 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 ---
 
 ## Proposed — Phase 4
+
+### T-311 — The batch preset control looks like it governs a row it cannot touch
+
+**Status:** Proposed — reported by the maintainer on 2026-09-09 from the built window, in the same
+session as `T-310`: *"there is a preset selection at the bottom of that screen that doesn't do
+anything."*
+**Owner:** Maintainer to rule; Implementer to build
+**Priority:** Medium — it is a control that silently does nothing, which `UX-005` §5 names as a
+defect in its own right, and it is on the screen a user reaches while choosing formats
+**Phase:** Phase 4 (accessibility and polish)
+**Depends on:** nothing. `T-310` is where it was found, not where it lives.
+**Relevant context:** `UX-004` (a row inherits the batch preset unless it has its own);
+`ui/add_dialog.py` `preset_for`, `_on_preset_changed`, `_show_selector`; `UX-005` §5
+**Affected surfaces:** `ui/add_dialog.py`'s *Download as* group
+**Risk:** Medium — every option changes what the batch control means, which `UX-004` ruled
+
+#### What happens
+
+The *Download as* combo is the **batch's** control: a row uses it unless the row carries a preset
+of its own (`UX-004`). Choosing formats in the panel writes one of its own — `row.preset =
+custom_preset(selector)` — and from then on:
+
+- `preset_for(row)` returns the row's, so changing the combo **changes nothing** for that row;
+- the combo still displays the batch preset's name, so it reads as a description of what will be
+  downloaded when it is not;
+- `_show_selector` does tell the truth underneath — *"This row · Format selector: 137+140"* — so
+  the screen contradicts itself rather than merely omitting something.
+
+With a single staged row, which is the common case, the combo is inert and looks authoritative.
+
+#### Options
+
+1. **The combo tells the truth about the row in hand.** When the current row carries its own
+   choice it shows a `Custom formats` entry, and picking a real preset from it **replaces** that
+   choice. The control becomes accurate *and* acquires an effect, and it is the way back from a
+   custom selection, which there is currently no control for at all.
+   *Cost:* the combo becomes row-aware, which narrows `UX-004`'s batch semantics.
+
+   > **Corrected 2026-09-10 by `T310-R8`.** This option was written up as *"the way back from a
+   > custom selection, which there is currently no control for at all"*, and that is false: the
+   > row's own preset editor and `StagingModel.setData` already offer both a preset and a return to
+   > the batch. What is actually wrong is their **discoverability** and the batch control's
+   > misleading presentation, which is a narrower and more honest subject. The claim was made in
+   > this file and repeated to the maintainer; it is corrected in both.
+2. **Disable it while the current row overrides**, with the reason stated where it sits.
+   *Cost:* wrong for a multi-row batch — the combo still governs every other row, so disabling it
+   takes away a working control to explain one that is not.
+3. **Leave it and strengthen the line beneath** to say the row is using formats the user chose.
+   *Cost:* cheapest and least honest — the combo still looks like the answer.
+4. **Remove it from the dialog.** Refused: `UX-004` rules the batch control, and most sessions
+   never open a format panel at all.
+
+**Recommendation: (1).** It is the only option that leaves the user a way back from a custom
+selection, and *"pick a preset and it replaces what you chose"* is what a person would expect the
+control to do. `UX-005` §6's *Download as* retarget on the queue row is the same gesture one
+surface over, so the vocabulary already exists.
+
+#### Acceptance criteria
+
+- With a row carrying its own formats, the combo and the selector line **agree**.
+- Whatever is ruled, the control either has an effect on the row it appears to describe or says
+  why it has none. A third state — displaying a preset the row is not using — is the defect.
+- A multi-row batch keeps a working batch control.
 
 ### T-301 — Four UI tests break when the application font grows by one point
 

@@ -3011,10 +3011,25 @@ def test_choosing_that_entry_opens_the_row_into_the_format_table(
         assert isinstance(row.media, MediaInfo)
         # **Both lists, because `T-310` split them** — and this is the assertion that would catch
         # a format falling between the two, which is the one way the split can lose data.
-        listed = sum(one.model.rowCount() for one in table.lists())
-        assert listed == len(row.media.formats), (
-            f"the probe returned {len(row.media.formats)} formats and the lists show {listed}"
-        )
+        #
+        # **Measured against `listable`, not against the probe.** Two kinds of entry are excluded
+        # by ruling and by name — storyboards, and rows with nothing to choose them by — so
+        # comparing with the raw probe would assert those rulings away. Anything going missing
+        # that `listable` keeps is what this is for.
+        #: Stated, not derived (`T310-R7`). `listable` over the whole catalogue is a different
+        #: function from the per-list one the product applies, so using it as the oracle would make
+        #: this agree with the predicate rather than with the capture.
+        listed = sorted(entry.format_id for one in table.lists() for entry in one.model.formats())
+        assert listed == [
+            "0",
+            "1",
+            "137",
+            "140",
+            "2",
+            "h264-hd",
+            "hls-480",
+            "hls-audio",
+        ], listed
     finally:
         dialog.close()
 
@@ -3089,7 +3104,6 @@ def test_choosing_one_format_writes_it_as_the_rows_own_request(
     # the first one proved and everything after types as unreachable.
     still_open = dialog.open_panel
     assert still_open is panel, "the panel closed before the sound half could be picked"
-    assert panel.table.awaiting_other_half
 
     panel.done_button.click()
     QApplication.processEvents()
@@ -3100,18 +3114,24 @@ def test_choosing_one_format_writes_it_as_the_rows_own_request(
     assert kept.format_selector == "137", "Done changed the choice it was meant to keep"
 
 
-def test_choosing_a_format_that_needs_nothing_further_closes_the_row(
+def test_choosing_a_format_never_closes_the_row_on_its_own(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],
     dialogs: Callable[..., AddUrlDialog],
     spin: Callable[..., bool],
 ) -> None:
-    """The other half of `awaiting_other_half` (`T-310`).
+    """`T-310`, ruled 2026-09-09: **only *Done*, the disclosure or `Esc` close the panel.**
 
-    A source publishing complete files only has no sound list, so there is no other half to wait
-    for and the first choice finishes the job. Asserted separately because the two branches of that
-    property are the whole of it, and a test that only ever saw the waiting one would pass with the
-    panel wedged permanently open.
+    **This is the inverse of the test it replaces**, and the reversal is the point. Until this
+    ruling the panel closed as soon as the selection named a download — `docs/UX_SPEC.md` §4's
+    *"chooses the current format and closes"*, written for a single grid where one press ended the
+    interaction. With two lists a choice is rarely the last thing a person wants to do, and the
+    maintainer found it in the built window: *"double clicking on both selections will also close
+    the window, and I don't think that should happen."*
+
+    Asserted on the source that has **nothing further to pick** — no sound list at all — because
+    that is the case the old behaviour was most defensible on, and the one a partial revert would
+    quietly restore.
     """
     dialog, row = _staged(dialogs, managers, spin, fixture="wikimedia_caminandes")
     control = open_row_editor(dialog, 0)
@@ -3123,9 +3143,15 @@ def test_choosing_a_format_that_needs_nothing_further_closes_the_row(
     panel.table.choose_current()
     QApplication.processEvents()
 
-    assert not panel.table.awaiting_other_half
-    assert dialog.open_panel is None, "nothing further could be picked and the row stayed open"
+    still_open = dialog.open_panel
+    assert still_open is panel, "choosing closed the panel, which the maintainer ruled against"
+    # The choice is written as it is made, so nothing is lost by staying open.
     assert isinstance(row.preset, Preset)
+
+    panel.done_button.click()
+    QApplication.processEvents()
+    closed = dialog.open_panel
+    assert closed is None, "Done left the panel open"
 
 
 def test_opening_the_format_panel_widens_the_dialog_to_fit_it(
@@ -3176,6 +3202,127 @@ def test_opening_the_format_panel_widens_the_dialog_to_fit_it(
         dialog.close()
 
 
+@pytest.mark.parametrize("points", [9, 10, 11], ids=lambda size: f"{size}pt")
+@pytest.mark.parametrize(
+    "fixture", ["derived_format_columns", "archive_org_big_buck_bunny", "wikimedia_caminandes"]
+)
+def test_the_mounted_format_panel_fits_the_dialog_it_asked_for(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+    monkeypatch: pytest.MonkeyPatch,
+    fixture: str,
+    points: int,
+) -> None:
+    """`T310-R2`: the panel must fit **once mounted**, not merely when measured alone.
+
+    **Two boundaries, and the old test crossed neither.** `test_opening_the_format_panel_widens_
+    the_dialog_to_fit_it` asserts that the dialog *grew*, which says nothing about whether the
+    columns then fit; and `test_the_stated_width_is_enough_for_both_lists` measures a bare widget,
+    which never meets the row it is placed in. The reviewer found the mounted Video list scrolling
+    sideways in all three captures while the standalone hint passed for one of them.
+
+    **The screen is substituted, and only the screen.** `_widen_for` will not make a dialog wider
+    than the display it is on — right, and on the offscreen platform the display is 800px, which
+    clamps every case and would make this test measure the plugin instead of the product.
+
+    The two sources without a sound list are here on purpose: they are the ones `T310-R2`'s first
+    boundary broke, because the explanation standing in for the list still takes the list's share.
+    """
+
+    class _Roomy:
+        def availableGeometry(self) -> QRect:  # noqa: N802 - Qt's name
+            return QRect(0, 0, 1920, 1080)
+
+    original = qapp.font()
+    font = QFont(original)
+    font.setPointSize(points)
+    qapp.setFont(font)
+    try:
+        dialog, _row = _staged(dialogs, managers, spin, fixture=fixture)
+        monkeypatch.setattr(type(dialog), "screen", lambda _self: _Roomy())
+        dialog.show()
+        qapp.processEvents()
+        try:
+            control = open_row_editor(dialog, 0)
+            choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
+            panel = dialog.open_format_panel
+            assert panel is not None
+            qapp.processEvents()
+
+            for one in panel.table.lists():
+                view = one.view
+                over = view.horizontalScrollBar().maximum()
+                assert over == 0, (
+                    f"{fixture} at {points}pt: the mounted {view.accessibleName()} list scrolls "
+                    f"sideways by {over} in a {dialog.width()}px dialog — the panel stated "
+                    f"{panel.sizeHint().width()}px and was given {panel.table.width()}px"
+                )
+        finally:
+            dialog.close()
+    finally:
+        qapp.setFont(original)
+
+
+def test_escape_puts_back_the_selection_as_well_as_the_preset(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+) -> None:
+    """`T310-R4`: abandoning a pair left the *decision* behind, and `Add` then refused it.
+
+    `_on_selection_changed` writes two fields: the preset carrying the selector, and
+    `Row.format_selection` — the statement *"the user chose a video stream and an audio stream"*,
+    which `REQ-024`'s ffmpeg gate reads instead of scanning the selector for a `+` (that scan being
+    `T-061`'s defect). `Esc` restored only the first, so the row went back to having no preset while
+    still claiming a merge had been chosen. Pressing *Add* then queued **nothing** and reported that
+    merging needs ffmpeg, about a choice the user had just abandoned.
+
+    **`T-310` is what made this reachable**: a finished pair used to close the panel itself, so
+    there was no open panel left to press `Esc` on.
+
+    Run without ffmpeg because that is the configuration where the stale decision has consequences,
+    and asserted on the resulting `Add` rather than on the field — the field is the mechanism, the
+    refusal is the harm.
+    """
+    dialog, row = _staged(dialogs, managers, spin, ffmpeg_available=False)
+    # **Each read into its own local before comparing** — the idiom this module records, because a
+    # second identity assertion about one attribute narrows it to whatever the first one proved and
+    # everything after types as unreachable.
+    assert (row.preset, row.format_selection) == (None, None)
+
+    control = open_row_editor(dialog, 0)
+    choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
+    panel = dialog.open_format_panel
+    assert panel is not None
+    for format_id in ("137", "140"):
+        take_format(panel, format_id)
+    QApplication.processEvents()
+    chosen = row.format_selection
+    assert chosen is not None, "the pair was never recorded, so this proves nothing"
+
+    QTest.keyClick(panel, Qt.Key.Key_Escape)
+    QApplication.processEvents()
+
+    closed = dialog.open_format_panel
+    assert closed is None, "Esc left the table open"
+    restored_preset = row.preset
+    restored_selection = row.format_selection
+    assert restored_preset is None, f"Esc kept the preset: {restored_preset!r}"
+    assert restored_selection is None, f"Esc kept the abandoned decision: {restored_selection!r}"
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions)), (
+        f"Add queued nothing after Esc: {text_of(dialog, 'statusMessage')!r}"
+    )
+    assert "ffmpeg" not in text_of(dialog, "statusMessage"), (
+        "a merge the user abandoned was still refused for want of ffmpeg"
+    )
+
+
 def test_a_chosen_pair_becomes_one_merging_request(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],
@@ -3200,9 +3347,13 @@ def test_a_chosen_pair_becomes_one_merging_request(
         take_format(panel, format_id)
     QApplication.processEvents()
 
-    assert dialog.open_panel is None, "the pair completed and the row stayed open"
+    # **The panel stays open** (`T-310`, ruled 2026-09-09). The choice is written as it is made;
+    # closing is only ever asked for.
+    assert dialog.open_panel is not None, "completing the pair closed the panel on its own"
     assert isinstance(row.preset, Preset)
     assert row.preset.format_selector == "137+140"
+    panel.done_button.click()
+    QApplication.processEvents()
 
     dialog.add_to_queue()
     assert spin(lambda: bool(sink.submissions))
@@ -3222,16 +3373,15 @@ def test_escape_closes_the_table_and_keeps_the_format_that_was_there_before(
     **"Nothing" has to mean the row is as it was**, not merely that the widget is gone: leaving the
     selection applied would make `Esc` a confirm with extra steps.
 
-    **Reached through the one route that leaves a written choice on an open panel.** Choosing a
-    format that needs nothing further closes the panel itself, so there would be no open panel left
-    to press `Esc` on — the first version of this test pressed it after the row had already closed
-    and passed for that reason.
+    **The panel no longer closes on a choice at all** (`T-310`, ruled 2026-09-09), so any choice
+    leaves it open and `Esc` is always reachable. That was not always so: until the ruling a
+    finished selection closed the panel itself, and the first version of this test pressed `Esc`
+    after the row had already closed — passing for that reason rather than for the right one. The
+    docstring described that vanished behaviour after the ruling reversed it (`T310-R8`).
 
-    **`T-310` kept that route and changed how it is reached.** Taking the *video* half writes `137`
-    to the row and leaves the panel open, because the sound list beside it can still complete the
-    pair (`FormatTable.awaiting_other_half`). No mode is toggled: the panel stays open because
-    there is visibly another half to pick, which is the same state the old two-step reached by
-    declaring a mode first.
+    Taking the *video* half writes `137` to the row, which is the written choice `Esc` has to undo.
+    `test_escape_puts_back_the_selection_as_well_as_the_preset` covers the other half of what `Esc`
+    restores.
     """
     dialog, row = _staged(dialogs, managers, spin)
     was = dialog.presets[2]
@@ -3242,9 +3392,6 @@ def test_escape_closes_the_table_and_keeps_the_format_that_was_there_before(
     panel = dialog.open_format_panel
     assert panel is not None
     take_format(panel, "137")
-    assert panel.table.awaiting_other_half, (
-        "the video half did not leave the pair open, so the panel will have closed itself"
-    )
     QApplication.processEvents()
     # **Each read goes into its own local before being compared.** Two identity assertions about
     # the same attribute narrow it to whatever the first one proved, and everything after the
