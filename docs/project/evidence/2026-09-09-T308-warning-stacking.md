@@ -155,3 +155,29 @@ working dialog is the stronger result, so the aim is recorded rather than correc
 **Wayland is observed for stacking only.** Its input half is still not done: `ydotool` and `wtype`
 remain absent, and Wayland gives a client no way to inject events. Closing it needs `ydotool` with
 `uinput` permissions, or a person at the keyboard.
+
+---
+
+## Fourth amendment, 2026-09-09 — the Wayland observation, by the maintainer
+
+**Reported by the maintainer**, running the application himself on his own Wayland session with a
+throwaway profile whose `[downloads] directory` names a folder that does not exist. **This is his
+observation, not a measurement taken here**, and it is recorded as such because `T308-R1` asks
+whether *a person* can see and dismiss the warning — which is a question no probe can answer.
+
+Asked the three clauses the finding names, the answer was **yes to all three**:
+
+| Clause | Wayland, as observed |
+|---|---|
+| The warning is visible above the window rather than needing to be hunted for | **yes** |
+| Clicking `OK` or pressing `Return` dismisses it | **yes** |
+| The main window responds to input afterwards | **yes** |
+
+**With the X11 results in the third amendment, `T308-R1`'s three clauses are now observed on both
+platforms** — synthetically on X11 through XTEST, and by a person on Wayland.
+
+**`ydotool` was installed and removed again during this.** Its daemon's socket is root-only at
+`/tmp/.ydotool_socket` while its client looks in `$XDG_RUNTIME_DIR`, and closing that gap means
+making an input-injection socket world-writable — a wider hole than the one being closed, on a
+machine whose repository is public. It was not done. A person pressing `Return` was the cheaper and
+better evidence, and it is the evidence the criterion actually asked for.

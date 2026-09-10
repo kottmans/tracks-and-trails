@@ -50,9 +50,14 @@ the window and then reports.
   `--onlyvisible` listing only the main window, and a real pointer click then opened `+ Add URLs`
   fully rendered. All three clauses — above its parent, dismissible, window usable afterwards —
   are observed there.
-  **Wayland's input half is not done.** `ydotool` and `wtype` are absent and Wayland gives a client
-  no way to inject events; closing it needs `ydotool` with `uinput` permissions, or a person at the
-  keyboard.
+  **Wayland was observed by the maintainer**, running it himself against a throwaway profile:
+  visible above the window, dismissed by `OK`/`Return`, window responsive afterwards — yes to all
+  three clauses. Recorded as his observation rather than a measurement, which is what a criterion
+  about what *a person* sees requires. **`T308-R1`'s clauses are therefore observed on both
+  platforms**, synthetically on X11 and by a person on Wayland.
+  `ydotool` was installed and removed again: its socket is root-only while its client looks
+  elsewhere, and bridging that means a world-writable input-injection socket on a machine whose
+  repository is public. Not done, and not needed.
 - **`T308-R2` — resolved at `10e079c`** by the reviewer.
 
 #### Correction round, 2026-09-09
