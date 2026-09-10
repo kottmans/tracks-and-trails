@@ -30,6 +30,8 @@ import logging
 import os
 import shutil
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -233,6 +235,9 @@ def child_failing_to_extract(
 
 
 # --- fixtures ---------------------------------------------------------------------------------
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.fixture
@@ -2601,6 +2606,74 @@ def test_the_settings_problem_is_a_visible_child_of_a_shown_window(
         for box in shown:
             box.close()
         QApplication.processEvents()
+
+
+def test_the_stacking_probe_cannot_reach_an_inherited_profile(tmp_path: Path) -> None:
+    """`T308-R3`: the diagnostic tool wrote to a queue outside the profile it created.
+
+    It replaced `XDG_CONFIG_HOME` and used `setdefault` for the data and cache roots, so an
+    inherited `XDG_DATA_HOME` stayed pointed at the real profile while the file claimed isolation.
+    `compose()` opens that database and runs `recover_interrupted()` before any window appears, and
+    a reviewer's canary went from `RUNNING` to `FAILED / INTERRUPTED` because of it — **exit code
+    0, no warning**.
+
+    This is the reviewer's reproduction, kept: seed a canary in an inherited profile, run the tool
+    as a child with those roots exported, and require the canary to be exactly as it was. A tool
+    that rewrites a queue is worse than no tool, so the guard is a test rather than a comment.
+    """
+    inherited = tmp_path / "inherited"
+    for child in ("config", "data", "cache"):
+        (inherited / child).mkdir(parents=True)
+    environment = {
+        **os.environ,
+        "XDG_CONFIG_HOME": str(inherited / "config"),
+        "XDG_DATA_HOME": str(inherited / "data"),
+        "XDG_CACHE_HOME": str(inherited / "cache"),
+        "QT_QPA_PLATFORM": "offscreen",
+    }
+
+    seed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; sys.path.insert(0, 'src')\n"
+            "from tracks_and_trails.persistence import db\n"
+            "from tracks_and_trails.persistence.repositories import JobRepository\n"
+            "from tracks_and_trails.core.models import DownloadRequest, Job\n"
+            "from tracks_and_trails.core.job_state import JobStatus\n"
+            "path = db.database_path()\n"
+            "print(path)\n"
+            "with db.open_database(path) as connection:\n"
+            "    request = DownloadRequest(url='https://example.invalid/v',"
+            " output_directory='/tmp', format_selector='best',"
+            " output_template='%(title)s.%(ext)s')\n"
+            "    JobRepository(connection).add(Job(id='isolation-canary',"
+            " url='https://example.invalid/v', request=request, status=JobStatus.RUNNING))\n",
+        ],
+        capture_output=True,
+        text=True,
+        env=environment,
+        cwd=REPOSITORY_ROOT,
+        check=False,
+    )
+    assert seed.returncode == 0, seed.stderr
+    canary_database = Path(seed.stdout.strip().splitlines()[-1])
+    assert canary_database.exists(), "the canary database was not created where it was expected"
+    before = canary_database.read_bytes()
+
+    probe = subprocess.run(
+        [sys.executable, "tools/t308_warning_stacking_probe.py"],
+        capture_output=True,
+        text=True,
+        env=environment,
+        cwd=REPOSITORY_ROOT,
+        check=False,
+    )
+
+    assert canary_database.read_bytes() == before, (
+        "the probe altered a database outside the profile it created — T308-R3, and the exit "
+        f"code was {probe.returncode}, which is how it went unnoticed"
+    )
 
 
 def test_present_shows_the_window_before_it_reports(

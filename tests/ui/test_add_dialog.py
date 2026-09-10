@@ -2861,8 +2861,9 @@ def test_the_chosen_summary_stays_reachable_inside_the_expanded_row(
     table is mounted as the row itself (`UX-007`'s `P-1`), so visibility is decided by the row's
     height inside the list viewport rather than by the widget's own layout.
 
-    **Reachable, not necessarily on screen at rest.** `docs/UX_SPEC.md` §5 row 5.7 promises the
-    opened panel scrolls per pixel, so a summary below the fold at a short window is the panel
+    **Reachable, not necessarily on screen at rest.** `docs/PHASE_4_CHECKLIST.md` row 5.7
+    promises the opened panel scrolls per pixel, so a summary below the fold at a short window
+    is the panel
     being taller than the list rather than a defect.
 
     **Only states in which the panel is still open are asked about, and getting that wrong filed a
@@ -2907,6 +2908,19 @@ def test_the_chosen_summary_stays_reachable_inside_the_expanded_row(
         listing = staging_list(dialog)
         viewport = listing.viewport()
         bar = listing.verticalScrollBar()
+
+        # **Requested is not realized** (`T306-R4`). Asking for 320px of height and getting 424 is
+        # the layout's minimum winning, and a check that only records what it asked for cannot say
+        # which size it actually measured. The theme is recorded with it because the sheet's
+        # padding differs between palettes and the realized height follows it.
+        realized = dialog.size()
+        applied = theme.applied().name
+        assert realized.height() >= 1, "the dialog has no height to measure"
+        print(
+            f"T306-R3 case: requested {width}x{height}, realized "
+            f"{realized.width()}x{realized.height()}, viewport {viewport.height()}px, "
+            f"theme {applied}, merging={merging}"
+        )
 
         def placed_at(value: int) -> QRect:
             bar.setValue(value)

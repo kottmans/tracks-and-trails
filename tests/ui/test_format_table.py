@@ -717,9 +717,9 @@ def test_a_codec_is_named_only_where_the_identifier_establishes_it(raw: str, sho
     These are literals, so a wrong name is a failing test.
 
     **`mp4a` is the case the batch got wrong.** It identifies MPEG-4 audio at the container level
-    and defers to the object type after it. `40.2` is AAC-LC; `69` and `6b` are MPEG audio layer
-    3; `E1` is none of the above. Classifying the first token alone reported MP3 as AAC to
-    somebody choosing a format by it.
+    and defers to the object type after it. `40.2` is AAC-LC; `69` and `6b` are MPEG audio whose
+    **layer they do not state**; `E1` is none of the above. Classifying the first token alone
+    reported MPEG audio as AAC to somebody choosing a format by it.
     """
     assert codec_name(raw) == shown
 

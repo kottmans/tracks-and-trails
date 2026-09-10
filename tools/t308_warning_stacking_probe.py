@@ -35,14 +35,34 @@ def main() -> int:
         config.mkdir(parents=True)
         missing = Path(profile) / "gone" / "nowhere"
         (config / "settings.toml").write_text(SETTINGS.format(folder=missing), encoding="utf-8")
-        os.environ["XDG_CONFIG_HOME"] = profile
-        os.environ.setdefault("XDG_DATA_HOME", profile)
-        os.environ.setdefault("XDG_CACHE_HOME", profile)
+        # **Every root, unconditionally** (`T308-R3`). These were `setdefault`, so an inherited
+        # `XDG_DATA_HOME` stayed pointed at the real profile while this file claimed isolation —
+        # and `compose()` opens that database and runs `recover_interrupted()` before any window
+        # appears. A reviewer's canary went from `RUNNING` to `FAILED / INTERRUPTED` because of
+        # this tool. A diagnostic that rewrites a queue is worse than no diagnostic.
+        for root in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"):
+            os.environ[root] = profile
 
         from PySide6.QtWidgets import QApplication, QMessageBox
 
         from tracks_and_trails import app as application
+        from tracks_and_trails.core import paths as app_paths
+        from tracks_and_trails.persistence import db
         from tracks_and_trails.ui import theme
+
+        # **Checked, not assumed** (`T308-R3`). Setting the variables is not the same as the
+        # application resolving under them: this asks the resolvers where they actually landed and
+        # refuses to compose anything if either is outside the temporary profile. The failure this
+        # exists for was silent, so this one is not.
+        resolved = {
+            "database": db.database_path(),
+            "cache root": app_paths.cache_directory(),
+        }
+        for name, resolved_path in resolved.items():
+            print(f"resolved {name}: {resolved_path}")
+            if Path(profile) not in resolved_path.parents:
+                print(f"REFUSING: the {name} resolved outside the temporary profile")
+                return 2
 
         qapp = QApplication(sys.argv[:1])
         theme.apply(qapp, theme.LIGHT)

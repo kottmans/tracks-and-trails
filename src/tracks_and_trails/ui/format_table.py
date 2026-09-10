@@ -221,7 +221,7 @@ ABSENT_TEXT: Final = "None"
 #: `T306-R1`). `avc1` is always H.264 and `av01` is always AV1, whatever profile and level follow.
 #: `mp4a` is **not** such a code and was in this table: it identifies MPEG-4 audio at the container
 #: level and defers the codec to the object type after it, so classifying every `mp4a.*` as AAC
-#: told a user selecting formats that `mp4a.69` — which is MP3 — was AAC.
+#: told a user selecting formats that `mp4a.69` — which is MPEG audio, layer unstated — was AAC.
 CODEC_FAMILIES: Final = {
     "avc1": "H.264",
     "avc3": "H.264",

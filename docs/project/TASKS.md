@@ -20,6 +20,30 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 re-review.** The problem is **carried** on `Composition`; `run()` calls `present()`, which shows
 the window and then reports.
 
+#### Correction round 2, 2026-09-09
+
+- **`T308-R3` (High, blocking) — corrected. It was a regression I introduced in the correction.**
+  The probe replaced `XDG_CONFIG_HOME` but used `setdefault` for the data and cache roots, so an
+  inherited `XDG_DATA_HOME` survived while the tool advertised isolation — and `compose()` opens
+  that database and runs `recover_interrupted()` before any window appears. A reviewer's canary
+  went `RUNNING` → `FAILED / INTERRUPTED`, **exit code 0**. It now sets all four XDG roots
+  unconditionally, resolves and prints `database_path()` and `cache_directory()`, and **refuses to
+  compose** if either lands outside the temporary profile.
+  `test_the_stacking_probe_cannot_reach_an_inherited_profile` keeps the reviewer's reproduction.
+  **Removing `setdefault` alone does not fail it — the refusal catches that first** — so the
+  mutation removes both layers, and then it does.
+  On the machine that produced the original measurements the defect did not fire: both variables
+  were unset and the real database's mtime is 2026-09-03, six days earlier. **That is luck about
+  one environment, not a property of the tool.**
+- **`T308-R1` (Medium) — still open, and it is not mine to close.** The probe activates the default
+  button through `QAbstractButton.click()`, which is a call rather than a click; it demonstrates
+  nothing about pointer or keyboard input reaching the dialog, and nothing about what a person
+  sees. Neither is available from inside the client. **The evidence record now says the "centred
+  inside its parent" claim was wrong on X11** — the window is at `(480, 211)` and the dialog at
+  `(220, 150)`, and the two coordinate spaces are not comparable — and that position relative to
+  the parent is unestablished on both platforms.
+- **`T308-R2` — resolved at `10e079c`** by the reviewer.
+
 #### Correction round, 2026-09-09
 
 - **`T308-R1` (Medium, blocking) — the required checks were run.**
@@ -264,8 +288,14 @@ decision and duplicates presets.
 - Whatever is ruled is recorded against `docs/UX_SPEC.md` §4 with the maintainer's authority, since
   §4 is the specification this changes.
 - `REQ-003`'s columns all remain reachable, and `REQ-008`'s by-ID selection still works by ID.
-- The *"Chosen"* summary is checked at the sizes `T-212` row 6 uses; the maintainer's screenshot
-  shows it at the bottom edge and whether it clips is unestablished.
+- The *"Chosen"* summary is checked inside the **expanded staging row** at named sizes and in every
+  selection state the panel stays open for, and the check **records realized dimensions and the
+  applied theme** rather than only what it requested — 960x320 requested realizes as 960x424,
+  because the layout's minimum wins.
+  *(This criterion originally read "at the sizes `T-212` row 6 uses". Section 6 of
+  `docs/PHASE_4_CHECKLIST.md` is Settings, the format table is rows 5.4, 5.6 and 5.7, and the
+  checklist names no dimensions anywhere, so it could not be executed as written. The wording was
+  the implementer's; `T306-R4` required it corrected rather than left standing.)*
 
 ### T-303 — A focused check box shifts its own text, and its ring is clipped
 
