@@ -273,12 +273,29 @@ holds presets only now. The queue row's *Download as* control (`UX-005` §6) is 
 and is not a route to the table — this clause once named both surfaces as one control, and they
 never were.*
 
-**[T]** **It opens as the staging row itself, expanded** — not as a modal dialog (`UX-007`,
-2026-08-07). *This file proposed the modal and was ruled against.* A modal opened from the add
-dialog is a modal over a modal, and the staging list is already a list of rows that open; `P-19`
-takes the same shape for the playlist picker, so the two surfaces are **one mechanism** rather than
-two. `UX-005` §2's ban on a detail pane ruled out the obvious home and left three candidates; this
-is the one that reuses something already built.
+**[T]** **It opens as a page of the add dialog, filling it, and *Done* returns to the staging
+list** *(ruled by the maintainer on 2026-09-10, `T-312`; this clause previously read "as the
+staging row itself, expanded")*.
+
+*From the built window: "there is just not enough room to display everything when it's crammed into
+the middle like this. I think it would make more sense if this particular screen filled the whole
+window, and then went back to the other window once selections were made."*
+
+**`P-1`'s argument survives its conclusion.** It refused a modal *"because a modal opened from the
+add dialog is a modal over a modal"* — and a page swap is not one: the same window shows the
+staging list or the panel, never both, so `UX-005` §2's ban on a detail pane is untouched too.
+`P-19`'s *one mechanism* also survives, and required the change to cover all three panels: the
+playlist picker (§7) and the template editor both became pages with it, because converting only
+this one would have split exactly what `P-19` exists to prevent.
+
+**[D]** **The mechanism it replaces is where this surface's layout defects came from**, which is
+the other half of the ruling. A live widget inside a `QListView` item needed its height capped to
+the list's viewport (`T-210`, `T210-R1`), its width measured through chrome that changed when
+measured (`T310-R2`), a deferred mount so Qt's open editor survived (`T108-R2`), a scroll before
+its geometry or it collapsed to nothing (`T-296`), and re-placement after every value refresh
+(`T204-R4`). A page is given the dialog's size and needs none of it. **What it does not remove is
+the dialog growing wide enough for the panel** — the panel fills the dialog, and the dialog still
+has to be wide enough to fill.
 
 ### Two lists, not one grid, ruled 2026-09-09
 
@@ -602,6 +619,12 @@ range selection, before any download starts.*
   playlist expands into entries only after a probe, which `UX-003` guarantees has happened by the
   time a row exists.
 - **[T]** *(ruled `P-19`, `UX-007`)* The picker is the **staging list's own row**, opened, rather than a separate dialog.
+
+  > **[T]** **Amended 2026-09-10 by `T-312`: it is a page of the add dialog, as §4's table is.**
+  > *"Rather than a separate dialog"* is unchanged and is the half of `P-19` that mattered — the
+  > picker is still not a second window. What changed is that a panel fills the dialog instead of a
+  > row, and `P-19`'s **one mechanism** is what carried the picker and the template editor along
+  > with the format table: converting one of the three would have split it.
   The supporting argument is that the queue and History already draw a playlist as one row that
   opens (`T-140`, `T-145`). It is **not** entailed by `UX-005` §3, whose one-anatomy rule is about
   the Queue and History tabs and says nothing about the add dialog (`T105-R3`).

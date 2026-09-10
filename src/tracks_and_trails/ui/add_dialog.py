@@ -113,6 +113,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QPlainTextEdit,
     QPushButton,
+    QStackedWidget,
     QStyle,
     QToolButton,
     QVBoxLayout,
@@ -736,11 +737,14 @@ class RowPanel(QWidget):
         super().__init__(parent)
         self.setObjectName(object_name)
         self._row = row
-        # **Opaque, because the row is still painted underneath** (`T-210`). `setIndexWidget` puts
-        # this widget over the item, but a `QWidget` paints nothing by default — so the delegate's
-        # own anatomy showed through wherever the panel had no child: the thumbnail behind the
-        # heading, and the row's *Download as* line behind the summary. Filling the background is
-        # what makes "the row, opened" look like one thing instead of two stacked.
+        # **Opaque, and it is still opaque for a reason** (`T-210`, kept by `T-312`). It was made
+        # opaque because `setIndexWidget` put it *over* the row: a `QWidget` paints nothing by
+        # default, so the delegate's own anatomy showed through wherever the panel had no child —
+        # the thumbnail behind the heading, the row's *Download as* line behind the summary. **A
+        # panel is a page now and nothing is painted beneath it**, so that specific defect cannot
+        # recur; what remains is that a page filling the dialog should carry the window's own
+        # ground rather than let whatever the stack paints show through. The three steps below are
+        # what make a style sheet reach a plain `QWidget` at all, and none of them is about rows.
         # **Three things, and it takes all three** (`T-210`). This took two attempts that changed
         # nothing on screen while passing their tests, so each is spelled out:
         #
@@ -760,12 +764,13 @@ class RowPanel(QWidget):
 
         layout = QVBoxLayout(self)
 
-        # **The way out sits at the top** (`T-210`). `setIndexWidget` covers the row's own
-        # disclosure while the panel is open, so the panel has to supply the control that closes
-        # it — and a control at the *bottom* is the first thing to fall below the fold when the
-        # panel is tall, which is exactly when a user most wants it. `Done` is still there for the
-        # keyboard order and for the reader who works downward; this is the one that is always
-        # visible, and it is drawn as the triangle it replaces.
+        # **The way out sits at the top** (`T-210`; the reason narrowed by `T-312`). It was put
+        # there because `setIndexWidget` covered the row's own disclosure and a control at the
+        # *bottom* was the first thing to fall below the fold on a tall panel. A page cannot push
+        # its own controls off — its layout compresses the body instead — so that hazard is gone;
+        # the triangle stays because it is the affordance a user has learned for *go back*, and it
+        # is where they will look for it. `Done` is still there for the keyboard order and for the
+        # reader who works downward.
         heading = QHBoxLayout()
         self._collapse = QToolButton(self)
         self._collapse.setObjectName("formatPanelCollapse")
@@ -1071,7 +1076,9 @@ class StagingModel(QAbstractListModel):
                 row.committable and not self._dialog.is_saving and isinstance(row.media, MediaInfo)
             )
         if role == FORMAT_PANEL_HEIGHT_ROLE:
-            return self._dialog.panel_height_for(row)
+            # **No row is grown for a panel now** (`T-312`): the panel is a page of the dialog, so
+            # the list keeps its ordinary row heights whether or not one is open.
+            return 0
         if role == TEMPLATE_AVAILABLE_ROLE:
             # **One condition fewer than the options editor** (`T-112`). `REQ-011`'s preview does
             # not need a probe: it renders whatever the row knows and labels what it cannot promise,
@@ -1251,7 +1258,6 @@ class StagingModel(QAbstractListModel):
                 # while the row stayed tall: **the picker and its `Done` button were clipped and
                 # the delegate's painting showed through underneath.** The structural path already
                 # remounts (below); this one only has to put the geometry back.
-                self._dialog.relayout_panel()
             return
 
         # **Commit while `_shown` is still the old tuple** (`T118-R14`). This is the whole of the
@@ -1271,7 +1277,6 @@ class StagingModel(QAbstractListModel):
         # because the row *was* the expanded one, so it could never be reopened. Remounting by row
         # identity is what makes a reset survivable; the editor above is committed rather than
         # remounted because a combo box holds no state the row does not already have.
-        self._dialog.remount_panel()
 
 
 class StatusLabel(QLabel):
@@ -1464,7 +1469,18 @@ class AddUrlDialog(QDialog):
     # --- construction -------------------------------------------------------------------
 
     def _build(self) -> None:
-        layout = QVBoxLayout(self)
+        # **Two pages in one window** (`T-312`). The staging list is one; an opened panel is the
+        # other. `P-1` refused *"a modal over a modal"* and this is not one — the same window shows
+        # one page or the other, and *Done* comes back.
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        self._pages = QStackedWidget(self)
+        self._pages.setObjectName("dialogPages")
+        outer.addWidget(self._pages)
+
+        staging = QWidget(self._pages)
+        staging.setObjectName("stagingPage")
+        layout = QVBoxLayout(staging)
 
         self._urls = QPlainTextEdit(self)
         self._urls.setObjectName("urlInput")
@@ -1543,6 +1559,14 @@ class AddUrlDialog(QDialog):
         self._buttons.addButton(self._manage_presets_button, QDialogButtonBox.ButtonRole.ResetRole)
         layout.addWidget(self._buttons)
 
+        self._pages.addWidget(staging)
+
+        self._panel_page = QWidget(self._pages)
+        self._panel_page.setObjectName("panelPage")
+        panel_layout = QVBoxLayout(self._panel_page)
+        panel_layout.setContentsMargins(0, 0, 0, 0)
+        self._pages.addWidget(self._panel_page)
+
         # `T016-R6`: applied from one list rather than at each construction site, so a label added
         # to that list is protected without anyone remembering a second call.
         for name in UNTRUSTED_TEXT_LABELS:
@@ -1570,7 +1594,6 @@ class AddUrlDialog(QDialog):
         self._list = StagingList(box, selectors=selector_candidates(self._presets))
         # A taller or shorter list changes how tall an opened row may be, so the rows are
         # re-measured and the open panel put back over the one it belongs to (`T-210`).
-        self._list.viewport_resized.connect(self._on_list_resized)
         self._list.setObjectName("stagingList")
         self._list.setAccessibleName("The URLs you pasted, and what each one is")
         self._list.setAccessibleDescription(
@@ -1739,85 +1762,6 @@ class AddUrlDialog(QDialog):
         ]
 
     # --- a row, opened (`T-108`'s `P-1` and `T-110`'s `P-19` — one mechanism) --------------
-
-    def panel_height_for(self, row: Row) -> int:
-        """How tall `row` must be drawn, because it is open. `0` when it is not.
-
-        The panel's own `sizeHint`, asked of the widget rather than assumed: a constant here would
-        be a second opinion about how tall a table is, and the first font change would make it the
-        wrong one — `T118-R15` is this project's record of exactly that promise.
-
-        **Bounded by what the list can actually show** (`T-210`). Unbounded, a playlist picker asked
-        for its summary, eight entries and a *Done* button, the row was drawn taller than the list,
-        and the bottom of it went below the fold — taking with it **the only pointer route out of
-        the panel**, since `setIndexWidget` covers the row's own disclosure. `Esc` and `←` still
-        worked, which is why nothing caught it: the keyboard was fine and the pointer had nothing.
-
-        The panel's layout absorbs the difference by compressing the entry table, which is the one
-        part of it that should give: the summary says which row this is and *Done* is the way out,
-        so neither may be the thing that shrinks. `T-193`'s cap stays the **maximum** number of
-        entries; this decides how many of them fit.
-        """
-        if row is not self._expanded or self._panel is None:
-            return 0
-        wanted = self._panel.sizeHint().height()
-        available = self._list.viewport().height() - PANEL_VIEWPORT_MARGIN
-        # **Never below the panel's own minimum.** The cap exists to keep *Done* reachable, so
-        # shrinking past the height that shows *Done* would defeat it — and a list that has not been
-        # laid out yet reports a viewport that means nothing, which is the trap `T193-R1` caught one
-        # widget over. The floor makes both cases the same answer: show the panel's controls.
-        return max(self._panel.minimumSizeHint().height(), min(wanted, available))
-
-    #: How many times `_widen_for` may re-measure before giving up (`T310-R2`).
-    #:
-    #: **It is a loop because the answer changes when it is acted on.** Widening the dialog makes
-    #: the staging list taller, which can take its vertical scrollbar away — so the chrome outside
-    #: the viewport is *not* the same width after the resize as it was before, and a single pass
-    #: computed from the narrow dialog left the panel six pixels short of its own stated hint. Two
-    #: passes converge; three is headroom, and the loop exits as soon as nothing more is wanted.
-    WIDEN_PASSES: Final = 3
-
-    def _widen_for(self, panel: RowPanel) -> None:
-        """Grow the dialog if the panel needs more width than it has (`T-310`).
-
-        **The dialog does not open this wide, and that is the point.** `T-310` put two lists side
-        by side in the format panel, and two lists need roughly 1100px at the 10pt control font
-        before a column truncates. Making *every* add-a-URL dialog that wide to serve a panel most
-        sessions never open would be paying the cost in the common case for the rare one, so the
-        dialog grows when the panel arrives and stays where the user leaves it.
-
-        **Grows only.** Shrinking back on close would move a window the user may have sized
-        deliberately, and `T-150`'s rule that the opening width is a hint rather than a floor is
-        unaffected either way — `minimumSizeHint` is untouched, so the dialog still narrows to the
-        button box exactly as `test_the_dialog_can_still_be_made_narrower_than_it_opens` asserts.
-
-        **Bounded by the screen**, because a panel is free to want more room than exists and a
-        dialog wider than the display is one whose buttons cannot be reached.
-        """
-        # **The panel's need plus whatever the dialog spends outside the list viewport**, measured
-        # rather than modelled. A constant here would have to account for the dialog's margins, the
-        # list's frame, its scrollbar and the row panel's own layout — four numbers that change
-        # with the style and the font, which is the kind of promise `T118-R15` records this project
-        # breaking. The difference between the dialog and its viewport *is* that total.
-        #
-        # **Measured again after each resize** (`T310-R2`). That difference is not a constant of the
-        # dialog: widening it can remove the list's vertical scrollbar, so the chrome shrinks and
-        # the figure computed from the narrow window is wrong by exactly that much. Measured on the
-        # reviewer's own case — `outside` was 48px before the resize and 62px after, and the panel
-        # arrived six pixels short of the width it had asked for, which is a horizontal scrollbar.
-        for _ in range(self.WIDEN_PASSES):
-            outside = self.width() - self._list.viewport().width()
-            wanted = panel.sizeHint().width() + outside + PANEL_VIEWPORT_MARGIN
-            wanted = min(wanted, self.screen().availableGeometry().width())
-            if wanted <= self.width():
-                return
-            self.resize(wanted, self.height())
-            # **Force the layout rather than wait for the event loop.** The next measurement is
-            # taken immediately, and an un-activated layout would answer with the geometry the
-            # dialog had before the resize — which is the loop reading its own stale input.
-            layout = self.layout()
-            if layout is not None:
-                layout.activate()
 
     @property
     def expanded_row(self) -> Row | None:
@@ -2053,74 +1997,56 @@ class AddUrlDialog(QDialog):
         # paste is unbounded and measuring every row costs; one open row makes the sizes genuinely
         # non-uniform, so the promise has to be withdrawn while it is open and restored after. Left
         # on, Qt draws every row at the open one's height.
-        # **Mounted on the next turn, because Qt keeps index widgets and item editors in one map**
-        # (`T108-R2`). This is reached from `StagingModel.setData`, which Qt calls from inside
-        # `commitData` while the row's combo box is still open — and `setIndexWidget` on that index
-        # *destroys the editor Qt is in the middle of using*. The delegate went on holding the dead
-        # pointer, and the next structural reset called `commitData` on it: **libshiboken: Internal
-        # C++ object already deleted.** Deferring by one turn lets the view finish closing the
-        # editor first, which is the only ordering in which both can exist.
-        QTimer.singleShot(0, self._mount_panel)
+        # **Shown on the next turn, because the control that opened it is still open** (`T108-R2`,
+        # one mechanism over). This is reached from `StagingModel.setData`, which Qt calls from
+        # inside `commitData` while the row's combo box is live.
+        QTimer.singleShot(0, self._show_panel_page)
 
-    def _mount_panel(self) -> None:
-        """Put the panel on its row, once the editor that opened it is gone (`T108-R2`)."""
-        row, panel = self._expanded, self._panel
-        if row is None or panel is None:
-            return
-        index = self._index_of(row)
-        if not index.isValid():
-            # The row went away between the choice and this turn — a retype in the same breath.
-            self.close_panel(keep=True)
-            return
-        self._list.setUniformItemSizes(False)
-        # **Re-lay the items before handing Qt the widget** (`T-108`). `QListView` caches each
-        # item's rectangle, and it sizes an index widget to the rectangle it believes in *at the
-        # moment the widget is set*. Setting first and announcing afterwards gave the panel the
-        # closed row's height — the table came out zero pixels tall inside a full-width panel, which
-        # is `T107-R2`'s collapse arriving from the mounting side rather than the widget's.
-        self._model.dataChanged.emit(index, index, [Qt.ItemDataRole.SizeHintRole])
-        self._list.setIndexWidget(index, panel)
-        # **The geometry is placed here, not left to the view's next paint** (`T-108`).
-        # `setIndexWidget` registers the widget and defers its geometry to
-        # `updateEditorGeometries`, which runs on paint — so until something repaints, the panel
-        # keeps its own minimum. Measured: **190x26 inside a row whose `visualRect` was already
-        # 485x366**, which left the table zero pixels tall. That is `T107-R2`'s collapse arriving
-        # from the mounting side, and the widget's own layout contract cannot prevent it, because
-        # the widget was never given the size.
-        #
-        # Qt keeps ownership afterwards: scrolling and resizing re-place it through the same pass.
-        # This only makes the *first* geometry true immediately rather than one paint later.
-        #
-        # **Scrolled first and given its geometry second, which is `T-296`.** The other order was
-        # here and it undid itself: `setGeometry` landed the right rectangle — measured 322 px, the
-        # height the row had just been sized to — and `scrollTo` then put the panel straight back
-        # to **26**, its unmounted minimum, because a row taller than the viewport makes the scroll
-        # a real one and the view re-places its index widget as part of it. The panel's layout then
-        # drove its children to *negative* heights, which is the "crushed" the report describes. At
-        # a window tall enough to hold the row, `scrollTo` moves nothing and the geometry survived,
-        # which is why the defect read as size-dependent rather than as an ordering.
-        #
-        # Scrolling first costs nothing: the scroll is computed from the *row's* size hint, which
-        # the `dataChanged` above has already made true, and not from the widget's geometry.
-        self._list.scrollTo(index, QAbstractItemView.ScrollHint.EnsureVisible)
-        panel.setGeometry(self._list.visualRect(index))
+    def _show_panel_page(self) -> None:
+        """Put the panel on its page and show it, once the editor that opened it has gone.
 
-        # **Widened last, and that ordering is the whole of `T310-R2`'s second boundary.** The
-        # measurement depends on whether the staging list is showing a vertical scrollbar; the
-        # scrollbar depends on the row's height; and the row is only this tall once the panel is on
-        # it with its geometry set. Asked at `_open_panel`, or even at the top of this method, the
-        # figure came from a list whose tallest row was still closed — the loop then converged
-        # immediately on a stale `outside` of 48px where the settled value was 62, and the panel
-        # arrived six pixels short of its own hint, which is a horizontal scrollbar on a table that
-        # had asked for exactly enough.
+        **The reparent is deferred too, and that is the whole of it** (`T-312`). A panel is built
+        with the staging list as its parent, so adding it to this page's layout *moves it out of
+        the list* — and doing that while Qt is inside `commitData` on the row's combo box leaves
+        the view unable to open another editor ever again: `edit_row` returns true, Qt logs *"edit:
+        editing failed"*, and no control appears. That is `T108-R2`'s defect in different clothes,
+        and an earlier attempt lost hours to it by deferring only the page switch and reparenting
+        immediately — focus changes and `RowDelegate.commit_and_close_editor` both failed to help,
+        because neither addressed the reparent.
+        """
+        panel = self._panel
+        if panel is None:
+            return
+        layout = self._panel_page.layout()
+        assert layout is not None
+        layout.addWidget(panel)
         self._widen_for(panel)
-        panel.setGeometry(self._list.visualRect(index))
-        for earlier, later in pairwise(panel.focus_chain()):
-            self.setTabOrder(earlier, later)
-        # **Focus lands where the panel says**, rather than on whatever this method knows how to
-        # reach into. That is what lets a second kind of panel exist without this one learning
-        # what it contains — `P-19`'s "one mechanism", made true rather than described.
-        panel.initial_focus().setFocus(Qt.FocusReason.OtherFocusReason)
+        self._pages.setCurrentWidget(self._panel_page)
+        panel.initial_focus().setFocus()
+
+    def _widen_for(self, panel: RowPanel) -> None:
+        """Grow the dialog if the panel needs more width than it has (`T-310`, `T-312`).
+
+        **The page did not remove this, and deleting it was over-eager.** `T-312` makes the panel
+        fill the dialog; it does not make the dialog wide. The format table asks for about 1100px
+        at the 10pt control font and the dialog opens at 666, so without this the two lists scroll
+        sideways in a window that has simply not been told to grow — which the mounted-fit tests
+        caught immediately.
+
+        **What the page did remove is the arithmetic.** The old version measured the chrome between
+        the dialog and the staging list's viewport, and that quantity *changed when it was acted
+        on*: widening the dialog could take the list's vertical scrollbar away, so a figure computed
+        from the narrow window was wrong by exactly that much and the whole thing had to iterate to
+        a fixed point (`T310-R2`, `WIDEN_PASSES`). A page has no such chrome — the stack fills the
+        dialog's content area with zero margins — so one measurement is the answer.
+
+        **Bounded by the screen**, because a panel may ask for more room than exists and a dialog
+        wider than the display is one whose buttons cannot be reached.
+        """
+        outside = self.width() - self._pages.width()
+        wanted = min(panel.sizeHint().width() + outside, self.screen().availableGeometry().width())
+        if wanted > self.width():
+            self.resize(wanted, self.height())
 
     def close_panel(self, *, keep: bool) -> None:
         """Close the open panel, keeping what was chosen or restoring what was there before.
@@ -2146,108 +2072,36 @@ class AddUrlDialog(QDialog):
             self._undo_panel()
         self._undo_panel = None
         self._commit_panel = None
+        # **Off the page and destroyed** (`T-312`). There is no `setIndexWidget(None)` to undo and
+        # no row geometry to invalidate: the two branches this replaces were both about a widget Qt
+        # owned inside a list item, including the one for a row that vanished underneath it.
+        layout = self._panel_page.layout()
+        if layout is not None:
+            layout.removeWidget(panel)
+        panel.setParent(None)
+        panel.deleteLater()
+        self._pages.setCurrentIndex(0)
+
+        # **Come back to the row that was open.** The panel *was* the row before this, so returning
+        # could not lose your place; from a page it can. This is what `_mount_panel` did on the way
+        # in, for the same reason.
         if index.isValid():
-            # `None` is how Qt is told to drop the widget, and it is what `QAbstractItemView`
-            # documents; PySide's stub declares the parameter as `QWidget`, so the cast is a
-            # narrowing of the *annotation* rather than of the behaviour.
+            # **This reaps the row's editor, and nothing else does** (`T-312`). It looks like dead
+            # teardown — no index widget is ever set any more — and removing it cost hours twice.
+            # `QAbstractItemView::indexWidget` returns the **editor** registered for an index, so
+            # setting it to `None` removes and deletes that editor. The combo box that opened this
+            # panel belongs to the list and is still registered: hiding the list does not close it,
+            # and Qt's `shouldEdit` then refuses *every* later `edit()` on that index — `edit_row`
+            # returns true, Qt logs *"edit: editing failed"*, and no row can be opened again.
+            #
+            # `RowDelegate.commit_and_close_editor` is **not** a substitute and was tried twice: it
+            # clears the delegate's own reference, not the view's registration.
             self._list.setIndexWidget(index, cast("QWidget", None))
             self._model.dataChanged.emit(index, index, [Qt.ItemDataRole.SizeHintRole])
-        else:
-            # The row went away underneath the panel — a retype, so its index is gone and Qt has
-            # already discarded the widget with the row. Nothing to unset; the panel is dropped
-            # with the reference above.
-            panel.deleteLater()
-        self._list.setUniformItemSizes(True)
-        self.refresh()
+            self._list.setCurrentIndex(index)
+            self._list.scrollTo(index, QAbstractItemView.ScrollHint.EnsureVisible)
         self._list.setFocus(Qt.FocusReason.OtherFocusReason)
-
-    def _on_list_resized(self) -> None:
-        """Re-measure the rows and re-place the open panel after the list changes height.
-
-        **Only when something is open.** A closed row's height does not depend on the viewport, so
-        a resize with nothing expanded costs one comparison.
-        """
-        if self._expanded is None or self._panel is None:
-            return
-        index = self._index_of(self._expanded)
-        if index.isValid():
-            self._model.dataChanged.emit(index, index, [Qt.ItemDataRole.SizeHintRole])
-        self.relayout_panel()
-
-    def relayout_panel(self) -> None:
-        """Put the open panel back over its row, without remounting it (`T204-R4`).
-
-        **Geometry only.** `remount_panel` exists for a *structural* reset, where Qt has forgotten
-        the widget-to-index association entirely and `setIndexWidget` must be called again. A
-        value-only `dataChanged` keeps the association and merely re-measures the row, so calling
-        `setIndexWidget` here would tear down and rebuild a live panel — and the picker holds the
-        user's half-made selection.
-
-        Silent when nothing is open, because every value refresh reaches this and most of them have
-        no panel to move.
-        """
-        row, panel = self._expanded, self._panel
-        if row is None or panel is None:
-            return
-
-        def restore() -> None:
-            # **Read after Qt has re-laid the view out, not during the emit.** `dataChanged` is
-            # delivered *before* the view re-measures, so `visualRect` still answers the old
-            # geometry — and stamping that onto the panel is worse than leaving it alone: the first
-            # version of this fix wrote a stale, sometimes empty, rectangle over a live panel and
-            # **made it vanish on open**. Deferred by a turn, which is the ordering `T108-R2`
-            # already established one widget over.
-            if row is not self._expanded or panel is not self._panel:
-                return
-            index = self._index_of(row)
-            if not index.isValid():
-                return
-            rect = self._list.visualRect(index)
-            # **An empty rectangle is not an answer.** A row scrolled out of view, or measured
-            # before layout, reports one — and it would hide the panel rather than move it.
-            if rect.isEmpty():
-                return
-            panel.setGeometry(rect)
-
-        QTimer.singleShot(0, restore)
-
-    def remount_panel(self) -> None:
-        """Put the open panel back on its row after a model reset, or close it if the row is gone.
-
-        **`T108-R2`.** A structural reset — adding a URL, removing one, retyping, reordering —
-        drops the index widget, and the panel was left pointing at a row it was no longer mounted
-        on: the row stayed tall and blank, and `open_format_table` refused to reopen it because
-        `_expanded is row` was still true. Every one of those is an ordinary thing to do while
-        choosing a format, not a teardown path.
-
-        **By row identity, never by row number** (`T118-R14`'s rule). Reconciling A/B to B/A leaves
-        row 0 valid and meaning a *different URL*, so remounting by position would hang one row's
-        format table under another's — the same class of defect as writing a chosen preset to the
-        wrong row, and with the same consequence.
-
-        A row that is gone takes its panel with it, **keeping** what was chosen: the selection was
-        already written to the row when it was made, and the row itself no longer exists.
-        """
-        row, panel = self._expanded, self._panel
-        if row is None or panel is None:
-            return
-        index = self._index_of(row)
-        if not index.isValid():
-            self.close_panel(keep=True)
-            return
-        self._list.setUniformItemSizes(False)
-        self._list.setIndexWidget(index, panel)
-        rect = self._list.visualRect(index)
-        panel.setGeometry(rect)
-        # **The open panel's way back stays on screen** (`T-208`'s reproduced route). Removing a
-        # row *above* an open playlist shrinks the scroll range, and Qt keeps the offset — so the
-        # surviving row, panel and all, slides up until its top sits above the fold and stays
-        # there. The collapse control lives at that top, and the row's own twisty is deliberately
-        # not painted while it is open (`T-210`'s one-arrow rule), so the reset has quietly
-        # removed the arrow. Re-anchored only when the top actually left the viewport: a reset
-        # that moved nothing — or moved this row down — must not yank the view around.
-        if rect.top() < 0:
-            self._list.scrollTo(index, QAbstractItemView.ScrollHint.PositionAtTop)
+        self.refresh()
 
     @property
     def open_panel(self) -> RowPanel | None:
@@ -3259,6 +3113,16 @@ class AddUrlDialog(QDialog):
         # in-memory scan of a list the user can see the length of; see `QueuedUrls` for why it is
         # never a query (`T079-R2`).
         self._staging.mark_duplicates(self._queued_urls())
+
+        # **A panel cannot outlive the row it belongs to** (`T-312`). While a panel was a row's
+        # index widget Qt destroyed it with the row, so deleting the URL line took the open table
+        # with it and nothing here had to notice. A page has no such owner: the panel went on
+        # showing, for a row that no longer exists, and *Done* would have written a choice onto
+        # nothing. Closed rather than kept, because there is nothing left to keep it for.
+        expanded = self._expanded
+        if expanded is not None and expanded not in self._staging.visible:
+            self.close_panel(keep=False)
+
         visible = self._staging.visible
         # **By identity, not by row number** (`T118-R14`). A value-only refresh no longer resets
         # the model at all, so nothing needs restoring; a structural one may have moved or removed

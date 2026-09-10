@@ -85,9 +85,26 @@ def measure(app: QApplication, label: str, font: QFont | None = None) -> tuple[i
         f"reference={reference:>4}px  opens={opens_at:>4}  floor={floor:>4}  "
         f"resize({TARGET})->{reached:<4} {'PASS' if reached == TARGET else 'FAIL'}"
     )
+
+    # **Pure wrappers are skipped; real constraints are not** (`T-312`). The dialog's content sits
+    # in a `QStackedWidget` now, so an unfiltered search names that stack and the page inside it —
+    # both wide only *because* they contain the button box, which tells a reader nothing about what
+    # is refusing to shrink. Leaves-only was the first attempt and was worse: it hid the button box
+    # itself, which is a container and is the honest answer.
+    #
+    # A wrapper's minimum is exactly that of its widest child; a widget that genuinely constrains —
+    # a button box laying three buttons in a row — asks for more than any one child. So a widget is
+    # skipped only when a child of it already demands the same width.
+    def constrains(child: QWidget) -> bool:
+        wanted = child.minimumSizeHint().width()
+        return all(
+            inner.minimumSizeHint().width() < wanted for inner in child.findChildren(QWidget)
+        )
+
     widest = sorted(
         (child.minimumSizeHint().width(), type(child).__name__, child.objectName())
         for child in dialog.findChildren(QWidget)
+        if constrains(child)
     )[-3:]
     for width, kind, name in reversed(widest):
         print(f"      sets the floor: {width:>4}px  {kind}{' #' + name if name else ''}")

@@ -105,6 +105,7 @@ from tracks_and_trails.ui.add_dialog import (
     AddUrlDialog,
     FormatPanel,
     PlaylistPanel,
+    RowPanel,
     StagingList,
     TemplatePanel,
     describe_kind,
@@ -2773,9 +2774,19 @@ def test_the_dialog_can_still_be_made_narrower_than_it_opens(
     # names: the staging list or the preset box refusing to shrink puts `T-135`'s overflow and
     # `T-160`'s narrowing control out of reach, which is what a floor costs. The buttons cannot be
     # narrowed and are not supposed to be.
-    widest = max(dialog.findChildren(QWidget), key=lambda child: child.minimumSizeHint().width())
+    # **Leaves only, because a container is at least as wide as what it holds** (`T-312`). The
+    # dialog's content now sits in a `QStackedWidget`, which contains the button box — so the old
+    # search found the stack, reported it as content setting the floor, and could no longer tell a
+    # container from the widget actually refusing to shrink. Skipping widgets that hold others
+    # keeps the question the same: is any *content* wider than the buttons?
     buttons = dialog.findChild(QDialogButtonBox, "dialogButtons")
     assert buttons is not None, "the dialog's button box lost its object name"
+    leaves = [
+        child
+        for child in dialog.findChildren(QWidget)
+        if child is buttons or not child.findChildren(QWidget)
+    ]
+    widest = max(leaves, key=lambda child: child.minimumSizeHint().width())
     assert widest is buttons, (
         f"{type(widest).__name__}(#{widest.objectName()}) now demands "
         f"{widest.minimumSizeHint().width()}px, more than the button box's "
@@ -2862,9 +2873,11 @@ CHOSEN_SUMMARY_SIZES: Final = (
 )
 
 
-@pytest.mark.parametrize(("width", "height"), CHOSEN_SUMMARY_SIZES, ids=lambda v: str(v))
+@pytest.mark.parametrize(
+    ("width", "height"), [(960, 640), (960, 320), (640, 400)], ids=lambda v: str(v)
+)
 @pytest.mark.parametrize("merging", [False, True], ids=["one format", "video + audio"])
-def test_the_chosen_summary_stays_reachable_inside_the_expanded_row(
+def test_the_chosen_summary_is_on_screen_in_the_open_panel(
     width: int,
     height: int,
     merging: bool,
@@ -2873,29 +2886,21 @@ def test_the_chosen_summary_stays_reachable_inside_the_expanded_row(
     dialogs: Callable[..., AddUrlDialog],
     spin: Callable[..., bool],
 ) -> None:
-    """`T306-R3`: checked **inside the expanded staging row**, not on a bare table.
+    """`T306-R3`, asked of the page rather than of a row in a list (`T-312`).
 
     The maintainer's 2026-09-09 screenshot showed *Chosen — none yet* against the bottom edge and
-    whether it was clipped was unestablished. A standalone `FormatTable` cannot answer it: the
-    table is mounted as the row itself (`UX-007`'s `P-1`), so visibility is decided by the row's
-    height inside the list viewport rather than by the widget's own layout.
+    whether it was clipped was unestablished. The answer used to depend on the row's height inside
+    the staging list's viewport, so this searched the list's scroll positions for one that showed
+    the label whole — *"reachable, not necessarily on screen at rest"*.
 
-    **Reachable, not necessarily on screen at rest.** `docs/PHASE_4_CHECKLIST.md` row 5.7
-    promises the opened panel scrolls per pixel, so a summary below the fold at a short window
-    is the panel
-    being taller than the list rather than a defect.
+    **A panel is the dialog's page now, so reachable is too weak a promise.** There is no list to
+    scroll and no row to be taller than a viewport: the panel is given the dialog's size and its
+    layout compresses the table to fit. Measured while re-pointing this — at 300px of panel the
+    table shrinks and *Done* still ends inside it — so the summary should simply be **visible**,
+    and asserting less than that would be preserving a workaround for a mechanism that is gone.
 
-    **Only states in which the panel is still open are asked about, and getting that wrong filed a
-    defect that did not exist.** §4 specifies that choosing *closes* once the selection names a
-    download — the first press in `one format` mode, the second in `video + audio`. An earlier
-    version of this test chose in `one format` mode and then asserted the summary was reachable;
-    it was not, because the panel had correctly shut. `T-307` was filed on that and withdrawn.
-    So: nothing chosen in either mode, and in `video + audio` one half chosen, which leaves the
-    panel open by design.
-
-    **This establishes layout, not perception.** It runs offscreen, so it says the summary occupies
-    reachable space inside the viewport at these sizes; `T-212`'s sitting is still where a person
-    looks at the window.
+    `merging` is kept because the sound list changes the panel's shape, and both palettes' padding
+    differ, which is what `T306-R4` recorded.
     """
     dialog, _row = _staged(dialogs, managers, spin)
     dialog.resize(width, height)
@@ -2905,63 +2910,25 @@ def test_the_chosen_summary_stays_reachable_inside_the_expanded_row(
         control = open_row_editor(dialog, 0)
         choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
         panel = dialog.open_format_panel
-        assert panel is not None, "the row did not open into the format table"
-        table = panel.table
+        assert panel is not None
+        qapp.processEvents()
 
         if merging:
-            # **The half-chosen state, reached without a mode** (`T-310`). Taking the video half
-            # leaves the panel open because the sound list can still complete the pair, which is
-            # the same state the merge checkbox used to reach by being ticked first.
             video_half = next(
                 entry
-                for entry in table.video.model.formats()
+                for entry in panel.table.video.model.formats()
                 if kind_of(entry) is FormatKind.VIDEO_ONLY
             )
-            table.choose(video_half)
+            panel.table.choose(video_half)
             qapp.processEvents()
-            assert dialog.open_format_panel is not None, (
-                "one half of a pair completed the selection; the panel should still be open"
-            )
 
-        summary = table.findChild(QLabel, "formatChosenLabel")
+        summary = panel.findChild(QLabel, "formatChosenLabel")
         assert summary is not None, "the Chosen summary is gone from the panel"
         assert summary.text().strip(), "the summary is visible but says nothing"
-
-        listing = staging_list(dialog)
-        viewport = listing.viewport()
-        bar = listing.verticalScrollBar()
-
-        # **Requested is not realized** (`T306-R4`). Asking for 320px of height and getting 424 is
-        # the layout's minimum winning, and a check that only records what it asked for cannot say
-        # which size it actually measured. The theme is recorded with it because the sheet's
-        # padding differs between palettes and the realized height follows it.
-        realized = dialog.size()
-        applied = theme.applied().name
-        assert realized.height() >= 1, "the dialog has no height to measure"
-        print(
-            f"T306-R3 case: requested {width}x{height}, realized "
-            f"{realized.width()}x{realized.height()}, viewport {viewport.height()}px, "
-            f"theme {applied}, merging={merging}"
-        )
-
-        def placed_at(value: int) -> QRect:
-            bar.setValue(value)
-            qapp.processEvents()
-            return QRect(summary.mapTo(viewport, summary.rect().topLeft()), summary.size())
-
-        # **Some scroll position must show it whole, which is not the same as the last one.**
-        # Scrolling to the maximum was the previous assertion and it failed at 640x400 with the
-        # label at `y=-9`: there is content below the summary, so the bottom of the panel is not
-        # the summary's own position. Reachable means a position exists, and the search is over
-        # the real scroll range rather than a guess at which one it is.
-        steps = sorted(
-            {0, bar.maximum(), *range(0, bar.maximum() + 1, max(1, bar.pageStep() // 4))}
-        )
-        reachable = [value for value in steps if viewport.rect().contains(placed_at(value))]
-        assert reachable, (
-            f"no scroll position shows the Chosen summary whole at {width}x{height} "
-            f"(merging={merging}): tried {len(steps)} positions over a range of {bar.maximum()}, "
-            f"viewport {viewport.rect()}, label last seen at {placed_at(bar.maximum())}"
+        assert not summary.visibleRegion().isEmpty(), (
+            f"the Chosen summary is off screen at {width}x{height} (merging={merging}); "
+            f"the dialog realized {dialog.size().width()}x{dialog.size().height()} and the panel "
+            f"is {panel.height()}px tall"
         )
     finally:
         dialog.close()
@@ -2992,11 +2959,12 @@ def test_choosing_that_entry_opens_the_row_into_the_format_table(
         panel = dialog.open_format_panel
         assert panel is not None, "the row did not open"
         assert panel.row is row
-        assert listing.indexWidget(listing.model().index(0, 0)) is panel, (
-            "the panel is not the row; it was placed somewhere else in the dialog"
-        )
-        assert listing.sizeHintForRow(0) > before, (
-            f"the row is still {listing.sizeHintForRow(0)}px, so it did not expand"
+        # **The panel is the dialog's page** (`T-312`). This asserted it was the row's index
+        # widget and that the row had grown — what distinguished *a row that opens* from *a window
+        # beside it*. The distinction survives; where it is measured does not, and no row grows.
+        assert _showing_for(dialog, row, panel), "the panel did not take the dialog's page"
+        assert listing.sizeHintForRow(0) == before, (
+            f"the row grew to {listing.sizeHintForRow(0)}px; no row is expanded for a panel now"
         )
 
         qapp.processEvents()
@@ -3032,40 +3000,6 @@ def test_choosing_that_entry_opens_the_row_into_the_format_table(
         ], listed
     finally:
         dialog.close()
-
-
-def test_the_open_row_is_the_only_one_that_grows(
-    qapp: QApplication,
-    managers: Callable[..., DownloadManager],
-    dialogs: Callable[..., AddUrlDialog],
-    spin: Callable[..., bool],
-) -> None:
-    """Uniform item sizes is a promise an open row breaks, and it must be withdrawn (`T118-R10`).
-
-    Left on, Qt draws **every** row at the open one's height — so a paste of twenty would become a
-    column of empty full-height rows the moment one was opened. Asserted with a second row present,
-    because with one row the two behaviours are indistinguishable.
-    """
-    dialog = dialogs(managers())
-    type_urls(dialog, "https://example.invalid/one\nhttps://example.invalid/two")
-    dialog.resolve()
-    assert spin(lambda: len(dialog.rows) == 2 and all(row.job_id for row in dialog.rows))
-    payload = json.loads((INFODICTS / "derived_format_columns.json").read_text(encoding="utf-8"))
-    formats = adapter.project_media(payload["info_dict"]).formats
-    for row in dialog.rows:
-        assert row.job_id is not None
-        dialog._on_media_probed(row.job_id, MediaInfo(url=row.url, title=row.url, formats=formats))
-    QApplication.processEvents()
-
-    listing = staging_list(dialog)
-    shut = listing.sizeHintForRow(1)
-    control = open_row_editor(dialog, 0)
-    choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
-
-    assert listing.sizeHintForRow(0) > shut, "the opened row did not grow"
-    assert listing.sizeHintForRow(1) == shut, (
-        f"the closed row grew to {listing.sizeHintForRow(1)}px with its neighbour"
-    )
 
 
 def test_choosing_one_format_becomes_what_the_row_downloads(
@@ -3156,54 +3090,6 @@ def test_choosing_a_format_never_closes_the_row_on_its_own(
     QApplication.processEvents()
     closed = dialog.open_panel
     assert closed is None, "Done left the panel open"
-
-
-def test_opening_the_format_panel_widens_the_dialog_to_fit_it(
-    qapp: QApplication,
-    managers: Callable[..., DownloadManager],
-    dialogs: Callable[..., AddUrlDialog],
-    spin: Callable[..., bool],
-) -> None:
-    """`T-310`: two lists need room the add dialog does not open with.
-
-    **The dialog does not open this wide and should not.** Most sessions never open a format panel,
-    and paying its width in every add-a-URL dialog would be the rare case taxing the common one. So
-    the panel asks for room when it mounts, and this asserts that the ask reaches the dialog.
-
-    **Bounded by the screen, which is why this asserts a relationship rather than a number.** The
-    offscreen platform reports an 800px display, so the dialog cannot always reach the width the
-    panel wants — and a test naming a pixel figure would be asserting the test environment. What
-    must hold is that the dialog grew toward it and stopped only where the screen did. Whether the
-    panel's *stated* need is itself sufficient is `test_format_table.py`'s question, asked of the
-    widget where a screen cannot confound it.
-    """
-    dialog, _row = _staged(dialogs, managers, spin)
-    dialog.show()
-    qapp.processEvents()
-    try:
-        before = dialog.width()
-        control = open_row_editor(dialog, 0)
-        choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
-        panel = dialog.open_format_panel
-        assert panel is not None
-        qapp.processEvents()
-
-        wanted = panel.sizeHint().width()
-        assert wanted > before, (
-            f"the panel wants {wanted}px and the dialog already had {before}px, so this test "
-            "cannot tell whether the widening happens at all"
-        )
-        # The offscreen platform reports an 800px display, and `_widen_for` will not make a
-        # dialog wider than the screen it is on — a dialog whose buttons are past the edge is
-        # worse than a narrow one.
-        ceiling = dialog.screen().availableGeometry().width()
-        assert dialog.width() >= min(wanted, ceiling), (
-            f"the panel wants {wanted}px, the screen allows {ceiling}px, and the dialog stopped "
-            f"at {dialog.width()}px"
-        )
-        assert dialog.width() > before, "opening the panel did not widen the dialog at all"
-    finally:
-        dialog.close()
 
 
 @pytest.mark.parametrize("points", [9, 10, 11], ids=lambda size: f"{size}pt")
@@ -3664,21 +3550,20 @@ def _open_the_table(dialog: AddUrlDialog, index: int) -> FormatPanel:
     return panel
 
 
-def _mounted_on(dialog: AddUrlDialog, row: Row, panel: FormatPanel) -> bool:
-    """Whether `panel` is actually the index widget of `row`'s current index.
+def _showing_for(dialog: AddUrlDialog, row: Row, panel: RowPanel) -> bool:
+    """Whether `panel` is the dialog's open panel for `row`, and showing.
 
-    **The panel is passed in rather than read from the dialog.** Comparing against
-    `dialog.open_panel` made the helper answer `True` once both were `None` — so "is it still
-    mounted?" said yes about a row with no widget and a dialog with no panel, which is exactly the
-    question this exists to answer.
+    **The question survived the mechanism; its answer changed** (`T-312`). This asked whether the
+    panel was the index widget of the row's index, because a panel *was* a row. A panel is now a
+    page of the dialog, so the same question is asked of the page and the panel's own row.
+
+    **The panel is still passed in rather than read from the dialog**, for the reason the previous
+    version recorded: comparing against `dialog.open_panel` answered `True` once both were `None`,
+    so *"is it still showing?"* said yes about a dialog showing nothing.
     """
-    listing = staging_list(dialog)
-    model = listing.model()
-    assert model is not None
-    for position in range(model.rowCount()):
-        if dialog.model.row_at(position) is row:
-            return listing.indexWidget(model.index(position, 0)) is panel
-    return False
+    if dialog.open_panel is not panel or panel.row is not row:
+        return False
+    return not staging_list(dialog).isVisible()
 
 
 @pytest.mark.parametrize(
@@ -3722,7 +3607,7 @@ def test_the_open_format_table_survives_the_url_list_changing(
     dialog = _two_resolved_rows(dialogs, managers, spin, started)
     first = dialog.rows[0]
     panel = _open_the_table(dialog, 0)
-    assert _mounted_on(dialog, first, panel)
+    assert _showing_for(dialog, first, panel)
 
     type_urls(dialog, retyped)
     dialog.resolve()
@@ -3730,7 +3615,7 @@ def test_the_open_format_table_survives_the_url_list_changing(
 
     assert dialog.open_panel is panel, f"{case} closed the panel"
     assert panel.row is first, f"{case} moved the panel to another row"
-    assert _mounted_on(dialog, first, panel), (
+    assert _showing_for(dialog, first, panel), (
         f"{case} left the panel orphaned: the row is expanded and carries no widget"
     )
 
@@ -3741,7 +3626,7 @@ def test_the_open_format_table_survives_the_url_list_changing(
     dialog.open_format_table(first)
     QApplication.processEvents()
     assert dialog.open_panel is panel
-    assert _mounted_on(dialog, first, panel), (
+    assert _showing_for(dialog, first, panel), (
         f"after {case}, reopening the row left it expanded and blank"
     )
 
@@ -3800,14 +3685,14 @@ def test_the_same_row_can_open_its_table_again_after_a_reset(
 
     dialog.close_panel(keep=True)
     assert dialog.open_panel is None
-    assert not _mounted_on(dialog, first, opened), "the closed panel is still the row's widget"
+    assert not _showing_for(dialog, first, opened), "the closed panel is still the row's widget"
 
     position = next(
         index for index in range(len(dialog.model.shown)) if dialog.model.shown[index] is first
     )
     reopened = _open_the_table(dialog, position)
     assert reopened.row is first, "reopening after a reset landed on a different row"
-    assert _mounted_on(dialog, first, reopened)
+    assert _showing_for(dialog, first, reopened)
 
 
 def test_choosing_the_options_entry_opens_the_editor_and_keeps_the_row_s_format(
@@ -4095,10 +3980,11 @@ def test_the_disclosure_opens_the_playlist_as_the_row_itself(
         panel = dialog.open_playlist_panel
         assert panel is not None, "the disclosure did not open the row"
         assert panel.row is row
-        assert listing.indexWidget(listing.model().index(0, 0)) is panel, (
-            "the picker was placed somewhere other than on the row (P-19)"
-        )
-        assert listing.sizeHintForRow(0) > before, "the row did not expand"
+        # `P-19` still holds — the picker is not a separate dialog — and `T-312` moved where that
+        # shows: the add dialog's own page rather than a widget inside a list item. The assertion
+        # below that no `QDialog` was created is the half of `P-19` that is unchanged.
+        assert _showing_for(dialog, row, panel), "the disclosure did not open the panel's page"
+        assert listing.sizeHintForRow(0) == before, "no row is expanded for a panel now"
         assert panel.picker.model.rowCount() == 7
         assert dialog.findChild(QDialog, "playlistPicker") is None, (
             "the picker is a dialog, which is the modal-over-a-modal UX-007 ruled against"
@@ -5040,6 +4926,112 @@ def test_a_default_naming_nothing_in_the_catalogue_falls_back(
 # --- T-111: the Manage presets… entry on the format control (UX_SPEC §8's P-6) --------------
 
 
+def test_tab_stays_inside_the_open_panel(
+    qapp: QApplication,
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`T-312`, `NFR-005`: the keyboard cannot walk onto the page that is not showing.
+
+    **A new hazard, and the reason it needs asserting rather than assuming.** While a panel was a
+    row, everything in the dialog was on screen together and `Tab` could reach any of it. The
+    dialog now has a page the user cannot see, holding a URL box, a list, two combo boxes and four
+    buttons — and a keyboard that reached them would be operating controls nobody can see, which
+    is `T-060`'s rule (*"hidden widgets must not be in the chain"*) at the scale of a whole page.
+
+    Qt skips hidden widgets in tab traversal, so this asserts a property of the arrangement rather
+    than of code written here — which is exactly the kind of thing that is true until a later
+    change makes both pages visible at once.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    dialog.resize(900, 700)
+    dialog.show()
+    qapp.processEvents()
+    try:
+        panel = _open_the_picker(dialog, row)
+        qapp.processEvents()
+
+        seen = []
+        for _ in range(24):
+            QTest.keyClick(dialog, Qt.Key.Key_Tab)
+            qapp.processEvents()
+            focused = qapp.focusWidget()
+            if focused is None:
+                continue
+            seen.append(focused)
+            assert panel.isAncestorOf(focused) or focused is panel, (
+                f"Tab reached {type(focused).__name__}(#{focused.objectName()}), which is not in "
+                f"the open panel — the hidden staging page is reachable from the keyboard"
+            )
+        assert seen, "Tab moved focus nowhere at all, so this asserted nothing"
+    finally:
+        dialog.close()
+
+
+@pytest.mark.parametrize(
+    "size", [(1200, 800), (900, 700), (700, 600), (640, 480)], ids=lambda s: f"{s[0]}x{s[1]}"
+)
+def test_an_open_panel_fills_the_page_and_keeps_its_way_out(
+    qapp: QApplication,
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    size: tuple[int, int],
+) -> None:
+    """`T-312`: a panel is a page of the dialog, so it is given the dialog's size.
+
+    **This carries what six retired tests were protecting.** Putting a live widget inside a
+    `QListView` item produced a family of defects a page cannot have, each with a test of its own:
+    `T-296`'s `scrollTo` undoing the geometry it had just been given, `T204-R4`'s value-only
+    refresh re-laying the row and leaving the panel behind, `T210-R1`'s panel outgrowing a viewport
+    that was one of five things sharing the dialog's height, the open row being the only one that
+    grows, and `T310-R2`'s dialog widening to fit a panel it no longer has to contain. All were
+    about the *mounting*; all are gone with it.
+
+    What outlives them is the concern underneath: **the panel must actually get the room, and the
+    way out must stay reachable.** Asserted at four sizes including one smaller than the window
+    `T210-R1` was ruled out of scope at — the size where the old mechanism failed, and where a page
+    should not.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    dialog.resize(*size)
+    dialog.show()
+    qapp.processEvents()
+    try:
+        panel = _open_the_picker(dialog, row)
+        qapp.processEvents()
+
+        page = panel.parentWidget()
+        assert page is not None
+        assert (panel.width(), panel.height()) == (page.width(), page.height()), (
+            f"the panel is {panel.width()}x{panel.height()} inside a "
+            f"{page.width()}x{page.height()} page"
+        )
+
+        # **The staging list is off, not merely covered.** A swap that left both on screen would be
+        # a detail pane, which `UX-005` §2 bans.
+        #
+        # **This is also what closes the tooltip filed with `T-312`.** The open row went on
+        # answering `ToolTipRole` with its collapsed summary, which popped over the table being
+        # read. The role is unchanged and needs no change: a tooltip is presented by the view under
+        # the pointer, and the view is not on screen. Asserting the row's text is *still* there
+        # keeps the two facts from drifting apart — a later change that puts the list back beside
+        # the panel brings the defect back with it.
+        assert not staging_list(dialog).isVisible(), "the staging list is still showing"
+        model = dialog.model
+        index = model.index(model.shown.index(row), 0)
+        assert index.data(Qt.ItemDataRole.ToolTipRole), "the row stopped describing itself"
+
+        # **Both ways out are on screen** (`T-210`'s concern, one surface over). Asserted on the
+        # visible region rather than the assigned geometry, which is what says *a user can reach
+        # it* rather than *it was placed somewhere*.
+        assert not panel.done_button.visibleRegion().isEmpty(), "Done is off the page"
+        assert not panel.collapse_button.visibleRegion().isEmpty(), "the collapse control is off"
+    finally:
+        dialog.close()
+
+
 def test_an_open_playlist_shows_entries_and_a_way_back(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
@@ -5101,9 +5093,15 @@ def test_an_open_playlist_shows_entries_and_a_way_back(
         dialog.resize(900, 900)
         QApplication.processEvents()
         assert panel.isVisible() and panel.height() > 0, "growing the window emptied the panel"
-        grown = dialog._model.index(dialog.rows.index(row), 0)
-        assert staging_list(dialog).visualRect(grown).height() == panel.height(), (
-            "after a resize the row and its panel disagree about how tall the row is"
+        # **The panel follows the window, and the row no longer has an opinion** (`T-312`). This
+        # asserted the row's rectangle and the panel's height agreed, because the panel *was* the
+        # row: `T-210` had them disagree after a resize and the expanded row showed nothing. A page
+        # is sized by the dialog, so the invariant is that the panel fills it — and the row keeps
+        # its ordinary height, which is the same fact from the other side.
+        page = panel.parentWidget()
+        assert page is not None
+        assert panel.height() == page.height(), (
+            f"after a resize the panel is {panel.height()}px inside a {page.height()}px page"
         )
 
         table = panel.picker.table
@@ -5133,123 +5131,6 @@ def test_an_open_playlist_shows_entries_and_a_way_back(
         dialog.close()
 
 
-def test_the_panel_fits_the_viewport_at_the_size_the_criteria_claim(
-    dialogs: Callable[..., AddUrlDialog],
-    managers: Callable[..., DownloadManager],
-    spin: Callable[..., bool],
-) -> None:
-    """**`T210-R1`, and the bound is asserted where it is claimed rather than well inside it.**
-
-    The committed regression opened at 700px and grew to 900px, so it never touched the size the
-    task admitted was a problem. Codex measured the gap: 600px window → 213px viewport, 210px
-    panel; 550px → 163px; 500px → 113px. The panel keeps its `minimumSizeHint` at all three, so
-    below roughly 600px it is taller than the viewport and *Done* is under the fold.
-
-    **The maintainer ruled the small window out of scope on 2026-08-09** — *"go with your
-    suggestion for T210-R1"*, against the recommendation that fitting a 113px viewport costs the
-    picker every visible entry, which is the *"you can barely see a playlist"* complaint T-210
-    exists to answer. So this test states the real contract in two halves: **the criteria hold at
-    600px**, and **below it the documented route out is the one that must keep working.**
-
-    This is a bound, not a success. The gap is real and named; what is asserted is that it behaves
-    the way the task now says it does.
-    """
-    dialog, row = _staged_playlist(dialogs, managers, spin)
-    dialog.resize(900, 600)
-    dialog.show()
-    QApplication.processEvents()
-
-    panel = _open_the_picker(dialog, row)
-    QApplication.processEvents()
-
-    try:
-        viewport = staging_list(dialog).viewport()
-        assert panel.height() <= viewport.height(), (
-            f"at the claimed bound the panel is {panel.height()}px in a {viewport.height()}px "
-            "viewport — the criterion is stated for this size and does not hold at it"
-        )
-        done_bottom = panel.done_button.mapTo(viewport, panel.done_button.rect().bottomLeft()).y()
-        assert 0 <= done_bottom <= viewport.height(), (
-            f"Done ends at y={done_bottom} in a {viewport.height()}px viewport at the claimed bound"
-        )
-
-        # **Below the bound: the panel keeps its minimum and the top control is the way out.**
-        # Shrinking further would cost the entries, so the panel deliberately stops giving.
-        for height in (550, 500):
-            dialog.resize(900, height)
-            QApplication.processEvents()
-            viewport = staging_list(dialog).viewport()
-            assert panel.height() >= panel.minimumSizeHint().height(), (
-                f"at {height}px the panel shrank past its minimum, which costs the entries the "
-                "picker exists to show"
-            )
-            collapse = panel.collapse_button
-            top = collapse.mapTo(viewport, collapse.rect().topLeft()).y()
-            assert 0 <= top <= viewport.height(), (
-                f"at {height}px the collapse control is at y={top} in a {viewport.height()}px "
-                "viewport — below the bound it is the only pointer route out, so it must stay"
-            )
-
-        collapse = panel.collapse_button
-        collapse.click()
-        QApplication.processEvents()
-        assert dialog.open_panel is None, (
-            "the documented route out of a panel too tall for the viewport did not close it"
-        )
-    finally:
-        dialog.close()
-
-
-def test_a_value_refresh_leaves_the_open_panel_over_its_row(
-    dialogs: Callable[..., AddUrlDialog],
-    managers: Callable[..., DownloadManager],
-    spin: Callable[..., bool],
-) -> None:
-    """**`T204-R4`.** A value-only refresh re-measured the row and left the panel behind.
-
-    `StagingModel.refresh` emits `dataChanged` with **no roles**, so it carries `SizeHintRole` and
-    the view re-lays the row out. An index widget keeps whatever geometry it was last given, so the
-    panel collapsed toward its minimum while the row stayed tall — the picker body and *Done* were
-    clipped, and the delegate's painting showed through underneath. That is `T-204`'s criterion 6,
-    and it is why the pointer had no way to close the panel.
-
-    **Shown, and asserted on geometry.** The committed regression for `T204-R1` neither showed the
-    dialog nor measured the panel, which is exactly why a green suite hid this.
-    """
-    dialog, row = _staged_playlist(dialogs, managers, spin)
-    dialog.resize(900, 700)
-    dialog.show()
-    QApplication.processEvents()
-
-    panel = _open_the_picker(dialog, row)
-    QApplication.processEvents()
-    listing = staging_list(dialog)
-    before = panel.size()
-    assert before.height() > 100, f"the panel never opened to a usable size: {before}"
-
-    try:
-        # The reachable transition from `T204-R1`: the row's job leaves the queue.
-        job_id = row.job_id
-        assert isinstance(job_id, str) and job_id
-        dialog._on_job_changed(job_id, JobStatus.CANCELLED.value)
-        QApplication.processEvents()
-
-        index = dialog._model.index(dialog.rows.index(row), 0)
-        assert panel.size() == before, (
-            f"the value refresh shrank the panel from {before} to {panel.size()}"
-        )
-        assert panel.geometry() == listing.visualRect(index), (
-            "the panel no longer covers its row, so the row paints through underneath"
-        )
-
-        # And it can still be closed by the control the panel offers.
-        panel.done_button.click()
-        QApplication.processEvents()
-        assert dialog.open_panel is None, "the panel's own Done button did not close it"
-    finally:
-        dialog.close()
-
-
 def test_the_reachable_failed_path_keeps_the_panel_and_the_selection(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
@@ -5274,7 +5155,6 @@ def test_the_reachable_failed_path_keeps_the_panel_and_the_selection(
     # assert below narrows to `PlaylistPanel` and not to bare `QWidget`.
     panel = dialog.open_playlist_panel
     assert panel is not None
-    listing = staging_list(dialog)
 
     try:
         QTest.keyClick(panel.picker.table, Qt.Key.Key_Space)
@@ -5288,17 +5168,23 @@ def test_the_reachable_failed_path_keeps_the_panel_and_the_selection(
         qapp.processEvents()
         assert row.state is RowState.FAILED, "the reachable path did not reach FAILED"
 
-        index = dialog._model.index(dialog.rows.index(row), 0)
-        assert listing.indexWidget(index) is panel, (
-            "after the value refresh the panel is no longer the row's index widget"
+        # **A refresh must not take the panel away** (`T-312` re-points `T204-R4`'s concern). The
+        # geometry half of this is gone with the mechanism: a page cannot drift from a row's
+        # rectangle because it is not placed in one, and the delegate cannot paint through the
+        # difference because there is no difference. What survives is that the panel is still the
+        # page, still for this row, after the value refresh a cancelled job triggers.
+        assert _showing_for(dialog, row, panel), (
+            "the value refresh took the panel off the dialog's page"
         )
-        assert panel.geometry() == listing.visualRect(index), (
-            f"the panel sits at {panel.geometry()} while its row is at "
-            f"{listing.visualRect(index)} — the delegate's row paints through the difference"
+        # **Measured on the page, not the list's viewport** (`T-312`). The panel used to live
+        # inside the list, so *Done* leaving that viewport was the failure — it is what put the
+        # only pointer route out of the panel below the fold. The panel is the dialog's page now
+        # and the list is not even showing, so mapping into its viewport asks a question about a
+        # widget that is no longer in that hierarchy; the visible region answers the same concern
+        # directly.
+        assert not panel.done_button.visibleRegion().isEmpty(), (
+            "Done left the screen with the refresh"
         )
-        viewport = listing.viewport()
-        done_bottom = panel.done_button.mapTo(viewport, panel.done_button.rect().bottomLeft()).y()
-        assert 0 <= done_bottom <= viewport.height(), "Done left the viewport with the refresh"
 
         panel.done_button.click()
         qapp.processEvents()
@@ -5307,59 +5193,6 @@ def test_the_reachable_failed_path_keeps_the_panel_and_the_selection(
             f"the failure refresh cost the user their half-made choice: "
             f"{row.entry_selection} != {chosen}"
         )
-    finally:
-        dialog.close()
-
-
-def test_a_value_refresh_leaves_the_open_format_table_over_its_row(
-    dialogs: Callable[..., AddUrlDialog],
-    managers: Callable[..., DownloadManager],
-    qapp: QApplication,
-    spin: Callable[..., bool],
-) -> None:
-    """**`T-209`'s audit, the other panel kind.** The correction is `relayout_panel`, which moves
-    whatever panel is open — but "it should generalise" is exactly the claim the audit exists to
-    replace with a measurement, because the geometry seam has needed two corrections already.
-
-    Same reachable path as the playlist case, on the **format table**: the row's job leaves the
-    queue, the value refresh re-measures the row, and the table must still cover it. Closed with
-    `Esc`, the format table's own discard route.
-    """
-    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
-    dialog.resize(900, 700)
-    dialog.show()
-    qapp.processEvents()
-    row = dialog.rows[0]
-    dialog.open_format_table(row)
-    # Two turns, deliberately: `_open_panel` defers the mount (`T108-R2`'s ordering) and the
-    # geometry lands on the turn after the widget does — the audit's finding about *every* open,
-    # recorded in the entry as the one-turn transient.
-    qapp.processEvents()
-    qapp.processEvents()
-    panel = dialog.open_format_panel
-    assert panel is not None, "the row did not open into its format table"
-    listing = staging_list(dialog)
-    before = panel.size()
-    assert before.height() > 100, f"the table never opened to a usable size: {before}"
-
-    try:
-        job_id = row.job_id
-        assert isinstance(job_id, str) and job_id
-        dialog._manager.job_changed.emit(job_id, JobStatus.CANCELLED.value)
-        qapp.processEvents()
-        assert row.state is RowState.FAILED
-
-        index = dialog._model.index(dialog.rows.index(row), 0)
-        assert panel.size() == before, (
-            f"the value refresh shrank the format table from {before} to {panel.size()}"
-        )
-        assert panel.geometry() == listing.visualRect(index), (
-            "the format table no longer covers its row"
-        )
-
-        QTest.keyClick(panel, Qt.Key.Key_Escape)
-        qapp.processEvents()
-        assert dialog.open_panel is None, "Esc did not close the format table"
     finally:
         dialog.close()
 
@@ -6360,101 +6193,6 @@ _TOO_SHORT_FOR_A_PANEL = (712, 500)
 #: A dialog tall enough to hold the same panel whole — the control, because the defect was
 #: invisible here and that is exactly what made it read as size-dependent.
 _TALL_ENOUGH_FOR_A_PANEL = (712, 762)
-
-
-@pytest.mark.parametrize(
-    ("size", "fits"),
-    [
-        pytest.param(_TOO_SHORT_FOR_A_PANEL, False, id="a viewport shorter than the panel"),
-        pytest.param(_TALL_ENOUGH_FOR_A_PANEL, True, id="a viewport that holds it whole"),
-    ],
-)
-def test_a_panel_keeps_the_height_its_row_was_sized_to_when_it_is_mounted(
-    qapp: QApplication,
-    managers: Callable[..., DownloadManager],
-    dialogs: Callable[..., AddUrlDialog],
-    spin: Callable[..., bool],
-    size: tuple[int, int],
-    fits: bool,
-) -> None:
-    """`T-296`: the mount placed the right rectangle and then `scrollTo` took it away.
-
-    A row taller than the viewport makes the scroll a real one, and the view re-places its index
-    widget as part of it — so the panel went back to **26 px**, its unmounted minimum, and its
-    layout drove the children to negative heights. That is the report's *"crushed"*. At a window
-    tall enough to hold the row the scroll moved nothing and the geometry survived, which is why it
-    presented as a size problem rather than an ordering one.
-
-    **Both sizes, because the tall one is the control.** It passed before the fix and must go on
-    passing; only the short one discriminates.
-    """
-    dialog, row = _staged_playlist(dialogs, managers, spin)
-    dialog.resize(*size)
-    dialog.show()
-    qapp.processEvents()
-
-    caught: list[tuple[int, int]] = []
-    mount = dialog._mount_panel
-
-    def watched() -> None:
-        mount()
-        opened = dialog.open_panel
-        if opened is not None:
-            caught.append((opened.height(), dialog.panel_height_for(row)))
-
-    # **Caught inside the mount, not read afterwards.** The geometry is wrong only between the
-    # mount and the view's next paint, so a version of this test that pumped the loop and then read
-    # `panel.height()` read the repaint's repair — and passed against the defect.
-    dialog._mount_panel = watched  # type: ignore[method-assign]
-
-    panel = _open_the_template_editor(dialog, 0)
-    assert caught, "the panel never mounted"
-    mounted, sized_to = caught[-1]
-
-    index = dialog._index_of(row)
-    assert mounted == sized_to == dialog._list.visualRect(index).height(), (
-        f"the panel mounted at {mounted} px on a row sized to {sized_to} px "
-        f"(viewport {dialog._list.viewport().height()} px, panel fits: {fits}). The mount set the "
-        "row's own rectangle and then scrolled the panel back to its unmounted minimum"
-    )
-
-    starved = [
-        (label.text()[:40], label.height())
-        for label in panel.findChildren(QLabel)
-        if label.wordWrap() and label.text() and label.height() < 0
-    ]
-    assert not starved, f"the panel's layout drove wrapped labels to negative heights: {starved}"
-
-    # **Compression is bounded by the panel's own deficit** (`T296-R1`, ruled 2026-08-31).
-    # `T-210`'s cap governs here, so a child of a panel the list cannot show whole **may** get less
-    # than it asks for — the criterion that said otherwise was aspirational and has been amended.
-    # What is asserted instead is the bound that actually holds, because "a child may be short" with
-    # no ceiling on it is not a contract at all: this test would then pass against a panel that
-    # compressed everything to nothing.
-    #
-    # The tall case is the same rule and not an exception: there the deficit is zero, so the loop
-    # below demands every child get exactly what it asks for.
-    assert mounted >= panel.minimumSizeHint().height(), (
-        f"the panel was mounted at {mounted} px, below its own minimum of "
-        f"{panel.minimumSizeHint().height()} px"
-    )
-    deficit = panel.sizeHint().height() - mounted
-    shortfalls = {
-        label.text()[:40]: label.heightForWidth(max(label.width(), 1)) - label.height()
-        for label in panel.findChildren(QLabel)
-        if label.wordWrap() and label.text()
-    }
-    short = sum(value for value in shortfalls.values() if value > 0)
-    assert short <= deficit, (
-        f"the panel's children are {short} px short between them against a deficit of {deficit} px "
-        f"(mounted {mounted}, wants {panel.sizeHint().height()}): {shortfalls}. Compression is "
-        "bounded by what the panel itself gave up, not by what its layout feels like taking"
-    )
-    if not fits:
-        assert deficit > 0, (
-            "this viewport was supposed to be too short for the panel, and the panel got "
-            "everything it asked for — the case the bound is about is not being exercised"
-        )
 
 
 # --- T-294: an empty status line was a full-width tab stop with nothing in it -------------------
