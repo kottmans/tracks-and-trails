@@ -15,6 +15,15 @@ owns phase deliverables and exit criteria.
 
 ## Active work
 
+- **Five UI and settings defects found in the built window on 2026-09-09 are Complete**:
+  `T-303` (a focused check box shifted its own text), `T-305` (*Unknown* where the table meant
+  *none*), `T-306` (codec names, chosen rows, a demoted identifier column), `T-309` (a warning that
+  claimed a read failure that had not happened), and `T-307`, **Cancelled** — a defect that did not
+  exist, filed on a check that contradicted the specification it tested against.
+- **`T-308` is the one still In Review.** Its three `T308-R1` clauses are observed on both
+  platforms — synthetically on X11, and by the maintainer on Wayland — and `T308-R3`, a High
+  regression in the correction's own probe, is corrected.
+
 - **T-300 is Complete**, approved at `5eecad9` on 2026-09-08 by independent review and
   moved to [COMPLETED_TASKS](COMPLETED_TASKS.md). Its two Low findings were corrected
   during the completion sync and closed by maintainer ruling without a further review
