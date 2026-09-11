@@ -176,3 +176,149 @@ The existing Phase 5 obligations remain: recorded T-212 walkthrough, Orca and
 Narrator/pre-release desktop verification, packaging decisions and release
 gates. Phase 4.5 option coverage follows the first release under the maintainer's
 resequencing; this review grants no yt-dlp capability-parity claim.
+
+## 2026-09-11 — Focused correction review
+
+**Reviewer:** Codex, independent of the correction implementation.
+**Boundary:** `a149b2b8343ffd1af25050f4f309f53d5557602b` →
+`67aae4cb80cba5f812feea7591921ae81c9c50e3`, six changed files.
+**Verdict: Blocked.** P4EXIT-R3 is Resolved by the confirmed maintainer
+disposition. P4EXIT-R1 is partly corrected and remains Open; P4EXIT-R2 remains
+Open. There is actionable R1 correction work before the Windows runner returns.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Disposition |
+|---|---|---|---|
+| P4EXIT-R1 | Medium | Yes | **Open, partly corrected.** The added Linux inventory and disclosure focus correction work, with independent mutation evidence below. The new Windows tests cannot open their target dialogs using their fixture; Windows still does not query the editing surfaces; the combo-purpose assertion accepts a value-named combo when no ListItem is published. Relevant populated/enabled states also remain absent from the new local fixtures. Correct these together as continuations of the original coverage finding. |
+| P4EXIT-R2 | Medium | Yes | **Open.** Candidate run `34610604275` is at `67aae4c`; Linux and frozen Linux succeed, while Windows desktop and frozen Windows remain queued. STARBASE is offline. Current native Windows execution is absent, and the R1 corrections below will change the test tree again. |
+| P4EXIT-R3 | Medium | No | **Resolved by maintainer disposition.** The submission confirms bounded acceptance, and the dated addition to T-289's closed record records it without rewriting the historical reservation. STATUS's risk section agrees: the crash remains unexplained; a real-test guard firing reopens the task and lapses the acceptance. This resolves the decision requirement, without asserting a cause or a reproduced fix. |
+| P4EXIT-R4 | Low | No | **Open — wording cleanup in the same correction/completion sync.** New theme comments/registry text and STATUS call the collapse triangle the only pointer route out of a panel. `RowPanel` also supplies a clickable Done button; both emit `closed(True)` (`ui/add_dialog.py:784`, `:805`). Describe the triangle as the top-of-panel return control without claiming exclusivity. No separate task or review pass solely for this item. |
+
+### R1: what is verified
+
+`screens_below_the_add_dialog()` now returns nine entries rather than five;
+the common fixture adds its four existing top-level surfaces. FormatDialog
+and the three panel wrappers now enter the Linux name, keyboard and rendered
+focus checks. Constructing these widgets and supplying synthetic media is a
+reasonable bounded way to audit their properties. This review does not require
+a live network probe to build that fixture, or reject it merely because it is
+constructed. The remaining concerns are which surfaces and states it exercises.
+
+Replaying the initial review's exact FormatDialog mutation—clear Cancel text
+and accessible name, then set `Qt.NoFocus`—produces **2 failed / 105 passed**
+in 7.12 s, with **12 FormatDialog constructions**. The name and keyboard-route
+checks fail. This establishes the corrected coverage. The submission reported
+four failures; this pass establishes two for the stated mutation and does not
+require a mutation to fail every check. Removing a control's focusability can
+also remove it from the rendered-focus sweep, so that sweep is not the oracle
+for the removed keyboard route.
+
+The disclosure fix reserves an idle transparent border and adds the control
+to BORDERED_CONTROLS, which also generates its specific focus selector. Its
+new construction recipe matches the real arrow/auto-raise properties. Restoring
+the previous stylesheet and registry together from `a149b2b` makes both
+`test_focus_is_visible_on_every_control_the_application_shows` palette cases
+fail: each of the three panel collapse controls changes **0 brightness pixels**
+against the 43-pixel floor. **2 failed in 1.45 s.** The unmodified correction
+passes in the UI run below. This independently verifies the defect and fix.
+
+### R1: remaining correction requirements
+
+1. **Make the Windows fixture capable of opening the screens.** At
+   `tests/ui/test_windows_accessibility.py:279`, `window` still constructs
+   `MainWindow(geometry_file=..., control_bar=True)` without composition.
+   `open_settings()` consequently returns None because it lacks writers,
+   output directory and theme; `open_add_dialog()` raises because it lacks
+   manager, jobs and output directory. Both new Settings tests fail their
+   assertions, and the Add test raises, before `read_tree` is called. Use a
+   composed, isolated window with working routes and orderly teardown, or an
+   equivalently complete fixture. Supplying desktop availability alone cannot
+   make these three tests pass.
+2. **Include the remaining Windows surfaces and relevant states.** The new
+   UIA tests open Settings and an empty Add dialog only. Options, PresetManager,
+   queue FormatDialog and the three editing panels still have no Windows
+   published-tree query. The comment at lines 603–609 explicitly substitutes
+   the Linux audit for the panels' Windows coverage; the amended criterion
+   requires both. The shared fixture also builds PlaylistPanel with
+   `entries=()`—independently measured as zero rows—and FormatDialog without a
+   completed selection, leaving its accept button disabled. Populate the
+   playlist and exercise a completed choice so the claimed item and enabled
+   control states are actually represented. Keep construction/routing limits
+   explicit; counts of windows alone do not establish the control coverage.
+3. **Make the purpose-name assertion discriminate purpose from value.** At
+   lines 660–670, `values` is a set of every ListItem name under the dialog,
+   with no requirement that any exist and no association with a specific
+   combo. A constructed tree containing a combo named `Best video available`
+   and no ListItem passes the new test unchanged. Even a nonempty collection
+   of unrelated items would not establish that combo's selected value. Bind
+   the assertion to each combo's purpose and actual selected value, and prove
+   it fails for a missing purpose/value-as-name case. A nonempty combo list
+   is not a positive control for the value comparison.
+
+The fixture failures were reproduced on Linux by extracting the committed
+fixture and three new test function bodies unchanged into a temporary harness.
+Only the platform import boundary and UIA provider were replaced; the real
+MainWindow routes ran. The results are **three pre-query failures, zero UIA
+calls**. A second harness supplied the constructed Tree counterexample to the
+unchanged combo test, after providing a minimal dialog stub. It passed.
+These are proofs of platform-independent setup/assertion defects, not claims
+that UI Automation executed on Linux. No Windows bridge behavior is inferred.
+
+### R2: runner state and the proposed fallback
+
+The GitHub API reports STARBASE **offline**, `busy=false`, with the matching
+self-hosted/Windows/desktop labels. `STARBASE_AVAILABLE=true`, while
+`WINDOWS_RUNNER=["self-hosted","windows","desktop"]`. The availability
+variable therefore does not currently describe the observed runner state.
+
+[Run 34610604275](https://github.com/kottmans/tracks-and-trails/actions/runs/34610604275)
+at the correction head has successful Linux/frozen-Linux jobs and queued
+Windows desktop/frozen-Windows jobs. Earlier runs at `bca24bd` and `c256103`
+are now cancelled, without supplying the required new Windows result.
+
+**Unsetting WINDOWS_RUNNER does not move the native desktop job.** At
+`.github/workflows/ci.yml:535`, that job's `runs-on` is the literal
+`[self-hosted, windows, desktop]`; `STARBASE_AVAILABLE` gates its inclusion.
+WINDOWS_RUNNER controls the ordinary Windows check/frozen routing. Its removal
+would restore those hosted paths, but leave the required native UIA job on the
+offline desktop. Correct the proposed fallback in the ordinary R2/status sync.
+No runner, workflow or repository variable was changed during this review.
+
+### Reviewer checks and limits
+
+| Check at `67aae4c` | Result |
+|---|---|
+| `ruff check .` | Pass |
+| `ruff format --check .` | Pass, 363 files |
+| Bare `mypy`; `mypy --platform win32` | Both pass, 166 files each |
+| `pytest -q -n 4 tests/ui tests/unit/test_theme.py tests/unit/test_task_placement.py tests/unit/test_toolchain_versions.py` | **1,343 passed / 3 skipped / 17 warnings**, 71.71 s; normal process exit |
+| Initial FormatDialog mutation | **2 failed / 105 passed**, as detailed above |
+| Previous disclosure styling and registry | **2 expected failures**, light and dark, as detailed above |
+| New Windows setup, extracted unchanged | **Three pre-query failures**; no native UIA execution |
+| New combo assertion, constructed counterexample | Passes the wrong name, establishing the guard gap |
+
+The 17 warnings are the existing disconnect/deprecated-event warnings. The
+reported **4,122 passed / 21 skipped** full run is the implementer's evidence;
+this focused review did not independently repeat it. Integration/core behavior
+was not changed by this six-file correction. The broader initial-review
+verification retains its original boundary. No native desktop, live download,
+frozen installation or new crash diagnosis is claimed here.
+
+### Review convergence
+
+This is the ordinary focused correction pass after the initial comprehensive
+review. Only Medium blockers remain. Under [TESTING §14](../TESTING.md#14-review-policy),
+another focused verification requires explicit maintainer authorization; this
+record does not open an automatic third pass. The concrete remaining R1 work
+above can be prepared before the runner returns. The final Windows run must
+cover that corrected test tree. R3 is closed and need not be requested again.
+
+Only this canonical review record is appended. Its existing index link remains
+valid. Task/status ownership remains unchanged; no follow-up task is invented
+for either the continued R1 work or R4's coupled wording cleanup.
+
+Documentation checks pass: Ruff formatting and diff whitespace, the existing
+index/policy links, and exact preservation of the previous review as a byte
+prefix. The migration verifier again preserves all 381 historical entries /
+2,403,546 bytes. Only this review record changed.
