@@ -96,9 +96,10 @@ default selection. Integration was run serially as DEVELOPMENT requires.
 
 The two completed suite scopes and the single-test rerun account for **4,118
 passed / 21 skipped** across invocations. All 454 integration cases completed
-without a reported failure or warning. The initial sandboxed integration invocation was interrupted before completion
-after identifying the localhost socket restriction; it supplies no full-suite
-verdict. The completed unit/UI run's warnings are the existing four signal
+without a reported failure or warning. The initial sandboxed integration
+invocation was interrupted before completion after identifying the localhost
+socket restriction; it supplies no full-suite verdict. The completed unit/UI
+run's warnings are the existing four signal
 disconnect warnings and thirteen deprecated QMouseEvent-constructor warnings.
 No process death or widget-boundary guard firing was reported in that run.
 
@@ -144,12 +145,26 @@ the separate appearance guard. The isolated mutation probes use an archive
 of the exact reviewed commit and cannot pick up that changed test. No branch
 or worktree was created, and no product source was edited by the reviewer.
 
+Before review finalization, the other writer committed that work as
+`bca24bd4be79e29ac1d55244a693862abe1005de`, also including the in-progress
+review record and index entry. That commit is preserved. The reviewer finishes
+the record and index formatting in a separate commit; inclusion of the draft
+in the completion commit grants no approval of its source/test or planning
+changes. The reviewed implementation boundary remains `6b1fcf1`.
+
 ### Coordination and next review
 
 Only this canonical record and its REVIEWS index link are review-owned changes.
 Task/status closure and the Phase 5 proposals remain with their owners. No
 new bookkeeping task is created, and no publication or release is authorized
 by this verdict.
+
+Documentation checks pass: both review/index files pass Ruff formatting, all
+136 local link targets in those files resolve, the new index link is exactly
+one added table row, and the migration verifier preserves all 381 historical
+entries / 2,403,546 bytes. Product source remains AST-identical to the reviewed
+head and the integration test files are unchanged despite the concurrent
+completion edits.
 
 Complete the R1 evidence correction, obtain Windows results for the final
 candidate (R2), and record the maintainer's T-289 exit disposition (R3). Return
