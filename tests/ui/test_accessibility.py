@@ -69,7 +69,6 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QComboBox,
     QLabel,
-    QLineEdit,
     QMenu,
     QScrollArea,
     QToolBar,
@@ -78,6 +77,7 @@ from PySide6.QtWidgets import (
 )
 
 from tests.ui.conftest import Surface, focusable, reaches_by_tab
+from tests.ui.uia_contract import PLATFORM_FURNITURE
 from tracks_and_trails.ui.keyboard import ROUTE_ELSEWHERE_PROPERTY
 from tracks_and_trails.ui.main_window import MainWindow
 
@@ -120,24 +120,6 @@ NAMED_CONTAINERS: Final = frozenset(
     {QAccessible.Role.Table, QAccessible.Role.List, QAccessible.Role.Tree}
 )
 
-#: Qt's own furniture, which Qt names and this project does not own.
-#:
-#: `qt_toolbar_ext_button` is the `»` overflow a `QToolBar` grows when it runs out of room. It is
-#: Qt's widget, created and destroyed by Qt, and it carries no accessible name in any application.
-#: **Named here rather than skipped silently**, because "the platform leaves this unnamed" and "we
-#: forgot to label this" are different facts and a sweep that cannot tell them apart is a sweep
-#: nobody will trust the next time it goes red.
-PLATFORM_FURNITURE: Final = frozenset(
-    {
-        "qt_toolbar_ext_button",
-        "qt_menubar_ext_button",
-        # A `QTableView`'s select-all corner, between the two headers. Qt builds it, Qt leaves it
-        # unnamed and mouse-only, and the rows and columns it selects are reachable through the
-        # table itself — which is the table's own keyboard contract, not one this project sets.
-        "qt_tableview_cornerbutton",
-    }
-)
-
 
 def is_platform_furniture(node: Node) -> bool:
     """Whether a node is a widget **Qt** creates and names, rather than one this project owns.
@@ -145,13 +127,23 @@ def is_platform_furniture(node: Node) -> bool:
     Two shapes, both found by this sweep rather than assumed:
 
     - The named ones, in `PLATFORM_FURNITURE` — a toolbar's `»` overflow and its menu-bar twin.
-    - **Widgets Qt builds inside another control**, which have no object name to list: a
-      `QLineEdit`'s clear button, and the `QListView` a `QComboBox` drops down. Qt creates,
-      names and destroys both. Matched by their parent, because there is nothing else to match on.
+    - **Widgets Qt builds inside another control**, which have no object name to list: the
+      `QListView` a `QComboBox` drops down, and the line edit an editable one holds. Qt creates
+      and destroys both, and neither is this project's to label. Matched by their parent, because
+      there is nothing else to match on.
 
     Naming these rather than skipping them silently is the point: *"the platform leaves this
     unnamed"* and *"we forgot to label this"* are different facts, and a sweep that cannot tell
     them apart is one nobody will trust the next time it goes red.
+
+    **A `QLineEdit`'s clear button used to be excused here, on a premise that was wrong**
+    (`P4EXIT-R1`). The text above said Qt *names* what it builds; measured, `QAccessible` publishes
+    the template editor's field as `EditableText 'File name template'` with one child, `Button ''`.
+    So the sweep was excusing a genuinely unnamed control on the grounds that the platform had
+    handled it, and no other check could see it either — `focusable()` walks the Tab chain and the
+    clear button is `NoFocus`. It is named at its source now (`ui/template_editor.CLEAR_LABEL`),
+    and it is no longer excused here, so the next `setClearButtonEnabled(True)` that ships without
+    a name fails `test_every_surface_names_every_control_it_publishes` rather than passing quietly.
     """
     return node.object_name in PLATFORM_FURNITURE or node.inside_a_control
 
@@ -178,7 +170,9 @@ class Node:
 def _is_built_by_a_control(widget: QWidget) -> bool:
     """Whether Qt built `widget` inside another control, rather than this project placing it."""
     parent = widget.parentWidget()
-    if isinstance(parent, QLineEdit | QComboBox):
+    # **`QComboBox` alone.** A `QLineEdit`'s children were excused too until `P4EXIT-R1` measured
+    # that the only one, the clear button, reaches the tree unnamed — see the docstring above.
+    if isinstance(parent, QComboBox):
         return True
     # A combo's popup sits in a frame of its own, one level further out.
     grandparent = parent.parentWidget() if parent is not None else None

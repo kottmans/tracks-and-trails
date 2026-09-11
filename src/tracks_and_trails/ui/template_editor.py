@@ -30,6 +30,7 @@ from typing import Final
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QLabel,
     QLineEdit,
     QVBoxLayout,
@@ -37,10 +38,26 @@ from PySide6.QtWidgets import (
 )
 
 from tracks_and_trails.core.output_template import SUPPORTED_FIELDS, OutputPreview
+from tracks_and_trails.ui.keyboard import route_is_elsewhere
 
 #: What the input is labelled. Product vocabulary rather than yt-dlp's: a user is naming a file,
 #: not configuring an `outtmpl`.
 TEMPLATE_LABEL: Final = "File name template"
+
+#: What Qt's own clear button is announced as (`P4EXIT-R1`).
+#:
+#: **`setClearButtonEnabled(True)` adds a control to the accessibility tree and gives it no name.**
+#: Measured, not inferred: `QAccessible` publishes `EditableText 'File name template'` with one
+#: child, `Button ''`. Narrator and Orca both read that tree, so a user tabbing or touching past
+#: the field met a button announced as nothing at all — `NFR-005`'s exact failure, contributed by
+#: the toolkit rather than by this file.
+#:
+#: **The audit could not have seen it.** `tests/ui/conftest.py`'s `focusable()` walks controls
+#: Tab can land on, and the clear button is `NoFocus` — reachable by pointer and by a screen
+#: reader's own navigation, and invisible to a sweep keyed on the keyboard. The gate that catches
+#: the next one is `test_every_published_control_has_a_name`, which walks the published tree
+#: instead of the focus chain.
+CLEAR_LABEL: Final = f"Clear the {TEMPLATE_LABEL.lower()}"
 
 #: What the preview is labelled when the path is exact.
 PREVIEW_LABEL: Final = "Where it will be saved"
@@ -96,6 +113,16 @@ class TemplateEditor(QWidget):
             "something the site tells us, and a / to make a subfolder."
         )
         self._input.setClearButtonEnabled(True)
+        # **Named here because Qt does not name it** — see `CLEAR_LABEL`. `findChild` rather than
+        # a stored reference: the button is `QLineEditIconButton`, a private class Qt creates as a
+        # side effect of the line above, so this file can only reach it as the child it is.
+        clear_button = self._input.findChild(QAbstractButton)
+        if clear_button is not None:
+            clear_button.setAccessibleName(CLEAR_LABEL)
+            # Qt builds it `NoFocus` and the keyboard needs no button to do this, so the route is
+            # declared rather than the control being made focusable — one more Tab stop that
+            # duplicates a key every text field already answers is a cost, not a fix.
+            route_is_elsewhere(clear_button, "Ctrl+A then Delete, in the field itself")
         # **Every keystroke**, which is what `P-23` costs and what it bought. `textEdited` rather
         # than `textChanged` so setting the text programmatically does not re-enter the surface
         # that set it.

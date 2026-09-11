@@ -429,9 +429,9 @@ BORDERED_CONTROLS: Final = (
             "**Bordered only so that focusing it shows something** (`P4EXIT-R1`). Its idle border "
             "is `transparent` and it still draws as the painted triangle it replaces; what "
             "changed is that `border: none` used to out-specify `*:focus`, so the keyboard "
-            "indicator on a panel's only pointer route out was literally zero pixels in both "
-            "palettes. The phase-exit audit found it the moment the panels entered the sweep — "
-            "they had never been in it, which is the other half of that finding."
+            "indicator on a panel's top-of-panel return control was literally zero pixels in "
+            "both palettes. The phase-exit audit found it the moment the panels entered the "
+            "sweep — they had never been in it, which is the other half of that finding."
         ),
     ),
     BorderedControl(
@@ -1154,9 +1154,12 @@ QToolButton[disclosure="true"] {{
        **The border is reserved rather than absent, and that is `P4EXIT-R1`'s finding** (`T-303`'s
        fix, one control over). This read `border: none`, which out-specifies the `*:focus`
        catch-all — a type-and-attribute selector beats a universal one — so focusing this button
-       changed **zero pixels in both palettes**, measured. That matters more here than almost
-       anywhere: since `T-312` this triangle is *the* pointer route out of a panel that fills the
-       dialog, and a keyboard user landing on it saw nothing at all. Two transparent pixels give
+       changed **zero pixels in both palettes**, measured. That matters here because since `T-312`
+       this triangle is the return control at the top of a panel that fills the dialog, and a
+       keyboard user landing on it saw nothing at all. **It is not the only way out** (`P4EXIT-R4`
+       corrects the claim this said before): `Done` at the foot of the panel emits the same
+       `closed(True)` (`ui/add_dialog.py:784`, `:805`). It is the one at the top, above the body,
+       and the first thing Tab reaches. Two transparent pixels give
        the rule below something to recolour, exactly as a check box's do, and the control still
        does not look like a button. */
     border: 2px solid transparent;

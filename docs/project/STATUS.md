@@ -35,12 +35,58 @@ owns phase deliverables and exit criteria.
     left all 103 passing.**
 
     **The widened audit immediately found a real defect, which is the point of widening it.** The
-    collapse triangle at the top of every row panel — since `T-312` the *only* pointer route out
-    of a panel that fills the dialog — changed **zero pixels on focus in both palettes**. Its rule
+    collapse triangle at the top of every row panel — since `T-312` the return control above the
+    body of a panel that fills the dialog, and the first thing Tab reaches on it — changed **zero
+    pixels on focus in both palettes**. Its rule
     said `border: none`, which out-specifies the `*:focus` catch-all, so a keyboard user landing
     there saw nothing at all. It now reserves a transparent edge for focus to recolour, which is
     `T-303`'s fix one control over, and it is enumerated in `BORDERED_CONTROLS` so the rendered
     per-control sweep covers it. Restoring the reviewed state fails the sweep in both palettes.
+
+    **The re-review verified that and returned three more requirements, corrected 2026-09-11.**
+    The Windows tests were taking a bare `MainWindow` with no composition, so `open_settings()`
+    answered `None` and `open_add_dialog()` raised — all three failed *before* UI Automation was
+    ever called. They take `composed` now, the same fixture `every_surface` and fourteen other
+    Linux cases drive. **Measured the way the reviewer measured it**: replaying the committed
+    bodies on Linux with only the UIA provider replaced reaches the query **16 times**, against
+    the **zero** recorded at the previous head. A fourth test sweeps all thirteen surfaces of the
+    shared inventory — Options, `PresetManager`, the queue's `FormatDialog` and the three editing
+    panels had no Windows query at all, and a comment pointed at the Linux audit in place of one.
+    Its floor is derived rather than listed: a surface with a Tab-reachable widget in Qt must
+    publish at least one operable control.
+
+    **The purpose-versus-value check is now provable on this platform.** It compared a combo's
+    name against every `ListItem` in the tree, required none to exist, and tied none to a
+    particular combo — so a tree holding one combo named `Best video available` and no list item
+    passed it. The pure contract moved to `tests/ui/uia_contract.py`, out from behind a
+    Windows-only module skip, and `tests/ui/test_uia_contract.py` holds **19 counterexamples**:
+    the reviewer's exact tree, a reconstruction of the superseded expression showing it accepted
+    that tree, the missing-name case, and a value-as-name case per control. The floor is the
+    values the live widgets are displaying, asserted non-empty.
+
+    **Replaying the sweep against Qt's own tree found two more things**, which is again the point
+    of widening it:
+
+    - **The template editor's clear button reaches the accessibility tree unnamed.** Measured:
+      `EditableText 'File name template'` with one child, `Button ''`. `setClearButtonEnabled`
+      adds a control and Qt names none of it. The Linux audit had *excused* it as platform
+      furniture on the premise that Qt names what it builds, which is what the measurement
+      refutes, and no other check could see it — `focusable()` walks the Tab chain and the button
+      is `NoFocus`. Named at its source, its keyboard route declared through the mechanism
+      `T200-R2` built for exactly this, and the exclusion tightened so the next one fails.
+    - **The published-tree sweep excluded Windows' furniture and not Qt's.** Four unnamed combo
+      dropdown lists across Settings and the add dialog, plus the toolbar's `»` overflow — all
+      Qt's, all of which would have failed the new sweep. Excluded now by parentage and by
+      `AutomationId`, sharing one `PLATFORM_FURNITURE` list with the Linux audit rather than a
+      second copy of it.
+
+    **What is still not established is unchanged**: none of the Windows assertions has executed.
+    That is `R2`.
+  - **`P4EXIT-R4` — corrected 2026-09-11.** The theme comment, the `BORDERED_CONTROLS` reason and
+    the entry above called the collapse triangle the *only* pointer route out of a panel.
+    `RowPanel` gives `Done` the same `closed(True)` (`ui/add_dialog.py:784`, `:805`). All three
+    now describe it as the return control at the top of the panel — measured first in every
+    panel's focus chain — without claiming exclusivity.
   - **`P4EXIT-R2` — not a queue, a machine.** `WINDOWS_RUNNER` pins `windows desktop` and
     `frozen windows` to `STARBASE`, and the API reports that runner **offline**; both jobs on
     `bca24bd` are queued behind it. `OPS-012` records that a self-hosted job with no matching
