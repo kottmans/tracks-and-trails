@@ -102,11 +102,21 @@ owns phase deliverables and exit criteria.
     with `T-289`'s unexplained abort, bounded by the unchanged reopening condition. Recorded in
     that task's closed record and in the risk section below. **The crash is still not explained**,
     and the acceptance says so.
-- **Phase 5 is planned.** Twelve tasks (`T-317`–`T-328`) plus a sharpened `T-106` tie every
-  Phase 5 deliverable and exit criterion to an owner; see the task map in
-  [IMPLEMENTATION_PLAN §Phase 5](IMPLEMENTATION_PLAN.md#phase-5--distribution). Three are
-  maintainer rulings that gate the start: the Linux format, installer signing, and how a clean
-  machine is evidenced.
+- **Phase 5 is planned, and its four gating rulings are taken.** Twelve tasks (`T-317`–`T-328`)
+  plus `T-106` tie every Phase 5 deliverable and exit criterion to an owner; see the task map in
+  [IMPLEMENTATION_PLAN §Phase 5](IMPLEMENTATION_PLAN.md#phase-5--distribution).
+
+  **The maintainer ruled on all four on 2026-09-11**, so nothing in Phase 5 is waiting on a
+  decision: [`REL-003`](DECISIONS.md#rel-003--semver-and-the-first-release-is-010) SemVer with a
+  first release of `0.1.0`; [`REL-004`](DECISIONS.md#rel-004--the-linux-artifact-ships-as-an-appimage)
+  AppImage for Linux; [`REL-005`](DECISIONS.md#rel-005--the-first-windows-installer-ships-unsigned)
+  `0.1.0` ships unsigned, with a certificate as the `1.0` condition; and
+  [`REL-006`](DECISIONS.md#rel-006--a-clean-machine-is-a-disposable-vm-the-maintainer-owns)
+  disposable VMs the maintainer owns as the clean-machine evidence. `T-106` is **In Review** —
+  `REL-004` meets every criterion it had. `T-317`, `T-318` and `T-320` keep the documentation and
+  harness work their rulings did not do, and stay `Proposed` because the phase has not opened.
+
+  **What still gates the phase is Phase 4's exit, not a decision.**
 
 - **T-300 is Complete**, approved at `5eecad9` on 2026-09-08 by independent review and
   moved to [COMPLETED_TASKS](COMPLETED_TASKS.md). Its two Low findings were corrected

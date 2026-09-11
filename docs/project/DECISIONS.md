@@ -48,6 +48,10 @@ Current requirements and architecture retain their own canonical authority.
 | [DAT-001](#dat-001--sqlite-for-queue-and-history-toml-for-settings) | SQLite for queue and history; TOML for settings | Accepted | [Amended 2026-08-06 (second, and current)](#amended-2026-08-06-second-and-current--there-is-no-history-to-store); [Amended 2026-08-06 (first, superseded)](#amended-2026-08-06-first-superseded--history-is-a-private-ledger-and-the-storage-choice-is-unchanged) |
 | [OPS-001](#ops-001--ffmpeg-is-an-external-dependency-detected-on-linux-bundled-on-windows) | ffmpeg is an external dependency: detected on Linux, bundled on Windows | Accepted | — |
 | [OPS-002](#ops-002--ship-a-pinned-yt-dlp-baseline-that-the-user-can-update-in-place) | Ship a pinned yt-dlp baseline that the user can update in place | Accepted | [Amended 2026-08-27](#amended-2026-08-27--the-override-is-recovery-not-a-standing-choice) |
+| [REL-003](#rel-003--semver-and-the-first-release-is-010) | SemVer, and the first release is `0.1.0` | Accepted | — |
+| [REL-004](#rel-004--the-linux-artifact-ships-as-an-appimage) | The Linux artifact ships as an AppImage | Accepted | — |
+| [REL-005](#rel-005--the-first-windows-installer-ships-unsigned) | The first Windows installer ships unsigned | Accepted | — |
+| [REL-006](#rel-006--a-clean-machine-is-a-disposable-vm-the-maintainer-owns) | A clean machine is a disposable VM the maintainer owns | Accepted | — |
 | [REL-002](#rel-002--collect_submodulesyt_dlp-stays-as-insurance-against-a-pin-we-do-not-have-yet) | `collect_submodules("yt_dlp")` stays, as insurance against a pin we do not have yet | Accepted | — |
 | [REL-001](#rel-001--ship-frozen-self-contained-artifacts-no-python-required-on-the-users-machine) | Ship frozen, self-contained artifacts: no Python required on the user's machine | Accepted | — |
 | [OPS-004](#ops-004--windows-ci-runners-provide-a-real-desktop-verify-against-it) | Windows CI runners provide a real desktop; verify against it | Accepted | [OPS-005](#ops-005--starbase-is-the-windows-verification-platform-hosted-only-findings-do-not-gate-the-phase); [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously) |
@@ -785,6 +789,195 @@ every report is unactionable.
 - Bumping the baseline is a release-gate step.
 - A future yt-dlp release that adds a **required** compiled dependency breaks this mechanism.
   The release gate re-checks purity (`ai/TESTING.md` §8).
+
+---
+
+## REL-003 — SemVer, and the first release is `0.1.0`
+
+**Status:** **Accepted** (2026-09-11) — maintainer decision, ruling on `T-320`'s proposal
+**Date:** 2026-09-11
+**Unblocks:** `T-319`, `T-321`, `T-322`, `T-324` — every build task stamps the version this names.
+
+### Context
+
+`IMPLEMENTATION_PLAN.md` §Phase 5 lists *"versioning policy, release gate, and rollback procedure
+documented"* as a deliverable, and no entry had taken the scheme up. `pyproject.toml`'s
+`[tool.hatch.version]` already reads `src/tracks_and_trails/__init__.py`, which carries
+`0.1.0.dev0`, and `tests/unit/test_skeleton.py` asserts that `--version` prints it — so a scheme
+was in use without being decided.
+
+Two alternatives were put and rejected. **Starting at `1.0.0`** would signal a stability and a
+completeness the product does not have: `REQ-030`'s yt-dlp parity is deferred to Phase 4.5, which
+the 2026-09-10 resequencing moved to *after* the first release, so a `1.0` would promise parity
+while shipping without it — and the first breaking change would then have to be `2.0`. **CalVer**
+avoids the signalling question entirely, at the cost of the signal: a user cannot tell from
+`2026.9.0` whether an upgrade is safe, and `OPS-002`'s rule that a yt-dlp baseline bump is at least
+a minor release loses the word *minor* that carries it.
+
+### Decision
+
+**SemVer, `0.y.z` until the maintainer declares `1.0`.** The first release is **`0.1.0`**.
+
+- `main` carries `X.Y.Z.devN` between releases.
+- A release commit sets `__version__ = "X.Y.Z"` and is tagged `vX.Y.Z`.
+- The next commit bumps to `X.Y.(Z+1).dev0`.
+- Patch releases carry fixes only. **A yt-dlp baseline bump is at least a minor release**, because
+  it changes behaviour on every site (`OPS-002`; release gate item 10a).
+
+`0.1.0` is what `__init__.py` already says minus the `.dev0`, so nothing has to be renumbered, and
+`0.x` is honest about a release that ships before `REQ-030`'s parity.
+
+### Consequences
+
+- **The tag and the version must agree, and that is a gate rather than a habit.** A `vX.Y.Z` tag on
+  a commit whose `__version__` is not `X.Y.Z` fails `T-324`'s release workflow. `T-320` owns the
+  test.
+- **`SECURITY.md` §Supported versions can be filled** at the first tag: the latest minor receives
+  fixes, older ones do not.
+- **`CHANGELOG.md` is created in the release commit**, not before — `DOC-002`'s trigger is the first
+  tagged release, and an empty changelog is the speculative document that decision forbids.
+- **Declaring `1.0` stays the maintainer's, and this entry does not schedule it.** The natural
+  condition is `REQ-030` parity landing in Phase 4.5, but naming that here would be deciding it.
+
+---
+
+## REL-004 — The Linux artifact ships as an AppImage
+
+**Status:** **Accepted** (2026-09-11) — maintainer decision, ruling on `T-106`'s proposal
+**Date:** 2026-09-11
+**Extends:** `REL-001`, which chose frozen self-contained artifacts and left the Linux *format*
+open. **Unblocks:** `T-321`.
+
+### Context
+
+§Phase 5's trigger reads: *"A `REL-` decision recording the Linux packaging format must be accepted
+before the first build."* `REL-001` decided that artifacts are frozen and self-contained and said
+nothing about format, so the deliverable list pointed at an entry that did not exist.
+
+### Decision
+
+**AppImage**, for three reasons in order of weight:
+
+1. **`OPS-001` makes ffmpeg a *system* dependency on Linux**, and a Flatpak cannot see the host's
+   ffmpeg without a portal or an extension. Choosing Flatpak would either reverse `OPS-001` on
+   Linux — bundling ffmpeg after all — or ship a sandbox in which the merge feature is dead on
+   arrival. An AppImage runs as an ordinary process, so `find_ffmpeg`'s `PATH` search under
+   `REQ-024` works unchanged.
+2. **It is what `packaging/tracks-and-trails.spec` already produces.** PyInstaller one-dir *is* an
+   AppDir minus a `.desktop`, an icon and `AppRun`; `T-020` and `T-033` have been building and
+   probing that tree in CI since Phase 0. Flatpak means a manifest, a runtime and a second build
+   system.
+3. **`NFR-004`'s directories are unaffected.** `platformdirs` resolves the same `XDG_*` paths from
+   an AppImage as from source, which `T-298`'s frozen-isolation gate already pins.
+
+`.deb`/`.rpm` stay where `REL-001` left them: a later secondary, never the primary. They are native
+and small, and they cost system packaging per distribution and a dependency matrix to maintain.
+
+### Consequences
+
+- **`NFR-009` is satisfied *within* the bundle, and the gate must say so.** Qt's `.so` files ship
+  inside the AppImage and stay dynamically linked, which is `LIC-001`'s LGPL condition. The release
+  gate checks the shipped Qt libraries are linked rather than archived into the executable; `T-321`
+  owns that check.
+- **Size is the price.** The smoke artifact measures ~223 MiB before ffmpeg.
+- **It must be built against the oldest glibc it claims to support.** `OPS-012` records the
+  surrender that made this necessary — a Fedora-built binary may not run on an older distro — and
+  `REL-006`'s Linux VM is the machine that answers it. `T-321` owns the build host and names the
+  floor; this entry does not defer it silently.
+- **Reopening condition:** if ffmpeg is ever bundled on Linux, or a distribution store becomes a
+  requirement, revisit Flatpak.
+
+---
+
+## REL-005 — The first Windows installer ships unsigned
+
+**Status:** **Accepted** (2026-09-11) — maintainer decision, ruling on `T-317`'s proposal
+**Date:** 2026-09-11
+**Unblocks:** `T-322`, and settles what `T-039` may assert.
+
+### Context
+
+Nothing in the record decided this. `DOC-002` names *"a documented release and signing process"* as
+the reason `docs/RELEASE.md` exists, and no `REL-` entry had taken the question up — so *unsigned*
+risked being an omission discovered at the first SmartScreen screenshot rather than a choice.
+
+Two alternatives were put and rejected **for `0.1.0`**, not in principle. An **OV certificate** is a
+yearly purchase with identity verification and a key to protect, and it does not remove the prompt
+for a first release: SmartScreen reputation accrues over downloads, so an OV certificate starts a
+clock rather than stopping the warning. **Azure Trusted Signing or an EV certificate** does remove
+the prompt from the first install, and costs a subscription and an Azure identity, with EV
+additionally requiring hardware-backed keys.
+
+### Decision
+
+**Ship `0.1.0` unsigned**, with the SmartScreen prompt documented rather than discovered.
+
+The first release is the one where the maintainer learns whether anyone installs it, and buying
+identity infrastructure before that is the cost inverted. **B or C is named as the `1.0`
+condition**, so the reopening is scheduled rather than hoped for.
+
+### Consequences
+
+- **The click-through is documentation, not support.** The README's install section and
+  `docs/RELEASE.md` must state exactly what a user sees — *"Windows protected your PC"* → **More
+  info** → **Run anyway** — so the answer is a link. `T-320` creates `docs/RELEASE.md`; `T-322`
+  owns the README's install section.
+- **Reputation never accrues, so the prompt never goes away.** That is the standing cost of this
+  choice and it is not a defect report when a user meets it.
+- **`T-039`'s gates are independent of signature.** A silent install must succeed either way, and
+  the test must not pass merely because a signed binary skipped a prompt. Stated here so that a
+  later signing decision cannot quietly weaken it.
+- **The Linux artifact is not signed either, deliberately.** AppImage signatures are optional and
+  rarely checked; recorded as an omission taken on purpose rather than overlooked.
+- **Reopening condition:** the `1.0` release, or evidence that the prompt is costing installs —
+  whichever comes first.
+
+---
+
+## REL-006 — A clean machine is a disposable VM the maintainer owns
+
+**Status:** **Accepted** (2026-09-11) — maintainer decision, ruling on `T-318`'s proposal
+**Date:** 2026-09-11
+**Relates to:** `OPS-010` and `OPS-012`, which each surrendered clean-machine CI evidence on one
+platform. **Unblocks:** Phase 5's exit criteria 1 and 2, and release-gate item 7.
+
+### Context
+
+Both self-hosted routings were taken with eyes open: `OPS-010` gave up clean-machine evidence for
+Windows and `OPS-012` for Linux, each saying so in writing. Phase 5's exit criteria were written
+before either, so the phase demanded something CI no longer produces.
+
+Two alternatives were put and rejected. **One hosted run per release candidate** — unsetting
+`WINDOWS_RUNNER`/`LINUX_RUNNER` for the RC — is clean on both platforms and needs no setup, but
+`OPS-010` records the hosted allowance running out as the reason those variables were set, and it
+would evidence `ubuntu-latest` rather than the older distro `REL-004`'s AppImage must support.
+**Accepting developer-machine evidence** costs nothing and is not clean; it is recorded so that
+choosing it would have been a choice.
+
+### Decision
+
+**Disposable VMs the maintainer owns.** Windows Sandbox on the desktop, which is clean on every
+launch by design, and a throwaway Ubuntu LTS VM or container for Linux.
+
+It is genuinely clean, it costs no hosted minutes, and **the Linux VM is the same machine `T-321`
+needs anyway** as `REL-004`'s oldest-glibc build target — one afternoon of setup answering two
+requirements.
+
+### Consequences
+
+- **"Clean" is operational, and checked before the install.** No Python, no Qt, no ffmpeg on
+  Windows — it is bundled there under `OPS-001` — and no developer toolchain. The check is a
+  command run before installing, whose output is retained with the evidence.
+- **Each release candidate leaves an evidence file per platform** under `docs/project/evidence/`:
+  machine identity, the pre-install check, the install, first launch, one real download, exit.
+  `T-318` owns the harness and the format.
+- **The setup is documented well enough to recreate the VM in a year.** A clean machine nobody can
+  rebuild is evidence that expires quietly.
+- **This does not restore clean-machine CI.** `OPS-010` and `OPS-012` stand; this is per-release
+  evidence, taken by hand, and `A` remains the fallback if the VMs cannot be arranged for a
+  particular candidate.
+- **Reopening condition:** a hosted allowance that makes `A` free again, or a release cadence that
+  makes hand-taken evidence the bottleneck.
 
 ---
 

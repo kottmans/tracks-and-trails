@@ -14,6 +14,78 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-106 — Decide the Linux packaging format before Phase 5
+
+**Status:** **In Review** — the maintainer ruled on 2026-09-11 and the decision is recorded as
+[`REL-004`](DECISIONS.md#rel-004--the-linux-artifact-ships-as-an-appimage). Every acceptance
+criterion below is met by that entry; nothing else remains in this task. *(Filed 2026-08-01 from
+the Phase 5 roadmap review, when `IMPLEMENTATION_PLAN.md` required the decision before the first
+build and it did not exist.)*
+**Owner:** Architect / maintainer decision
+**Priority:** Medium — nothing is blocked until Phase 5, and the answer shapes work well before then
+**Phase:** Phase 5 prerequisite
+**Depends on:** nothing
+**Relevant context:** `REL-001` (ship frozen artifacts, no Python on the user's machine),
+`IMPLEMENTATION_PLAN.md` §Phase 5, `LIC-001`, `NFR-009` (Qt stays dynamically linked), `OPS-001`
+**Affected surfaces:** `docs/project/DECISIONS.md`, and later `packaging/`
+**Risk:** Medium — taken late, it constrains a build that has already been written
+
+#### Scope
+
+§Phase 5's trigger reads: *"A `REL-` decision recording the Linux packaging format must be accepted
+before the first build."* The only `REL-` entry is `REL-001`, which decides that artifacts are
+frozen and self-contained and says nothing about **format**. The deliverable list says only
+"Linux: packaging per the `REL-` decision" — pointing at an entry that does not exist.
+
+**Why it is worth taking early rather than at Phase 5.** The candidates differ in ways that reach
+back into the build: AppImage wants everything in one tree and is closest to what PyInstaller
+already produces; Flatpak has its own runtime and sandbox, which changes how the application finds
+`ffmpeg` and where it may write (`NFR-004`, `REQ-024`); a `.deb`/`.rpm` pair means system packaging
+per distribution and a dependency story rather than a bundle. `NFR-009` constrains all of them —
+Qt must stay dynamically linked (`LIC-001`'s LGPL condition).
+
+#### Acceptance criteria
+
+- A `REL-` entry naming the format, with the rejected alternatives and **why**, in the house style
+- States how the choice interacts with `REQ-024`'s ffmpeg detection and `NFR-004`'s directories,
+  since that is where a sandboxed format differs most from a bundle
+- States what it means for `NFR-009`, and how that is checked in the release gate
+- Names its reopening condition
+
+#### Proposal, 2026-09-11 — for the maintainer to accept, amend or reject
+
+**Recommended: AppImage.** Three reasons, in order of weight:
+
+1. **`OPS-001` makes ffmpeg a *system* dependency on Linux**, and a Flatpak cannot see the host's
+   ffmpeg without a portal or an extension. Choosing Flatpak would either reverse `OPS-001` on
+   Linux (bundle ffmpeg after all) or ship a sandbox in which the merge feature is dead on arrival.
+   An AppImage runs as an ordinary process and `find_ffmpeg`'s `PATH` search works unchanged.
+2. **It is what `packaging/tracks-and-trails.spec` already produces.** PyInstaller one-dir *is* an
+   AppDir minus a `.desktop`, an icon and `AppRun`; `T-020`/`T-033` have been building and probing
+   that tree in CI since Phase 0. Flatpak means a manifest, a runtime and a second build system.
+3. **`NFR-004`'s directories are unaffected**: `platformdirs` resolves the same `XDG_*` paths from
+   an AppImage as from source, which `T-298`'s frozen-isolation gate already pins.
+
+**What it costs, stated.** An AppImage carries no dependency story — Qt's own `.so` files ship
+inside it (`NFR-009`, still dynamically linked *within* the bundle), so it is large (the smoke
+artifact is ~223 MiB before ffmpeg) and it must be built against the **oldest glibc it claims to
+support** (`OPS-012`'s recorded surrender: a Fedora-built binary may not run on an older distro).
+That is `T-321`'s problem and is named there, not deferred.
+
+**Reopening condition:** if ffmpeg is ever bundled on Linux, or a distribution store becomes a
+requirement, revisit Flatpak. `.deb`/`.rpm` stay where `REL-001` left them — a later secondary, never
+the primary.
+
+**Acceptance is unchanged**: this becomes a `REL-` entry in the house style only when the maintainer
+accepts it. Until then it is a proposal in a task, which is the narrowest honest record.
+
+#### Out of scope
+
+- Building anything. This is the decision; Phase 5 owns the packaging work (`T-321`)
+- Windows, which `OPS-001` already settles
+
+---
+
 ## Ready
 
 ### T-301 — Four UI tests break when the application font grows by one point
@@ -273,75 +345,6 @@ own.
 noise; the connection still died mid-stream and that is what failed the job. Both changes are
 improvements a reader can verify without Windows, which is exactly why they were worth doing
 separately from the part that needs it.
-
----
-
-### T-106 — Decide the Linux packaging format before Phase 5
-
-**Status:** Proposed — **filed 2026-08-01**, from the Phase 5 roadmap review. `IMPLEMENTATION_PLAN.md`
-requires this decision *before the first build* and it does not exist.
-**Owner:** Architect / maintainer decision
-**Priority:** Medium — nothing is blocked until Phase 5, and the answer shapes work well before then
-**Phase:** Phase 5 prerequisite
-**Depends on:** nothing
-**Relevant context:** `REL-001` (ship frozen artifacts, no Python on the user's machine),
-`IMPLEMENTATION_PLAN.md` §Phase 5, `LIC-001`, `NFR-009` (Qt stays dynamically linked), `OPS-001`
-**Affected surfaces:** `docs/project/DECISIONS.md`, and later `packaging/`
-**Risk:** Medium — taken late, it constrains a build that has already been written
-
-#### Scope
-
-§Phase 5's trigger reads: *"A `REL-` decision recording the Linux packaging format must be accepted
-before the first build."* The only `REL-` entry is `REL-001`, which decides that artifacts are
-frozen and self-contained and says nothing about **format**. The deliverable list says only
-"Linux: packaging per the `REL-` decision" — pointing at an entry that does not exist.
-
-**Why it is worth taking early rather than at Phase 5.** The candidates differ in ways that reach
-back into the build: AppImage wants everything in one tree and is closest to what PyInstaller
-already produces; Flatpak has its own runtime and sandbox, which changes how the application finds
-`ffmpeg` and where it may write (`NFR-004`, `REQ-024`); a `.deb`/`.rpm` pair means system packaging
-per distribution and a dependency story rather than a bundle. `NFR-009` constrains all of them —
-Qt must stay dynamically linked (`LIC-001`'s LGPL condition).
-
-#### Acceptance criteria
-
-- A `REL-` entry naming the format, with the rejected alternatives and **why**, in the house style
-- States how the choice interacts with `REQ-024`'s ffmpeg detection and `NFR-004`'s directories,
-  since that is where a sandboxed format differs most from a bundle
-- States what it means for `NFR-009`, and how that is checked in the release gate
-- Names its reopening condition
-
-#### Proposal, 2026-09-11 — for the maintainer to accept, amend or reject
-
-**Recommended: AppImage.** Three reasons, in order of weight:
-
-1. **`OPS-001` makes ffmpeg a *system* dependency on Linux**, and a Flatpak cannot see the host's
-   ffmpeg without a portal or an extension. Choosing Flatpak would either reverse `OPS-001` on
-   Linux (bundle ffmpeg after all) or ship a sandbox in which the merge feature is dead on arrival.
-   An AppImage runs as an ordinary process and `find_ffmpeg`'s `PATH` search works unchanged.
-2. **It is what `packaging/tracks-and-trails.spec` already produces.** PyInstaller one-dir *is* an
-   AppDir minus a `.desktop`, an icon and `AppRun`; `T-020`/`T-033` have been building and probing
-   that tree in CI since Phase 0. Flatpak means a manifest, a runtime and a second build system.
-3. **`NFR-004`'s directories are unaffected**: `platformdirs` resolves the same `XDG_*` paths from
-   an AppImage as from source, which `T-298`'s frozen-isolation gate already pins.
-
-**What it costs, stated.** An AppImage carries no dependency story — Qt's own `.so` files ship
-inside it (`NFR-009`, still dynamically linked *within* the bundle), so it is large (the smoke
-artifact is ~223 MiB before ffmpeg) and it must be built against the **oldest glibc it claims to
-support** (`OPS-012`'s recorded surrender: a Fedora-built binary may not run on an older distro).
-That is `T-321`'s problem and is named there, not deferred.
-
-**Reopening condition:** if ffmpeg is ever bundled on Linux, or a distribution store becomes a
-requirement, revisit Flatpak. `.deb`/`.rpm` stay where `REL-001` left them — a later secondary, never
-the primary.
-
-**Acceptance is unchanged**: this becomes a `REL-` entry in the house style only when the maintainer
-accepts it. Until then it is a proposal in a task, which is the narrowest honest record.
-
-#### Out of scope
-
-- Building anything. This is the decision; Phase 5 owns the packaging work (`T-321`)
-- Windows, which `OPS-001` already settles
 
 ---
 
@@ -961,6 +964,13 @@ evidence than a Phase 4 run would have been.
 
 **Status:** Proposed — filed 2026-09-11 with the Phase 5 plan. **Gates the start**: it changes what
 `T-322` builds and what `T-039` may assert.
+
+**The decision is taken.** The maintainer ruled on 2026-09-11 for option **A**, recorded as
+[`REL-005`](DECISIONS.md#rel-005--the-first-windows-installer-ships-unsigned): `0.1.0` ships
+unsigned, with B or C named as the `1.0` condition. **What remains in this task is the
+documentation follow-through** — the README's install section and the exact SmartScreen
+click-through in `docs/RELEASE.md`, which `T-320` has yet to create. It stays `Proposed` because
+Phase 5 has not opened, not because the decision is outstanding.
 **Owner:** Maintainer decision; Implementer records it as a `REL-` entry
 **Priority:** High — every later Windows task is shaped by the answer, and a certificate is a
 purchase with a lead time
@@ -1016,6 +1026,13 @@ down rather than an omission discovered at the first SmartScreen screenshot.
 **Status:** Proposed — filed 2026-09-11 with the Phase 5 plan. **Gates the exit** (criteria 1, 2
 and release-gate item 7) and should be decided before the build tasks so the evidence is collected
 as they land rather than reconstructed afterwards.
+
+**The decision is taken.** The maintainer ruled on 2026-09-11 for option **B**, recorded as
+[`REL-006`](DECISIONS.md#rel-006--a-clean-machine-is-a-disposable-vm-the-maintainer-owns):
+disposable VMs the maintainer owns, with *A* as the fallback. **What remains is the harness** —
+the operational pre-install check, the per-candidate evidence file under `docs/project/evidence/`,
+and the VM setup written down well enough to recreate in a year. It stays `Proposed` because
+Phase 5 has not opened, not because the decision is outstanding.
 **Owner:** Maintainer decision; Implementer records it and builds whichever harness it names
 **Priority:** High — the two exit criteria it serves are the phase's definition of done
 **Phase:** Phase 5
@@ -1130,6 +1147,14 @@ for yt-dlp (`REL-002`).
 
 **Status:** Proposed — filed 2026-09-11 with the Phase 5 plan. **Gates the start**: every build
 stamps the version this decides.
+
+**The scheme and the first number are ruled.** The maintainer accepted the proposal below on
+2026-09-11, recorded as [`REL-003`](DECISIONS.md#rel-003--semver-and-the-first-release-is-010):
+SemVer, `0.y.z` until `1.0` is declared, first release `0.1.0`. **What remains is the
+documentation and the gate** — `docs/RELEASE.md`, `SECURITY.md` §Supported versions, the README's
+install section, and the test that fails a `vX.Y.Z` tag on a commit whose `__version__` is not
+`X.Y.Z`. It stays `Proposed` because Phase 5 has not opened, not because the decision is
+outstanding.
 **Owner:** Implementer proposes; Maintainer rules on the scheme and the first number
 **Priority:** High
 **Phase:** Phase 5
