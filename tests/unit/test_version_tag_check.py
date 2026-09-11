@@ -11,17 +11,38 @@ wild. So the cases below are the ones a release gets exactly one attempt at.
 
 from __future__ import annotations
 
+import importlib.util
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
-
-from version_tag_check import check, installed_version, main
-
 REPOSITORY = Path(__file__).resolve().parents[2]
+TOOL = REPOSITORY / "tools" / "version_tag_check.py"
+
+
+def load() -> ModuleType:
+    """Load the tool by path, the way `test_job_duration_report.py` loads its own.
+
+    `tools/` is not a package and is not in `mypy`'s `files`, so a plain import is both an
+    unresolvable module and a source of `Any`. This is the pattern the project already uses, and
+    the first version of this file did not — a `sys.path` insert passed `pytest` and failed
+    `mypy` on both platforms, which is what a required gate is for.
+    """
+    specification = importlib.util.spec_from_file_location("version_tag_check", TOOL)
+    assert specification is not None and specification.loader is not None
+    module = importlib.util.module_from_spec(specification)
+    sys.modules[specification.name] = module
+    specification.loader.exec_module(module)
+    return module
+
+
+tool = load()
+check = tool.check
+installed_version = tool.installed_version
+main = tool.main
 
 
 def test_a_matching_tag_and_version_is_publishable() -> None:
