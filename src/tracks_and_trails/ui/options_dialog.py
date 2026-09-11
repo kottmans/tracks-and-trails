@@ -98,6 +98,7 @@ __all__ = ["OptionsDialog"]
 CONTAINER_KEEP_NAME: Final = "optionsContainerKeep"
 CONTAINER_REMUX_NAME: Final = "optionsContainerRemux"
 CONTAINER_RECODE_NAME: Final = "optionsContainerRecode"
+CONTAINER_NOTE_NAME: Final = "optionsContainerNote"
 CONTAINER_CHOICE_NAME: Final = "optionsContainerChoice"
 AUDIO_CODEC_NAME: Final = "optionsAudioCodec"
 AUDIO_QUALITY_NAME: Final = "optionsAudioQuality"
@@ -181,6 +182,27 @@ NO_SINK_REASON: Final = "These options cannot be saved as a preset from here."
 NO_AUDIO_REASON: Final = "This download keeps its video, so there is no audio track to convert."
 NO_BITRATE_REASON: Final = "A bitrate applies to MP3. Other codecs carry their own quality scale."
 NO_SUBTITLES_REASON: Final = "This source publishes no subtitles."
+
+#: What the container section says about its two verbs (`T-286`).
+#:
+#: **It stated only the cost**, which is why the maintainer asked during `T-212`'s run whether
+#: recoding *"provides any tangible benefit over remuxing — seems like the option is pointless"*.
+#: It is not pointless, and a control whose purpose has to be reasoned out from first principles is
+#: one users either avoid or misuse — both of which cost a whole re-encode to discover.
+#:
+#: **The second sentence names the case and the trap together.** Measured 2026-08-27: remuxing a
+#: `vp9 + opus` webm to mp4 **succeeds and leaves `vp9 opus` inside** — a new wrapper on unchanged
+#: streams — while recoding the same file produces `h264 aac` at 44x the cost (4.86 s against
+#: 0.11 s, and a *larger* file). So the honest thing to say is not *"recode is slower"* but *"a new
+#: wrapper does not change what is inside it"*, which is what makes the first half actionable.
+#:
+#: **It does not advise recoding**, per this task's second criterion: format selection answers the
+#: ordinary case without any conversion, so the sentence is bounded by *only when*.
+CONTAINER_NOTE: Final = (
+    "Remuxing keeps the streams and is quick; recoding re-encodes them and is not. "
+    "Recode only when a player refuses what the site sent — a new wrapper does not change "
+    "what is inside it."
+)
 SUBTITLES_HINT: Final = "Chosen languages are written beside the file unless they are embedded."
 
 
@@ -459,10 +481,8 @@ class OptionsDialog(QDialog):
             self._container_choice.addItem(container, container)
         layout.addWidget(self._container_choice)
 
-        note = QLabel(
-            "Remuxing keeps the streams and is quick; recoding re-encodes them and is not.",
-            group,
-        )
+        note = QLabel(CONTAINER_NOTE, group)
+        note.setObjectName(CONTAINER_NOTE_NAME)
         note.setWordWrap(True)
         layout.addWidget(note)
         return group

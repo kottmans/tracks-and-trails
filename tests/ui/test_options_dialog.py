@@ -40,6 +40,8 @@ from tracks_and_trails.ui.options_dialog import (
     AUDIO_QUALITY_NAME,
     CONTAINER_CHOICE_NAME,
     CONTAINER_KEEP_NAME,
+    CONTAINER_NOTE,
+    CONTAINER_NOTE_NAME,
     CONTAINER_RECODE_NAME,
     CONTAINER_REMUX_NAME,
     EMBED_CHAPTERS_NAME,
@@ -1089,3 +1091,40 @@ def test_changing_the_codec_still_clears_a_quality_that_belonged_to_the_old_one(
     assert result.audio_quality is None, (
         f"MP3's 192 followed the codec change to AAC as {result.audio_quality!r}"
     )
+
+
+def test_the_container_note_says_what_recoding_is_for(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """**`T-286`.** *"Does re-encoding provide any tangible benefit over remuxing? Seems like the
+    option is pointless."*
+
+    **It is not pointless, and the dialog leaving that question open was the defect.** The note
+    stated only cost — *"recoding re-encodes them and is not [quick]"* — so a reader learned which
+    option is slower and nothing about when the slower one is right.
+
+    **The four criteria are asserted separately**, because a single "did the wording change" check
+    would pass on any edit at all:
+
+    - it still states the cost, which is what stops a casual click;
+    - it names the case, in a user's words rather than codec names;
+    - it does not advise recoding — format selection answers the ordinary case with no conversion,
+      so the sentence is bounded by *only when*;
+    - it says why remuxing does not cover that case, which is the measured trap: remuxing a
+      `vp9 + opus` webm to mp4 **succeeds and leaves `vp9 opus` inside**.
+    """
+    dialog = editor(ffmpeg_available=True)
+    note = dialog.findChild(QLabel, CONTAINER_NOTE_NAME)
+    assert note is not None, "the container section has no note"
+    said = note.text()
+
+    assert said == CONTAINER_NOTE, "the drawn note is not the one this module declares"
+    assert "quick" in said, "the cost is no longer stated, so nothing stops a casual click"
+    assert "only when" in said, "the note reads as advice to recode rather than as a bounded case"
+    assert "does not change what is inside it" in said, (
+        "the note does not say why remuxing fails to cover the case it names"
+    )
+    for codec in ("vp9", "h264", "aac", "opus"):
+        assert codec not in said.lower(), (
+            f"the note names {codec}, which is not the register the rest of this dialog uses"
+        )
