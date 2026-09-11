@@ -25,10 +25,25 @@ owns phase deliverables and exit criteria.
   `T-290` closed 2026-09-11, each approved by independent review and moved to
   [COMPLETED_TASKS](COMPLETED_TASKS.md). **Nothing is In Review.** `T-297` closed under a recorded
   amendment — which build the maintainer observed is not established, and its record says so.
-- **Phase 4's exit review is Blocked on `P4EXIT-R2` alone**, as of the authorized fourth focused
-  pass at `2ea1aa6` ([record](reviews/phase-4-exit.md)). `R1`, `R3` and `R4` are **Resolved**.
-  **What remains is not a review**: `R2` asks for native Windows execution at the corrected tree,
-  and no pass can supply it. The maintainer authorized the third and fourth passes on 2026-09-11,
+- **`P4EXIT-R2`'s evidence exists.** CI run
+  [`34653977245`](https://github.com/kottmans/tracks-and-trails/actions/runs/34653977245) at
+  **`59598de`** is green on every job — `windows desktop` and `frozen windows` **natively on
+  `STARBASE`**, alongside `linux`, `frozen linux` and the coverage reporter. The Windows desktop
+  suite is **37 passed in 92.28 s** and the full Windows suite **4,152 passed / 36 skipped in
+  36:22**. `59598de` is a later head than `2ea1aa6` carrying every correction, which is what `R2`'s
+  route asks for. **Phase 4's exit now waits on the reviewer verifying that and signing off**, not
+  on more work.
+
+  **Recorded with it, because it is a finding rather than a detail:** the `windows desktop` job used
+  **97% of its 40-minute bound** (38.9 min), and the job's own `T-259` warning fires at 85%. It has
+  now reported 98%, 98% and 97% on three consecutive heads. **Nothing is wrong today and the next
+  test added tips it into timeouts** — a bound crossed by growth, which wants a re-measurement
+  rather than a bigger number.
+
+- **The exit review was Blocked on `P4EXIT-R2` alone** as of the authorized fourth focused pass at
+  `2ea1aa6` ([record](reviews/phase-4-exit.md)). `R1`, `R3` and `R4` are **Resolved**.
+  **What remained was not a review**: `R2` asked for native Windows execution at the corrected tree,
+  and no pass could supply it — the run above did. The maintainer authorized the third and fourth passes on 2026-09-11,
   which `TESTING` §14 requires once only blocking Medium findings remain. Their states differ and
   the difference matters:
   - **`P4EXIT-R1` — Resolved 2026-09-11** at `2ea1aa6`, by the fourth pass. The common audit's
