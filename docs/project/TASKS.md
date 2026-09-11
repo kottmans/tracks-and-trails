@@ -14,6 +14,94 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-323 — Executable gates over the built artifact
+
+**Status:** **In Review** — implemented 2026-09-11 against the smoke build, as its own
+dependency line allows. Filed the same day with the Phase 5 plan.
+
+#### 2026-09-11 — the four checks, and the two things they found
+
+`packaging/artifact_gates.py`, wired into the `frozen` job. **All four run in 1.2 s** over a real
+PyInstaller build.
+
+**It found its subject missing on the first run.** The artifact carried **no licence texts at
+all** — `packaging/licenses/` did not exist and the spec bundled nothing — so `LIC-001`'s
+*"their license texts must ship with every distributed artifact"* was unmet in every build to
+date. The texts are now in `packaging/licenses/` with provenance in its `README.md`, and the spec
+bundles them via `SPECPATH` rather than a relative path that resolves against the caller's cwd.
+
+**And `T031-R2`'s rule earned its keep.** The Qt check originally globbed for the library files
+and **passed with `libQt6Widgets.so.6` deleted** — the bundle carries Qt **twice**, at
+`_internal/` and `_internal/PySide6/Qt/lib/`, so one copy satisfied it. It now also asks `ldd`
+where each dependency resolves: a static build lists none, a build borrowing the host's Qt
+resolves outside the tree, and a deleted library resolves to *not found*.
+
+**The mutations, on a real build:**
+
+| Item | Mutation | Result |
+|---|---|---|
+| 11 · Qt dynamic | remove **every** copy of a required module | **FAIL** |
+| 12 · licences | delete any one of the four files | **FAIL** |
+| 13 · no secrets | plant the home path in a data file | **FAIL** |
+| 9 · yt-dlp purity | drop a `.so` or `.pyd` into the tree | **FAIL** |
+
+**Scope's suggested mutation for item 11 — *"deleting one fails"* — is not a mutation of the
+property**, and that is recorded rather than worked around: with two copies shipped, deleting one
+leaves Qt dynamically linked and resolving inside the artifact, which is all the item claims.
+
+**One false positive, kept as a test.** Searching for the bare user name reported
+`libbrotlicommon.so.1` — brotli's built-in English dictionary contains those four letters inside
+ordinary words — while the real home path appeared in **no file**. The name now counts only
+bracketed by path separators; `core/logging`'s own four-byte floor has the same reasoning.
+
+**Outstanding:** `ffmpeg-LGPL.txt`, which needs `T-319`'s binary choice; the check requires it only
+where ffmpeg is bundled, so no artifact is failed for lacking a licence for something it does not
+ship. `T-324` wires the same script into the release workflow when it exists.
+**Owner:** Implementer
+**Priority:** High — four release-gate items are currently prose, and prose is not a gate
+**Phase:** Phase 5
+**Depends on:** `T-319` and `T-321` for something to gate; written so it runs against the smoke
+build until they land
+**Relevant context:** `TESTING.md` §8 items 9, 11, 12, 13; `NFR-009`; `LIC-001` (*"ship the
+license texts, and keep those libraries dynamically linked so a user could substitute their own
+build"*); `OPS-002` (the wheel-extraction update path needs a pure yt-dlp); `NFR-007`; `T-033`'s
+probe extension and `T033-R4`'s data blindness; `T-298`
+**Affected surfaces:** `packaging/`, `.github/workflows/ci.yml`'s `frozen` job, a new
+`packaging/artifact_gates.py`, `docs/project/TESTING.md` §8
+**Risk:** Low — each check is small; the risk is the usual one, a gate that passes with its
+subject removed, which is why each is mutation-checked
+
+#### Scope
+
+Four checks, each **a mutation that turns the job red** (the house rule since `T031-R2`):
+
+| §8 item | Check | The mutation that must fail it |
+|---|---|---|
+| 11 · Qt dynamically linked | The bundle contains Qt as shared libraries (`libQt6*.so*` / `Qt6*.dll`) and the executable imports none of Qt's symbols statically | Strip the Qt libraries from `dist/` and re-link a static stand-in — or simpler: assert the library files' presence *and* that `ldd`/`dumpbin /dependents` on the Qt plugin names them; deleting one fails |
+| 12 · Licence texts present | `licenses/` in the artifact holds Qt's LGPLv3, ffmpeg's LGPL (Windows), yt-dlp's Unlicense, and a `NOTICE` stating the dynamic-link obligation in `LIC-001`'s words | Delete any one file |
+| 13 · No secrets or personal paths | A scan of every file in `dist/` for the maintainer's home path, user name, `.netrc`, cookie-jar names and anything `logging.remember_a_secret` would redact | Plant one string in a data file |
+| 9 · yt-dlp purity | The bundled `yt_dlp` tree contains no compiled extension (`*.so`, `*.pyd`), so `OPS-002`'s wheel-extraction update remains viable | Drop a `.pyd` into the tree |
+
+**The scan for item 13 is the interesting one.** It reuses `core/logging`'s redaction vocabulary
+rather than a second list, so a secret class added there is scanned for here without anyone
+remembering — `T015-R1`'s rule applied to a gate.
+
+#### Acceptance criteria
+
+- All four checks run in the `frozen` job on both platforms and in `T-324`'s release workflow, and
+  each was turned red by its named mutation on a real build, with the run ids recorded
+- `docs/project/TESTING.md` §8 marks items 9, 11, 12 and 13 as **executable**, pointing at the
+  check, and the manual `PROMPTS.md` release prompt is narrowed to what remains manual
+- The licence directory's contents are the exact upstream texts, with their versions and sources
+  recorded in `packaging/licenses/README.md`
+
+#### Out of scope
+
+- Items 7, 14 and 15 — clean machine, cold start, the human session — which are `T-318`, `T-325`
+  and `T-327` because a machine cannot take them
+
+---
+
 ### T-329 — The focus-ring floor mismodels a header, and Windows is where it shows
 
 **Status:** **In Review** — **the maintainer ruled option A on 2026-09-11**, it is implemented,
@@ -295,6 +383,61 @@ accepts it. Until then it is a proposal in a task, which is the narrowest honest
 ---
 
 ## Ready
+
+### T-330 — The Windows job runs the suite serially, and is at 97% of its bound
+
+**Status:** Ready — filed 2026-09-11 from three consecutive runs at **98%, 98% and 97%** of the
+40-minute bound. **Maintainer ruled the direction the same day**: parallelise, rather than raise
+the number.
+**Owner:** Implementer
+**Priority:** Medium — nothing is failing, and the next test added tips it into timeouts
+**Phase:** Phase 5 (CI capacity; found during Phase 4's exit evidence)
+**Depends on:** nothing
+**Relevant context:** `T-259` (*"a bound is crossed by growth, not by faults — re-measure before
+raising it"*); `.github/workflows/ci.yml:794` the Windows invocation and `:430` the Linux one;
+`OPS-010`; `T-074` (the intermittent Windows segfault, Blocked)
+**Affected surfaces:** `.github/workflows/ci.yml`'s `windows-desktop` job
+**Risk:** Medium — `xdist` on Windows is the one change that could surface `T-074`
+
+#### The measurement
+
+| Head | Elapsed | Of the 40-minute bound |
+|---|---|---|
+| `2ea1aa6` | 39.3 min | 98% |
+| `88fc6b1` | 39.3 min | 98% |
+| `59598de` | 38.9 min | **97%** |
+
+The job's own reporter warns past 85%, citing `T-259`. **A timeout also reads as *cancelled*
+rather than *slow***, which cost an hour of diagnosis on 2026-09-11 before the orphaned-session
+trap was identified — so the failure mode is not merely a red job, it is a misleading one.
+
+#### The cause, and why this is not a bound problem
+
+**Windows runs the whole suite serially.** `ci.yml:794` is `pytest -v --junitxml=…` with no
+`-n`. The Linux `check` job at `:430` runs its unit/UI slice with `$parallel` and only the
+integration slice serially. Measured locally on Linux, the same suite is **184 s** with `-n auto`
+against **1,045 s** serial — 5.7×. Windows need not match that, but 36:22 serial is the number to
+attack rather than the 40 that contains it.
+
+#### Acceptance criteria
+
+- The Windows unit/UI slice runs parallel, the integration slice stays serial, **and the split is
+  the same shape as the Linux job's** rather than a second arrangement
+- **The new elapsed time is recorded here**, with the bound re-measured against it — `T-259` asks
+  for the measurement, not a smaller percentage
+- **A parallel run is green three times consecutively before this closes.** `T-074` records an
+  intermittent segfault on this machine; `xdist` changes process counts, and one green run would
+  not distinguish a fix from luck
+- If parallelism destabilises it, **the finding is recorded and the job stays serial** — a flaky
+  fast job is worse than a slow reliable one, and that outcome closes this task rather than
+  reopening the bound question
+
+#### Out of scope
+
+- `T-074` itself, which stays Blocked on a person at `STARBASE`
+- The Linux job, which is already split
+
+---
 
 ### T-319 — The Windows release build: windowed, versioned, with ffmpeg inside
 
@@ -1532,54 +1675,6 @@ incident it cites).
 - Upgrade-over-existing and downgrade paths — real, and their own task once `T-320`'s policy
   exists to say what a downgrade even means
 - Auto-update
-
----
-
-### T-323 — Executable gates over the built artifact
-
-**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan
-**Owner:** Implementer
-**Priority:** High — four release-gate items are currently prose, and prose is not a gate
-**Phase:** Phase 5
-**Depends on:** `T-319` and `T-321` for something to gate; written so it runs against the smoke
-build until they land
-**Relevant context:** `TESTING.md` §8 items 9, 11, 12, 13; `NFR-009`; `LIC-001` (*"ship the
-license texts, and keep those libraries dynamically linked so a user could substitute their own
-build"*); `OPS-002` (the wheel-extraction update path needs a pure yt-dlp); `NFR-007`; `T-033`'s
-probe extension and `T033-R4`'s data blindness; `T-298`
-**Affected surfaces:** `packaging/`, `.github/workflows/ci.yml`'s `frozen` job, a new
-`packaging/artifact_gates.py`, `docs/project/TESTING.md` §8
-**Risk:** Low — each check is small; the risk is the usual one, a gate that passes with its
-subject removed, which is why each is mutation-checked
-
-#### Scope
-
-Four checks, each **a mutation that turns the job red** (the house rule since `T031-R2`):
-
-| §8 item | Check | The mutation that must fail it |
-|---|---|---|
-| 11 · Qt dynamically linked | The bundle contains Qt as shared libraries (`libQt6*.so*` / `Qt6*.dll`) and the executable imports none of Qt's symbols statically | Strip the Qt libraries from `dist/` and re-link a static stand-in — or simpler: assert the library files' presence *and* that `ldd`/`dumpbin /dependents` on the Qt plugin names them; deleting one fails |
-| 12 · Licence texts present | `licenses/` in the artifact holds Qt's LGPLv3, ffmpeg's LGPL (Windows), yt-dlp's Unlicense, and a `NOTICE` stating the dynamic-link obligation in `LIC-001`'s words | Delete any one file |
-| 13 · No secrets or personal paths | A scan of every file in `dist/` for the maintainer's home path, user name, `.netrc`, cookie-jar names and anything `logging.remember_a_secret` would redact | Plant one string in a data file |
-| 9 · yt-dlp purity | The bundled `yt_dlp` tree contains no compiled extension (`*.so`, `*.pyd`), so `OPS-002`'s wheel-extraction update remains viable | Drop a `.pyd` into the tree |
-
-**The scan for item 13 is the interesting one.** It reuses `core/logging`'s redaction vocabulary
-rather than a second list, so a secret class added there is scanned for here without anyone
-remembering — `T015-R1`'s rule applied to a gate.
-
-#### Acceptance criteria
-
-- All four checks run in the `frozen` job on both platforms and in `T-324`'s release workflow, and
-  each was turned red by its named mutation on a real build, with the run ids recorded
-- `docs/project/TESTING.md` §8 marks items 9, 11, 12 and 13 as **executable**, pointing at the
-  check, and the manual `PROMPTS.md` release prompt is narrowed to what remains manual
-- The licence directory's contents are the exact upstream texts, with their versions and sources
-  recorded in `packaging/licenses/README.md`
-
-#### Out of scope
-
-- Items 7, 14 and 15 — clean machine, cold start, the human session — which are `T-318`, `T-325`
-  and `T-327` because a machine cannot take them
 
 ---
 

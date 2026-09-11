@@ -1,0 +1,27 @@
+Tracks & Trails — third-party notices
+=====================================
+
+Tracks & Trails is licensed under the MIT License; see LICENSE at the root of the
+distribution. This file records the third-party components distributed with it and
+the obligations that attach to them.
+
+Qt (via PySide6) — LGPLv3
+    Qt-LGPLv3.txt, and Qt-GPLv3.txt which the LGPLv3 incorporates by reference.
+    Qt is dynamically linked and replaceable: the Qt libraries ship as shared
+    libraries alongside the executable rather than linked into it, so a recipient
+    may substitute their own build of Qt. That is the binding constraint recorded
+    in this project's LIC-001 decision, and packaging/artifact_gates.py checks it
+    on every build rather than leaving it to be believed.
+
+FFmpeg — LGPL  (Windows distributions only)
+    ffmpeg-LGPL.txt, present where ffmpeg is bundled. On Linux ffmpeg is a system
+    dependency and is not distributed with this application (OPS-001), so that file
+    is absent from Linux artifacts by design.
+    The bundled Windows build is an LGPL build, never a GPL one; which build, its
+    version and its source are recorded in packaging/licenses/README.md.
+
+yt-dlp — Unlicense
+    yt-dlp-Unlicense.txt. Public domain; no obligations attach.
+
+Python and its standard library are distributed under the PSF License Agreement,
+included with the Python runtime embedded in the artifact.

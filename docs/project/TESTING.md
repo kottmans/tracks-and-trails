@@ -268,7 +268,8 @@ All of the following, **on Linux and Windows**, before any tag or distributed bu
    another, exit — confirming no recursive launch and no orphaned processes
    (`freeze_support()`, `REL-001`)
 9. yt-dlp purity re-check: the pinned baseline still contains no compiled extensions, so the
-   `OPS-002` wheel-extraction update path remains viable
+   `OPS-002` wheel-extraction update path remains viable — **executable**,
+   `packaging/artifact_gates.py`, run by the `frozen` job (`T-323`)
 10. In-app yt-dlp update works **from the frozen artifact** — download, extract, resolve the
     new version, and revert to baseline
 10a. **If the pinned baseline is being bumped in this release**, the `yt-dlp canary` workflow is
@@ -276,9 +277,17 @@ All of the following, **on Linux and Windows**, before any tag or distributed bu
     It never blocks a push and it does block this (`T-291`): a bump is the one moment its answer
     is the evidence being asked for. **A red canary is not a reason to skip the bump**; it is the
     list of what the bump costs, and each item is its own task before the tag
-11. Qt confirmed dynamically linked in the artifact (`NFR-009`, `LIC-001`)
-12. License texts for Qt, ffmpeg, and yt-dlp present in the distribution
-13. No secrets, cookies, or personal paths in the artifact or the repository
+11. Qt confirmed dynamically linked in the artifact (`NFR-009`, `LIC-001`) — **executable**,
+    `packaging/artifact_gates.py`. On Linux it asks the loader where each Qt dependency resolves;
+    on Windows it checks the libraries are present, which is the narrower guarantee `T-323`
+    records rather than implies
+12. License texts for Qt, ffmpeg, and yt-dlp present in the distribution — **executable**,
+    `packaging/artifact_gates.py`. ffmpeg's is required only where it is bundled, which
+    `OPS-001` makes Windows alone
+13. No secrets, cookies, or personal paths in the artifact or the repository — **executable**
+    over the artifact, `packaging/artifact_gates.py`, reusing `core/logging`'s own redaction
+    vocabulary so a secret class added there is scanned for here. The *repository* half remains
+    manual
 14. Cold start under 3 seconds on the reference machine (`NFR-002`)
 15. **Windows manual verification session completed** — the §9 list performed on a real
     Windows desktop and recorded in the canonical review record. Blocking for the first public release;

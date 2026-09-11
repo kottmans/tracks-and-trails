@@ -8,6 +8,8 @@
 # One-dir, matching REL-001's Windows target. One-file would extract to a temp directory on
 # every launch and change the very sys.executable semantics under test.
 
+from pathlib import Path
+
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 datas = collect_data_files("tracks_and_trails", includes=["resources/icons/*"])
@@ -23,6 +25,18 @@ datas = collect_data_files("tracks_and_trails", includes=["resources/icons/*"])
 # `persistence.migrate` now raises on an empty migration set rather than proceeding, so a spec
 # that loses this line fails loudly at startup instead of at the first download.
 datas += collect_data_files("tracks_and_trails", includes=["persistence/migrations/*.sql"])
+
+# T-323. LIC-001: the licence texts ship with *every distributed artifact*, not only the release.
+#
+# **The gate found this absent on its first run**, which is the argument for the gate. Qt is
+# LGPLv3 and ffmpeg's Windows build is LGPL; distributing either without its text is a breach,
+# and an artifact that lacks them still builds, still launches and still passes every other
+# check — so nothing was ever going to notice.
+#
+# `SPECPATH` rather than a relative path: a spec is executed with the *caller's* working
+# directory, so `packaging/licenses` resolves against wherever pyinstaller was invoked from and
+# silently collects nothing when that is not the repository root.
+datas += [(str(Path(SPECPATH) / "licenses"), "licenses")]
 
 # T-033. OPS-002 says every release bundles a pinned yt-dlp baseline.
 #

@@ -1215,6 +1215,17 @@ jobs:
           python packaging/frozen_smoke.py dist/tracks-and-trails 2>&1 | tee "reports/frozen-smoke.txt"
           echo "smoke seconds: $SECONDS" | tee -a "reports/frozen-timing.txt"
 
+      - name: Release gates over the artifact
+        # `T-323`. TESTING section 8 items 9, 11, 12 and 13 were prose, and three of them fail
+        # silently: an artifact missing Qt's licence text still builds, still launches, and still
+        # breaches LIC-001. This is the frozen job because it is the one that has an artifact.
+        #
+        # **It found its own subject missing on the first run** — the spec was not bundling
+        # packaging/licenses at all — which is the argument for running it rather than reading it.
+        run: |
+          python packaging/artifact_gates.py dist/tracks-and-trails \
+            2>&1 | tee "reports/artifact-gates.txt"
+
       - name: Remove this job's profile
         # `always()`, and on the self-hosted machines this is the point of it: `runner.temp`
         # survives the job there, so every frozen run would otherwise leave a profile holding a
