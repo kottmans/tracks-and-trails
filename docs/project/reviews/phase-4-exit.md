@@ -344,3 +344,186 @@ native Windows execution, which is evidence rather than review: `STARBASE`
 reports **offline**, and `windows desktop` and `frozen windows` are queued at
 `55d7488`. No review pass can supply that result, and `R2`'s own route requires
 the evidence to be taken at the corrected tree or later.
+
+
+## 2026-09-11 — Authorized third focused pass
+
+**Reviewer:** Codex, independent of the correction implementation.
+**Reviewed correction:** `55d74881daf536b26912818f6e7a2d24d0e899ea`, against
+`423d084bc270f8820fb2cde8fcf7cc1fded97c92` (the preceding reviewer record).
+**Verification checkout:** `ed15612c5d919d670bb8141cbcb0eea2fa82cc1b` on `main`.
+**Authority:** the maintainer's explicit request and the authorization appended
+above, under [TESTING §14](../TESTING.md#14-review-policy). This is the authorized
+extra focused pass, covering R1/R4 corrections and outstanding R2 evidence.
+
+**Verdict: Blocked on R1 and R2.** The previous three R1 correction requirements
+are substantially addressed, but the new Windows furniture filter assumes an
+AutomationId representation that Qt does not supply by default. R4 is resolved.
+R3's previously verified bounded acceptance remains resolved.
+
+### Boundary verified
+
+`git diff --name-only 55d7488..ed15612` returns exactly four paths, all under
+`docs/project/`: DECISIONS.md, STATUS.md, TASKS.md and this review record.
+The three intervening commits are `c0554a8` (third-pass authorization and status),
+`7028cbd` (T-304 sequencing), and `ed15612` (Phase 5 rulings and task/status sync).
+No source, test, workflow or gate changed after the review target. The checks
+below therefore cover the executable/test tree at `55d7488`; the later planning
+rulings are not reviewed as implementation changes. T-304's explicit deferral
+behind Phase 4 exit is respected.
+
+### Finding dispositions
+
+| Finding | Severity | Blocks approval | Disposition at `55d7488` |
+|---|---|---|---|
+| P4EXIT-R1 | Medium | Yes — required accessibility gate | **Open, narrowed to the new furniture identifier mismatch below.** Composition, inventory/state coverage, the combo counterexample, and the clear-button correction are independently verified within the stated Linux bounds. |
+| P4EXIT-R2 | Medium | Yes — required Windows evidence | **Open.** Native Windows and frozen-Windows jobs at the correction head remain queued; STARBASE is offline. The eventual evidence must include the remaining R1 correction. |
+| P4EXIT-R3 | Medium | No — previously resolved | **Resolved, unchanged.** The maintainer's bounded acceptance of T-289's residual risk stands; this pass supplies no new crash explanation. |
+| P4EXIT-R4 | Low | No | **Resolved.** Current theme/registry/surface/status wording identifies the top return control without claiming it is the only exit. |
+
+### R1: verified corrections
+
+The three new dialog tests now take `composed`, which uses `app.compose` and its
+orderly shutdown. Extracting their committed function bodies and the fourth
+inventory test unchanged into a temporary Linux harness reaches `read_tree`
+**16 times**: one for each of the three dialog tests and thirteen for the shared
+inventory. No prior pre-query setup failure remains. With QAccessible data and
+raw object names substituted for the provider, the Settings/Add name tests and
+inventory test pass. The combo-purpose test rejects Linux's actual Name=Value
+pairs (`Best video up to 1080p (MP4)` and `brave`), consistent with the existing
+T200-R7 platform distinction. That rejection is not a Windows result.
+
+The shared inventory contains thirteen surfaces, each with its own handle in
+this harness. Its PlaylistPanel contains **two entry data rows** (header-view
+row counts are not additional entries). FormatDialog's **Use these formats** and
+Cancel buttons are both enabled after the completed audio/video selection.
+Options, PresetManager, the queue dialog and all three panels now have an explicit
+Windows query through that inventory. Construction of the nine helper surfaces
+and synthetic probe data remain declared fixture bounds, not new findings.
+
+The pure contract is importable on Linux. Its nineteen cases cover the earlier
+value-as-name/no-ListItem counterexample, missing names, empty comparison sets,
+per-node selected values, normalization, furniture exclusions and positive
+controls. The live displayed-value set makes the comparison non-vacuous even
+when `Node.value` is empty; a populated value additionally supports per-control
+comparison. The previous counterexample is now rejected. Windows publication
+of the value remains unmeasured.
+
+The clear-button change also has an independent negative control: removing only
+its new accessible name makes
+`test_every_surface_names_every_control_it_publishes` fail on **both template
+editor and template panel**, each publishing `Button ''`. **1 expected failure
+in 0.24 s.** The corrected source passes the normal suite. The button is no longer
+hidden by the QLineEdit-child exclusion, and its existing keyboard alternative
+is declared through the established route mechanism.
+
+The original FormatDialog mutation still clears Cancel text/name and sets
+NoFocus. It produces **2 failed / 105 passed in 7.88 s**, with twelve dialog
+constructions: the published-name and keyboard-route checks fail. The refactor
+has retained the last round's demonstrated gate.
+
+### R1: remaining correction — qualified AutomationId
+
+At `tests/ui/uia_contract.py:198`, `is_platform_furniture` compares the entire
+`automation_id` directly with bare object names in PLATFORM_FURNITURE. The new
+test at `tests/ui/test_uia_contract.py:137–141` only supplies those same bare
+strings, so it confirms the assumption without checking the bridge's encoding.
+
+Qt 6.11.1's
+[Windows provider](https://github.com/qt/qtbase/blob/v6.11.1/src/plugins/platforms/windows/uiautomation/qwindowsuiamainprovider.cpp#L515)
+obtains AutomationId through `QAccessibleBridgeUtils::accessibleId`.
+That [helper](https://github.com/qt/qtbase/blob/v6.11.1/src/gui/accessible/qaccessiblebridgeutils.cpp#L68)
+uses an explicit accessible Identifier when present; otherwise it builds a
+**dot-separated path through accessible ancestors**, using object names or class
+names. A bare QWidget object name is not the resulting default AutomationId.
+
+On this application's actual toolbar overflow widget, Linux QAccessible reports
+an empty Identifier and Name, with CheckBox role. Applying that upstream helper's
+algorithm to its accessible ancestry gives:
+
+`QApplication.mainWindow.queueToolBar.qt_toolbar_ext_button`
+
+The committed predicate returns **False** for that identifier. Passing the node
+alongside a valid application button to `assert_every_control_is_named` fails as
+an unnamed CheckBox. All three allowlisted names also fail exclusion when supplied
+as qualified-path counterexamples; this last check is synthetic, not a claim
+that all three widgets were observed in that location.
+
+Replaying the unchanged all-surfaces test with the same QAccessible provider,
+but replacing raw object names with the upstream qualified-ID algorithm, fails
+at **the first surface, main window**, on that overflow CheckBox. The other
+three test bodies still reach one query each, so this replay totals **four
+queries**, not sixteen. The sixteen-call result establishes route reachability;
+it does not validate the substituted identifier representation.
+
+This is a demonstrated contract defect plus an inference from the pinned Qt
+provider source, **not a claimed native Windows failure**. It is Medium because
+the required new gate cannot apply its intended furniture exclusion, and its
+counterexample suite currently endorses the wrong boundary representation.
+It continues R1's correction scope; no separate task or product defect is inferred.
+
+**Required correction:** recognize the bridge's qualified identifiers (or use
+another verified discriminator), preserving the distinction between toolkit
+furniture and unnamed application controls. Exercise all shared allowlist entries
+with realistic qualified IDs, retain applicable explicit-ID coverage, and prove
+that ordinary unnamed controls and lookalike IDs remain rejected. Correct the
+comments claiming identical identifiers across both providers. Re-run the
+surface harness with that representation before seeking native evidence; do not
+weaken the name sweep to make the toolkit case pass.
+
+### R4 and remaining Windows evidence
+
+The collapse control is first in the measured focus chain of each of the three
+panels. Clicking each panel's Done button emits `closed(True)`. The corrected
+wording matches both observations; no exclusive-return claim remains in the
+changed current text. The previous disclosure-style mutation evidence remains
+valid because this correction changes those theme comments, not their styling.
+
+The GitHub API confirms that
+[run 34620951449](https://github.com/kottmans/tracks-and-trails/actions/runs/34620951449)
+is at `55d7488`: Linux, frozen Linux and the STARBASE coverage reporter succeeded;
+Windows desktop and frozen Windows are queued. STARBASE reports **offline**,
+`busy=false`, with self-hosted/Windows/X64/desktop labels. Repository variables
+still read `STARBASE_AVAILABLE=true` and
+`WINDOWS_RUNNER=["self-hosted","windows","desktop"]`.
+
+The earlier routing correction still applies: native `windows-desktop` has the
+literal `[self-hosted, windows, desktop]` at `.github/workflows/ci.yml:535`.
+Unsetting WINDOWS_RUNNER alone does not move that native job. STATUS still repeats
+the old fallback and four-failure mutation count; carry these already-identified
+mechanical corrections into its owner's ordinary completion sync. They do not
+create another finding or task. No runner or repository configuration was changed.
+
+### Reviewer checks and completion
+
+| Check at the verified `55d7488` code/test tree | Result |
+|---|---|
+| `ruff check .` | Pass |
+| `ruff format --check .` | Pass, 365 files |
+| Bare `mypy`; `mypy --platform win32` | Both pass, 168 files each |
+| `pytest -q -n 4 tests/ui tests/unit/test_theme.py tests/unit/test_task_placement.py tests/unit/test_toolchain_versions.py` | **1,362 passed / 3 skipped / 17 warnings**, 71.89 s; normal exit |
+| Original FormatDialog mutation | **2 expected failures / 105 passed** |
+| Clear-button name mutation | **1 expected failure**, naming both affected template surfaces |
+| Unchanged Windows bodies with QAccessible/raw-ID provider | **16 queries**, three passing bodies and Linux combo-purpose rejection |
+| Same bodies with upstream qualified-ID algorithm | **4 queries**, plus the inventory failure on the main-window overflow control |
+
+An initial reviewer command mistyped the toolchain test filename and ran no tests;
+the corrected command and actual result are above. The seventeen warnings are the
+existing disconnect/deprecated-event warnings. The implementer's reported
+**4,141 passed / 21 skipped** full run was not repeated in this focused pass.
+No integration/core behavior changed. Native publication, COM property behavior,
+and the thirteen-query test's Windows timing still require R2 evidence. Linux
+harnesses and Windows-target type checking do not supply it.
+
+This completes the expressly authorized third pass. Only blocking Medium findings
+remain. Under TESTING §14, another focused verification needs a further explicit
+maintainer authorization or other recorded disposition; this record does not
+start an automatic fourth pass. The R1 identifier correction can be prepared
+before the runner returns. A subsequent clean R1 verification would still leave
+Phase 4 Blocked on R2 until the required Windows results exist.
+
+Only this canonical record is appended; its existing REVIEWS index link is valid.
+The previous record, including the authorization entry, is preserved byte for
+byte. Documentation whitespace/link checks and the migration verifier pass:
+**381 historical entries in 105 files, all 2,403,546 bytes preserved**. Task and
+status synchronization remains with their owner.
