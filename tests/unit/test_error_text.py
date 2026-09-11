@@ -9,6 +9,8 @@ unretryable kind is told to retry, that no message replaces the extractor's own,
 classes with a ruling behind them suggest nothing.
 """
 
+from typing import Final
+
 import pytest
 
 from tracks_and_trails.core.errors import ErrorKind, is_auto_retryable, is_retryable
@@ -19,6 +21,12 @@ from tracks_and_trails.ui.error_text import (
     headline_for,
     next_step_for,
 )
+
+#: The words that make a next step an offer to update yt-dlp (`T-290`).
+#:
+#: Matched as a substring rather than against a whole sentence, so the property keeps
+#: holding if the wording is reworked — which `T-290` may yet do to the Settings half.
+UPDATE_OFFER: Final = "Updating yt-dlp"
 
 #: The three with no honest action (`T-201`'s scope). Named here so the assertions below read as
 #: a rule rather than as three unrelated special cases.
@@ -246,3 +254,35 @@ def test_the_whole_composition_carries_the_exhausted_wording() -> None:
 
     assert "retries by itself" not in spent
     assert "ERROR: timed out" in spent, "the extractor's message went with the wording change"
+
+
+def test_only_a_failure_the_update_could_fix_offers_the_update() -> None:
+    """`T-290`: *"the offer appears only where it could be true"* (`UX-005` §5).
+
+    **`C-002` is why the offer exists at all**: site support *is* yt-dlp's site support, so when a
+    site changes, a newer yt-dlp is the honest first move rather than a platitude. **`UX-005` §5 is
+    why it is bounded**: an unwritable folder or a full disk has nothing to do with the extractor,
+    and suggesting an update there sends a user to do something that cannot help.
+
+    **Pinned as a property over the whole taxonomy, not as one string.** This table predates
+    `T-290` and already had the shape the task asks for; what it did not have was anything stopping
+    a later kind from picking the sentence up by copying a neighbour. Asserted both ways — the kind
+    that must offer it, and every kind that must not — because half of it would pass on a table
+    that offered the update everywhere or nowhere.
+    """
+    offering = {kind for kind in ErrorKind if UPDATE_OFFER in next_step_for(kind)}
+
+    assert offering == {ErrorKind.EXTRACTOR_ERROR}, (
+        f"the update is offered for {sorted(k.value for k in offering)}; it can only be true for a "
+        "site that changed under yt-dlp"
+    )
+    # The two this most obviously must not reach, named rather than left to the set comparison so a
+    # failure says which rule was broken.
+    assert UPDATE_OFFER not in next_step_for(ErrorKind.DISK)
+    assert UPDATE_OFFER not in next_step_for(ErrorKind.AUTH_REQUIRED)
+    # **And the refusal `T-201` calls the substance of its own task** — a kind with no honest next
+    # step keeps none, rather than being given an encouraging one.
+    for hopeless in (ErrorKind.GEO_RESTRICTED, ErrorKind.DRM_PROTECTED):
+        assert next_step_for(hopeless) == "", (
+            f"{hopeless.value} grew a next step; it has no honest one"
+        )

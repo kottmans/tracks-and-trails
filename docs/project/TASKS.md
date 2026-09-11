@@ -1928,6 +1928,36 @@ beside `Use the bundled version`, in a Settings section that reads like every ot
 presentation invites a population onto versions this project has never tested. The amendment makes
 it the way out of a site that has broken.
 
+#### 2026-09-10 — what was found already true, and what is left
+
+**Three of the six criteria were already met before this task started**, by `ui/error_text.py`,
+which predates it. Measured across the whole taxonomy rather than read:
+
+| Criterion | State |
+|---|---|
+| A route from a failed download to the update | **Met.** `EXTRACTOR_ERROR`'s next step reads *"The site may have changed. Updating yt-dlp in Settings often fixes this."* (`C-002`) |
+| The route is not an advice column | **Met.** One next step per kind, and `GEO_RESTRICTED`/`DRM_PROTECTED` still get **none** — the refusal `T-201` calls the substance of its own task |
+| The offer appears only where it could be true | **Met.** Of twelve kinds, exactly one offers it. `DISK` says *"check there is free space"* and nothing about yt-dlp |
+| `NFR-007` untouched | **Met.** Nothing here makes the update automatic, silent or implicit |
+
+**A guard was added for the third**, because nothing pinned it: the table had the right shape and
+no test stopping a later kind from picking the sentence up by copying a neighbour.
+`test_only_a_failure_the_update_could_fix_offers_the_update` asserts it as a property over the
+whole taxonomy, both ways — the kind that must offer it and every kind that must not — since half
+of it would pass on a table that offered the update everywhere or nowhere. It fails when `DISK` is
+given the sentence.
+
+#### What is left, and it is the maintainer's to rule
+
+**Only the Settings presentation**, which this task's first criterion explicitly reserves: *"what it
+becomes — reworded, de-emphasised, moved behind a disclosure, or left in place with different words
+— is the implementer's proposal and the maintainer's ruling."*
+
+**Deliberately not guessed at overnight.** The four options change what the screen means, not just
+how it reads, and building one of them would spend the ruling rather than inform it. `OPS-002`'s
+constraints bound whichever is chosen: the resolved version stays visible and revert stays one
+action, so *"it must not disappear"* is already settled — what is open is only its weight.
+
 #### Acceptance criteria
 
 - **The Settings screen no longer presents updating as a routine choice.** What it becomes —
