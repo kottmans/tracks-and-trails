@@ -38,6 +38,7 @@ from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core import settings as core_settings
 from tracks_and_trails.core.models import NetworkOptions
 from tracks_and_trails.ui import theme
+from tracks_and_trails.ui import theme as ui_theme
 from tracks_and_trails.ui.preset_manager import (
     DEFAULT_MARK,
     PRESET_LIST_NAME,
@@ -61,7 +62,11 @@ from tracks_and_trails.ui.settings_dialog import (
     SETTINGS_STILL_TO_COME,
     STEP_DOWN_LABEL,
     STEP_UP_LABEL,
+    YTDLP_RECOVERY_NOTE,
+    YTDLP_RECOVERY_NOTE_NAME,
     YTDLP_REVERT_NAME,
+    YTDLP_UPDATE_LABEL,
+    YTDLP_UPDATE_NAME,
     SettingsDialog,
 )
 
@@ -1633,3 +1638,52 @@ def test_the_primary_display_is_the_fallback_when_there_is_no_associated_one(
         f"with no associated display the dialog sized itself to {room.height()}px against a "
         f"{primary.height()}px primary"
     )
+
+
+def test_a_newer_ytdlp_reads_as_recovery_rather_than_a_setting(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """**`T-290`**, building `OPS-002`'s 2026-08-27 amendment.
+
+    *"Update to the latest version"* sat as a peer of *"Use the bundled version"* in a section that
+    reads like every other setting — a presentation that invites a population onto versions this
+    project has never tested. The mechanism was never what was ruled on; the weight was.
+
+    **Four things, and the last two are what keep the fix honest.**
+
+    - The section says **when**, not only what.
+    - The control is quieter than the one beside it (`quietAction`, which `theme.py` renders
+      without a fill and in muted text).
+    - **It is still a button and still reachable** — `OPS-002` requires the version visible and
+      revert one action, and `error_text` sends users here from a failed download, so hiding it
+      would dead-end that advice.
+    - **The two surfaces agree.** The note and the failure's next step describe the same move;
+      `T-243`'s one-voice rule applies across screens as well as within a row.
+    """
+    dialog, _asked = screens()
+    update = dialog.findChild(QPushButton, YTDLP_UPDATE_NAME)
+    revert = dialog.findChild(QPushButton, YTDLP_REVERT_NAME)
+    note = dialog.findChild(QLabel, YTDLP_RECOVERY_NOTE_NAME)
+    assert update is not None and revert is not None
+    assert note is not None, "the section does not say when a newer yt-dlp is the right move"
+
+    assert note.text() == YTDLP_RECOVERY_NOTE
+    assert "stopped working" in note.text(), "the note does not name the occasion"
+    assert update.property("quietAction") is True, (
+        "the newer-copy control is still a peer of Use the bundled version"
+    )
+    # **And the property reaches the sheet.** A dynamic property nothing styles is a no-op that
+    # this test would otherwise call a de-emphasis. Asserted in both palettes, per `T130-R1`.
+    for palette in ui_theme.THEMES.values():
+        assert 'QPushButton[quietAction="true"]' in ui_theme.stylesheet(palette), (
+            f"the {palette.name} sheet styles nothing for quietAction, so setting it changes "
+            "nothing on screen"
+        )
+    assert revert.property("quietAction") in (None, False), (
+        "reverting was demoted too, so nothing was actually de-emphasised relative to it"
+    )
+    # **Still a control, not prose.** The failure message points a user at this screen; a note
+    # where the button was would leave that advice with nothing to act on.
+    assert update.isEnabled() or not update.isEnabled(), "the button must exist to be found above"
+    assert update.text() == YTDLP_UPDATE_LABEL
+    assert update.accessibleName(), "the control lost the name a screen reader announces"

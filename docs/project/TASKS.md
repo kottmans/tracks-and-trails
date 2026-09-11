@@ -14,6 +14,132 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-290 — Offer the yt-dlp update as recovery, not as a setting
+
+**Status:** In Review — **built 2026-09-11**. *(Filed 2026-08-27 to build `OPS-002`'s amendment
+of the same day, which
+the maintainer ruled during `T-212`'s run: the override stays, and stops being a standing
+choice.)*
+**Owner:** Implementer
+**Priority:** Medium — nothing is broken today; what changes is which version the population runs,
+and that compounds quietly in the other direction
+**Phase:** Phase 4 (polish; **not** a plan deliverable). It is a presentation change to a screen
+this phase built, and the maintainer may prefer it after the exit — that placement is theirs
+**Depends on:** nothing. `T-289` crashes in this screen's update path and is a different defect;
+neither blocks the other, but both touch `show_ytdlp`
+**Relevant context:** `OPS-002` and its 2026-08-27 amendment; `ui/settings_dialog.py:1387` and
+`show_ytdlp`/`show_ytdlp_problem`/`show_ytdlp_busy`; `REQ-025`; `NFR-007` — the update performs an
+outbound download and must stay explicit, never automatic and never silent
+**Affected surfaces:** `ui/settings_dialog.py`, wherever a download failure is presented, and
+their tests
+**Risk:** Medium — the honest version of this needs a route from a *failure* to the update, and a
+failure surface that starts giving advice is how a row's anatomy grows a second voice (`T-243`)
+
+#### What changes, and what does not
+
+**Unchanged:** the pinned baseline, the user-managed copy resolved ahead of it, the version shown
+in the UI, and revert as one action. The mechanism is not what was ruled on.
+
+**Changed:** the update is currently `Update to the latest version` — a button of equal weight
+beside `Use the bundled version`, in a Settings section that reads like every other setting. That
+presentation invites a population onto versions this project has never tested. The amendment makes
+it the way out of a site that has broken.
+
+#### 2026-09-10 — what was found already true, and what is left
+
+**Three of the six criteria were already met before this task started**, by `ui/error_text.py`,
+which predates it. Measured across the whole taxonomy rather than read:
+
+| Criterion | State |
+|---|---|
+| A route from a failed download to the update | **Met.** `EXTRACTOR_ERROR`'s next step reads *"The site may have changed. Updating yt-dlp in Settings often fixes this."* (`C-002`) |
+| The route is not an advice column | **Met.** One next step per kind, and `GEO_RESTRICTED`/`DRM_PROTECTED` still get **none** — the refusal `T-201` calls the substance of its own task |
+| The offer appears only where it could be true | **Met.** Of twelve kinds, exactly one offers it. `DISK` says *"check there is free space"* and nothing about yt-dlp |
+| `NFR-007` untouched | **Met.** Nothing here makes the update automatic, silent or implicit |
+
+**A guard was added for the third**, because nothing pinned it: the table had the right shape and
+no test stopping a later kind from picking the sentence up by copying a neighbour.
+`test_only_a_failure_the_update_could_fix_offers_the_update` asserts it as a property over the
+whole taxonomy, both ways — the kind that must offer it and every kind that must not — since half
+of it would pass on a table that offered the update everywhere or nowhere. It fails when `DISK` is
+given the sentence.
+
+#### What is left, and it is the maintainer's to rule
+
+**Only the Settings presentation**, which this task's first criterion explicitly reserves: *"what it
+becomes — reworded, de-emphasised, moved behind a disclosure, or left in place with different words
+— is the implementer's proposal and the maintainer's ruling."*
+
+**Deliberately not guessed at overnight.** The four options change what the screen means, not just
+how it reads, and building one of them would spend the ruling rather than inform it. `OPS-002`'s
+constraints bound whichever is chosen: the resolved version stays visible and revert stays one
+action, so *"it must not disappear"* is already settled — what is open is only its weight.
+
+#### Built 2026-09-11 — demoted, and told when
+
+**Ruled by the maintainer from three options**: *demote it and say when*, over rewording alone and
+over a disclosure.
+
+**Why not the other two.** Rewording leaves two ordinary buttons side by side, and the complaint is
+about **weight** — two equal buttons stay two equal buttons whatever they say. A disclosure was
+argued against and rejected for a reason this task created itself: `error_text`'s `EXTRACTOR_ERROR`
+tells a user *"Updating yt-dlp in Settings often fixes this"*, so hiding the control makes that
+advice dead-end at a closed twisty.
+
+**What changed.** A line above the controls names the occasion — *"If a site has stopped working, a
+newer yt-dlp often fixes it. Otherwise the bundled version is the one this application was tested
+with."* — and the control reads `Get a newer yt-dlp` at `quietAction` weight, which `theme.py`
+draws without a fill and in muted text.
+
+**The fill is what it gives up, and only the fill.** An ordinary button is a `surface` chip on a
+`window` ground, so this leaves an outline button beside a filled one — visible in both palettes.
+
+**The border stays, and that is `T-132`.** Making a button transparent *and* borderless turned two
+toolbar controls into text nobody could tell was pressable, which the maintainer reported at the
+time. The border is what says *pressable*.
+
+**The text colour stays, and a guard is why.** The first version muted it, and
+`test_muted_is_either_secondary_emphasis_or_a_published_disabled_state` refused: every other
+`muted` rule in this application is either a `:disabled` state or something non-interactive — a
+group title, a header strip. **A pressable control in the disabled colour looks unavailable while
+responding**, which is a worse defect than the weight being reduced. Registering the selector as
+secondary emphasis would have silenced the guard and shipped that; the demotion moved to the fill
+instead.
+
+**`OPS-002` is untouched**: the resolved version is still visible, revert is still one action and
+is deliberately **not** demoted — a test asserts that, because demoting both would be no
+de-emphasis at all. `NFR-007` is untouched: still explicit, never automatic, never silent.
+
+**The two surfaces agree by construction.** The note and the failure's next step describe the same
+move, which is `T-243`'s one-voice rule applied across screens rather than within a row.
+
+#### Acceptance criteria
+
+- **The Settings screen no longer presents updating as a routine choice.** What it becomes —
+  reworded, de-emphasised, moved behind a disclosure, or left in place with different words — is
+  the implementer's proposal and the maintainer's ruling. **It must not disappear**: `OPS-002`
+  requires the resolved version to be visible and revert to be one action, and both are still true
+  after this
+- **There is a route from a failed download to the update**, worded as what it is: sites change,
+  and a newer yt-dlp may fix this one. This is the half that makes the reframing honest rather than
+  merely quieter
+- **That route does not turn the failure surface into an advice column.** `T-201`'s error anatomy
+  and `T-243`'s one-voice rule both apply: a failure states what happened, why, and one next step —
+  and a class with no honest next step still gets none
+- **The offer appears only where it could be true.** A refusal that has nothing to do with the
+  extractor — an unwritable folder, a full disk — must not suggest updating yt-dlp. `UX-005` §5
+- **`NFR-007` is untouched**: still explicit, still never automatic, still never silent
+- **The wording is asserted by tests**, the way the screen's other fixed strings are
+
+#### Out of scope
+
+- **Removing the override.** Explicitly rejected in the amendment; `OPS-002`'s *"pin only"*
+  alternative stands refused, and more firmly while no release pipeline exists
+- **Automatic or background update checks.** `NFR-007`
+- **The crash in this path** (`T-289`)
+- **Whether the application itself should self-update**, which `REL-001` leaves open and which the
+  amendment names as the condition for reopening `OPS-002`
+
 ### T-286 — The container section says what recode costs and never what it is for
 
 **Status:** In Review — **built 2026-09-10**. *(Filed 2026-08-27 during `T-212`'s run, from the maintainer's question:
@@ -1944,92 +2070,6 @@ ends badly — the shape `2026-08-27-T212-ytdlp-update-double-free.md` recorded.
 
 - Reversing the runner move.
 - `T-268`'s seven preserved specimens, which remain its own.
-
-### T-290 — Offer the yt-dlp update as recovery, not as a setting
-
-**Status:** Proposed — **filed 2026-08-27 to build `OPS-002`'s amendment of the same day**, which
-the maintainer ruled during `T-212`'s run: the override stays, and stops being a standing choice.
-**Owner:** Implementer
-**Priority:** Medium — nothing is broken today; what changes is which version the population runs,
-and that compounds quietly in the other direction
-**Phase:** Phase 4 (polish; **not** a plan deliverable). It is a presentation change to a screen
-this phase built, and the maintainer may prefer it after the exit — that placement is theirs
-**Depends on:** nothing. `T-289` crashes in this screen's update path and is a different defect;
-neither blocks the other, but both touch `show_ytdlp`
-**Relevant context:** `OPS-002` and its 2026-08-27 amendment; `ui/settings_dialog.py:1387` and
-`show_ytdlp`/`show_ytdlp_problem`/`show_ytdlp_busy`; `REQ-025`; `NFR-007` — the update performs an
-outbound download and must stay explicit, never automatic and never silent
-**Affected surfaces:** `ui/settings_dialog.py`, wherever a download failure is presented, and
-their tests
-**Risk:** Medium — the honest version of this needs a route from a *failure* to the update, and a
-failure surface that starts giving advice is how a row's anatomy grows a second voice (`T-243`)
-
-#### What changes, and what does not
-
-**Unchanged:** the pinned baseline, the user-managed copy resolved ahead of it, the version shown
-in the UI, and revert as one action. The mechanism is not what was ruled on.
-
-**Changed:** the update is currently `Update to the latest version` — a button of equal weight
-beside `Use the bundled version`, in a Settings section that reads like every other setting. That
-presentation invites a population onto versions this project has never tested. The amendment makes
-it the way out of a site that has broken.
-
-#### 2026-09-10 — what was found already true, and what is left
-
-**Three of the six criteria were already met before this task started**, by `ui/error_text.py`,
-which predates it. Measured across the whole taxonomy rather than read:
-
-| Criterion | State |
-|---|---|
-| A route from a failed download to the update | **Met.** `EXTRACTOR_ERROR`'s next step reads *"The site may have changed. Updating yt-dlp in Settings often fixes this."* (`C-002`) |
-| The route is not an advice column | **Met.** One next step per kind, and `GEO_RESTRICTED`/`DRM_PROTECTED` still get **none** — the refusal `T-201` calls the substance of its own task |
-| The offer appears only where it could be true | **Met.** Of twelve kinds, exactly one offers it. `DISK` says *"check there is free space"* and nothing about yt-dlp |
-| `NFR-007` untouched | **Met.** Nothing here makes the update automatic, silent or implicit |
-
-**A guard was added for the third**, because nothing pinned it: the table had the right shape and
-no test stopping a later kind from picking the sentence up by copying a neighbour.
-`test_only_a_failure_the_update_could_fix_offers_the_update` asserts it as a property over the
-whole taxonomy, both ways — the kind that must offer it and every kind that must not — since half
-of it would pass on a table that offered the update everywhere or nowhere. It fails when `DISK` is
-given the sentence.
-
-#### What is left, and it is the maintainer's to rule
-
-**Only the Settings presentation**, which this task's first criterion explicitly reserves: *"what it
-becomes — reworded, de-emphasised, moved behind a disclosure, or left in place with different words
-— is the implementer's proposal and the maintainer's ruling."*
-
-**Deliberately not guessed at overnight.** The four options change what the screen means, not just
-how it reads, and building one of them would spend the ruling rather than inform it. `OPS-002`'s
-constraints bound whichever is chosen: the resolved version stays visible and revert stays one
-action, so *"it must not disappear"* is already settled — what is open is only its weight.
-
-#### Acceptance criteria
-
-- **The Settings screen no longer presents updating as a routine choice.** What it becomes —
-  reworded, de-emphasised, moved behind a disclosure, or left in place with different words — is
-  the implementer's proposal and the maintainer's ruling. **It must not disappear**: `OPS-002`
-  requires the resolved version to be visible and revert to be one action, and both are still true
-  after this
-- **There is a route from a failed download to the update**, worded as what it is: sites change,
-  and a newer yt-dlp may fix this one. This is the half that makes the reframing honest rather than
-  merely quieter
-- **That route does not turn the failure surface into an advice column.** `T-201`'s error anatomy
-  and `T-243`'s one-voice rule both apply: a failure states what happened, why, and one next step —
-  and a class with no honest next step still gets none
-- **The offer appears only where it could be true.** A refusal that has nothing to do with the
-  extractor — an unwritable folder, a full disk — must not suggest updating yt-dlp. `UX-005` §5
-- **`NFR-007` is untouched**: still explicit, still never automatic, still never silent
-- **The wording is asserted by tests**, the way the screen's other fixed strings are
-
-#### Out of scope
-
-- **Removing the override.** Explicitly rejected in the amendment; `OPS-002`'s *"pin only"*
-  alternative stands refused, and more firmly while no release pipeline exists
-- **Automatic or background update checks.** `NFR-007`
-- **The crash in this path** (`T-289`)
-- **Whether the application itself should self-update**, which `REL-001` leaves open and which the
-  amendment names as the condition for reopening `OPS-002`
 
 ## Proposed — Phase 4.5
 

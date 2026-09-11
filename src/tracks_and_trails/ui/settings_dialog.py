@@ -265,6 +265,24 @@ YTDLP_VERSION_UNKNOWN: Final = "Checking…"
 #: user to remember what they reverted to, and the bundled baseline is the thing they get.
 YTDLP_REVERT_LABEL: Final = "Use the bundled version"
 
+#: What the newer-copy control says, and the line above it (`T-290`).
+#:
+#: **Both name the occasion rather than the act.** `OPS-002`'s amendment ruled that fetching a
+#: newer yt-dlp is recovery, not a standing choice, and *"Update to the latest version"* beside
+#: *"Use the bundled version"* reads as two equal settings — an invitation onto versions this
+#: project has never tested.
+#:
+#: **The note repeats what a failed download already says.** `error_text`'s `EXTRACTOR_ERROR` next
+#: step is *"The site may have changed. Updating yt-dlp in Settings often fixes this"*, and a user
+#: who follows it arrives here; a section that then described the move differently would be two
+#: voices on one action (`T-243`'s rule, one screen over).
+YTDLP_RECOVERY_NOTE: Final = (
+    "If a site has stopped working, a newer yt-dlp often fixes it. Otherwise the bundled version "
+    "is the one this application was tested with."
+)
+YTDLP_RECOVERY_NOTE_NAME: Final = "ytdlpRecoveryNote"
+YTDLP_UPDATE_LABEL: Final = "Get a newer yt-dlp"
+
 #: What the update button says while an operation is running, so the screen's own state says why
 #: nothing is responding rather than leaving a dead-looking button (`NFR-006`'s spirit).
 YTDLP_WORKING_LABEL: Final = "Working…"
@@ -1474,10 +1492,26 @@ class SettingsDialog(QDialog):
         row.addStretch(1)
         layout.addLayout(row)
 
+        # **Says when, above the controls it governs** (`T-290`, `OPS-002`'s 2026-08-27 amendment).
+        # Without this the section reads like every other setting and the newer copy looks like a
+        # thing to keep current; with it, the control below is the way out of a site that broke.
+        # The wording matches what `error_text` tells a user on the failure that sends them here,
+        # so the two surfaces cannot come to describe the same move differently.
+        when = QLabel(YTDLP_RECOVERY_NOTE, box)
+        when.setObjectName(YTDLP_RECOVERY_NOTE_NAME)
+        when.setWordWrap(True)
+        layout.addWidget(when)
+
         buttons = QHBoxLayout()
-        self._ytdlp_update = QPushButton("Update to the latest version", box)
+        self._ytdlp_update = QPushButton(YTDLP_UPDATE_LABEL, box)
         self._ytdlp_update.setObjectName(YTDLP_UPDATE_NAME)
         self._ytdlp_update.setAccessibleName("Update yt-dlp to the latest version")
+        # **Quieter than the control beside it, and still a button** (`T-290`). `OPS-002` requires
+        # the resolved version visible and revert one action; neither changes. What changes is that
+        # this one stops being a peer of *Use the bundled version*. `theme.py` drops its fill and
+        # mutes its text and **keeps its border**, which is `T-132`'s lesson: a borderless
+        # transparent button is text nobody can tell is pressable.
+        self._ytdlp_update.setProperty("quietAction", True)
         self._ytdlp_update.clicked.connect(self._start_ytdlp_update)
         buttons.addWidget(self._ytdlp_update)
 

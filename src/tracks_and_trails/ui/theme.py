@@ -917,6 +917,29 @@ QPushButton {{
     border-radius: 4px;
     padding: 4px 10px;
 }}
+/* **A button that is a way out, not a thing to do** (`T-290`, `OPS-002`'s 2026-08-27 amendment).
+   Fetching a newer yt-dlp sat as a peer of `Use the bundled version`, in a section that reads like
+   every other setting — a presentation that invites a population onto versions this project has
+   never tested. It is recovery, and this is what says so without hiding it: the failure message
+   that sends a user here (`error_text`'s `EXTRACTOR_ERROR`) has to still find something to point
+   at.
+
+   **The fill is what it gives up, and only the fill.** An ordinary button is a `surface` chip on a
+   `window` ground, so dropping the fill leaves an *outline* button beside a *filled* one — a
+   visible difference in both palettes (`#FFFFFF` on `#F5F7F4` light, `#10201A` on `#0A1712` dark).
+
+   **The border stays** (`T-132`): making a button transparent *and* borderless turned two toolbar
+   controls into text nobody could tell was pressable, which the maintainer reported. The border is
+   what says *pressable*, the same rule `RowDelegate._paint_menu_zone` follows.
+
+   **The text colour stays too, and that is the part worth explaining.** The first version of this
+   also muted it, which `test_muted_is_either_secondary_emphasis_or_a_published_disabled_state`
+   refused — rightly. Every other `muted` rule is either a `:disabled` state or something
+   non-interactive (a group title, a header strip); a **pressable** control in the disabled colour
+   looks unavailable while responding, which is a worse defect than the weight this is reducing. */
+QPushButton[quietAction="true"] {{
+    background-color: transparent;
+}}
 QPushButton:default {{
     background-color: {theme.primary};
     border-color: {theme.primary};
