@@ -122,6 +122,14 @@ and a marker saying a known failure is expected is that with extra steps.
 ring.** The options and their costs are kept below as the reasoning the ruling was made on. The
 decision entry recording it is part of this task, since the rule it supersedes has a review
 finding and a test for authority and no numbered decision.
+
+**Sequenced by the maintainer on 2026-09-11: not started until Phase 4's exit is approved.** The
+build touches every `:focus` selector in `ui/theme.py`, the generated `BORDERED_CONTROLS` ones
+included — and a type-and-attribute selector out-specifying a universal pseudo-class one is the
+defect behind both `T-303` and `P4EXIT-R1`'s collapse triangle. It would also rewrite the rule
+that `test_focus_is_visible_on_every_control_the_application_shows` enforces, which is the test
+carrying `P4EXIT-R1`'s evidence while that finding is under verification. The ruling on *what* to
+build is unchanged; only *when* is settled here.
 **Owner:** Maintainer to rule; Implementer to build
 **Priority:** Low — it is a comfort question, not a defect. Raised 2026-09-09: *"I don't
 necessarily think that mode should be enabled by default — if you are clicking around with a
