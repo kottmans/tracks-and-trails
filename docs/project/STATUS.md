@@ -22,8 +22,9 @@ owns phase deliverables and exit criteria.
   exist, filed on a check that contradicted the specification it tested against.
 - **`T-308`, `T-310`, `T-312` and `T-314` are Complete**, approved by independent review and moved
   to [COMPLETED_TASKS](COMPLETED_TASKS.md) on 2026-09-10. What remains In Review is `T-313` and
-  `T-315` (one correction round each, awaiting verification), `T-297` (maintainer observation in
-  place of a capture) and `T-316` (a staged row now states what it is).
+  `T-315` (a **second** correction round each, awaiting verification — both first corrections
+  introduced a regression of the class they fixed), `T-297` (maintainer observation in place of a
+  capture), `T-316` (a staged row now states what it is) and `T-286`.
 
 - **T-300 is Complete**, approved at `5eecad9` on 2026-09-08 by independent review and
   moved to [COMPLETED_TASKS](COMPLETED_TASKS.md). Its two Low findings were corrected
@@ -50,7 +51,16 @@ owns phase deliverables and exit criteria.
   2026-09-10 rather than capturing it, and reported no flicker. That **amends** criterion 1 rather
   than passing it — there is no capture, and which of the two open windows was observed could not
   be established — so the task carries the weaker claim and is In Review for the reviewer's
-  disposition. **Phase 4 exit work is now `T-286` and `T-290`, then the exit review.**
+  disposition.
+
+  **`T-286` was built on 2026-09-10** and is In Review: the container note now names the case
+  recoding is for, not only what it costs.
+
+  **`T-290` is the last Phase 4 exit item, and what is left of it is a maintainer ruling.** Three
+  of its six criteria were already met by `ui/error_text.py` before the task started — measured,
+  not read — and a guard was added so a later error kind cannot pick the update sentence up by
+  copying a neighbour. What remains is the Settings presentation, whose four options that task
+  reserves for the maintainer.
 
 - **The order after Phase 4 changed on 2026-09-10.** Phase 5 (distribution) runs next and
   **Phase 4.5 (option coverage) follows the first release** as a rolled-out update, by maintainer
