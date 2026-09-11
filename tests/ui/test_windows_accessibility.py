@@ -63,6 +63,35 @@ UIA_TITLE_BAR = 50037
 #: found by the first one being fixed.
 UIA_CHECKBOX = 50002
 
+# **The editing roles, added by `P4EXIT-R1`.** The sweep below was scoped to menu items, buttons
+# and check boxes — the roles this window happened to have. Phase 4 added Settings and the add
+# dialog, whose controls are edits, combo boxes, spin boxes, lists and tables, so the *"every
+# interactive control"* the sweep claims stopped being true the moment those screens existed.
+# `T-235` is the same finding one role earlier: a role nobody had thought of is a control nobody
+# swept.
+UIA_EDIT = 50004
+UIA_COMBOBOX = 50003
+UIA_SPINNER = 50016
+UIA_LIST = 50008
+UIA_LIST_ITEM = 50007
+UIA_TABLE = 50036
+UIA_RADIO_BUTTON = 50013
+UIA_TAB_ITEM = 50019
+
+#: Every role a user operates, which is what `NFR-005` is about.
+OPERABLE_TYPES = (
+    UIA_MENU_ITEM,
+    UIA_BUTTON,
+    UIA_CHECKBOX,
+    UIA_EDIT,
+    UIA_COMBOBOX,
+    UIA_SPINNER,
+    UIA_LIST,
+    UIA_TABLE,
+    UIA_RADIO_BUTTON,
+    UIA_TAB_ITEM,
+)
+
 #: Role names, for failure messages that a reader can interpret without a lookup table.
 ROLE_NAMES = {
     UIA_WINDOW: "Window",
@@ -351,21 +380,23 @@ def test_no_interactive_control_reaches_the_tree_without_a_name(tree: Tree) -> N
 
     A control added later without a label fails here rather than shipping unreadable.
 
-    Scoped to menu items, buttons and **check boxes** — the roles a user actually operates. The
-    third was added by `T-235` and is not a formality: Qt gives a *checkable* `QToolButton` the
-    `CheckBox` role, so the queue's own run control was outside this sweep for as long as it has
-    existed. It was outside the tree entirely as well, which is the finding that led here.
+    Scoped to `OPERABLE_TYPES` — the roles a user actually operates. **Check boxes** were added by
+    `T-235` and are not a formality: Qt gives a *checkable* `QToolButton` the `CheckBox` role, so
+    the queue's own run control was outside this sweep for as long as it has existed. It was
+    outside the tree entirely as well, which is the finding that led here.
+
+    **The editing roles were added by `P4EXIT-R1`**, and the shape is the same a third time: the
+    tuple listed the roles *this window* has, so Phase 4's own screens — Settings and the add
+    dialog, made of edits, combo boxes, spin boxes and tables — were outside a sweep whose
+    docstring says *"every interactive control"*. Widening the roles is half; the other half is
+    that those screens reach the tree at all, which is what the dialog tests below do.
 
     Qt and Windows leave the `TitleBar` and the `MenuBar` **container** unnamed, which the first
     CI run of this assertion flagged as two violations. They are not: a screen reader announces
     those by role, and their children carry the names. Requiring a name there would assert something
     the platform does not do, and the only way to make it pass would be to weaken it.
     """
-    interactive = tuple(
-        node
-        for node in tree.descendants
-        if node.control_type in (UIA_MENU_ITEM, UIA_BUTTON, UIA_CHECKBOX)
-    )
+    interactive = tuple(node for node in tree.descendants if node.control_type in OPERABLE_TYPES)
     assert interactive, "no interactive controls in the tree at all"
 
     unnamed = tuple(node for node in interactive if not node.name.strip())
@@ -501,6 +532,146 @@ def test_the_run_control_is_announced_in_both_of_its_states(window: MainWindow, 
 
 
 # --- the About dialog -----------------------------------------------------------------------
+
+
+def _named_operable(subtree: Tree) -> tuple[Node, ...]:
+    """The application's own operable controls in `subtree`, title-bar furniture excluded."""
+    return tuple(
+        node for node in subtree.application_controls() if node.control_type in OPERABLE_TYPES
+    )
+
+
+def _assert_every_control_is_named(subtree: Tree, screen: str) -> tuple[Node, ...]:
+    """`NFR-005` over one screen's published tree, with a non-vacuity floor.
+
+    **The floor is the half that matters** (`T-227`'s lesson, restated by `P4EXIT-R1`). A screen
+    that fails to open, or that publishes nothing to UI Automation, yields an empty list — and
+    *"no unnamed controls"* is trivially true of nothing. Both halves are asserted here so no
+    caller can satisfy one and skip the other.
+    """
+    operable = _named_operable(subtree)
+    assert operable, (
+        f"the {screen} publishes no operable control to UI Automation at all, so a name sweep "
+        f"over it would pass by looking at nothing. Full subtree: {describe(subtree.descendants)}"
+    )
+    unnamed = tuple(node for node in operable if not node.name.strip())
+    assert not unnamed, (
+        f"{len(unnamed)} control(s) on the {screen} expose no accessible name to Narrator: "
+        f"{describe(unnamed)}"
+    )
+    return operable
+
+
+def test_the_settings_screen_is_published_with_named_controls(window: MainWindow) -> None:
+    """**`P4EXIT-R1`.** Settings was never queried through UI Automation.
+
+    The existing Settings test opens the **menu** and asserts the menu item — it never opens the
+    dialog, so the whole of `REQ-023`'s screen, which Phase 4 exists to have built, was outside
+    the published tree this phase's criterion 2 is about. Its controls are edits, combo boxes,
+    spin boxes and buttons: four roles, none of which the sweep covered either.
+
+    **Asserted on the dialog's own `HWND`**, not the main window's, for the reason
+    `test_the_about_dialog…` records: a modal is its own top-level window, and reading the parent
+    would find none of it.
+    """
+    settings = window.open_settings()
+    assert settings is not None, (
+        "this window opened no Settings dialog, so the sweep below would cover nothing — "
+        "composition must supply its writers"
+    )
+    QApplication.processEvents()
+    try:
+        subtree = read_tree(int(settings.winId()))
+        operable = _assert_every_control_is_named(subtree, "Settings screen")
+
+        # **The editing roles are actually present**, or this passed on the button box alone —
+        # which is the vacuity `P4EXIT-R1` found one screen over.
+        kinds = {node.control_type for node in operable}
+        assert kinds & {UIA_EDIT, UIA_COMBOBOX, UIA_SPINNER}, (
+            "Settings published no edit, combo box or spin box to UI Automation, so its actual "
+            f"controls are not in this sweep. Found: {describe(operable)}"
+        )
+    finally:
+        settings.close()
+        QApplication.processEvents()
+
+
+def test_the_add_dialog_is_published_with_named_controls(window: MainWindow) -> None:
+    """**`P4EXIT-R1`.** The add dialog was never queried through UI Automation either.
+
+    It is the screen a user meets first and the one Phase 4 reshaped most — the URL box, the
+    staging list, the batch preset control and the button box. None of it reached the tree these
+    tests assert on.
+
+    **What this does not do is drive a probe.** Reaching the staging *pages* needs a resolved row,
+    and a failure there would be ambiguous with a probe failure — the bound `Surface`'s own
+    `opened_through_its_route` records. The Linux audit covers those pages directly
+    (`tests/ui/surfaces.py`); this covers the dialog as opened.
+    """
+    add = window.open_add_dialog()
+    QApplication.processEvents()
+    try:
+        subtree = read_tree(int(add.winId()))
+        operable = _assert_every_control_is_named(subtree, "add dialog")
+
+        kinds = {node.control_type for node in operable}
+        assert UIA_EDIT in kinds, (
+            "the add dialog published no edit control, so the URL box a user types into is not "
+            f"in this sweep. Found: {describe(operable)}"
+        )
+    finally:
+        add.close()
+        QApplication.processEvents()
+
+
+def test_a_combo_box_announces_its_purpose_not_its_current_value(window: MainWindow) -> None:
+    """**`P4EXIT-R1`.** A control named for its value tells a screen reader nothing about itself.
+
+    *"Best video available"* is what the batch preset control **holds**; *"Preset"* is what it
+    **is**. A user tabbing onto it hears the former and has to infer the latter, which is the
+    difference between a labelled control and a value read aloud.
+
+    **This project has met the failure before, on the other platform.** `T200-R7` records that
+    `QAccessibleComboBox::text` falls through `Name` to `Value` under `Q_OS_UNIX`, so a combo
+    publishes its selected item where its name should be and discards `setAccessibleName` — which
+    is why `ui/options_dialog.py` and `ui/settings_dialog.py` carry buddy labels. Windows uses a
+    different bridge, so whether the same control announces its purpose *here* is a separate
+    question, and it has never been asked.
+
+    Asserted as *"the name is not merely the value"* rather than against a fixed string: the
+    labels are the screens' to choose, and pinning one here would be this file having an opinion
+    about wording (`T-141`'s rule).
+    """
+    settings = window.open_settings()
+    assert settings is not None
+    QApplication.processEvents()
+    try:
+        subtree = read_tree(int(settings.winId()))
+        combos = tuple(
+            node for node in subtree.application_controls() if node.control_type == UIA_COMBOBOX
+        )
+        assert combos, (
+            "Settings published no combo box, so this asserts nothing; the screen has several "
+            f"and one of them should be here. Found: {describe(subtree.application_controls())}"
+        )
+
+        # Every combo's *value* is one of its list items; a name equal to one is a value read as
+        # a name. Compared case-insensitively and trimmed, which is how a reader would hear it.
+        values = {
+            node.name.strip().casefold()
+            for node in subtree.of_type(UIA_LIST_ITEM)
+            if node.name.strip()
+        }
+        named_for_their_value = tuple(
+            node for node in combos if node.name.strip().casefold() in values
+        )
+        assert not named_for_their_value, (
+            "combo box(es) announce their current value where their purpose belongs, so Narrator "
+            f"says what is selected and never what it is for: {describe(named_for_their_value)}"
+        )
+    finally:
+        settings.close()
+        QApplication.processEvents()
 
 
 def test_the_about_dialog_and_its_close_button_are_announced(window: MainWindow) -> None:

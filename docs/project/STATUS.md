@@ -25,6 +25,33 @@ owns phase deliverables and exit criteria.
   `T-290` closed 2026-09-11, each approved by independent review and moved to
   [COMPLETED_TASKS](COMPLETED_TASKS.md). **Nothing is In Review.** `T-297` closed under a recorded
   amendment — which build the maintainer observed is not established, and its record says so.
+- **Phase 4's exit review is Blocked at `6b1fcf1`** on three findings
+  ([record](reviews/phase-4-exit.md)). Their states differ and the difference matters:
+  - **`P4EXIT-R1` — corrected 2026-09-11.** The common audit's inventory omitted the queue's
+    `FormatDialog` entirely and swept the staging *bodies* where `T-312` made the application show
+    *pages*; the Windows UIA sweep covered three roles and never opened Settings or the add dialog.
+    The inventory is nine surfaces, not five, and the Windows sweep covers the editing roles with
+    both dialogs queried. **The reviewer's own mutation now fails four tests where it previously
+    left all 103 passing.**
+
+    **The widened audit immediately found a real defect, which is the point of widening it.** The
+    collapse triangle at the top of every row panel — since `T-312` the *only* pointer route out
+    of a panel that fills the dialog — changed **zero pixels on focus in both palettes**. Its rule
+    said `border: none`, which out-specifies the `*:focus` catch-all, so a keyboard user landing
+    there saw nothing at all. It now reserves a transparent edge for focus to recolour, which is
+    `T-303`'s fix one control over, and it is enumerated in `BORDERED_CONTROLS` so the rendered
+    per-control sweep covers it. Restoring the reviewed state fails the sweep in both palettes.
+  - **`P4EXIT-R2` — not a queue, a machine.** `WINDOWS_RUNNER` pins `windows desktop` and
+    `frozen windows` to `STARBASE`, and the API reports that runner **offline**; both jobs on
+    `bca24bd` are queued behind it. `OPS-012` records that a self-hosted job with no matching
+    online runner queues up to 24 hours before GitHub discards it. Bringing `STARBASE` online
+    drains them; unsetting `WINDOWS_RUNNER` routes to hosted, which `OPS-010` says is why it was
+    set. **Either way a fresh run is needed** — `R1`'s correction changes the test tree the
+    evidence must cover.
+  - **`P4EXIT-R3` — taken 2026-09-11.** The maintainer accepted the residual: Phase 4 may exit
+    with `T-289`'s unexplained abort, bounded by the unchanged reopening condition. Recorded in
+    that task's closed record and in the risk section below. **The crash is still not explained**,
+    and the acceptance says so.
 - **Phase 5 is planned.** Twelve tasks (`T-317`–`T-328`) plus a sharpened `T-106` tie every
   Phase 5 deliverable and exit criterion to an owner; see the task map in
   [IMPLEMENTATION_PLAN §Phase 5](IMPLEMENTATION_PLAN.md#phase-5--distribution). Three are
@@ -112,10 +139,13 @@ execution or release-gate result is claimed here.
 
 ## Current risks and external blockers
 
-- **T-289 is Complete under the 2026-09-04 re-scope.** The 2026-08-27 abort remains
-  unexplained and unreproduced. A real-test guard firing reopens it; whether Phase 4
-  may exit with that residual remains a maintainer decision. Its task and review
-  record preserve the reasoning and exact evidence.
+- **T-289 is Complete under the 2026-09-04 re-scope, and Phase 4 may exit over it**
+  — the reserved decision was taken by the maintainer on 2026-09-11 (`P4EXIT-R3`):
+  **bounded acceptance**, on the implemented pool/ownership guards rather than on an
+  explanation. **The 2026-08-27 abort remains unexplained and unreproduced**, and this
+  record does not claim otherwise. A real-test guard firing reopens it and the
+  acceptance lapses with it. Its task and review record preserve the reasoning and
+  exact evidence.
 - T-297's product correction was assessed as sound, but its required capture and
   recorded evidence remain incomplete. Follow its dated scope ruling before any
   real-display work.

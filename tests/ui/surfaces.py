@@ -38,21 +38,70 @@ def screens_below_the_add_dialog() -> list[tuple[str, QWidget]]:
     Imported inside the function because building these loads five UI modules and their Qt
     dependencies, and a module that is imported for its docstring should not pay for that.
     """
-    from tracks_and_trails.core.models import FormatInfo
+    from tracks_and_trails.core.models import FormatInfo, MediaInfo
     from tracks_and_trails.core.presets import BUILT_IN_PRESETS
     from tracks_and_trails.core.settings import Settings
+    from tracks_and_trails.ui.add_dialog import (
+        FormatPanel,
+        PlaylistPanel,
+        TemplatePanel,
+        row_summary,
+    )
+    from tracks_and_trails.ui.format_dialog import FormatDialog
     from tracks_and_trails.ui.format_table import FormatTable
     from tracks_and_trails.ui.options_dialog import OptionsDialog
     from tracks_and_trails.ui.playlist_picker import PlaylistPicker
     from tracks_and_trails.ui.preset_manager import PresetManager
+    from tracks_and_trails.ui.staging import Row
     from tracks_and_trails.ui.template_editor import TemplateEditor
 
+    # **With a row in it.** An empty table publishes no operable control, and a sweep over
+    # nothing is what `T-227`'s gate did the moment it succeeded.
+    formats = (FormatInfo(format_id="137", extension="mp4", height=1080),)
+
+    # **A row carrying a probe result, because a panel opens *onto* one** (`P4EXIT-R1`). The
+    # panels below read `row.media` for their bodies; a row without one yields an empty body,
+    # which is the vacuous sweep the line above exists to prevent.
+    def staged() -> Row:
+        return Row(
+            url="https://example.invalid/one",
+            generation=0,
+            media=MediaInfo(
+                url="https://example.invalid/one",
+                title="A clip",
+                formats=formats,
+                entries=(),
+            ),
+        )
+
     return [
-        # **With a row in it.** An empty table publishes no operable control, and a sweep over
-        # nothing is what `T-227`'s gate did the moment it succeeded.
-        ("format table", FormatTable([FormatInfo(format_id="137", extension="mp4", height=1080)])),
+        # **The bodies, kept.** `tools/t238_widget_cycle_probe.py` and `tools/t289_pool_gc_probe.py`
+        # both read this list for *any application widget*, and a body is one. They are no longer
+        # screens in their own right, which is what the panels below are for.
+        ("format table", FormatTable(formats)),
         ("template editor", TemplateEditor("%(title)s.%(ext)s")),
         ("playlist picker", PlaylistPicker()),
         ("options dialog", OptionsDialog(preset=BUILT_IN_PRESETS[0])),
         ("preset manager", PresetManager(Settings(), save=lambda _settings: None)),
+        # **The pages the application actually shows** (`P4EXIT-R1`, and `T-312` is why they are
+        # pages). Since `T-312` a row opens onto a *panel that fills the add dialog*, never onto a
+        # bare body — so the panel's own chrome, which the bodies above do not carry, was audited
+        # nowhere: the summary that says which row this is, the collapse control that is the
+        # pointer route back, and `Done`. The phase-exit review found the same class of omission
+        # one surface over and it is the same fix: audit the screen, not its contents.
+        ("format panel", FormatPanel(staged(), row_summary(staged()), ffmpeg_available=True)),
+        ("playlist panel", PlaylistPanel(staged(), row_summary(staged()))),
+        (
+            "template panel",
+            TemplatePanel(staged(), row_summary(staged()), template="%(title)s.%(ext)s"),
+        ),
+        # **The queue's own format dialog** (`P4EXIT-R1`, built by `T-315`). It was constructed
+        # nowhere in this sweep, and the reviewer measured what that cost: removing its Cancel
+        # button's name and keyboard focus left all 103 accessibility and colour tests passing,
+        # with **zero** `FormatDialog` constructions. A screen no audit builds is a screen no
+        # audit covers, which is `T-201`'s finding in a second place.
+        (
+            "queue format dialog",
+            FormatDialog(formats, title="A clip", ffmpeg_available=True),
+        ),
     ]

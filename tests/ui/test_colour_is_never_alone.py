@@ -495,6 +495,16 @@ def build(selector: str, host: QWidget) -> QWidget:
         stepper.setProperty(settings_dialog.STEP_BUTTON_PROPERTY, "true")
         layout.addWidget(stepper)
         return stepper
+    if selector == 'QToolButton[disclosure="true"]':
+        # **The panel's way out** (`P4EXIT-R1`). Built the way `RowPanel` builds it — the arrow and
+        # `autoRaise` are what make it read as the painted triangle it replaces rather than as a
+        # button, and both affect what a rendered focus comparison sees.
+        disclosure = QToolButton(host)
+        disclosure.setArrowType(Qt.ArrowType.DownArrow)
+        disclosure.setAutoRaise(True)
+        disclosure.setProperty("disclosure", True)
+        layout.addWidget(disclosure)
+        return disclosure
     if selector in {"QToolBar QToolButton", 'QToolBar QToolButton[primaryAction="true"]'}:
         bar = QToolBar(host)
         verb = QToolButton(bar)
@@ -605,6 +615,7 @@ def test_every_bordered_control_can_be_built() -> None:
     for control in ui_theme.BORDERED_CONTROLS:
         assert control.selector in CLASSES or control.selector in {
             'QToolButton[stepButton="true"]',
+            'QToolButton[disclosure="true"]',
             "QToolBar QToolButton",
             'QToolBar QToolButton[primaryAction="true"]',
             "QComboBox QAbstractItemView",

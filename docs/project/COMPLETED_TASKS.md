@@ -14595,6 +14595,17 @@ the dump remains unreproduced, and **a firing of the guard on a real test reopen
 **Whether Phase 4 may exit over that is a separate decision and still the maintainer's** — closing
 the task does not take it.
 
+> **Taken 2026-09-11, on `P4EXIT-R3`: Phase 4 may exit with it, bounded.** The maintainer accepted
+> the unexplained 2026-08-27 abort as a residual risk of the phase, on the strength of what is
+> implemented rather than of what is understood: both exit paths establish that **no pool thread
+> survives into the teardown that destroys the widgets**, the guard is in, and the enumeration the
+> re-scoped criterion asks for is recorded. One occurrence, never reproduced.
+>
+> **This accepts a risk; it does not explain a crash, and nothing downstream may read it as
+> having.** The reopening condition is unchanged and is the whole of the bound: **a firing of the
+> guard on a real test reopens this**, at which point the acceptance lapses rather than needing to
+> be argued away.
+
 **Criterion 2 was re-scoped on 2026-09-04 and is met under the new wording** — see *Ruled
 2026-09-04*. It asks that no widget tree is left owned by Python alone where a pool thread can
 collect it, **established by enumeration**, and no longer that the released crash route be

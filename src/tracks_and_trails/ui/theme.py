@@ -423,6 +423,18 @@ BORDERED_CONTROLS: Final = (
         ),
     ),
     BorderedControl(
+        selector='QToolButton[disclosure="true"]',
+        takes_focus=True,
+        reason=(
+            "**Bordered only so that focusing it shows something** (`P4EXIT-R1`). Its idle border "
+            "is `transparent` and it still draws as the painted triangle it replaces; what "
+            "changed is that `border: none` used to out-specify `*:focus`, so the keyboard "
+            "indicator on a panel's only pointer route out was literally zero pixels in both "
+            "palettes. The phase-exit audit found it the moment the panels entered the sweep — "
+            "they had never been in it, which is the other half of that finding."
+        ),
+    ),
+    BorderedControl(
         selector="QGroupBox",
         takes_focus=False,
         reason=(
@@ -1137,8 +1149,17 @@ QToolButton[disclosure="true"] {{
        *look* like a button, or the two halves of one gesture are drawn as two different things.
 
        A role rather than an object name, for the reason `[primaryAction]` gives: the next panel
-       that needs a disclosure inherits this instead of remembering it. */
-    border: none;
+       that needs a disclosure inherits this instead of remembering it.
+
+       **The border is reserved rather than absent, and that is `P4EXIT-R1`'s finding** (`T-303`'s
+       fix, one control over). This read `border: none`, which out-specifies the `*:focus`
+       catch-all — a type-and-attribute selector beats a universal one — so focusing this button
+       changed **zero pixels in both palettes**, measured. That matters more here than almost
+       anywhere: since `T-312` this triangle is *the* pointer route out of a panel that fills the
+       dialog, and a keyboard user landing on it saw nothing at all. Two transparent pixels give
+       the rule below something to recolour, exactly as a check box's do, and the control still
+       does not look like a button. */
+    border: 2px solid transparent;
     background: transparent;
     padding: 0px;
 }}
