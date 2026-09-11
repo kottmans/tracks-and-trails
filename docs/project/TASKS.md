@@ -166,6 +166,160 @@ than growing a second answer to the same question.
 - The dialog still narrows to 320px, which `tests/ui/test_add_dialog.py` asserts today.
 - `docs/UX_SPEC.md` §4 and §5 record the ruling with the maintainer's authority.
 
+### T-297 — A thumbnail flickers while the window is resized with a panel open, and the cause is unknown
+
+**Status:** **In Review — both maintainer-held findings are dispositioned as of 2026-09-10.**
+`T297-R2` was granted an exception on 2026-09-04; `T297-R1` was answered on 2026-09-10 by a
+maintainer observation on a real display **in place of a capture**, which amends criterion 1 rather
+than satisfying it — see below. *(Was: Blocked on `T297-R1` and `T297-R2`, both High — the product
+fix is sound and the* record *of how it was reached is not, reviewed at `d44700c`.)*
+
+- **`T297-R1` — no real-display capture.** The reproduction was taken on a nested
+  `kwin_wayland --virtual`, and its PNG is a labelled reconstruction rather than a captured frame.
+  The criterion asks for a real display and a capture. **Needs either a pre-fix run on the live
+  session or an explicit amendment** naming what is surrendered. Not mine to take, and not something
+  to run unattended on the maintainer's desktop.
+#### Ruled 2026-09-04: the exception is granted, and the capture is being taken
+
+**`T297-R2` — exception granted.** The maintainer accepted that criterion 2 was missed and that the
+sequence cannot be created retroactively. What stands in its place is the dated correction in
+`docs/project/evidence/2026-09-01-T297-panel-collapses-during-resize.md`, which says the cause section is
+superseded, names the real writer, and records that the `T-296` relation was backwards. **The
+commits are not rewritten.** This finding no longer blocks Complete.
+
+**`T297-R1` — being answered rather than amended.** The maintainer chose to run the pre-fix tree on
+a real display and keep an actual capture, over amending the criterion.
+`tools/t297_prefix_capture.sh` puts that tree on the display from a `git worktree` at `331845d`,
+with `PYTHONPATH` overridden so the editable install cannot serve the fixed code instead. **Until
+that capture exists this task stays Blocked**, and a run that does *not* reproduce is a result to
+record rather than a reason to try again.
+
+- **`T297-R2` — the pre-fix record names the wrong cause.** `331845d` says the cause is
+  `_on_list_resized`'s deferred relayout and that it is *not* `T-296`'s; both are wrong, and the
+  real cause first appears in the commit that changes source. **The evidence file now carries a
+  dated correction** saying so and recording that the criterion was missed. Moving this to Complete
+  needs the maintainer's explicit exception; the commits are not rewritten.
+- **`T297-R3` — corrected.** The probe froze only part of itself before the reconstruction, so the
+  post-fix counts included the instrument's own forced 26 px. Every counter is frozen now and a
+  control asserts none moved — **it caught a real drift on the first run** (38 → 40 paints) rather
+  than passing. Both trees were re-measured rather than corrected by subtraction.
+
+**The fix itself was not in doubt in the review and is unchanged.** **It was not the deferral the
+entry hypothesised.** `QAbstractItemView` keeps `setIndexWidget` widgets in **the same map as item
+editors**, so every `updateGeometries()` pass handed the open row's panel to
+`RowDelegate.updateEditorGeometry` — which applied `_control_of`, the row's *format-combo* slot, to
+it. A 354 px panel became **26 px**. A resize calls `updateGeometries()` once per step, so the panel
+collapsed and was restored once per step, and the view painted the row inside each gap: `paint`
+draws the thumbnail on every row it is given, because an open one is supposed to be covered.
+
+**Measured under a compositor before anything was changed**, which is this task's first criterion —
+`docs/project/evidence/2026-09-01-T297-panel-collapses-during-resize.md`, with a capture. 110 resize steps:
+**107 collapses to 26 px, 107 paints of the row its panel did not cover**, and 109 of 110 steps
+nevertheless *settling* correctly, which is why the first reading — which sampled after each step —
+saw nothing. After the fix, re-measured 2026-09-03 with the corrected probe: **0 exposed paints, 110/110
+settled**, and the panel's own resize events fell from **214 to 8, with 0 collapses to 26 px**. *(This
+read "214 to 9" and one collapse; that ninth event and that collapse were the instrument's own
+reconstruction — `T297-R3`. The pre-fix figures re-measured identically: 107 exposed, 214 resizes,
+107 collapses, 109 of 110 settling.)*
+
+**The fix is the guard its two siblings already have.** `setEditorData` and `setModelData` both
+begin `if not isinstance(editor, QComboBox)`; `updateEditorGeometry` did not. Anything that is not
+this delegate's editor now goes to `super()`, which sizes an editor to `option.rect` — exactly right
+for an index widget spanning the row.
+
+**This is what `T-296` was working around, and that is worth stating rather than leaving to be
+rediscovered.** `T-296` reordered `_mount_panel` so `scrollTo` — which calls `updateGeometries()` —
+could not undo the geometry `setGeometry` had just set. The reorder is still correct and still
+tested; the reason a scroll destroyed the geometry was this method, one layer down. **`T-296` is not
+reopened**: it is Complete, approved, and its own regression still passes.
+
+*(Filed 2026-08-28 by `T-212`'s checklist run, deliberately without a cause.* The maintainer's
+report: *"when changing the window size while the naming information is up, the thumbnail cuts in
+and out very rapidly. That shouldn't happen."*)
+**Owner:** Implementer
+**Priority:** Low — it is visual noise during a drag, and it is the least understood thing the run
+found
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/add_dialog.py` `panel_height_for`, which reads the **viewport's** height,
+so every resize step changes the row's size hint; `_mount_panel`'s note that `setIndexWidget`
+defers geometry to `updateEditorGeometries`, which runs on paint; `T-296`
+**Affected surfaces:** `ui/row_delegate.py` (`updateEditorGeometry`), `tests/ui/test_row_delegate.py`;
+the instrument is `tests/ui/_t297_resize_probe.py` and `tools/t297_resize_session.sh`
+**Risk:** Low
+
+#### What was measured, and what it does not show
+
+**It did not reproduce offscreen.** Across eight resize steps with the template panel open:
+
+```
+thumbnail loads : 0        # nothing re-fetches
+cancels         : 0
+```
+
+and the panel's geometry matched the row's `visualRect` at **every** step, from 762 px down to
+430 px and back up. So it is neither the thumbnail being reloaded nor the panel losing coverage in
+any way a headless process can see.
+
+**The plausible mechanism is unproven and is recorded as a hypothesis, not a finding.**
+`panel_height_for` reads `self._list.viewport().height()`, so every resize step changes the row's
+size hint; the panel's re-placement is deferred to paint; and the delegate underneath — which draws
+the thumbnail — is what shows in any gap. That is consistent with `T-108`'s comments and with
+`T-296`, and it is not evidence.
+
+#### 2026-09-10 — `T297-R1` answered by observation, not by capture
+
+The maintainer chose to watch rather than record: *"lets run it and have me watch."* The pre-fix
+tree was put on their own Wayland session from the `331845d` worktree, and afterwards they reported
+**no flicker** — *"there is no flicker at all anymore with the thumbnails or the screen … its all
+good."*
+
+**What this is worth, stated rather than glossed.**
+
+- **It amends criterion 1; it does not pass it.** That criterion asks for a *capture*. None exists
+  and none will. What stands in its place is the maintainer's own eyes on their own display —
+  better than the nested `kwin_wayland --virtual` the reviewer rejected, weaker than the frame the
+  criterion names.
+- **Which build was observed could not be established from this side.** Two windows were open at
+  the time — the pre-fix worktree and the maintainer's own current build — and the implementer
+  verified only that both existed, not which was dragged. The two mean opposite things: on current
+  code `T-312` has removed row-mounted panels entirely, so **no flicker is the only possible result
+  there**, and it says nothing about the defect.
+- **So this record claims the weaker reading**: the maintainer is satisfied the built application
+  does not flicker. Whether the pre-fix tree still reproduces on real hardware is **not** answered
+  here, and nothing below should be read as saying it is.
+
+**Why that is acceptable rather than a gap to chase.** The cause is known and measured — 107
+collapses to 26 px across 110 resize steps, `updateEditorGeometry` applied to a panel it should
+never have been handed — and the fix is the guard its two sibling methods already had. `T-312` has
+since removed the mechanism outright. What a capture would have ruled out is that the nested
+compositor *exaggerated* the originally reported symptom; that question is now unanswerable by any
+means, because the surface it lived on no longer exists.
+
+**A tool defect was found and fixed while doing this.** `tools/t297_prefix_capture.sh` told the
+reader to paste `https://archive.org/details/TheArtOfWarBySunTzu`, which no longer resolves —
+*"opening play-av tag not found"*. The local fixture of that name still works; the live URL behind
+it does not. The guide now asks for any URL the reader knows resolves, since nothing in that step
+is site-specific.
+
+#### Acceptance criteria
+
+- **It is reproduced on a real display first**, with a capture, and the reproduction is recorded in
+  `docs/project/evidence/` before anything is changed. An offscreen process does not do a continuous resize
+  and its style is not necessarily the session's
+- **The cause is named before the fix**, and if the cause turns out to be `T-296`'s, this task is
+  closed against that one rather than fixed twice
+- **If it proves to be Qt or compositor behaviour** this application can only work around, that is
+  recorded as the finding and the workaround is a separate decision
+
+#### Out of scope
+
+- Guessing. `T-296` is filed with a measured cause; this one is not, and the two should not be
+  merged on the strength of sitting near each other
+
+
+---
+
 ### T-315 — A queue row's `⋮` offers what the row already shows
 
 **Status:** In Review — **built 2026-09-10**; both design questions ruled by the maintainer the
@@ -3366,122 +3520,5 @@ Assert, on `windows-latest`:
 - Upgrade-over-existing-install and downgrade paths — real, but a separate task once the
   versioning story exists
 - Any non-Windows packaging
-
----
-
-### T-297 — A thumbnail flickers while the window is resized with a panel open, and the cause is unknown
-
-**Status:** **Blocked on `T297-R1` and `T297-R2`, both High — the product fix is sound and the
-*record* of how it was reached is not** (reviewed at `d44700c`). Corrections landed 2026-09-03; two
-of the three findings need the maintainer rather than more work.
-
-- **`T297-R1` — no real-display capture.** The reproduction was taken on a nested
-  `kwin_wayland --virtual`, and its PNG is a labelled reconstruction rather than a captured frame.
-  The criterion asks for a real display and a capture. **Needs either a pre-fix run on the live
-  session or an explicit amendment** naming what is surrendered. Not mine to take, and not something
-  to run unattended on the maintainer's desktop.
-#### Ruled 2026-09-04: the exception is granted, and the capture is being taken
-
-**`T297-R2` — exception granted.** The maintainer accepted that criterion 2 was missed and that the
-sequence cannot be created retroactively. What stands in its place is the dated correction in
-`docs/project/evidence/2026-09-01-T297-panel-collapses-during-resize.md`, which says the cause section is
-superseded, names the real writer, and records that the `T-296` relation was backwards. **The
-commits are not rewritten.** This finding no longer blocks Complete.
-
-**`T297-R1` — being answered rather than amended.** The maintainer chose to run the pre-fix tree on
-a real display and keep an actual capture, over amending the criterion.
-`tools/t297_prefix_capture.sh` puts that tree on the display from a `git worktree` at `331845d`,
-with `PYTHONPATH` overridden so the editable install cannot serve the fixed code instead. **Until
-that capture exists this task stays Blocked**, and a run that does *not* reproduce is a result to
-record rather than a reason to try again.
-
-- **`T297-R2` — the pre-fix record names the wrong cause.** `331845d` says the cause is
-  `_on_list_resized`'s deferred relayout and that it is *not* `T-296`'s; both are wrong, and the
-  real cause first appears in the commit that changes source. **The evidence file now carries a
-  dated correction** saying so and recording that the criterion was missed. Moving this to Complete
-  needs the maintainer's explicit exception; the commits are not rewritten.
-- **`T297-R3` — corrected.** The probe froze only part of itself before the reconstruction, so the
-  post-fix counts included the instrument's own forced 26 px. Every counter is frozen now and a
-  control asserts none moved — **it caught a real drift on the first run** (38 → 40 paints) rather
-  than passing. Both trees were re-measured rather than corrected by subtraction.
-
-**The fix itself was not in doubt in the review and is unchanged.** **It was not the deferral the
-entry hypothesised.** `QAbstractItemView` keeps `setIndexWidget` widgets in **the same map as item
-editors**, so every `updateGeometries()` pass handed the open row's panel to
-`RowDelegate.updateEditorGeometry` — which applied `_control_of`, the row's *format-combo* slot, to
-it. A 354 px panel became **26 px**. A resize calls `updateGeometries()` once per step, so the panel
-collapsed and was restored once per step, and the view painted the row inside each gap: `paint`
-draws the thumbnail on every row it is given, because an open one is supposed to be covered.
-
-**Measured under a compositor before anything was changed**, which is this task's first criterion —
-`docs/project/evidence/2026-09-01-T297-panel-collapses-during-resize.md`, with a capture. 110 resize steps:
-**107 collapses to 26 px, 107 paints of the row its panel did not cover**, and 109 of 110 steps
-nevertheless *settling* correctly, which is why the first reading — which sampled after each step —
-saw nothing. After the fix, re-measured 2026-09-03 with the corrected probe: **0 exposed paints, 110/110
-settled**, and the panel's own resize events fell from **214 to 8, with 0 collapses to 26 px**. *(This
-read "214 to 9" and one collapse; that ninth event and that collapse were the instrument's own
-reconstruction — `T297-R3`. The pre-fix figures re-measured identically: 107 exposed, 214 resizes,
-107 collapses, 109 of 110 settling.)*
-
-**The fix is the guard its two siblings already have.** `setEditorData` and `setModelData` both
-begin `if not isinstance(editor, QComboBox)`; `updateEditorGeometry` did not. Anything that is not
-this delegate's editor now goes to `super()`, which sizes an editor to `option.rect` — exactly right
-for an index widget spanning the row.
-
-**This is what `T-296` was working around, and that is worth stating rather than leaving to be
-rediscovered.** `T-296` reordered `_mount_panel` so `scrollTo` — which calls `updateGeometries()` —
-could not undo the geometry `setGeometry` had just set. The reorder is still correct and still
-tested; the reason a scroll destroyed the geometry was this method, one layer down. **`T-296` is not
-reopened**: it is Complete, approved, and its own regression still passes.
-
-*(Filed 2026-08-28 by `T-212`'s checklist run, deliberately without a cause.* The maintainer's
-report: *"when changing the window size while the naming information is up, the thumbnail cuts in
-and out very rapidly. That shouldn't happen."*)
-**Owner:** Implementer
-**Priority:** Low — it is visual noise during a drag, and it is the least understood thing the run
-found
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing
-**Relevant context:** `ui/add_dialog.py` `panel_height_for`, which reads the **viewport's** height,
-so every resize step changes the row's size hint; `_mount_panel`'s note that `setIndexWidget`
-defers geometry to `updateEditorGeometries`, which runs on paint; `T-296`
-**Affected surfaces:** `ui/row_delegate.py` (`updateEditorGeometry`), `tests/ui/test_row_delegate.py`;
-the instrument is `tests/ui/_t297_resize_probe.py` and `tools/t297_resize_session.sh`
-**Risk:** Low
-
-#### What was measured, and what it does not show
-
-**It did not reproduce offscreen.** Across eight resize steps with the template panel open:
-
-```
-thumbnail loads : 0        # nothing re-fetches
-cancels         : 0
-```
-
-and the panel's geometry matched the row's `visualRect` at **every** step, from 762 px down to
-430 px and back up. So it is neither the thumbnail being reloaded nor the panel losing coverage in
-any way a headless process can see.
-
-**The plausible mechanism is unproven and is recorded as a hypothesis, not a finding.**
-`panel_height_for` reads `self._list.viewport().height()`, so every resize step changes the row's
-size hint; the panel's re-placement is deferred to paint; and the delegate underneath — which draws
-the thumbnail — is what shows in any gap. That is consistent with `T-108`'s comments and with
-`T-296`, and it is not evidence.
-
-#### Acceptance criteria
-
-- **It is reproduced on a real display first**, with a capture, and the reproduction is recorded in
-  `docs/project/evidence/` before anything is changed. An offscreen process does not do a continuous resize
-  and its style is not necessarily the session's
-- **The cause is named before the fix**, and if the cause turns out to be `T-296`'s, this task is
-  closed against that one rather than fixed twice
-- **If it proves to be Qt or compositor behaviour** this application can only work around, that is
-  recorded as the finding and the workaround is a separate decision
-
-#### Out of scope
-
-- Guessing. `T-296` is filed with a measured cause; this one is not, and the two should not be
-  merged on the strength of sitting near each other
-
 
 ---

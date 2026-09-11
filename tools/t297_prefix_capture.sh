@@ -40,7 +40,12 @@ The window that is about to open is the tree **before** the fix, so the defect
 is present. Your own checkout is untouched.
 
 1. Paste a URL with a thumbnail and let it resolve.
-       https://archive.org/details/TheArtOfWarBySunTzu   (the fixture's row)
+       **Any URL you know resolves today.** This step needs a row with a
+       picture and an openable panel; nothing here is site-specific.
+       (This named https://archive.org/details/TheArtOfWarBySunTzu until
+       2026-09-10, when it stopped resolving — "opening play-av tag not
+       found". The local fixture of that name still works; the live URL
+       behind it does not.)
 2. On that row choose  ⋮ → Naming and folders…   so the panel opens.
 3. **Drag the window's bottom edge up and down**, continuously, a few seconds.
    The thumbnail should cut in and out — that is the defect.

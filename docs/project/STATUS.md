@@ -45,9 +45,11 @@ owns phase deliverables and exit criteria.
   happens against the artifact that ships. See each task for its actual status, dependencies and
   required evidence; listing it here grants no new implementation or desktop-session permission.
 
-  **`T-297` is the only one that needs the maintainer rather than work.** It is Blocked on a
-  real-display capture of the pre-fix tree (`tools/t297_prefix_capture.sh`); the fix itself landed
-  2026-09-03 and was never in doubt.
+  **`T-297` is no longer Blocked.** The maintainer watched the pre-fix tree on their own display on
+  2026-09-10 rather than capturing it, and reported no flicker. That **amends** criterion 1 rather
+  than passing it — there is no capture, and which of the two open windows was observed could not
+  be established — so the task carries the weaker claim and is In Review for the reviewer's
+  disposition. **Phase 4 exit work is now `T-286` and `T-290`, then the exit review.**
 
 - **The order after Phase 4 changed on 2026-09-10.** Phase 5 (distribution) runs next and
   **Phase 4.5 (option coverage) follows the first release** as a rolled-out update, by maintainer
