@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.kottmans.TracksAndTrails</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Tracks &amp; Trails</name>
+  <summary>Queue-based desktop interface for yt-dlp</summary>
+  <developer id="io.github.kottmans">
+    <name>Sean Kottman</name>
+  </developer>
+  <description>
+    <p>Tracks &amp; Trails gives yt-dlp a queue-based desktop interface: presets and one-click
+      downloads when you want simple, and the full format table, output templates and
+      post-processors when you don't. Video and audio are equally first-class.</p>
+    <p>Merging and conversion use ffmpeg. On Linux it is a system dependency rather than
+      bundled, so install it from your distribution to enable merged formats.</p>
+  </description>
+  <launchable type="desktop-id">io.github.kottmans.TracksAndTrails.desktop</launchable>
+  <url type="homepage">https://github.com/kottmans/tracks-and-trails</url>
+  <url type="bugtracker">https://github.com/kottmans/tracks-and-trails/issues</url>
+  <provides>
+    <binary>tracks-and-trails</binary>
+  </provides>
+  <content_rating type="oars-1.1" />
+</component>

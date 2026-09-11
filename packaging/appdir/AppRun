@@ -1,0 +1,19 @@
+#!/bin/sh
+# The AppImage entry point (`T-321`, format chosen by `REL-004`).
+#
+# **`exec` rather than a wrapper that lingers.** `ARC-002` runs one child process per job and
+# `REL-001` freezes the tree; a shell left in the process group is one more parent for a killed
+# job to reparent under, and `T-238`'s orphan probes count exactly that.
+#
+# **`$APPDIR` is set by the AppImage runtime**, and is the mount point rather than a fixed path.
+# Falling back to the script's own directory keeps a plain extracted AppDir runnable, which is how
+# `desktop-file-validate` and the launcher checks are run without `appimagetool` present.
+HERE=${APPDIR:-$(dirname "$(readlink -f "$0")")}
+
+# **`PATH` is extended, never replaced** (`OPS-001`, `REQ-024`). ffmpeg is a *system* dependency on
+# Linux, so the host's copy must stay reachable: `find_ffmpeg` searches `PATH`, and an AppImage
+# that shadowed it would break merging on every machine that has it installed. This is the whole
+# reason `REL-004` chose AppImage over a sandboxed format.
+export PATH="${HERE}/usr/bin:${PATH}"
+
+exec "${HERE}/usr/bin/tracks-and-trails" "$@"

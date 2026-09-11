@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Tracks & Trails
+GenericName=Video and Audio Downloader
+Comment=Queue-based desktop interface for yt-dlp
+Exec=tracks-and-trails %U
+Icon=io.github.kottmans.TracksAndTrails
+Terminal=false
+Categories=AudioVideo;
+Keywords=yt-dlp;download;video;audio;playlist;
+StartupWMClass=tracks-and-trails

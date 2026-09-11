@@ -188,6 +188,97 @@ accepts it. Until then it is a proposal in a task, which is the narrowest honest
 
 ## Ready
 
+### T-321 — The Linux release artifact, built where it will run
+
+**Status:** **In Progress** — the AppDir metadata landed 2026-09-11; the build host and the
+evidence remain. Started under the maintainer's ruling relaxing §Phase 5's *Phase 4 approved*
+prerequisite.
+
+#### 2026-09-11 — the AppDir's three files, and what is deliberately still missing
+
+**Done, and validated by the tools that own the formats** rather than by a parser of mine:
+
+- `packaging/appdir/io.github.kottmans.TracksAndTrails.desktop` — `desktop-file-validate` **clean,
+  no hints.** One main category (`AudioVideo`), because two put the application in two menus and
+  the validator says so.
+- `packaging/appdir/io.github.kottmans.TracksAndTrails.metainfo.xml` — `appstreamcli validate`
+  **successful**, informational messages cleared.
+- `packaging/appdir/AppRun` — **prepends** to `PATH` rather than setting it. That is the whole of
+  `REL-004`'s reasoning in one line: `OPS-001` makes ffmpeg a system dependency on Linux and
+  `REQ-024` finds it on `PATH`, so an `AppRun` that shadowed the host's copy would break merging
+  on every machine that has it — the failure Flatpak was rejected for.
+- `tests/unit/test_appdir_metadata.py` — seven cross-reference checks. Each of these files repeats
+  something declared elsewhere (the binary name from the spec, the licence from `pyproject.toml`,
+  the component id from the desktop file's own name) and nothing fails when a copy drifts.
+  **Both mutations the docstrings name were run**: renaming `Exec` and replacing `PATH` each fail
+  exactly one test. Format validation is *not* reimplemented here — the two validators own that.
+
+**What remains, and why none of it could be done now:**
+
+- **The build host.** `REL-004` requires building against the oldest glibc the README claims, and
+  `REL-006`'s Ubuntu LTS VM is that machine. It does not exist yet.
+- **`appimagetool` is not installed** on the development machine, so no `.AppImage` has been
+  produced — only the AppDir contents that go into one.
+- **Every acceptance criterion about the built artifact** — launching on a clean machine, the three
+  probes running against the AppImage rather than the one-dir tree, the icon appearing in a
+  launcher — needs that artifact and `T-318`'s evidence harness.
+
+*(Filed 2026-09-11 with the Phase 5 plan, written against **AppImage** as `T-106` recommended.
+`REL-004` ruled that way on the same day, so the task starts as written rather than being bent to
+fit a different format.)*
+
+**Owner:** Implementer
+**Priority:** High — it is the other artifact
+**Phase:** Phase 5
+**Depends on:** `T-106` (the format), `T-320` (the version); `T-318` if it chose a Linux VM, since
+that is the build host this task wants
+**Relevant context:** `REL-001`; `OPS-001` (ffmpeg stays a system dependency); `OPS-012`'s surrender
+— *"a Fedora-built binary may not run on an older distro … `REL-001`'s release build is Phase 5
+and must revisit where Linux artifacts are produced"*; `NFR-004`; `NFR-009`; `REQ-024`; `T-298`
+**Affected surfaces:** `packaging/` (an AppDir recipe, `.desktop`, AppStream `metainfo.xml`),
+`.github/workflows/`, `docs/DEVELOPMENT.md`
+**Risk:** Medium — glibc symbol versioning is a silent failure: the artifact builds, runs on the
+build host, and dies with `GLIBC_2.38 not found` on the user's machine
+
+#### Scope
+
+**Build against the oldest glibc the README will claim.** `OPS-012` moved the frozen Linux build
+onto Fedora and recorded exactly this consequence. The release build therefore runs in a
+**container of the oldest supported distribution** — proposed: the current Ubuntu LTS, which is
+also the `apt` platform `OPS-012` says is *"no longer exercised anywhere"* — on the self-hosted
+Linux runner. The README's platform line then says what was actually built and tested against.
+
+**AppDir from the PyInstaller tree**: `AppRun` launching the frozen binary, a `.desktop` entry,
+the icon set that already exists under `resources/icons/`, and an AppStream `metainfo.xml` so
+desktop environments show a name and description rather than a filename. Built with `appimagetool`
+into `Tracks_and_Trails-X.Y.Z-x86_64.AppImage`.
+
+**ffmpeg is not inside** (`OPS-001`), and the existing `REQ-024` path already reports its absence
+and degrades; this task adds nothing there beyond confirming the AppImage's `PATH` search sees the
+host's ffmpeg.
+
+**`NFR-004` holds**: `XDG_*` resolution from inside an AppImage is the same as from source, which
+`T-298`'s isolation gate pins — assert it on the built AppImage, not by inference.
+
+#### Acceptance criteria
+
+- The artifact is produced by a documented command on the container image the README names, and
+  the image's glibc version is recorded with the artifact
+- It launches on a **clean** machine of that distribution (`T-318`'s evidence), and on the
+  Fedora desktop, and runs one real download to completion on each
+- `T-020`'s spawn probe, `T-033`'s yt-dlp probe and `T-298`'s isolation check all pass **against the
+  AppImage**, not only against the one-dir tree it was made from
+- The `.desktop` entry and `metainfo.xml` validate (`desktop-file-validate`, `appstreamcli
+  validate`) and the icon appears in the launcher
+- Qt inside the AppImage is dynamically linked (`T-323` gates it; this task keeps it true)
+
+#### Out of scope
+
+- Flatpak or system packages, unless `T-106` rules otherwise
+- A Linux ffmpeg bundle — `OPS-001`'s reopening condition, not this task's
+
+---
+
 ### T-301 — Four UI tests break when the application font grows by one point
 
 **Status:** In Progress — **three of the four repaired 2026-09-10**; the fourth is diagnosed and
@@ -1240,62 +1331,6 @@ for yt-dlp (`REL-002`).
 - The installer (`T-322`). This produces `dist/tracks-and-trails/`; that wraps it
 - The Linux artifact (`T-321`)
 - Size work. `REL-001` accepted the size; record the number, do not chase it
-
----
-
-### T-321 — The Linux release artifact, built where it will run
-
-**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan. Written against **AppImage**, which
-`T-106` recommends; if the ruling differs, this task is rewritten before it starts rather than bent
-**Owner:** Implementer
-**Priority:** High — it is the other artifact
-**Phase:** Phase 5
-**Depends on:** `T-106` (the format), `T-320` (the version); `T-318` if it chose a Linux VM, since
-that is the build host this task wants
-**Relevant context:** `REL-001`; `OPS-001` (ffmpeg stays a system dependency); `OPS-012`'s surrender
-— *"a Fedora-built binary may not run on an older distro … `REL-001`'s release build is Phase 5
-and must revisit where Linux artifacts are produced"*; `NFR-004`; `NFR-009`; `REQ-024`; `T-298`
-**Affected surfaces:** `packaging/` (an AppDir recipe, `.desktop`, AppStream `metainfo.xml`),
-`.github/workflows/`, `docs/DEVELOPMENT.md`
-**Risk:** Medium — glibc symbol versioning is a silent failure: the artifact builds, runs on the
-build host, and dies with `GLIBC_2.38 not found` on the user's machine
-
-#### Scope
-
-**Build against the oldest glibc the README will claim.** `OPS-012` moved the frozen Linux build
-onto Fedora and recorded exactly this consequence. The release build therefore runs in a
-**container of the oldest supported distribution** — proposed: the current Ubuntu LTS, which is
-also the `apt` platform `OPS-012` says is *"no longer exercised anywhere"* — on the self-hosted
-Linux runner. The README's platform line then says what was actually built and tested against.
-
-**AppDir from the PyInstaller tree**: `AppRun` launching the frozen binary, a `.desktop` entry,
-the icon set that already exists under `resources/icons/`, and an AppStream `metainfo.xml` so
-desktop environments show a name and description rather than a filename. Built with `appimagetool`
-into `Tracks_and_Trails-X.Y.Z-x86_64.AppImage`.
-
-**ffmpeg is not inside** (`OPS-001`), and the existing `REQ-024` path already reports its absence
-and degrades; this task adds nothing there beyond confirming the AppImage's `PATH` search sees the
-host's ffmpeg.
-
-**`NFR-004` holds**: `XDG_*` resolution from inside an AppImage is the same as from source, which
-`T-298`'s isolation gate pins — assert it on the built AppImage, not by inference.
-
-#### Acceptance criteria
-
-- The artifact is produced by a documented command on the container image the README names, and
-  the image's glibc version is recorded with the artifact
-- It launches on a **clean** machine of that distribution (`T-318`'s evidence), and on the
-  Fedora desktop, and runs one real download to completion on each
-- `T-020`'s spawn probe, `T-033`'s yt-dlp probe and `T-298`'s isolation check all pass **against the
-  AppImage**, not only against the one-dir tree it was made from
-- The `.desktop` entry and `metainfo.xml` validate (`desktop-file-validate`, `appstreamcli
-  validate`) and the icon appears in the launcher
-- Qt inside the AppImage is dynamically linked (`T-323` gates it; this task keeps it true)
-
-#### Out of scope
-
-- Flatpak or system packages, unless `T-106` rules otherwise
-- A Linux ffmpeg bundle — `OPS-001`'s reopening condition, not this task's
 
 ---
 
