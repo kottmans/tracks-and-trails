@@ -25,8 +25,11 @@ owns phase deliverables and exit criteria.
   `T-290` closed 2026-09-11, each approved by independent review and moved to
   [COMPLETED_TASKS](COMPLETED_TASKS.md). **Nothing is In Review.** `T-297` closed under a recorded
   amendment — which build the maintainer observed is not established, and its record says so.
-- **Phase 4's exit review is Blocked at `6b1fcf1`** on three findings
-  ([record](reviews/phase-4-exit.md)). Their states differ and the difference matters:
+- **Phase 4's exit review is Blocked**, last at `67aae4c`, on four findings
+  ([record](reviews/phase-4-exit.md)). **The maintainer authorized a third focused pass on
+  2026-09-11**, which `TESTING` §14 requires once only blocking Medium findings remain; it targets
+  the corrections at `55d7488` and does not supply `R2`'s Windows evidence, which is a machine
+  rather than a review. Their states differ and the difference matters:
   - **`P4EXIT-R1` — corrected 2026-09-11.** The common audit's inventory omitted the queue's
     `FormatDialog` entirely and swept the staging *bodies* where `T-312` made the application show
     *pages*; the Windows UIA sweep covered three roles and never opened Settings or the add dialog.
@@ -88,8 +91,9 @@ owns phase deliverables and exit criteria.
     now describe it as the return control at the top of the panel — measured first in every
     panel's focus chain — without claiming exclusivity.
   - **`P4EXIT-R2` — not a queue, a machine.** `WINDOWS_RUNNER` pins `windows desktop` and
-    `frozen windows` to `STARBASE`, and the API reports that runner **offline**; both jobs on
-    `bca24bd` are queued behind it. `OPS-012` records that a self-hosted job with no matching
+    `frozen windows` to `STARBASE`, and the API reports that runner **offline**; both jobs are
+    queued behind it at `55d7488`, re-checked 2026-09-11 against the runner API rather than
+    inferred from the job state. `OPS-012` records that a self-hosted job with no matching
     online runner queues up to 24 hours before GitHub discards it. Bringing `STARBASE` online
     drains them; unsetting `WINDOWS_RUNNER` routes to hosted, which `OPS-010` says is why it was
     set. **Either way a fresh run is needed** — `R1`'s correction changes the test tree the

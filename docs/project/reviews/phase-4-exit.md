@@ -322,3 +322,25 @@ Documentation checks pass: Ruff formatting and diff whitespace, the existing
 index/policy links, and exact preservation of the previous review as a byte
 prefix. The migration verifier again preserves all 381 historical entries /
 2,403,546 bytes. Only this review record changed.
+
+## 2026-09-11 — Maintainer authorization for a third focused pass
+
+**Decision, by the maintainer:** a third focused verification pass **is authorized.**
+
+Recorded here by the Implementer; the authorization is the maintainer's and this
+entry does not interpret or extend it. [TESTING §14](../TESTING.md#14-review-policy)
+requires explicit maintainer authorization for a third pass when the remaining
+findings are blocking Medium, which is the state the focused correction review
+left: `P4EXIT-R1` Open, `P4EXIT-R2` Open, `P4EXIT-R3` Resolved, `P4EXIT-R4` Open
+as coupled wording cleanup.
+
+**What it covers.** The unresolved blockers and the correction diff, at
+`55d7488` — the head carrying the corrections to `R1`'s three remaining
+requirements and `R4`'s wording. Per §14 an extra pass stays focused on those
+and is not a new broad audit.
+
+**What it does not do.** It does not resolve `P4EXIT-R2`. That finding asks for
+native Windows execution, which is evidence rather than review: `STARBASE`
+reports **offline**, and `windows desktop` and `frozen windows` are queued at
+`55d7488`. No review pass can supply that result, and `R2`'s own route requires
+the evidence to be taken at the corrected tree or later.
