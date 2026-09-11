@@ -25,12 +25,14 @@ owns phase deliverables and exit criteria.
   `T-290` closed 2026-09-11, each approved by independent review and moved to
   [COMPLETED_TASKS](COMPLETED_TASKS.md). **Nothing is In Review.** `T-297` closed under a recorded
   amendment — which build the maintainer observed is not established, and its record says so.
-- **Phase 4's exit review is Blocked**, last at `67aae4c`, on four findings
-  ([record](reviews/phase-4-exit.md)). **The maintainer authorized a third focused pass on
-  2026-09-11**, which `TESTING` §14 requires once only blocking Medium findings remain; it targets
-  the corrections at `55d7488` and does not supply `R2`'s Windows evidence, which is a machine
-  rather than a review. Their states differ and the difference matters:
-  - **`P4EXIT-R1` — corrected 2026-09-11.** The common audit's inventory omitted the queue's
+- **Phase 4's exit review is Blocked on `P4EXIT-R2` alone**, as of the authorized fourth focused
+  pass at `2ea1aa6` ([record](reviews/phase-4-exit.md)). `R1`, `R3` and `R4` are **Resolved**.
+  **What remains is not a review**: `R2` asks for native Windows execution at the corrected tree,
+  and no pass can supply it. The maintainer authorized the third and fourth passes on 2026-09-11,
+  which `TESTING` §14 requires once only blocking Medium findings remain. Their states differ and
+  the difference matters:
+  - **`P4EXIT-R1` — Resolved 2026-09-11** at `2ea1aa6`, by the fourth pass. The common audit's
+    inventory omitted the queue's
     `FormatDialog` entirely and swept the staging *bodies* where `T-312` made the application show
     *pages*; the Windows UIA sweep covered three roles and never opened Settings or the add dialog.
     The inventory is nine surfaces, not five, and the Windows sweep covers the editing roles with
@@ -105,7 +107,21 @@ owns phase deliverables and exit criteria.
     not.
 
     **`P4EXIT-R4` is Resolved** as of the third pass.
-  - **`P4EXIT-R4` — corrected 2026-09-11.** The theme comment, the `BORDERED_CONTROLS` reason and
+
+    **The fourth pass resolved `R1` at `2ea1aa6`.** It reproduced the 4-versus-16 query result,
+    reconstructed the superseded whole-identifier comparison as a plugin (**2 failed / 24 passed**),
+    and went further than this correction did: three isolated probes broke qualification for each
+    allowlisted name **individually**, each failing the all-entries check on that exact name — so
+    the claim that the suite covers all three is established rather than argued, even though only
+    the overflow path was measured in the application. It records one bound, which is the same one
+    this correction recorded: **a declared accessible identifier containing dots is
+    indistinguishable from a generated ancestor path by this string alone.** A source search finds
+    no application use of explicit accessible identifiers, and the thirteen-surface harness carries
+    no nonempty Identifier and no dotted object name, so there is no current case needing a
+    different discriminator. No change is requested; introducing such a name would mean revisiting
+    the matcher.
+  - **`P4EXIT-R4` — Resolved 2026-09-11** by the third pass. The theme comment, the
+    `BORDERED_CONTROLS` reason and
     the entry above called the collapse triangle the *only* pointer route out of a panel.
     `RowPanel` gives `Done` the same `closed(True)` (`ui/add_dialog.py:784`, `:805`). All three
     now describe it as the return control at the top of the panel — measured first in every
