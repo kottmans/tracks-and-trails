@@ -548,3 +548,113 @@ verification would still leave Phase 4 **Blocked** on that finding alone.
 `STARBASE` reports offline; `windows desktop` and `frozen windows` are queued at
 `55d7488`, and `OPS-012`'s 24-hour discard window on that run expires
 2026-09-12. Re-triggering after that changes the head, not the code.
+
+
+## 2026-09-11 — Authorized fourth focused pass
+
+**Reviewer:** Codex, independent of the correction implementation.
+**Reviewed head:** `2ea1aa682bd4a86b9f34f0ca5e5a548e06fdc690` on `main`, against
+`87b317701faef418dcb26973234bdbfecf667c0e`.
+**Authority and scope:** the maintainer's fourth-pass authorization above, under
+[TESTING §14](../TESTING.md#14-review-policy). This pass verifies the remaining
+R1 identifier correction and its counterexamples, plus the coupled comments and
+STATUS corrections. The five-file diff includes the appended authorization;
+its preceding review content is preserved exactly, with 1,146 bytes added.
+No product source, dependency, workflow or unrelated test changed.
+
+**R1 correction approved. Phase 4 remains Blocked on R2 alone.** No new findings
+in this correction. This resolves the implementation/gate defect; it does not
+supply Windows execution or approve phase exit.
+
+| Finding | Severity | Blocks approval now | Disposition |
+|---|---|---|---|
+| P4EXIT-R1 | Medium | No | **Resolved.** Qualified identifiers are recognized, the previous comparison fails the new evidence, and lookalike identifiers remain rejected. Native execution remains the separate R2 requirement. |
+| P4EXIT-R2 | Medium | Yes | **Open — external Windows evidence.** Required native and frozen-Windows jobs at `2ea1aa6` are queued on the offline desktop runner. |
+| P4EXIT-R3 | Medium | No | **Resolved, unchanged.** The previously verified bounded acceptance stands. |
+| P4EXIT-R4 | Low | No | **Resolved, unchanged.** The preceding pass verified the return-control wording. |
+
+### Identifier correction verified
+
+`own_identifier` takes the final dot-separated segment and compares it exactly
+with the shared allowlist. It recognizes the qualified overflow identifier from
+the preceding review and the supported bare-identifier form. The counterexample
+suite now has **26 cases**: the measured overflow path, qualified and bare forms
+for all three allowlisted names, and five rejected lookalikes, alongside the
+existing purpose/name/floor checks. It reconstructs the failed whole-ID comparison.
+
+Restoring that comparison in a temporary plugin gives **2 failed / 24 passed in
+0.82 s**, failing the measured-path and all-allowlisted-path checks. In three
+additional isolated probes, breaking qualification for each allowlisted name
+individually makes the all-entries check fail on that exact name. Thus the test
+covers all three entries even though only the toolbar overflow path was measured
+in the application. The five lookalikes and ordinary unnamed-control negative
+control pass with the correction.
+
+The prior harness was repeated against the unchanged test bodies extracted from
+`2ea1aa6`, using real composed widgets and QAccessible data, with identifiers
+constructed by the pinned Qt bridge algorithm documented in the third pass.
+The provider remains the substituted boundary; no native UIA call is claimed.
+
+| Identifier comparison | Observed result |
+|---|---|
+| Superseded whole-ID comparison | **4 read_tree calls**; inventory fails on the first surface, main window, because the unnamed overflow CheckBox is not excluded. |
+| Corrected final-segment comparison | **16 read_tree calls**; Settings/Add name checks and all thirteen inventory surfaces pass. |
+
+In both runs the separate combo-purpose test rejects Linux's existing Name=Value
+pairs, as in T200-R7 and the preceding review. The successful inventory replay
+does not claim all four Windows test bodies passed on Linux. Composition and
+teardown complete normally.
+
+**Matching bound:** a declared accessible identifier containing dots cannot be
+distinguished from a generated ancestor path using this string alone. The helper
+is verified for this application's present identifier scheme, not as a general
+parser of arbitrary declared identifiers. A source search finds no application
+use of explicit accessible identifiers; inspecting the thirteen-surface harness
+also finds **no nonempty accessible Identifier and no dotted widget object name**.
+There is no current application case requiring a different discriminator. This
+is a recorded limitation, with no new change requested; introducing such names
+would require revisiting the matcher. Native provider behavior remains unmeasured.
+
+The changed comments now describe the bridge helper and qualified path. STATUS
+corrects the FormatDialog mutation count to two and states that unsetting
+WINDOWS_RUNNER cannot reroute the native desktop job's literal runner labels.
+These coupled corrections satisfy the preceding review's requested status sync.
+
+### Checks and remaining evidence
+
+| Reviewer check at `2ea1aa6` | Result |
+|---|---|
+| `ruff check .` | Pass |
+| `ruff format --check .` | Pass, 365 files |
+| Bare `mypy`; `mypy --platform win32` | Both pass, 168 files each |
+| `pytest -q tests/ui/test_uia_contract.py tests/ui/test_accessibility.py tests/ui/test_colour_is_never_alone.py tests/unit/test_task_placement.py tests/unit/test_toolchain_versions.py` | **168 passed in 8.65 s**, normal exit |
+| Whole-ID mutation | **2 expected failures / 24 passed** |
+| Per-entry qualification mutations | **All three rejected individually** |
+| Exact-body surface replays | **4 versus 16 queries**, as bounded above |
+
+The implementer's **4,148 passed / 21 skipped** full run was not independently
+repeated. This correction changes a test predicate and test coverage; the prior
+broader UI verification retains its recorded boundary. No native Windows,
+frozen-Windows runtime, COM value behavior or Windows query timing is established.
+
+The GitHub API shows
+[CI run 34630848977](https://github.com/kottmans/tracks-and-trails/actions/runs/34630848977)
+at `2ea1aa6`. At inspection, **Windows desktop and frozen Windows are queued**;
+STARBASE reports **offline**, `busy=false`. Frozen Linux and the coverage reporter
+succeeded; Linux is still running. The separate commit-message workflow succeeded.
+This is newer than the `55d7488` run discussed in the authorization. That older
+run cannot establish coverage of the corrected identifier tests even if its
+Windows jobs eventually execute.
+
+**R2's next step:** obtain and record successful required Windows results at
+`2ea1aa6` or a later head with the corrected code/test tree. A later review-only
+commit can reuse that evidence after a tree comparison. The remaining blocker
+is external execution; no additional R1 correction or review pass is requested.
+The existing T-289 acceptance is neither reopened nor extended.
+
+Only this canonical review is appended. The REVIEWS index link remains valid;
+source, tests and runner configuration are unchanged by the reviewer. Previous
+review bytes and authorization are preserved. Documentation whitespace and local
+links pass, and the migration verifier preserves **381 entries in 105 files /
+2,403,546 historical bytes**. STATUS/task completion synchronization remains with
+their owner, using the dispositions above.
