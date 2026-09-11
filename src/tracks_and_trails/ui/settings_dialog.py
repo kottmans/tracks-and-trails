@@ -1508,9 +1508,12 @@ class SettingsDialog(QDialog):
         self._ytdlp_update.setAccessibleName("Update yt-dlp to the latest version")
         # **Quieter than the control beside it, and still a button** (`T-290`). `OPS-002` requires
         # the resolved version visible and revert one action; neither changes. What changes is that
-        # this one stops being a peer of *Use the bundled version*. `theme.py` drops its fill and
-        # mutes its text and **keeps its border**, which is `T-132`'s lesson: a borderless
-        # transparent button is text nobody can tell is pressable.
+        # this one stops being a peer of *Use the bundled version*. `theme.py` drops its **fill**
+        # — an outline button beside a filled one — and keeps both its border and its text colour.
+        # The border is `T-132`'s lesson: a borderless transparent button is text nobody can tell
+        # is pressable. The text colour is `T290-R3`'s: a first version muted it, and the colour
+        # guard refused, because a pressable control in the disabled colour looks unavailable
+        # while responding. `theme.py`'s rule carries the full account.
         self._ytdlp_update.setProperty("quietAction", True)
         self._ytdlp_update.clicked.connect(self._start_ytdlp_update)
         buttons.addWidget(self._ytdlp_update)

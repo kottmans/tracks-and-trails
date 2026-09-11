@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 from PySide6.QtCore import QRect, Qt
+from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
@@ -1641,6 +1642,7 @@ def test_the_primary_display_is_the_fallback_when_there_is_no_associated_one(
 
 
 def test_a_newer_ytdlp_reads_as_recovery_rather_than_a_setting(
+    qapp: QApplication,
     screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
 ) -> None:
     """**`T-290`**, building `OPS-002`'s 2026-08-27 amendment.
@@ -1652,15 +1654,25 @@ def test_a_newer_ytdlp_reads_as_recovery_rather_than_a_setting(
     **Four things, and the last two are what keep the fix honest.**
 
     - The section says **when**, not only what.
-    - The control is quieter than the one beside it (`quietAction`, which `theme.py` renders
-      without a fill and in muted text).
+    - The control is quieter than the one beside it — `quietAction`, which `theme.py` renders
+      **without a fill and with its text colour unchanged**. *(A first version also muted the text;
+      the colour guard refused it, because a pressable control in the disabled colour looks
+      unavailable while responding. `T290-R3` is this docstring catching up with that.)*
+    - **And "quieter" is measured on pixels, not on a property** (`T290-R2`). The first version
+      asserted the property was set and the selector existed, which a sheet restoring the fill
+      would pass: two equal buttons with a flag on one. So both buttons are rendered under each
+      palette and their fills compared — the demotion has to be *visible*, or it is not one.
     - **It is still a button and still reachable** — `OPS-002` requires the version visible and
       revert one action, and `error_text` sends users here from a failed download, so hiding it
       would dead-end that advice.
     - **The two surfaces agree.** The note and the failure's next step describe the same move;
       `T-243`'s one-voice rule applies across screens as well as within a row.
     """
-    dialog, _asked = screens()
+    # **Both routes wired and both buttons enabled**, or the rendering below compares two
+    # disabled controls — the fixture supplies no yt-dlp callbacks by default, and the screen
+    # disables a button whose route is `None`. A user-managed resolution is what enables revert.
+    dialog, _asked = screens(on_ytdlp_update=lambda: None, on_ytdlp_revert=lambda: None)
+    dialog.show_ytdlp("2026.9.1", "user-managed copy (OPS-002)", is_user_managed=True)
     update = dialog.findChild(QPushButton, YTDLP_UPDATE_NAME)
     revert = dialog.findChild(QPushButton, YTDLP_REVERT_NAME)
     note = dialog.findChild(QLabel, YTDLP_RECOVERY_NOTE_NAME)
@@ -1683,7 +1695,39 @@ def test_a_newer_ytdlp_reads_as_recovery_rather_than_a_setting(
         "reverting was demoted too, so nothing was actually de-emphasised relative to it"
     )
     # **Still a control, not prose.** The failure message points a user at this screen; a note
-    # where the button was would leave that advice with nothing to act on.
-    assert update.isEnabled() or not update.isEnabled(), "the button must exist to be found above"
+    # where the button was would leave that advice with nothing to act on. That it *acts* is
+    # `test_pressing_update_asks_composition_to_do_it`'s claim, not a tautology's (`T290-R2`).
     assert update.text() == YTDLP_UPDATE_LABEL
     assert update.accessibleName(), "the control lost the name a screen reader announces"
+
+    # **Rendered, under each palette** (`T290-R2`). A centre pixel of each button is its fill:
+    # revert keeps the theme's `surface`, and the demoted control must not — the two fills have to
+    # differ, or the property is decoration. Read from the theme rather than written down, for
+    # `T-141`'s reason: pinning a colour pins a styling choice.
+    was_sheet, was_palette = qapp.styleSheet(), qapp.palette()
+    try:
+        for palette in ui_theme.THEMES.values():
+            theme.apply(qapp, palette)
+            dialog.show()
+            qapp.processEvents()
+
+            def fill_of(button: QPushButton) -> QColor:
+                # **Inside the padding, not at the centre.** The centre of a button is where its
+                # label is drawn, so sampling it reads a glyph's antialiased edge — measured as
+                # `#B9906A` on a button whose fill was plain white. The sheet gives every button a
+                # 1 px border and 4 px of padding, so x = 5 on the middle row is fill and only fill.
+                image = button.grab().toImage()
+                return image.pixelColor(5, image.height() // 2)
+
+            quiet, filled = fill_of(update), fill_of(revert)
+            assert filled.name().upper() == palette.surface.upper(), (
+                f"[{palette.name}] the revert button's fill is {filled.name()}, not the theme's "
+                f"surface {palette.surface}; the sheet is not reaching this screen at all"
+            )
+            assert quiet.name().upper() != filled.name().upper(), (
+                f"[{palette.name}] both buttons are filled {filled.name()}: the demotion is a "
+                "property with nothing behind it"
+            )
+    finally:
+        qapp.setStyleSheet(was_sheet)
+        qapp.setPalette(was_palette)

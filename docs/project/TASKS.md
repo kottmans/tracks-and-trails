@@ -14,888 +14,7 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
-### T-290 — Offer the yt-dlp update as recovery, not as a setting
-
-**Status:** In Review — **built 2026-09-11**. *(Filed 2026-08-27 to build `OPS-002`'s amendment
-of the same day, which
-the maintainer ruled during `T-212`'s run: the override stays, and stops being a standing
-choice.)*
-**Owner:** Implementer
-**Priority:** Medium — nothing is broken today; what changes is which version the population runs,
-and that compounds quietly in the other direction
-**Phase:** Phase 4 (polish; **not** a plan deliverable). It is a presentation change to a screen
-this phase built, and the maintainer may prefer it after the exit — that placement is theirs
-**Depends on:** nothing. `T-289` crashes in this screen's update path and is a different defect;
-neither blocks the other, but both touch `show_ytdlp`
-**Relevant context:** `OPS-002` and its 2026-08-27 amendment; `ui/settings_dialog.py:1387` and
-`show_ytdlp`/`show_ytdlp_problem`/`show_ytdlp_busy`; `REQ-025`; `NFR-007` — the update performs an
-outbound download and must stay explicit, never automatic and never silent
-**Affected surfaces:** `ui/settings_dialog.py`, wherever a download failure is presented, and
-their tests
-**Risk:** Medium — the honest version of this needs a route from a *failure* to the update, and a
-failure surface that starts giving advice is how a row's anatomy grows a second voice (`T-243`)
-
-#### What changes, and what does not
-
-**Unchanged:** the pinned baseline, the user-managed copy resolved ahead of it, the version shown
-in the UI, and revert as one action. The mechanism is not what was ruled on.
-
-**Changed:** the update is currently `Update to the latest version` — a button of equal weight
-beside `Use the bundled version`, in a Settings section that reads like every other setting. That
-presentation invites a population onto versions this project has never tested. The amendment makes
-it the way out of a site that has broken.
-
-#### 2026-09-10 — what was found already true, and what is left
-
-**Three of the six criteria were already met before this task started**, by `ui/error_text.py`,
-which predates it. Measured across the whole taxonomy rather than read:
-
-| Criterion | State |
-|---|---|
-| A route from a failed download to the update | **Met.** `EXTRACTOR_ERROR`'s next step reads *"The site may have changed. Updating yt-dlp in Settings often fixes this."* (`C-002`) |
-| The route is not an advice column | **Met.** One next step per kind, and `GEO_RESTRICTED`/`DRM_PROTECTED` still get **none** — the refusal `T-201` calls the substance of its own task |
-| The offer appears only where it could be true | **Met.** Of twelve kinds, exactly one offers it. `DISK` says *"check there is free space"* and nothing about yt-dlp |
-| `NFR-007` untouched | **Met.** Nothing here makes the update automatic, silent or implicit |
-
-**A guard was added for the third**, because nothing pinned it: the table had the right shape and
-no test stopping a later kind from picking the sentence up by copying a neighbour.
-`test_only_a_failure_the_update_could_fix_offers_the_update` asserts it as a property over the
-whole taxonomy, both ways — the kind that must offer it and every kind that must not — since half
-of it would pass on a table that offered the update everywhere or nowhere. It fails when `DISK` is
-given the sentence.
-
-#### What is left, and it is the maintainer's to rule
-
-**Only the Settings presentation**, which this task's first criterion explicitly reserves: *"what it
-becomes — reworded, de-emphasised, moved behind a disclosure, or left in place with different words
-— is the implementer's proposal and the maintainer's ruling."*
-
-**Deliberately not guessed at overnight.** The four options change what the screen means, not just
-how it reads, and building one of them would spend the ruling rather than inform it. `OPS-002`'s
-constraints bound whichever is chosen: the resolved version stays visible and revert stays one
-action, so *"it must not disappear"* is already settled — what is open is only its weight.
-
-#### Built 2026-09-11 — demoted, and told when
-
-**Ruled by the maintainer from three options**: *demote it and say when*, over rewording alone and
-over a disclosure.
-
-**Why not the other two.** Rewording leaves two ordinary buttons side by side, and the complaint is
-about **weight** — two equal buttons stay two equal buttons whatever they say. A disclosure was
-argued against and rejected for a reason this task created itself: `error_text`'s `EXTRACTOR_ERROR`
-tells a user *"Updating yt-dlp in Settings often fixes this"*, so hiding the control makes that
-advice dead-end at a closed twisty.
-
-**What changed.** A line above the controls names the occasion — *"If a site has stopped working, a
-newer yt-dlp often fixes it. Otherwise the bundled version is the one this application was tested
-with."* — and the control reads `Get a newer yt-dlp` at `quietAction` weight, which `theme.py`
-draws without a fill and in muted text.
-
-**The fill is what it gives up, and only the fill.** An ordinary button is a `surface` chip on a
-`window` ground, so this leaves an outline button beside a filled one — visible in both palettes.
-
-**The border stays, and that is `T-132`.** Making a button transparent *and* borderless turned two
-toolbar controls into text nobody could tell was pressable, which the maintainer reported at the
-time. The border is what says *pressable*.
-
-**The text colour stays, and a guard is why.** The first version muted it, and
-`test_muted_is_either_secondary_emphasis_or_a_published_disabled_state` refused: every other
-`muted` rule in this application is either a `:disabled` state or something non-interactive — a
-group title, a header strip. **A pressable control in the disabled colour looks unavailable while
-responding**, which is a worse defect than the weight being reduced. Registering the selector as
-secondary emphasis would have silenced the guard and shipped that; the demotion moved to the fill
-instead.
-
-**`OPS-002` is untouched**: the resolved version is still visible, revert is still one action and
-is deliberately **not** demoted — a test asserts that, because demoting both would be no
-de-emphasis at all. `NFR-007` is untouched: still explicit, never automatic, never silent.
-
-**The two surfaces agree by construction.** The note and the failure's next step describe the same
-move, which is `T-243`'s one-voice rule applied across screens rather than within a row.
-
-#### Corrected 2026-09-11 — `T290-R1`
-
-**The label was changed at construction and restored at every settled screen.**
-`show_ytdlp_busy(False)` still wrote the literal it replaced, and *every* settled screen comes
-through that call: `MainWindow.open_settings` asks the service to resolve, and a resolution **and**
-a failure both end the busy state. So the screen a user actually reads reverted to *"Update to the
-latest version"* before they had done anything — the one presentation this task exists to remove.
-
-**The regression could not see it, and that is the more useful half of the finding.** It asserted a
-**freshly constructed** dialog, which is the single state that never passes through the restore.
-The new one drives the busy transition rather than around it, in all three lifecycles: opening
-resolution, opening failure, and an operation completing. Kept alongside the original, which now
-reads as the construction-time check it always was.
-
-#### Acceptance criteria
-
-- **The Settings screen no longer presents updating as a routine choice.** What it becomes —
-  reworded, de-emphasised, moved behind a disclosure, or left in place with different words — is
-  the implementer's proposal and the maintainer's ruling. **It must not disappear**: `OPS-002`
-  requires the resolved version to be visible and revert to be one action, and both are still true
-  after this
-- **There is a route from a failed download to the update**, worded as what it is: sites change,
-  and a newer yt-dlp may fix this one. This is the half that makes the reframing honest rather than
-  merely quieter
-- **That route does not turn the failure surface into an advice column.** `T-201`'s error anatomy
-  and `T-243`'s one-voice rule both apply: a failure states what happened, why, and one next step —
-  and a class with no honest next step still gets none
-- **The offer appears only where it could be true.** A refusal that has nothing to do with the
-  extractor — an unwritable folder, a full disk — must not suggest updating yt-dlp. `UX-005` §5
-- **`NFR-007` is untouched**: still explicit, still never automatic, still never silent
-- **The wording is asserted by tests**, the way the screen's other fixed strings are
-
-#### Out of scope
-
-- **Removing the override.** Explicitly rejected in the amendment; `OPS-002`'s *"pin only"*
-  alternative stands refused, and more firmly while no release pipeline exists
-- **Automatic or background update checks.** `NFR-007`
-- **The crash in this path** (`T-289`)
-- **Whether the application itself should self-update**, which `REL-001` leaves open and which the
-  amendment names as the condition for reopening `OPS-002`
-
-### T-286 — The container section says what recode costs and never what it is for
-
-**Status:** In Review — **built 2026-09-10**. *(Filed 2026-08-27 during `T-212`'s run, from the maintainer's question:
-*"Does re-encoding provide any tangible benefits over remuxing the files? Seems like the option is
-pointless."* **It is not pointless, and the fact that the dialog left that question open is the
-defect** — the note beside the radios states the cost of recoding and never the case that buys it.
-**The option stays**; this task changes what the dialog says about it.)*
-**Owner:** Implementer
-**Priority:** Medium — a control whose purpose has to be reasoned out from first principles is one
-users either avoid or misuse, and both cost a whole re-encode to discover
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing. `T-285` narrows *which containers* are offered; this changes *what the
-section says* about the two verbs, and neither blocks the other
-**Relevant context:** `ui/options_dialog.py:402`–`:431` — the three radios and the note;
-`REQ-010`; `T-109`; `core/presets.py`, where the mp4 preset's selector already answers the common
-case without any conversion at all
-**Affected surfaces:** `ui/options_dialog.py`, `tests/ui/test_options_dialog.py`
-**Risk:** Low
-
-#### What is wrong
-
-The note reads, in full:
-
-> Remuxing keeps the streams and is quick; recoding re-encodes them and is not.
-
-Both halves are true and the sentence describes only cost. A user reading it learns that one
-option is slower and nothing about when the slower one is the right answer — which is why the
-question this task was filed from is the reasonable conclusion to draw from the dialog as it
-stands.
-
-**Measured with ffmpeg 2026-08-27**, a one-second `vp9 + opus` webm and a one-second `h264 + aac`
-mp4, plus a ten-second 640×480 clip for the cost:
-
-| Operation | Result |
-|---|---|
-| **Remux** webm (vp9/opus) → mp4 | **Succeeds — and the output still contains `vp9 opus`** |
-| **Remux** mp4 (h264/aac) → webm | **Fails**: *"Only VP8 or VP9 or AV1 video and Vorbis or Opus audio … are supported for WebM"* |
-| **Recode** webm (vp9/opus) → mp4 | **Succeeds, producing `h264 aac`** |
-| Cost | remux **0.11 s**, recode **4.86 s** — and the recode's output was **larger** than its source, 221 KB against 158 KB |
-
-**Remux changes the wrapper; recode is the only thing that changes the codecs.** That is recode's
-entire benefit and it is a real one: a source published as VP9 or AV1 only — which YouTube
-increasingly does above 1080p — has no route to a file that plays on hardware speaking h264/aac
-except through a re-encode.
-
-**And it is narrower than it looks in this application**, which the note should not overstate
-either: the mp4 preset already selects `bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]`, so
-the common case is answered by *choosing* an h264 stream rather than by making one. Recode earns
-its place only where no such stream exists.
-
-#### Built 2026-09-10
-
-The note now reads:
-
-> Remuxing keeps the streams and is quick; recoding re-encodes them and is not. Recode only when a
-> player refuses what the site sent — a new wrapper does not change what is inside it.
-
-**The second sentence carries the case and the trap in one breath**, which is what the measurement
-made possible: remuxing a `vp9 + opus` webm to mp4 *succeeds and leaves `vp9 opus` inside*. So the
-useful thing to say is not *"recode is slower"* — the reader already had that — but *"a new wrapper
-does not change what is inside it"*, which is what makes the first half actionable.
-
-**Bounded by *only when*, deliberately.** Format selection answers the ordinary case with no
-conversion at all, so a sentence that read as advice to recode would trade one wrong default for
-another.
-
-**Moved to a named constant** so the wording is asserted the way this dialog's other fixed strings
-are, and cannot drift back to cost-only.
-
-**Corrected 2026-09-11 — `T286-R1`.** The regression claimed to check the use case and never
-asserted it: between *"only when"* and a constant-to-label equality, **"Recode only when needed"
-passed every check** — the bound survived and the reason vanished, and the equality cannot see it
-because both sides receive the changed constant. The case is now asserted on its own words, and the
-description says what is actually checked rather than what was intended. The regression checks the four criteria **separately** —
-cost stated, case named, not advice, and why remux does not cover it — plus that no codec name
-leaks into a register the rest of the dialog does not use. A single "did the wording change" check
-would have passed on any edit.
-
-#### Acceptance criteria
-
-- **The section names the case recoding is for**, in the same register as the rest of the dialog —
-  a user's words, not codec names, and one line rather than a paragraph
-- **It does not oversell it**: the note must not read as advice to recode, given that format
-  selection answers the ordinary case without one
-- **The cost stays stated.** The present sentence is not wrong and the slowness is what stops a
-  casual click; this adds the missing half rather than replacing the sentence
-- **The wording is asserted by a test**, the way the dialog's other fixed strings are, so it cannot
-  drift back into cost-only
-
-#### An open question this raises, and does not answer
-
-**A remux to `mp4` that leaves VP9 inside is a success that did not do what the user meant.** The
-first row of the table is exactly the trap the maintainer's question was circling: the mux
-succeeds, the extension changes, and the file still will not play where it was converted to play.
-Whether the application should say anything about that is a real decision and **not part of this
-task** — warning about it means the container section starts reasoning about codecs it does not
-currently touch, and the honest alternative is that this is correct ffmpeg behaviour a
-general-purpose tool need not editorialise. **Filed here so the observation is not lost with the
-conversation; it needs a ruling before it needs a task.**
-
-#### Out of scope
-
-- **Removing recode.** It is the only route to a playable file from an AV1-only or VP9-only source
-- **Which containers are offered** (`T-285`)
-- **Choosing codecs**, or any control over the recode's encoder settings — `REQ-010` does not offer
-  them and this task does not add them
-
-### T-316 — A staged row that failed looks like one that worked
-
-**Status:** In Review — **built 2026-09-10**, the same day it was filed from the built window, during `T-297`'s session:
-*"even a failure to grab shows up as green here (should probably show as red?)"*
-**Owner:** Implementer
-**Priority:** Low — nothing is wrong in words, and the row does say what happened. What it costs is
-a glance: a paste of twenty has to be read line by line to find the one that failed
-**Phase:** Phase 4 (polish; **not** a plan deliverable, and **not** Phase 4 exit work). Filed after
-the maintainer ruled to ship; the placement is theirs and `T-286`/`T-290` are ahead of it
-**Depends on:** nothing
-**Relevant context:** `ui/add_dialog.py` `StagingModel.data`, which answers `STATE_ROLE` and not
-`STATE_CHIP_ROLE`; `ui/row_delegate.py:1902`–`:1916`, the chip; `ui/theme.py:993`, the selected-row
-rule; `T-130` (selection is geometry, not tint); `NFR-005`; `UX-005` §3
-**Affected surfaces:** `ui/add_dialog.py`, possibly `ui/row_delegate.py`, and their tests
-**Risk:** Low — additive, and the one thing it must not do is make state a colour-only signal
-
-#### What was seen, and what it actually is
-
-A staged row whose probe failed reads `extractor_error: … — Couldn't read`, and the only coloured
-thing on it is a **2px brand-green bar down its left edge**. The report was that green reads as
-success.
-
-**That bar is the selection indicator, not a state.** `ui/theme.py:993` draws
-`QListView::item:selected { border-left: 2px solid primary }`, and `T-130` chose geometry
-deliberately so that selection is a *shape* rather than a tint. It is green on every selected row,
-whatever the row is doing. So the fix is **not** to recolour it: making the selection bar carry
-state would give one signal two jobs, which is what `T-130` separated.
-
-**The real asymmetry is that a staged row has no state marker at all.** `QueueModel` answers
-`STATE_CHIP_ROLE` and the delegate draws a bordered chip on the row's title line; `StagingModel`
-answers that role **nowhere**, so a staged row's state lives only as a clause inside the detail
-text. Verified on current code, not on the 2026-09-01 screenshot the report came from.
-
-**No surface colour-codes state today, and that is on purpose.** The queue's chip is drawn in the
-`muted` pen — it is a shape with a border, not a colour. `NFR-005` bans conveying information by
-colour *alone*; it does not ban colour as a second channel beside a shape and a word. So a failure
-tint is available, and is the kind of thing to propose rather than assume.
-
-#### What this task does not decide
-
-**Whether the answer is a chip, a tint, an icon, or the row's existing words in a different place.**
-The report asked for red; the narrowest fix that matches the queue is a chip, which needs no new
-colour vocabulary at all. A maintainer ruling picks between them, from mockups, the way `T-310`'s
-and `T-313`'s were taken.
-
-#### Built 2026-09-10 — the chip, and why not red
-
-**A staged row now answers `STATE_CHIP_ROLE`**, which is the role the queue already answers and the
-delegate already paints. Nothing new was drawn and no colour was invented.
-
-**The report asked for red and this does not give it**, which is a proposal rather than a
-dismissal. Three reasons, in order of weight:
-
-1. **This theme has no failure hue.** Adding one is contrast work in both palettes (`T130-R1`) and
-   a vocabulary every other surface would then have to honour — for a signal a shape already
-   carries.
-2. **The queue solved the identical problem with a chip** and its reasoning transfers verbatim: *a
-   queue is a list of rows in different states and the state is what the eye is hunting for.* A
-   staging list is the same shape of thing, so a second vocabulary would be the drift `T-186`
-   records.
-3. **`NFR-005` permits colour as a second channel**, so red is still available later. It is
-   additive to this, not blocked by it — which is why the narrow fix went first.
-
-**The bare state, not `state_text`.** `T130-R3` drops the state from the detail line only where the
-chip repeats it exactly, so an ordinary row says it once and a duplicate still says both halves.
-
-**Ruled 2026-09-11: ship the chip, decide on the tint after seeing it.** The maintainer took the
-narrow fix and kept the colour question open rather than closing it either way — `NFR-005` leaves
-colour available as a second channel, so adding the tint later costs nothing that doing it now
-would have saved, and the chip may already do the job. **The chip is what a tint would be added
-to**, not an alternative to it.
-
-#### Acceptance criteria
-
-- **A failed staged row is distinguishable from a settled one at a glance**, without reading its
-  detail line.
-- **The selection bar is unchanged.** Selection stays one signal meaning one thing (`T-130`).
-- **State is not conveyed by colour alone** (`NFR-005`), whatever channel is chosen.
-- **The staging list and the queue agree** about how a row states what it is, or the difference is
-  recorded as deliberate.
-- Asserted by a test that fails against the present rendering.
-
-#### Out of scope
-
-- The queue's own rendering. It already marks state; this is about the list that does not.
-- Recolouring the selection indicator, for the reason above.
-
-### T-297 — A thumbnail flickers while the window is resized with a panel open, and the cause is unknown
-
-**Status:** **In Review — both maintainer-held findings are dispositioned as of 2026-09-10.**
-`T297-R2` was granted an exception on 2026-09-04; `T297-R1` was answered on 2026-09-10 by a
-maintainer observation on a real display **in place of a capture**, which amends criterion 1 rather
-than satisfying it — see below. *(Was: Blocked on `T297-R1` and `T297-R2`, both High — the product
-fix is sound and the* record *of how it was reached is not, reviewed at `d44700c`.)*
-
-- **`T297-R1` — no real-display capture.** The reproduction was taken on a nested
-  `kwin_wayland --virtual`, and its PNG is a labelled reconstruction rather than a captured frame.
-  The criterion asks for a real display and a capture. **Needs either a pre-fix run on the live
-  session or an explicit amendment** naming what is surrendered. Not mine to take, and not something
-  to run unattended on the maintainer's desktop.
-#### Ruled 2026-09-04: the exception is granted, and the capture is being taken
-
-**`T297-R2` — exception granted.** The maintainer accepted that criterion 2 was missed and that the
-sequence cannot be created retroactively. What stands in its place is the dated correction in
-`docs/project/evidence/2026-09-01-T297-panel-collapses-during-resize.md`, which says the cause section is
-superseded, names the real writer, and records that the `T-296` relation was backwards. **The
-commits are not rewritten.** This finding no longer blocks Complete.
-
-**`T297-R1` — being answered rather than amended.** The maintainer chose to run the pre-fix tree on
-a real display and keep an actual capture, over amending the criterion.
-`tools/t297_prefix_capture.sh` puts that tree on the display from a `git worktree` at `331845d`,
-with `PYTHONPATH` overridden so the editable install cannot serve the fixed code instead. **Until
-that capture exists this task stays Blocked**, and a run that does *not* reproduce is a result to
-record rather than a reason to try again.
-
-- **`T297-R2` — the pre-fix record names the wrong cause.** `331845d` says the cause is
-  `_on_list_resized`'s deferred relayout and that it is *not* `T-296`'s; both are wrong, and the
-  real cause first appears in the commit that changes source. **The evidence file now carries a
-  dated correction** saying so and recording that the criterion was missed. Moving this to Complete
-  needs the maintainer's explicit exception; the commits are not rewritten.
-- **`T297-R3` — corrected.** The probe froze only part of itself before the reconstruction, so the
-  post-fix counts included the instrument's own forced 26 px. Every counter is frozen now and a
-  control asserts none moved — **it caught a real drift on the first run** (38 → 40 paints) rather
-  than passing. Both trees were re-measured rather than corrected by subtraction.
-
-**The fix itself was not in doubt in the review and is unchanged.** **It was not the deferral the
-entry hypothesised.** `QAbstractItemView` keeps `setIndexWidget` widgets in **the same map as item
-editors**, so every `updateGeometries()` pass handed the open row's panel to
-`RowDelegate.updateEditorGeometry` — which applied `_control_of`, the row's *format-combo* slot, to
-it. A 354 px panel became **26 px**. A resize calls `updateGeometries()` once per step, so the panel
-collapsed and was restored once per step, and the view painted the row inside each gap: `paint`
-draws the thumbnail on every row it is given, because an open one is supposed to be covered.
-
-**Measured under a compositor before anything was changed**, which is this task's first criterion —
-`docs/project/evidence/2026-09-01-T297-panel-collapses-during-resize.md`, with a capture. 110 resize steps:
-**107 collapses to 26 px, 107 paints of the row its panel did not cover**, and 109 of 110 steps
-nevertheless *settling* correctly, which is why the first reading — which sampled after each step —
-saw nothing. After the fix, re-measured 2026-09-03 with the corrected probe: **0 exposed paints, 110/110
-settled**, and the panel's own resize events fell from **214 to 8, with 0 collapses to 26 px**. *(This
-read "214 to 9" and one collapse; that ninth event and that collapse were the instrument's own
-reconstruction — `T297-R3`. The pre-fix figures re-measured identically: 107 exposed, 214 resizes,
-107 collapses, 109 of 110 settling.)*
-
-**The fix is the guard its two siblings already have.** `setEditorData` and `setModelData` both
-begin `if not isinstance(editor, QComboBox)`; `updateEditorGeometry` did not. Anything that is not
-this delegate's editor now goes to `super()`, which sizes an editor to `option.rect` — exactly right
-for an index widget spanning the row.
-
-**This is what `T-296` was working around, and that is worth stating rather than leaving to be
-rediscovered.** `T-296` reordered `_mount_panel` so `scrollTo` — which calls `updateGeometries()` —
-could not undo the geometry `setGeometry` had just set. The reorder is still correct and still
-tested; the reason a scroll destroyed the geometry was this method, one layer down. **`T-296` is not
-reopened**: it is Complete, approved, and its own regression still passes.
-
-*(Filed 2026-08-28 by `T-212`'s checklist run, deliberately without a cause.* The maintainer's
-report: *"when changing the window size while the naming information is up, the thumbnail cuts in
-and out very rapidly. That shouldn't happen."*)
-**Owner:** Implementer
-**Priority:** Low — it is visual noise during a drag, and it is the least understood thing the run
-found
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing
-**Relevant context:** `ui/add_dialog.py` `panel_height_for`, which reads the **viewport's** height,
-so every resize step changes the row's size hint; `_mount_panel`'s note that `setIndexWidget`
-defers geometry to `updateEditorGeometries`, which runs on paint; `T-296`
-**Affected surfaces:** `ui/row_delegate.py` (`updateEditorGeometry`), `tests/ui/test_row_delegate.py`;
-the instrument is `tests/ui/_t297_resize_probe.py` and `tools/t297_resize_session.sh`
-**Risk:** Low
-
-#### What was measured, and what it does not show
-
-**It did not reproduce offscreen.** Across eight resize steps with the template panel open:
-
-```
-thumbnail loads : 0        # nothing re-fetches
-cancels         : 0
-```
-
-and the panel's geometry matched the row's `visualRect` at **every** step, from 762 px down to
-430 px and back up. So it is neither the thumbnail being reloaded nor the panel losing coverage in
-any way a headless process can see.
-
-**The plausible mechanism is unproven and is recorded as a hypothesis, not a finding.**
-`panel_height_for` reads `self._list.viewport().height()`, so every resize step changes the row's
-size hint; the panel's re-placement is deferred to paint; and the delegate underneath — which draws
-the thumbnail — is what shows in any gap. That is consistent with `T-108`'s comments and with
-`T-296`, and it is not evidence.
-
-#### 2026-09-10 — `T297-R1` answered by observation, not by capture
-
-The maintainer chose to watch rather than record: *"lets run it and have me watch."* The pre-fix
-tree was put on their own Wayland session from the `331845d` worktree, and afterwards they reported
-**no flicker** — *"there is no flicker at all anymore with the thumbnails or the screen … its all
-good."*
-
-**What this is worth, stated rather than glossed.**
-
-- **It amends criterion 1; it does not pass it.** That criterion asks for a *capture*. None exists
-  and none will. What stands in its place is the maintainer's own eyes on their own display —
-  better than the nested `kwin_wayland --virtual` the reviewer rejected, weaker than the frame the
-  criterion names.
-- **Which build was observed could not be established from this side.** Two windows were open at
-  the time — the pre-fix worktree and the maintainer's own current build — and the implementer
-  verified only that both existed, not which was dragged. The two mean opposite things: on current
-  code `T-312` has removed row-mounted panels entirely, so **no flicker is the only possible result
-  there**, and it says nothing about the defect.
-- **So this record claims the weaker reading**: the maintainer is satisfied the built application
-  does not flicker. Whether the pre-fix tree still reproduces on real hardware is **not** answered
-  here, and nothing below should be read as saying it is.
-
-**Why that is acceptable rather than a gap to chase.** The cause is known and measured — 107
-collapses to 26 px across 110 resize steps, `updateEditorGeometry` applied to a panel it should
-never have been handed — and the fix is the guard its two sibling methods already had. `T-312` has
-since removed the mechanism outright. What a capture would have ruled out is that the nested
-compositor *exaggerated* the originally reported symptom; that question is now unanswerable by any
-means, because the surface it lived on no longer exists.
-
-**A tool defect was found and fixed while doing this.** `tools/t297_prefix_capture.sh` told the
-reader to paste `https://archive.org/details/TheArtOfWarBySunTzu`, which no longer resolves —
-*"opening play-av tag not found"*. The local fixture of that name still works; the live URL behind
-it does not. The guide now asks for any URL the reader knows resolves, since nothing in that step
-is site-specific.
-
-#### Acceptance criteria
-
-- **It is reproduced on a real display first**, with a capture, and the reproduction is recorded in
-  `docs/project/evidence/` before anything is changed. An offscreen process does not do a continuous resize
-  and its style is not necessarily the session's
-- **The cause is named before the fix**, and if the cause turns out to be `T-296`'s, this task is
-  closed against that one rather than fixed twice
-- **If it proves to be Qt or compositor behaviour** this application can only work around, that is
-  recorded as the finding and the workaround is a separate decision
-
-#### Out of scope
-
-- Guessing. `T-296` is filed with a measured cause; this one is not, and the two should not be
-  merged on the strength of sitting near each other
-
-
----
-
-### T-315 — A queue row's `⋮` offers what the row already shows
-
-**Status:** In Review — **built 2026-09-10**; both design questions ruled by the maintainer the
-same day from the built queue window.
-
-**Owner:** Implementer
-**Priority:** Medium — the control works since `T-314` and now opens a menu whose every entry
-repeats a button beside it, which is `UX-005` §5's defect one step on from the one just fixed
-**Phase:** Phase 4 (accessibility and polish)
-**Depends on:** `T-314` connected the zone at all. `T-311` is where the composition rule comes
-from and `T-135` is where this redundancy was fixed on the other control.
-**Relevant context:** `UX-011` option *E* (the staging list's row menu); `T-135` (the `⋯` overflow
-holds only what did not fit); `UX-003` (a job enters the queue once it has been read); `T-311`
-(streams and preset are different facts); `UX-005` §5
-**Affected surfaces:** `ui/queue_view.py`'s row wiring; `ui/main_window.py`'s row menu; new
-`ui/format_dialog.py`; `core/presets.py`
-**Risk:** Medium — a new asynchronous surface with three ways to end without a table, and two
-editors that write a whole request back
-
-#### What was reported, and what it turned out to be
-
-*"The options from that button seem completely redundant. I think it should give you options/choose
-formats like it does when you do it on the add urls."*
-
-`T-314` wired the `⋮` to `_row_menu_asked_for`, which carries `verbs_of` — **everything the row's
-state permits**, which on any window wide enough is exactly the four buttons already drawn on the
-row. `main_window.py` records `T-135` fixing this same redundancy on the `⋯`, and the fix
-reproduced it one control over. The zone now has its own signal: `⋯` holds what the row could not
-draw, the keyboard routes hold every verb, and `⋮` holds what can be done to **this download**.
-
-#### The two things that had to be ruled
-
-1. **A queued job does not carry its formats.** `Job` holds the request, title, uploader, duration
-   and thumbnail; the probe's list lives in the add dialog's `MediaInfo` and is discarded when that
-   dialog closes, and no migration ever persisted it. **Ruled: re-read the URL when the entry is
-   picked.** The alternative — storing the list — opens the table instantly at the cost of a
-   migration, a blob per job, and a list that can go stale; a stale list fails *at download time*,
-   silently, long after the choice was made. A re-read costs a second and is true at the moment it
-   is chosen from.
-2. **Whether the menu also lists the row's verbs**, as the staging list's menu does under its
-   *"Just this item"* section. **Ruled: per-item commands only** — the verbs are already buttons,
-   and `⋯` exists for whichever of them a narrow window could not draw.
-
-#### What that needed underneath
-
-**`presets.preset_of` — the inverse `to_request` never had.** Both entries write a whole request
-back, and both must open on **the preset the job's request implies** rather than on a catalogue
-preset matched by name: a queued request is whatever the add dialog composed for it, and a preset
-agreeing on the format need not agree on the thumbnail, the subtitles or the naming. Opening on
-the wrong one would show settings the job does not have and write them back on OK — `T-313`'s
-silent discard from a new direction. Built by name from `PRESET_OWNED_FIELDS`, exactly as
-`format_choice_of` narrows the other way, so the two directions cannot disagree.
-
-**It is not an identity in both directions, and the test says which one holds.** A preset stating
-an empty `output_template` means *"whatever the caller's default is"*, so `to_request` resolves it
-and the request records the concrete string — information the preset never held. Every shipped
-preset states none, so `preset_of(to_request(p))` differs from `p` in exactly that field.
-**Request → preset → request is lossless**, which is the direction a retarget travels, and that is
-what is asserted. The first version of the test asserted the other direction and failed.
-
-**One retarget route, three callers.** The preset control, *Options…* and *Choose specific
-formats…* all end in `_retarget_to`, so `T197-R4`'s carried-over connection and `T-195`'s
-carried-over naming cannot be remembered on one path and forgotten on another.
-
-#### Corrected 2026-09-10 after review — `T315-R1` to `T315-R4`
-
-**`T315-R1` — the item commands were reachable by pointer only.** The `⋮` is a painted affordance
-with no accessibility node, and that is allowed *because the same menu is reachable by right-click,
-the Menu key and Shift+F10* — a justification this task made untrue by giving the zone its own
-signal and leaving the keyboard route on `verbs_of` alone. The reviewer measured it: a
-keyboard-reason context event opened `↑ ↓ Cancel Remove` and neither new command (`NFR-005`).
-
-**One builder, two menus, differing only in the company the commands keep.** `_add_item_commands`
-fills both; the `⋮` opens the commands alone, as ruled, because a pointer user can see the verbs
-as buttons, and the keyboard route opens them **above** the verbs, as the staging list does.
-
-**`T315-R2` — a playlist header offered a `⋮` that opened nothing.** The header paints a preset
-control (`UX-005` row 13 defines retargeting across members), so the zone was drawn beside it — but
-its `JOB_ID_ROLE` is the *playlist* id, which `job_for` cannot resolve. The offer is withdrawn
-rather than implemented, and the reason is the commands themselves: **a format id names one
-video's stream**, so applying one member's choice to the others would be wrong rather than merely
-unbuilt (`T-110`'s rule, which the staging list already follows by omitting the entry there).
-
-`MENU_AVAILABLE_ROLE` is how a model says a row has an item menu; `_menu_zone_of` answers an
-**empty rectangle** when it does not, which is what makes the paint, the hover and both hit-tests
-follow from one definition instead of four that could disagree.
-
-**`T315-R3` — the Options editor was lossy for audio qualities it does not itself offer**, so this
-task's promise of lossless editing was not kept and the download's encoding could change silently.
-Two causes: `_show_preset` fell back to index `0` when `findData` missed, showing `320 kbps` for a
-request asking for `96`; and `_chosen_audio` cleared any non-MP3 quality even when the codec had
-not changed. The reviewer's matrix — MP3 at `0`, at `96`, at nothing, and AAC at `3` — is now a
-parametrised regression with the passing `192` case kept as its control.
-
-**The fix is `T-313`'s own rule, one dialog over:** a group nobody touched decides nothing, so the
-request keeps what it arrived with; a codec the user actually changed still clears a bitrate that
-belonged to the old one (`T076-R1`). The bitrate control also shows the value the download carries,
-inserting an entry only when it describes the current state — `RowDelegate`'s rule for a row's own
-non-catalogue preset. **The defect predates this task and reaches the staging list's editor by the
-same code**, which is why both the fix and its tests sit on the dialog.
-
-**Auditing the staging caller, as the finding asked, turned up a distinction worth recording.** Only
-half the matrix can reach that surface: `preset_for` runs every MP3 preset through `effective`,
-which replaces its bitrate with the one the dialog's own control shows (`T118-R6`), so an unlisted
-MP3 quality is normalised before the editor is built. A first version of that test used MP3 at `0`,
-got `192` back, and was measuring that derivation rather than the defect. `effective` returns a
-non-MP3 preset untouched, so the **codec** half is reachable there and is what the staging
-regression uses.
-
-**`T315-R4` — the probe tests called their slots directly** while describing themselves as
-delivering the manager's signal, and neither the *no formats* nor the *started meanwhile* ending
-had a test at all. All four now emit on `media_probed` / `job_failed`, so the connection is part of
-the claim, and both endings are covered — the race by mutating the queue the window reads and
-calling the refresh the window itself calls, rather than by arranging the model directly.
-
-#### Corrected again 2026-09-10 — `T315-R5`, a regression the first correction introduced
-
-**Authorised by the maintainer** under `TESTING.md` §14, whose two-pass budget was spent and whose
-remaining blocker was Medium: *another focused pass*, taken because `T313-R3` is High and forces a
-further round over the same correction boundary regardless, so the marginal cost was the fix rather
-than a review cycle.
-
-**`_row_menu` serves both routes, and `T315-R1`'s shared builder did not know which had asked.**
-Adding this download's own commands for the keyboard put `Just this item`, `Choose specific
-formats…` and `Options…` into the pointer's `⋯` as well — the one menu whose entire purpose is
-*the verbs the row had no room to draw* (`T-135`). Three entries that always fit elsewhere, above
-the two that did not.
-
-**The view says which route asked**, because the shell cannot recover it: sending the verbs alone
-distinguished the two while both menus held only verbs, and stopped being enough the moment one of
-them held something else. `more_requested` carries that now, and the item section is built only for
-the context and keyboard routes.
-
-**The spillover was invisible to every committed test**, because none of them took the pointer
-route — `_on_verb` and `_show_row_menu` were called directly. The new regression clicks the drawn
-`⋯` itself, and the keyboard route is asserted separately so the two cannot be satisfied by one
-change.
-
-#### Acceptance criteria
-
-- The `⋮` offers *Choose specific formats…* and *Options…*, and **none of the row's verbs**.
-- A job that can no longer be retargeted is offered no menu at all.
-- Picking formats re-reads the URL, opens the table on what it found, and composes the chosen
-  streams over the request the job already has — options, subtitles and naming all survive.
-- Accepting *Options…* without changing anything changes nothing.
-- A read that fails, finds no formats, or finishes after the job started says so in the status bar
-  and writes nothing.
-- A probe this window did not start is ignored, since both signals are shared with the add dialog.
-- Each is asserted by a test that **fails against the behaviour it replaces**.
-
-### T-313 — The preset control discards a hand-picked format, and Notes repeats the row
-
-**Status:** In Review — **built 2026-09-10**, both halves ruled by the maintainer the same day
-from the built window while `T-312` was in review.
-
-**Owner:** Implementer
-**Priority:** High — the first half is silent data loss on the screen a user reaches immediately
-after choosing formats, and it fires without any gesture at all
-**Phase:** Phase 4 (accessibility and polish)
-**Depends on:** nothing. `T-311` is where the first half came from and `T-310` the second.
-**Relevant context:** `UX-004` (a row inherits the batch preset unless it has its own); `T-311`'s
-ruled fourth sequence; `REQ-003` (the table shows notes); `T310-R1` (removing the field is a High
-finding); `T126-R3` (the queue's value guard)
-**Affected surfaces:** `ui/add_dialog.py`'s *Download as* control; `ui/format_table.py`'s two lists
-**Risk:** Low — both are narrowings of behaviour that already existed, and the route back from a
-hand-picked format is the part that had to be held in place rather than changed
-
-#### 1 · A chosen format is discarded without being asked to be
-
-*"The format reverted back to 'best video available' despite me not actually selecting it in the
-dropdown."*
-
-**Two causes, and the second was not reported.**
-
-**(a) Qt commits an open editor on every refresh**, and for a row that *inherits* the batch preset
-the committed value is the inherited entry's `None` — which the guard could not tell apart from a
-user choosing *follow the batch*. Opening the control and clicking elsewhere silently discarded a
-hand-picked format. **`T-311` opened this by design**: it stopped writing the pick into
-`row.preset` so the batch control could keep reaching a row that had picked streams, and the cost
-was that an inheriting row *with* a pick answers `PRESET_ROLE` exactly as an untouched one does.
-
-The fix is `T126-R3`'s, brought one dialog over — **the guard is on the value, not on the caller**,
-comparing against `PRESET_ROLE` itself so the two cannot drift. It subsumes `T-108`'s narrower
-case, which is the same shape one state over.
-
-**(b) Naming a preset also discarded the pick**, which contradicts the fourth sequence the
-maintainer ruled on 2026-09-10: *"changing Preset now reaches the row and keeps your streams."*
-The clearing line predates `T-311` and was correct when written — the format panel then wrote its
-selector into `row.preset`, so naming a preset really did replace what the row would download —
-and it was never reconciled with the ruling. **Found while tracing (a), reported rather than
-changed, and ruled by the maintainer:** *"yes, match the ruling."*
-
-Only *follow the batch* clears now, which is `T-311`'s own answer to *"how is a stream choice
-cleared?"* — and that route is reachable from every state precisely because naming a preset no
-longer consumes it. `test_following_the_batch_still_gives_up_a_chosen_format` holds it there;
-`T-310`'s review already caught one false claim in this repository that no route back existed.
-
-#### 2 · A note that only repeats the row
-
-*"For video, it just repeats the resolution, and for audio I'm not even sure what it's trying to
-say. Seems like a redundant or useless field right now."*
-
-**Measured on the maintainer's own probe:** the video notes read `1080p`, `720p`, `480p` beside a
-**Quality** column saying `1080p`, `720p`, `480p`; the audio notes read `medium`, `medium`, `low`,
-`low`, `low` beside bitrates that already ordered them exactly.
-
-**The column is suppressed, not removed** — ruled from three options, *"show it only when it says
-something."* `REQ-003` names notes and `T310-R1` called their removal a High finding, and it was
-right for a reason that survives: on archive.org the note is the only thing distinguishing two
-rows of identical quality, codec and container, one marked `original` and the next `derivative`.
-
-So a note is dropped when every word of it is already on the row — an exact match against yt-dlp's
-ordinal audio words, against the two phrases that restate which list the row is in, or against the
-Quality cell itself — and the **column** goes when no format in that list has anything left. On
-YouTube it disappears and gives its width back to the columns being read; on archive.org it
-appears. Matching is exact, never by substring, so `medium, original` keeps both halves.
-
-#### Corrected 2026-09-10 after review — `T313-R1`, `T313-R2`
-
-**`T313-R1` — the clear-route was inert from the one state it was promised for.** The guard returns
-early when the committed value equals `PRESET_ROLE`, and a row that **inherits** the batch preset
-while holding a pick answered `None` there — exactly as an untouched row does. So *follow the
-batch*, this task's own answer to *"how is a stream choice cleared?"*, changed nothing from that
-state. The committed clear-route test assigned an owned preset first and so never entered it.
-
-**Fixed by making the two states differ in value, not by a second guard about how `setData` was
-reached.** `PRESET_ROLE` now answers what the row will actually download — the composed name — so
-an untouched commit re-states `137+140` and clears nothing, while the inherited entry is a
-different value and clears the pick. It also makes the control agree with the row, which already
-painted *"Download as: 137+140 — following the batch"*, and revives `RowDelegate.createEditor`'s
-branch for a row's own non-catalogue preset that `T-311` had left unreachable.
-
-**`T313-R2` — suppressing a tier note is only honest where the row states the tier.** Every ordinal
-word went regardless of whether the row had a bitrate to repeat, and the reviewer found the cost:
-two audio-only Opus formats with unknown bitrate *and* size, noted `low` and `high`, lost both
-notes and the column, and nothing else on either row told them apart. **Exact string matching never
-established redundancy** — the neighbouring cell does. A tier note now goes only where a bitrate is
-shown, and a *video only* / *audio only* note only where the row's own flags already establish it,
-which leaves it standing on a stream yt-dlp never classified.
-
-#### Corrected again 2026-09-10 — `T313-R3`, a regression the first correction introduced
-
-**The fix for `T313-R1` created an automatic-commit discard of its own**, which is the same defect
-class one transition over and is recorded here rather than smoothed away. `PRESET_ROLE` began
-answering `format_name` of the **composed** preset — a value that grows a clause for every field
-the governing preset sets, so changing the batch to one embedding metadata turned `137+140` into
-`137+140 · embedding metadata` **while the editor was open**. `setEditorData` searched only the
-entries already built, `findData` missed, the combo fell to index `-1`, and its next untouched
-commit arrived as `None`: the user deliberately choosing *follow the batch*. Reproduced by the
-reviewer through a wheel event on the batch control, with nothing else touched.
-
-**Two corrections, and the second is the one that generalises.**
-
-1. **The role answers the selector**, not the composed name. The selector changes only when
-   different streams are picked, which is the one event that *should* invalidate the entry. What
-   the row downloads in full is on its detail line, where a growing description costs nothing.
-2. **A value the editor has no entry for now gets one**, in `setEditorData`. On this list `-1` is
-   not neutral — its `currentData()` is `None`, which *is* the inherited entry — so a miss reads as
-   a deliberate choice. The guard is the presence of an inherited entry rather than the surface's
-   name: the queue has none, so `-1` stays the honest rendering of *"no built-in describes this"*
-   there (`T126-R2`), and that is asserted alongside.
-
-**A docstring claimed this could not happen.** `setEditorData` said *"a miss on the staging list
-cannot happen — its `None` is the inherited entry, which is present there."* The sentence had it
-backwards: the inherited entry being present is precisely what makes a miss dangerous. It is
-corrected in place rather than deleted.
-
-#### Acceptance criteria
-
-- Committing the preset control without choosing anything changes nothing, for a row that inherits
-  the batch preset as well as one with its own.
-- Naming a preset keeps the streams and applies the preset's other settings over them.
-- *Follow the batch* still gives up a hand-picked format, from every state a row can be in.
-- A note that repeats the row is not shown, one that adds something is, and the column is present
-  exactly when some row in that list has something to show.
-- Each is asserted by a test that **fails against the behaviour it replaces**, run and recorded.
-
 ## Ready
-
-### T-311 — The batch preset control looks like it governs a row it cannot touch
-
-**Status:** In Progress — **ruled by the maintainer on 2026-09-10 from four rendered sequences**
-(`tools/preset_override_mockup.py`): *"go with the fourth one"* — **fix the loss and the control**,
-which is option (1) in its `E2` shape and what the reviewer independently recommended.
-
-Reported by the maintainer on 2026-09-09 from the built window, in the same session as `T-310`:
-*"there is a preset selection at the bottom of that screen that doesn't do anything."* **What the
-mockups then found is worse than the report**: picking a format by hand calls
-`presets.custom_preset(selector)`, which builds a `Preset` from nothing — so a row set to *Audio
-only (MP3)* with a typed filename pattern loses **both**, silently. The reviewer confirmed it on a
-real submitted request. The inert control is the symptom; the discarded preset is the defect.
-
-#### What was ruled, and the three questions it forces
-
-**The row records only which streams were picked**, in `Row.format_selection` — which it already
-stores — and `preset_for` applies that over whichever preset governs. Nothing is written to
-`row.preset` by the format panel at all.
-
-1. **Does an explicit conversion still apply to hand-picked streams?** **Yes.**
-   `ui/format_selection.py` says a chosen stream is downloaded *"as served"*, without adding
-   extraction — but that clause is about the app **inferring** a conversion from the fact that the
-   chosen format is audio-only, which is why `media_kind` stays `VIDEO` for such a choice. A preset
-   the user selected is an instruction rather than an inference, and honouring it is what makes the
-   control mean what it says. **This changes documented behaviour and is recorded here as the
-   decision it is** — every option except *leave it alone* makes the same change, and the two that
-   snapshot make it silently.
-2. **How is a stream choice cleared?** Through the row's own preset editor, whose *follow the
-   batch* entry already clears `format_selection` (`T310-R4`'s audit put it there). There is a route
-   back; `T-310`'s review corrected an earlier claim in this file that there was not.
-
-   > **Corrected 2026-09-10 by `T-313`.** As built, **every** preset change cleared it, not only
-   > that entry — so naming a preset silently discarded the streams, which is the opposite of what
-   > the ruled fourth sequence showed. Worse, Qt commits an open editor on every refresh, and for
-   > an inheriting row that commit *is* the *follow the batch* value: the clear fired with no
-   > gesture at all. Both are fixed there; the route named above is the only one that clears.
-3. **Do explicit row overrides survive?** **Yes, and this is the part to test rather than assume.**
-   A preset written by the row editor or the options dialog is the row's own and the batch must not
-   reach it; the stream choice composes over whichever preset applies, not over the batch's alone.
-   The reviewer noted the mockup's unconditional switch does not demonstrate this, and it does not.
-
-#### What the row will say
-
-Unchanged: `ui/format_text.format_name` matches a built-in on **every** identifying field, so a
-preset carrying a hand-picked selector matches none and falls through to the literal. Measured
-before building: a composed preset over *Audio only (MP3)* names itself `137+140`, exactly as the
-discarded custom preset did. The shared naming rule absorbs this without being told.
-**Owner:** Maintainer to rule; Implementer to build
-**Priority:** Medium — it is a control that silently does nothing, which `UX-005` §5 names as a
-defect in its own right, and it is on the screen a user reaches while choosing formats
-**Phase:** Phase 4 (accessibility and polish)
-**Depends on:** nothing. `T-310` is where it was found, not where it lives.
-**Relevant context:** `UX-004` (a row inherits the batch preset unless it has its own);
-`ui/add_dialog.py` `preset_for`, `_on_preset_changed`, `_show_selector`; `UX-005` §5
-**Affected surfaces:** `ui/add_dialog.py`'s *Download as* group
-**Risk:** Medium — every option changes what the batch control means, which `UX-004` ruled
-
-#### What happens
-
-The *Download as* combo is the **batch's** control: a row uses it unless the row carries a preset
-of its own (`UX-004`). Choosing formats in the panel writes one of its own — `row.preset =
-custom_preset(selector)` — and from then on:
-
-- `preset_for(row)` returns the row's, so changing the combo **changes nothing** for that row;
-- the combo still displays the batch preset's name, so it reads as a description of what will be
-  downloaded when it is not;
-- `_show_selector` does tell the truth underneath — *"This row · Format selector: 137+140"* — so
-  the screen contradicts itself rather than merely omitting something.
-
-With a single staged row, which is the common case, the combo is inert and looks authoritative.
-
-#### Options
-
-1. **The combo tells the truth about the row in hand.** When the current row carries its own
-   choice it shows a `Custom formats` entry, and picking a real preset from it **replaces** that
-   choice. The control becomes accurate *and* acquires an effect, and it is the way back from a
-   custom selection, which there is currently no control for at all.
-   *Cost:* the combo becomes row-aware, which narrows `UX-004`'s batch semantics.
-
-   > **Corrected 2026-09-10 by `T310-R8`.** This option was written up as *"the way back from a
-   > custom selection, which there is currently no control for at all"*, and that is false: the
-   > row's own preset editor and `StagingModel.setData` already offer both a preset and a return to
-   > the batch. What is actually wrong is their **discoverability** and the batch control's
-   > misleading presentation, which is a narrower and more honest subject. The claim was made in
-   > this file and repeated to the maintainer; it is corrected in both.
-2. **Disable it while the current row overrides**, with the reason stated where it sits.
-   *Cost:* wrong for a multi-row batch — the combo still governs every other row, so disabling it
-   takes away a working control to explain one that is not.
-3. **Leave it and strengthen the line beneath** to say the row is using formats the user chose.
-   *Cost:* cheapest and least honest — the combo still looks like the answer.
-4. **Remove it from the dialog.** Refused: `UX-004` rules the batch control, and most sessions
-   never open a format panel at all.
-
-**Recommendation: (1)** — on narrower grounds than it was first written on. The original argument
-was that it is *"the only option that leaves the user a way back"*, and the correction above
-withdrew that: the row's preset editor and `StagingModel.setData` already offer one. What survives
-is that (1) is the only option where the control **means what it appears to mean** — the combo
-names what the row will use, and picking a preset does what a person expects. `UX-005` §6's
-*Download as* retarget on the queue row is the same gesture one surface over.
-
-**The reviewer recommends option (1) in its `E2` shape** (`docs/project/reviews/T-310.md`,
-2026-09-10) — stream choices and processing settings represented independently, explicit row
-overrides preserved, and batch changes reaching only the rows the batch governs unless `UX-004`
-itself is changed. It also names a policy question this task must answer rather than assume:
-`ui/format_selection.py` documents individually chosen streams as downloaded **as served, without
-adding audio extraction**, so preserving an MP3 conversion across a format choice is a *new design*
-rather than a restored one. The output-template reset has no such justification and is loss either
-way.
-
-#### Acceptance criteria
-
-- With a row carrying its own formats, the combo and the selector line **agree**.
-- Whatever is ruled, the control either has an effect on the row it appears to describe or says
-  why it has none. A third state — displaying a preset the row is not using — is the defect.
-- A multi-row batch keeps a working batch control.
 
 ### T-301 — Four UI tests break when the application font grows by one point
 
@@ -1184,9 +303,36 @@ Qt must stay dynamically linked (`LIC-001`'s LGPL condition).
 - States what it means for `NFR-009`, and how that is checked in the release gate
 - Names its reopening condition
 
+#### Proposal, 2026-09-11 — for the maintainer to accept, amend or reject
+
+**Recommended: AppImage.** Three reasons, in order of weight:
+
+1. **`OPS-001` makes ffmpeg a *system* dependency on Linux**, and a Flatpak cannot see the host's
+   ffmpeg without a portal or an extension. Choosing Flatpak would either reverse `OPS-001` on
+   Linux (bundle ffmpeg after all) or ship a sandbox in which the merge feature is dead on arrival.
+   An AppImage runs as an ordinary process and `find_ffmpeg`'s `PATH` search works unchanged.
+2. **It is what `packaging/tracks-and-trails.spec` already produces.** PyInstaller one-dir *is* an
+   AppDir minus a `.desktop`, an icon and `AppRun`; `T-020`/`T-033` have been building and probing
+   that tree in CI since Phase 0. Flatpak means a manifest, a runtime and a second build system.
+3. **`NFR-004`'s directories are unaffected**: `platformdirs` resolves the same `XDG_*` paths from
+   an AppImage as from source, which `T-298`'s frozen-isolation gate already pins.
+
+**What it costs, stated.** An AppImage carries no dependency story — Qt's own `.so` files ship
+inside it (`NFR-009`, still dynamically linked *within* the bundle), so it is large (the smoke
+artifact is ~223 MiB before ffmpeg) and it must be built against the **oldest glibc it claims to
+support** (`OPS-012`'s recorded surrender: a Fedora-built binary may not run on an older distro).
+That is `T-321`'s problem and is named there, not deferred.
+
+**Reopening condition:** if ffmpeg is ever bundled on Linux, or a distribution store becomes a
+requirement, revisit Flatpak. `.deb`/`.rpm` stay where `REL-001` left them — a later secondary, never
+the primary.
+
+**Acceptance is unchanged**: this becomes a `REL-` entry in the house style only when the maintainer
+accepts it. Until then it is a proposal in a task, which is the narrowest honest record.
+
 #### Out of scope
 
-- Building anything. This is the decision; Phase 5 owns the packaging work
+- Building anything. This is the decision; Phase 5 owns the packaging work (`T-321`)
 - Windows, which `OPS-001` already settles
 
 ---
@@ -1802,6 +948,645 @@ evidence than a Phase 4 run would have been.
 - **The Windows half.** `OPS-003`: there is no Windows machine, so the run is Linux; the
   pre-release Windows session inherits the same checklist, and the gap is named the way the plan's
   screen-reader split names its Narrator gap
+
+### T-317 — Decide whether the first Windows installer is signed
+
+**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan. **Gates the start**: it changes what
+`T-322` builds and what `T-039` may assert.
+**Owner:** Maintainer decision; Implementer records it as a `REL-` entry
+**Priority:** High — every later Windows task is shaped by the answer, and a certificate is a
+purchase with a lead time
+**Phase:** Phase 5
+**Depends on:** nothing
+**Relevant context:** `REL-001`; `OPS-004` (the installer must *feel* normal — a human item);
+`SECURITY.md` §CI trust boundary; `NFR-007`
+**Affected surfaces:** `docs/project/DECISIONS.md`; later `T-322`'s build step and `T-324`'s
+release workflow
+**Risk:** Low to decide; Medium not to — an unsigned installer meets SmartScreen's *"Windows
+protected your PC"* on every first install, which is the single largest reason a desktop user
+abandons an install
+
+#### Scope
+
+Nothing in the record decides this. `DOC-002` names *"a documented release and signing process"* as
+the reason `docs/RELEASE.md` exists, and no `REL-` entry has taken the question up. Three honest
+answers:
+
+| Option | What the user sees | What it costs |
+|---|---|---|
+| **A. Ship unsigned**, document the SmartScreen prompt in the README and release notes | *"Windows protected your PC"* → *More info* → *Run anyway*, on every first install | Nothing. Reputation never accrues, so the prompt never goes away |
+| **B. OV code-signing certificate** | The same prompt until SmartScreen reputation accrues over downloads; then none | A yearly purchase, identity verification, a key to protect |
+| **C. Azure Trusted Signing** (or an EV certificate) | No prompt from the first install | A subscription and an Azure identity; EV needs hardware-backed keys |
+
+**Recommendation: A for `0.1.0`, with B or C named as the `1.0` condition.** The first release is the
+one where the maintainer learns whether anyone installs it; buying identity infrastructure before
+that is the cost inverted. But the choice is the maintainer's because it is their name on the
+certificate, and this task exists so that *"unsigned"* is a decision with its consequences written
+down rather than an omission discovered at the first SmartScreen screenshot.
+
+#### Acceptance criteria
+
+- A `REL-` entry naming the choice, the rejected alternatives and why, in the house style
+- If unsigned: the README's install section and `docs/RELEASE.md` state what SmartScreen will show
+  and the exact click-through, so support is a link rather than a conversation
+- If signed: where the key lives, who can use it, and the rule that CI never holds it in a
+  repository secret readable by a fork (`SECURITY.md` §CI trust boundary)
+- `T-039`'s gates are stated as **independent of signature** — a silent install must succeed
+  either way, and the test must not pass only because a signed binary skipped a prompt
+- Names its reopening condition
+
+#### Out of scope
+
+- Signing the Linux artifact. AppImage signatures are optional and rarely checked; record that as
+  a deliberate omission in the same entry
+- Buying anything. The decision may be *A*; this task does not presume otherwise
+
+---
+
+### T-318 — Decide how "a clean machine" is evidenced for the first release
+
+**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan. **Gates the exit** (criteria 1, 2
+and release-gate item 7) and should be decided before the build tasks so the evidence is collected
+as they land rather than reconstructed afterwards.
+**Owner:** Maintainer decision; Implementer records it and builds whichever harness it names
+**Priority:** High — the two exit criteria it serves are the phase's definition of done
+**Phase:** Phase 5
+**Depends on:** nothing
+**Relevant context:** `OPS-010` and `OPS-012`, which each record surrendering clean-machine CI
+evidence on one platform; `TESTING.md` §8 item 7; `REQ-029`; `REL-001`; `T-066` (CI once installed
+the project differently from the documentation, and the clean machine is what caught it)
+**Affected surfaces:** `docs/project/DECISIONS.md`; possibly `.github/workflows/`; evidence under
+`docs/project/evidence/`
+**Risk:** Medium — the phase's own exit criteria say *"a clean … machine"* twice, and nothing in CI
+runs on one any more
+
+#### Scope
+
+Both self-hosted routings were taken with eyes open: `OPS-010` gave up clean-machine evidence for
+Windows and `OPS-012` for Linux, each saying so in writing. Phase 5's exit criteria were written
+before either. So the phase now demands something CI no longer produces, and the honest options
+are:
+
+| Option | Clean? | Cost |
+|---|---|---|
+| **A. One hosted run per release candidate** — unset `WINDOWS_RUNNER`/`LINUX_RUNNER` for the RC | Yes, both platforms | Hosted minutes, which `OPS-010` says ran out; and it evidences `ubuntu-latest`, not an older distro |
+| **B. Disposable VMs the maintainer owns** — Windows Sandbox on the desktop, and a throwaway Ubuntu LTS VM or container for Linux | Yes; Sandbox is clean on every launch by design | One afternoon to set up; the Linux VM doubles as `T-321`'s oldest-glibc target |
+| **C. Accept developer-machine evidence** with the surrender recorded | No | Nothing now; the first user with a missing `.so` is the test |
+
+**Recommendation: B.** It is genuinely clean, it costs no hosted minutes, and the Linux half is the
+same machine `T-321` needs anyway. *A* is the fallback if *B* cannot be arranged, and *C* is
+recorded here only so that choosing it is a choice.
+
+#### Acceptance criteria
+
+- A `REL-` (or `OPS-`) entry naming the option, and **what "clean" means operationally**: no
+  Python, no Qt, no ffmpeg on Windows (it is bundled), no developer toolchain — checked by a
+  command run before the install, whose output is retained
+- For each platform, an evidence file under `docs/project/evidence/` per release candidate:
+  machine identity, the pre-install check, the install, first launch, one real download, exit
+- If *A*: the variable flip is written into `docs/RELEASE.md` as a step, with its reversal
+- If *B*: the setup is documented well enough that the maintainer can recreate the VM in a year
+
+#### Out of scope
+
+- Restoring clean-machine CI permanently. `OPS-010`/`OPS-012` stand; this is per-release evidence
+
+---
+
+### T-319 — The Windows release build: windowed, versioned, with ffmpeg inside
+
+**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan
+**Owner:** Implementer
+**Priority:** High — it is the artifact
+**Phase:** Phase 5
+**Depends on:** `T-320` (the version it stamps); `T-317` only for the signing step, which may be a
+no-op
+**Relevant context:** `REL-001`; `OPS-001` (ffmpeg bundled on Windows, **LGPL build only**);
+`LIC-001`; `NFR-009`; `packaging/tracks-and-trails.spec` and its `console=True` note, which says
+*"Phase 5 makes this windowed; the probe needs stdout in CI"*; `app.py`'s four `--*-probe` flags;
+`downloader/environment.find_ffmpeg`; `T-020`, `T-033`, `REL-002`
+**Affected surfaces:** `packaging/tracks-and-trails.spec`, `_freeze_probe.py`, `app.py`,
+`downloader/environment.py`, `.github/workflows/ci.yml`'s `frozen` job, `docs/DEVELOPMENT.md`
+**Risk:** Medium — the windowed switch is the one place the smoke build and the release build
+genuinely differ, and the probes CI depends on write to a `stdout` that a windowed process does
+not have
+
+#### Scope
+
+**One spec, two modes.** The Phase 0 spec stays the CI smoke build; the release build is the same
+`Analysis` with three differences, selected by an environment variable rather than a second file
+(two specs is two things to keep true — `T-233`/`T-237` were both about spec comments drifting):
+
+1. **`console=False`.** A user must not get a console window behind the application. The probes
+   then have no `stdout`, so `_freeze_probe` **writes its report to a file as well as printing**,
+   and CI reads the file. `dist/frozen-probe.log` already exists for one probe; extend the pattern
+   to all four rather than adding a fifth mechanism.
+2. **ffmpeg bundled.** An **LGPL** build — `OPS-001` and `LIC-001` are explicit, and the two common
+   Windows build sources differ on exactly this: `gyan.dev`'s builds are GPL and may **not** be
+   bundled; `BtbN`'s `*-lgpl-shared` builds may. The choice of source is recorded in the task on
+   completion with its licence text. `find_ffmpeg` gains a **bundled** candidate, searched *after*
+   the explicit override and *before* `PATH`, so a user's own newer ffmpeg on `PATH` does not
+   silently win over the one that was tested — and the Settings screen reports the source, which
+   it already does for the override.
+3. **Version metadata.** A Windows version resource (file and product version from
+   `__version__`, product name, copyright), and `icon.ico` on the executable.
+
+**What does not change**: `freeze_support()` first (`REL-001`'s highest-risk item, `T-020`'s
+smoke keeps proving it), one-dir, Qt dynamically linked inside the bundle, `collect_data_files`
+for yt-dlp (`REL-002`).
+
+#### Acceptance criteria
+
+- The `frozen windows` job builds in **both** modes and runs all four probes against the
+  **windowed** build, reading their file reports; a mutation that drops the file-write turns the
+  job red rather than silently green
+- Launching the windowed build opens no console window — asserted on the runner by
+  `T-026`'s harness (no console `HWND` belonging to the process)
+- `find_ffmpeg` on the built artifact reports `source="bundled"`, and the same build with the
+  bundled binary deleted degrades exactly as `REQ-024` describes rather than crashing
+- The ffmpeg licence text and a statement of *which* build it is (source, version, LGPL) ship
+  inside the artifact — `T-323` gates their presence; this task puts them there
+- `--version` on the built artifact prints `__version__` (`test_skeleton`'s existing contract,
+  now on the frozen binary)
+- `docs/DEVELOPMENT.md`'s *Building the frozen artifact* section documents both modes
+
+#### Out of scope
+
+- The installer (`T-322`). This produces `dist/tracks-and-trails/`; that wraps it
+- The Linux artifact (`T-321`)
+- Size work. `REL-001` accepted the size; record the number, do not chase it
+
+---
+
+### T-320 — Versioning policy, release documentation, and the first version number
+
+**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan. **Gates the start**: every build
+stamps the version this decides.
+**Owner:** Implementer proposes; Maintainer rules on the scheme and the first number
+**Priority:** High
+**Phase:** Phase 5
+**Depends on:** nothing
+**Relevant context:** `DOC-002` (`docs/RELEASE.md` is created *"when Phase 5 begins"*;
+`CHANGELOG.md` *"at the first tagged release"*); `SECURITY.md` §Supported versions (*"when releases
+begin, this section will name which of them receive fixes"*); `IMPLEMENTATION_PLAN.md` §Phase 5
+deliverable *"versioning policy, release gate, and rollback procedure documented"*; `DAT-001`;
+`OPS-002`; `PROMPTS.md`'s release-verification prompt; `tests/unit/test_skeleton.py` (asserts
+`--version` prints `__version__`); `[tool.hatch.version]` reads `src/tracks_and_trails/__init__.py`
+**Affected surfaces:** `src/tracks_and_trails/__init__.py`, `docs/RELEASE.md` (new),
+`CHANGELOG.md` (new, at tag time), `SECURITY.md`, `README.md`, `docs/DEVELOPMENT.md`
+**Risk:** Low
+
+#### Scope
+
+**The policy, proposed.** SemVer, `0.y.z` until the maintainer declares `1.0`. `main` carries
+`X.Y.Z.devN` between releases; a release commit sets `__version__ = "X.Y.Z"` and is tagged
+`vX.Y.Z`; the next commit bumps to `X.Y.(Z+1).dev0`. **The first release is `0.1.0`** — it is what
+`__init__.py` already says minus the `.dev0`, and `0.x` is honest about a release that ships before
+`REQ-030`'s parity (`IMPLEMENTATION_PLAN.md` §Phase 4.5's resequencing note). Patch releases carry
+fixes only; a yt-dlp baseline bump is at least a minor release, because it changes behaviour on
+every site (`OPS-002`, release gate item 10a).
+
+**`docs/RELEASE.md`**, created now per `DOC-002`: the gate (`TESTING.md` §8, by reference not
+copy), the version bump, the tag, `T-324`'s workflow, the draft-then-publish step, the SmartScreen
+note if `T-317` chose unsigned, and **rollback** — for the *project*: unpublish the release and
+re-point *latest*; for the *user*: reinstall the previous installer, which the release page keeps;
+for the *data*: **not promised** — `DAT-001`'s migrations are forward-only, so a downgrade across a
+schema change is refused by the application rather than silently corrupting, and the document says
+so instead of implying a rollback that does not exist.
+
+**`SECURITY.md` §Supported versions** filled at the first tag: the latest minor receives fixes,
+older ones do not. **`README.md`** gains an *Install* section pointing at releases and loses *"there
+are no installers or packages yet"* — and is checked for any wording that claims yt-dlp parity,
+which `REQ-030`'s resequencing forbids until Phase 4.5 lands.
+
+#### Acceptance criteria
+
+- `docs/RELEASE.md` exists and a reader with no context can cut a release from it alone
+- The version scheme is a `REL-` decision or a section of `docs/RELEASE.md`, named by the
+  maintainer's ruling on the scheme and on `0.1.0`
+- `test_skeleton`'s `--version` contract still holds, and a test asserts the tag-to-version rule
+  (a `vX.Y.Z` tag on a commit whose `__version__` is not `X.Y.Z` is a gate failure in `T-324`)
+- `CHANGELOG.md` is created **in the release commit**, not before — `DOC-002`'s trigger is the
+  first tagged release, and an empty changelog is the speculative document that decision forbids
+- The README makes no parity claim; grep evidence recorded
+
+#### Out of scope
+
+- Application self-update. `REL-001` and `OPS-002`'s amendment leave it open, and it reopens
+  `OPS-002`; it is not a `0.1.0` deliverable
+
+---
+
+### T-321 — The Linux release artifact, built where it will run
+
+**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan. Written against **AppImage**, which
+`T-106` recommends; if the ruling differs, this task is rewritten before it starts rather than bent
+**Owner:** Implementer
+**Priority:** High — it is the other artifact
+**Phase:** Phase 5
+**Depends on:** `T-106` (the format), `T-320` (the version); `T-318` if it chose a Linux VM, since
+that is the build host this task wants
+**Relevant context:** `REL-001`; `OPS-001` (ffmpeg stays a system dependency); `OPS-012`'s surrender
+— *"a Fedora-built binary may not run on an older distro … `REL-001`'s release build is Phase 5
+and must revisit where Linux artifacts are produced"*; `NFR-004`; `NFR-009`; `REQ-024`; `T-298`
+**Affected surfaces:** `packaging/` (an AppDir recipe, `.desktop`, AppStream `metainfo.xml`),
+`.github/workflows/`, `docs/DEVELOPMENT.md`
+**Risk:** Medium — glibc symbol versioning is a silent failure: the artifact builds, runs on the
+build host, and dies with `GLIBC_2.38 not found` on the user's machine
+
+#### Scope
+
+**Build against the oldest glibc the README will claim.** `OPS-012` moved the frozen Linux build
+onto Fedora and recorded exactly this consequence. The release build therefore runs in a
+**container of the oldest supported distribution** — proposed: the current Ubuntu LTS, which is
+also the `apt` platform `OPS-012` says is *"no longer exercised anywhere"* — on the self-hosted
+Linux runner. The README's platform line then says what was actually built and tested against.
+
+**AppDir from the PyInstaller tree**: `AppRun` launching the frozen binary, a `.desktop` entry,
+the icon set that already exists under `resources/icons/`, and an AppStream `metainfo.xml` so
+desktop environments show a name and description rather than a filename. Built with `appimagetool`
+into `Tracks_and_Trails-X.Y.Z-x86_64.AppImage`.
+
+**ffmpeg is not inside** (`OPS-001`), and the existing `REQ-024` path already reports its absence
+and degrades; this task adds nothing there beyond confirming the AppImage's `PATH` search sees the
+host's ffmpeg.
+
+**`NFR-004` holds**: `XDG_*` resolution from inside an AppImage is the same as from source, which
+`T-298`'s isolation gate pins — assert it on the built AppImage, not by inference.
+
+#### Acceptance criteria
+
+- The artifact is produced by a documented command on the container image the README names, and
+  the image's glibc version is recorded with the artifact
+- It launches on a **clean** machine of that distribution (`T-318`'s evidence), and on the
+  Fedora desktop, and runs one real download to completion on each
+- `T-020`'s spawn probe, `T-033`'s yt-dlp probe and `T-298`'s isolation check all pass **against the
+  AppImage**, not only against the one-dir tree it was made from
+- The `.desktop` entry and `metainfo.xml` validate (`desktop-file-validate`, `appstreamcli
+  validate`) and the icon appears in the launcher
+- Qt inside the AppImage is dynamically linked (`T-323` gates it; this task keeps it true)
+
+#### Out of scope
+
+- Flatpak or system packages, unless `T-106` rules otherwise
+- A Linux ffmpeg bundle — `OPS-001`'s reopening condition, not this task's
+
+---
+
+### T-322 — The Windows installer
+
+**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 5
+**Depends on:** `T-319` (what it installs), `T-320` (the version), `T-317` (whether it is signed)
+**Relevant context:** `REL-001` (*"PyInstaller one-dir build + Inno Setup installer"*); `OPS-004`
+(silent install, placement, uninstall are automatable — `T-039` does that; whether it *feels*
+normal stays human); `DAT-001` (user data survives an uninstall); `NFR-004` (nothing written
+beside the installed application); `OPS-012` §3 (a self-hosted runner must not provision itself)
+**Affected surfaces:** `packaging/tracks-and-trails.iss` (new), `.github/workflows/`,
+`docs/RELEASE.md`
+**Risk:** Medium — an installer is the first thing a user judges, and every default it picks is a
+decision
+
+#### Scope
+
+An Inno Setup script producing `Tracks-and-Trails-X.Y.Z-setup.exe`. **The defaults, proposed and
+each one reversible by ruling:**
+
+- **Per-user install, no administrator prompt.** The application writes nothing beside itself
+  (`NFR-004`), so it needs no elevation; a per-machine install would need an admin prompt on top
+  of whatever `T-317` decided about SmartScreen, which is two warnings before the first launch.
+- **Start Menu shortcut always; desktop shortcut opt-in**, unchecked by default.
+- **Silent install** honours `/VERYSILENT /NORESTART` — `T-039` asserts this.
+- **Uninstall removes the installed tree and shortcuts and leaves user data, settings and the job
+  database in place**, and says so on the uninstaller's final page — `DAT-001`. `T-039` asserts
+  the two halves separately: leftovers under the install root are a failure; leftovers under the
+  user directories are the intended behaviour.
+- **No file associations and no protocol handler** in `0.1.0`. `T-104` (a second launch handing
+  its URL to the running instance) is not built, so an association would open a message box
+  rather than a download. Recorded here so it is a known omission rather than a surprise.
+- **Licence texts installed** alongside the application — `LIC-001`'s artifact obligation, gated
+  by `T-323`.
+
+**Inno Setup on `STARBASE`** is a prerequisite, installed by hand once and recorded — a self-hosted
+runner must not provision itself as a side effect of a build (`OPS-012` §3, and the `setup-python`
+incident it cites).
+
+#### Acceptance criteria
+
+- The installer is built by `T-324`'s workflow from `T-319`'s windowed artifact, and its version
+  string matches `__version__`
+- A silent install on a clean machine (`T-318`) completes, the Start Menu entry launches the
+  application under the real platform plugin, and an uninstall leaves nothing under the install
+  root and everything under the user directories
+- `T-039` is unblocked and its four gates are green on the runner
+- The installer's own strings name the application, version and publisher; nothing in them names
+  a developer path (`T-323`'s scan covers the tree; this covers the installer)
+- If `T-317` chose unsigned: the SmartScreen prompt is screenshot once on the clean machine and
+  filed as evidence, so the README's description of it is of the real thing
+
+#### Out of scope
+
+- Upgrade-over-existing and downgrade paths — real, and their own task once `T-320`'s policy
+  exists to say what a downgrade even means
+- Auto-update
+
+---
+
+### T-323 — Executable gates over the built artifact
+
+**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan
+**Owner:** Implementer
+**Priority:** High — four release-gate items are currently prose, and prose is not a gate
+**Phase:** Phase 5
+**Depends on:** `T-319` and `T-321` for something to gate; written so it runs against the smoke
+build until they land
+**Relevant context:** `TESTING.md` §8 items 9, 11, 12, 13; `NFR-009`; `LIC-001` (*"ship the
+license texts, and keep those libraries dynamically linked so a user could substitute their own
+build"*); `OPS-002` (the wheel-extraction update path needs a pure yt-dlp); `NFR-007`; `T-033`'s
+probe extension and `T033-R4`'s data blindness; `T-298`
+**Affected surfaces:** `packaging/`, `.github/workflows/ci.yml`'s `frozen` job, a new
+`packaging/artifact_gates.py`, `docs/project/TESTING.md` §8
+**Risk:** Low — each check is small; the risk is the usual one, a gate that passes with its
+subject removed, which is why each is mutation-checked
+
+#### Scope
+
+Four checks, each **a mutation that turns the job red** (the house rule since `T031-R2`):
+
+| §8 item | Check | The mutation that must fail it |
+|---|---|---|
+| 11 · Qt dynamically linked | The bundle contains Qt as shared libraries (`libQt6*.so*` / `Qt6*.dll`) and the executable imports none of Qt's symbols statically | Strip the Qt libraries from `dist/` and re-link a static stand-in — or simpler: assert the library files' presence *and* that `ldd`/`dumpbin /dependents` on the Qt plugin names them; deleting one fails |
+| 12 · Licence texts present | `licenses/` in the artifact holds Qt's LGPLv3, ffmpeg's LGPL (Windows), yt-dlp's Unlicense, and a `NOTICE` stating the dynamic-link obligation in `LIC-001`'s words | Delete any one file |
+| 13 · No secrets or personal paths | A scan of every file in `dist/` for the maintainer's home path, user name, `.netrc`, cookie-jar names and anything `logging.remember_a_secret` would redact | Plant one string in a data file |
+| 9 · yt-dlp purity | The bundled `yt_dlp` tree contains no compiled extension (`*.so`, `*.pyd`), so `OPS-002`'s wheel-extraction update remains viable | Drop a `.pyd` into the tree |
+
+**The scan for item 13 is the interesting one.** It reuses `core/logging`'s redaction vocabulary
+rather than a second list, so a secret class added there is scanned for here without anyone
+remembering — `T015-R1`'s rule applied to a gate.
+
+#### Acceptance criteria
+
+- All four checks run in the `frozen` job on both platforms and in `T-324`'s release workflow, and
+  each was turned red by its named mutation on a real build, with the run ids recorded
+- `docs/project/TESTING.md` §8 marks items 9, 11, 12 and 13 as **executable**, pointing at the
+  check, and the manual `PROMPTS.md` release prompt is narrowed to what remains manual
+- The licence directory's contents are the exact upstream texts, with their versions and sources
+  recorded in `packaging/licenses/README.md`
+
+#### Out of scope
+
+- Items 7, 14 and 15 — clean machine, cold start, the human session — which are `T-318`, `T-325`
+  and `T-327` because a machine cannot take them
+
+---
+
+### T-324 — A release workflow that builds, gates and drafts — and never publishes
+
+**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 5
+**Depends on:** `T-319`, `T-321`, `T-322`, `T-323`, `T-320`
+**Relevant context:** `.github/workflows/ci.yml`'s `frozen` job (builds both artifacts every push
+and uploads **evidence only**, 30-day retention — nothing today produces a downloadable release);
+`OPS-009`/`OPS-010`/`OPS-012` (where each platform builds); `SECURITY.md` §CI trust boundary
+(read-only default token, no secrets); `PROMPTS.md`'s release prompt (*"do not tag, commit, push,
+or publish unless explicitly instructed"*); `NFR-007`
+**Affected surfaces:** `.github/workflows/release.yml` (new), `docs/RELEASE.md`
+**Risk:** Medium — a workflow with permission to create releases is the one place the CI trust
+boundary widens, and it must widen by exactly one scope
+
+#### Scope
+
+Triggered by a `v*` tag. On the same runners `ci.yml` uses — Windows on `STARBASE`, Linux on the
+oldest-glibc container `T-321` names — it:
+
+1. Asserts the tag matches `__version__` (`T-320`'s rule) and the commit is on `main`
+2. Builds `T-319`'s windowed artifact and `T-322`'s installer; builds `T-321`'s AppImage
+3. Runs every frozen probe and every `T-323` gate against the **release** builds
+4. Writes `SHA256SUMS` for both artifacts
+5. Creates a **draft** GitHub Release with the artifacts, the checksums, and the `CHANGELOG.md`
+   section for the version as its body
+
+**It stops at draft, always.** Publishing is a human click after `T-328`'s review, which is the
+release prompt's own rule and the only place a release can be inspected before it is public. The
+workflow's token gets `contents: write` for that one job and nothing else keeps it (`SECURITY.md`).
+
+#### Acceptance criteria
+
+- A tag on a test branch produces a draft release with two artifacts and a checksums file, and
+  `gh release view` shows `draft: true`
+- A tag whose version disagrees with `__version__` fails at step 1 with the disagreement named
+- The `permissions:` block grants `contents: write` to the release job only; the workflow file is
+  reviewed against `SECURITY.md` §CI trust boundary and the review recorded
+- `docs/RELEASE.md` describes the tag → draft → review → publish sequence, and the rollback of
+  each step
+- The `frozen` job in `ci.yml` is unchanged in scope — it remains the per-push smoke, and this
+  workflow does not run on push
+
+#### Out of scope
+
+- Publishing. Deliberately
+- Signing (`T-317` decides; if signed, the signing step lives here and the key does not)
+
+---
+
+### T-325 — Cold start, measured on the artifact that ships
+
+**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan
+**Owner:** Implementer measures; Maintainer's machine is the reference
+**Priority:** High — it is a release-gate item with a number in it
+**Phase:** Phase 5
+**Depends on:** `T-319`, `T-321`, `T-322` (an installed Windows build and an AppImage to time)
+**Relevant context:** `NFR-002` (*"cold start to interactive window under 3 seconds on the
+reference Linux machine"*); `TESTING.md` §8 item 14; `T-007`, which measured this **from source**
+on 2026-07-25 and is the only recorded number
+**Affected surfaces:** `docs/project/evidence/`, `docs/project/TESTING.md` §8
+**Risk:** Low to measure; Medium if it fails — a frozen one-dir build pays for import-time
+unpacking that a source checkout does not, and PyInstaller one-dir launches are commonly 2–4×
+slower than the same code from a venv
+
+#### Scope
+
+`T-007`'s measurement predates freezing, `OPS-002`'s yt-dlp bundling, the thumbnail store, the
+theme and the settings dialog. **It is not evidence about the artifact.** Measure again:
+
+- **Cold**: first launch after a reboot (Linux: additionally `echo 3 > drop_caches` before the
+  launch), timed from process start to the main window's first paint — instrumented by an
+  environment-gated timestamp the application already has the shape for (`_freeze_probe`'s
+  `record_app_start`), not by a stopwatch
+- **Warm**: the second launch, recorded as a second number rather than averaged in
+- Five runs each, on the reference Linux machine for the AppImage and on `STARBASE` for the
+  installed Windows build; the median is the number, the five are retained
+
+**If it fails, that is a task, not a re-measure** — `NFR-002` is a requirement, and the honest
+outcomes are *meets*, *does not meet and here is the profile*, or a maintainer amendment of the
+number with the reason.
+
+#### Acceptance criteria
+
+- An evidence file per platform with machine, method, the ten raw numbers and the two medians
+- `TESTING.md` §8 item 14 cites the file, and names *which* build and version were measured
+- A failure produces a task with a profile attached, and this task closes as *measured* either way
+
+#### Out of scope
+
+- Optimising anything. Measure first
+
+---
+
+### T-326 — The release-candidate suite: everything the gate asks a machine for, on both platforms
+
+**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 5
+**Depends on:** `T-324` (a release candidate to run against)
+**Relevant context:** `TESTING.md` §8 items 1–5, 8, 10, 10a; §7's mandatory-coverage table;
+`pyproject.toml`'s `addopts = "-m 'not network …'"` — **the network suite is not in CI**;
+`ytdlp-canary.yml` (`workflow_dispatch`); `OPS-002`; `DAT-001`
+**Affected surfaces:** `docs/project/evidence/`, possibly a `release-candidate` job in `T-324`'s
+workflow
+**Risk:** Low — these are runs, not builds; the risk is claiming one that did not happen
+
+#### Scope
+
+The release gate's machine half, run **against the candidate** rather than against `main`:
+
+- Items 1–2: static gates and the full default suite, both platforms — `ci.yml` already does this
+  per push; the record here is the run ids at the RC commit
+- Item 3: **`pytest -m network`** against the pinned baseline, both platforms — this suite runs
+  nowhere automatically today, so it is a deliberate manual run with its output retained
+- Item 4: every §7 mandatory test present — enumerated by name against the table, once, with the
+  test ids recorded so the next release diffs the list rather than re-reading it
+- Item 5: **the migration check is `N/A` for a first release and says so** — there is no previous
+  release's database. The obligation is written into `docs/RELEASE.md` for `0.2`: keep a `0.1.0`
+  database fixture and open it
+- Item 8: the frozen smoke, on the **release** builds — `T-324` runs it; the record is the run id
+- Item 10: the in-app yt-dlp update from the release artifact — `T-324` runs the probe; the record
+  is the run id
+- Item 10a: only if the baseline is bumped in this release; for `0.1.0` it is not, and that is
+  recorded
+
+#### Acceptance criteria
+
+- One evidence file for the release candidate listing each item, the command or run id that
+  satisfied it, and the platform — no item marked passed without its artifact
+- The network-suite output is retained for both platforms
+- `docs/RELEASE.md` gains the `0.2` migration-fixture obligation
+
+#### Out of scope
+
+- Items 6, 7, 11–15: `T-212`, `T-318`, `T-323`, `T-325`, `T-327` respectively
+
+---
+
+### T-327 — The Windows manual verification session
+
+**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan. **Human, and blocking**: `TESTING.md`
+§8 item 15 says *"CI green is not a substitute"*
+**Owner:** Maintainer performs; Implementer prepares the list and records the result
+**Priority:** High — the one exit criterion the plan says cannot be met from the development
+environment
+**Phase:** Phase 5
+**Depends on:** `T-322` (an installer to install) and `T-318` (a clean Windows machine to install
+it on — Windows Sandbox if that is what it chose)
+**Relevant context:** `TESTING.md` §9's manual list and its `OPS-004` residue: *whether the
+rendering looks right, whether Narrator sounds coherent, whether the installer feels normal, shell
+foreground and file-association behaviour, long-running stability*; `IMPLEMENTATION_PLAN.md`
+§Phase 4's screen-reader amendment (coherence *"belongs to the pre-release session"* — this is
+that session, for Windows); `REQUIREMENTS.md` §3; `T-212` (the same sitting, other list)
+**Affected surfaces:** a review record under `docs/project/reviews/`, indexed by `REVIEWS.md`;
+`REQUIREMENTS.md` §3's *known-unverified* paragraph, which this discharges
+**Risk:** Low to run; the risk is the schedule — it needs the maintainer, a Windows desktop and an
+installer on the same afternoon
+
+#### Scope
+
+`OPS-004` shrank this to the subjective residue and named each item. The session performs exactly
+that list — no more, because everything else is gated; no less, because each item is there for
+a reason `OPS-003` and `OPS-004` recorded:
+
+1. Install from `T-322`'s installer on the clean machine, watching the prompts (`T-317`'s
+   SmartScreen screenshot is taken here if unsigned)
+2. Rendering under light and dark themes — does it *look* right, beyond matching a baseline
+3. **Narrator**: open the add dialog, stage a URL, open its format table, choose a format, add it,
+   start the queue — is what Narrator says *coherent*, as distinct from the tree being correct
+4. Native file dialogs, *Show in folder*, *Open*: does Explorer come to the foreground, does the
+   dialog start somewhere sensible, is the association the expected one
+5. A long real download with the window in use throughout — stability under real use
+6. Uninstall, watching what it says about user data
+
+**`T-212`'s recorded checklist run is the same sitting**, deliberately: one afternoon with the
+built artifact rather than two.
+
+#### Acceptance criteria
+
+- A dated review record with each of the six items marked and described in the maintainer's own
+  words, indexed by `REVIEWS.md` — the form `TESTING.md` §8 item 15 names
+- `REQUIREMENTS.md` §3's *known-unverified on Windows* paragraph is rewritten to what was
+  actually observed, no further
+- Anything found becomes a task, and a task found here blocks the release only if it is a
+  Critical or High defect (`TESTING.md` §14's severities)
+
+#### Out of scope
+
+- Anything CI already gates. Recording a gated item as *passed by hand* is the drift `TESTING.md`
+  §9 warns against
+
+---
+
+### T-328 — The first release
+
+**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan. **This is the phase exit.**
+**Owner:** Reviewer runs the release review; Maintainer tags and publishes
+**Priority:** High
+**Phase:** Phase 5
+**Depends on:** every task above, `T-212`, `T-039`
+**Relevant context:** `PROMPTS.md`'s release-verification prompt; `TESTING.md` §8 in full; §14
+(one initial review plus one focused pass, and *"a red canary is not a reason to skip the bump"*);
+`DOC-002` (`CHANGELOG.md` at the first tag); `IMPLEMENTATION_PLAN.md` §Phase 5 exit criteria;
+§Phase 4.5's resequencing note (**no parity claim**)
+**Affected surfaces:** a release review record; `CHANGELOG.md`; `SECURITY.md` §Supported
+versions; the tag `v0.1.0`; the GitHub Release
+**Risk:** Medium — the first release is the one with no previous release to compare against, so
+every gate is being exercised for the first time at once
+
+#### Scope
+
+1. **Freeze the candidate**: the release commit sets `__version__ = "0.1.0"`, creates
+   `CHANGELOG.md` with a `0.1.0` section, fills `SECURITY.md` §Supported versions, and is tagged
+   `v0.1.0`. `T-324` drafts the release.
+2. **The release review**, per `PROMPTS.md`'s prompt: `TESTING.md` §8 item by item, on both
+   platforms, each with its evidence — `T-323`'s gates, `T-325`'s numbers, `T-326`'s runs,
+   `T-318`'s clean-machine files, `T-327`'s and `T-212`'s sessions. Recorded in a review record
+   indexed by `REVIEWS.md`. Its verdict is the phase's.
+3. **Publish**: the draft becomes public by the maintainer's hand. The README's install section
+   goes live in the same push.
+4. **Reopen `main`**: `__version__` bumps to `0.1.1.dev0`; `IMPLEMENTATION_PLAN.md` marks Phase 5
+   exited and Phase 4.5 as next; `STATUS.md` says there is a release.
+
+**What the release notes must not say**: that this application reaches everything yt-dlp does.
+`REQ-030` is unmet by design until Phase 4.5, and `REQ-031`'s escape hatch is the first thing
+scheduled there. The notes say what *is* covered, and that the rest is coming as an update.
+
+#### Acceptance criteria
+
+- Every §8 item has evidence in the review record, or is marked `N/A` with the reason (item 5,
+  item 10a) — none marked passed on a green CI run alone
+- The published release carries both artifacts, `SHA256SUMS`, and notes that make no parity claim
+- `IMPLEMENTATION_PLAN.md` §Phase 5 records the exit with the review's verdict and date
+- `OPS-005`'s rule is applied to the four Windows-only diagnostic tasks reassigned here
+  (`T-074`, `T-092`, `T-068`, `T-056`): each gets an explicit disposition — carried or closed —
+  rather than silently outliving the release they were said to matter for
+
+#### Out of scope
+
+- Anything Phase 4.5 owns. The release ships without it, on the maintainer's 2026-09-10 ruling
+
+---
 
 ## Blocked
 

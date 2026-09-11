@@ -5,9 +5,10 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-09-10 — **Phase 4.5 resequenced to follow Phase 5** as a post-release
+**Last updated:** 2026-09-11 — §Phase 5 gains a task map (`T-317`–`T-328`) tying every deliverable and
+exit criterion to a filed task. *(2026-09-10: **Phase 4.5 resequenced to follow Phase 5** as a post-release
 update, and Phase 4's recorded checklist run moved to Phase 5. Both by maintainer ruling, with what
-each gives up recorded where it applies rather than here. *(2026-08-15: §Phase 4's `T-203` paragraph
+each gives up recorded where it applies rather than here.)* *(2026-08-15: §Phase 4's `T-203` paragraph
 corrected — it named the wrong ruled
 option, and said the build was in review a month after it was approved. `T-246` added to the
 maintainer-found entries that are not plan deliverables.)* *(Earlier that day: §Phase 4's
@@ -924,6 +925,34 @@ long before Phase 5.
 - License texts for Qt, ffmpeg, and yt-dlp shipped with the distribution (`LIC-001`)
 - Versioning policy, release gate, and rollback procedure documented
 - First tagged release
+
+### Task map — filed 2026-09-11, as proposals for the maintainer's priorities
+
+Every deliverable and exit criterion above now has an owner in `TASKS.md`. Three are rulings that
+gate the start; the rest are sequenced by dependency.
+
+| Plan item | Task | Kind |
+|---|---|---|
+| The `REL-` decision on Linux format | `T-106` (sharpened with an AppImage recommendation) | **Ruling** |
+| Whether the Windows installer is signed | `T-317` | **Ruling** |
+| How "a clean machine" is evidenced (`OPS-010`/`OPS-012` surrendered it) | `T-318` | **Ruling** |
+| Versioning policy, `docs/RELEASE.md`, `CHANGELOG.md`, rollback, `0.1.0` | `T-320` | Docs + decision |
+| Windows: PyInstaller one-dir, windowed, ffmpeg bundled (`OPS-001`) | `T-319` | Build |
+| Linux: packaging per the `REL-` decision, on the oldest supported glibc | `T-321` | Build |
+| Inno Setup installer | `T-322` | Build |
+| Installer verified on the runner (`OPS-004`) | `T-039` (existing, Blocked until `T-322`) | Gate |
+| Qt dynamically linked · licence texts · no secrets · yt-dlp purity (§8 items 9, 11–13) | `T-323` | Gate |
+| Tag → build → gate → **draft** release, never publish | `T-324` | Workflow |
+| Cold start under 3 s, on the artifact (`NFR-002`) | `T-325` | Measurement |
+| Full suite, network suite, §7 list, migration `N/A` (§8 items 1–5, 8, 10) | `T-326` | Runs |
+| Windows manual verification session (§8 item 15) | `T-327`, with `T-212` in the same sitting | **Human** |
+| Release review, tag, publish, reopen `main` | `T-328` | Exit |
+
+**Not scheduled here, deliberately:** application self-update (`REL-001` leaves it open and it
+reopens `OPS-002`), upgrade/downgrade installer paths (their own task once `T-320`'s policy exists
+to say what a downgrade means), and the four Windows-only diagnostic tasks reassigned to this phase,
+which `OPS-005` says do not gate it — `T-328` gives each an explicit disposition rather than letting
+them outlive the release.
 
 ### Exit criteria
 

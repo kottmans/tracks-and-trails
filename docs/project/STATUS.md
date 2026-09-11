@@ -20,11 +20,16 @@ owns phase deliverables and exit criteria.
   *none*), `T-306` (codec names, chosen rows, a demoted identifier column), `T-309` (a warning that
   claimed a read failure that had not happened), and `T-307`, **Cancelled** — a defect that did not
   exist, filed on a check that contradicted the specification it tested against.
-- **`T-308`, `T-310`, `T-312` and `T-314` are Complete**, approved by independent review and moved
-  to [COMPLETED_TASKS](COMPLETED_TASKS.md) on 2026-09-10. What remains In Review is `T-313` and
-  `T-315` (a **second** correction round each, awaiting verification — both first corrections
-  introduced a regression of the class they fixed), `T-297` (maintainer observation in place of a
-  capture), `T-316` (a staged row now states what it is) and `T-286`.
+- **Every task from the 2026-09-09/10 built-window sessions is Complete.** `T-308`, `T-310`,
+  `T-312`, `T-314` closed 2026-09-10; `T-313`, `T-315`, `T-311`, `T-297`, `T-316`, `T-286` and
+  `T-290` closed 2026-09-11, each approved by independent review and moved to
+  [COMPLETED_TASKS](COMPLETED_TASKS.md). **Nothing is In Review.** `T-297` closed under a recorded
+  amendment — which build the maintainer observed is not established, and its record says so.
+- **Phase 5 is planned.** Twelve tasks (`T-317`–`T-328`) plus a sharpened `T-106` tie every
+  Phase 5 deliverable and exit criterion to an owner; see the task map in
+  [IMPLEMENTATION_PLAN §Phase 5](IMPLEMENTATION_PLAN.md#phase-5--distribution). Three are
+  maintainer rulings that gate the start: the Linux format, installer signing, and how a clean
+  machine is evidenced.
 
 - **T-300 is Complete**, approved at `5eecad9` on 2026-09-08 by independent review and
   moved to [COMPLETED_TASKS](COMPLETED_TASKS.md). Its two Low findings were corrected
@@ -56,10 +61,8 @@ owns phase deliverables and exit criteria.
   **`T-286` was built on 2026-09-10** and is In Review: the container note now names the case
   recoding is for, not only what it costs.
 
-  **`T-290` was built on 2026-09-11** and is In Review — the maintainer ruled *demote it and say
-  when*, so a newer yt-dlp now reads as recovery rather than as a standing setting. **Phase 4 exit
-  work is now the exit review itself**, with `T-297`, `T-286`, `T-290` and `T-316` awaiting
-  verification.
+  **`T-290` is Complete**, approved 2026-09-11 after one correction round. **Phase 4's exit work is
+  the exit review, and nothing else** — every deliverable and every built-window finding is closed.
 
   **`T-238` is Complete**, closed 2026-09-11 on the maintainer's explicit no-action decision
   (`TESTING.md` §14). The crash was never reproduced; the guard is the outcome, criterion 4 is met
