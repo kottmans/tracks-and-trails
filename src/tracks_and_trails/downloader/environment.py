@@ -35,6 +35,7 @@ No Qt: this runs in the worker as well as the GUI process. No shell, ever
 
 import os
 import shutil
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
@@ -183,6 +184,23 @@ class FfmpegReport:
         return "ffmpeg was not found. Unavailable: " + "; ".join(self.unavailable_features) + "."
 
 
+def bundled_ffmpeg() -> Path | None:
+    """The ffmpeg a frozen build shipped with, or `None` when there is not one (`T-319`).
+
+    **Windows only, in practice, and that is `OPS-001`** — ffmpeg is bundled there and a system
+    dependency on Linux, which is also why `REL-004` chose AppImage over a sandboxed format. This
+    function does not encode that asymmetry: it asks whether *this* artifact carries one, so a
+    Linux build that ever bundled one would be found without a second code path.
+
+    **Beside the executable**, which is where `packaging/tracks-and-trails.spec` puts it. A source
+    checkout is not frozen and answers `None` immediately, so nothing here runs in development.
+    """
+    if not getattr(sys, "frozen", False):
+        return None
+    candidate = Path(sys.executable).parent / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+    return candidate if candidate.is_file() else None
+
+
 def find_ffmpeg(
     override: Path | None = None,
     search_path: str | None = None,
@@ -215,6 +233,23 @@ def find_ffmpeg(
             source="explicit override, not usable",
             unavailable_features=FFMPEG_DEPENDENT_FEATURES,
         )
+
+    # **The build's own copy, before `PATH`** (`T-319`). A user with a newer ffmpeg installed
+    # should not silently displace the one this artifact was tested against: `OPS-001` bundles it
+    # on Windows precisely so the feature works without the user arranging anything, and a
+    # different build on `PATH` is a different set of encoders. The explicit override still wins
+    # over both, because that is the user saying which one they mean.
+    #
+    # **A bundled binary that is present but not executable falls through to `PATH` rather than
+    # being reported unusable**, which is the opposite of the override's rule above and
+    # deliberately so. The override is something the user asked for, so failing it silently would
+    # hide their setting; this is something the artifact provided, and a broken one should cost a
+    # user their `PATH` copy as well.
+    bundled = bundled_ffmpeg()
+    if bundled is not None:
+        resolved = shutil.which(str(bundled))
+        if resolved is not None:
+            return FfmpegReport(path=Path(resolved), source="bundled with this build (OPS-001)")
 
     found = shutil.which(
         "ffmpeg", path=search_path if search_path is not None else os.environ.get("PATH")

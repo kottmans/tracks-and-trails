@@ -16,6 +16,7 @@ not necessarily see as an `import yt_dlp`.
 import ast
 import importlib.metadata
 import importlib.util
+import os
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -122,6 +123,12 @@ REVIEWED_PUBLIC_API = frozenset(
         "FfmpegFeature",
         "FfmpegReport",
         "YtdlpCandidate",
+        # `T-319`. **A locate-side name, which is why it is admitted here.** It answers *where a
+        # frozen build keeps the ffmpeg it shipped with* — the same question `find_ffmpeg` asks of
+        # `PATH`, on a different shelf. It imports nothing, executes nothing, and says nothing
+        # about versions or whether the binary works; `OPS-001` bundles ffmpeg on Windows and this
+        # is how the artifact's own copy is found before a user's `PATH`.
+        "bundled_ffmpeg",
         "describe_candidates",
         "find_ffmpeg",
         "normalise_version",
@@ -655,3 +662,110 @@ def test_a_non_numeric_version_does_not_crash_the_comparison() -> None:
     from tracks_and_trails.downloader.environment import normalise_version
 
     assert normalise_version("2026.7.4dev") != normalise_version("2026.7.4")
+
+
+# --- the build's own ffmpeg (`T-319`) ----------------------------------------------------------
+
+
+def test_a_source_checkout_has_no_bundled_ffmpeg(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nothing here runs in development, and `sys.frozen` is the whole of the test.
+
+    `OPS-001` bundles ffmpeg in the *artifact*. A checkout that started reporting one would mean
+    the search order below was being exercised by developers and by nobody it was written for.
+    """
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    assert environment.bundled_ffmpeg() is None
+
+
+def test_a_frozen_build_finds_the_ffmpeg_beside_its_executable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Where `packaging/tracks-and-trails.spec` puts it, asked for rather than assumed."""
+    name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+    shipped = tmp_path / name
+    shipped.write_text("")
+    shipped.chmod(0o755)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "tracks-and-trails"))
+
+    assert environment.bundled_ffmpeg() == shipped
+
+
+def test_a_frozen_build_without_one_reports_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Linux artifact ships no ffmpeg (`OPS-001`), and must not claim to."""
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "tracks-and-trails"))
+
+    assert environment.bundled_ffmpeg() is None
+
+
+def test_the_bundled_copy_is_preferred_over_one_on_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**The ordering this task exists for** (`T-319`).
+
+    A user with their own newer ffmpeg installed must not silently displace the build this
+    artifact was tested against: a different build is a different set of encoders, and `OPS-001`
+    bundles one precisely so the feature works without the user arranging anything.
+    """
+    name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+    shipped = tmp_path / "app" / name
+    shipped.parent.mkdir()
+    shipped.write_text("")
+    shipped.chmod(0o755)
+
+    elsewhere = tmp_path / "path"
+    elsewhere.mkdir()
+    other = elsewhere / name
+    other.write_text("")
+    other.chmod(0o755)
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(shipped.parent / "tracks-and-trails"))
+
+    report = environment.find_ffmpeg(search_path=str(elsewhere))
+    assert report.path == shipped, "the copy on PATH won over the one that shipped"
+    assert "bundled" in report.source
+
+
+def test_an_explicit_override_still_wins_over_the_bundled_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The user saying which one they mean outranks the build's own (`OPS-001`)."""
+    name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+    shipped = tmp_path / "app" / name
+    shipped.parent.mkdir()
+    shipped.write_text("")
+    shipped.chmod(0o755)
+
+    chosen = tmp_path / "chosen" / name
+    chosen.parent.mkdir()
+    chosen.write_text("")
+    chosen.chmod(0o755)
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(shipped.parent / "tracks-and-trails"))
+
+    report = environment.find_ffmpeg(override=chosen)
+    assert report.path == chosen
+    assert "override" in report.source
+
+
+def test_a_build_with_no_bundled_copy_still_finds_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`REQ-024`'s ordinary Linux case, unchanged by any of the above."""
+    name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+    elsewhere = tmp_path / "path"
+    elsewhere.mkdir()
+    (elsewhere / name).write_text("")
+    (elsewhere / name).chmod(0o755)
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "tracks-and-trails"))
+
+    report = environment.find_ffmpeg(search_path=str(elsewhere))
+    assert report.path == elsewhere / name
+    assert report.source == "PATH"

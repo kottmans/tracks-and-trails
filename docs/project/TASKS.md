@@ -188,6 +188,103 @@ accepts it. Until then it is a proposal in a task, which is the narrowest honest
 
 ## Ready
 
+### T-319 — The Windows release build: windowed, versioned, with ffmpeg inside
+
+**Status:** **In Progress** — the ffmpeg search order landed 2026-09-11; the build itself needs
+a Windows machine. Filed the same day with the Phase 5 plan.
+
+#### 2026-09-11 — scope item 2's search order, which is the half that runs on any platform
+
+`find_ffmpeg` gains a **bundled** candidate between the explicit override and `PATH`, exactly as
+scope item 2 describes, plus `bundled_ffmpeg()` to locate it beside the executable where the spec
+will put it.
+
+**The ordering is the point and it is mutation-tested.** A user with their own newer ffmpeg
+installed must not silently displace the build this artifact was tested against — a different
+build is a different set of encoders, and `OPS-001` bundles one so the feature works without the
+user arranging anything. Moving the branch after `PATH` fails
+`test_the_bundled_copy_is_preferred_over_one_on_path` and nothing else. The explicit override
+still outranks both, because that is the user saying which one they mean.
+
+**One judgement recorded rather than left implicit:** a bundled binary that exists but is not
+executable **falls through to `PATH`** instead of being reported unusable, which is the opposite of
+the override's rule. The override is something the user asked for, so failing it silently would
+hide their setting; this is something the artifact provided, and a broken one should not also cost
+the user their own copy.
+
+`bundled_ffmpeg` had to be justified into `test_environment.REVIEWED_PUBLIC_API` — `T035-R3`'s
+allowlist, working as designed. It is a locate-side name: it imports nothing, executes nothing and
+answers neither *what version* nor *does it work*.
+
+**Not done, and none of it can be done from here:** `console=False` and the probes' file reports,
+the ffmpeg binary and its LGPL licence text, the Windows version resource and icon, and every
+acceptance criterion that begins *"on the built artifact"*. Those need a Windows build, and the
+choice of ffmpeg source — `BtbN`'s `*-lgpl-shared`, never `gyan.dev`'s GPL builds — is recorded
+here on completion with its licence text.
+
+*(Filed 2026-09-11 with the Phase 5 plan.)*
+**Owner:** Implementer
+**Priority:** High — it is the artifact
+**Phase:** Phase 5
+**Depends on:** `T-320` (the version it stamps); `T-317` only for the signing step, which may be a
+no-op
+**Relevant context:** `REL-001`; `OPS-001` (ffmpeg bundled on Windows, **LGPL build only**);
+`LIC-001`; `NFR-009`; `packaging/tracks-and-trails.spec` and its `console=True` note, which says
+*"Phase 5 makes this windowed; the probe needs stdout in CI"*; `app.py`'s four `--*-probe` flags;
+`downloader/environment.find_ffmpeg`; `T-020`, `T-033`, `REL-002`
+**Affected surfaces:** `packaging/tracks-and-trails.spec`, `_freeze_probe.py`, `app.py`,
+`downloader/environment.py`, `.github/workflows/ci.yml`'s `frozen` job, `docs/DEVELOPMENT.md`
+**Risk:** Medium — the windowed switch is the one place the smoke build and the release build
+genuinely differ, and the probes CI depends on write to a `stdout` that a windowed process does
+not have
+
+#### Scope
+
+**One spec, two modes.** The Phase 0 spec stays the CI smoke build; the release build is the same
+`Analysis` with three differences, selected by an environment variable rather than a second file
+(two specs is two things to keep true — `T-233`/`T-237` were both about spec comments drifting):
+
+1. **`console=False`.** A user must not get a console window behind the application. The probes
+   then have no `stdout`, so `_freeze_probe` **writes its report to a file as well as printing**,
+   and CI reads the file. `dist/frozen-probe.log` already exists for one probe; extend the pattern
+   to all four rather than adding a fifth mechanism.
+2. **ffmpeg bundled.** An **LGPL** build — `OPS-001` and `LIC-001` are explicit, and the two common
+   Windows build sources differ on exactly this: `gyan.dev`'s builds are GPL and may **not** be
+   bundled; `BtbN`'s `*-lgpl-shared` builds may. The choice of source is recorded in the task on
+   completion with its licence text. `find_ffmpeg` gains a **bundled** candidate, searched *after*
+   the explicit override and *before* `PATH`, so a user's own newer ffmpeg on `PATH` does not
+   silently win over the one that was tested — and the Settings screen reports the source, which
+   it already does for the override.
+3. **Version metadata.** A Windows version resource (file and product version from
+   `__version__`, product name, copyright), and `icon.ico` on the executable.
+
+**What does not change**: `freeze_support()` first (`REL-001`'s highest-risk item, `T-020`'s
+smoke keeps proving it), one-dir, Qt dynamically linked inside the bundle, `collect_data_files`
+for yt-dlp (`REL-002`).
+
+#### Acceptance criteria
+
+- The `frozen windows` job builds in **both** modes and runs all four probes against the
+  **windowed** build, reading their file reports; a mutation that drops the file-write turns the
+  job red rather than silently green
+- Launching the windowed build opens no console window — asserted on the runner by
+  `T-026`'s harness (no console `HWND` belonging to the process)
+- `find_ffmpeg` on the built artifact reports `source="bundled"`, and the same build with the
+  bundled binary deleted degrades exactly as `REQ-024` describes rather than crashing
+- The ffmpeg licence text and a statement of *which* build it is (source, version, LGPL) ship
+  inside the artifact — `T-323` gates their presence; this task puts them there
+- `--version` on the built artifact prints `__version__` (`test_skeleton`'s existing contract,
+  now on the frozen binary)
+- `docs/DEVELOPMENT.md`'s *Building the frozen artifact* section documents both modes
+
+#### Out of scope
+
+- The installer (`T-322`). This produces `dist/tracks-and-trails/`; that wraps it
+- The Linux artifact (`T-321`)
+- Size work. `REL-001` accepted the size; record the number, do not chase it
+
+---
+
 ### T-329 — The focus-ring floor mismodels a header, and Windows is where it shows
 
 **Status:** **In Progress** — **the maintainer ruled option A on 2026-09-11** and it is
@@ -1373,71 +1470,6 @@ recorded here only so that choosing it is a choice.
 #### Out of scope
 
 - Restoring clean-machine CI permanently. `OPS-010`/`OPS-012` stand; this is per-release evidence
-
----
-
-### T-319 — The Windows release build: windowed, versioned, with ffmpeg inside
-
-**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan
-**Owner:** Implementer
-**Priority:** High — it is the artifact
-**Phase:** Phase 5
-**Depends on:** `T-320` (the version it stamps); `T-317` only for the signing step, which may be a
-no-op
-**Relevant context:** `REL-001`; `OPS-001` (ffmpeg bundled on Windows, **LGPL build only**);
-`LIC-001`; `NFR-009`; `packaging/tracks-and-trails.spec` and its `console=True` note, which says
-*"Phase 5 makes this windowed; the probe needs stdout in CI"*; `app.py`'s four `--*-probe` flags;
-`downloader/environment.find_ffmpeg`; `T-020`, `T-033`, `REL-002`
-**Affected surfaces:** `packaging/tracks-and-trails.spec`, `_freeze_probe.py`, `app.py`,
-`downloader/environment.py`, `.github/workflows/ci.yml`'s `frozen` job, `docs/DEVELOPMENT.md`
-**Risk:** Medium — the windowed switch is the one place the smoke build and the release build
-genuinely differ, and the probes CI depends on write to a `stdout` that a windowed process does
-not have
-
-#### Scope
-
-**One spec, two modes.** The Phase 0 spec stays the CI smoke build; the release build is the same
-`Analysis` with three differences, selected by an environment variable rather than a second file
-(two specs is two things to keep true — `T-233`/`T-237` were both about spec comments drifting):
-
-1. **`console=False`.** A user must not get a console window behind the application. The probes
-   then have no `stdout`, so `_freeze_probe` **writes its report to a file as well as printing**,
-   and CI reads the file. `dist/frozen-probe.log` already exists for one probe; extend the pattern
-   to all four rather than adding a fifth mechanism.
-2. **ffmpeg bundled.** An **LGPL** build — `OPS-001` and `LIC-001` are explicit, and the two common
-   Windows build sources differ on exactly this: `gyan.dev`'s builds are GPL and may **not** be
-   bundled; `BtbN`'s `*-lgpl-shared` builds may. The choice of source is recorded in the task on
-   completion with its licence text. `find_ffmpeg` gains a **bundled** candidate, searched *after*
-   the explicit override and *before* `PATH`, so a user's own newer ffmpeg on `PATH` does not
-   silently win over the one that was tested — and the Settings screen reports the source, which
-   it already does for the override.
-3. **Version metadata.** A Windows version resource (file and product version from
-   `__version__`, product name, copyright), and `icon.ico` on the executable.
-
-**What does not change**: `freeze_support()` first (`REL-001`'s highest-risk item, `T-020`'s
-smoke keeps proving it), one-dir, Qt dynamically linked inside the bundle, `collect_data_files`
-for yt-dlp (`REL-002`).
-
-#### Acceptance criteria
-
-- The `frozen windows` job builds in **both** modes and runs all four probes against the
-  **windowed** build, reading their file reports; a mutation that drops the file-write turns the
-  job red rather than silently green
-- Launching the windowed build opens no console window — asserted on the runner by
-  `T-026`'s harness (no console `HWND` belonging to the process)
-- `find_ffmpeg` on the built artifact reports `source="bundled"`, and the same build with the
-  bundled binary deleted degrades exactly as `REQ-024` describes rather than crashing
-- The ffmpeg licence text and a statement of *which* build it is (source, version, LGPL) ship
-  inside the artifact — `T-323` gates their presence; this task puts them there
-- `--version` on the built artifact prints `__version__` (`test_skeleton`'s existing contract,
-  now on the frozen binary)
-- `docs/DEVELOPMENT.md`'s *Building the frozen artifact* section documents both modes
-
-#### Out of scope
-
-- The installer (`T-322`). This produces `dist/tracks-and-trails/`; that wraps it
-- The Linux artifact (`T-321`)
-- Size work. `REL-001` accepted the size; record the number, do not chase it
 
 ---
 
