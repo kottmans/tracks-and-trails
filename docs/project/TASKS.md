@@ -14,6 +14,106 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-320 — Versioning policy, release documentation, and the first version number
+
+**Status:** **In Review** — implemented 2026-09-11 under the maintainer's ruling relaxing
+§Phase 5's *Phase 4 approved* prerequisite for the start of the work. **Gates the start**: every
+build stamps the version this decides, and `T-319`, `T-321`, `T-322` and `T-324` all depend on it.
+
+#### 2026-09-11 — what was built, and the one judgement call in it
+
+- **`docs/RELEASE.md`**, created per `DOC-002`'s *"when Phase 5 begins"* trigger. It references
+  `TESTING` §8 rather than copying it — a copied gate drifts, and the copy is what people read —
+  and names the three items no workflow can perform, so they are planned rather than discovered.
+  Covers the version steps, the tag check, the release-commit-only files, draft-then-publish, the
+  SmartScreen click-through `REL-005` makes necessary, and rollback.
+- **`tools/version_tag_check.py`** and **`tests/unit/test_version_tag_check.py`** — the
+  tag-to-version rule as a pure function with a CLI, the way `T240-R1` requires a decision that a
+  workflow would otherwise bury in shell. **14 cases.** It refuses a mismatched number, a tag on a
+  `.devN` commit, and seven tag spellings `REL-003` did not decide — `v0.1.0-rc1` among them,
+  because accepting a pre-release channel here would be this checker deciding one.
+  `test_the_repository_as_it_stands_today_cannot_be_tagged` is a **live** positive control: it
+  fails if `main` ever stops carrying `.devN`.
+- **Rollback is documented as asymmetric, which is the point.** The project and the user have a way
+  back; **their data does not.** `DAT-001`'s migrations are forward-only and the application
+  *refuses* a newer database rather than corrupting it, so a downgrade across a schema change costs
+  the queue and history. `RELEASE.md` says so and requires it on the release page whenever a
+  release carries a migration.
+
+**The judgement call, flagged rather than taken quietly.** Scope says the README *"gains an Install
+section pointing at releases and loses 'there are no installers or packages yet'"*. **It has not**,
+because that line is still **true** — no release exists, and swapping it now would make the README
+claim installers that are not there. It is written into `RELEASE.md` as a release-commit step
+beside `CHANGELOG.md` and `SECURITY.md` §Supported versions, both of which the same scope already
+defers to the tag. If the reviewer reads that as unmet rather than sequenced, it is a two-line
+change at the release commit.
+
+**Criterion 5 evidence.** `grep -rniE "parity|everything yt-dlp|all of yt-dlp" README.md` returns
+**no match** (exit 1). The only parity mention in the tree is `docs/YTDLP_OPTION_AUDIT.md`, which
+describes `REQ-030`'s claim rather than making it.
+
+**The scheme and the first number are ruled.** The maintainer accepted the proposal below on
+2026-09-11, recorded as [`REL-003`](DECISIONS.md#rel-003--semver-and-the-first-release-is-010):
+SemVer, `0.y.z` until `1.0` is declared, first release `0.1.0`. **What remains is the
+documentation and the gate** — `docs/RELEASE.md`, `SECURITY.md` §Supported versions, the README's
+install section, and the test that fails a `vX.Y.Z` tag on a commit whose `__version__` is not
+`X.Y.Z`. It stays `Proposed` because Phase 5 has not opened, not because the decision is
+outstanding.
+**Owner:** Implementer proposes; Maintainer rules on the scheme and the first number
+**Priority:** High
+**Phase:** Phase 5
+**Depends on:** nothing
+**Relevant context:** `DOC-002` (`docs/RELEASE.md` is created *"when Phase 5 begins"*;
+`CHANGELOG.md` *"at the first tagged release"*); `SECURITY.md` §Supported versions (*"when releases
+begin, this section will name which of them receive fixes"*); `IMPLEMENTATION_PLAN.md` §Phase 5
+deliverable *"versioning policy, release gate, and rollback procedure documented"*; `DAT-001`;
+`OPS-002`; `PROMPTS.md`'s release-verification prompt; `tests/unit/test_skeleton.py` (asserts
+`--version` prints `__version__`); `[tool.hatch.version]` reads `src/tracks_and_trails/__init__.py`
+**Affected surfaces:** `src/tracks_and_trails/__init__.py`, `docs/RELEASE.md` (new),
+`CHANGELOG.md` (new, at tag time), `SECURITY.md`, `README.md`, `docs/DEVELOPMENT.md`
+**Risk:** Low
+
+#### Scope
+
+**The policy, proposed.** SemVer, `0.y.z` until the maintainer declares `1.0`. `main` carries
+`X.Y.Z.devN` between releases; a release commit sets `__version__ = "X.Y.Z"` and is tagged
+`vX.Y.Z`; the next commit bumps to `X.Y.(Z+1).dev0`. **The first release is `0.1.0`** — it is what
+`__init__.py` already says minus the `.dev0`, and `0.x` is honest about a release that ships before
+`REQ-030`'s parity (`IMPLEMENTATION_PLAN.md` §Phase 4.5's resequencing note). Patch releases carry
+fixes only; a yt-dlp baseline bump is at least a minor release, because it changes behaviour on
+every site (`OPS-002`, release gate item 10a).
+
+**`docs/RELEASE.md`**, created now per `DOC-002`: the gate (`TESTING.md` §8, by reference not
+copy), the version bump, the tag, `T-324`'s workflow, the draft-then-publish step, the SmartScreen
+note if `T-317` chose unsigned, and **rollback** — for the *project*: unpublish the release and
+re-point *latest*; for the *user*: reinstall the previous installer, which the release page keeps;
+for the *data*: **not promised** — `DAT-001`'s migrations are forward-only, so a downgrade across a
+schema change is refused by the application rather than silently corrupting, and the document says
+so instead of implying a rollback that does not exist.
+
+**`SECURITY.md` §Supported versions** filled at the first tag: the latest minor receives fixes,
+older ones do not. **`README.md`** gains an *Install* section pointing at releases and loses *"there
+are no installers or packages yet"* — and is checked for any wording that claims yt-dlp parity,
+which `REQ-030`'s resequencing forbids until Phase 4.5 lands.
+
+#### Acceptance criteria
+
+- `docs/RELEASE.md` exists and a reader with no context can cut a release from it alone
+- The version scheme is a `REL-` decision or a section of `docs/RELEASE.md`, named by the
+  maintainer's ruling on the scheme and on `0.1.0`
+- `test_skeleton`'s `--version` contract still holds, and a test asserts the tag-to-version rule
+  (a `vX.Y.Z` tag on a commit whose `__version__` is not `X.Y.Z` is a gate failure in `T-324`)
+- `CHANGELOG.md` is created **in the release commit**, not before — `DOC-002`'s trigger is the
+  first tagged release, and an empty changelog is the speculative document that decision forbids
+- The README makes no parity claim; grep evidence recorded
+
+#### Out of scope
+
+- Application self-update. `REL-001` and `OPS-002`'s amendment leave it open, and it reopens
+  `OPS-002`; it is not a `0.1.0` deliverable
+
+---
+
 ### T-106 — Decide the Linux packaging format before Phase 5
 
 **Status:** **In Review** — the maintainer ruled on 2026-09-11 and the decision is recorded as
@@ -1140,73 +1240,6 @@ for yt-dlp (`REL-002`).
 - The installer (`T-322`). This produces `dist/tracks-and-trails/`; that wraps it
 - The Linux artifact (`T-321`)
 - Size work. `REL-001` accepted the size; record the number, do not chase it
-
----
-
-### T-320 — Versioning policy, release documentation, and the first version number
-
-**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan. **Gates the start**: every build
-stamps the version this decides.
-
-**The scheme and the first number are ruled.** The maintainer accepted the proposal below on
-2026-09-11, recorded as [`REL-003`](DECISIONS.md#rel-003--semver-and-the-first-release-is-010):
-SemVer, `0.y.z` until `1.0` is declared, first release `0.1.0`. **What remains is the
-documentation and the gate** — `docs/RELEASE.md`, `SECURITY.md` §Supported versions, the README's
-install section, and the test that fails a `vX.Y.Z` tag on a commit whose `__version__` is not
-`X.Y.Z`. It stays `Proposed` because Phase 5 has not opened, not because the decision is
-outstanding.
-**Owner:** Implementer proposes; Maintainer rules on the scheme and the first number
-**Priority:** High
-**Phase:** Phase 5
-**Depends on:** nothing
-**Relevant context:** `DOC-002` (`docs/RELEASE.md` is created *"when Phase 5 begins"*;
-`CHANGELOG.md` *"at the first tagged release"*); `SECURITY.md` §Supported versions (*"when releases
-begin, this section will name which of them receive fixes"*); `IMPLEMENTATION_PLAN.md` §Phase 5
-deliverable *"versioning policy, release gate, and rollback procedure documented"*; `DAT-001`;
-`OPS-002`; `PROMPTS.md`'s release-verification prompt; `tests/unit/test_skeleton.py` (asserts
-`--version` prints `__version__`); `[tool.hatch.version]` reads `src/tracks_and_trails/__init__.py`
-**Affected surfaces:** `src/tracks_and_trails/__init__.py`, `docs/RELEASE.md` (new),
-`CHANGELOG.md` (new, at tag time), `SECURITY.md`, `README.md`, `docs/DEVELOPMENT.md`
-**Risk:** Low
-
-#### Scope
-
-**The policy, proposed.** SemVer, `0.y.z` until the maintainer declares `1.0`. `main` carries
-`X.Y.Z.devN` between releases; a release commit sets `__version__ = "X.Y.Z"` and is tagged
-`vX.Y.Z`; the next commit bumps to `X.Y.(Z+1).dev0`. **The first release is `0.1.0`** — it is what
-`__init__.py` already says minus the `.dev0`, and `0.x` is honest about a release that ships before
-`REQ-030`'s parity (`IMPLEMENTATION_PLAN.md` §Phase 4.5's resequencing note). Patch releases carry
-fixes only; a yt-dlp baseline bump is at least a minor release, because it changes behaviour on
-every site (`OPS-002`, release gate item 10a).
-
-**`docs/RELEASE.md`**, created now per `DOC-002`: the gate (`TESTING.md` §8, by reference not
-copy), the version bump, the tag, `T-324`'s workflow, the draft-then-publish step, the SmartScreen
-note if `T-317` chose unsigned, and **rollback** — for the *project*: unpublish the release and
-re-point *latest*; for the *user*: reinstall the previous installer, which the release page keeps;
-for the *data*: **not promised** — `DAT-001`'s migrations are forward-only, so a downgrade across a
-schema change is refused by the application rather than silently corrupting, and the document says
-so instead of implying a rollback that does not exist.
-
-**`SECURITY.md` §Supported versions** filled at the first tag: the latest minor receives fixes,
-older ones do not. **`README.md`** gains an *Install* section pointing at releases and loses *"there
-are no installers or packages yet"* — and is checked for any wording that claims yt-dlp parity,
-which `REQ-030`'s resequencing forbids until Phase 4.5 lands.
-
-#### Acceptance criteria
-
-- `docs/RELEASE.md` exists and a reader with no context can cut a release from it alone
-- The version scheme is a `REL-` decision or a section of `docs/RELEASE.md`, named by the
-  maintainer's ruling on the scheme and on `0.1.0`
-- `test_skeleton`'s `--version` contract still holds, and a test asserts the tag-to-version rule
-  (a `vX.Y.Z` tag on a commit whose `__version__` is not `X.Y.Z` is a gate failure in `T-324`)
-- `CHANGELOG.md` is created **in the release commit**, not before — `DOC-002`'s trigger is the
-  first tagged release, and an empty changelog is the speculative document that decision forbids
-- The README makes no parity claim; grep evidence recorded
-
-#### Out of scope
-
-- Application self-update. `REL-001` and `OPS-002`'s amendment leave it open, and it reopens
-  `OPS-002`; it is not a `0.1.0` deliverable
 
 ---
 

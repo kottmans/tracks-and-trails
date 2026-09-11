@@ -5,8 +5,10 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-09-11 — §Phase 5 gains a task map (`T-317`–`T-328`) tying every deliverable and
-exit criterion to a filed task. *(2026-09-10: **Phase 4.5 resequenced to follow Phase 5** as a post-release
+**Last updated:** 2026-09-11 — **§Phase 5's *Phase 4 approved* prerequisite relaxed for the start of
+the work by maintainer ruling**, with the first release still conditional on that approval; its four
+gating decisions are taken (`REL-003`–`REL-006`). *(Earlier that day: §Phase 5 gained a task map
+(`T-317`–`T-328`) tying every deliverable and exit criterion to a filed task.)* *(2026-09-10: **Phase 4.5 resequenced to follow Phase 5** as a post-release
 update, and Phase 4's recorded checklist run moved to Phase 5. Both by maintainer ruling, with what
 each gives up recorded where it applies rather than here.)* *(2026-08-15: §Phase 4's `T-203` paragraph
 corrected — it named the wrong ruled
@@ -895,16 +897,30 @@ the 89 refused.
 
 **Goal:** Installable artifacts for both platforms and a repeatable release process.
 
-**Prerequisites:** Phase 4 approved. **Phase 4.5 is no longer one** — it was resequenced on
-2026-09-10 to follow the first release, so this phase runs next. Its own section records what that
-costs; the short version is that `REQ-030`'s parity claim is unmet at release and must not be made.
+**Prerequisites:** Phase 4 approved — **relaxed for the start of the work by maintainer ruling,
+2026-09-11.** Phase 5 may begin while Phase 4's exit is open. **Phase 4.5 is no longer a
+prerequisite either** — it was resequenced on 2026-09-10 to follow the first release, so this phase
+runs next. Its own section records what that costs; the short version is that `REQ-030`'s parity
+claim is unmet at release and must not be made.
+
+**What the relaxation does and does not change.** At the time of the ruling Phase 4's exit was
+blocked on `P4EXIT-R2` alone — native Windows execution of an already-approved tree, which is a
+machine rather than work, and which nothing in Phase 5 depends on. Waiting on it would have idled
+the phase against an external event. So the *work* starts now.
+
+**The release still does not.** `T-328` publishes, and publishing on an unapproved phase would
+ship whatever `R2` has not yet established. Phase 4's approval remains a condition of the first
+release; this ruling moves when Phase 5 may be worked, not what may be shipped. If the maintainer
+intends otherwise, that is a separate ruling and belongs here beside this one.
 
 **Two things gate the start rather than the end, and both need arranging now.**
 
-- **`T-106` has to be taken before the first build.** The `REL-` decision naming the Linux packaging
-  format does not exist, and AppImage, Flatpak and system packages differ in how the application
-  finds `ffmpeg` and where it may write — which reaches back into `REQ-024` and `NFR-004`. It was
-  filed 2026-08-01 as *worth taking early*; it is now on the critical path.
+- **`T-106` has to be taken before the first build.** ~~The `REL-` decision naming the Linux
+  packaging format does not exist~~ — **taken 2026-09-11 as
+  [`REL-004`](DECISIONS.md#rel-004--the-linux-artifact-ships-as-an-appimage): AppImage.** The
+  reasoning is there; the short version is that `OPS-001` makes ffmpeg a system dependency on Linux
+  and a sandboxed format cannot see it. `T-320`, `T-317` and `T-318`'s rulings were taken the same
+  day, so **no Phase 5 task now waits on a decision.**
 - **A real Windows desktop.** The manual verification session below is the one item that cannot be
   satisfied from the current development environment. `T-212`'s recorded checklist run joins it
   here, so the two sittings can be arranged together.
