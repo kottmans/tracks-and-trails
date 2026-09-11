@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 from tracks_and_trails.ui.settings_dialog import (
     YTDLP_NOTE_NAME,
     YTDLP_REVERT_NAME,
+    YTDLP_UPDATE_LABEL,
     YTDLP_UPDATE_NAME,
     YTDLP_VERSION_NAME,
     YTDLP_VERSION_UNKNOWN,
@@ -264,3 +265,49 @@ def test_the_section_says_updating_does_not_change_the_application(
     explanation = control(screen, QLabel, "ytdlpExplanation").text()
 
     assert "Tracks & Trails itself is not changed" in explanation
+
+
+def test_the_recovery_label_survives_every_settled_screen(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """**`T290-R1`.** `T-290` changed the resting label at construction and left `show_ytdlp_busy`
+    restoring the words it replaced.
+
+    **Every settled screen comes through that restore.** `MainWindow.open_settings` asks the
+    service to resolve, and a resolution *and* a failure both end the busy state — so the screen a
+    user actually looks at reverted to *"Update to the latest version"* before they had done
+    anything at all. `T-290`'s own regression checked a **freshly constructed** dialog, which is
+    the one state that never passes through it.
+
+    **Driven through the busy transition rather than around it**, in all three lifecycles the
+    finding names: opening resolution, opening failure, and an operation completing. Asserting the
+    text after `show_ytdlp` alone would bypass the exact call that was wrong.
+    """
+    screen, _ = screens()
+    update = control(screen, QPushButton, YTDLP_UPDATE_NAME)
+    assert update.text() == YTDLP_UPDATE_LABEL, "construction alone is already wrong"
+
+    # 1 · Opening resolution: busy while the service looks, then the answer.
+    screen.show_ytdlp_busy(True)
+    assert update.text() == YTDLP_WORKING_LABEL, "the screen does not say it is working"
+    screen.show_ytdlp("2026.9.1", "bundled baseline", is_user_managed=False)
+    screen.show_ytdlp_busy(False)
+    assert update.text() == YTDLP_UPDATE_LABEL, (
+        "opening the screen restored the old label, so the settled screen a user reads is the one "
+        "T-290 replaced"
+    )
+
+    # 2 · Opening failure: the same transition, the other outcome.
+    screen.show_ytdlp_busy(True)
+    screen.show_ytdlp_problem("could not resolve yt-dlp")
+    screen.show_ytdlp_busy(False)
+    assert update.text() == YTDLP_UPDATE_LABEL, "a failed resolution restored the old label"
+
+    # 3 · An operation finishing, which is the route the label was written for in the first place.
+    screen.show_ytdlp_busy(True)
+    screen.show_ytdlp("2026.9.2", "user-managed copy (OPS-002)", is_user_managed=True)
+    screen.show_ytdlp_busy(False)
+    assert update.text() == YTDLP_UPDATE_LABEL, "completing an update restored the old label"
+    assert control(screen, QPushButton, YTDLP_REVERT_NAME).isEnabled(), (
+        "reverting was lost, so this asserts the label on a screen that is broken another way"
+    )

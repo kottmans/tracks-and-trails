@@ -1592,7 +1592,12 @@ class SettingsDialog(QDialog):
         self._ytdlp_revert.setEnabled(
             not busy and self._ytdlp_is_user_managed and self._on_ytdlp_revert is not None
         )
-        self._ytdlp_update.setText(YTDLP_WORKING_LABEL if busy else "Update to the latest version")
+        # **The constant, not the literal it replaced** (`T290-R1`). `T-290` changed the resting
+        # label at construction and left this restoring the old words — and **every settled screen
+        # comes through here**: `MainWindow.open_settings` asks the service to resolve, and both a
+        # resolution and a failure end the busy state, so the label reverted before the user had
+        # done anything at all. The construction-time test could not see it.
+        self._ytdlp_update.setText(YTDLP_WORKING_LABEL if busy else YTDLP_UPDATE_LABEL)
         if busy:
             self._ytdlp_note.setText("")
 

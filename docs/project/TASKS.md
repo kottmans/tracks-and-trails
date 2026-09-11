@@ -113,6 +113,20 @@ de-emphasis at all. `NFR-007` is untouched: still explicit, never automatic, nev
 **The two surfaces agree by construction.** The note and the failure's next step describe the same
 move, which is `T-243`'s one-voice rule applied across screens rather than within a row.
 
+#### Corrected 2026-09-11 — `T290-R1`
+
+**The label was changed at construction and restored at every settled screen.**
+`show_ytdlp_busy(False)` still wrote the literal it replaced, and *every* settled screen comes
+through that call: `MainWindow.open_settings` asks the service to resolve, and a resolution **and**
+a failure both end the busy state. So the screen a user actually reads reverted to *"Update to the
+latest version"* before they had done anything — the one presentation this task exists to remove.
+
+**The regression could not see it, and that is the more useful half of the finding.** It asserted a
+**freshly constructed** dialog, which is the single state that never passes through the restore.
+The new one drives the busy transition rather than around it, in all three lifecycles: opening
+resolution, opening failure, and an operation completing. Kept alongside the original, which now
+reads as the construction-time check it always was.
+
 #### Acceptance criteria
 
 - **The Settings screen no longer presents updating as a routine choice.** What it becomes —
@@ -207,7 +221,13 @@ conversion at all, so a sentence that read as advice to recode would trade one w
 another.
 
 **Moved to a named constant** so the wording is asserted the way this dialog's other fixed strings
-are, and cannot drift back to cost-only. The regression checks the four criteria **separately** —
+are, and cannot drift back to cost-only.
+
+**Corrected 2026-09-11 — `T286-R1`.** The regression claimed to check the use case and never
+asserted it: between *"only when"* and a constant-to-label equality, **"Recode only when needed"
+passed every check** — the bound survived and the reason vanished, and the equality cannot see it
+because both sides receive the changed constant. The case is now asserted on its own words, and the
+description says what is actually checked rather than what was intended. The regression checks the four criteria **separately** —
 cost stated, case named, not advice, and why remux does not cover it — plus that no codec name
 leaks into a register the rest of the dialog does not use. A single "did the wording change" check
 would have passed on any edit.

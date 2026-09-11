@@ -1107,7 +1107,11 @@ def test_the_container_note_says_what_recoding_is_for(
     would pass on any edit at all:
 
     - it still states the cost, which is what stops a casual click;
-    - it names the case, in a user's words rather than codec names;
+    - it names the case — **a player refusing what the site sent**, asserted on those words rather
+      than on the sentence as a whole (`T286-R1`). The first version checked only *"only when"* and
+      the constant-to-label equality, which between them would pass on *"Recode only when needed"*:
+      the bound stayed and the reason vanished, and the equality cannot see it because both sides
+      receive the changed constant;
     - it does not advise recoding — format selection answers the ordinary case with no conversion,
       so the sentence is bounded by *only when*;
     - it says why remuxing does not cover that case, which is the measured trap: remuxing a
@@ -1121,6 +1125,11 @@ def test_the_container_note_says_what_recoding_is_for(
     assert said == CONTAINER_NOTE, "the drawn note is not the one this module declares"
     assert "quick" in said, "the cost is no longer stated, so nothing stops a casual click"
     assert "only when" in said, "the note reads as advice to recode rather than as a bounded case"
+    # **The case itself, not only that the sentence is bounded** (`T286-R1`). "Recode only when
+    # needed" satisfies every other check here and says nothing this task was filed to say.
+    assert "player" in said and "refuses" in said, (
+        f"the note bounds recoding without naming what bounds it: {said!r}"
+    )
     assert "does not change what is inside it" in said, (
         "the note does not say why remuxing fails to cover the case it names"
     )
