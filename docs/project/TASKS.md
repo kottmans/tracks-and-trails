@@ -166,6 +166,90 @@ than growing a second answer to the same question.
 - The dialog still narrows to 320px, which `tests/ui/test_add_dialog.py` asserts today.
 - `docs/UX_SPEC.md` §4 and §5 record the ruling with the maintainer's authority.
 
+### T-316 — A staged row that failed looks like one that worked
+
+**Status:** In Review — **built 2026-09-10**, the same day it was filed from the built window, during `T-297`'s session:
+*"even a failure to grab shows up as green here (should probably show as red?)"*
+**Owner:** Implementer
+**Priority:** Low — nothing is wrong in words, and the row does say what happened. What it costs is
+a glance: a paste of twenty has to be read line by line to find the one that failed
+**Phase:** Phase 4 (polish; **not** a plan deliverable, and **not** Phase 4 exit work). Filed after
+the maintainer ruled to ship; the placement is theirs and `T-286`/`T-290` are ahead of it
+**Depends on:** nothing
+**Relevant context:** `ui/add_dialog.py` `StagingModel.data`, which answers `STATE_ROLE` and not
+`STATE_CHIP_ROLE`; `ui/row_delegate.py:1902`–`:1916`, the chip; `ui/theme.py:993`, the selected-row
+rule; `T-130` (selection is geometry, not tint); `NFR-005`; `UX-005` §3
+**Affected surfaces:** `ui/add_dialog.py`, possibly `ui/row_delegate.py`, and their tests
+**Risk:** Low — additive, and the one thing it must not do is make state a colour-only signal
+
+#### What was seen, and what it actually is
+
+A staged row whose probe failed reads `extractor_error: … — Couldn't read`, and the only coloured
+thing on it is a **2px brand-green bar down its left edge**. The report was that green reads as
+success.
+
+**That bar is the selection indicator, not a state.** `ui/theme.py:993` draws
+`QListView::item:selected { border-left: 2px solid primary }`, and `T-130` chose geometry
+deliberately so that selection is a *shape* rather than a tint. It is green on every selected row,
+whatever the row is doing. So the fix is **not** to recolour it: making the selection bar carry
+state would give one signal two jobs, which is what `T-130` separated.
+
+**The real asymmetry is that a staged row has no state marker at all.** `QueueModel` answers
+`STATE_CHIP_ROLE` and the delegate draws a bordered chip on the row's title line; `StagingModel`
+answers that role **nowhere**, so a staged row's state lives only as a clause inside the detail
+text. Verified on current code, not on the 2026-09-01 screenshot the report came from.
+
+**No surface colour-codes state today, and that is on purpose.** The queue's chip is drawn in the
+`muted` pen — it is a shape with a border, not a colour. `NFR-005` bans conveying information by
+colour *alone*; it does not ban colour as a second channel beside a shape and a word. So a failure
+tint is available, and is the kind of thing to propose rather than assume.
+
+#### What this task does not decide
+
+**Whether the answer is a chip, a tint, an icon, or the row's existing words in a different place.**
+The report asked for red; the narrowest fix that matches the queue is a chip, which needs no new
+colour vocabulary at all. A maintainer ruling picks between them, from mockups, the way `T-310`'s
+and `T-313`'s were taken.
+
+#### Built 2026-09-10 — the chip, and why not red
+
+**A staged row now answers `STATE_CHIP_ROLE`**, which is the role the queue already answers and the
+delegate already paints. Nothing new was drawn and no colour was invented.
+
+**The report asked for red and this does not give it**, which is a proposal rather than a
+dismissal. Three reasons, in order of weight:
+
+1. **This theme has no failure hue.** Adding one is contrast work in both palettes (`T130-R1`) and
+   a vocabulary every other surface would then have to honour — for a signal a shape already
+   carries.
+2. **The queue solved the identical problem with a chip** and its reasoning transfers verbatim: *a
+   queue is a list of rows in different states and the state is what the eye is hunting for.* A
+   staging list is the same shape of thing, so a second vocabulary would be the drift `T-186`
+   records.
+3. **`NFR-005` permits colour as a second channel**, so red is still available later. It is
+   additive to this, not blocked by it — which is why the narrow fix went first.
+
+**The bare state, not `state_text`.** `T130-R3` drops the state from the detail line only where the
+chip repeats it exactly, so an ordinary row says it once and a duplicate still says both halves.
+
+**If the maintainer wants the tint as well**, that is a ruling and a follow-up, and the chip is what
+it would be added to.
+
+#### Acceptance criteria
+
+- **A failed staged row is distinguishable from a settled one at a glance**, without reading its
+  detail line.
+- **The selection bar is unchanged.** Selection stays one signal meaning one thing (`T-130`).
+- **State is not conveyed by colour alone** (`NFR-005`), whatever channel is chosen.
+- **The staging list and the queue agree** about how a row states what it is, or the difference is
+  recorded as deliberate.
+- Asserted by a test that fails against the present rendering.
+
+#### Out of scope
+
+- The queue's own rendering. It already marks state; this is about the list that does not.
+- Recolouring the selection indicator, for the reason above.
+
 ### T-297 — A thumbnail flickers while the window is resized with a panel open, and the cause is unknown
 
 **Status:** **In Review — both maintainer-held findings are dispositioned as of 2026-09-10.**

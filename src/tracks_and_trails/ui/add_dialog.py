@@ -171,6 +171,7 @@ from tracks_and_trails.ui.row_delegate import (
     PRESETS_MANAGEABLE_ROLE,
     ROW_PRESET_NAME,
     SELECTOR_ROLE,
+    STATE_CHIP_ROLE,
     STATE_ROLE,
     TEMPLATE_AVAILABLE_ROLE,
     TEMPLATE_DATA,
@@ -1032,6 +1033,25 @@ class StagingModel(QAbstractListModel):
             return detail_text(row)
         if role == STATE_ROLE:
             return state_text(row)
+        if role == STATE_CHIP_ROLE:
+            # **A staged row states what it is where the eye is hunting** (`T-316`). Reported from
+            # the built window: *"even a failure to grab shows up as green here."* The green is the
+            # selection bar — `T-130` made selection a *shape*, and it is brand-coloured on every
+            # selected row whatever the row is doing — and the actual gap was that a staged row had
+            # **no state marker at all**. Its state lived only as a clause inside the detail line,
+            # so a paste of twenty had to be read line by line to find the one that failed.
+            #
+            # **The queue's own answer, not a new one** (`T-130`, `UX-005`'s 2026-08-04 amendment):
+            # *a queue is a list of rows in different states and the state is what the eye is
+            # hunting for*. A staging list is the same shape of thing, so it gets the same chip
+            # rather than a second vocabulary — and no colour is invented, which matters because
+            # this theme has no failure hue and adding one is contrast work in both palettes
+            # (`T130-R1`) plus a ruling, for a signal a shape already carries.
+            #
+            # **The bare state, not `state_text`.** The fuller sentence keeps its duplicate clause
+            # on the detail line; `T130-R3` drops the state from that line only when the chip says
+            # *exactly* it, so an ordinary row says it once and a duplicate says both halves.
+            return STATE_TEXT[row.state]
         if role == SELECTOR_ROLE:
             return selector_text(row, effective)
         if role == HUE_ROLE:

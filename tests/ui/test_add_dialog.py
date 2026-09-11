@@ -143,6 +143,7 @@ from tracks_and_trails.ui.row_delegate import (
     ROW_PRESET_NAME,
     SELECTOR_LINES,
     SELECTOR_ROLE,
+    STATE_CHIP_ROLE,
     STATE_ROLE,
     TEMPLATE_AVAILABLE_ROLE,
     TEMPLATE_DATA,
@@ -6557,3 +6558,46 @@ def test_a_batch_change_while_the_editor_is_open_keeps_the_chosen_formats(
         )
     finally:
         dialog.close()
+
+
+def test_a_failed_staged_row_states_what_it_is_where_the_eye_looks(
+    qapp: QApplication,
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-316`.** *"Even a failure to grab shows up as green here."*
+
+    **The green was the selection bar**, which `T-130` made a *shape* — brand-coloured on every
+    selected row whatever the row is doing. The actual gap was that a staged row carried **no state
+    marker at all**: its state lived only as a clause inside the detail line, so a paste of twenty
+    had to be read line by line to find the one that failed.
+
+    **Asserted through the role the delegate paints from**, which is how the queue's own chip is
+    tested — the drawn rectangle is `RowDelegate`'s and has its own regressions; what belongs to
+    this model is *that it answers at all, and with what*.
+
+    **The settled row is the positive control.** A model answering some constant would satisfy a
+    failure-only check while telling a `Read` row nothing.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    model = dialog.model
+    index = model.index(model.shown.index(row), 0)
+
+    assert index.data(STATE_CHIP_ROLE) == STATE_TEXT[RowState.READY], (
+        f"a settled row's chip says {index.data(STATE_CHIP_ROLE)!r}"
+    )
+
+    row.state = RowState.FAILED
+    row.message = "extractor_error: opening play-av tag not found"
+    model.refresh()
+    qapp.processEvents()
+
+    index = model.index(model.shown.index(row), 0)
+    assert index.data(STATE_CHIP_ROLE) == STATE_TEXT[RowState.FAILED], (
+        "a failed staged row says nothing about its state where the eye is hunting; it said "
+        f"{index.data(STATE_CHIP_ROLE)!r}"
+    )
+    # **The words stay in the detail line too when they differ.** `T130-R3` drops the state from
+    # that line only where the chip repeats it exactly, so nothing is lost by chipping it.
+    assert STATE_TEXT[RowState.FAILED] in index.data(STATE_ROLE)
