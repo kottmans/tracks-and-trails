@@ -2,7 +2,7 @@
 
 **Purpose:** Navigation to canonical task and shared-scope review records.
 **Owner:** Reviewer; Coordinator / Integrator owns shared routing during a wave.
-**Last updated:** 2026-09-10
+**Last updated:** 2026-09-11
 **Update when:** A review record is introduced or its navigation changes.
 
 ## Current navigation
@@ -124,6 +124,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | <a id="2026-08-30--t-287-work-around-initial-review"></a><a id="2026-08-31--t-287-r1r2-focused-correction-re-review"></a>[T-287](reviews/T-287.md) | T-287 | 2 |
 | <a id="2026-08-28--t-288-initial-review"></a>[T-288](reviews/T-288.md) | T-288 | 1 |
 | <a id="2026-08-30--t-289-widget-destruction-guard-review"></a><a id="2026-08-30--t-289-guard-focused-correction-re-review"></a><a id="2026-08-30--t-289-r2-closure-and-real-session-instrument-review"></a><a id="2026-08-30--t-289-instrument-integrity-re-review"></a><a id="2026-08-30--t-289-instrument-integrity-re-review-2"></a><a id="2026-08-30--t-289-instrument-integrity-re-review-3"></a><a id="2026-08-30--t-289-instrument-integrity-re-review-4"></a><a id="2026-08-30--t-289-instrument-integrity-re-review-5"></a><a id="2026-08-31--t-289-driven-measurement-initial-review"></a><a id="2026-08-31--t-289-driven-measurement-focused-re-review"></a><a id="2026-08-31--t-289-driven-measurement-second-focused-re-review"></a><a id="2026-08-31--t-289-driven-measurement-final-focused-re-review"></a><a id="2026-08-31--t-289-forced-collection-probe-initial-review"></a><a id="2026-08-31--t-289-forced-collection-probe-focused-re-review"></a><a id="2026-08-31--t-289-forced-collection-probe-second-focused-re-review"></a><a id="2026-08-31--t-289-forced-collection-probe-final-focused-re-review"></a><a id="2026-08-31--t-289-teardown-reading-review-and-shutdown-ruling"></a><a id="2026-08-31--t-289-r21-pool-drain-focused-re-review"></a><a id="2026-08-31--t-289-r21-pool-drain-second-focused-re-review"></a><a id="2026-08-31--t-289-r21-pool-drain-third-focused-re-review"></a>[T-289](reviews/T-289.md) | T-238, T-289 | 20 |
+| [T-290](reviews/T-290.md) | T-290 | 0 |
 | <a id="2026-08-28--t-291-initial-review"></a>[T-291](reviews/T-291.md) | T-291 | 1 |
 | <a id="2026-08-28--t-292-initial-review"></a>[T-292](reviews/T-292.md) | T-292 | 1 |
 | <a id="2026-08-28--t-293-initial-review"></a>[T-293](reviews/T-293.md) | T-293 | 1 |
