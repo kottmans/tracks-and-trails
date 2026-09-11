@@ -138,6 +138,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-311](reviews/T-311.md) | T-311, T-313 | 0 |
 | [T-312](reviews/T-312.md) | T-312 | 0 |
 | [T-314](reviews/T-314.md) | T-314, T-315 | 0 |
+| [T-316](reviews/T-316.md) | T-316 | 0 |
 | <a id="2026-07-26--note-commit-shas-in-this-file-were-remapped"></a>[commit-reference-remap](reviews/commit-reference-remap.md) | T-033 | 1 |
 | <a id="2026-07-29--coord-r7-authorized-final-documentation-re-review"></a>[coordination-2026-07-29](reviews/coordination-2026-07-29.md) | coordination 2026 07 29 | 1 |
 | <a id="2026-08-05--history--row-layout-merge-review"></a>[history-row-layout-integration](reviews/history-row-layout-integration.md) | history row layout integration | 1 |
