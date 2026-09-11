@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-09-08
+**Last updated:** 2026-09-10
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -39,10 +39,32 @@ owns phase deliverables and exit criteria.
   verified: private vulnerability reporting enabled, Dependabot alerts enabled, fork-PR
   approval at `all_external_contributors`, Actions restricted to GitHub-owned actions, zero
   secrets configured, and the default workflow token read-only.
-- Phase 4 exit work remains **T-297**, **T-286**, **T-290**, then **T-212**'s recorded
-  48-row checklist run at one head and the exit review. See each task for its
-  actual status, dependencies and required evidence; listing it here grants no
-  new implementation or desktop-session permission.
+- **Phase 4 exit work remains `T-297`, `T-286` and `T-290`, then the exit review.**
+  `T-212`'s recorded checklist run **left this list on 2026-09-10** — the maintainer ran it
+  informally, ruled that sufficient for closure, and moved the recorded run to Phase 5, where it
+  happens against the artifact that ships. See each task for its actual status, dependencies and
+  required evidence; listing it here grants no new implementation or desktop-session permission.
+
+  **`T-297` is the only one that needs the maintainer rather than work.** It is Blocked on a
+  real-display capture of the pre-fix tree (`tools/t297_prefix_capture.sh`); the fix itself landed
+  2026-09-03 and was never in doubt.
+
+- **The order after Phase 4 changed on 2026-09-10.** Phase 5 (distribution) runs next and
+  **Phase 4.5 (option coverage) follows the first release** as a rolled-out update, by maintainer
+  ruling: *"we really need to get this deployed."* Two consequences are recorded rather than
+  assumed:
+
+  - **`REQ-030`'s parity claim is unmet at release and must not be made.** Nothing user-facing may
+    say this application reaches everything yt-dlp does until Phase 4.5 lands. `REQ-031`'s escape
+    hatch (`T-184`) is what makes the gap survivable and is the first thing to schedule there.
+  - **`T-106` is now on the critical path.** The `REL-` decision naming the Linux packaging format
+    does not exist and must be accepted before the first build, because AppImage, Flatpak and
+    system packages differ in how the application finds `ffmpeg` and where it may write.
+
+  Phase 5 also needs **a real Windows desktop** for its manual verification session — the one item
+  that cannot be satisfied from the current development environment, to be arranged before the
+  phase starts rather than at its end. The Windows-only tasks `T-074`, `T-092`, `T-068` and `T-056`
+  were reassigned there in the same ruling; none of them gated Phase 4.
 - T-238 remains Ready with an unreproduced crash condition and incomplete product
   evidence. Existing blocked/platform work remains in the [task queue](TASKS.md).
 

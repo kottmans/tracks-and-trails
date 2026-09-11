@@ -5,9 +5,12 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-15 — §Phase 4's `T-203` paragraph corrected: it named the wrong ruled
+**Last updated:** 2026-09-10 — **Phase 4.5 resequenced to follow Phase 5** as a post-release
+update, and Phase 4's recorded checklist run moved to Phase 5. Both by maintainer ruling, with what
+each gives up recorded where it applies rather than here. *(2026-08-15: §Phase 4's `T-203` paragraph
+corrected — it named the wrong ruled
 option, and said the build was in review a month after it was approved. `T-246` added to the
-maintainer-found entries that are not plan deliverables. *(Earlier the same day: §Phase 4's
+maintainer-found entries that are not plan deliverables.)* *(Earlier that day: §Phase 4's
 screen-reader exit criterion amended by maintainer ruling on `T200-R1` — the name-and-role half is
 automated on both platforms, and announcement* coherence *joins the pre-release session for Linux
 as it already had for Windows.)*
@@ -772,6 +775,19 @@ per-item template ruling, which is the maintainer's and is not agreed work until
   **It runs last.** `T-203` reshapes the add dialog's row, `T-204` fixes a defect in it, and
   `T-146`/`T-195`–`T-202` add the surfaces the checklist would cover. A run taken before those land
   checks an application that is about to change.
+
+  > **Amended 2026-09-10 by maintainer ruling: the *recorded* run moves to Phase 5 and no longer
+  > gates this phase.** The maintainer ran the list informally against the built window — *"I did a
+  > mostly full informal run … and I think things are looking good"* — and ruled that the recorded
+  > run happens later, against the artifact that ships.
+  >
+  > **What that gives up, stated rather than glossed.** An informal run is precisely what the
+  > paragraph above calls *"a walked-through session"*, and Phase 2's experience is that such a
+  > session is not evidence: its criterion 8 found **eleven defects against 2153 passing tests** and
+  > needed two further runs to reach 40 of 40. So this phase now exits on a session rather than on
+  > a record, deliberately. **The obligation is not cancelled, it is moved**: `T-212` is a Phase 5
+  > deliverable and the recorded run happens before the first release, where it also lands closer
+  > to what a user installs than a run against a developer checkout would.
 - Reviewed and signed off
 
 ---
@@ -789,7 +805,8 @@ buy an integer. The fractional label is uglier and cannot mislead.
 is unreachable from this GUI.
 
 **Prerequisites:** Phase 4 approved — it owns the settings dialog, and a large part of this phase
-lands *in* that dialog rather than beside it. *(`T-182`'s ruling was the other prerequisite and was
+lands *in* that dialog rather than beside it. **Since 2026-09-10, Phase 5 as well**: this phase now
+follows the first release. *(`T-182`'s ruling was the other prerequisite and was
 taken on 2026-08-07, `SEC-003`, so the excluded families are known before the audit starts rather
 than discovered during it.)*
 
@@ -797,6 +814,27 @@ than discovered during it.)*
 post-processing and playlist work that this phase's typed fields extend — and several of its groups
 need Phase 4's settings screen to exist first. Later, it would be post-release, and the first
 release would ship claiming to wrap yt-dlp while covering perhaps a tenth of it.
+
+> ### Resequenced 2026-09-10 — **this phase now runs after Phase 5, as a post-release update**
+>
+> **Ruled by the maintainer:** *"We really need to get this deployed. I think a reasonable approach
+> would be to do phase 5, and then do phase 4.5 post release as an update that can be rolled out."*
+>
+> **The paragraph above argued against exactly this, and the half that was right still is.** The
+> first release will ship covering a fraction of yt-dlp's surface, so **`REQ-030`'s parity claim is
+> unmet at release and must not be made.** That is the price, and it is a documentation obligation
+> rather than an opinion: anything user-facing that says this application wraps yt-dlp has to say
+> what it actually reaches, until this phase lands. `REQ-031`'s escape hatch (`T-184`) is what makes
+> the gap survivable in the meantime — a user who needs an uncovered option can still express it —
+> and it is the first thing to schedule here.
+>
+> **What the argument got wrong was treating "post-release" as terminal.** A rolled-out update is
+> not a shelf; the parity work is scheduled, not abandoned, and shipping first means it lands
+> against a build people are actually using rather than against a checkout.
+>
+> **`REQ-030` is not an MVP acceptance criterion** (`REQUIREMENTS.md` §11 lists nine, and parity is
+> not among them), so Phase 5 can exit without this phase. That was checked before the resequencing
+> was recorded, not assumed.
 
 **The size of it, counted.** *(This paragraph said "roughly 250 options", "perhaps fifteen" and
 "not decomposed yet", and closed with "no estimate of this phase's size should be quoted before
@@ -856,7 +894,19 @@ the 89 refused.
 
 **Goal:** Installable artifacts for both platforms and a repeatable release process.
 
-**Prerequisites:** Phase 4 approved.
+**Prerequisites:** Phase 4 approved. **Phase 4.5 is no longer one** — it was resequenced on
+2026-09-10 to follow the first release, so this phase runs next. Its own section records what that
+costs; the short version is that `REQ-030`'s parity claim is unmet at release and must not be made.
+
+**Two things gate the start rather than the end, and both need arranging now.**
+
+- **`T-106` has to be taken before the first build.** The `REL-` decision naming the Linux packaging
+  format does not exist, and AppImage, Flatpak and system packages differ in how the application
+  finds `ffmpeg` and where it may write — which reaches back into `REQ-024` and `NFR-004`. It was
+  filed 2026-08-01 as *worth taking early*; it is now on the critical path.
+- **A real Windows desktop.** The manual verification session below is the one item that cannot be
+  satisfied from the current development environment. `T-212`'s recorded checklist run joins it
+  here, so the two sittings can be arranged together.
 
 **Trigger:** `docs/RELEASE.md`, `SECURITY.md`, and `CHANGELOG.md` are created here
 (`DOC-002`). A `REL-` decision recording the Linux packaging format must be accepted before
