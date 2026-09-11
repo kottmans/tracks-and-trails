@@ -658,3 +658,114 @@ review bytes and authorization are preserved. Documentation whitespace and local
 links pass, and the migration verifier preserves **381 entries in 105 files /
 2,403,546 historical bytes**. STATUS/task completion synchronization remains with
 their owner, using the dispositions above.
+
+
+## 2026-09-11 — Windows evidence verified; exit verdict at 59598de
+
+**Reviewer:** Codex. **Assessed head:**
+`59598de4fd7af2c9fe921bb99002761d7f01c766`, as explicitly requested.
+**Verdict: Blocked pending T329-R2's required Windows mutation evidence.**
+**P4EXIT-R2 is Resolved.** R1, R3 and R4 remain Resolved. The remaining issue is
+in the newly submitted T-329 gate change, whose [initial review](T-329.md) is
+recorded with this assessment. There is no newly demonstrated product defect.
+
+### Boundary
+
+An assessment of the requested historical head is valid; the repository does not
+require silently substituting the current tip. Between the previously approved
+R1 head `2ea1aa6` and `59598de`, runtime product source is unchanged. Additions
+include Phase 5's version-tag checker and AppDir metadata/tests, the T-329 focus
+metric correction, and planning/review documentation. The changed focus metric
+was independently inspected and exercised as part of this pass.
+
+The checkout at review start was `0761605e5b061872f4ff69c623239c4cc0604beb`. Its later `f72ebab`
+changes ffmpeg discovery in product source and its tests; `c3ab0be` and `0761605`
+change documentation. **This assessment does not approve f72ebab or extend the
+59598de evidence to the current product tree.** Local focus verification used
+an archive of the requested head. No checkout rollback or branch was created.
+The current Phase 5 permission to begin work is recorded in the amended plan;
+phase exit remains distinct from release approval.
+
+### R2: native execution and artifacts verified
+
+The reviewer downloaded the artifacts and inspected the JUnit reports and job
+logs for [run 34653977245](https://github.com/kottmans/tracks-and-trails/actions/runs/34653977245),
+at exactly `59598de`, attempt 1. Every required job succeeded. Both Windows jobs
+identify **STARBASE**; the native job ran 22:26:03–23:05:14Z and frozen Windows
+23:05:16–23:10:12Z. These are completed executions with steps and artifacts,
+not dispatch timestamps or the earlier lost-runner attempt.
+
+| Verified evidence | Result |
+|---|---|
+| Native Windows desktop suite | **37 passed, no skips**, pytest summary 92.28 s; JUnit has zero failures/errors |
+| Full Windows suite | **4,152 passed / 36 skipped / 39 deselected / 23 warnings**, 2,182.30 s; zero failures/errors |
+| Linux unit/UI | **3,715 passed / 21 skipped**, 248.31 s |
+| Linux integration | **454 passed**, 377.01 s |
+| Static checks | Linux lint/format/source and full mypy, plus Windows lint/format/Windows-target mypy, all pass |
+| Frozen Windows | Bundled yt-dlp/extractors, database, install/child-resolution/revert and process smoke probes all pass |
+| Frozen Linux | Required job and probe artifacts pass |
+
+The desktop report records the **windows** plugin, DISPLAY1, a visible native
+HWND titled Tracks & Trails, and captured screenshots. Its environment names
+Python **3.14.6** and PySide6/Qt **6.11.2**; Linux CI uses Python 3.14.7 and
+PySide6 6.11.2. The offscreen Qt-baseline report is a separate step, and the
+full Windows suite deliberately runs offscreen. Neither substitutes for the
+native desktop tests, which have their own report.
+
+All four R1 UIA tests appear as executed, non-skipped passing JUnit cases:
+Settings (5.361 s), Add dialog (2.212 s), combo purpose (5.310 s), and the
+thirteen-surface inventory (38.383 s). The latter is the whole test duration,
+not an individual query time. It completed under the implemented per-query
+ceilings. This verifies the furniture rule against an actual provider and the
+purpose assertion in this Windows environment. **It does not reveal whether
+Node.value was populated**: the assertion deliberately has an independent
+live-value fallback, and the success report does not record those node values.
+
+Windows skip reasons were inspected: platform-specific process/permission cases,
+fixture fields absent by design, and one conditional dialog-size branch; no R1
+UIA test or full-surface colour/focus case was skipped. The frozen report verifies
+10 migrations, 1,751 extractors, a temporary update resolving in a child and
+reverting to the bundled baseline, and one top-level launch with a reaped worker.
+The diagnostic update version is a test value, not a live package update.
+
+### Why phase sign-off still waits
+
+T-329 changes a gate on which criterion 3 relies. The default-state measurement
+and successful Windows tests are independently established, and removing the
+application's header ring fails both palettes locally. However, T-329 explicitly
+requires that mutation evidence on **both platforms**. The supplied artifacts
+contain no Windows mutation run. Its location/result was requested; it remains
+unverified at this record. [T329-R2](T-329.md) records that single blocking evidence
+item. A successful unmodified job cannot fill in a missing negative-control run.
+
+T329-R1 is a separate **Low, nonblocking** helper correction: the new metric reads
+the model's current index while SortableHeader paints its own current section.
+Both are zero in the submitted sweep, so the present pass is valid; the mismatch
+is demonstrated after choosing another sort column. It stays with T-329's coupled
+completion work and does not reopen the already resolved R1 inventory finding.
+
+| Phase 4 criterion | Assessment |
+|---|---|
+| 1. Keyboard reachability | Existing review plus corrected inventory and current Linux tests establish the accepted scope. |
+| 2. Correct names/roles on both platforms | **Met within the amended boundary.** R1 is resolved and R2 now has real Windows execution. Coherence and Linux AT-SPI publication remain pre-release obligations. |
+| 3. No colour-only information | Normal corrected tests pass on both platforms; final approval of T-329's gate awaits its explicit mutation evidence. |
+| 4. Automated log redaction | Prior verified disposition retained; relevant current full suites pass. |
+| 5. In-app update and revert | Current Windows and frozen probes now supply the previously outstanding platform evidence. |
+| 6. Recorded built-window checklist | **Moved to Phase 5**, not performed or cancelled by this review. T-212 remains required before release. |
+| 7. Reviewed and signed off | **Pending T329-R2.** This evidence review does not grant phase exit yet. |
+
+### Residuals and coordination
+
+The Windows job reports **38.9 of 40 minutes, 97%, with 1.1 minutes remaining**.
+Its capacity warning is real and remains visible here; a passing run does not
+resolve the concern about growth or establish future timing. One green run also
+does not establish a flakiness rate. The crash-dump report says capture is **not
+armed**, so it supplies no additional diagnostic coverage. No timeout, accepted
+crash-risk bound or runner configuration was changed by this review.
+
+T-323's licence/artifact checks and the later ffmpeg product change remain Phase 5
+work; they receive no implementation or release verdict here. The T-289 bounded
+acceptance remains as previously verified, without a new crash explanation.
+No unrelated task was created. The T-329 review is indexed in REVIEWS; task and
+STATUS updates remain with their owner. Previous dated Phase 4 entries are
+preserved byte for byte.
