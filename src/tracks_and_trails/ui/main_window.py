@@ -1146,7 +1146,7 @@ class MainWindow(QMainWindow):
         dialog.accepted.connect(use)
         dialog.open()
 
-    def _show_row_menu(self, job_id: str, verbs: object) -> QMenu | None:
+    def _show_row_menu(self, job_id: str, verbs: object, everything: bool = False) -> QMenu | None:
         """The queue row's menu, holding whatever the view said to hold.
 
         **The contents arrive with the request** (`T-135`). This used to call `verbs_of` itself and
@@ -1159,9 +1159,11 @@ class MainWindow(QMainWindow):
         """
         if self._queue is None:
             return None
-        return self._row_menu(self._queue, job_id, _verbs(verbs))
+        return self._row_menu(self._queue, job_id, _verbs(verbs), everything=everything)
 
-    def _row_menu(self, view: QueueView, row_id: str, offered: Sequence[Verb]) -> QMenu | None:
+    def _row_menu(
+        self, view: QueueView, row_id: str, offered: Sequence[Verb], *, everything: bool = False
+    ) -> QMenu | None:
         """One overflow menu, for whichever list asked (`T124-R1`).
 
         One overflow rather than one per list, because `UX-005` §3's row anatomy is one shape.
@@ -1176,10 +1178,16 @@ class MainWindow(QMainWindow):
         menu.setObjectName("rowVerbsMenu")
         # **This download's own commands, above the line's** (`T315-R1`, and it is the staging
         # list's own order — `UX-011`'s *Just this item* section sits above the entries the menu
-        # already held). This route is reached by right-click, the Menu key and Shift+F10, so it
-        # is the **only** keyboard route to the item commands: the `⋮` that opens them for a
-        # pointer is a painted affordance with no accessibility node.
-        has_item_commands = self._add_item_commands(menu, row_id)
+        # already held). The context routes — right-click, the Menu key, Shift+F10 — are the
+        # **only** keyboard route to those commands: the `⋮` that opens them for a pointer is a
+        # painted affordance with no accessibility node.
+        #
+        # **Only for those routes, and that is `T315-R5`** (`T-135`). This method also serves the
+        # pointer's `⋯`, whose entire purpose is the verbs the row **had no room to draw** — so
+        # adding commands that always fit elsewhere put three entries a narrow row did not ask for
+        # above the two it did. `T-135` had already settled that the `⋯` holds only what was
+        # dropped; the caller says which route asked, because a verb list cannot.
+        has_item_commands = everything and self._add_item_commands(menu, row_id)
         if has_item_commands and offered:
             menu.addSeparator()
         if not offered and not has_item_commands:

@@ -3435,3 +3435,78 @@ def test_the_delegate_leaves_a_widget_that_is_not_its_own_editor_at_the_row_s_si
         "for it, so the control no longer sits where the affordance was drawn"
     )
     assert editor.geometry().height() < option.rect.height()
+
+
+def test_a_value_the_editor_has_no_entry_for_is_never_committed_as_inherited(
+    qapp: QApplication,
+) -> None:
+    """**`T313-R3`'s second half**, and the one that does not depend on any role's stability.
+
+    `setEditorData` searched only the entries `createEditor` had already built, so a row value it
+    could not find left the combo at index `-1`. On the staging list `-1` is **not** neutral: its
+    `currentData()` is `None`, which is the inherited entry — so the editor's next untouched commit
+    arrived as *the user deliberately chose "follow the batch"* and discarded a hand-picked format
+    nobody had touched.
+
+    **The guard is the presence of an inherited entry, not the surface's name.** A list that has
+    one is a list where `-1` is indistinguishable from a deliberate choice; the queue has none, so
+    `-1` stays the honest rendering of *"no built-in describes this"* there (`T126-R2`) — which is
+    the second half of this test.
+    """
+    parent = QWidget()
+    delegate = RowDelegate()
+
+    # A staging-shaped row: it may follow the batch, so the editor carries an inherited entry.
+    staging = RowsModel(
+        [
+            {
+                HEADLINE_ROLE: "",
+                DETAIL_ROLE: "",
+                STATE_ROLE: "",
+                HUE_ROLE: 0,
+                MENU_AVAILABLE_ROLE: True,
+                PRESET_CHOICES_ROLE: ("Best video available",),
+                PRESET_INHERITABLE_ROLE: True,
+                PRESET_INHERITED_ROLE: "Best video available",
+                PRESET_ROLE: "137+140",
+            }
+        ]
+    )
+    index = staging.index(0, 0)
+    editor = delegate.createEditor(parent, _selectable_row_option(), index)
+    assert isinstance(editor, QComboBox)
+
+    # The row's value changes to one the open editor has no entry for — which is what a batch
+    # change did while the editor stayed alive.
+    staging._rows[0][PRESET_ROLE] = "137+251"
+    delegate.setEditorData(editor, index)
+
+    assert editor.currentData() == "137+251", (
+        f"the editor answers {editor.currentData()!r} for a row set to 137+251; committing that "
+        "would read as the user choosing to follow the batch"
+    )
+
+    # **The queue keeps `-1`**, because it has no inherited entry for `-1` to be mistaken for.
+    queued = RowsModel(
+        [
+            {
+                HEADLINE_ROLE: "",
+                DETAIL_ROLE: "",
+                STATE_ROLE: "",
+                HUE_ROLE: 0,
+                MENU_AVAILABLE_ROLE: True,
+                PRESET_CHOICES_ROLE: ("Best video available",),
+                PRESET_ROLE: "137+140",
+            }
+        ]
+    )
+    queued_index = queued.index(0, 0)
+    queued_editor = delegate.createEditor(parent, _selectable_row_option(), queued_index)
+    assert isinstance(queued_editor, QComboBox)
+    queued._rows[0][PRESET_ROLE] = "a selector no entry names"
+    delegate.setEditorData(queued_editor, queued_index)
+
+    assert queued_editor.currentIndex() == -1, (
+        "the queue's editor invented an entry for a request no built-in describes, where -1 is "
+        "the honest rendering (T126-R2)"
+    )

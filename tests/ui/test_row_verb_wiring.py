@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import QAccessible, QContextMenuEvent, QFontMetrics, QImage, QPainter
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -1973,5 +1974,61 @@ def test_the_keyboard_reaches_this_downloads_own_commands(
         # satisfy two `in` checks and be a regression.
         verbs = [LABELS[verb] for verb in view.verbs_of("job-1")]
         assert offered == [JUST_THIS_ITEM, CHOOSE_FORMATS_TEXT, OPTIONS_TEXT, *verbs], offered
+    finally:
+        menu.close()
+
+
+def test_the_pointer_overflow_holds_only_what_the_row_dropped(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """**`T315-R5`.** `T-315`'s keyboard correction spilled into the `⋯`.
+
+    `_row_menu` serves **both** routes. Adding this download's own commands to it for `T315-R1`
+    put `Just this item`, `Choose specific formats…` and `Options…` above the verbs a narrow row
+    had no room to draw — in the one menu whose entire purpose is *what was dropped* (`T-135`).
+    Three entries that always fit elsewhere, above the two that did not.
+
+    **Driven by an actual click on the drawn `⋯`**, not through `_on_verb` or `_show_row_menu`: the
+    spillover was invisible to every committed test because none of them took the pointer route.
+    The keyboard route is asserted separately and must keep both commands.
+    """
+    queue = _MutableQueue([_job("job-1", 0, JobStatus.QUEUED)])
+    window = _shown_window(queue, tmp_path)
+    view = window.queue_view
+    assert view is not None
+    _bring_to_front(window, view)
+    # Narrow enough that the row cannot draw every verb, which is the only state the `⋯` exists in.
+    window.resize(420, 300)
+    qapp.processEvents()
+
+    delegate = view.table.itemDelegate()
+    assert isinstance(delegate, RowDelegate)
+    index = view.model.index(0, 0)
+    option = QStyleOptionViewItem()
+    option.initFrom(view.table)
+    option.rect = view.table.visualRect(index)
+    option.fontMetrics = QFontMetrics(option.font)
+    body, area = delegate._verb_area(option, index)
+    placed = delegate._verb_rects(QFontMetrics(option.font), area, body, index)
+    overflow = next((rect for verb, rect in placed if verb is None), None)
+    assert overflow is not None, (
+        "the row drew no ⋯ at this width, so there is no pointer route to test; narrow it further"
+    )
+
+    QTest.mouseClick(view.table.viewport(), Qt.MouseButton.LeftButton, pos=overflow.center())
+    qapp.processEvents()
+
+    menu = next(
+        (child for child in window.findChildren(QMenu) if child.objectName() == "rowVerbsMenu"),
+        None,
+    )
+    assert menu is not None, "clicking the drawn ⋯ opened no menu"
+    try:
+        shown = [action.text() for action in menu.actions() if action.text()]
+        dropped = [LABELS[verb] for verb in delegate.overflowing("job-1")]
+        assert shown == dropped, (
+            f"the ⋯ offered {shown}; it holds only the verbs the row could not draw, which are "
+            f"{dropped}"
+        )
     finally:
         menu.close()

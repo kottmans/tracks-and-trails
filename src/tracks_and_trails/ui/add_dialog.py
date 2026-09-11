@@ -1065,7 +1065,20 @@ class StagingModel(QAbstractListModel):
                 # *"Download as: 137+140 — following the batch"* on its detail line — and revives
                 # `RowDelegate.createEditor`'s branch for a row's own non-catalogue preset, which
                 # `T-311` left unreachable.
-                return format_name(format_choice_of(self._dialog.preset_for(row)))
+                #
+                # **The selector, not the composed *name*, and that is a stability contract rather
+                # than a shorter label** (`T313-R3`). The name is `format_name` of the composed
+                # preset, so it grows a clause for every field the governing preset sets — a batch
+                # change to one with `embed_metadata` turned `137+140` into
+                # `137+140 · embedding metadata` **while the editor was open**. `setEditorData`
+                # then found no such entry, left the combo at index `-1`, and its next untouched
+                # commit read as `None`: the user's deliberate *follow the batch*, and the pick
+                # gone. Reproduced by the reviewer through a wheel event on the batch control.
+                #
+                # The selector changes only when the user picks different streams, which is the
+                # one event that *should* invalidate the entry. What the row is downloading in full
+                # is on its detail line, where a growing description costs nothing.
+                return picked.selector()
             own = row.preset
             return own.name if isinstance(own, Preset) else None
         if role == MENU_AVAILABLE_ROLE:

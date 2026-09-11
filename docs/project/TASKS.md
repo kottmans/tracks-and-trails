@@ -281,6 +281,29 @@ had a test at all. All four now emit on `media_probed` / `job_failed`, so the co
 the claim, and both endings are covered — the race by mutating the queue the window reads and
 calling the refresh the window itself calls, rather than by arranging the model directly.
 
+#### Corrected again 2026-09-10 — `T315-R5`, a regression the first correction introduced
+
+**Authorised by the maintainer** under `TESTING.md` §14, whose two-pass budget was spent and whose
+remaining blocker was Medium: *another focused pass*, taken because `T313-R3` is High and forces a
+further round over the same correction boundary regardless, so the marginal cost was the fix rather
+than a review cycle.
+
+**`_row_menu` serves both routes, and `T315-R1`'s shared builder did not know which had asked.**
+Adding this download's own commands for the keyboard put `Just this item`, `Choose specific
+formats…` and `Options…` into the pointer's `⋯` as well — the one menu whose entire purpose is
+*the verbs the row had no room to draw* (`T-135`). Three entries that always fit elsewhere, above
+the two that did not.
+
+**The view says which route asked**, because the shell cannot recover it: sending the verbs alone
+distinguished the two while both menus held only verbs, and stopped being enough the moment one of
+them held something else. `more_requested` carries that now, and the item section is built only for
+the context and keyboard routes.
+
+**The spillover was invisible to every committed test**, because none of them took the pointer
+route — `_on_verb` and `_show_row_menu` were called directly. The new regression clicks the drawn
+`⋯` itself, and the keyboard route is asserted separately so the two cannot be satisfied by one
+change.
+
 #### Acceptance criteria
 
 - The `⋮` offers *Choose specific formats…* and *Options…*, and **none of the row's verbs**.
@@ -447,6 +470,33 @@ notes and the column, and nothing else on either row told them apart. **Exact st
 established redundancy** — the neighbouring cell does. A tier note now goes only where a bitrate is
 shown, and a *video only* / *audio only* note only where the row's own flags already establish it,
 which leaves it standing on a stream yt-dlp never classified.
+
+#### Corrected again 2026-09-10 — `T313-R3`, a regression the first correction introduced
+
+**The fix for `T313-R1` created an automatic-commit discard of its own**, which is the same defect
+class one transition over and is recorded here rather than smoothed away. `PRESET_ROLE` began
+answering `format_name` of the **composed** preset — a value that grows a clause for every field
+the governing preset sets, so changing the batch to one embedding metadata turned `137+140` into
+`137+140 · embedding metadata` **while the editor was open**. `setEditorData` searched only the
+entries already built, `findData` missed, the combo fell to index `-1`, and its next untouched
+commit arrived as `None`: the user deliberately choosing *follow the batch*. Reproduced by the
+reviewer through a wheel event on the batch control, with nothing else touched.
+
+**Two corrections, and the second is the one that generalises.**
+
+1. **The role answers the selector**, not the composed name. The selector changes only when
+   different streams are picked, which is the one event that *should* invalidate the entry. What
+   the row downloads in full is on its detail line, where a growing description costs nothing.
+2. **A value the editor has no entry for now gets one**, in `setEditorData`. On this list `-1` is
+   not neutral — its `currentData()` is `None`, which *is* the inherited entry — so a miss reads as
+   a deliberate choice. The guard is the presence of an inherited entry rather than the surface's
+   name: the queue has none, so `-1` stays the honest rendering of *"no built-in describes this"*
+   there (`T126-R2`), and that is asserted alongside.
+
+**A docstring claimed this could not happen.** `setEditorData` said *"a miss on the staging list
+cannot happen — its `None` is the inherited entry, which is present there."* The sentence had it
+backwards: the inherited entry being present is precisely what makes a miss dangerous. It is
+corrected in place rather than deleted.
 
 #### Acceptance criteria
 

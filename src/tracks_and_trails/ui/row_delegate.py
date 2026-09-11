@@ -2405,8 +2405,14 @@ class RowDelegate(QStyledItemDelegate):
 
         `-1` instead: the control shows no selection, which is the honest rendering of *"no
         built-in describes this"*, and `QueueModel` puts the literal selector on the row's own line
-        for exactly that case. A miss on the staging list cannot happen — its `None` is the
-        inherited entry, which is present there.
+        for exactly that case.
+
+        *(This continued: "A miss on the staging list cannot happen — its `None` is the inherited
+        entry, which is present there." **That was the claim `T313-R3` disproved**, and the
+        sentence had it backwards: the inherited entry being present is precisely what makes a miss
+        dangerous there, because `-1` then commits as a deliberate choice rather than as nothing.
+        A staging miss became reachable when `T-313` gave the role a value that varies; the body
+        below now supplies the entry instead of relying on it never being absent.)*
         """
         if not isinstance(editor, QComboBox):
             return
@@ -2419,7 +2425,26 @@ class RowDelegate(QStyledItemDelegate):
         if entry != -1 and isinstance(inherited, str) and inherited:
             editor.setItemText(entry, inherited_entry_text(inherited))
         current = index.data(PRESET_ROLE)
-        editor.setCurrentIndex(editor.findData(current if isinstance(current, str) else None))
+        wanted = current if isinstance(current, str) else None
+        position = editor.findData(wanted)
+        if position == -1 and wanted is not None and editor.findData(None) != -1:
+            # **A row's own value that this editor has no entry for gets one, here** (`T313-R3`).
+            # `createEditor` adds it once; the role can change while the editor stays open, and
+            # `StagingModel.refresh()` deliberately keeps it alive across a value-only
+            # `dataChanged` — the same window `T284-R3` rebuilds the inherited entry in, one entry
+            # over.
+            #
+            # **Without this the miss is not neutral, it is a lie.** `setCurrentIndex(-1)` leaves
+            # `currentData()` answering `None`, which on this list is the inherited entry — so the
+            # editor's next untouched commit arrives as *the user chose "follow the batch"* and
+            # discards a hand-picked format nobody touched. That is the defect the reviewer
+            # reproduced with a wheel event, and it is why the guard is on the **presence of an
+            # inherited entry**: a list that has one is a list where `-1` is indistinguishable from
+            # a deliberate choice. The queue has no such entry, so `-1` stays honest there and its
+            # `T126-R2` rendering below is untouched.
+            editor.insertItem(0, wanted, wanted)
+            position = 0
+        editor.setCurrentIndex(position)
 
     def setModelData(
         self,

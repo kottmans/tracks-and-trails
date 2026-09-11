@@ -6494,3 +6494,66 @@ def test_the_staging_options_editor_also_keeps_a_quality_it_cannot_offer(
         assert row.preset.audio_codec is AudioCodec.AAC, "the codec changed too"
     finally:
         dialog.close()
+
+
+def test_a_batch_change_while_the_editor_is_open_keeps_the_chosen_formats(
+    qapp: QApplication,
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T313-R3`.** `T-313`'s own correction introduced an automatic-commit discard.
+
+    `PRESET_ROLE` began answering a value that **changes while the editor is open**: it was
+    `format_name` of the *composed* preset, which grows a clause for every field the governing
+    preset sets, so changing the batch to one embedding metadata turned `137+140` into
+    `137+140 · embedding metadata`. `setEditorData` searched only the entries already built,
+    `findData` missed, the combo fell to index `-1`, and its next untouched commit arrived as
+    `None` — which on this list is the user deliberately choosing *follow the batch*. The pick went
+    with it, and nobody had touched the control.
+
+    **The role now answers the selector**, which changes only when different streams are picked —
+    the one event that should invalidate the entry. The batch preset offered here deliberately
+    carries `embed_metadata`, because no built-in does and the composed name cannot move without
+    one.
+
+    Driven through the batch control's own `setCurrentIndex`, which is the signal path a wheel
+    event produces on it.
+    """
+    embedding = replace(preset_registry.BEST_VIDEO, name="Embeds metadata", embed_metadata=True)
+    dialog, row = _staged(
+        dialogs, managers, spin, presets=(*preset_registry.BUILT_IN_PRESETS, embedding)
+    )
+    dialog.show()
+    qapp.processEvents()
+    try:
+        selector = _pick_a_pair(dialog, row)
+        model = dialog.model
+        index = model.index(model.shown.index(row), 0)
+        before = index.data(PRESET_ROLE)
+
+        open_row_editor(dialog, 0)
+        batch = dialog._preset_choice
+        batch.setCurrentIndex(batch.findText(embedding.name))
+        qapp.processEvents()
+
+        assert index.data(PRESET_ROLE) == before, (
+            f"the role moved from {before!r} to {index.data(PRESET_ROLE)!r} under an open editor, "
+            "so the entry the editor is showing no longer exists"
+        )
+
+        delegate = staging_list(dialog).itemDelegate()
+        assert isinstance(delegate, RowDelegate)
+        assert delegate.commit_and_close_editor(), "no editor was open, so this proves nothing"
+        qapp.processEvents()
+
+        kept = row.format_selection
+        assert isinstance(kept, FormatSelection), (
+            "changing the batch preset under an open editor discarded the chosen formats"
+        )
+        assert kept.selector() == selector
+        assert dialog.preset_for(row).embed_metadata, (
+            "the batch change never reached the row, so this passed on a row nothing happened to"
+        )
+    finally:
+        dialog.close()

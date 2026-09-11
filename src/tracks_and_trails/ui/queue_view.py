@@ -1567,7 +1567,13 @@ class QueueView(QWidget):
     #: what it is for, and listing everything there offered the same actions twice on any row wide
     #: enough to show them. The Menu key, Shift+F10 and a right-click hold **everything the state
     #: permits**, because they are not asking about the row's width.
-    more_requested = Signal(str, object)
+    #:
+    #: **The third value says which of the two asked** (`T315-R5`). *Everything* now means more
+    #: than the verbs — a row's own commands go in the keyboard menu, and they always fit, so the
+    #: `⋯` must not carry them. Sending the verbs alone was enough to distinguish the routes while
+    #: both menus held only verbs; it stopped being enough the moment one of them held something
+    #: else, and the shell cannot recover the difference from a verb list.
+    more_requested = Signal(str, object, bool)
 
     #: `(job_id)` — the row's `⋮` was pressed. **Not `more_requested`, and that is the point**
     #: (`T-315`).
@@ -1795,7 +1801,7 @@ class QueueView(QWidget):
         """
         if verb is None:
             # The `⋯` is drawn only when something was dropped, so this is never empty (`T-135`).
-            self.more_requested.emit(job_id, self._delegate.overflowing(job_id))
+            self.more_requested.emit(job_id, self._delegate.overflowing(job_id), False)
             return
         # The signal carries `object` because Qt has no `Verb` type; narrowing here is where the
         # contract is checked rather than assumed. A value that is not a verb is the same class of
@@ -1953,7 +1959,7 @@ class QueueView(QWidget):
         if isinstance(job_id, str) and job_id:
             # **Everything, not the overflow.** A keyboard route whose contents changed with the
             # window's width would be a different menu on a maximised window (`NFR-005`, `T-135`).
-            self.more_requested.emit(job_id, self.verbs_of(job_id))
+            self.more_requested.emit(job_id, self.verbs_of(job_id), True)
 
     def _commit_open_editor(self) -> None:
         """Write the open editor's choice through **before** the rows are replaced (`T126-R1`).
