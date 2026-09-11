@@ -126,19 +126,101 @@ def test_a_combo_boxs_own_dropdown_cannot_fail_the_name_sweep() -> None:
     assert assert_every_control_is_named(tree(real, popup), "a screen with a combo") == (real,)
 
 
-def test_qts_overflow_buttons_cannot_fail_the_name_sweep() -> None:
-    """The `»` a `QToolBar` grows when it runs out of room — Qt's widget, unnamed in every app.
+#: What Qt's Windows bridge actually publishes for this application's toolbar overflow button.
+#:
+#: **Measured, not invented** (`P4EXIT-R1`, third pass). Qt 6.11.1's provider obtains `AutomationId`
+#: from `QAccessibleBridgeUtils::accessibleId`, which builds a dot-separated path through the
+#: accessible ancestors. Replaying that algorithm over the composed main window on Linux yields
+#: exactly this string — the same one the reviewer derived independently from the pinned provider
+#: source.
+MEASURED_OVERFLOW_ID = "QApplication.mainWindow.queueToolBar.qt_toolbar_ext_button"
 
-    Recognised by `AutomationId`, which Qt's bridge fills from the object name, so the **same**
-    `PLATFORM_FURNITURE` string identifies it through the Windows tree and the Qt one. Without
-    this it reaches the sweep as an unnamed `CheckBox`, because Qt gives a checkable `QToolButton`
-    that role (`T-235`) — measured on this application's own main window.
+
+def _qualified(own_name: str) -> str:
+    """A realistic bridge identifier for a widget named `own_name`, in the shape Qt publishes."""
+    return f"QApplication.mainWindow.queueToolBar.{own_name}"
+
+
+def test_the_measured_overflow_identifier_is_recognised_as_furniture() -> None:
+    """**The defect the third pass found**, as the string the bridge really publishes.
+
+    `is_platform_furniture` compared the *whole* `automation_id` against bare object names, and Qt
+    does not publish bare object names. So the exclusion never fired: replaying the all-surfaces
+    sweep with this representation failed at the **first** surface, the main window, on this very
+    control — an unnamed `CheckBox`, because Qt gives a checkable `QToolButton` that role
+    (`T-235`).
+
+    The superseded predicate is reconstructed below so this is shown to be a counterexample rather
+    than asserted to be one.
     """
-    for identifier in PLATFORM_FURNITURE:
-        overflow = Node(name="", control_type=UIA_CHECKBOX, automation_id=identifier)
-        assert overflow.is_platform_furniture, identifier
+    overflow = Node(name="", control_type=UIA_CHECKBOX, automation_id=MEASURED_OVERFLOW_ID)
+
+    assert MEASURED_OVERFLOW_ID not in PLATFORM_FURNITURE, (
+        "the superseded predicate compared the whole identifier against the allowlist, and this "
+        "is what it was handed — the comparison could not succeed"
+    )
+    assert overflow.is_platform_furniture, MEASURED_OVERFLOW_ID
+    with pytest.raises(AssertionError, match="publishes no operable control"):
+        assert_every_control_is_named(tree(overflow), "a toolbar that overflowed")
+
+
+def test_every_allowlisted_widget_is_recognised_through_a_qualified_identifier() -> None:
+    """**All three**, not the one this application happens to show (`P4EXIT-R1`).
+
+    Only `qt_toolbar_ext_button` appears in this project's measured tree. The other two are
+    exercised in the shape the bridge would publish them in, which is what the allowlist claims to
+    cover — *"mutate every instance the constant claims"*: one example proves one case, not the
+    property. These two identifiers are realistic, not observed, and this docstring says so rather
+    than letting the test imply a measurement.
+    """
+    for own_name in sorted(PLATFORM_FURNITURE):
+        node = Node(name="", control_type=UIA_CHECKBOX, automation_id=_qualified(own_name))
+        assert node.is_platform_furniture, _qualified(own_name)
         with pytest.raises(AssertionError, match="publishes no operable control"):
-            assert_every_control_is_named(tree(overflow), "a toolbar that overflowed")
+            assert_every_control_is_named(tree(node), f"a screen showing {own_name}")
+
+
+def test_an_explicit_accessible_identifier_is_still_recognised() -> None:
+    """The other shape `accessibleId` returns: a declared `QAccessible::Identifier`, with no path.
+
+    Qt uses an explicit identifier verbatim when a widget declares one, so a bare allowlist name is
+    a genuine possibility rather than a leftover from the superseded comparison. One rule covers
+    both shapes because it takes the last segment, and a string with no dot is its own last
+    segment.
+    """
+    for own_name in sorted(PLATFORM_FURNITURE):
+        assert Node(
+            name="", control_type=UIA_CHECKBOX, automation_id=own_name
+        ).is_platform_furniture
+
+
+@pytest.mark.parametrize(
+    "identifier",
+    [
+        # A control whose own name merely *ends with* an allowlisted one.
+        _qualified("myqt_toolbar_ext_button"),
+        _qualified("qt_toolbar_ext_button_2"),
+        # An allowlisted widget's own child. The furniture is the button, not everything under it.
+        f"{MEASURED_OVERFLOW_ID}.QLabel",
+        # The name in an ancestor segment rather than the widget's own.
+        "QApplication.qt_toolbar_ext_button.chooseFolderButton",
+        # And a control this project owns, which was never furniture.
+        "QApplication.settingsDialog.chooseFolderButton",
+    ],
+)
+def test_a_lookalike_identifier_is_not_excused(identifier: str) -> None:
+    """**The exclusion must not grow.** A hole that widens is one nobody notices widening.
+
+    Each of these would be excused by a suffix or substring test, and none of them is a widget Qt
+    owns. The last-segment comparison is what refuses them, and these are the cases that keep it
+    from being loosened into one.
+    """
+    node = Node(name="", control_type=UIA_BUTTON, automation_id=identifier)
+    assert not node.is_platform_furniture, identifier
+    with pytest.raises(AssertionError, match="expose no accessible name"):
+        assert_every_control_is_named(
+            tree(Node(name="Cancel", control_type=UIA_BUTTON), node), "a screen with one of these"
+        )
 
 
 def test_an_unnamed_control_this_project_owns_is_not_excused_by_either_rule() -> None:

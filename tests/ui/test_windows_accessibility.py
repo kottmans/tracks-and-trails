@@ -89,8 +89,11 @@ QUERY_TIMEOUT_SECONDS = 30.0
 #: `UIA_ValueValuePropertyId`. The value a control holds, where it holds one.
 UIA_VALUE_PROPERTY = 30045
 
-#: `UIA_AutomationIdPropertyId`. Qt's bridge fills it from `QWidget.objectName()`, which is how
-#: `PLATFORM_FURNITURE` recognises the toolkit's own widgets through a published tree.
+#: `UIA_AutomationIdPropertyId`. **Not the object name** — Qt 6.11.1's provider fills it from
+#: `QAccessibleBridgeUtils::accessibleId`, which returns a declared `QAccessible::Identifier` or
+#: else a dot-separated path through the accessible ancestors. `uia_contract.own_identifier` takes
+#: the last segment, which is how `PLATFORM_FURNITURE` recognises the toolkit's own widgets.
+#: This comment claimed the object name until `P4EXIT-R1`'s third pass measured otherwise.
 UIA_AUTOMATION_ID_PROPERTY = 30011
 
 

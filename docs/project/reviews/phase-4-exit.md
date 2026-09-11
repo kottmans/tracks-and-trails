@@ -527,3 +527,24 @@ The previous record, including the authorization entry, is preserved byte for
 byte. Documentation whitespace/link checks and the migration verifier pass:
 **381 historical entries in 105 files, all 2,403,546 bytes preserved**. Task and
 status synchronization remains with their owner.
+
+## 2026-09-11 — Maintainer authorization for a fourth focused pass
+
+**Decision, by the maintainer:** a fourth focused verification pass **is authorized.**
+
+Recorded here by the Implementer; the authorization is the maintainer's and this
+entry does not interpret or extend it. The third pass closed `R4` and left
+`P4EXIT-R1` open on the qualified-`AutomationId` mismatch and `P4EXIT-R2` open on
+absent Windows execution — both blocking Medium, which is the state
+[TESTING §14](../TESTING.md#14-review-policy) requires an explicit authorization
+to review again.
+
+**What it covers.** The identifier correction and its counterexample suite, per
+the third pass's *Required correction*. Per §14 it stays focused on that and the
+correction diff, and is not a new broad audit.
+
+**What it does not do.** It does not resolve `P4EXIT-R2`, and a clean `R1`
+verification would still leave Phase 4 **Blocked** on that finding alone.
+`STARBASE` reports offline; `windows desktop` and `frozen windows` are queued at
+`55d7488`, and `OPS-012`'s 24-hour discard window on that run expires
+2026-09-12. Re-triggering after that changes the head, not the code.

@@ -111,9 +111,18 @@ TITLE_BAR_BUTTONS = frozenset({"Minimize", "Maximize", "Close"})
 #: the copy that drifts, and the drift is invisible to both readers — which is what that task
 #: recorded as the cost.
 #:
-#: Matched by Qt object name. On Linux that is `QWidget.objectName()` directly; on Windows it is
-#: `UIA_AutomationIdPropertyId`, which Qt's bridge populates **from** the object name, so the same
-#: string identifies the same widget through either tree.
+#: Matched by the widget's **own** Qt object name — which the two trees spell differently, and
+#: `P4EXIT-R1` found this file claiming they spell it the same.
+#:
+#: On Linux `tests/ui/test_accessibility.py` reads `QWidget.objectName()` and compares it whole.
+#: On Windows the corresponding property is `UIA_AutomationIdPropertyId`, which Qt 6.11.1's
+#: provider obtains from `QAccessibleBridgeUtils::accessibleId` — an explicit
+#: `QAccessible::Identifier` where a widget declares one, and **otherwise a dot-separated path
+#: through the accessible ancestors**, each segment being that object's name or, failing that, its
+#: class name. This application's overflow button measures as
+#: `QApplication.mainWindow.queueToolBar.qt_toolbar_ext_button`, not `qt_toolbar_ext_button`.
+#: `own_identifier` is the one place that knows the difference; see it for why a suffix test is
+#: not good enough.
 #:
 #: `qt_toolbar_ext_button` is the `»` overflow a `QToolBar` grows when it runs out of room, and
 #: `qt_menubar_ext_button` its menu-bar twin. Both are Qt's widgets, created and destroyed by Qt,
@@ -131,6 +140,26 @@ PLATFORM_FURNITURE = frozenset(
         "qt_tableview_cornerbutton",
     }
 )
+
+
+def own_identifier(automation_id: str) -> str:
+    """The **last** segment of a bridge identifier: the widget's own name, without its ancestry.
+
+    Qt's Windows provider publishes `AutomationId` as a dot-separated path through the accessible
+    ancestors (see `PLATFORM_FURNITURE`), so the toolbar overflow arrives as
+    `QApplication.mainWindow.queueToolBar.qt_toolbar_ext_button`. A widget that declares an
+    explicit `QAccessible::Identifier` arrives as that identifier alone, with no path — and this
+    returns it unchanged, so one rule covers both shapes.
+
+    **Split, never `endswith`** (`P4EXIT-R1`). A suffix test excuses
+    `…queueToolBar.myqt_toolbar_ext_button` and `…qt_tableview_cornerbutton` inside an identifier
+    this project chose, which is the opposite of the point: the allowlist names three widgets Qt
+    owns, and a control merely *ending in* one of those strings is not one of them.
+
+    An empty identifier answers `""`, which is in no allowlist — a node the bridge cannot name is
+    never excused on that ground.
+    """
+    return automation_id.rsplit(".", 1)[-1]
 
 
 @dataclass(frozen=True)
@@ -160,12 +189,16 @@ class Node:
     #: that, and comes from the live widgets.
     value: str = ""
 
-    #: `UIA_AutomationIdPropertyId`, which Qt's Windows bridge fills from `QWidget.objectName()`.
+    #: `UIA_AutomationIdPropertyId`, as Qt's Windows bridge actually builds it.
     #:
     #: The only handle a published tree gives on *which widget* a node is, and the one
     #: `PLATFORM_FURNITURE` matches on. Without it the toolbar's `»` overflow — a `QToolButton`
     #: Qt publishes with the `CheckBox` role and no name — is indistinguishable from a control
     #: this project forgot to label.
+    #:
+    #: **It is a qualified path, not an object name**, which is `P4EXIT-R1`'s second round: this
+    #: field was documented as `QWidget.objectName()` and compared whole against bare names, so the
+    #: exclusion it exists for never fired. See `PLATFORM_FURNITURE` and `own_identifier`.
     automation_id: str = ""
 
     @property
@@ -195,7 +228,7 @@ class Node:
         return (
             self.is_title_bar_furniture
             or self.is_owned_by_a_combo_box
-            or self.automation_id in PLATFORM_FURNITURE
+            or own_identifier(self.automation_id) in PLATFORM_FURNITURE
         )
 
 

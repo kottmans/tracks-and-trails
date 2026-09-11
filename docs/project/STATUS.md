@@ -34,8 +34,11 @@ owns phase deliverables and exit criteria.
     `FormatDialog` entirely and swept the staging *bodies* where `T-312` made the application show
     *pages*; the Windows UIA sweep covered three roles and never opened Settings or the add dialog.
     The inventory is nine surfaces, not five, and the Windows sweep covers the editing roles with
-    both dialogs queried. **The reviewer's own mutation now fails four tests where it previously
-    left all 103 passing.**
+    both dialogs queried. **The reviewer's own mutation now fails two tests where it previously
+    left all 103 passing** — the published-name and keyboard-route checks. *(This said four, which
+    was wrong: removing a control's focusability also removes it from the rendered-focus sweep, so
+    that sweep is not an oracle for the removed keyboard route. Two, measured independently by the
+    reviewer in two separate passes and reproduced here.)*
 
     **The widened audit immediately found a real defect, which is the point of widening it.** The
     collapse triangle at the top of every row panel — since `T-312` the return control above the
@@ -85,6 +88,23 @@ owns phase deliverables and exit criteria.
 
     **What is still not established is unchanged**: none of the Windows assertions has executed.
     That is `R2`.
+
+    **The third pass verified all of that and found one thing more, corrected 2026-09-11.** The
+    furniture filter compared the *whole* `AutomationId` against bare Qt object names, and Qt does
+    not publish bare object names: its Windows provider builds the property through
+    `QAccessibleBridgeUtils::accessibleId`, which returns a declared `QAccessible::Identifier` or
+    else a **dot-separated path through the accessible ancestors**. This application's overflow
+    button is `QApplication.mainWindow.queueToolBar.qt_toolbar_ext_button`, so the exclusion never
+    fired and the sweep failed on Qt's own control. The predicate now compares the identifier's
+    **last segment** — split, never a suffix test, which would excuse
+    `…myqt_toolbar_ext_button`. Measured both ways on the surface harness: the superseded
+    comparison reaches `read_tree` **4 times** and fails at the first surface; the correction
+    reaches it **16** and passes. All three allowlist entries are now exercised as qualified
+    identifiers, the declared-identifier shape is covered, and five lookalikes are proven rejected.
+    The comments claiming the two platforms spell the identifier alike are corrected — they do
+    not.
+
+    **`P4EXIT-R4` is Resolved** as of the third pass.
   - **`P4EXIT-R4` — corrected 2026-09-11.** The theme comment, the `BORDERED_CONTROLS` reason and
     the entry above called the collapse triangle the *only* pointer route out of a panel.
     `RowPanel` gives `Done` the same `closed(True)` (`ui/add_dialog.py:784`, `:805`). All three
@@ -94,10 +114,12 @@ owns phase deliverables and exit criteria.
     `frozen windows` to `STARBASE`, and the API reports that runner **offline**; both jobs are
     queued behind it at `55d7488`, re-checked 2026-09-11 against the runner API rather than
     inferred from the job state. `OPS-012` records that a self-hosted job with no matching
-    online runner queues up to 24 hours before GitHub discards it. Bringing `STARBASE` online
-    drains them; unsetting `WINDOWS_RUNNER` routes to hosted, which `OPS-010` says is why it was
-    set. **Either way a fresh run is needed** — `R1`'s correction changes the test tree the
-    evidence must cover.
+    online runner queues up to 24 hours before GitHub discards it. **Bringing `STARBASE` online is
+    the only route**: `windows-desktop` carries the literal `[self-hosted, windows, desktop]` at
+    `.github/workflows/ci.yml:535`, so unsetting `WINDOWS_RUNNER` does not move it. *(This
+    previously offered that unset as a fallback to hosted, which is wrong for the native job and is
+    corrected here.)* A fresh run is needed either way — `R1`'s correction changes the test tree
+    the evidence must cover.
   - **`P4EXIT-R3` — taken 2026-09-11.** The maintainer accepted the residual: Phase 4 may exit
     with `T-289`'s unexplained abort, bounded by the unchanged reopening condition. Recorded in
     that task's closed record and in the risk section below. **The crash is still not explained**,
