@@ -16,10 +16,13 @@ This file asserts only the cross-references those tools cannot know about.
 from __future__ import annotations
 
 import re
+import subprocess
 import tomllib
 import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 from typing import Final
+
+import pytest
 
 REPOSITORY: Final = Path(__file__).resolve().parents[2]
 APPDIR: Final = REPOSITORY / "packaging" / "appdir"
@@ -58,12 +61,28 @@ def test_the_three_appdir_files_exist() -> None:
     assert APPRUN.is_file()
 
 
-def test_apprun_is_executable() -> None:
+def test_apprun_is_executable_in_the_index() -> None:
     """An AppDir whose `AppRun` is not executable does not start, and nothing else notices.
 
-    Git tracks the bit, so this fails if a checkout or a scripted edit drops it.
+    **Asked of git, not of the filesystem**, and that is the whole of this test's history. The
+    first version read `Path.stat().st_mode & 0o111`, which passes on Linux and **cannot** pass on
+    Windows: NTFS carries no POSIX execute bit, so a Windows checkout reports `0o100666` for a
+    file git has recorded as `100755`. It failed the Windows job while passing every local run.
+
+    Git's index is also the more faithful question. The bit that reaches a user is the one the
+    release build checks out, and that comes from the index whatever platform the build ran on.
     """
-    assert APPRUN.stat().st_mode & 0o111, "AppRun has no executable bit"
+    listed = subprocess.run(
+        ["git", "ls-files", "-s", "--", "packaging/appdir/AppRun"],
+        cwd=REPOSITORY,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if listed.returncode != 0 or not listed.stdout.strip():
+        pytest.skip("not a git checkout, so the recorded mode cannot be read")
+    mode = listed.stdout.split()[0]
+    assert mode == "100755", f"git records AppRun as {mode}, not an executable 100755"
 
 
 def test_the_desktop_entry_launches_the_binary_the_spec_builds() -> None:
