@@ -2860,6 +2860,15 @@ def _staged(
     return dialog, _probed_with_formats(dialog, formats)
 
 
+#: How far below the last row a *"no row here"* probe point sits (`T-301`).
+#:
+#: **Two pixels was not enough and the failure was silent.** `customContextMenuRequested` reports in
+#: the list's coordinates and `indexAt` reads the viewport's, with the frame between them — so a
+#: point two pixels clear of the last row passes `indexAt` in the test and still resolves a row
+#: inside the handler. At the default font the arithmetic happened to work; one point larger it did
+#: not. The margin is deliberately far wider than any frame.
+OFF_ROW_MARGIN: Final = 20
+
 #: Dialog sizes the *Chosen* summary is required to survive (`T306-R3`).
 #:
 #: **Grounded in the application rather than invented.** `T-306`'s acceptance criterion asked for
@@ -5598,7 +5607,13 @@ def test_the_menu_key_reaches_the_current_row_under_a_shipped_theme(
 
         viewport = listing.viewport()
         last = listing.visualRect(dialog.model.index(dialog.model.rowCount() - 1, 0))
-        off_any_row = QPoint(1, max(last.bottom() + 2, viewport.height() + 2))
+        # **Clear of the last row by more than a rounding error** (`T-301`). This was
+        # `last.bottom() + 2`, and at one point larger the margin was exactly those two pixels —
+        # the assertion below still passed, and the *handler* then resolved a row anyway, because
+        # `customContextMenuRequested` reports in the list's coordinates while `indexAt` reads the
+        # viewport's and the frame sits between them. A probe point whose correctness depends on
+        # that difference being zero is measuring the frame, not the keyboard route.
+        off_any_row = QPoint(1, max(last.bottom(), viewport.height()) + OFF_ROW_MARGIN)
         assert not listing.indexAt(off_any_row).isValid(), (
             "the probe landed on a row once a theme was applied, so this would assert the mouse "
             "route rather than the keyboard one — the case this test exists to catch"

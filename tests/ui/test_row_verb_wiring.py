@@ -297,10 +297,19 @@ def test_the_drawn_verbs_are_where_the_click_is_tested(qapp: QApplication, tmp_p
     delegate = view.table.itemDelegate()
     assert isinstance(delegate, RowDelegate)
 
+    # **The row the view actually draws, and the area the delegate actually reserves** (`T-301`).
+    # This invented `QRect(0, 0, 700, 66)` and carved 100 px off its left, which is a row at one
+    # font — at a point larger nothing fitted and `_verb_rects` answered empty, so the test failed
+    # for having guessed the geometry rather than for anything the delegate did. `_verb_area` is
+    # the seam the paint itself uses, so asking it keeps the claim about placement instead of
+    # about pixel arithmetic.
     index = view.model.index(0, 0)
-    body = QRect(0, 0, 700, 66).adjusted(PADDING, PADDING, -PADDING, -PADDING)
-    area = QRect(body.left() + 100, body.top(), body.width() - 100, body.height())
-    placed = delegate._verb_rects(QFontMetrics(view.table.font()), area, body, index)
+    option = QStyleOptionViewItem()
+    option.initFrom(view.table)
+    option.rect = view.table.visualRect(index)
+    option.fontMetrics = QFontMetrics(option.font)
+    body, area = delegate._verb_area(option, index)
+    placed = delegate._verb_rects(QFontMetrics(option.font), area, body, index)
 
     assert placed, "a queued row drew no verbs at all"
     for _, rect in placed:
@@ -338,8 +347,14 @@ def test_the_overflow_keeps_its_place_as_the_state_changes(
     assert view is not None
     delegate = view.table.itemDelegate()
     assert isinstance(delegate, RowDelegate)
-    metrics = QFontMetrics(view.table.font())
-    body = QRect(0, 0, 700, 66).adjusted(PADDING, PADDING, -PADDING, -PADDING)
+    # **The row the view draws, not one written down** (`T-301`). `QRect(0, 0, 700, 66)` is a row
+    # at one font; a point larger and nothing fitted inside it.
+    option = QStyleOptionViewItem()
+    option.initFrom(view.table)
+    option.rect = view.table.visualRect(view.model.index(0, 0))
+    option.fontMetrics = QFontMetrics(option.font)
+    metrics = QFontMetrics(option.font)
+    body, _reserved = delegate._verb_area(option, view.model.index(0, 0))
 
     def overflow_at(width: int, row: int) -> QRect | None:
         area = QRect(body.left(), body.top(), width, body.height())
@@ -349,14 +364,19 @@ def test_the_overflow_keeps_its_place_as_the_state_changes(
     # **The width is searched for rather than written down.** A queued row offers three verbs and
     # a running one offers a single Cancel, so the band where *both* drop something is narrow and
     # moves with the font — a literal here would be a number that passed on this machine.
+    # **The ceiling is the row's own width** (`T-301`). It was `200`, which is the same literal the
+    # comment above rejects one line earlier, one step removed: the band moves with the font and a
+    # point larger put it past 200, so the search ran off the end and reported that the layout had
+    # changed shape. Scanning up from narrow still stops at the first width where both overflow, so
+    # a wider ceiling only costs iterations.
     places: list[QRect] = []
-    for width in range(24, 200, 2):
+    for width in range(24, max(body.width(), 26), 2):
         found = [overflow_at(width, row) for row in (0, 1)]
         if all(rect is not None for rect in found):
             places = [rect for rect in found if rect is not None]
             break
     assert len(places) == 2, (
-        "no width between 24 and 200 gave both a queued and a running row an overflow, so this "
+        "no width up to the row's own gave both a queued and a running row an overflow, so this "
         "measures nothing; the layout or the verb sets have changed shape"
     )
 
@@ -376,14 +396,22 @@ def test_the_verbs_leave_the_message_its_width(qapp: QApplication, tmp_path: Pat
     window = _window_over([_job("job-1", 0, JobStatus.QUEUED)], tmp_path)
     view = window.queue_view
     assert view is not None
+    # **Sized, because an unsized view lays nothing out** and `visualRect` then answers an empty
+    # rectangle — which is why this reads the row rather than inventing one.
+    view.table.resize(700, 300)
     delegate = view.table.itemDelegate()
     assert isinstance(delegate, RowDelegate)
-    metrics = QFontMetrics(view.table.font())
-    body = QRect(0, 0, 700, 66).adjusted(PADDING, PADDING, -PADDING, -PADDING)
-    area = QRect(body.left() + 100, body.top(), body.width() - 100, body.height())
+    # **The row the view draws, and the area the delegate reserves** (`T-301`): the invented
+    # `QRect(0, 0, 700, 66)` is a row at one font, and a point larger left nothing to place.
+    option = QStyleOptionViewItem()
+    option.initFrom(view.table)
+    option.rect = view.table.visualRect(view.model.index(0, 0))
+    option.fontMetrics = QFontMetrics(option.font)
+    metrics = QFontMetrics(option.font)
+    body, area = delegate._verb_area(option, view.model.index(0, 0))
 
     placed = delegate._verb_rects(metrics, area, body, view.model.index(0, 0))
-    assert placed
+    assert placed, "a queued row drew no verbs, so nothing here measures where they went"
     line = metrics.height()
     first_two_lines = QRect(area.left(), area.top(), area.width(), 2 * line)
     for verb, rect in placed:
