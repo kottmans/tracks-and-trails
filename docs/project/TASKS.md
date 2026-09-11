@@ -188,6 +188,113 @@ accepts it. Until then it is a proposal in a task, which is the narrowest honest
 
 ## Ready
 
+### T-329 — The focus-ring floor mismodels a header, and Windows is where it shows
+
+**Status:** **In Progress** — **the maintainer ruled option A on 2026-09-11** and it is
+implemented; what remains is the Windows job confirming it, which is the one acceptance criterion
+no local run can answer. Filed the same day from the first native Windows run of the corrected tree
+(`P4EXIT-R2`'s evidence run, `34645329305` at `65f57e9`). **Blocks that evidence**: `windows
+desktop` failed on it, so `R2` cannot be satisfied while it stands.
+
+#### 2026-09-11 — implemented, and what it measures now
+
+`one_more_ring` grows one branch: a `QHeaderView` is measured by the **section focus is drawn on**,
+not by its own perimeter. `_focused_section` takes the current index's section — logical index 0 on
+every header this sweep reaches, measured at **84×30** against widgets of 198 to 312 — and falls
+back to the first section when there is no current index.
+
+**The race is gone rather than widened.** The floor for those headers is now **134** and
+*constant*, because it no longer scales with a width the indicator never used:
+
+| | ink changed | old floor | new floor | old margin | new margin |
+|---|---|---|---|---|---|
+| Linux | 430 | 392–408 | **134** | +22 to +38 | **+296** |
+| Windows | 386 | 389–404 | **134** | **−3 to −18** | **+252** (projected) |
+
+**The mutation the criteria ask for was run, and it is a real one** rather than an arithmetic
+stand-in: styling the sections flat (`QHeaderView::section { background: …; border: none; }`) makes
+the native focus rect disappear, the measured change falls to **0**, and the sweep fails on that
+header. A control that stops drawing its focus is still caught at the new floor.
+
+**Nothing else moved.** Every control whose focus really is drawn around itself keeps the perimeter
+model, and `MINIMUM_FOCUS_RING_SHARE` is untouched at `0.6` — `T202-R2` measured it at 0.82–1.94
+across every bordered control, and option C would have blunted it for all of them to accommodate
+one mismodelled class.
+**Owner:** Implementer; the choice between the options below is the maintainer's
+**Priority:** High — it is the only thing failing the Windows job, and Phase 4's exit waits on it
+**Phase:** Phase 4 (accessibility gate), found during Phase 5
+**Depends on:** nothing
+**Relevant context:** `one_more_ring` and `MINIMUM_FOCUS_RING_SHARE` in
+`tests/ui/test_colour_is_never_alone.py`; `T202-R2` which measured the constant; `T-200` which
+made `SortableHeader`'s keyboard route real; `NFR-005`
+**Affected surfaces:** `tests/ui/test_colour_is_never_alone.py`
+**Risk:** Medium — it changes a gate that currently carries `P4EXIT-R1`'s evidence
+
+#### What fails
+
+`test_focus_is_visible_on_every_control_the_application_shows`, **both palettes**, on the three
+surfaces carrying a `FormatTable`:
+
+```
+SortableHeader on format panel:        386 pixels change, under the 389 its size asks for
+SortableHeader on format table:        386 pixels change, under the 404 its size asks for
+SortableHeader on queue format dialog: 386 pixels change, under the 389 its size asks for
+```
+
+#### The cause, measured on both platforms rather than inferred
+
+`one_more_ring(widget)` is `2 * (width + height) - 4` — **the perimeter of a one-pixel ring around
+the whole control** — and the floor is `0.6` of it. That model fits a button, a line edit and a
+list. **It does not fit a `QHeaderView`**, which draws focus on its *current section* rather than
+around itself, so the ink it changes is **constant** while the floor rises with the header's width.
+
+| Platform | Pixels changed | Floor at 299 px wide | at 312 px | Margin |
+|---|---|---|---|---|
+| Linux | **430**, constant | 392 | 408 | +38 / **+22** |
+| Windows | **386**, constant | 389 | 404 | **−3** / **−18** |
+
+**So this is a size race, and Linux is 22 pixels from losing it too.** Windows loses first only
+because its section focus rect is smaller. Widen the table by about 30 pixels — one more column,
+a longer codec name, a larger font — and Linux fails identically. `T-259`'s rule applies to a
+different bound but says the same thing: a threshold crossed by growth is not a fault.
+
+**The product is not at fault.** A focused header changes 386–430 pixels of geometry, which is
+exactly what `NFR-005` asks for: focus that reads without colour. The metric, not the application,
+is what mismodels this control.
+
+#### Options
+
+1. **Model a header's focus as its section, not its perimeter.** `one_more_ring` grows a
+   `QHeaderView` case that uses the current section's rect. Keeps the floor scaling for everything
+   else, and states in one place why a header is different. *Cost:* the sweep gains a control-class
+   special case, which is the thing this file has resisted.
+2. **Cap the floor.** Keep the perimeter model but stop the floor rising past what any focus
+   indicator plausibly draws. *Cost:* an arbitrary constant, and it weakens the floor for large
+   controls generally — a list that genuinely stopped drawing its ring could pass.
+3. **Measure the change against the focused region rather than the whole widget.** The most
+   faithful, and the largest change to a gate that is currently load-bearing evidence.
+
+**Recommendation: (1).** It is the only one that keeps the rule exact for every other control, and
+the special case is honest — a header really is a different shape of control, and the file already
+skips `qt_` internals for a comparable reason. **Do not lower `MINIMUM_FOCUS_RING_SHARE`**: it was
+measured at `0.82`–`1.94` across every bordered control (`T202-R2`), and moving it to accommodate
+one mismodelled class would blunt it for the rest.
+
+#### Acceptance criteria
+
+- The Windows job passes without loosening the rule for any control the perimeter model does fit
+- **A mutation proves it still catches the defect it exists for**: a header that recolours on focus
+  without changing geometry fails, on both platforms
+- The Linux margin is no longer a race — stated as a measurement, not an assertion
+- Whatever is chosen is recorded where `MINIMUM_FOCUS_RING_SHARE`'s own measurement is recorded
+
+#### Out of scope
+
+- `MINIMUM_FOCUS_RING_SHARE` itself, unless the ruling says otherwise
+- The Windows job's 40-minute bound, which the same run reported at **98%** — a separate matter
+
+---
+
 ### T-321 — The Linux release artifact, built where it will run
 
 **Status:** **In Progress** — the AppDir metadata landed 2026-09-11; the build host and the

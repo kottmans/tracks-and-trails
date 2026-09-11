@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QGroupBox,
+    QHeaderView,
     QLineEdit,
     QListView,
     QMenu,
@@ -462,8 +463,46 @@ def one_more_ring(widget: QWidget) -> int:
     failing a stepper that is drawn correctly: a `QToolButton[stepButton="true"]` is 17 by 25, so
     its whole extra ring is **80 pixels** — under the 100 the fixed floor asked for — where a list
     is 238 by 145 and gains **754**. Both are the same one-pixel edge, and the edge is the point.
+
+    **A header is measured by its focused section, not by itself** (`T-329`, maintainer's ruling
+    2026-09-11, option A). `QHeaderView` draws focus on the **current section**, so the ink it
+    changes is constant while a perimeter floor climbs with the header's width — a size race that
+    any wide enough header loses. It lost on Windows first, and Linux was 22 pixels behind it:
+
+    | | ink changed | floor at 299 px | at 312 px |
+    |---|---|---|---|
+    | Linux | 430, constant | 392 | 408 |
+    | Windows | 386, constant | 389 | 404 |
+
+    Measured on both platforms rather than reasoned about. The current section is logical index 0
+    and **84 pixels wide** on every one of the six headers this sweep reaches, against widgets of
+    198 to 312 — so the section is what the indicator is drawn on, and the section is what the
+    floor is taken from. The floor for those becomes **134**, which a control that merely
+    recolours still cannot reach: that scores ~0, which is the distinction this whole measurement
+    exists to make.
+
+    **The special case is narrow on purpose.** Every control whose focus really is drawn around
+    itself keeps the perimeter model unchanged, so this weakens nothing else. `T-329` records the
+    three alternatives and why they were rejected — capping the floor would have blunted it for
+    every large control.
     """
+    if isinstance(widget, QHeaderView):
+        width, height = _focused_section(widget)
+        return 2 * (width + height) - 4
     return 2 * (widget.width() + widget.height()) - 4
+
+
+def _focused_section(header: QHeaderView) -> tuple[int, int]:
+    """The size of the section focus is drawn on: across the header, and its full depth.
+
+    Falls back to the first section when there is no current index — a header with focus and no
+    current section still has to draw somewhere, and index 0 is where Qt puts it.
+    """
+    index = header.currentIndex()
+    across = header.orientation() == Qt.Orientation.Horizontal
+    logical = (index.column() if across else index.row()) if index.isValid() else 0
+    section = header.sectionSize(max(logical, 0))
+    return (section, header.height()) if across else (header.width(), section)
 
 
 #: How much of that ring a control must actually gain to count as having thickened its edge.
