@@ -56,11 +56,14 @@ owns phase deliverables and exit criteria.
   **`T-286` was built on 2026-09-10** and is In Review: the container note now names the case
   recoding is for, not only what it costs.
 
-  **`T-290` is the last Phase 4 exit item, and what is left of it is a maintainer ruling.** Three
-  of its six criteria were already met by `ui/error_text.py` before the task started — measured,
-  not read — and a guard was added so a later error kind cannot pick the update sentence up by
-  copying a neighbour. What remains is the Settings presentation, whose four options that task
-  reserves for the maintainer.
+  **`T-290` was built on 2026-09-11** and is In Review — the maintainer ruled *demote it and say
+  when*, so a newer yt-dlp now reads as recovery rather than as a standing setting. **Phase 4 exit
+  work is now the exit review itself**, with `T-297`, `T-286`, `T-290` and `T-316` awaiting
+  verification.
+
+  **`T-238` is Complete**, closed 2026-09-11 on the maintainer's explicit no-action decision
+  (`TESTING.md` §14). The crash was never reproduced; the guard is the outcome, criterion 4 is met
+  as re-scoped, and a firing would reopen it. The Ready queue now holds no High.
 
 - **The order after Phase 4 changed on 2026-09-10.** Phase 5 (distribution) runs next and
   **Phase 4.5 (option coverage) follows the first release** as a rolled-out update, by maintainer
