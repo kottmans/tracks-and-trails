@@ -61,9 +61,10 @@ mangled SSH key fails by silently falling back to password auth rather than by e
 `tools/windows/ssh-setup.ps1` enables OpenSSH and authorises a key. Run it once, elevated, from
 the RDP session.
 
-## The two traps
+## The three traps
 
-Both of these produce a run that *looks* fine and is not evidence about the machine.
+The first two produce a run that *looks* fine and is not evidence about the machine. The third
+produces no run at all, and blames the network for it.
 
 ### 1. SSH lands in session 0, which has no desktop
 
@@ -110,6 +111,40 @@ That is not what a developer's shell is. Elevation changes results:
   directories and re-run.
 
 Prefer the scheduled-task route for anything you intend to record as evidence.
+
+### 3. Killing the runner orphans its session, and every job then fails at ten minutes
+
+**Measured 2026-09-11**, at the cost of an hour. The symptom is a self-hosted job that fails with
+
+> *"The self-hosted runner lost communication with the server. Verify the machine is running and
+> has a healthy network connection."*
+
+and the message sends you to the network, which is fine. What is actually wrong is that GitHub
+still holds a **session** for a runner process that no longer exists, so jobs are dispatched into
+it and no worker ever starts.
+
+**How to tell it apart from a real fault**, without guessing:
+
+| Evidence | What a dead session looks like |
+|---|---|
+| Job duration | **Exactly 10:00**, repeatably. Two jobs failed at 10:01 and 10:00 |
+| `steps` on the job record | Empty, and no logs — `gh run view --job <id> --log` answers *log not found* |
+| Newest `C:\actions-runner\_diag\Worker_*.log` | Older than the job. **No worker launched at all** |
+| `Runner_*.log` | `Cancel running worker right away` naming the *previous* job each time, and `renewjob … HTTP Status: NotFound` |
+
+A real test failure has none of those: it has steps, logs, and a worker log written while the job
+ran.
+
+**Stop the runner with Ctrl-C in its own console.** `Stop-Process` does not release the session,
+and the next `run.cmd` answers *"A session for this runner already exists"* with
+`Runner connect error: Error: Conflict. Retrying until reconnected.` That is the right behaviour
+and it clears itself — the orphan expired in **two and a half minutes** here. Do not kill it again
+to hurry it along; each kill makes another orphan. A reboot has the same effect as a kill, which
+is why this surfaces after one.
+
+**It is not a service, deliberately** — see trap 1 — so nothing restarts it for you, and there is
+no `Restart-Service` to reach for. `Get-Service actions.runner.*` returning nothing is the
+expected state here, not a fault.
 
 ## Running the suites
 
