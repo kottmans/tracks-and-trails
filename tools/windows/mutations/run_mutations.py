@@ -27,17 +27,39 @@ if not (ROOT / "pyproject.toml").is_file():
 if ".venv" not in str(PYTHON):
     raise SystemExit(f"run this with the project venv's python, not {PYTHON}")
 
+#: `T-026`'s classes run the desktop-marked suite on the real plugin, because that is what they
+#: are about: window stations, focus chains and native widgets.
+DESKTOP = (["-m", "windows_desktop"], "windows")
+
+#: `T-329`'s class runs the rendered-focus sweep **offscreen**, and that is not a shortcut.
+#: `docs/project/TESTING.md` §2 runs the UI suite headless and the `frozen`/`windows desktop`
+#: full-suite step sets `QT_QPA_PLATFORM=offscreen` — so offscreen is the configuration in which
+#: this gate actually guards the product on this machine, and a mutation proving it in some other
+#: configuration would be proving it somewhere nobody runs it.
+FOCUS = (
+    [
+        "tests/ui/test_colour_is_never_alone.py::"
+        "test_focus_is_visible_on_every_control_the_application_shows"
+    ],
+    "offscreen",
+)
+
 CASES = [
-    ("baseline, unmutated", None, "pass"),
+    ("baseline, unmutated", None, "pass", DESKTOP),
     # The positive control runs first for a reason: if it does not fail, the plugin mechanism is
     # broken and no verdict below means anything. This driver documented that principle and did
     # not apply it, which is how its first table reported three clean kills from runs that had
     # executed no tests at all.
-    ("CONTROL: focus_chain returns nothing", "mut_control_chain", "fail"),
-    ("dialog: two declared widgets reordered", "mut_dialog_swap", "fail"),
-    ("dialog: undeclared focusable control", "mut_dialog_stray", "fail"),
-    ("progress view: undeclared focusable control", "mut_view_stray", "fail"),
-    ("progress view: delivered order reversed", "mut_view_reverse", "survives"),
+    ("CONTROL: focus_chain returns nothing", "mut_control_chain", "fail", DESKTOP),
+    ("dialog: two declared widgets reordered", "mut_dialog_swap", "fail", DESKTOP),
+    ("dialog: undeclared focusable control", "mut_dialog_stray", "fail", DESKTOP),
+    ("progress view: undeclared focusable control", "mut_view_stray", "fail", DESKTOP),
+    ("progress view: delivered order reversed", "mut_view_reverse", "survives", DESKTOP),
+    # `T329-R2`. Its own baseline is here rather than borrowed from the one above: a different
+    # selection and a different platform plugin is a different run, and an unmutated pass is the
+    # only thing that makes the line under it mean anything.
+    ("baseline: the rendered focus sweep, unmutated", None, "pass", FOCUS),
+    ("header: draws no focus ring of its own", "mut_header_no_extra_ring", "fail", FOCUS),
 ]
 
 
@@ -48,11 +70,12 @@ CASES = [
 ALL_PASSED, TESTS_FAILED, INTERRUPTED, INTERNAL_ERROR, USAGE_ERROR, NO_TESTS = range(6)
 
 
-def run(plugin):
+def run(plugin, selection):
+    select, platform = selection
     environment = dict(os.environ)
-    environment["QT_QPA_PLATFORM"] = "windows"
+    environment["QT_QPA_PLATFORM"] = platform
     environment["PYTHONPATH"] = str(MUTATIONS)
-    command = [str(PYTHON), "-m", "pytest", "-q", "-m", "windows_desktop"]
+    command = [str(PYTHON), "-m", "pytest", "-q", *select]
     if plugin:
         command += ["-p", plugin]
     done = subprocess.run(  # noqa: S603 - the command is built from this file's own constants
@@ -68,8 +91,8 @@ print(f"python : {PYTHON}")
 print(f"cwd    : {ROOT}\n")
 
 results = []
-for name, plugin, expectation in CASES:
-    code, summary = run(plugin)
+for name, plugin, expectation, selection in CASES:
+    code, summary = run(plugin, selection)
     if code not in (ALL_PASSED, TESTS_FAILED):
         # Ran nothing, or could not. Never a verdict about the mutation.
         verdict = f"NO RESULT (exit {code})"

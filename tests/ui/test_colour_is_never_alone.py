@@ -495,14 +495,66 @@ def one_more_ring(widget: QWidget) -> int:
 def _focused_section(header: QHeaderView) -> tuple[int, int]:
     """The size of the section focus is drawn on: across the header, and its full depth.
 
-    Falls back to the first section when there is no current index — a header with focus and no
-    current section still has to draw somewhere, and index 0 is where Qt puts it.
+    **Asked of whatever paints the ring, not of the model** (`T329-R1`). `SortableHeader` draws
+    its own focus ring on the section its `current_section()` names, and that is *not*
+    `currentIndex()`: the two coincide at zero in the audited default state and diverge the moment
+    a user sorts another column, where the painted section is 64 to 77 pixels wide while the model
+    index still reports 0 and its 84. The first version read the model, measured the wrong section
+    for every state but one, and passed — because the one state it measured correctly is the one
+    the sweep happens to open in.
+
+    Falls back to `currentIndex()`, then to the first section, for a plain `QHeaderView` that
+    paints no ring of its own: it still has to draw somewhere, and index 0 is where Qt puts it.
     """
-    index = header.currentIndex()
     across = header.orientation() == Qt.Orientation.Horizontal
-    logical = (index.column() if across else index.row()) if index.isValid() else 0
+    painted = getattr(header, "current_section", None)
+    if callable(painted):
+        logical = int(painted())
+    else:
+        index = header.currentIndex()
+        logical = (index.column() if across else index.row()) if index.isValid() else 0
     section = header.sectionSize(max(logical, 0))
     return (section, header.height()) if across else (header.width(), section)
+
+
+def test_a_header_is_measured_by_the_section_it_actually_paints(
+    every_surface: list[Surface], qapp: QApplication
+) -> None:
+    """`T329-R1`. The audited default state is the one state where the model agrees with the paint.
+
+    `SortableHeader` paints its ring on `current_section()`. `currentIndex()` stays at 0 whatever
+    the user sorts by, so a helper reading the model measures section 0's **84** pixels while the
+    ring is drawn on a section of **64 to 77**. Every sweep opens in the default state, so nothing
+    would have caught it — the reviewer found it by setting the sort indicator by hand, and this
+    is that probe kept.
+
+    **Driven off the shared inventory**, so it measures the headers the sweep above measures
+    rather than one built to suit it.
+    """
+    headers = [
+        widget
+        for surface in every_surface
+        for widget in focusable(surface.widget)
+        if isinstance(widget, QHeaderView) and hasattr(widget, "set_current_section")
+    ]
+    assert headers, "the inventory published no sortable header, so this measures nothing"
+
+    checked = 0
+    for header in headers:
+        widths = {index: header.sectionSize(index) for index in range(header.count())}
+        moved = next((index for index, size in widths.items() if size != widths[0]), None)
+        if moved is None:
+            continue
+        header.set_current_section(moved)
+        qapp.processEvents()
+        assert _focused_section(header) == (widths[moved], header.height()), (
+            f"the floor came from section 0 ({widths[0]} px) while the ring is painted on "
+            f"section {moved} ({widths[moved]} px)"
+        )
+        header.set_current_section(0)
+        checked += 1
+
+    assert checked, "every section is the same width everywhere, so the divergence cannot show"
 
 
 #: How much of that ring a control must actually gain to count as having thickened its edge.
