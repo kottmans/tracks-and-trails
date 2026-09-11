@@ -47,6 +47,13 @@ xfreerdp /v:<address> /u:<user> +clipboard /dynamic-resolution /cert:ignore \
          /drive:linux,/home/<you>/starbase-share
 ```
 
+**`<address>` is the mDNS name, not an address you remember.** The machine takes its address from
+DHCP, so a reboot can move it — measured 2026-09-11, when it came back on a different one and the
+address from the last session simply did not answer. `getent hosts <name>.local` resolves it, and
+`<name>.local` in the command survives the next reassignment. The account and the address stay out
+of this file for the reason `tools/windows/run-on-starbase.sh` records: a public repository should
+carry neither.
+
 `/drive:` maps a local folder to `\\tsclient\linux` inside the session. Copying a file beats
 pasting a script into a PowerShell console — a long line that wraps becomes a syntax error, and a
 mangled SSH key fails by silently falling back to password auth rather than by erroring.
