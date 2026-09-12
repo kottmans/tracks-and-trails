@@ -167,7 +167,10 @@ owns phase deliverables and exit criteria.
   [`REL-006`](DECISIONS.md#rel-006--a-clean-machine-is-a-disposable-vm-the-maintainer-owns)
   disposable VMs the maintainer owns as the clean-machine evidence. `T-106` is **In Review** —
   `REL-004` meets every criterion it had. `T-317`, `T-318` and `T-320` keep the documentation and
-  harness work their rulings did not do, and stay `Proposed` because the phase has not opened.
+  harness work their rulings did not do. **`T-318` and `T-320` are now In Review** — the
+  clean-machine harness is built and has taken Linux evidence for `0.1.0.dev0`
+  (`docs/project/evidence/linux-0.1.0.dev0.md`), and `RELEASE.md` exists. `T-317` stays
+  `Proposed`.
 
   **What still gates the phase is Phase 4's exit, not a decision.**
 

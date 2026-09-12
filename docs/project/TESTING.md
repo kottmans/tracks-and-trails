@@ -263,10 +263,17 @@ All of the following, **on Linux and Windows**, before any tag or distributed bu
 5. Migration check — the previous release's database opens, migrates, and retains data
 6. `REQUIREMENTS.md` §11 MVP acceptance criteria — manually verified and recorded
 7. Built artifact installs and runs on a **clean** machine with **no Python and no
-   development toolchain** installed (`REQ-029`, `REL-001`)
+   development toolchain** installed (`REQ-029`, `REL-001`) — **executable on Linux**,
+   `tools/clean_machine_linux.sh`, which supplies the machine, **fails the run** if the
+   pre-install check finds Python, Qt, ffmpeg or a toolchain, and writes the evidence file
+   `T-318` requires. Windows is the same evidence taken by hand in Sandbox
 8. Frozen-build smoke test passes: launch, run one real download to completion, cancel
    another, exit — confirming no recursive launch and no orphaned processes
-   (`freeze_support()`, `REL-001`)
+   (`freeze_support()`, `REL-001`). **Partly executable**: `--download-probe` runs the real
+   download from inside the artifact with no display (`T-321`), which is what lets the Linux
+   clean-machine run cover it at all. It does **not** cover *cancel another* — cancellation is a
+   parent-side signal and a probe has no parent — so that clause stays a sitting, on Windows in
+   `docs/project/evidence/TEMPLATE-windows.md`
 9. yt-dlp purity re-check: the pinned baseline still contains no compiled extensions, so the
    `OPS-002` wheel-extraction update path remains viable — **executable**,
    `packaging/artifact_gates.py`, run by the `frozen` job (`T-323`)

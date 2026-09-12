@@ -84,6 +84,30 @@ Linux AppImage, `T-322` for the installer — and the gate is run as §8 describ
 publishes it after checking the artifacts attached are the ones the gate passed. Nothing in this
 project publishes automatically, and `T-324`'s criteria say so.
 
+### The clean machine (§8 item 7)
+
+Neither runner is clean any more — `OPS-010` gave that up for Windows and `OPS-012` for Linux,
+each in writing — so this is taken per candidate, by hand, and kept:
+
+```
+tools/clean_machine_linux.sh dist/Tracks_and_Trails-<version>-x86_64.AppImage \
+    > docs/project/evidence/linux-<version>.md
+```
+
+It supplies a disposable `ubuntu:24.04` — the oldest LTS the README claims, which is deliberately
+*not* the Debian 12 the artifact is built on — runs a pre-install check that **fails the run** if
+Python, a toolchain, Qt or ffmpeg is present, then every probe including `--download-probe`, and
+finally holds a real launch offscreen for 20 seconds. `--version` is not a launch test; it returns
+before a `QApplication` exists, which is how a build with no platform plugins passed everything
+once.
+
+Windows is the same evidence taken by hand in Windows Sandbox on `STARBASE`, against
+`docs/project/evidence/TEMPLATE-windows.md`. That half covers §8 item 8's *cancel another*, which
+no probe can: cancellation is a parent-side signal and a probe has no parent.
+
+**Commit both files with the release commit.** They are evidence about one artifact, identified by
+digest, taken on a machine that no longer exists.
+
 ### What a Windows user will see, and why
 
 `REL-005`: the first installer **ships unsigned**. On a first install Windows SmartScreen shows

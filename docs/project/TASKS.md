@@ -14,6 +14,182 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-318 — Decide how "a clean machine" is evidenced for the first release
+
+**Status:** **In Review** — the harness landed 2026-09-12 and has taken Linux evidence for
+`0.1.0.dev0`. The Windows half waits on `T-319`/`T-322` for a candidate to install. **Gates the
+exit** (criteria 1, 2 and release-gate item 7). Filed 2026-09-11 with the Phase 5 plan.
+
+**The decision is taken.** The maintainer ruled on 2026-09-11 for option **B**, recorded as
+[`REL-006`](DECISIONS.md#rel-006--a-clean-machine-is-a-disposable-vm-the-maintainer-owns):
+disposable VMs the maintainer owns, with *A* as the fallback. **The harness landed 2026-09-12**,
+below.
+
+#### 2026-09-12 — the harness, and the VM that is not a VM
+
+**The maintainer narrowed `REL-006` the same week it was taken**: *"I don't really want to use VMs
+for testing the packages. I'd rather just test the app image on my own machine and test the windows
+installer on starbase."* So the Linux clean machine is a **disposable container** and the Windows
+one is **Windows Sandbox on `STARBASE`**. Both satisfy what B was chosen for — clean by
+construction, owned by the maintainer, no hosted minutes — and the container costs a pull rather
+than the afternoon B was priced at. `REL-006`'s *"written down well enough to recreate in a year"*
+is then met by a committed script instead of a setup document, which is the stronger form.
+
+| Platform | How | Evidence |
+|---|---|---|
+| Linux | `tools/clean_machine_linux.sh <artifact>`, which supplies `ubuntu:24.04` and runs `tools/clean_machine_evidence.sh` on it | `docs/project/evidence/linux-<version>.md` |
+| Windows | By hand in Sandbox, against `docs/project/evidence/TEMPLATE-windows.md` | `windows-<version>.md` |
+
+**`ubuntu:24.04` and not the build image.** `packaging/build_appimage.sh` builds on Debian 12 so
+the artifact reaches as far back as possible; this runs it on the oldest LTS the README claims.
+Testing on the machine that built it would prove nothing about either.
+
+**The pre-install check is first and it can fail the run** — the first acceptance criterion, and
+the reason it is first: evidence taken on a machine that turns out to have had Python on it is not
+evidence, and finding that out afterwards is too late. Thirteen tools probed with `command -v`,
+plus a count of system Qt libraries, **output retained in full** rather than reduced to a verdict.
+
+**What it caught on its first run is recorded in `T-321`** — the artifact carries no CA bundle, so
+the real download failed on a machine whose `/etc/ssl/certs` is empty. That is the harness earning
+its place on the day it landed.
+
+**Why the Windows half is a template and not a script.** Everything the Linux evidence needs can
+be answered without a display; `--download-probe` exists for exactly that. The Windows half is
+driven through the window, which is what lets it cover *cancel another* — the one `TESTING` §8
+item 8 clause no probe can reach, because cancellation is a parent-side signal and a probe has no
+parent.
+
+**What is not done:** no Windows candidate exists yet to take evidence on. `T-319` builds it, and
+`T-322`'s installer is what Sandbox would install. The template is ready for both.
+**Owner:** Maintainer decision; Implementer records it and builds whichever harness it names
+**Priority:** High — the two exit criteria it serves are the phase's definition of done
+**Phase:** Phase 5
+**Depends on:** nothing
+**Relevant context:** `OPS-010` and `OPS-012`, which each record surrendering clean-machine CI
+evidence on one platform; `TESTING.md` §8 item 7; `REQ-029`; `REL-001`; `T-066` (CI once installed
+the project differently from the documentation, and the clean machine is what caught it)
+**Affected surfaces:** `docs/project/DECISIONS.md`; possibly `.github/workflows/`; evidence under
+`docs/project/evidence/`
+**Risk:** Medium — the phase's own exit criteria say *"a clean … machine"* twice, and nothing in CI
+runs on one any more
+
+#### Scope
+
+Both self-hosted routings were taken with eyes open: `OPS-010` gave up clean-machine evidence for
+Windows and `OPS-012` for Linux, each saying so in writing. Phase 5's exit criteria were written
+before either. So the phase now demands something CI no longer produces, and the honest options
+are:
+
+| Option | Clean? | Cost |
+|---|---|---|
+| **A. One hosted run per release candidate** — unset `WINDOWS_RUNNER`/`LINUX_RUNNER` for the RC | Yes, both platforms | Hosted minutes, which `OPS-010` says ran out; and it evidences `ubuntu-latest`, not an older distro |
+| **B. Disposable VMs the maintainer owns** — Windows Sandbox on the desktop, and a throwaway Ubuntu LTS VM or container for Linux | Yes; Sandbox is clean on every launch by design | One afternoon to set up; the Linux VM doubles as `T-321`'s oldest-glibc target |
+| **C. Accept developer-machine evidence** with the surrender recorded | No | Nothing now; the first user with a missing `.so` is the test |
+
+**Recommendation: B.** It is genuinely clean, it costs no hosted minutes, and the Linux half is the
+same machine `T-321` needs anyway. *A* is the fallback if *B* cannot be arranged, and *C* is
+recorded here only so that choosing it is a choice.
+
+#### Acceptance criteria
+
+- A `REL-` (or `OPS-`) entry naming the option, and **what "clean" means operationally**: no
+  Python, no Qt, no ffmpeg on Windows (it is bundled), no developer toolchain — checked by a
+  command run before the install, whose output is retained
+- For each platform, an evidence file under `docs/project/evidence/` per release candidate:
+  machine identity, the pre-install check, the install, first launch, one real download, exit
+- If *A*: the variable flip is written into `docs/RELEASE.md` as a step, with its reversal
+- If *B*: the setup is documented well enough that the maintainer can recreate the VM in a year
+
+#### Out of scope
+
+- Restoring clean-machine CI permanently. `OPS-010`/`OPS-012` stand; this is per-release evidence
+
+---
+
+### T-330 — The Windows job runs the suite serially, and is at 97% of its bound
+
+**Status:** **In Review** — implemented 2026-09-12; **the three consecutive green runs its own
+criteria ask for are outstanding**, and until they exist this is a change that has not been
+watched. Filed 2026-09-11 from three consecutive runs at **98%, 98% and 97%** of the 40-minute
+bound. **Maintainer ruled the direction the same day**: parallelise, rather than raise the
+number.
+**Owner:** Implementer
+**Priority:** Medium — nothing is failing, and the next test added tips it into timeouts
+**Phase:** Phase 5 (CI capacity; found during Phase 4's exit evidence)
+**Depends on:** nothing
+**Relevant context:** `T-259` (*"a bound is crossed by growth, not by faults — re-measure before
+raising it"*); `.github/workflows/ci.yml:794` the Windows invocation and `:430` the Linux one;
+`OPS-010`; `T-074` (the intermittent Windows segfault, Blocked)
+**Affected surfaces:** `.github/workflows/ci.yml`'s `windows-desktop` job
+**Risk:** Medium — `xdist` on Windows is the one change that could surface `T-074`
+
+#### The measurement
+
+| Head | Elapsed | Of the 40-minute bound |
+|---|---|---|
+| `2ea1aa6` | 39.3 min | 98% |
+| `88fc6b1` | 39.3 min | 98% |
+| `59598de` | 38.9 min | **97%** |
+
+The job's own reporter warns past 85%, citing `T-259`. **A timeout also reads as *cancelled*
+rather than *slow***, which cost an hour of diagnosis on 2026-09-11 before the orphaned-session
+trap was identified — so the failure mode is not merely a red job, it is a misleading one.
+
+#### The cause, and why this is not a bound problem
+
+**Windows runs the whole suite serially.** `ci.yml:794` is `pytest -v --junitxml=…` with no
+`-n`. The Linux `check` job at `:430` runs its unit/UI slice with `$parallel` and only the
+integration slice serially. Measured locally on Linux, the same suite is **184 s** with `-n auto`
+against **1,045 s** serial — 5.7×. Windows need not match that, but 36:22 serial is the number to
+attack rather than the 40 that contains it.
+
+#### 2026-09-12 — implemented; the three runs are what remains
+
+The `Full suite` step was one serial `pytest -v` over everything. It is now the **same two
+invocations the Linux `check` job uses**, in the same order: `tests/unit tests/ui` with `-n auto`,
+then `tests/integration` serial.
+
+**The integration slice stays serial deliberately**, not by omission. `T-123` has two open defects
+that appear only under parallel load there — `test_manager.py` scans every process on the machine
+and kills other workers' children, and a retry deadline stops firing under load. Parallelising
+that half would trade a slow job for a flaky one.
+
+**The split collects the same tests as the bare invocation it replaces**, checked rather than
+assumed: `pytest --collect-only tests` and
+`pytest --collect-only tests/unit tests/ui tests/integration` both report **4,245**. `tests/network`
+is deselected by `addopts` either way, and nothing else lives outside those three directories.
+
+**`reports/pytest.{xml,txt}` becomes `reports/pytest-unit-ui.*` and `reports/pytest-integration.*`**,
+matching the Linux job. Nothing reads those names — checked; the only references are three
+historical review records describing runs that already happened.
+
+**Not yet closed.** The acceptance criteria ask for **three consecutive green runs**, and `T-056`
+— an open Windows defect about whether a process is alive — is exactly the question parallel load
+perturbs. That is also what the `check` job's comment means by *"the Windows legs stay serial
+until someone can watch a parallel run there"*: this is the watching. **The new elapsed time is
+recorded here once those runs exist**; until then this task is not done, and if it destabilises,
+the finding is recorded and the job goes back to serial.
+
+#### Acceptance criteria
+
+- The Windows unit/UI slice runs parallel, the integration slice stays serial, **and the split is
+  the same shape as the Linux job's** rather than a second arrangement
+- **The new elapsed time is recorded here**, with the bound re-measured against it — `T-259` asks
+  for the measurement, not a smaller percentage
+- **A parallel run is green three times consecutively before this closes.** `T-074` records an
+  intermittent segfault on this machine; `xdist` changes process counts, and one green run would
+  not distinguish a fix from luck
+- If parallelism destabilises it, **the finding is recorded and the job stays serial** — a flaky
+  fast job is worse than a slow reliable one, and that outcome closes this task rather than
+  reopening the bound question
+
+#### Out of scope
+
+- `T-074` itself, which stays Blocked on a person at `STARBASE`
+- The Linux job, which is already split
+
+---
+
 ### T-321 — The Linux release artifact, built where it will run
 
 **Status:** **In Review** — the artifact is built, runs on a clean machine and on the maintainer's
@@ -1034,87 +1210,6 @@ the driver selects. The Windows numbers are still to be taken.
 
 ---
 
-### T-330 — The Windows job runs the suite serially, and is at 97% of its bound
-
-**Status:** Ready — filed 2026-09-11 from three consecutive runs at **98%, 98% and 97%** of the
-40-minute bound. **Maintainer ruled the direction the same day**: parallelise, rather than raise
-the number.
-**Owner:** Implementer
-**Priority:** Medium — nothing is failing, and the next test added tips it into timeouts
-**Phase:** Phase 5 (CI capacity; found during Phase 4's exit evidence)
-**Depends on:** nothing
-**Relevant context:** `T-259` (*"a bound is crossed by growth, not by faults — re-measure before
-raising it"*); `.github/workflows/ci.yml:794` the Windows invocation and `:430` the Linux one;
-`OPS-010`; `T-074` (the intermittent Windows segfault, Blocked)
-**Affected surfaces:** `.github/workflows/ci.yml`'s `windows-desktop` job
-**Risk:** Medium — `xdist` on Windows is the one change that could surface `T-074`
-
-#### The measurement
-
-| Head | Elapsed | Of the 40-minute bound |
-|---|---|---|
-| `2ea1aa6` | 39.3 min | 98% |
-| `88fc6b1` | 39.3 min | 98% |
-| `59598de` | 38.9 min | **97%** |
-
-The job's own reporter warns past 85%, citing `T-259`. **A timeout also reads as *cancelled*
-rather than *slow***, which cost an hour of diagnosis on 2026-09-11 before the orphaned-session
-trap was identified — so the failure mode is not merely a red job, it is a misleading one.
-
-#### The cause, and why this is not a bound problem
-
-**Windows runs the whole suite serially.** `ci.yml:794` is `pytest -v --junitxml=…` with no
-`-n`. The Linux `check` job at `:430` runs its unit/UI slice with `$parallel` and only the
-integration slice serially. Measured locally on Linux, the same suite is **184 s** with `-n auto`
-against **1,045 s** serial — 5.7×. Windows need not match that, but 36:22 serial is the number to
-attack rather than the 40 that contains it.
-
-#### 2026-09-12 — implemented; the three runs are what remains
-
-The `Full suite` step was one serial `pytest -v` over everything. It is now the **same two
-invocations the Linux `check` job uses**, in the same order: `tests/unit tests/ui` with `-n auto`,
-then `tests/integration` serial.
-
-**The integration slice stays serial deliberately**, not by omission. `T-123` has two open defects
-that appear only under parallel load there — `test_manager.py` scans every process on the machine
-and kills other workers' children, and a retry deadline stops firing under load. Parallelising
-that half would trade a slow job for a flaky one.
-
-**The split collects the same tests as the bare invocation it replaces**, checked rather than
-assumed: `pytest --collect-only tests` and
-`pytest --collect-only tests/unit tests/ui tests/integration` both report **4,245**. `tests/network`
-is deselected by `addopts` either way, and nothing else lives outside those three directories.
-
-**`reports/pytest.{xml,txt}` becomes `reports/pytest-unit-ui.*` and `reports/pytest-integration.*`**,
-matching the Linux job. Nothing reads those names — checked; the only references are three
-historical review records describing runs that already happened.
-
-**Not yet closed.** The acceptance criteria ask for **three consecutive green runs**, and `T-056`
-— an open Windows defect about whether a process is alive — is exactly the question parallel load
-perturbs. That is also what the `check` job's comment means by *"the Windows legs stay serial
-until someone can watch a parallel run there"*: this is the watching. **The new elapsed time is
-recorded here once those runs exist**; until then this task is not done, and if it destabilises,
-the finding is recorded and the job goes back to serial.
-
-#### Acceptance criteria
-
-- The Windows unit/UI slice runs parallel, the integration slice stays serial, **and the split is
-  the same shape as the Linux job's** rather than a second arrangement
-- **The new elapsed time is recorded here**, with the bound re-measured against it — `T-259` asks
-  for the measurement, not a smaller percentage
-- **A parallel run is green three times consecutively before this closes.** `T-074` records an
-  intermittent segfault on this machine; `xdist` changes process counts, and one green run would
-  not distinguish a fix from luck
-- If parallelism destabilises it, **the finding is recorded and the job stays serial** — a flaky
-  fast job is worse than a slow reliable one, and that outcome closes this task rather than
-  reopening the bound question
-
-#### Out of scope
-
-- `T-074` itself, which stays Blocked on a person at `STARBASE`
-- The Linux job, which is already split
-
----
 
 ### T-319 — The Windows release build: windowed, versioned, with ffmpeg inside
 
@@ -2172,97 +2267,6 @@ down rather than an omission discovered at the first SmartScreen screenshot.
 
 ---
 
-### T-318 — Decide how "a clean machine" is evidenced for the first release
-
-**Status:** **In Review** — the harness landed 2026-09-12 and has taken Linux evidence for
-`0.1.0.dev0`. The Windows half waits on `T-319`/`T-322` for a candidate to install. **Gates the
-exit** (criteria 1, 2 and release-gate item 7). Filed 2026-09-11 with the Phase 5 plan.
-
-**The decision is taken.** The maintainer ruled on 2026-09-11 for option **B**, recorded as
-[`REL-006`](DECISIONS.md#rel-006--a-clean-machine-is-a-disposable-vm-the-maintainer-owns):
-disposable VMs the maintainer owns, with *A* as the fallback. **The harness landed 2026-09-12**,
-below.
-
-#### 2026-09-12 — the harness, and the VM that is not a VM
-
-**The maintainer narrowed `REL-006` the same week it was taken**: *"I don't really want to use VMs
-for testing the packages. I'd rather just test the app image on my own machine and test the windows
-installer on starbase."* So the Linux clean machine is a **disposable container** and the Windows
-one is **Windows Sandbox on `STARBASE`**. Both satisfy what B was chosen for — clean by
-construction, owned by the maintainer, no hosted minutes — and the container costs a pull rather
-than the afternoon B was priced at. `REL-006`'s *"written down well enough to recreate in a year"*
-is then met by a committed script instead of a setup document, which is the stronger form.
-
-| Platform | How | Evidence |
-|---|---|---|
-| Linux | `tools/clean_machine_linux.sh <artifact>`, which supplies `ubuntu:24.04` and runs `tools/clean_machine_evidence.sh` on it | `docs/project/evidence/linux-<version>.md` |
-| Windows | By hand in Sandbox, against `docs/project/evidence/TEMPLATE-windows.md` | `windows-<version>.md` |
-
-**`ubuntu:24.04` and not the build image.** `packaging/build_appimage.sh` builds on Debian 12 so
-the artifact reaches as far back as possible; this runs it on the oldest LTS the README claims.
-Testing on the machine that built it would prove nothing about either.
-
-**The pre-install check is first and it can fail the run** — the first acceptance criterion, and
-the reason it is first: evidence taken on a machine that turns out to have had Python on it is not
-evidence, and finding that out afterwards is too late. Thirteen tools probed with `command -v`,
-plus a count of system Qt libraries, **output retained in full** rather than reduced to a verdict.
-
-**What it caught on its first run is recorded in `T-321`** — the artifact carries no CA bundle, so
-the real download failed on a machine whose `/etc/ssl/certs` is empty. That is the harness earning
-its place on the day it landed.
-
-**Why the Windows half is a template and not a script.** Everything the Linux evidence needs can
-be answered without a display; `--download-probe` exists for exactly that. The Windows half is
-driven through the window, which is what lets it cover *cancel another* — the one `TESTING` §8
-item 8 clause no probe can reach, because cancellation is a parent-side signal and a probe has no
-parent.
-
-**What is not done:** no Windows candidate exists yet to take evidence on. `T-319` builds it, and
-`T-322`'s installer is what Sandbox would install. The template is ready for both.
-**Owner:** Maintainer decision; Implementer records it and builds whichever harness it names
-**Priority:** High — the two exit criteria it serves are the phase's definition of done
-**Phase:** Phase 5
-**Depends on:** nothing
-**Relevant context:** `OPS-010` and `OPS-012`, which each record surrendering clean-machine CI
-evidence on one platform; `TESTING.md` §8 item 7; `REQ-029`; `REL-001`; `T-066` (CI once installed
-the project differently from the documentation, and the clean machine is what caught it)
-**Affected surfaces:** `docs/project/DECISIONS.md`; possibly `.github/workflows/`; evidence under
-`docs/project/evidence/`
-**Risk:** Medium — the phase's own exit criteria say *"a clean … machine"* twice, and nothing in CI
-runs on one any more
-
-#### Scope
-
-Both self-hosted routings were taken with eyes open: `OPS-010` gave up clean-machine evidence for
-Windows and `OPS-012` for Linux, each saying so in writing. Phase 5's exit criteria were written
-before either. So the phase now demands something CI no longer produces, and the honest options
-are:
-
-| Option | Clean? | Cost |
-|---|---|---|
-| **A. One hosted run per release candidate** — unset `WINDOWS_RUNNER`/`LINUX_RUNNER` for the RC | Yes, both platforms | Hosted minutes, which `OPS-010` says ran out; and it evidences `ubuntu-latest`, not an older distro |
-| **B. Disposable VMs the maintainer owns** — Windows Sandbox on the desktop, and a throwaway Ubuntu LTS VM or container for Linux | Yes; Sandbox is clean on every launch by design | One afternoon to set up; the Linux VM doubles as `T-321`'s oldest-glibc target |
-| **C. Accept developer-machine evidence** with the surrender recorded | No | Nothing now; the first user with a missing `.so` is the test |
-
-**Recommendation: B.** It is genuinely clean, it costs no hosted minutes, and the Linux half is the
-same machine `T-321` needs anyway. *A* is the fallback if *B* cannot be arranged, and *C* is
-recorded here only so that choosing it is a choice.
-
-#### Acceptance criteria
-
-- A `REL-` (or `OPS-`) entry naming the option, and **what "clean" means operationally**: no
-  Python, no Qt, no ffmpeg on Windows (it is bundled), no developer toolchain — checked by a
-  command run before the install, whose output is retained
-- For each platform, an evidence file under `docs/project/evidence/` per release candidate:
-  machine identity, the pre-install check, the install, first launch, one real download, exit
-- If *A*: the variable flip is written into `docs/RELEASE.md` as a step, with its reversal
-- If *B*: the setup is documented well enough that the maintainer can recreate the VM in a year
-
-#### Out of scope
-
-- Restoring clean-machine CI permanently. `OPS-010`/`OPS-012` stand; this is per-release evidence
-
----
 
 ### T-324 — A release workflow that builds, gates and drafts — and never publishes
 
