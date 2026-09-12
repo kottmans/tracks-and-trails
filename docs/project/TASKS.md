@@ -508,6 +508,26 @@ written for. The shim now skips on Windows with the reason stated; nothing is gi
 the loader half of §8 item 11 is Linux-only by construction and
 `test_windows_keeps_the_presence_check_alone` covers the Windows path.
 
+#### 2026-09-12 (later still) — run 1 of 3, green, and the number the bound asked for
+
+**`windows desktop` in 16.3 minutes.** Run
+[`34708223001`](https://github.com/kottmans/tracks-and-trails/actions/runs/34708223001) at
+`66accdc`, every job green.
+
+| | elapsed | of the 40-minute bound |
+|---|---|---|
+| serial, four consecutive jobs 2026-09-11 | 39.1–39.5 min | **97–98%** |
+| parallel unit/UI slice | **16.3 min** | **41%** |
+
+**That is `T-259`'s measurement, not a smaller percentage asserted.** The bound was being crossed
+by growth; it now has 23 minutes of headroom rather than 40 seconds. The job total more than
+halved even though only one of its steps changed, because that step was most of the job.
+
+**Runs 2 and 3 are deliberately not dispatched yet.** `STARBASE` is about to be rebooted to bring
+up Windows Sandbox for `T-318`, and a run cancelled or failed by a restart mid-job would cost a
+slot and leave a red that means nothing. Three *consecutive* green runs is the criterion, and a
+run killed by a reboot is not a data point about parallelism.
+
 **Not yet closed.** The acceptance criteria ask for **three consecutive green runs**, and `T-056`
 — an open Windows defect about whether a process is alive — is exactly the question parallel load
 perturbs. That is also what the `check` job's comment means by *"the Windows legs stay serial
