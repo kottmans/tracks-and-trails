@@ -321,9 +321,12 @@ def test_the_download_probe_is_dispatched_without_a_url(monkeypatch: pytest.Monk
     from tracks_and_trails.app import run as run_app
 
     asked: list[str | None] = []
-    monkeypatch.setattr(
-        _freeze_probe, "run_download_probe", lambda url=None: (asked.append(url), 0)[1]
-    )
+
+    def record(url: str | None = None) -> int:
+        asked.append(url)
+        return 0
+
+    monkeypatch.setattr(_freeze_probe, "run_download_probe", record)
     assert run_app(["tracks-and-trails", "--download-probe"]) == 0
     assert asked == [None]
 
@@ -341,9 +344,12 @@ def test_the_download_probe_takes_a_url_in_the_same_token(
     from tracks_and_trails.app import run as run_app
 
     asked: list[str | None] = []
-    monkeypatch.setattr(
-        _freeze_probe, "run_download_probe", lambda url=None: (asked.append(url), 0)[1]
-    )
+
+    def record(url: str | None = None) -> int:
+        asked.append(url)
+        return 0
+
+    monkeypatch.setattr(_freeze_probe, "run_download_probe", record)
     assert run_app(["tracks-and-trails", "--download-probe=https://example.invalid/x.mp4"]) == 0
     assert asked == ["https://example.invalid/x.mp4"]
 
