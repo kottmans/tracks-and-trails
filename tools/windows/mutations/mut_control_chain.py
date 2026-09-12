@@ -1,11 +1,19 @@
-"""POSITIVE CONTROL for the focus mutations, not a mutation.
+"""Does the declared focus chain actually deliver the order, or does construction order?
 
-Empties the dialog's declared focus chain, so `_set_tab_order` places nothing and the dialog
-tests cannot possibly pass. It MUST be reported as killed.
+Empties the dialog's declared chain, so `_set_tab_order` makes no `setTabOrder` calls at all and
+Qt's **construction order** stands.
 
-If it survives, the plugin mechanism is not taking effect and every other verdict in this run is
-meaningless — the distinction between "the mutation survived" and "the mutation never applied",
-which no amount of care in reading the numbers can recover after the fact.
+**This was the positive control until 2026-09-11, and it was never a valid one** (`T-331`). Its
+previous text said it *"MUST be reported as killed"* and that survival meant the plugin mechanism
+had failed and every other verdict was meaningless. Both are wrong. Run on `STARBASE` it survived
+the desktop selection while three other mutations were killed in the same table — so the mechanism
+plainly applied — and the reason it survived is a fact about the product: construction order on
+this dialog already matches the declaration, and `test_windows_desktop.py` writes its expected
+order out by hand rather than deriving it from `focus_chain()`.
+
+So it is a **mutation**, not a control, and it is run against the selection that detects it:
+measured on Linux, it fails 4 tests in `test_accessibility.py` and `test_add_dialog.py`, none of
+which carries the `windows_desktop` marker. `mut_control_title` is the control now.
 """
 
 from tracks_and_trails.ui.add_dialog import AddUrlDialog

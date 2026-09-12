@@ -278,8 +278,48 @@ accepts it. Until then it is a proposal in a task, which is the narrowest honest
 
 ### T-331 — The Windows mutation driver's positive control is not one
 
-**Status:** Ready — filed 2026-09-11 from the first execution of `tools/windows/mutations/` on
-`STARBASE`, which `T-040` has asked for since it was filed.
+**Status:** **In Progress** — the driver is corrected and validated on Linux 2026-09-11; the
+`STARBASE` run its last criterion asks for needs the machine. Filed the same day from the first
+execution of `tools/windows/mutations/` there, which `T-040` had asked for since it was filed.
+
+#### 2026-09-11 — corrected, and what the Linux run establishes
+
+**It names the tree, and refuses one it cannot.** The header prints `HEAD` and whether the working
+tree is dirty, and a dirty tree **stops the run** rather than warning — a warning is exactly what
+scrolled past on 2026-09-11. `--allow-dirty` is the deliberate override.
+
+**A broken baseline no longer manufactures kills.** Each selection's baseline is tracked, and
+every later case in a selection whose baseline failed reports `NO RESULT (baseline broken)`. The
+second run that evening reported `KILLED` for all six cases including the expected survivor,
+purely because the suite was failing whatever the plugin did.
+
+**The summary is pytest's result line**, found by pattern rather than taken as the last line of
+output, and its absence is reported as `NO SUMMARY LINE` instead of a row of progress dots.
+
+**The table and every full output are written to `reports/windows-mutations.txt`.** `T329-R2` asks
+for a recorded result and this driver left only a console window.
+
+**The control is a control now.** `mut_control_title` changes the window title, and
+`test_windows_desktop.py` asks **Windows** for it through `GetWindowTextW` rather than asking Qt —
+so no arrangement of widgets can pass it. `mut_control_chain` is reclassified as a mutation and
+runs against the suite that detects it; its docstring no longer claims that its survival voids
+every other verdict.
+
+**Validated on Linux, where three of the four new behaviours are observable:**
+
+| Case | Verdict |
+|---|---|
+| the six desktop cases | `NO RESULT (exit 5)` — deselected here, and *reported* as no result rather than passed over |
+| baseline: the chain suite | **OK**, 205 passed |
+| dialog: the declared chain is emptied | **KILLED**, 4 failed / 201 passed |
+| baseline: the rendered focus sweep | **OK** |
+| header: draws no focus ring of its own | **KILLED** |
+
+The chain row is the finding demonstrated: the mutation the old driver called a surviving control
+is killed outright by the suite that detects it.
+
+**What remains is the `STARBASE` run**, which is the one thing about a driver's own correctness
+that cannot be argued from Linux.
 **Owner:** Implementer
 **Priority:** Medium — it does not break the product, and it means a driver that claims to know
 when its own verdicts are worthless does not
