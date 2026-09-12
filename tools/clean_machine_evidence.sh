@@ -30,7 +30,11 @@ echo "date          $(date -u '+%Y-%m-%d %H:%M:%SZ')"
 echo "artifact      $(basename "$ARTIFACT")"
 echo "size          $(stat -c %s "$ARTIFACT" 2>/dev/null || echo unknown) bytes"
 echo "sha256        $(sha256sum "$ARTIFACT" 2>/dev/null | cut -d' ' -f1)"
-echo "kernel        $(uname -srm)"
+# **The kernel is the host's when this runs in a container**, which shares it — so the two lines
+# below can legitimately disagree about the distribution. That is a fact about the harness, not a
+# fault in it: what is being tested is the userland the artifact links against, and the kernel is
+# not something an AppImage bundles or a release can choose.
+echo "kernel        $(uname -srm)  (the host's, if this is a container)"
 echo "distribution  $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME")"
 echo "glibc         $(ldd --version 2>/dev/null | head -1)"
 echo '```'

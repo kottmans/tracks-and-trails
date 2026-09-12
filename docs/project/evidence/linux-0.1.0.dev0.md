@@ -6,7 +6,7 @@ date          2026-09-12 11:56:59Z
 artifact      Tracks_and_Trails-0.1.0.dev0-x86_64.AppImage
 size          68188664 bytes
 sha256        a6a6f4179c4fcbd3367598ba71ccf922cee939700640c246ccd3900bebc8fd9f
-kernel        Linux 7.1.4-204.fc44.x86_64 x86_64
+kernel        Linux 7.1.4-204.fc44.x86_64 x86_64  (the host's, if this is a container)
 distribution  Ubuntu 24.04.4 LTS
 glibc         ldd (Ubuntu GLIBC 2.39-0ubuntu8.8) 2.39
 ```
