@@ -511,6 +511,78 @@ def run_ytdlp_update_probe() -> int:
     return 0
 
 
+def run_ffmpeg_probe() -> int:
+    """Report which ffmpeg the **frozen artifact** resolves, and from where (`T-319`).
+
+    `OPS-001` bundles ffmpeg on Windows so conversion and merging work without the user
+    arranging anything, and `find_ffmpeg` prefers that copy over one on `PATH` — a user's newer
+    build is a different set of encoders than this artifact was tested against.
+
+    **Every part of that is a claim about a built artifact, and none of it is observable from
+    outside one.** `T-319`'s criterion is `find_ffmpeg` reporting `source="bundled"` *on the
+    built artifact*, and the unit tests cannot answer it: they plant a file beside a fake
+    `sys.executable`, which is how a wrong layout went unnoticed until a real build put ffmpeg in
+    `_internal/` and this function's predecessor looked one directory up.
+    """
+    from tracks_and_trails.downloader.environment import bundled_ffmpeg, find_ffmpeg
+
+    bundled = bundled_ffmpeg()
+    say(f"bundle          {getattr(sys, '_MEIPASS', '(not frozen)')}")
+    say(f"bundled ffmpeg  {bundled if bundled is not None else '(none)'}")
+
+    report = find_ffmpeg()
+    say(f"resolved source {report.source}")
+    say(f"resolved path   {report.path if report.path is not None else '(none)'}")
+
+    if os.name != "nt":
+        # `OPS-001`: a Linux artifact ships none, and must not claim to.
+        if bundled is not None:
+            say(
+                f"FAIL: a Linux artifact bundles {bundled}, which OPS-001 says it does not.",
+                error=True,
+            )
+            return 1
+        say("ffmpeg          ok (none bundled, which is OPS-001 on Linux)")
+        return 0
+
+    if bundled is None:
+        say(
+            "FAIL: this Windows artifact bundles no ffmpeg. OPS-001 requires one, and without it "
+            "REQ-010's audio extraction and every merging preset fail on the user's machine.",
+            error=True,
+        )
+        return 1
+    # **Compared against the path, not against the wording.** `FfmpegReport.source` is a sentence
+    # for a human — `"bundled with this build (OPS-001)"` — and the first version of this check
+    # tested it for equality with `"bundled"` and failed a build that was entirely correct. What
+    # the criterion actually asks is *which file won*, so that is what is compared.
+    if report.path != bundled:
+        say(
+            f"FAIL: find_ffmpeg resolved {report.path}, not the bundled {bundled}. A copy on "
+            f"PATH has displaced the one this artifact was tested against (T-319).",
+            error=True,
+        )
+        return 1
+    if "bundled" not in report.source:
+        say(
+            f"FAIL: the resolved path is the bundled one but it is reported as "
+            f"{report.source!r}, so the UI would tell the user something else.",
+            error=True,
+        )
+        return 1
+    for helper in ("ffprobe.exe",):
+        beside = bundled.with_name(helper)
+        if not beside.is_file():
+            say(
+                f"FAIL: {helper} is not beside the bundled ffmpeg. yt-dlp runs it on the "
+                f"downloaded file for REQ-010's audio extraction.",
+                error=True,
+            )
+            return 1
+    say("ffmpeg          ok")
+    return 0
+
+
 def run_download_probe(url: str | None = None) -> int:
     """Download one real file end to end **inside the artifact**, with no display (`T321-R1`).
 

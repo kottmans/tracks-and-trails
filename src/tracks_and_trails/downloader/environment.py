@@ -192,13 +192,29 @@ def bundled_ffmpeg() -> Path | None:
     function does not encode that asymmetry: it asks whether *this* artifact carries one, so a
     Linux build that ever bundled one would be found without a second code path.
 
-    **Beside the executable**, which is where `packaging/tracks-and-trails.spec` puts it. A source
-    checkout is not frozen and answers `None` immediately, so nothing here runs in development.
+    **Where PyInstaller actually put it, which is not beside the executable** — and that
+    correction cost a build to find (`T-319`). This read `Path(sys.executable).parent` on the
+    strength of a spec comment saying *"beside the executable"*. PyInstaller 6 moved the one-dir
+    layout under `_internal/`, so a `binaries` destination of `"."` means the root of **that**
+    directory: measured on a real Windows release build, `_internal\ffmpeg.exe`, one level below
+    where this was looking. A unit test that planted the file beside a fake `sys.executable`
+    agreed with the code and with nothing else.
+
+    `sys._MEIPASS` is the runtime's own answer to *where is my bundle*, correct for one-dir and
+    one-file alike and stable across that layout change. The executable's directory is kept as a
+    second candidate rather than dropped: it costs one `is_file()` and it is where an older
+    PyInstaller — or a hand-assembled tree — would put it.
+
+    A source checkout is not frozen and answers `None` immediately, so nothing here runs in
+    development.
     """
     if not getattr(sys, "frozen", False):
         return None
-    candidate = Path(sys.executable).parent / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
-    return candidate if candidate.is_file() else None
+    name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+    bundle = getattr(sys, "_MEIPASS", None)
+    roots = [Path(bundle)] if bundle else []
+    roots.append(Path(sys.executable).parent)
+    return next((root / name for root in roots if (root / name).is_file()), None)
 
 
 def find_ffmpeg(

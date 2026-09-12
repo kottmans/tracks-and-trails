@@ -116,9 +116,14 @@ if RELEASE_BUILD and sys.platform == "win32":
     )
 
 # **ffmpeg, bundled on Windows only** (`OPS-001`, `T-319`). `binaries` rather than `datas`, so
-# PyInstaller puts them beside the executable — which is exactly where
-# `downloader.environment.bundled_ffmpeg` looks, and the two agree by construction rather than by
-# a matching pair of string literals.
+# PyInstaller treats them as libraries and runs its dependency analysis over them.
+#
+# **A destination of `"."` is the root of `_internal/`, not the directory holding the
+# executable**, and that comment used to claim otherwise. PyInstaller 6 moved the one-dir layout
+# under `_internal/`; measured on a real Windows build, these land at `_internal\ffmpeg.exe`.
+# `downloader.environment.bundled_ffmpeg` asks `sys._MEIPASS` for that directory rather than
+# guessing, so the two agree through the runtime's own answer instead of through a pair of
+# string literals that were, in fact, different.
 #
 # **Fetched, never committed.** `packaging/fetch_ffmpeg.py` downloads one pinned `BtbN`
 # `win64-lgpl-shared` archive and verifies its SHA-256; 155 MB of third-party binary does not

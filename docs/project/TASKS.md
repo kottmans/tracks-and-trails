@@ -1614,11 +1614,68 @@ than the opposite.
 placed under `_internal/` where `bundled_ffmpeg` would not find it, a release permitted to build
 without it, and the smoke build bundling 155 MB it does not need.
 
-**Still not done, and it needs a Windows machine:** every acceptance criterion beginning *"on the
-built artifact"* — no console window, `find_ffmpeg` reporting `source="bundled"`, `--version` on
-the built exe. **`STARBASE_HOST` is unset here and there is no local record of it**, by design:
-`tools/windows/run-on-starbase.sh` has no default because the repository must not carry an account
-name or a LAN address. So the remaining half is one environment variable away, not one task away.
+#### 2026-09-12 (later still) — built on `STARBASE`, and it found two defects
+
+**Every criterion beginning *"on the built artifact"* is now met, measured on a real Windows
+release build** at `ace8e31` plus the three fixes below. The route is
+`tools/windows/run-on-starbase.sh`, so each command ran in the **logged-on session** rather than
+SSH's session 0.
+
+| Criterion | Measured |
+|---|---|
+| no console window | PE subsystem field = **2 (GUI)**, read from the executable's own header rather than inferred from the spec |
+| `find_ffmpeg` reports `source="bundled"` | `bundled with this build (OPS-001)`, resolving `_internal\ffmpeg.exe` |
+| `--version` on the built exe | `0.1.0.dev0`, rc 0 |
+| the Windows version resource | `FileVersion 0.1.0.dev0`, `ProductVersion 0.1.0.dev0`, `CompanyName Sean Kottman`, `FileDescription Tracks & Trails` |
+| `T-323`'s four gates | **all four pass**, over an artifact now carrying 155 MB of third-party binary |
+| every frozen probe | **5 of 5 pass** — spawn, yt-dlp, database, in-app update, and the new ffmpeg probe |
+
+**Three defects, and none of them was visible from Linux.**
+
+**1. The licence check compared bytes, and git converts them.** `core.autocrlf=true` is the
+Windows default and `STARBASE` has it set, so the committed `ffmpeg-LGPL.txt` is checked out with
+CRLF while the archive's copy has LF: **7,816 bytes against 7,651**, exactly one extra byte per
+line. `fetch_ffmpeg.py` failed on its first Windows run and would have failed on every release
+build. It now compares content with line endings normalised, and still refuses a licence whose
+content differs.
+
+**2. `bundled_ffmpeg()` looked in the wrong directory, on the strength of a comment.** It read
+`Path(sys.executable).parent`, because the spec said `binaries` with a destination of `"."` puts
+files *beside the executable*. **PyInstaller 6 puts a one-dir bundle under `_internal/`**, so
+`"."` is the root of *that*: the build put ffmpeg at `_internal\ffmpeg.exe`, one level below where
+the application was looking. It now asks `sys._MEIPASS` — the runtime's own answer — and keeps the
+executable's directory as a second candidate.
+
+**The test agreed with the bug.** `test_a_frozen_build_finds_the_ffmpeg_beside_its_executable`
+planted the file beside a fake `sys.executable` and passed, and a cross-reference test asserted
+the destination *"is where `bundled_ffmpeg` looks"*. Both were written from the same wrong
+premise as the code, so neither could contradict it. They now build the real `_internal/` layout,
+and the cross-reference test asserts only what spec text can honestly support — that the binaries
+are declared and passed — leaving *where they land* to the probe that can see it.
+
+**3. A probe that compared a sentence to a keyword.** The first `--ffmpeg-probe` tested
+`report.source == "bundled"` and failed a build that was entirely correct: `FfmpegReport.source`
+is prose for a human, `"bundled with this build (OPS-001)"`. It now compares the resolved **path**
+against the bundled one — which is what the criterion actually asks — and checks the wording only
+for the word, so the UI cannot say one thing while the loader does another.
+
+**`--ffmpeg-probe` is new, and it exists because nothing else could answer this.** The unit tests
+plant files beside a fake executable; only a probe inside the artifact can say which ffmpeg a
+frozen build resolves. It also checks `ffprobe.exe` is beside it, since yt-dlp runs ffprobe on
+the downloaded file for `REQ-010`'s audio extraction.
+
+**One claim in the entry above needs narrowing.** It says *"`console=False` costs the probes their
+`stdout`"*. Measured: a parent that **captures** the handle — `subprocess` with pipes, or a shell
+redirect — still receives it, and all five probes were read that way. What `console=False` removes
+is a console *window* for a user who double-clicks. `TT_PROBE_REPORT` is therefore robustness
+rather than necessity in CI, which is still worth having: it is the only route that survives a
+caller which does not redirect.
+
+*(This paragraph previously read **"still not done, and it needs a Windows machine"**, listing
+the three built-artifact criteria and noting that `STARBASE_HOST` was unset here. The maintainer
+authorised the key on 2026-09-12 and all three are measured above. Kept as a correction rather
+than deleted: the blocker was one environment variable, exactly as it said, and saying so is what
+made it worth asking for.)*
 
 *(Filed 2026-09-11 with the Phase 5 plan.)*
 **Owner:** Implementer

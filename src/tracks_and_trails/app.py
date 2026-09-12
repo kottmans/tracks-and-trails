@@ -91,6 +91,7 @@ usage: tracks-and-trails [--version] [--help] [--log-level=LEVEL] [--spawn-probe
   --ytdlp-probe  self-test the bundled yt-dlp and exit (T-033)
   --ytdlp-update-probe
                  self-test the in-app update path and exit (T-198)
+  --ffmpeg-probe self-test the bundled ffmpeg and exit (T-319, OPS-001)
   --download-probe[=URL]
                  download one real file and exit (T-321). Reaches the
                  network, so it is run for release evidence rather than
@@ -188,6 +189,13 @@ def run(argv: Sequence[str]) -> int:
         from tracks_and_trails._freeze_probe import run_ytdlp_update_probe
 
         return run_ytdlp_update_probe()
+    # Before Qt for the same reason: whether this artifact carries the ffmpeg `OPS-001` requires,
+    # and whether `find_ffmpeg` prefers it, are claims about a *built* artifact that no unit test
+    # can answer (`T-319`).
+    if "--ffmpeg-probe" in args:
+        from tracks_and_trails._freeze_probe import run_ffmpeg_probe
+
+        return run_ffmpeg_probe()
     # Before Qt for the same reason as the rest, and that is the point of it: the clean-machine
     # evidence for `T-321` had no real download because one needed a display (`T321-R1`). This
     # runs the same `run_session` a worker runs, with no widget and no display.

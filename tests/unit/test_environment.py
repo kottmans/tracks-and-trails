@@ -677,16 +677,46 @@ def test_a_source_checkout_has_no_bundled_ffmpeg(monkeypatch: pytest.MonkeyPatch
     assert environment.bundled_ffmpeg() is None
 
 
-def test_a_frozen_build_finds_the_ffmpeg_beside_its_executable(
+def test_a_frozen_build_finds_the_ffmpeg_in_its_bundle(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Where `packaging/tracks-and-trails.spec` puts it, asked for rather than assumed."""
+    """**The layout a real build produces**, which is not the one this test used to assume.
+
+    It planted the file beside a fake `sys.executable` and passed — agreeing with the code and
+    with nothing else. PyInstaller 6 puts a one-dir bundle under `_internal/`, so a `binaries`
+    destination of `"."` lands there: measured on Windows as `_internal\ffmpeg.exe`, one level
+    below where `bundled_ffmpeg` was looking (`T-319`).
+    """
     name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+    bundle = tmp_path / "_internal"
+    bundle.mkdir()
+    shipped = bundle / name
+    shipped.write_text("")
+    shipped.chmod(0o755)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "tracks-and-trails"))
+    monkeypatch.setattr(sys, "_MEIPASS", str(bundle), raising=False)
+
+    assert environment.bundled_ffmpeg() == shipped
+
+
+def test_a_frozen_build_still_finds_one_beside_the_executable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The second candidate, kept rather than dropped.
+
+    It costs one `is_file()` and it is where an older PyInstaller — or a hand-assembled tree —
+    puts it. Here `_MEIPASS` exists and holds no ffmpeg, so the fallback is what answers.
+    """
+    name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+    bundle = tmp_path / "_internal"
+    bundle.mkdir()
     shipped = tmp_path / name
     shipped.write_text("")
     shipped.chmod(0o755)
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(tmp_path / "tracks-and-trails"))
+    monkeypatch.setattr(sys, "_MEIPASS", str(bundle), raising=False)
 
     assert environment.bundled_ffmpeg() == shipped
 

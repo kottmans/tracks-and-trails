@@ -140,18 +140,29 @@ def test_the_vendored_binaries_are_not_committed() -> None:
 # --- T-319: the spec puts it where the application looks --------------------------------------
 
 
-def test_the_spec_bundles_ffmpeg_beside_the_executable() -> None:
-    """`bundled_ffmpeg()` reads `Path(sys.executable).parent / "ffmpeg.exe"`.
+def test_the_spec_bundles_ffmpeg_where_the_application_looks_for_it() -> None:
+    """**This test was wrong, and confidently so** — it is kept as the case it should have been.
 
-    So the spec has to place it there and not under `_internal/`, which is where `datas` would
-    have put it. `binaries` with a destination of `"."` is the declaration that makes those two
-    agree by construction.
+    It asserted that a destination of `"."` puts ffmpeg *beside the executable*, "which is where
+    `bundled_ffmpeg` looks". Neither half was true of a real build: PyInstaller 6 puts a one-dir
+    bundle under `_internal/`, so `"."` is the root of that, and the application was looking one
+    level up. A string check agreed with a comment; the build disagreed with both (`T-319`).
+
+    What can honestly be asserted from the spec text is that the binaries are declared and
+    passed. **Where they end up is `bundled_ffmpeg`'s question**, and `test_environment.py` now
+    covers it against the layout a build actually produces.
     """
     text = spec_text()
     assert "ffmpeg_binaries" in text, "the spec no longer bundles ffmpeg"
     assert "binaries=ffmpeg_binaries" in text, "the ffmpeg list is built and then not passed"
-    assert re.search(r'\(str\(path\), "\."\)', text), (
-        'ffmpeg must land beside the executable ("."), which is where bundled_ffmpeg looks'
+    assert re.search(r'\(str\(path\), "\."\)', text), "the destination is no longer declared"
+
+    # The application must ask the runtime where its bundle is rather than assume a layout.
+    resolver = (
+        REPOSITORY / "src" / "tracks_and_trails" / "downloader" / "environment.py"
+    ).read_text(encoding="utf-8")
+    assert "_MEIPASS" in resolver, (
+        "bundled_ffmpeg no longer asks sys._MEIPASS where the bundle is, so it is guessing again"
     )
 
 
