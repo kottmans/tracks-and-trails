@@ -91,6 +91,10 @@ usage: tracks-and-trails [--version] [--help] [--log-level=LEVEL] [--spawn-probe
   --ytdlp-probe  self-test the bundled yt-dlp and exit (T-033)
   --ytdlp-update-probe
                  self-test the in-app update path and exit (T-198)
+  --download-probe[=URL]
+                 download one real file and exit (T-321). Reaches the
+                 network, so it is run for release evidence rather than
+                 in a default suite
 
 Run with no arguments to open the application window.
 """
@@ -184,6 +188,22 @@ def run(argv: Sequence[str]) -> int:
         from tracks_and_trails._freeze_probe import run_ytdlp_update_probe
 
         return run_ytdlp_update_probe()
+    # Before Qt for the same reason as the rest, and that is the point of it: the clean-machine
+    # evidence for `T-321` had no real download because one needed a display (`T321-R1`). This
+    # runs the same `run_session` a worker runs, with no widget and no display.
+    #
+    # **`=URL` and not a separate token**, the same rule `--log-level` follows: one token cannot
+    # be half-consumed, so a missing value is a bad value rather than the next flag being eaten.
+    download_probe = [
+        argument
+        for argument in args
+        if argument == "--download-probe" or argument.startswith("--download-probe=")
+    ]
+    if download_probe:
+        from tracks_and_trails._freeze_probe import run_download_probe
+
+        _, _, requested = download_probe[0].partition("=")
+        return run_download_probe(requested or None)
     # **Taken out of `args` before the catch-all below**, which rejects anything it does not
     # recognise. `None` means the flag was absent and the default stands; a bad value is refused
     # rather than defaulted, because silently running at `INFO` when somebody asked for `DEBUG`

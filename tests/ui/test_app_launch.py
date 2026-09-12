@@ -306,3 +306,70 @@ def test_a_bad_log_level_is_refused_rather_than_defaulted(
     assert result.returncode == 2, f"a bad level was accepted: {result.stdout!r}"
     assert expected in result.stderr, f"the complaint does not say why: {result.stderr!r}"
     assert "usage:" in result.stdout
+
+
+# --- T321-R1: the download probe, which is how a clean machine gets a real download ------------
+
+
+def test_the_download_probe_is_dispatched_without_a_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--download-probe` alone means *the probe's own URL*, not an empty one.
+
+    Dispatched in-process rather than through a subprocess because the point is the argument
+    handling: the probe itself reaches the network and is run for release evidence, not here.
+    """
+    from tracks_and_trails import _freeze_probe
+    from tracks_and_trails.app import run as run_app
+
+    asked: list[str | None] = []
+    monkeypatch.setattr(
+        _freeze_probe, "run_download_probe", lambda url=None: (asked.append(url), 0)[1]
+    )
+    assert run_app(["tracks-and-trails", "--download-probe"]) == 0
+    assert asked == [None]
+
+
+def test_the_download_probe_takes_a_url_in_the_same_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`=URL`, the rule `--log-level` already follows.
+
+    One token cannot be half-consumed, so a missing value is a bad value rather than the next
+    flag being eaten — which is how `--log-level --version` would have turned `--version` into a
+    level name.
+    """
+    from tracks_and_trails import _freeze_probe
+    from tracks_and_trails.app import run as run_app
+
+    asked: list[str | None] = []
+    monkeypatch.setattr(
+        _freeze_probe, "run_download_probe", lambda url=None: (asked.append(url), 0)[1]
+    )
+    assert run_app(["tracks-and-trails", "--download-probe=https://example.invalid/x.mp4"]) == 0
+    assert asked == ["https://example.invalid/x.mp4"]
+
+
+@pytest.mark.parametrize("misspelling", ["--download-probes", "--download-probe-url", "--download"])
+def test_a_near_miss_is_rejected_rather_than_consumed(
+    misspelling: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The defect `T282-R1` found in `--log-level`, not repeated here.
+
+    `startswith("--download-probe")` would also match `--download-probes` — a misspelling the
+    unknown-argument check would have caught, consumed instead and silently run the probe. A
+    parser that runs before that check must not widen what counts as known.
+    """
+    from tracks_and_trails import _freeze_probe
+    from tracks_and_trails.app import run as run_app
+
+    def refuse(url: str | None = None) -> int:
+        raise AssertionError(f"{misspelling} reached the probe with {url!r}")
+
+    monkeypatch.setattr(_freeze_probe, "run_download_probe", refuse)
+    assert run_app(["tracks-and-trails", misspelling]) == 2
+
+
+def test_the_probe_is_listed_in_the_usage_text() -> None:
+    """A probe nobody can discover is a probe nobody runs — and this one is release evidence."""
+    from tracks_and_trails.app import _usage
+
+    assert "--download-probe" in _usage()

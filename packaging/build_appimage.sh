@@ -58,6 +58,34 @@ apt-get -qq install -y --no-install-recommends \
     libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1 \
     libegl1 libgl1 libbrotli1 libkrb5-3 libgssapi-krb5-2 >/dev/null
 
+# **`appimagetool` is fetched here, because the documented command above is the whole recipe.**
+# This script used to pack only `if [ -x /usr/local/bin/appimagetool ]` and otherwise leave an
+# AppDir — and nothing put it there. So the command in the header produced no `.AppImage` at all,
+# while `T-321` reported one; the tool had been installed by hand in a container nobody else has
+# (`T321-R2`). A build recipe with an undocumented manual step is not a recipe.
+#
+# **Pinned by version and verified by digest.** An unpinned `continuous` download makes the
+# artifact depend on whatever was published that morning, and a build tool fetched over the
+# network without a checksum is a supply-chain hole in the one script whose output gets signed
+# and shipped. `curl` is not in the slim image either.
+APPIMAGETOOL_VERSION=1.9.1
+APPIMAGETOOL_SHA256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+APPIMAGETOOL=/usr/local/bin/appimagetool
+
+if [ ! -x "$APPIMAGETOOL" ]; then
+    echo "==> fetching appimagetool $APPIMAGETOOL_VERSION"
+    apt-get -qq install -y --no-install-recommends ca-certificates curl >/dev/null
+    curl -sSfL -o "$APPIMAGETOOL" \
+        "https://github.com/AppImage/appimagetool/releases/download/$APPIMAGETOOL_VERSION/appimagetool-x86_64.AppImage"
+    echo "$APPIMAGETOOL_SHA256  $APPIMAGETOOL" | sha256sum -c - >/dev/null || {
+        echo "FAIL: appimagetool's digest is not $APPIMAGETOOL_SHA256." >&2
+        echo "      Refusing to pack a release artifact with an unverified build tool." >&2
+        rm -f "$APPIMAGETOOL"
+        exit 1
+    }
+    chmod +x "$APPIMAGETOOL"
+fi
+
 echo "==> installing the project and PyInstaller"
 python3 -m pip install -q --upgrade pip --root-user-action=ignore
 python3 -m pip install -q -e . pyinstaller --root-user-action=ignore
@@ -99,13 +127,9 @@ python3 packaging/artifact_gates.py "$APPDIR/usr/bin"
 VERSION=$(python3 -c "import sys; sys.path.insert(0,'src'); import tracks_and_trails as t; print(t.__version__)")
 echo "==> version: $VERSION"
 
-if [ -x /usr/local/bin/appimagetool ]; then
-    echo "==> packing the AppImage"
-    ARCH=x86_64 /usr/local/bin/appimagetool --appimage-extract-and-run \
-        "$APPDIR" "$OUT/Tracks_and_Trails-$VERSION-x86_64.AppImage"
-else
-    echo "==> appimagetool absent; leaving the AppDir for packing"
-    rm -rf "$OUT/AppDir"
-    cp -a "$APPDIR" "$OUT/AppDir"
-fi
+# **No `else` branch any more.** Packing is the point of this script; a run that quietly produced
+# an AppDir instead looked like a success and is what let `T321-R2`'s gap persist.
+echo "==> packing the AppImage"
+ARCH=x86_64 "$APPIMAGETOOL" --appimage-extract-and-run \
+    "$APPDIR" "$OUT/Tracks_and_Trails-$VERSION-x86_64.AppImage"
 echo "==> done"

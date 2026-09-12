@@ -114,6 +114,70 @@ download was taken on the Fedora desktop instead, and the criterion asked for on
 question and downloads nothing — so `TESTING` §8 item 8's *"run one real download"* has no
 automated route on this artifact and is a sitting, not a script.
 
+#### 2026-09-12 — the review's two findings, and what the first one found
+
+**`T321-R2`: the documented command did not produce an AppImage.** The header of
+`build_appimage.sh` and the entry above both give one `podman run` line as the whole recipe. A
+fresh `python:3.14-slim-bookworm` has no `appimagetool`, and the script packed only
+`if [ -x /usr/local/bin/appimagetool ]` — otherwise it copied out an AppDir and printed `done`.
+Nothing put the tool there. **The 68.2 MB AppImage above was packed with a binary installed by
+hand in a container nobody else has**, which is a manual step masquerading as a recipe.
+
+The script now fetches it: **version 1.9.1, pinned, and verified by SHA-256 before it is used**.
+An unpinned `continuous` download would make the artifact depend on whatever was published that
+morning, and a build tool fetched without a digest is a supply-chain hole in the one script whose
+output gets signed and shipped. **The `else` branch is gone** — packing is the point, and a run
+that quietly produced an AppDir instead looked like a success, which is how this survived.
+
+Verified by running the documented line verbatim on a clean checkout:
+`Tracks_and_Trails-0.1.0.dev0-x86_64.AppImage`, **66 MB**, no manual step.
+
+**`T321-R1`: the clean-machine evidence had no real download**, which the entry above states as a
+bound. A bound that never closes is a gap, and this one covered the single thing a clean machine
+is uniquely able to disprove: that the bundle can reach a real site, over TLS, with its own
+certificates, and write a file.
+
+`--download-probe` closes it. It calls **`run_session`** — the same function the spawned worker
+runs — so yt-dlp is resolved the way a job resolves it, the extractor runs, and the bytes land
+through the real writer. Not the GUI, and deliberately not a parallel implementation. It takes the
+same URL `tests/network/test_real_download.py` uses, so a disagreement between them is the
+artifact rather than the site. **It reports failures**: handed a dead host it exits 1 as `network`,
+handed a 404 it exits 1 as `extractor_error` — checked before it was trusted to pass.
+
+**And on the first clean-machine run it failed.**
+
+```
+FAIL: the download failed as network: ERROR: [generic] big_buck_bunny_720p_surround:
+Unable to download webpage: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed:
+self-signed certificate in certificate chain (_ssl.c:1082)
+```
+
+**The AppImage carries no CA bundle of its own.** `ubuntu:24.04` ships with `/etc/ssl/certs`
+**empty** — measured, zero files — and the bundle contains no `certifi`, so every HTTPS request
+fails. Adding `ca-certificates` and *nothing else* (still no Python, no Qt, no ffmpeg, no
+toolchain) makes the same probe download **61,878,609 bytes in 6.5 s from the bundled baseline
+yt-dlp**.
+
+**This is a decision, not a defect to quietly fix, and it is the maintainer's.** Every desktop
+distribution ships `ca-certificates`, so no real user meets this. But bundling `certifi` is not
+obviously right either: it would make the application ignore the *system* trust store, which is
+where a corporate root or a user-added CA lives — so the fix that helps a bare container breaks
+the user behind a TLS-inspecting proxy. Three ways out:
+
+| Option | What it costs |
+|---|---|
+| **A. Leave it.** Record the dependency in the README's requirements | Nothing. A machine with no CA store cannot do HTTPS at all, and that is true of every application on it |
+| **B. Bundle `certifi` as a fallback** — use it only when the system store is empty or unusable | A little code and a test; keeps corporate CAs working, which a plain bundle would not |
+| **C. Bundle `certifi` outright** | Simplest, and **wrong for anyone behind a TLS-inspecting proxy** |
+
+**Recommendation: A**, with the requirement written down. B is defensible if a user ever reports
+it; C should not be taken. Recorded here rather than decided, and the clean-machine harness
+installs the package with the reason stated in its own output either way.
+
+**The evidence file is `docs/project/evidence/linux-0.1.0.dev0.md`** — pre-install check, all six
+probes, and a launch held offscreen for 20 s. `--version` is still not a launch test; the launch
+is.
+
 #### 2026-09-11 — the AppDir's three files, and what is deliberately still missing
 
 **Done, and validated by the tools that own the formats** rather than by a parser of mine:

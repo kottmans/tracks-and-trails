@@ -29,6 +29,7 @@ at one while the recursion happens anyway. That was found by actually removing
 import multiprocessing
 import os
 import sys
+import time
 from multiprocessing.queues import Queue as QueueType
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,18 @@ _UNRELATED_URL = "https://example.com/not-a-video"
 
 #: Generous: a cold frozen child on a loaded CI runner starts far slower than a source one.
 TIMEOUT_SECONDS = 120
+
+
+#: The file the download probe fetches, and the reason it is that one.
+#:
+#: **Deliberately the same URL as `tests/network/test_real_download.py`.** If the probe and that
+#: test ever disagree, the difference is the artifact rather than the site — which is the only
+#: question worth asking of a clean machine. The Internet Archive keeps identifiers stable, and
+#: `T037-R2` established the licence: Big Buck Bunny is **CC BY 3.0**, not public domain.
+#: Downloading it is fine under that licence; redistributing it would need the attribution.
+DOWNLOAD_PROBE_URL = (
+    "https://archive.org/download/BigBuckBunny_124/Content/big_buck_bunny_720p_surround.mp4"
+)
 
 
 #: Names a file the probes append their report lines to, as well as printing them (`T-319`).
@@ -495,4 +508,97 @@ def run_ytdlp_update_probe() -> int:
             return 1
 
     say("OK: install, resolve in a child, and revert all work in the frozen artifact")
+    return 0
+
+
+def run_download_probe(url: str | None = None) -> int:
+    """Download one real file end to end **inside the artifact**, with no display (`T321-R1`).
+
+    The clean-machine evidence for `T-321` was a launch, four probes and the release gates — and
+    **not a real download**, because that needed the GUI driven and had no headless route. So the
+    one thing a clean machine is uniquely able to disprove went unasked: that this bundle can
+    reach a real site, over TLS, with its own certificates, and write a file. Every previous real
+    download was taken on a machine that already had Python, Qt and a system yt-dlp installed.
+
+    **This calls `run_session`, the same function the spawned worker runs.** Not a parallel
+    implementation and not the GUI: yt-dlp is resolved the way a job resolves it, the extractor
+    runs, the bytes land through the real writer. `MessageSink` is a `Protocol` precisely so the
+    caller can be a plain queue rather than an IPC one.
+
+    **What this does not cover, stated rather than implied.** It does not spawn a child — that is
+    `--spawn-probe`'s question and it is asked separately — and it drives no widget, so the
+    dialog-to-queue wiring is not exercised here. `TESTING` §8 item 8's *cancel another* is
+    likewise not covered: cancellation is a parent-side signal, and this probe has no parent.
+    """
+    import queue as queue_module
+    import tempfile
+
+    from tracks_and_trails.core.models import DownloadRequest
+    from tracks_and_trails.downloader.protocol import (
+        Failed,
+        ResolutionReport,
+        SessionKind,
+        Succeeded,
+    )
+    from tracks_and_trails.downloader.worker import run_session
+
+    target = url or DOWNLOAD_PROBE_URL
+    say(f"url             {target}")
+
+    with tempfile.TemporaryDirectory(prefix="tt-download-probe-") as directory:
+        request = DownloadRequest(
+            url=target,
+            output_directory=directory,
+            # A direct media file declares no height, so the height-filtered default legitimately
+            # matches nothing — the same reasoning `tests/network/test_real_download.py` records
+            # for choosing its preset.
+            format_selector="best",
+            output_template="%(title)s.%(ext)s",
+        )
+        messages: queue_module.Queue[Any] = queue_module.Queue()
+        started = time.monotonic()
+        try:
+            run_session(SessionKind.DOWNLOAD, "download-probe", request, messages)
+        except Exception as error:  # a probe reports; it does not raise out of the artifact
+            say(f"FAIL: the download session raised: {error!r}", error=True)
+            return 1
+        elapsed = time.monotonic() - started
+
+        outcome: Succeeded | Failed | None = None
+        while True:
+            try:
+                message = messages.get_nowait()
+            except queue_module.Empty:
+                break
+            if isinstance(message, ResolutionReport):
+                say(f"yt-dlp          {message.ytdlp_version} from {message.ytdlp_source}")
+            elif isinstance(message, Succeeded | Failed):
+                outcome = message
+
+        if isinstance(outcome, Failed):
+            say(f"FAIL: the download failed as {outcome.kind}: {outcome.message}", error=True)
+            return 1
+        if outcome is None:
+            say(
+                "FAIL: the session ended without an outcome, which is a protocol violation "
+                "rather than a failed download (REQ-028).",
+                error=True,
+            )
+            return 1
+
+        produced = Path(outcome.output_path)
+        if not produced.is_file():
+            say(
+                f"FAIL: the session reported success and {produced} is not a file. A download "
+                f"that reports a path it did not write is worse than one that fails.",
+                error=True,
+            )
+            return 1
+        size = produced.stat().st_size
+        if size == 0:
+            say(f"FAIL: {produced.name} is empty.", error=True)
+            return 1
+        say(f"downloaded      {produced.name}, {size} bytes in {elapsed:.1f}s")
+
+    say("download        ok")
     return 0
