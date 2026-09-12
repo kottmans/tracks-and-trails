@@ -1072,8 +1072,8 @@ Apply deliberate adversarial attention to affected boundaries:
 - Exclusions: `REQ-EXCL` and `SEC-001`.
 
 The same policy applies to every canonical review record. The storage rule below
-governs serial and wave work; [PROMPTS](PROMPTS.md#review-entry-template) supplies
-optional entry wording.
+governs serial and wave work; the [entry template](#review-entry-template) below supplies
+optional wording.
 
 ### Review records and storage
 
@@ -1138,3 +1138,37 @@ independence, required checks or task-completion criteria.
 
 This is the canonical local storage rule. AGENTS, DEVELOPMENT, the review index
 and templates route here; they do not define another review policy.
+
+### Review entry template
+
+Optional wording; §14 above governs review. Choose the record under the
+[storage rule](#review-records-and-storage), then append this round to it. Use stable finding
+IDs so a later round can recheck them by name.
+
+*(Moved here on 2026-09-11 from the removed `PROMPTS.md`. It sat a document away from the
+policy it serves, and two other files linked across to reach it.)*
+
+```markdown
+## YYYY-MM-DD — <Scope title>
+
+**Reviewer:** <actual person/tool; independent of implementer>
+**Task(s):** <every task covered by this coherent review>
+**Round:** Initial | Focused re-review | Disposition update
+**Base:** <commit>  **Head:** <commit or bounded diff>
+**Platforms verified:** <actual scope>
+**Verdict:** Approved | Approved with follow-ups | Changes requested | Blocked
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding and evidence | Disposition/status |
+|---|---|---|---|---|
+
+### Checks run
+
+| Check and scope | Actual result |
+|---|---|
+
+### Readiness
+
+<Remaining risks, unverified areas and approval/merge limits.>
+```

@@ -53,7 +53,6 @@ on:
       - "docs/project/ARCHITECTURE.md"
       - "docs/project/DECISIONS.md"
       - "docs/project/IMPLEMENTATION_PLAN.md"
-      - "docs/project/PROMPTS.md"
       - "docs/project/REQUIREMENTS.md"
       - "docs/project/REVIEWS.md"
       # Moved review prose keeps the same CI treatment as the former single file.

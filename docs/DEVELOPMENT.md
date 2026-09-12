@@ -539,7 +539,8 @@ DECISIONS for design/rationale, TASKS/STATUS for active work, COMPLETED_TASKS fo
 closed task history, and REVIEWS to find the canonical review records. Those files live in
 `docs/project/`. Review policy lives
 in [TESTING §14](project/TESTING.md#14-review-policy); launch wording lives in
-[PROMPTS](project/PROMPTS.md). Required ownership and permissions remain in AGENTS.
+[TESTING §14](project/TESTING.md#14-review-policy), whose entry template moved there when
+`PROMPTS.md` was removed on 2026-09-11. Required ownership and permissions remain in AGENTS.
 Use the [review-storage rule](project/TESTING.md#review-records-and-storage) to
 choose a new task file or an existing indexed record before starting a review.
 

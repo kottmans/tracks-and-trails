@@ -444,7 +444,7 @@ remembering — `T015-R1`'s rule applied to a gate.
 - All four checks run in the `frozen` job on both platforms and in `T-324`'s release workflow, and
   each was turned red by its named mutation on a real build, with the run ids recorded
 - `docs/project/TESTING.md` §8 marks items 9, 11, 12 and 13 as **executable**, pointing at the
-  check, and the manual `PROMPTS.md` release prompt is narrowed to what remains manual
+  check, and the manual release prompt in `docs/RELEASE.md` is narrowed to what remains manual
 - The licence directory's contents are the exact upstream texts, with their versions and sources
   recorded in `packaging/licenses/README.md`
 
@@ -508,7 +508,7 @@ outstanding.
 `CHANGELOG.md` *"at the first tagged release"*); `SECURITY.md` §Supported versions (*"when releases
 begin, this section will name which of them receive fixes"*); `IMPLEMENTATION_PLAN.md` §Phase 5
 deliverable *"versioning policy, release gate, and rollback procedure documented"*; `DAT-001`;
-`OPS-002`; `PROMPTS.md`'s release-verification prompt; `tests/unit/test_skeleton.py` (asserts
+`OPS-002`; `docs/RELEASE.md`'s release review; `tests/unit/test_skeleton.py` (asserts
 `--version` prints `__version__`); `[tool.hatch.version]` reads `src/tracks_and_trails/__init__.py`
 **Affected surfaces:** `src/tracks_and_trails/__init__.py`, `docs/RELEASE.md` (new),
 `CHANGELOG.md` (new, at tag time), `SECURITY.md`, `README.md`, `docs/DEVELOPMENT.md`
@@ -1968,7 +1968,7 @@ incident it cites).
 **Relevant context:** `.github/workflows/ci.yml`'s `frozen` job (builds both artifacts every push
 and uploads **evidence only**, 30-day retention — nothing today produces a downloadable release);
 `OPS-009`/`OPS-010`/`OPS-012` (where each platform builds); `SECURITY.md` §CI trust boundary
-(read-only default token, no secrets); `PROMPTS.md`'s release prompt (*"do not tag, commit, push,
+(read-only default token, no secrets); `docs/RELEASE.md`'s release review (*"do not tag, commit, push,
 or publish unless explicitly instructed"*); `NFR-007`
 **Affected surfaces:** `.github/workflows/release.yml` (new), `docs/RELEASE.md`
 **Risk:** Medium — a workflow with permission to create releases is the one place the CI trust
@@ -2161,7 +2161,7 @@ built artifact rather than two.
 **Priority:** High
 **Phase:** Phase 5
 **Depends on:** every task above, `T-212`, `T-039`
-**Relevant context:** `PROMPTS.md`'s release-verification prompt; `TESTING.md` §8 in full; §14
+**Relevant context:** `docs/RELEASE.md`'s release review; `TESTING.md` §8 in full; §14
 (one initial review plus one focused pass, and *"a red canary is not a reason to skip the bump"*);
 `DOC-002` (`CHANGELOG.md` at the first tag); `IMPLEMENTATION_PLAN.md` §Phase 5 exit criteria;
 §Phase 4.5's resequencing note (**no parity claim**)
@@ -2175,7 +2175,7 @@ every gate is being exercised for the first time at once
 1. **Freeze the candidate**: the release commit sets `__version__ = "0.1.0"`, creates
    `CHANGELOG.md` with a `0.1.0` section, fills `SECURITY.md` §Supported versions, and is tagged
    `v0.1.0`. `T-324` drafts the release.
-2. **The release review**, per `PROMPTS.md`'s prompt: `TESTING.md` §8 item by item, on both
+2. **The release review**, per `docs/RELEASE.md`: `TESTING.md` §8 item by item, on both
    platforms, each with its evidence — `T-323`'s gates, `T-325`'s numbers, `T-326`'s runs,
    `T-318`'s clean-machine files, `T-327`'s and `T-212`'s sessions. Recorded in a review record
    indexed by `REVIEWS.md`. Its verdict is the phase's.

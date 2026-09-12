@@ -8,7 +8,7 @@
 ## Current navigation
 
 [Review policy and storage](TESTING.md#review-records-and-storage) ·
-[Review template](PROMPTS.md#review-entry-template) · [Active tasks](TASKS.md)
+[Review template](TESTING.md#review-entry-template) · [Active tasks](TASKS.md)
 
 Existing history has moved to the records below. Every dated entry is preserved
 once, byte-for-byte, including shared checks and implementer correction records.

@@ -60,7 +60,7 @@ reviewing it.
 | Implementer | `src/**`, `tests/**`, `pyproject.toml`, build config, `docs/project/TASKS.md`, `docs/project/COMPLETED_TASKS.md`, `docs/project/STATUS.md`, `docs/project/TESTING.md` (to add a check the change introduces) | `docs/project/REQUIREMENTS.md`, `docs/project/ARCHITECTURE.md`, `docs/project/DECISIONS.md`, `docs/project/IMPLEMENTATION_PLAN.md` |
 | Reviewer | the assigned canonical review record and its `docs/project/REVIEWS.md` index link (§10; coordinator owns the index in a wave), `docs/project/TESTING.md`, test files, `docs/project/TASKS.md` (approved follow-ups meeting §10's task threshold only) | reviewed source code, unless asked to fix findings |
 | Release Manager | version sources, `CHANGELOG.md`, release metadata, `docs/project/STATUS.md` | product scope, during release prep |
-| Documentation Maintainer | `README.md`, `docs/DEVELOPMENT.md`, `docs/project/PROMPTS.md`, current navigation/metadata, retention archives, cross-links, formatting; adopted documentation policy when instructed | product or architecture *meaning*; dated review findings |
+| Documentation Maintainer | `README.md`, `docs/DEVELOPMENT.md`, current navigation/metadata, retention archives, cross-links, formatting; adopted documentation policy when instructed | product or architecture *meaning*; dated review findings |
 | Coordinator / Integrator (wave only) | `docs/project/TASKS.md`, `docs/project/COMPLETED_TASKS.md`, `docs/project/STATUS.md`, the `docs/project/REVIEWS.md` index and assigned integration review record, branches/worktrees the maintainer authorized | a reviewer's substantive findings; worker source outside conflict resolution |
 
 **In a parallel wave the assigned exclusive write set overrides this table** (§9). A worker
@@ -244,7 +244,7 @@ Read canonical finding rows before preparing a correction batch.
 | Review evidence | Canonical record indexed by `docs/project/REVIEWS.md`; storage in TESTING §14 |
 | Testing and review policy | `docs/project/TESTING.md` |
 | Contributor procedures | `docs/DEVELOPMENT.md` |
-| Reusable launch wording | `docs/project/PROMPTS.md` (non-authoritative) |
+| Reusable launch wording | *(none — `PROMPTS.md` removed 2026-09-11 by maintainer decision; the review entry template moved to `docs/project/TESTING.md` §14 and the release prompt to `docs/RELEASE.md`)* |
 
 Link to each canonical home. Decisions record durable choices, not routine
 completion. Handoffs and the external roadmap are never canonical homes (§6).

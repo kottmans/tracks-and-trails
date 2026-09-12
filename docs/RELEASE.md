@@ -118,3 +118,26 @@ downgrades across a schema change keeps their files and loses their queue and hi
 **Say this on the release page whenever a release contains a migration.** A rollback path that
 quietly does not exist is worse than one the user was warned about, and this document states it
 rather than implying a symmetry the data layer does not have.
+
+## The release review
+
+`T-328` runs this before anything is published, and `TESTING` §14 governs where the verdict is
+recorded. *(Moved here on 2026-09-11 from the removed `docs/project/PROMPTS.md` — a release
+prompt belongs with the release procedure.)*
+
+```text
+Act as the Release Manager for Tracks & Trails.
+
+Release candidate: <version / tag / commit>
+
+Work through the docs/project/TESTING.md §8 release gate item by item, on Linux AND Windows. Do not
+mark an item passed without the actual evidence.
+
+Also verify: version numbers consistent across sources, CHANGELOG current, the pinned yt-dlp
+baseline recorded (OPS-002), Qt dynamically linked (NFR-009, LIC-001), third-party license
+texts present, and no secrets or personal paths in the artifact.
+
+Record the verdict and blockers in the canonical review record chosen under TESTING §14
+and ensure REVIEWS.md indexes it. Continue an existing release review in its existing file.
+Do not tag, commit, push, or publish unless explicitly instructed.
+```

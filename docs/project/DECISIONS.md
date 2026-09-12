@@ -42,7 +42,8 @@ Current requirements and architecture retain their own canonical authority.
 | [DOC-003](#doc-003--parallel-work-is-available-opt-in-and-maintainer-opened) | Parallel work is available, opt-in, and maintainer-opened | Accepted | — |
 | [DOC-004](#doc-004--review-findings-do-not-map-one-for-one-to-tasks) | Review findings do not map one-for-one to tasks | Accepted | — |
 | [DOC-005](#doc-005--minor-actionable-findings-ride-existing-work-notes-request-no-change) | Minor actionable findings ride existing work; Notes request no change | Accepted | — |
-| [DOC-006](#doc-006--adopt-convention-revision-2026-09-081-and-the-neutral-coordination-layout) | Adopt convention revision 2026-09-08.1 and the neutral coordination layout | Accepted | [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) |
+| [DOC-006](#doc-006--adopt-convention-revision-2026-09-081-and-the-neutral-coordination-layout) | Adopt convention revision 2026-09-08.1 and the neutral coordination layout | Accepted | [DOC-008](#doc-008--promptsmd-is-removed-its-two-live-sections-move-to-the-documents-that-govern-them) | `PROMPTS.md` is removed; its two live sections move to the documents that govern them | Accepted | — |
+| [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) |
 | [ARC-001](#arc-001--python--pyside6-qt-6-as-the-implementation-stack) | Python + PySide6 (Qt 6) as the implementation stack | Accepted | — |
 | [ARC-002](#arc-002--consume-yt-dlp-as-a-library-inside-one-isolated-child-process-per-job) | Consume yt-dlp as a library inside one isolated child process per job | Accepted | [ARC-003](#arc-003--versioned-in-arc-002-means-version-controlled-not-version-negotiated) |
 | [DAT-001](#dat-001--sqlite-for-queue-and-history-toml-for-settings) | SQLite for queue and history; TOML for settings | Accepted | [Amended 2026-08-06 (second, and current)](#amended-2026-08-06-second-and-current--there-is-no-history-to-store); [Amended 2026-08-06 (first, superseded)](#amended-2026-08-06-first-superseded--history-is-a-private-ledger-and-the-storage-choice-is-unchanged) |
@@ -6038,6 +6039,53 @@ a very pronounced button, people might even miss that they are there."*
 **A per-entry gesture on playlist rows** (*"Choose which entries download…"* pointing at the
 `T-110` picker) was offered alongside the rename and not taken. Adding one later is its own
 ruling; nothing here forecloses it.
+
+---
+
+## DOC-008 — `PROMPTS.md` is removed; its two live sections move to the documents that govern them
+
+**Status:** **Accepted** (2026-09-11) — maintainer decision: *"I never use it."*
+**Date:** 2026-09-11
+**Amends:** `DOC-001`'s adopted profile and `DOC-006`/`DOC-007`, which name `PROMPTS.md` among the
+coordination documents. **Affects:** `AGENTS.md` §roles and §where-things-live.
+
+### Context
+
+`docs/project/PROMPTS.md` held thirteen sections of reusable launch wording for agents. The
+maintainer does not use it, and `AGENTS.md` already recorded it as **non-authoritative**.
+
+**Two of the thirteen were load-bearing**, and deleting the file wholesale would have broken them:
+
+- **The review entry template**, linked from `TESTING.md` §14 and from `REVIEWS.md`'s header.
+- **The release-verification prompt**, cited by `T-323`, `T-324` and `T-328` as the thing that
+  defines the manual release review.
+
+### Decision
+
+**The file is removed.** Its two live sections move to the documents that already govern their
+subjects rather than to a new home:
+
+| Section | Now lives in | Why there |
+|---|---|---|
+| Review entry template | `TESTING.md` §14 | §14 *is* the review policy; the template sat a document away from it and two files linked across to reach it |
+| Release verification | `docs/RELEASE.md` | `T-320` created it as the release procedure; a release prompt belongs in it |
+
+The other eleven sections are not preserved. They were wording for launching agents, which is not
+a fact about this product.
+
+### Consequences
+
+- **`AGENTS.md`'s *"Reusable launch wording"* row now points at nothing**, and says so with where
+  the two sections went, rather than being deleted — a reader who remembers the file needs to find
+  where it went.
+- **`ci.yml`'s prose path filter drops it**, since a filter naming an absent file is a rule that
+  silently covers nothing.
+- **Historical references are left alone** — `COMPLETED_TASKS.md`, `reviews/`, `evidence/` and the
+  dated entries above name the file as it was when they were written, which is the rule this
+  document already applies to paths.
+- **This is a deviation from the adopted convention, not an oversight.** `DOC-001`'s profile names
+  `PROMPTS.md`; the maintainer's decision is recorded here so a later reader finds a decision
+  rather than a missing file.
 
 ---
 
