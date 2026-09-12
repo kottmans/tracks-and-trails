@@ -724,9 +724,52 @@ for yt-dlp (`REL-002`).
 
 ### T-321 — The Linux release artifact, built where it will run
 
-**Status:** **In Progress** — the AppDir metadata landed 2026-09-11; the build host and the
-evidence remain. Started under the maintainer's ruling relaxing §Phase 5's *Phase 4 approved*
-prerequisite.
+**Status:** **In Progress** — **the artifact exists and runs on a clean machine** as of
+2026-09-11; a real download and the Fedora-desktop launch remain. Started under the maintainer's
+ruling relaxing §Phase 5's *Phase 4 approved* prerequisite.
+
+#### 2026-09-11 (later) — built in a container, and it runs where nothing is installed
+
+**`packaging/build_appimage.sh`**, run in `python:3.14-slim-bookworm`:
+
+```
+podman run --rm -v "$PWD":/src:ro,Z -v "$PWD/dist":/out:Z \
+    docker.io/library/python:3.14-slim-bookworm /src/packaging/build_appimage.sh
+```
+
+**The base is not the Ubuntu LTS this task proposed, and the swap is an improvement.** It carries
+Python 3.14 already and is **glibc 2.36** against Ubuntu 24.04's 2.39, so it covers more machines;
+there is no 3.14 image on an older Debian. **The floor that buys is Debian 12 / Ubuntu 24.04 and
+newer — Ubuntu 22.04 is glibc 2.35 and is out of reach**, and the README claims exactly that.
+
+**Why the container rather than this desk, measured rather than argued:**
+
+| Built on | Bundled libraries require | Runs on Ubuntu 24.04 |
+|---|---|---|
+| the development machine, glibc 2.43 | **`GLIBC_2.43`** | **no** |
+| the container, glibc 2.36 | **`GLIBC_2.36`** | yes |
+
+**The executable itself needs only `GLIBC_2.14` in both**, which is what makes this silent: anyone
+checking the binary would conclude the desktop build was fine. The requirement lives in the
+bundled `.so` files.
+
+**`Tracks_and_Trails-0.1.0.dev0-x86_64.AppImage`, 49.9 MB.** On `ubuntu:24.04` with **no
+`python3`, no Qt and no ffmpeg**:
+
+| Check | Result |
+|---|---|
+| `--version` | `0.1.0.dev0`, exit 0 |
+| `--spawn-probe` (`T-020`) | *spawned a child from this build, exchanged one message, and reaped it* |
+| `--ytdlp-probe` (`T-033`) | *the frozen artifact carries a usable yt-dlp with its extractors* |
+| `--database-probe` | ok |
+| `artifact_gates.py` over the payload | **all four pass** |
+
+**This is the first evidence this project has that the bundle is self-contained.** Every previous
+Linux run was on a machine that already had Python and Qt installed.
+
+**Still outstanding:** one real download on each machine; the launch on the Fedora desktop; the
+`.desktop` and `metainfo.xml` validated *from inside* the AppImage rather than from source; and
+the icon appearing in a launcher, which wants a desktop rather than a container.
 
 #### 2026-09-11 — the AppDir's three files, and what is deliberately still missing
 
