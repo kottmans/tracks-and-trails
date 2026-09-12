@@ -2158,16 +2158,51 @@ down rather than an omission discovered at the first SmartScreen screenshot.
 
 ### T-318 — Decide how "a clean machine" is evidenced for the first release
 
-**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan. **Gates the exit** (criteria 1, 2
-and release-gate item 7) and should be decided before the build tasks so the evidence is collected
-as they land rather than reconstructed afterwards.
+**Status:** **In Review** — the harness landed 2026-09-12 and has taken Linux evidence for
+`0.1.0.dev0`. The Windows half waits on `T-319`/`T-322` for a candidate to install. **Gates the
+exit** (criteria 1, 2 and release-gate item 7). Filed 2026-09-11 with the Phase 5 plan.
 
 **The decision is taken.** The maintainer ruled on 2026-09-11 for option **B**, recorded as
 [`REL-006`](DECISIONS.md#rel-006--a-clean-machine-is-a-disposable-vm-the-maintainer-owns):
-disposable VMs the maintainer owns, with *A* as the fallback. **What remains is the harness** —
-the operational pre-install check, the per-candidate evidence file under `docs/project/evidence/`,
-and the VM setup written down well enough to recreate in a year. It stays `Proposed` because
-Phase 5 has not opened, not because the decision is outstanding.
+disposable VMs the maintainer owns, with *A* as the fallback. **The harness landed 2026-09-12**,
+below.
+
+#### 2026-09-12 — the harness, and the VM that is not a VM
+
+**The maintainer narrowed `REL-006` the same week it was taken**: *"I don't really want to use VMs
+for testing the packages. I'd rather just test the app image on my own machine and test the windows
+installer on starbase."* So the Linux clean machine is a **disposable container** and the Windows
+one is **Windows Sandbox on `STARBASE`**. Both satisfy what B was chosen for — clean by
+construction, owned by the maintainer, no hosted minutes — and the container costs a pull rather
+than the afternoon B was priced at. `REL-006`'s *"written down well enough to recreate in a year"*
+is then met by a committed script instead of a setup document, which is the stronger form.
+
+| Platform | How | Evidence |
+|---|---|---|
+| Linux | `tools/clean_machine_linux.sh <artifact>`, which supplies `ubuntu:24.04` and runs `tools/clean_machine_evidence.sh` on it | `docs/project/evidence/linux-<version>.md` |
+| Windows | By hand in Sandbox, against `docs/project/evidence/TEMPLATE-windows.md` | `windows-<version>.md` |
+
+**`ubuntu:24.04` and not the build image.** `packaging/build_appimage.sh` builds on Debian 12 so
+the artifact reaches as far back as possible; this runs it on the oldest LTS the README claims.
+Testing on the machine that built it would prove nothing about either.
+
+**The pre-install check is first and it can fail the run** — the first acceptance criterion, and
+the reason it is first: evidence taken on a machine that turns out to have had Python on it is not
+evidence, and finding that out afterwards is too late. Thirteen tools probed with `command -v`,
+plus a count of system Qt libraries, **output retained in full** rather than reduced to a verdict.
+
+**What it caught on its first run is recorded in `T-321`** — the artifact carries no CA bundle, so
+the real download failed on a machine whose `/etc/ssl/certs` is empty. That is the harness earning
+its place on the day it landed.
+
+**Why the Windows half is a template and not a script.** Everything the Linux evidence needs can
+be answered without a display; `--download-probe` exists for exactly that. The Windows half is
+driven through the window, which is what lets it cover *cancel another* — the one `TESTING` §8
+item 8 clause no probe can reach, because cancellation is a parent-side signal and a probe has no
+parent.
+
+**What is not done:** no Windows candidate exists yet to take evidence on. `T-319` builds it, and
+`T-322`'s installer is what Sandbox would install. The template is ready for both.
 **Owner:** Maintainer decision; Implementer records it and builds whichever harness it names
 **Priority:** High — the two exit criteria it serves are the phase's definition of done
 **Phase:** Phase 5

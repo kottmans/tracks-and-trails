@@ -22,7 +22,36 @@ What is here now:
 | `2026-08-14-T242-settings-{light,dark}.png` | **A picture of one head, which is the part that cannot come back.** `tools/settings_screenshots.py` regenerates the *current* Settings screen in one command — so the script is what this directory's rule asks for, and it is committed. What re-running cannot produce is what the screen looked like at `T-242`'s reviewed head, which is what its fourth acceptance criterion asks to be inspectable (`T242-R2`). **The tension is real and this is the resolution**: the generator lives in `tools/`, and only the dated capture lives here. |
 | `2026-08-25-T277-icon-in-the-desktop-slots.png` | **Which `.ico` frame each desktop slot resolves to, which is a fact about a live compositor rather than about this repository.** `T-277`'s ruling rests on the titlebar drawing the 16/24 frames and the panel drawing 32; that is measurable only with the application running on a KDE 6 / Wayland session, and no committed script can produce it — `tools/icons/render_icons.py` regenerates the *assets*, not what a compositor does with them. The `before` column is also a picture of a head whose 32 px asset the next commit replaces. **The three-cut comparison that the ruling was shown is deliberately *not* here**: it is regenerable from the three vendored masters, so its numbers live in `T-277` instead, per this directory's own rule. |
 | `2026-08-25-linux-orphan-still-running-on-spock.md` | **Three read-only captures of the processes the row below records as gone.** Retained on `T272-R6`'s direction, which asked for the capture *if it survives* — **it survives**, and the last block was taken after the review reported it ended. Each block is one timestamp: re-running the scanner reproduces *a* capture, never *these*, and the sequence is what evidences that the pair persisted across the dates `T-272` says they ended. Every block names `hostname` and `machine-id`, because `T272-R5` establishes that one shared runner label selects either machine and a check of "current state" is a statement about whichever box it ran on. |
+| `linux-<version>.md`, `windows-<version>.md` | **Clean-machine evidence for one release candidate** (`T-318`, §8 item 7). The *harness* is regenerable and lives in `tools/` — `clean_machine_linux.sh` — but what it captures is one artifact, identified by digest, on a machine that was destroyed when the run ended. Re-running it produces evidence about whatever is in `dist/` today, never about the candidate that shipped. Same resolution as the screenshots above: the generator is committed, only the dated capture lives here. |
 | `2026-08-20-linux-orphans-on-kirk.md` | **⚠ The retention reason below is false and is kept as written; see `T272-R5`/`T272-R6` and the row above.** The processes are **not** gone — they are running on `Spock` as of 2026-08-26 — and the host in the filename is `kirk`, a different machine. The file's *captured* content stands; its framing does not. **Original reason, unedited:** Read-only state of two processes that no longer exist, which is the rule working rather than a caveat on it.** PIDs `432922` and `434366` were orphaned on `kirk` from 2026-08-16; the file captures `/proc`, `ps` and `eu-stack` output taken while they ran. **Both were gone within hours of the capture** — absent from `ps` at `2026-08-20T06:20:48Z`, with no reboot and nothing signalled *by that session* — so the subject no longer exists and nothing regenerates it: the parent was already gone, so even a fresh orphan would be a different specimen. **Why they ended, and whether anybody else inspected or released them, is unknown** (`T272-R3`); what is recorded is that they were **preserved rather than reaped** here (`T258-R4`, `T-272`) and that this file is the whole of what survives. |
+
+## Clean-machine evidence (`T-318`)
+
+One file per release candidate per platform. `REL-006` chose disposable machines the maintainer
+owns; the maintainer narrowed that on 2026-09-11 to a **container** for Linux and **Windows
+Sandbox on `STARBASE`** for Windows.
+
+| Platform | How it is taken |
+|---|---|
+| Linux | `tools/clean_machine_linux.sh <artifact> > docs/project/evidence/linux-<version>.md` |
+| Windows | By hand, against `TEMPLATE-windows.md` |
+
+**Why one is a script and the other is not.** Everything the Linux evidence asks for can be
+answered without a display — `--download-probe` exists precisely because that run had no real
+download otherwise (`T321-R1`). The Windows half is driven through the window, which is also what
+lets it cover *cancel another*, the one §8 item 8 clause no probe reaches.
+
+**The pre-install check comes first and can fail the run.** Evidence taken on a machine that turns
+out to have had Python on it is not evidence, and finding that out afterwards is too late. Its
+output is retained in full rather than reduced to a verdict: *"no Python"* is a claim, and
+`command -v python3` is the fact.
+
+**Two things are installed on the Linux clean machine**, neither Python, Qt nor a toolchain:
+`libgl1`/`libegl1`, because an AppImage must not ship the graphics stack, and `ca-certificates`,
+because the artifact carries **no CA bundle of its own** — measured: without it every HTTPS
+request fails with `CERTIFICATE_VERIFY_FAILED`. Whether that should stay true is a maintainer
+question, raised in `T-321`; until it is answered this is a stated boundary rather than a silent
+one.
 
 **Do not add CI output here.** `reports/` artifacts are uploaded by the workflow and retained for
 30 days (`docs/project/TESTING.md` §10); if one matters beyond that, quote the part that matters into the
