@@ -14,6 +14,97 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-317 — Decide whether the first Windows installer is signed
+
+**Status:** **In Review** — the ruling was taken 2026-09-11 and its documentation follow-through
+landed 2026-09-12. One criterion is **sequenced rather than met**, and deliberately: the README's
+install section lands with the release commit, because the line it replaces is still true. Filed
+2026-09-11 with the Phase 5 plan. **Gated the start**: it changes what `T-322` builds and what
+`T-039` may assert.
+
+**The decision is taken.** The maintainer ruled on 2026-09-11 for option **A**, recorded as
+[`REL-005`](DECISIONS.md#rel-005--the-first-windows-installer-ships-unsigned): `0.1.0` ships
+unsigned, with B or C named as the `1.0` condition. **The follow-through landed 2026-09-12**,
+below.
+
+#### 2026-09-12 — the follow-through, and the one criterion that is sequenced rather than met
+
+Checked against the acceptance criteria one at a time rather than declared done:
+
+| Criterion | Where |
+|---|---|
+| a `REL-` entry naming the choice, the rejected alternatives and why | `REL-005`, which also carries the reopening condition and the deliberate omission of AppImage signing |
+| if unsigned: `docs/RELEASE.md` states what SmartScreen shows and the exact click-through | §*What a Windows user will see* — the prompt quoted, **More info** → **Run anyway**, and why reputation never accrues without a certificate |
+| `T-039`'s gates stated as **independent of signature** | stated in `T-039`'s own entry, where the gates will be written |
+| names its reopening condition | `REL-005`: the `1.0` release, or evidence the prompt is costing installs |
+
+**The README's install section is the one that is sequenced, not met, and that is `T-320`'s
+judgement rather than a gap here.** The README says *"you cannot install it from a release — there
+are no installers or packages yet"*, which is **true today**; replacing it now would claim
+installers that do not exist. `docs/RELEASE.md` makes the replacement a release-commit step
+alongside `CHANGELOG.md` and `SECURITY.md` §Supported versions, and that step now **requires the
+SmartScreen click-through verbatim** plus the two system requirements — so the wording this task
+asks for is pinned to the commit where a README section can exist without being false.
+
+**`T-039`'s note is the half worth reading.** Its checks have to hold whether or not the installer
+is signed, and **no assertion may pass only because a signed binary skipped a prompt** — that is a
+test measuring SmartScreen rather than the installer, and it would go red the day signing arrives,
+which is the one day nobody would suspect the test.
+
+**Nothing was bought and nothing is signed.** The `.iss` carries a commented `SignTool` line so
+`REL-005`'s condition is met by uncommenting rather than authoring, and
+`tests/unit/test_windows_packaging.py` asserts it is still commented — a signing line that
+switched itself on would be a silent change to what the artifact is.
+**Owner:** Maintainer decision; Implementer records it as a `REL-` entry
+**Priority:** High — every later Windows task is shaped by the answer, and a certificate is a
+purchase with a lead time
+**Phase:** Phase 5
+**Depends on:** nothing
+**Relevant context:** `REL-001`; `OPS-004` (the installer must *feel* normal — a human item);
+`SECURITY.md` §CI trust boundary; `NFR-007`
+**Affected surfaces:** `docs/project/DECISIONS.md`; later `T-322`'s build step and `T-324`'s
+release workflow
+**Risk:** Low to decide; Medium not to — an unsigned installer meets SmartScreen's *"Windows
+protected your PC"* on every first install, which is the single largest reason a desktop user
+abandons an install
+
+#### Scope
+
+Nothing in the record decides this. `DOC-002` names *"a documented release and signing process"* as
+the reason `docs/RELEASE.md` exists, and no `REL-` entry has taken the question up. Three honest
+answers:
+
+| Option | What the user sees | What it costs |
+|---|---|---|
+| **A. Ship unsigned**, document the SmartScreen prompt in the README and release notes | *"Windows protected your PC"* → *More info* → *Run anyway*, on every first install | Nothing. Reputation never accrues, so the prompt never goes away |
+| **B. OV code-signing certificate** | The same prompt until SmartScreen reputation accrues over downloads; then none | A yearly purchase, identity verification, a key to protect |
+| **C. Azure Trusted Signing** (or an EV certificate) | No prompt from the first install | A subscription and an Azure identity; EV needs hardware-backed keys |
+
+**Recommendation: A for `0.1.0`, with B or C named as the `1.0` condition.** The first release is the
+one where the maintainer learns whether anyone installs it; buying identity infrastructure before
+that is the cost inverted. But the choice is the maintainer's because it is their name on the
+certificate, and this task exists so that *"unsigned"* is a decision with its consequences written
+down rather than an omission discovered at the first SmartScreen screenshot.
+
+#### Acceptance criteria
+
+- A `REL-` entry naming the choice, the rejected alternatives and why, in the house style
+- If unsigned: the README's install section and `docs/RELEASE.md` state what SmartScreen will show
+  and the exact click-through, so support is a link rather than a conversation
+- If signed: where the key lives, who can use it, and the rule that CI never holds it in a
+  repository secret readable by a fork (`SECURITY.md` §CI trust boundary)
+- `T-039`'s gates are stated as **independent of signature** — a silent install must succeed
+  either way, and the test must not pass only because a signed binary skipped a prompt
+- Names its reopening condition
+
+#### Out of scope
+
+- Signing the Linux artifact. AppImage signatures are optional and rarely checked; record that as
+  a deliberate omission in the same entry
+- Buying anything. The decision may be *A*; this task does not presume otherwise
+
+---
+
 ### T-324 — A release workflow that builds, gates and drafts — and never publishes
 
 **Status:** **In Review** — written 2026-09-12. **Its first acceptance criterion needs a tag**, and
@@ -2464,66 +2555,6 @@ evidence than a Phase 4 run would have been.
   pre-release Windows session inherits the same checklist, and the gap is named the way the plan's
   screen-reader split names its Narrator gap
 
-### T-317 — Decide whether the first Windows installer is signed
-
-**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan. **Gates the start**: it changes what
-`T-322` builds and what `T-039` may assert.
-
-**The decision is taken.** The maintainer ruled on 2026-09-11 for option **A**, recorded as
-[`REL-005`](DECISIONS.md#rel-005--the-first-windows-installer-ships-unsigned): `0.1.0` ships
-unsigned, with B or C named as the `1.0` condition. **What remains in this task is the
-documentation follow-through** — the README's install section and the exact SmartScreen
-click-through in `docs/RELEASE.md`, which `T-320` has yet to create. It stays `Proposed` because
-Phase 5 has not opened, not because the decision is outstanding.
-**Owner:** Maintainer decision; Implementer records it as a `REL-` entry
-**Priority:** High — every later Windows task is shaped by the answer, and a certificate is a
-purchase with a lead time
-**Phase:** Phase 5
-**Depends on:** nothing
-**Relevant context:** `REL-001`; `OPS-004` (the installer must *feel* normal — a human item);
-`SECURITY.md` §CI trust boundary; `NFR-007`
-**Affected surfaces:** `docs/project/DECISIONS.md`; later `T-322`'s build step and `T-324`'s
-release workflow
-**Risk:** Low to decide; Medium not to — an unsigned installer meets SmartScreen's *"Windows
-protected your PC"* on every first install, which is the single largest reason a desktop user
-abandons an install
-
-#### Scope
-
-Nothing in the record decides this. `DOC-002` names *"a documented release and signing process"* as
-the reason `docs/RELEASE.md` exists, and no `REL-` entry has taken the question up. Three honest
-answers:
-
-| Option | What the user sees | What it costs |
-|---|---|---|
-| **A. Ship unsigned**, document the SmartScreen prompt in the README and release notes | *"Windows protected your PC"* → *More info* → *Run anyway*, on every first install | Nothing. Reputation never accrues, so the prompt never goes away |
-| **B. OV code-signing certificate** | The same prompt until SmartScreen reputation accrues over downloads; then none | A yearly purchase, identity verification, a key to protect |
-| **C. Azure Trusted Signing** (or an EV certificate) | No prompt from the first install | A subscription and an Azure identity; EV needs hardware-backed keys |
-
-**Recommendation: A for `0.1.0`, with B or C named as the `1.0` condition.** The first release is the
-one where the maintainer learns whether anyone installs it; buying identity infrastructure before
-that is the cost inverted. But the choice is the maintainer's because it is their name on the
-certificate, and this task exists so that *"unsigned"* is a decision with its consequences written
-down rather than an omission discovered at the first SmartScreen screenshot.
-
-#### Acceptance criteria
-
-- A `REL-` entry naming the choice, the rejected alternatives and why, in the house style
-- If unsigned: the README's install section and `docs/RELEASE.md` state what SmartScreen will show
-  and the exact click-through, so support is a link rather than a conversation
-- If signed: where the key lives, who can use it, and the rule that CI never holds it in a
-  repository secret readable by a fork (`SECURITY.md` §CI trust boundary)
-- `T-039`'s gates are stated as **independent of signature** — a silent install must succeed
-  either way, and the test must not pass only because a signed binary skipped a prompt
-- Names its reopening condition
-
-#### Out of scope
-
-- Signing the Linux artifact. AppImage signatures are optional and rarely checked; record that as
-  a deliberate omission in the same entry
-- Buying anything. The decision may be *A*; this task does not presume otherwise
-
----
 
 
 
@@ -3489,6 +3520,13 @@ until then; the installer it would verify does not exist yet
 **Affected surfaces:** `.github/workflows/ci.yml`, `docs/project/TESTING.md` §9, `REQUIREMENTS.md` §3
 **Risk:** Medium — same failure mode as `T-026`: a shallow check would retire a
 release-blocking manual item without replacing it
+
+**Its gates are independent of signature** (`T-317`'s fourth criterion, recorded here where the
+gates will be written). `REL-005` ships `0.1.0` unsigned and names a certificate as the `1.0`
+condition — so these checks must hold in **both** states. A silent install must succeed whether or
+not the installer is signed, and **no assertion here may pass only because a signed binary skipped
+a prompt**: that is a test measuring SmartScreen rather than the installer, and it would go red
+the day signing arrives, which is the one day nobody would suspect the test.
 
 #### Scope
 

@@ -65,7 +65,10 @@ Three files change only here, never in advance:
   this step.
 - **`README.md`**'s capability table says *"you cannot install it from a release — there are no
   installers or packages yet."* That line is **true until the first release exists**; replace it
-  with an install section pointing at the release page in the same commit, not before.
+  with an install section pointing at the release page in the same commit, not before. **That
+  section must carry the SmartScreen click-through verbatim** — *More info* → *Run anyway* — and
+  the two system requirements above it. `T-317` asks for that wording in the README specifically,
+  and this is the commit where a README section can exist without claiming something untrue.
 
 **The README must make no yt-dlp parity claim.** `REQ-030`'s parity is deferred to Phase 4.5,
 *after* the first release, so claiming it at release would be false. Check before tagging:
