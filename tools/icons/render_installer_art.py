@@ -57,7 +57,7 @@ LARGE_LOGO_CENTRE = 0.42
 
 
 def compose(width: int, height: int, ground: QColor, side: float, centre_y: float) -> QImage:
-    """A `width`×`height` opaque image: `ground`, with the logo as a `side` square at `centre_y`."""
+    """An opaque image of `ground` with the logo as a `side` square centred at `centre_y`."""
     image = QImage(width, height, QImage.Format.Format_RGB32)
     image.fill(ground)
     painter = QPainter(image)
