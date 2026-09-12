@@ -62,6 +62,25 @@ LICENCE = Path(__file__).resolve().parent / "licenses" / "ffmpeg-LGPL.txt"
 WANTED_EXECUTABLES = ("ffmpeg.exe", "ffprobe.exe")
 
 
+def same_licence(committed: bytes, archived: bytes) -> bool:
+    """Whether two licence texts are the same document, ignoring line endings.
+
+    **Not a byte comparison, and that is measured rather than cautious.** `core.autocrlf=true` is
+    the Windows default and `STARBASE` has it set, so the committed `ffmpeg-LGPL.txt` is checked
+    out with CRLF while the archive's copy has LF. A byte-exact check therefore failed on the
+    *first* Windows run — 7,816 bytes against 7,651, exactly one extra byte per line — and would
+    have failed on every release build (`T-319`).
+
+    The licence's **content** is what has to match. Its line endings are the checkout's business,
+    and a CRLF licence is the same licence.
+    """
+
+    def normalised(text: bytes) -> bytes:
+        return text.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+    return normalised(committed) == normalised(archived)
+
+
 def download(url: str) -> bytes:
     print(f"==> {url}")
     with urlopen(url) as response:  # noqa: S310 - a pinned https URL from this file's constants
@@ -101,7 +120,7 @@ def main() -> int:
         if not LICENCE.is_file():
             print(f"FAIL: {LICENCE} is missing; LIC-001 requires it to ship.", file=sys.stderr)
             return 1
-        if LICENCE.read_bytes() != licence_text:
+        if not same_licence(LICENCE.read_bytes(), licence_text):
             print(
                 f"FAIL: {LICENCE.name} is not this build's own LICENSE.txt.\n"
                 f"      The pin moved and the licence text did not. Copy it across and record "

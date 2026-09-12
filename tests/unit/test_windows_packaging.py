@@ -110,6 +110,24 @@ def test_the_licence_the_fetch_checks_is_the_one_the_gate_requires() -> None:
     assert fetch.LICENCE.stat().st_size > 0
 
 
+def test_the_licence_check_ignores_line_endings() -> None:
+    """**The defect the first Windows run found.** `core.autocrlf=true` is the Windows default
+    and `STARBASE` has it set, so the committed licence is checked out with CRLF while the
+    archive's copy has LF. A byte-exact comparison failed at 7,816 bytes against 7,651 — exactly
+    one extra byte per line — and would have failed on every Windows release build.
+
+    The negative half is the point: a licence whose *content* differs is still rejected, so this
+    tolerates the checkout's line endings and nothing else.
+    """
+    body = b"GNU LESSER GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n"
+    assert fetch.same_licence(body.replace(b"\n", b"\r\n"), body)
+    assert fetch.same_licence(body, body)
+    assert not fetch.same_licence(body, b"GNU GENERAL PUBLIC LICENSE\nVersion 3\n"), (
+        "a different licence must still be refused"
+    )
+    assert not fetch.same_licence(body, body + b"and one more clause\n")
+
+
 def test_the_vendored_binaries_are_not_committed() -> None:
     """155 MB of third-party binary, reproducible from a pinned digest.
 
