@@ -12,6 +12,7 @@ long before it is visible in a launched process.
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
@@ -154,10 +155,18 @@ def test_the_default_spawner_refuses_a_shell_rather_than_documenting_that_it_wil
 def test_the_default_spawner_actually_runs_the_command() -> None:
     """The injected-spawner tests would all pass against a `_run` that did nothing.
 
-    `true` is on every Linux image and exits 0; this asserts the real path once so the seam is
-    known to be wired to something.
+    This asserts the real path once, so the seam is known to be wired to something.
+
+    **It used to run `true`, on the strength of *"on every Linux image"* — and it has no platform
+    guard.** On Windows there is no such command, and this passed on the `windows desktop` job
+    only because that job's steps run under Git bash, which puts Git's `usr/bin` directory on
+    `PATH`. Run through `cmd` instead it fails with `FileNotFoundError [WinError 2]`, which is
+    how it was found (`STARBASE`, 2026-09-12). A test that depends on which shell invoked pytest
+    is a test that will break for a reason unrelated to what it asserts.
+
+    `sys.executable -c ""` is on every machine that can run this suite, by construction.
     """
-    completed = _run(["true"], capture_output=True, text=True, check=False)
+    completed = _run([sys.executable, "-c", ""], capture_output=True, text=True, check=False)
 
     assert completed.returncode == 0
 

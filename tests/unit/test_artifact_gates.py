@@ -72,6 +72,22 @@ def resolves(module: str, target: Path) -> str:
     return f"\tlibQt6{module}.so.6 => {target} (0x00007f0000000000)\n"
 
 
+def skip_where_there_is_no_posix_shell() -> None:
+    """Skip on Windows, where a `#!/bin/sh` shim cannot be an executable `ldd`.
+
+    **A `-> None` helper rather than an inline `if`**, and that is for the type checker rather
+    than for readability. `pytest.skip` is `NoReturn`, so under `mypy --platform win32` — which
+    the `windows desktop` job runs — an inline `if sys.platform == "win32": pytest.skip(...)`
+    makes the whole rest of the calling function provably unreachable, and mypy says so. Behind a
+    call it cannot narrow, the caller stays checkable on both platforms.
+    """
+    if sys.platform == "win32":
+        pytest.skip(
+            "the ldd shim is a POSIX shell script; the loader half of item 11 is Linux-only and "
+            "test_windows_keeps_the_presence_check_alone covers the Windows path"
+        )
+
+
 def install_ldd(
     monkeypatch: pytest.MonkeyPatch,
     directory: Path,
@@ -85,7 +101,18 @@ def install_ldd(
     **A script, not a patched `subprocess.run`.** The call the gate actually makes — building the
     argument list, reading the exit status, decoding the output — then stays inside the test. The
     real `ldd` is no use here: these trees hold files *shaped* like libraries, not libraries.
+
+    **Skips on Windows, and the reason is the gate's own shape.** This shim is a POSIX shell
+    script, which Windows cannot execute — so on the `windows desktop` job these tests were
+    measuring a failed `subprocess.run`, not the loader. Six of them failed outright and **two
+    passed for the wrong reason**: they assert *that problems are reported*, and got the
+    missing-linkage-evidence complaint instead of the one they were written for.
+
+    Nothing is given up. The loader half of §8 item 11 is Linux-only by construction — a Windows
+    artifact carries `.pyd` bindings and `_qt_links_resolve_inside_the_artifact` returns early on
+    them, which `test_windows_keeps_the_presence_check_alone` covers directly.
     """
+    skip_where_there_is_no_posix_shell()
     canned = directory / "canned"
     canned.mkdir(parents=True)
     (canned / "_default").write_text(default, encoding="utf-8")
@@ -533,6 +560,13 @@ def test_the_install_prefix_is_provenance_in_a_file_that_quotes_it(
     prefix.mkdir(parents=True)
     monkeypatch.setattr(gates.Path, "home", classmethod(lambda cls: home))
     monkeypatch.setattr(gates.sys, "base_prefix", str(prefix))
+    # **The account name has to be one the temporary path does not contain**, or this test is
+    # about the wrong literal. On Windows `tmp_path` lives under `C:\Users\<account>\AppData\
+    # Local\Temp\`, so writing any absolute path into a scanned file matches
+    # `\<account>\` — which the scan reports, correctly, and which the interpreter-prefix
+    # exemption does not cover. Measured on `STARBASE`: this failed there while passing on Linux,
+    # for a reason that had nothing to do with what it asserts.
+    monkeypatch.setattr(gates.getpass, "getuser", lambda: "nonesuch")
 
     root = build(tmp_path / "app")
     dump = root / "_internal" / "sysconfig_data.json"

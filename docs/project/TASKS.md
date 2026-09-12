@@ -464,6 +464,50 @@ is deselected by `addopts` either way, and nothing else lives outside those thre
 matching the Linux job. Nothing reads those names — checked; the only references are three
 historical review records describing runs that already happened.
 
+#### 2026-09-12 (later) — driven on `STARBASE` directly, before spending another CI run
+
+**The parallel slice runs clean on Windows in 4 minutes.** Run through
+`tools/windows/run-on-starbase.sh` — the logged-on session, `QT_QPA_PLATFORM=offscreen`, exactly
+what the job's own step invokes:
+
+```
+3848 passed, 40 skipped, 17 warnings in 240.43s (0:04:00)
+```
+
+**Against the serial baseline of 39.1–39.5 minutes** the maintainer's own runner console
+corroborated for four consecutive jobs on 2026-09-11. The step is not the whole job, so the job
+total will not fall by that ratio — but the number the bound was being crossed by is the one that
+moved.
+
+**Done here rather than by pushing**, because five CI attempts had already been spent on this: four
+cancelled by pushes of mine and one failed on an `os.geteuid` call that Linux mypy cannot see. A
+Windows CI run costs ~40 minutes of the one available slot; the same evidence cost four minutes
+over SSH.
+
+**Three failures on the first attempt, none of them parallelism** — and establishing that was the
+point:
+
+| Failure | Cause |
+|---|---|
+| `test_toolchain_versions` ×2 | `.venv\Scripts` was not on `PATH`; the tests shell out to `ruff`/`mypy` by name |
+| `test_the_default_spawner_actually_runs_the_command` | runs `["true"]`, which on Windows exists **only under Git bash** |
+
+**All three failed *serially* too**, which is what ruled parallelism out — the discriminator, run
+before drawing a conclusion.
+
+**The third is a real latent defect and is fixed.** That test's docstring said *"`true` is on
+every Linux image"* and it carries **no platform guard**: it passes on the `windows desktop` job
+only because that job's steps run under Git bash, which puts Git's `usr/bin` on `PATH`. A test
+whose result depends on which shell invoked pytest will break for a reason unrelated to what it
+asserts. It now runs `sys.executable -c ""`, which exists on any machine that can run the suite.
+
+**`test_artifact_gates.py`'s `ldd` shim was Unix-only, which the earlier CI run found.** Six tests
+failed on Windows and **two passed for the wrong reason** — they assert only *that problems are
+reported*, and received the missing-linkage-evidence complaint rather than the one they were
+written for. The shim now skips on Windows with the reason stated; nothing is given up, because
+the loader half of §8 item 11 is Linux-only by construction and
+`test_windows_keeps_the_presence_check_alone` covers the Windows path.
+
 **Not yet closed.** The acceptance criteria ask for **three consecutive green runs**, and `T-056`
 — an open Windows defect about whether a process is alive — is exactly the question parallel load
 perturbs. That is also what the `check` job's comment means by *"the Windows legs stay serial
