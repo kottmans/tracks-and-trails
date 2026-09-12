@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import re
 import shutil
 import subprocess
 import sys
@@ -29,7 +30,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from tracks_and_trails.core.logging import (
     _COOKIE_FILENAME,
-    _COOKIE_HEADER,
     _COOKIE_PATH,
 )
 
@@ -54,65 +54,99 @@ REQUIRED_LICENCES: tuple[str, ...] = (
 #: artifact ships no ffmpeg and is not failed for carrying no licence for it.
 FFMPEG_LICENCE = "ffmpeg-LGPL.txt"
 
-#: Suffixes the pattern scan reads as text.
+#: How much decoded text the **costly** patterns read from one file before reporting that they
+#: stopped. **Truncation is reported as a problem**, so a bound can never quietly become a gap
+#: (`T323-R2`).
 #:
-#: **An allowlist, and the literal scan below does not use it.** Every file in the artifact is
-#: searched byte-for-byte for the build machine's identity, because that is the half that would
-#: actually leak and a `.so` can carry an embedded path. The *pattern* scan is bounded to text
-#: because `_COOKIE_PATH`'s nested quantifiers are expensive — measured: it had not finished over
-#: the bundled yt-dlp sources after two minutes — and a gate slow enough to be disabled protects
-#: nothing.
-TEXT_SUFFIXES = frozenset(
-    {
-        ".py",
-        ".pyi",
-        ".txt",
-        ".md",
-        ".json",
-        ".toml",
-        ".cfg",
-        ".ini",
-        ".xml",
-        ".html",
-        ".js",
-        ".css",
-    }
+#: It is a bound on work, not a cost control: see `COSTLY_PATTERNS` for why truncating does not
+#: rescue those patterns, which is why they are kept off binaries entirely rather than capped.
+MAX_SCANNED_BYTES = 2_000_000
+
+
+#: Credentials inside a URL, in **this medium's** form.
+#:
+#: `core/logging`'s `_BARE_USERINFO` is deliberately for userinfo with **no scheme** — its
+#: lookbehind excludes a preceding `/`, because a full URL is `_URL`'s job there. Pointed at an
+#: artifact it matches package specifiers: `npm:meriyah@6.1.4` in yt-dlp's bundled solver, measured.
+#: So the class is covered by the shape it actually takes in a shipped file, a scheme followed by
+#: `user:pass@`, and the reason for not reusing the redactor's pattern is that it is for prose.
+_URL_CREDENTIALS = re.compile(r"[a-zA-Z][\w+.\-]*://[^\s/@:]+:[^\s/@]+@")
+
+#: A cookie header **carrying a cookie**, rather than the word in a format string.
+#:
+#: `_COOKIE_HEADER` matches `Received cookie: {lenstr}` in `libkrb5.so.3` — correctly, for a log
+#: line, where that is about to be filled in with one. In an artifact a format string is not a
+#: leak, so the value has to look like `name=value`.
+_COOKIE_WITH_A_VALUE = re.compile(
+    r"\b(?:set-)?cookie\s*:\s*[^\n\r{%]*[A-Za-z0-9_.\-]+=[^\s;{%]+", re.IGNORECASE
 )
 
-#: Lines longer than this are skipped by the pattern scan only.
+#: Patterns cheap enough to run over **every** file, binaries included.
 #:
-#: A minified bundle or a base64 blob on one line is where those quantifiers go quadratic. The
-#: literal scan still reads every byte of those files.
-MAX_SCANNED_LINE = 2000
+#: Both are linear. Measured over this artifact's 337 binary files (206 MB of Qt, CPython and
+#: ffmpeg): `_COOKIE_WITH_A_VALUE` 10.7s, `_URL_CREDENTIALS` 13.2s, no false positives. That is
+#: what a release gate can afford, and it is what closes the hole `T323-R2` found — planted
+#: cookie material in a file that is not named like text.
+CHEAP_PATTERNS = (
+    (_COOKIE_WITH_A_VALUE, "a cookie header carrying a value"),
+    (_URL_CREDENTIALS, "credentials inside a URL"),
+)
 
-
-#: The cookie vocabulary, imported rather than restated — see `no_secrets_or_personal_paths`.
-COOKIE_PATTERNS = (
-    (_COOKIE_HEADER, "a cookie header"),
+#: The redactor's own cookie-store patterns, which run over **text only**.
+#:
+#: Both have nested quantifiers that go quadratic on binary noise. Measured on one library,
+#: `libQt6Gui.so.6`: `_COOKIE_FILENAME` takes **171 seconds**. Truncating to `MAX_SCANNED_BYTES`
+#: does not rescue them — the same file capped to two megabytes still took 170.7s, because the
+#: blow-up happens inside the first two megabytes — so the split is by file kind, not by size.
+#:
+#: **This is a stated bound, not a silent one.** A cookie *store* planted inside a compiled
+#: binary would not be found by these two. It would still be found by the byte markers below,
+#: which do run over every file, and by `_COOKIE_WITH_A_VALUE` above if it carries a header.
+COSTLY_PATTERNS = (
     (_COOKIE_PATH, "a cookie store path"),
     (_COOKIE_FILENAME, "a cookie store filename"),
 )
+
+#: Kept so a caller can ask for the whole vocabulary without knowing the cost split.
+CONTENT_PATTERNS = CHEAP_PATTERNS + COSTLY_PATTERNS
 
 
 def qt_ships_as_shared_libraries(root: Path) -> list[str]:
     """§8 item 11 · `NFR-009` — and it is a licence obligation, not a preference.
 
     `LIC-001`: *"Qt and ffmpeg must be dynamically linked and replaceable."* That is the condition
-    under which an MIT application may distribute LGPLv3 Qt at all, so this check is the one in
-    this file whose failure is a licence breach rather than a defect.
+    under which an MIT application may distribute LGPLv3 Qt at all, so this check's failure is a
+    licence breach rather than a defect.
+
+    **Three ways this has been wrong, all found by review rather than by the check** (`T323-R1`):
+
+    1. It globbed for the library files and passed with `libQt6Widgets.so.6` deleted, because the
+       bundle carries Qt at two paths. The *second* is a **symlink, not an independent copy** — the
+       earlier note here said otherwise — so a dangling link satisfied a glob.
+    2. The loader half then inspected `extensions[:4]`, an arbitrary cap. QtWidgets sorts fifth in
+       a real build, so the one module the mutation removed was the one never asked about.
+    3. An inspection that could not run — no `ldd`, a failed call — returned *no problems*, which
+       is indistinguishable from *no problem found*.
+
+    So: every required module must resolve to a **real file inside the artifact**, and every
+    binding is inspected. An inspection that cannot be performed is reported, never passed over.
     """
     problems: list[str] = []
-    found = {
-        module
-        for module in REQUIRED_QT_MODULES
-        if any(root.rglob(f"libQt6{module}.so*")) or any(root.rglob(f"Qt6{module}.dll"))
-    }
     for module in REQUIRED_QT_MODULES:
-        if module not in found:
+        # `is_file()` follows the link, so a dangling symlink is not a library.
+        usable = [
+            path
+            for pattern in (f"libQt6{module}.so*", f"Qt6{module}.dll")
+            for path in root.rglob(pattern)
+            if path.is_file()
+        ]
+        if not usable:
+            dangling = [p for p in root.rglob(f"libQt6{module}.so*") if p.is_symlink()]
+            detail = f" — {len(dangling)} dangling symlink(s) point at nothing" if dangling else ""
             problems.append(
-                f"Qt{module} is not in the bundle as a shared library. LIC-001 requires Qt to be "
-                f"dynamically linked and replaceable; a static Qt would make this artifact "
-                f"undistributable under the LGPL"
+                f"Qt{module} is not in the bundle as a usable shared library{detail}. LIC-001 "
+                f"requires Qt to be dynamically linked and replaceable; a static or absent Qt "
+                f"would make this artifact undistributable under the LGPL"
             )
     return problems + _qt_links_resolve_inside_the_artifact(root)
 
@@ -120,51 +154,80 @@ def qt_ships_as_shared_libraries(root: Path) -> list[str]:
 def _qt_links_resolve_inside_the_artifact(root: Path) -> list[str]:
     """Ask the loader, not the filesystem — presence alone cannot see a static build.
 
-    **The presence check above passed with its subject deleted**, which is why this exists. The
-    bundle carries Qt twice — `_internal/` and `_internal/PySide6/Qt/lib/` — so removing one copy
-    left the other and `rglob` was satisfied. `T031-R2`'s rule is that a check nobody has watched
-    fail is a check nobody has tested, and that mutation is what found it.
-
-    `ldd` on each PySide6 extension answers the real question: the Qt module is a **dependency**
+    `ldd` on each PySide6 binding answers the real question: the Qt module is a **dependency**
     rather than compiled in, and it resolves to a file **inside this artifact** rather than to the
-    build machine's system Qt. A static build lists no such dependency; a build that borrowed the
-    host's Qt resolves outside the tree; a deleted library resolves to *not found*. All three are
-    LGPL problems and all three fail here.
+    host's system Qt. A static build lists no such dependency; a build that borrowed the host's Qt
+    resolves outside the tree; a deleted library resolves to *not found* — or, worse, silently to
+    the system copy, which `T323-R1` observed doing exactly that and reporting incompatible
+    private Qt symbols.
 
-    **Linux only, and it says so rather than pretending.** `dumpbin` is not on a stock Windows
-    machine, so the Windows artifact keeps the presence check alone — a narrower guarantee, stated
-    in `T-323` rather than implied here.
+    **Windows keeps the presence check alone, and that is a narrower guarantee stated rather than
+    implied.** `dumpbin` is not on a stock Windows machine and no equivalent ships with it, so
+    item 11 on Windows establishes that the libraries are present and not that anything links to
+    them. `T-323` records that disposition; this function does not pretend otherwise.
     """
-    loader = shutil.which("ldd")
     extensions = sorted(root.rglob("PySide6/Qt*.abi3.so"))
-    if loader is None or not extensions:
-        return []
+    if not extensions:
+        if any(root.rglob("PySide6/Qt*.pyd")):
+            return []  # Windows: the presence check above is the whole of item 11 there.
+        return [
+            "no PySide6 bindings found to inspect, so the linkage half of item 11 checked nothing"
+        ]
+
+    loader = shutil.which("ldd")
+    if loader is None:
+        return [
+            "ldd is not available, so Qt's linkage could not be inspected. An inspection that "
+            "cannot run is not a pass (T323-R1)"
+        ]
 
     problems: list[str] = []
-    for extension in extensions[:4]:
+    evidenced: set[str] = set()
+    for extension in extensions:
         try:
             # `S603`: both arguments are ours — `ldd` located on PATH, and a path this function
             # produced by globbing inside the artifact it was handed. No shell, no user input.
             listed = subprocess.run(  # noqa: S603
-                [loader, str(extension)], capture_output=True, text=True, timeout=60, check=False
-            ).stdout
-        except OSError, subprocess.SubprocessError:  # pragma: no cover - environment-dependent
-            return []
-        for line in listed.splitlines():
+                [loader, str(extension)],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as failure:
+            problems.append(f"could not inspect {extension.relative_to(root)}: {failure!r}")
+            continue
+        if listed.returncode != 0:
+            problems.append(
+                f"ldd failed on {extension.relative_to(root)}: {listed.stderr.strip()[:120]}"
+            )
+            continue
+
+        for line in listed.stdout.splitlines():
             name, _, resolved = line.strip().partition(" => ")
             if not name.startswith("libQt6"):
                 continue
+            module = name.removeprefix("libQt6").split(".so")[0]
             target = resolved.split(" (")[0].strip()
+            where = extension.relative_to(root)
             if not target or "not found" in resolved:
-                problems.append(
-                    f"{extension.relative_to(root)} needs {name} and the loader cannot find it "
-                    f"in this artifact"
-                )
+                problems.append(f"{where} needs {name} and the loader cannot find it")
             elif not Path(target).resolve().is_relative_to(root.resolve()):
                 problems.append(
-                    f"{extension.relative_to(root)} resolves {name} to {target}, outside the "
-                    f"artifact — this build borrows the host's Qt and would not run elsewhere"
+                    f"{where} resolves {name} to {target}, outside the artifact — this build "
+                    f"borrows the host's Qt and would not run elsewhere"
                 )
+            else:
+                evidenced.add(module)
+
+    # **Positive linkage evidence, per module.** Without this, a build whose bindings happened to
+    # declare no Qt dependency at all would produce no problems and no evidence, and pass.
+    for module in REQUIRED_QT_MODULES:
+        if module not in evidenced:
+            problems.append(
+                f"no binding in this artifact resolves libQt6{module} to a file inside it, so "
+                f"nothing establishes that Qt{module} is dynamically linked here"
+            )
     return problems
 
 
@@ -219,28 +282,54 @@ def ytdlp_is_pure_python(root: Path) -> list[str]:
 
 
 def no_secrets_or_personal_paths(root: Path) -> list[str]:
-    """§8 item 13 · `NFR-007` — nothing about the machine that built it.
+    """§8 item 13 · `NFR-007` — nothing about the machine that built it, and no cookie material.
 
-    **The cookie vocabulary is imported from `core/logging` rather than restated** (`T015-R1`'s
-    rule, applied to a gate): a secret class added to the redactor is scanned for here without
-    anyone remembering this file exists. The private names are imported deliberately — a public
-    alias would be a second spelling of the same list, which is the thing being avoided.
+    **Every file is read, and every file is scanned** (`T323-R2`). The first version scanned
+    patterns only in an allowlist of text suffixes and skipped lines past column 2000, so a
+    `Cookie:` header planted in a `.bin`, in an extensionless file, or on a long line all
+    survived. Nothing is skipped by suffix now, and nothing is skipped by line length.
 
-    **The build host's own identity is computed rather than listed**, because `core/logging`
-    cannot know it: it redacts what a *running* application would log, and this asks what a
-    *build machine* left behind.
+    What differs between a binary and a text file is only **which half of the vocabulary** runs —
+    `CHEAP_PATTERNS` over everything, `COSTLY_PATTERNS` over text — and that split is by measured
+    cost, recorded on those two constants. Where a bound applies it is **reported** rather than
+    applied silently.
 
-    **A bare user name is not evidence, and that is measured rather than assumed.** The first
-    version searched for `getpass.getuser()` on its own and reported
-    `_internal/libbrotlicommon.so.1` — brotli's built-in English dictionary, which contains the
-    four letters of this maintainer's name inside ordinary words. The real home path appeared in
-    **no file in the artifact**. So the name counts only bracketed by path separators, which is
-    the form that would actually leak, and `core/logging`'s own four-byte floor has the same
-    reasoning behind it: a short ASCII token collides with prose.
+    **Filenames count as much as contents.** A populated `cookies.txt` in the artifact is a leak
+    whatever is inside it, and the earlier version only ever looked at bytes.
+
+    **What is scanned, and what deliberately is not.** The cookie and credential vocabulary is
+    imported from `core/logging` rather than restated, so a class added to the redactor is scanned
+    for here (`T015-R1`). Two of the redactor's classes are **out of scope here, by argument**:
+
+    - **URL query values.** `redact` strips them because a *log line* quoting a URL may carry a
+      token. An artifact legitimately contains thousands of URLs — yt-dlp's extractors are made of
+      them — and flagging those would make this gate unreadable, which is how a gate gets
+      disabled. Credentials *inside* a URL (`user:pass@host`) are a different class and **are**
+      scanned for.
+    - **Literals registered at runtime** by `remember_a_secret`. A static artifact has no runtime,
+      so the registry is empty by construction; there is nothing to compare against.
+
+    The earlier docstring claimed the complete vocabulary and implemented three patterns, which is
+    the claim `T323-R2` corrected.
     """
     home = str(Path.home())
     user = getpass.getuser()
-    literals = {
+
+    #: **The interpreter's own installation prefix is provenance, not a leak** (`T323-R3`).
+    #:
+    #: `frozen linux` failed this check on **110** hits, every one of them inside
+    #: `libpython3.14.so.1.0` or `lib-dynload/*.so` — the interpreter, carrying the path it was
+    #: installed at. CI installs Python under the runner's home, so the bundled runtime quotes it.
+    #: That is a fact about where CPython was built, redistributed as-is, and no packaging step
+    #: here can change it.
+    #:
+    #: **This exempts one computed string, not a class of file.** A binary is still scanned; what
+    #: is allowed is the interpreter's own prefix appearing anywhere. A home path that is *not*
+    #: that prefix is still a finding, in any file — which is what would catch a build made in the
+    #: maintainer's own checkout.
+    interpreter_prefix = str(Path(sys.base_prefix).resolve())
+
+    literals: dict[str, str] = {
         home: "the build machine's home directory",
         home.replace("/", "\\"): "the build machine's home directory, Windows spelling",
         f"/{user}/": "the build machine's user name, in a path",
@@ -249,32 +338,79 @@ def no_secrets_or_personal_paths(root: Path) -> list[str]:
     }
     literals = {value: why for value, why in literals.items() if len(value) >= 6}
 
+    #: Cheap, linear byte searches over **every** file, binary included. Deliberately distinctive:
+    #: a bare `cookie:` matched a Kerberos format string in `libkrb5.so.3`, so the header form is
+    #: left to `_COOKIE_WITH_A_VALUE` over decoded text and only unambiguous markers run here.
+    markers: tuple[tuple[bytes, str], ...] = (
+        (b"# netscape http cookie file", "a Netscape cookie store"),
+        (b"# http cookie file", "a Netscape cookie store"),
+    )
+
     problems: list[str] = []
+    truncated: list[str] = []
+    exempted = 0
+
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.is_symlink():
             continue
+        where = path.relative_to(root)
+
+        # A cookie store is a leak by its name, whatever it holds.
+        if _COOKIE_FILENAME.search(path.name):
+            problems.append(f"{where} is named as a cookie store")
+
         try:
             raw = path.read_bytes()
-        except OSError:
+        except OSError as failure:
+            # An unreadable file is not a clean file. `T323-R1`'s lesson, one check over.
+            problems.append(f"{where} could not be read, so it was not scanned: {failure!r}")
             continue
 
-        where = path.relative_to(root)
-        for literal, why in literals.items():
-            if literal.encode("utf-8", "ignore") in raw:
+        lowered = raw.lower()
+        for marker, why in markers:
+            if marker in lowered:
                 problems.append(f"{where} contains {why}")
 
-        if path.suffix.lower() not in TEXT_SUFFIXES:
-            continue
-        for line in raw.decode("utf-8", "ignore").splitlines():
-            if len(line) > MAX_SCANNED_LINE:
+        for literal, why in literals.items():
+            if literal.encode("utf-8", "ignore") not in raw:
                 continue
-            hit = next(
-                (why for pattern, why in COOKIE_PATTERNS if pattern.search(line)),
-                None,
-            )
-            if hit is not None:
-                problems.append(f"{where} contains {hit}")
-                break
+            if literal == home and interpreter_prefix.startswith(home):
+                # Only the interpreter's own prefix is allowed, and only where it is the match.
+                remaining = raw.replace(interpreter_prefix.encode("utf-8", "ignore"), b"")
+                if literal.encode("utf-8", "ignore") not in remaining:
+                    exempted += 1
+                    continue
+            problems.append(f"{where} contains {why}")
+
+        # The regex half, over text decoded from the same bytes — **no suffix allowlist**, which
+        # is what lets an extensionless file and a `.bin` be scanned (`T323-R2`). Whether a file
+        # is text is decided by content, a NUL byte in the first block, and it selects only which
+        # *half* of the vocabulary runs, never whether the file is scanned at all.
+        text = raw.decode("utf-8", "ignore")
+        found = next((why for pattern, why in CHEAP_PATTERNS if pattern.search(text)), None)
+
+        if found is None and b"\x00" not in raw[:4096]:
+            bounded = text[:MAX_SCANNED_BYTES]
+            if len(text) > MAX_SCANNED_BYTES:
+                truncated.append(str(where))
+            found = next((why for pattern, why in COSTLY_PATTERNS if pattern.search(bounded)), None)
+
+        if found is not None:
+            problems.append(f"{where} contains {found}")
+
+    if truncated:
+        # **Reported, never silent** (`T323-R2`). A bound that nobody can see is a gap.
+        problems.append(
+            f"{len(truncated)} text file(s) were larger than {MAX_SCANNED_BYTES} bytes, so the "
+            f"costly half of the pattern scan stopped early on them: "
+            f"{', '.join(sorted(truncated)[:5])}. The byte searches and CHEAP_PATTERNS covered "
+            f"them in full; raise the bound or split them"
+        )
+    if exempted:
+        print(
+            f"      note: {exempted} file(s) quote the interpreter's own install prefix "
+            f"({interpreter_prefix}), which is provenance rather than a leak (T323-R3)"
+        )
     return problems
 
 

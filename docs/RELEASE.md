@@ -131,11 +131,24 @@ Act as the Release Manager for Tracks & Trails.
 Release candidate: <version / tag / commit>
 
 Work through the docs/project/TESTING.md §8 release gate item by item, on Linux AND Windows. Do not
-mark an item passed without the actual evidence.
+mark an item passed without the actual evidence, and quote the evidence you used.
 
-Also verify: version numbers consistent across sources, CHANGELOG current, the pinned yt-dlp
-baseline recorded (OPS-002), Qt dynamically linked (NFR-009, LIC-001), third-party license
-texts present, and no secrets or personal paths in the artifact.
+§8 items 9, 11, 12 and 13 are executable. Run the gate on each platform's own artifact and paste
+its output rather than restating the items; it is the evidence for those four:
+
+    python3 packaging/artifact_gates.py <the built artifact>
+
+Two caveats it will not tell you. On Windows it checks Qt's libraries are present and cannot ask
+the loader anything, which is a narrower guarantee than the Linux run. And item 13's *repository*
+half is not covered by it at all — that stays manual.
+
+Version consistency across sources is its own check, against the tag you are about to push:
+
+    python3 tools/version_tag_check.py --tag <the tag>
+
+What is left for you to read and judge: the CHANGELOG is current, the pinned yt-dlp baseline is
+recorded (OPS-002), and every §8 item with no tool behind it. Say which platform each piece of
+evidence came from; a gate answers for the artifact it was run against and no other.
 
 Record the verdict and blockers in the canonical review record chosen under TESTING §14
 and ensure REVIEWS.md indexes it. Continue an existing release review in its existing file.

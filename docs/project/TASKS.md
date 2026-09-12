@@ -410,6 +410,69 @@ bracketed by path separators; `core/logging`'s own four-byte floor has the same 
 **Outstanding:** `ffmpeg-LGPL.txt`, which needs `T-319`'s binary choice; the check requires it only
 where ffmpeg is bundled, so no artifact is failed for lacking a licence for something it does not
 ship. `T-324` wires the same script into the release workflow when it exists.
+
+#### 2026-09-12 — the review's four findings, and what the first one cost
+
+**`T323-R1` found the item 11 gate passing with its subject deleted — again.** The entry above
+records that defect being fixed by adding the loader check. It was not fixed. The reviewer's
+mutation — delete the real `libQt6Widgets.so.6` — still passed **every** gate, three ways at once:
+
+1. The glob accepted a **dangling symlink**. The note above says the bundle carries Qt at two
+   paths; what it does not say, and what makes the difference, is that the second is a *symlink to
+   the first*, not an independent copy. `rglob` returns a dangling link, so deleting the only real
+   file left something that looked like a library.
+2. The loader half then inspected `extensions[:4]` — an arbitrary cap. **QtWidgets sorts fifth**
+   in a real build, so the one module the mutation removed was the one never asked about.
+3. And an inspection that *could not run* — no `ldd`, a failed call — returned no problems, which
+   is indistinguishable from no problem found.
+
+Fixed: `is_file()` (which follows the link), no cap, every binding inspected, **positive
+per-module linkage evidence** required rather than absence of complaints, and any failed
+inspection reported. Reproduced the reviewer's exact topology — real library plus symlink, delete
+the real one — and it now fails two ways: the dangling-symlink message, and the loader reporting
+`resolves libQt6Widgets.so.6 to /lib64/libQt6Widgets.so.6, outside the artifact`.
+
+**`T323-R2` — planted cookie material escaped the scan.** Patterns ran only over an allowlist of
+text suffixes and skipped lines past column 2000, so a `Cookie:` header in a `.bin`, in an
+extensionless file, or on a long line all survived. Nothing is decided by suffix or line length
+now. What a file's content decides is only **which half of the vocabulary** runs, and that split
+is by measured cost, over this artifact's 337 binary files (206 MB):
+
+| Pattern | Over 206 MB of binaries | In the gate |
+|---|---|---|
+| `_COOKIE_WITH_A_VALUE` | 10.7 s, no false positives | every file |
+| `_URL_CREDENTIALS` | 13.2 s, no false positives | every file |
+| `_COOKIE_FILENAME` | **171 s on `libQt6Gui.so.6` alone** | text only |
+| `_COOKIE_PATH` | same nested-quantifier shape | text only |
+
+**Truncating does not rescue the costly two** — the same library capped to `MAX_SCANNED_BYTES`
+still took 170.7 s, because the blow-up happens inside the first two megabytes. So the split is by
+file kind, stated on the constants, not by a size bound pretending to be a cost control. All six
+of the reviewer's counterexamples now fail the gate, including a NUL-leading binary, which the
+first fix would still have skipped. **The gate now takes 23.4 s, not the 1.2 s recorded above** —
+that is what covering the binaries costs, and it is affordable for something that runs per build.
+
+**`T323-R3`** (the interpreter's own install prefix is provenance, not a leak) and **`T323-R4`**
+(the release-review prompt invited prose where a tool now produces evidence) are both closed. R4's
+first attempt cited *"item 1"* for the version check; §8 item 1 is lint and mypy, and version
+consistency is not a §8 item at all. Corrected against the list rather than from memory.
+
+**22 tests added, and every defect above mutated back in:**
+
+| Mutation | Caught by |
+|---|---|
+| skip NUL-bearing files for the pattern half | `test_a_cookie_header_inside_a_real_binary_is_found` |
+| cap the loader half at four bindings | `test_every_binding_is_inspected_not_only_the_first_few` |
+| glob without `is_file()` | `test_a_dangling_symlink_is_not_a_usable_library` |
+| an inspection that cannot run returns no problems | `test_an_inspection_that_cannot_run_is_not_a_pass` |
+| drop the positive per-module linkage evidence | `test_bindings_that_declare_no_qt_at_all_do_not_pass_silently` |
+| truncate silently instead of reporting | `test_truncating_the_costly_half_is_reported` |
+| exempt the whole file once the prefix appears | `test_the_interpreters_own_prefix_is_provenance_not_a_leak` |
+| skip the filename check | `test_a_cookie_store_is_a_leak_by_its_name` |
+
+8 of 8, each caught by exactly the test that names it. The `ldd` cases use a **script on `PATH`**
+rather than a patched `subprocess.run`, so the call the gate actually makes stays inside the test.
+
 **Owner:** Implementer
 **Priority:** High — four release-gate items are currently prose, and prose is not a gate
 **Phase:** Phase 5
