@@ -2236,6 +2236,14 @@ class MainWindow(QMainWindow):
     def _the_window_is_on_screen(self, on_screen: bool) -> None:
         """Take the dialogs down or bring them back. **Idempotent**, and both routes call it."""
         if on_screen:
+            # **`NFR-002`'s stopwatch, stopped here** (`T-325`). This is the compositor saying the
+            # surface is being shown, which is the closest thing to *interactive window* the
+            # application is told about — and `showEvent` is not it: on Wayland the widget is
+            # never told at all (`T287-R1`). Records once, and does nothing at all unless
+            # `TT_STARTUP_REPORT` is set.
+            from tracks_and_trails.core.startup import record_first_paint
+
+            record_first_paint()
             self._restore_the_dialogs()
         else:
             self._hide_the_dialogs()

@@ -14,6 +14,98 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-325 — Cold start, measured on the artifact that ships
+
+**Status:** **In Review** — measured 2026-09-12 on both artifacts. **It does not come back a clean
+pass, and the outcome needs a maintainer ruling**: warm meets `NFR-002` on both platforms, the
+first launch of a freshly written Windows artifact exceeds it twice over, and cold-after-reboot
+could not be measured here. Filed 2026-09-11 with the Phase 5 plan.
+
+#### 2026-09-12 — the numbers, and the one that is over the bound
+
+Full captures in
+[`evidence/2026-09-12-T325-startup-times.md`](evidence/2026-09-12-T325-startup-times.md).
+
+| | first run | warm median | `NFR-002` |
+|---|---|---|---|
+| Linux AppImage, reference machine | 1.077 s | **0.634 s** | within |
+| Windows release build, `STARBASE` | **3.780 s** / **4.656 s** | **1.550 s** | **first launch over** |
+
+**Instrumented, not timed by hand**, which the scope asks for in terms. `core.startup
+.record_first_paint` writes one wall-clock line when the compositor confirms the surface is on
+screen; `tools/startup_time.py` takes the other half of the clock before spawning. **`showEvent` is
+deliberately not the hook** — it fires before the window exists on screen, and on Wayland the
+widget is never told at all (`T287-R1`), so this rides the exposure watch that finding installed
+rather than inventing a second notion of *visible*.
+
+**The instrument was checked against a positive before it was trusted**: 0.318 s from source. Its
+first run against an artifact reported *no window after 60s*, which was an AppImage built four
+hours before the recorder existed — the harness reporting an absent instrument rather than a fast
+start, which is the behaviour wanted.
+
+**The finding: the first launch of a freshly written Windows artifact does not meet `NFR-002`, and
+it reproduces.** Two independent builds, 3.780 s and 4.656 s, both over 3 s. A second pass over the
+*same* files minutes later has no outlier at all — so this is a first-touch cost, not variance.
+Defender scanning a newly written 155 MB tree and a cold page cache are the candidates and
+**neither was isolated**; naming one would be a guess.
+
+**That is the state a user's machine is in immediately after the installer writes the files**, which
+is why it is reported as the headline rather than as an outlier next to a passing median. Linux
+shows the same shape — 1.077 s against 0.634 s, a comparable ~1.7× — and stays well inside the
+bound.
+
+**Cold, as the scope defines it, was not measured.** *First launch after a reboot* needs a reboot,
+which kills the `STARBASE` runner, and on Linux additionally `drop_caches`, which needs root.
+Neither is the implementer's to do on a machine somebody is using.
+
+**The freeze costs about 1.9×, against the 2–4× the Risk line anticipated** — 0.33 s from source
+against 0.634 s frozen on Linux. Real in direction, immaterial in absolute terms.
+
+**What is left is a ruling, not a re-measure**, which is what the scope says: accept 3 s as a
+*warm-start* bound and record that first launch is slower, amend the number with the reason, or
+treat the first-launch cost as a task. A Defender exclusion is not something an artifact can
+arrange for itself, so the third option is mostly not ours.
+**Owner:** Implementer measures; Maintainer's machine is the reference
+**Priority:** High — it is a release-gate item with a number in it
+**Phase:** Phase 5
+**Depends on:** `T-319`, `T-321`, `T-322` (an installed Windows build and an AppImage to time)
+**Relevant context:** `NFR-002` (*"cold start to interactive window under 3 seconds on the
+reference Linux machine"*); `TESTING.md` §8 item 14; `T-007`, which measured this **from source**
+on 2026-07-25 and is the only recorded number
+**Affected surfaces:** `docs/project/evidence/`, `docs/project/TESTING.md` §8
+**Risk:** Low to measure; Medium if it fails — a frozen one-dir build pays for import-time
+unpacking that a source checkout does not, and PyInstaller one-dir launches are commonly 2–4×
+slower than the same code from a venv
+
+#### Scope
+
+`T-007`'s measurement predates freezing, `OPS-002`'s yt-dlp bundling, the thumbnail store, the
+theme and the settings dialog. **It is not evidence about the artifact.** Measure again:
+
+- **Cold**: first launch after a reboot (Linux: additionally `echo 3 > drop_caches` before the
+  launch), timed from process start to the main window's first paint — instrumented by an
+  environment-gated timestamp the application already has the shape for (`_freeze_probe`'s
+  `record_app_start`), not by a stopwatch
+- **Warm**: the second launch, recorded as a second number rather than averaged in
+- Five runs each, on the reference Linux machine for the AppImage and on `STARBASE` for the
+  installed Windows build; the median is the number, the five are retained
+
+**If it fails, that is a task, not a re-measure** — `NFR-002` is a requirement, and the honest
+outcomes are *meets*, *does not meet and here is the profile*, or a maintainer amendment of the
+number with the reason.
+
+#### Acceptance criteria
+
+- An evidence file per platform with machine, method, the ten raw numbers and the two medians
+- `TESTING.md` §8 item 14 cites the file, and names *which* build and version were measured
+- A failure produces a task with a profile attached, and this task closes as *measured* either way
+
+#### Out of scope
+
+- Optimising anything. Measure first
+
+---
+
 ### T-317 — Decide whether the first Windows installer is signed
 
 **Status:** **In Review** — the ruling was taken 2026-09-11 and its documentation follow-through
@@ -2659,49 +2751,6 @@ evidence than a Phase 4 run would have been.
 
 
 
-### T-325 — Cold start, measured on the artifact that ships
-
-**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan
-**Owner:** Implementer measures; Maintainer's machine is the reference
-**Priority:** High — it is a release-gate item with a number in it
-**Phase:** Phase 5
-**Depends on:** `T-319`, `T-321`, `T-322` (an installed Windows build and an AppImage to time)
-**Relevant context:** `NFR-002` (*"cold start to interactive window under 3 seconds on the
-reference Linux machine"*); `TESTING.md` §8 item 14; `T-007`, which measured this **from source**
-on 2026-07-25 and is the only recorded number
-**Affected surfaces:** `docs/project/evidence/`, `docs/project/TESTING.md` §8
-**Risk:** Low to measure; Medium if it fails — a frozen one-dir build pays for import-time
-unpacking that a source checkout does not, and PyInstaller one-dir launches are commonly 2–4×
-slower than the same code from a venv
-
-#### Scope
-
-`T-007`'s measurement predates freezing, `OPS-002`'s yt-dlp bundling, the thumbnail store, the
-theme and the settings dialog. **It is not evidence about the artifact.** Measure again:
-
-- **Cold**: first launch after a reboot (Linux: additionally `echo 3 > drop_caches` before the
-  launch), timed from process start to the main window's first paint — instrumented by an
-  environment-gated timestamp the application already has the shape for (`_freeze_probe`'s
-  `record_app_start`), not by a stopwatch
-- **Warm**: the second launch, recorded as a second number rather than averaged in
-- Five runs each, on the reference Linux machine for the AppImage and on `STARBASE` for the
-  installed Windows build; the median is the number, the five are retained
-
-**If it fails, that is a task, not a re-measure** — `NFR-002` is a requirement, and the honest
-outcomes are *meets*, *does not meet and here is the profile*, or a maintainer amendment of the
-number with the reason.
-
-#### Acceptance criteria
-
-- An evidence file per platform with machine, method, the ten raw numbers and the two medians
-- `TESTING.md` §8 item 14 cites the file, and names *which* build and version were measured
-- A failure produces a task with a profile attached, and this task closes as *measured* either way
-
-#### Out of scope
-
-- Optimising anything. Measure first
-
----
 
 ### T-326 — The release-candidate suite: everything the gate asks a machine for, on both platforms
 

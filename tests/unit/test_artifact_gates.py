@@ -489,7 +489,24 @@ def test_truncating_the_costly_half_is_reported(
     )
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root can read a mode-000 file")
+#: Why this machine cannot seal a file against its owner, or `""` when it can.
+#:
+#: **Branched on `sys.platform`, which is what mypy narrows.** The first version called
+#: `os.geteuid()` unguarded — fine on Linux, where the attribute exists, and a hard error on the
+#: Windows job: *"Module has no attribute geteuid"*. Local `mypy` could not see it because local
+#: `mypy` runs with Linux stubs; `mypy --platform win32` does, and that is the check this needed.
+#:
+#: Windows is skipped for a second reason worth stating rather than folding in: `chmod(0o000)`
+#: does not deny the owner a read there at all, so the test would not be measuring a sealed file.
+if sys.platform == "win32":
+    CANNOT_SEAL_A_FILE = "Windows does not deny the owner a mode-000 read"
+elif os.geteuid() == 0:
+    CANNOT_SEAL_A_FILE = "root can read a mode-000 file"
+else:
+    CANNOT_SEAL_A_FILE = ""
+
+
+@pytest.mark.skipif(bool(CANNOT_SEAL_A_FILE), reason=CANNOT_SEAL_A_FILE or "the file can be sealed")
 def test_an_unreadable_file_is_not_a_clean_file(tmp_path: Path) -> None:
     """`T323-R1`'s lesson, one check over: an inspection that cannot run is not a pass."""
     root = build(tmp_path / "app")
