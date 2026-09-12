@@ -14,6 +14,191 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-321 — The Linux release artifact, built where it will run
+
+**Status:** **In Review** — the artifact is built, runs on a clean machine and on the maintainer's
+desktop, and has downloaded a video. One bound is stated below and one question is left for the
+maintainer. Started under the maintainer's
+ruling relaxing §Phase 5's *Phase 4 approved* prerequisite.
+
+#### 2026-09-11 (later) — built in a container, and it runs where nothing is installed
+
+**`packaging/build_appimage.sh`**, run in `python:3.14-slim-bookworm`:
+
+```
+podman run --rm -v "$PWD":/src:ro,Z -v "$PWD/dist":/out:Z \
+    docker.io/library/python:3.14-slim-bookworm /src/packaging/build_appimage.sh
+```
+
+**The base is not the Ubuntu LTS this task proposed, and the swap is an improvement.** It carries
+Python 3.14 already and is **glibc 2.36** against Ubuntu 24.04's 2.39, so it covers more machines;
+there is no 3.14 image on an older Debian. **The floor that buys is Debian 12 / Ubuntu 24.04 and
+newer — Ubuntu 22.04 is glibc 2.35 and is out of reach**, and the README claims exactly that.
+
+**Why the container rather than this desk, measured rather than argued:**
+
+| Built on | Bundled libraries require | Runs on Ubuntu 24.04 |
+|---|---|---|
+| the development machine, glibc 2.43 | **`GLIBC_2.43`** | **no** |
+| the container, glibc 2.36 | **`GLIBC_2.36`** | yes |
+
+**The executable itself needs only `GLIBC_2.14` in both**, which is what makes this silent: anyone
+checking the binary would conclude the desktop build was fine. The requirement lives in the
+bundled `.so` files.
+
+**The first build of it could not open a window, and that is the finding.** The slim image has no
+Qt runtime libraries, so PyInstaller's PySide6 hook could not import `QtCore` in the child process
+it uses to ask Qt where its plugins live. It logged `failed to obtain Qt library info` as a
+**warning** and carried on, producing an artifact with **no platform plugins at all**.
+
+**It passed everything below.** `--version`, the spawn probe, the yt-dlp probe, the database probe,
+all four artifact gates — because **none of them creates a `QApplication`**. It died on the
+maintainer's real desktop with `SIGABRT` inside bundled `libQt6Core`, and the coredump showed it
+resolving `libbrotlicommon`, `libharfbuzz`, `libfontconfig` and `libglib` from **Fedora RPMs**,
+because those had not been bundled either. Qt's own message named it exactly: *"Could not find the
+Qt platform plugin"*.
+
+The build now installs Qt's runtime dependencies, and **asserts the platform plugins came across**
+before going any further — the check that would have caught this on the first build. Nothing else
+in this project asks whether a window can open from a frozen artifact.
+
+**`Tracks_and_Trails-0.1.0.dev0-x86_64.AppImage`, 68.2 MB** (49.9 MB before Qt's libraries and
+plugins were actually in it). On `ubuntu:24.04` with **no `python3`, no Qt, no ffmpeg and no
+toolchain**:
+
+| Check | Result |
+|---|---|
+| **The application itself**, `QT_QPA_PLATFORM=offscreen` | **still running at 20 s**, no crash markers |
+| `--version` | `0.1.0.dev0`, exit 0 — **and this is not a launch test**: it exits before a `QApplication` exists, which is how the broken build passed |
+| `--spawn-probe` (`T-020`) | *spawned a child from this build, exchanged one message, and reaped it* |
+| `--ytdlp-probe` (`T-033`) | *the frozen artifact carries a usable yt-dlp with its extractors* |
+| `--database-probe` | ok |
+| `artifact_gates.py` over the payload | **all four pass** |
+
+**This is the first evidence this project has that the bundle is self-contained.** Every previous
+Linux run was on a machine that already had Python and Qt installed.
+
+**Validated from inside the built AppImage**, not from the sources it was made from:
+`desktop-file-validate` **clean** on the shipped `.desktop`, `appstreamcli validate`
+**successful** on the shipped `metainfo.xml`, and the icon present both at the AppDir root and
+under `usr/share/icons/hicolor/256x256/apps/` — the two places launchers look.
+
+**On the maintainer's Fedora desktop, 2026-09-11:** it starts, **downloads a video to
+completion**, and once its desktop entry is installed it **appears in the launcher with its
+icon**. That is `TESTING` §8 item 8's real download, taken on the artifact that ships.
+
+**`--ytdlp-update-probe` passes on the AppImage too**, which is §8 item 10: install a user-managed
+copy, resolve it in a child, revert to the bundled baseline. Run with a substituted `HOME`, it
+wrote **only** under that profile and nothing under the default one — `T-298`'s isolation, asked
+of the artifact rather than the checkout.
+
+**One gap this exposed, and it is a decision rather than a defect.** The `.desktop` inside the
+AppImage says `Exec=tracks-and-trails`, which resolves only *within* the bundle. Installed as a
+menu entry it has to be rewritten to the AppImage's own path — `AppImageLauncher` does that
+automatically, and a user without it gets a menu entry that does nothing. **Three ways out and
+none is taken yet**: recommend `AppImageLauncher` in the README, ship an `--install` step in the
+artifact, or accept it and document the two-line manual integration. `T-322` meets the same
+question on Windows, where the installer creates the shortcuts.
+
+**`libGL.so.1` is deliberately not bundled**, and the clean-machine model accounts for it: an
+AppImage must not ship the graphics stack, because it has to match the user's driver. A bare
+`ubuntu:24.04` has none at all, which no real desktop lacks, so the test container installs
+`libgl1`/`libegl1` and nothing else — still no Python, no Qt, no toolchain.
+
+**It starts on the development desktop too** — Fedora, glibc 2.43, built against 2.36.
+
+**One stated bound remains.** The clean-machine evidence is a launch, the four probes and the
+gates — **not a real download**, which needs the GUI driven and has no headless route. The real
+download was taken on the Fedora desktop instead, and the criterion asked for one *on each*.
+`packaging/frozen_smoke.py` does not cover the last of those — it answers `ARC-002`'s process
+question and downloads nothing — so `TESTING` §8 item 8's *"run one real download"* has no
+automated route on this artifact and is a sitting, not a script.
+
+#### 2026-09-11 — the AppDir's three files, and what is deliberately still missing
+
+**Done, and validated by the tools that own the formats** rather than by a parser of mine:
+
+- `packaging/appdir/io.github.kottmans.TracksAndTrails.desktop` — `desktop-file-validate` **clean,
+  no hints.** One main category (`AudioVideo`), because two put the application in two menus and
+  the validator says so.
+- `packaging/appdir/io.github.kottmans.TracksAndTrails.metainfo.xml` — `appstreamcli validate`
+  **successful**, informational messages cleared.
+- `packaging/appdir/AppRun` — **prepends** to `PATH` rather than setting it. That is the whole of
+  `REL-004`'s reasoning in one line: `OPS-001` makes ffmpeg a system dependency on Linux and
+  `REQ-024` finds it on `PATH`, so an `AppRun` that shadowed the host's copy would break merging
+  on every machine that has it — the failure Flatpak was rejected for.
+- `tests/unit/test_appdir_metadata.py` — seven cross-reference checks. Each of these files repeats
+  something declared elsewhere (the binary name from the spec, the licence from `pyproject.toml`,
+  the component id from the desktop file's own name) and nothing fails when a copy drifts.
+  **Both mutations the docstrings name were run**: renaming `Exec` and replacing `PATH` each fail
+  exactly one test. Format validation is *not* reimplemented here — the two validators own that.
+
+**What remains, and why none of it could be done now:**
+
+- **The build host.** `REL-004` requires building against the oldest glibc the README claims, and
+  `REL-006`'s Ubuntu LTS VM is that machine. It does not exist yet.
+- **`appimagetool` is not installed** on the development machine, so no `.AppImage` has been
+  produced — only the AppDir contents that go into one.
+- **Every acceptance criterion about the built artifact** — launching on a clean machine, the three
+  probes running against the AppImage rather than the one-dir tree, the icon appearing in a
+  launcher — needs that artifact and `T-318`'s evidence harness.
+
+*(Filed 2026-09-11 with the Phase 5 plan, written against **AppImage** as `T-106` recommended.
+`REL-004` ruled that way on the same day, so the task starts as written rather than being bent to
+fit a different format.)*
+
+**Owner:** Implementer
+**Priority:** High — it is the other artifact
+**Phase:** Phase 5
+**Depends on:** `T-106` (the format), `T-320` (the version); `T-318` if it chose a Linux VM, since
+that is the build host this task wants
+**Relevant context:** `REL-001`; `OPS-001` (ffmpeg stays a system dependency); `OPS-012`'s surrender
+— *"a Fedora-built binary may not run on an older distro … `REL-001`'s release build is Phase 5
+and must revisit where Linux artifacts are produced"*; `NFR-004`; `NFR-009`; `REQ-024`; `T-298`
+**Affected surfaces:** `packaging/` (an AppDir recipe, `.desktop`, AppStream `metainfo.xml`),
+`.github/workflows/`, `docs/DEVELOPMENT.md`
+**Risk:** Medium — glibc symbol versioning is a silent failure: the artifact builds, runs on the
+build host, and dies with `GLIBC_2.38 not found` on the user's machine
+
+#### Scope
+
+**Build against the oldest glibc the README will claim.** `OPS-012` moved the frozen Linux build
+onto Fedora and recorded exactly this consequence. The release build therefore runs in a
+**container of the oldest supported distribution** — proposed: the current Ubuntu LTS, which is
+also the `apt` platform `OPS-012` says is *"no longer exercised anywhere"* — on the self-hosted
+Linux runner. The README's platform line then says what was actually built and tested against.
+
+**AppDir from the PyInstaller tree**: `AppRun` launching the frozen binary, a `.desktop` entry,
+the icon set that already exists under `resources/icons/`, and an AppStream `metainfo.xml` so
+desktop environments show a name and description rather than a filename. Built with `appimagetool`
+into `Tracks_and_Trails-X.Y.Z-x86_64.AppImage`.
+
+**ffmpeg is not inside** (`OPS-001`), and the existing `REQ-024` path already reports its absence
+and degrades; this task adds nothing there beyond confirming the AppImage's `PATH` search sees the
+host's ffmpeg.
+
+**`NFR-004` holds**: `XDG_*` resolution from inside an AppImage is the same as from source, which
+`T-298`'s isolation gate pins — assert it on the built AppImage, not by inference.
+
+#### Acceptance criteria
+
+- The artifact is produced by a documented command on the container image the README names, and
+  the image's glibc version is recorded with the artifact
+- It launches on a **clean** machine of that distribution (`T-318`'s evidence), and on the
+  Fedora desktop, and runs one real download to completion on each
+- `T-020`'s spawn probe, `T-033`'s yt-dlp probe and `T-298`'s isolation check all pass **against the
+  AppImage**, not only against the one-dir tree it was made from
+- The `.desktop` entry and `metainfo.xml` validate (`desktop-file-validate`, `appstreamcli
+  validate`) and the icon appears in the launcher
+- Qt inside the AppImage is dynamically linked (`T-323` gates it; this task keeps it true)
+
+#### Out of scope
+
+- Flatpak or system packages, unless `T-106` rules otherwise
+- A Linux ffmpeg bundle — `OPS-001`'s reopening condition, not this task's
+
+---
+
 ### T-329 — The focus-ring floor mismodels a header, and Windows is where it shows
 
 **Status:** **In Review** — both findings answered 2026-09-11. `T329-R1` corrected; **`T329-R2`
@@ -719,172 +904,6 @@ for yt-dlp (`REL-002`).
 - The installer (`T-322`). This produces `dist/tracks-and-trails/`; that wraps it
 - The Linux artifact (`T-321`)
 - Size work. `REL-001` accepted the size; record the number, do not chase it
-
----
-
-### T-321 — The Linux release artifact, built where it will run
-
-**Status:** **In Progress** — **the artifact exists and runs on a clean machine** as of
-2026-09-11; a real download and the Fedora-desktop launch remain. Started under the maintainer's
-ruling relaxing §Phase 5's *Phase 4 approved* prerequisite.
-
-#### 2026-09-11 (later) — built in a container, and it runs where nothing is installed
-
-**`packaging/build_appimage.sh`**, run in `python:3.14-slim-bookworm`:
-
-```
-podman run --rm -v "$PWD":/src:ro,Z -v "$PWD/dist":/out:Z \
-    docker.io/library/python:3.14-slim-bookworm /src/packaging/build_appimage.sh
-```
-
-**The base is not the Ubuntu LTS this task proposed, and the swap is an improvement.** It carries
-Python 3.14 already and is **glibc 2.36** against Ubuntu 24.04's 2.39, so it covers more machines;
-there is no 3.14 image on an older Debian. **The floor that buys is Debian 12 / Ubuntu 24.04 and
-newer — Ubuntu 22.04 is glibc 2.35 and is out of reach**, and the README claims exactly that.
-
-**Why the container rather than this desk, measured rather than argued:**
-
-| Built on | Bundled libraries require | Runs on Ubuntu 24.04 |
-|---|---|---|
-| the development machine, glibc 2.43 | **`GLIBC_2.43`** | **no** |
-| the container, glibc 2.36 | **`GLIBC_2.36`** | yes |
-
-**The executable itself needs only `GLIBC_2.14` in both**, which is what makes this silent: anyone
-checking the binary would conclude the desktop build was fine. The requirement lives in the
-bundled `.so` files.
-
-**The first build of it could not open a window, and that is the finding.** The slim image has no
-Qt runtime libraries, so PyInstaller's PySide6 hook could not import `QtCore` in the child process
-it uses to ask Qt where its plugins live. It logged `failed to obtain Qt library info` as a
-**warning** and carried on, producing an artifact with **no platform plugins at all**.
-
-**It passed everything below.** `--version`, the spawn probe, the yt-dlp probe, the database probe,
-all four artifact gates — because **none of them creates a `QApplication`**. It died on the
-maintainer's real desktop with `SIGABRT` inside bundled `libQt6Core`, and the coredump showed it
-resolving `libbrotlicommon`, `libharfbuzz`, `libfontconfig` and `libglib` from **Fedora RPMs**,
-because those had not been bundled either. Qt's own message named it exactly: *"Could not find the
-Qt platform plugin"*.
-
-The build now installs Qt's runtime dependencies, and **asserts the platform plugins came across**
-before going any further — the check that would have caught this on the first build. Nothing else
-in this project asks whether a window can open from a frozen artifact.
-
-**`Tracks_and_Trails-0.1.0.dev0-x86_64.AppImage`, 68.2 MB** (49.9 MB before Qt's libraries and
-plugins were actually in it). On `ubuntu:24.04` with **no `python3`, no Qt, no ffmpeg and no
-toolchain**:
-
-| Check | Result |
-|---|---|
-| **The application itself**, `QT_QPA_PLATFORM=offscreen` | **still running at 20 s**, no crash markers |
-| `--version` | `0.1.0.dev0`, exit 0 — **and this is not a launch test**: it exits before a `QApplication` exists, which is how the broken build passed |
-| `--spawn-probe` (`T-020`) | *spawned a child from this build, exchanged one message, and reaped it* |
-| `--ytdlp-probe` (`T-033`) | *the frozen artifact carries a usable yt-dlp with its extractors* |
-| `--database-probe` | ok |
-| `artifact_gates.py` over the payload | **all four pass** |
-
-**This is the first evidence this project has that the bundle is self-contained.** Every previous
-Linux run was on a machine that already had Python and Qt installed.
-
-**Validated from inside the built AppImage**, not from the sources it was made from:
-`desktop-file-validate` **clean** on the shipped `.desktop`, `appstreamcli validate`
-**successful** on the shipped `metainfo.xml`, and the icon present both at the AppDir root and
-under `usr/share/icons/hicolor/256x256/apps/` — the two places launchers look.
-
-**`libGL.so.1` is deliberately not bundled**, and the clean-machine model accounts for it: an
-AppImage must not ship the graphics stack, because it has to match the user's driver. A bare
-`ubuntu:24.04` has none at all, which no real desktop lacks, so the test container installs
-`libgl1`/`libegl1` and nothing else — still no Python, no Qt, no toolchain.
-
-**It starts on the development desktop too** — Fedora, glibc 2.43, built against 2.36.
-
-**Still outstanding, and both want a desktop rather than a container:** the icon appearing in a
-launcher, and **one real download to completion**.
-`packaging/frozen_smoke.py` does not cover the last of those — it answers `ARC-002`'s process
-question and downloads nothing — so `TESTING` §8 item 8's *"run one real download"* has no
-automated route on this artifact and is a sitting, not a script.
-
-#### 2026-09-11 — the AppDir's three files, and what is deliberately still missing
-
-**Done, and validated by the tools that own the formats** rather than by a parser of mine:
-
-- `packaging/appdir/io.github.kottmans.TracksAndTrails.desktop` — `desktop-file-validate` **clean,
-  no hints.** One main category (`AudioVideo`), because two put the application in two menus and
-  the validator says so.
-- `packaging/appdir/io.github.kottmans.TracksAndTrails.metainfo.xml` — `appstreamcli validate`
-  **successful**, informational messages cleared.
-- `packaging/appdir/AppRun` — **prepends** to `PATH` rather than setting it. That is the whole of
-  `REL-004`'s reasoning in one line: `OPS-001` makes ffmpeg a system dependency on Linux and
-  `REQ-024` finds it on `PATH`, so an `AppRun` that shadowed the host's copy would break merging
-  on every machine that has it — the failure Flatpak was rejected for.
-- `tests/unit/test_appdir_metadata.py` — seven cross-reference checks. Each of these files repeats
-  something declared elsewhere (the binary name from the spec, the licence from `pyproject.toml`,
-  the component id from the desktop file's own name) and nothing fails when a copy drifts.
-  **Both mutations the docstrings name were run**: renaming `Exec` and replacing `PATH` each fail
-  exactly one test. Format validation is *not* reimplemented here — the two validators own that.
-
-**What remains, and why none of it could be done now:**
-
-- **The build host.** `REL-004` requires building against the oldest glibc the README claims, and
-  `REL-006`'s Ubuntu LTS VM is that machine. It does not exist yet.
-- **`appimagetool` is not installed** on the development machine, so no `.AppImage` has been
-  produced — only the AppDir contents that go into one.
-- **Every acceptance criterion about the built artifact** — launching on a clean machine, the three
-  probes running against the AppImage rather than the one-dir tree, the icon appearing in a
-  launcher — needs that artifact and `T-318`'s evidence harness.
-
-*(Filed 2026-09-11 with the Phase 5 plan, written against **AppImage** as `T-106` recommended.
-`REL-004` ruled that way on the same day, so the task starts as written rather than being bent to
-fit a different format.)*
-
-**Owner:** Implementer
-**Priority:** High — it is the other artifact
-**Phase:** Phase 5
-**Depends on:** `T-106` (the format), `T-320` (the version); `T-318` if it chose a Linux VM, since
-that is the build host this task wants
-**Relevant context:** `REL-001`; `OPS-001` (ffmpeg stays a system dependency); `OPS-012`'s surrender
-— *"a Fedora-built binary may not run on an older distro … `REL-001`'s release build is Phase 5
-and must revisit where Linux artifacts are produced"*; `NFR-004`; `NFR-009`; `REQ-024`; `T-298`
-**Affected surfaces:** `packaging/` (an AppDir recipe, `.desktop`, AppStream `metainfo.xml`),
-`.github/workflows/`, `docs/DEVELOPMENT.md`
-**Risk:** Medium — glibc symbol versioning is a silent failure: the artifact builds, runs on the
-build host, and dies with `GLIBC_2.38 not found` on the user's machine
-
-#### Scope
-
-**Build against the oldest glibc the README will claim.** `OPS-012` moved the frozen Linux build
-onto Fedora and recorded exactly this consequence. The release build therefore runs in a
-**container of the oldest supported distribution** — proposed: the current Ubuntu LTS, which is
-also the `apt` platform `OPS-012` says is *"no longer exercised anywhere"* — on the self-hosted
-Linux runner. The README's platform line then says what was actually built and tested against.
-
-**AppDir from the PyInstaller tree**: `AppRun` launching the frozen binary, a `.desktop` entry,
-the icon set that already exists under `resources/icons/`, and an AppStream `metainfo.xml` so
-desktop environments show a name and description rather than a filename. Built with `appimagetool`
-into `Tracks_and_Trails-X.Y.Z-x86_64.AppImage`.
-
-**ffmpeg is not inside** (`OPS-001`), and the existing `REQ-024` path already reports its absence
-and degrades; this task adds nothing there beyond confirming the AppImage's `PATH` search sees the
-host's ffmpeg.
-
-**`NFR-004` holds**: `XDG_*` resolution from inside an AppImage is the same as from source, which
-`T-298`'s isolation gate pins — assert it on the built AppImage, not by inference.
-
-#### Acceptance criteria
-
-- The artifact is produced by a documented command on the container image the README names, and
-  the image's glibc version is recorded with the artifact
-- It launches on a **clean** machine of that distribution (`T-318`'s evidence), and on the
-  Fedora desktop, and runs one real download to completion on each
-- `T-020`'s spawn probe, `T-033`'s yt-dlp probe and `T-298`'s isolation check all pass **against the
-  AppImage**, not only against the one-dir tree it was made from
-- The `.desktop` entry and `metainfo.xml` validate (`desktop-file-validate`, `appstreamcli
-  validate`) and the icon appears in the launcher
-- Qt inside the AppImage is dynamically linked (`T-323` gates it; this task keeps it true)
-
-#### Out of scope
-
-- Flatpak or system packages, unless `T-106` rules otherwise
-- A Linux ffmpeg bundle — `OPS-001`'s reopening condition, not this task's
 
 ---
 
