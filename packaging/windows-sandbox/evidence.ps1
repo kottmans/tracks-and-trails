@@ -152,6 +152,61 @@ if ($exe) {
 }
 Say '```'
 
+Rule "Uninstall, and what survives it"
+Say "``T-039``'s fourth gate. ``DAT-001`` says settings, the job database and downloaded files"
+Say "**survive an uninstall by intent** -- so this asserts two different things, and the"
+Say "distinction is the point: leftovers under the install root are a failure, leftovers under the"
+Say "user directories are the requirement being met."
+Say '```'
+# The application writes its database under `user_data_dir("tracksandtrails")`, which on Windows
+# is %LOCALAPPDATA%\tracksandtrails. The first launch above created it.
+$userData = "$env:LOCALAPPDATA\tracksandtrails"
+$dataBefore = @(Get-ChildItem -Path $userData -Recurse -File -ErrorAction SilentlyContinue)
+Say ("user data before  " + $dataBefore.Count + " file(s) under %LOCALAPPDATA%\tracksandtrails")
+if ($dataBefore.Count -eq 0) {
+    Say "                  WARNING: nothing to preserve, so the DAT-001 half proves nothing"
+}
+
+if ($exe) {
+    $root = Split-Path $exe -Parent
+    $uninstaller = Get-ChildItem -Path $root -Filter "unins*.exe" | Select-Object -First 1
+    if (-not $uninstaller) {
+        Say "uninstaller       MISSING - nothing to run"
+        $failures++
+    } else {
+        $u = Start-Process -FilePath $uninstaller.FullName `
+            -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+        Say ("uninstall exit    " + $u.ExitCode)
+        if ($u.ExitCode -ne 0) { $failures++ }
+        # Inno's uninstaller returns before it has finished removing itself.
+        for ($i = 0; $i -lt 60; $i++) {
+            if (-not (Test-Path $root)) { break }
+            Start-Sleep -Milliseconds 500
+        }
+
+        $left = @(Get-ChildItem -Path $root -Recurse -File -ErrorAction SilentlyContinue)
+        if ($left.Count -eq 0) {
+            Say "install root      removed"
+        } else {
+            Say ("install root      " + $left.Count + " FILE(S) LEFT: " + (($left | Select-Object -First 5).Name -join ", "))
+            $failures++
+        }
+        $stillThere = $startMenuCandidates | Where-Object { Test-Path $_ }
+        Say ("start menu        " + $(if ($stillThere) { "SHORTCUT LEFT BEHIND" } else { "removed" }))
+        if ($stillThere) { $failures++ }
+    }
+}
+
+$dataAfter = @(Get-ChildItem -Path $userData -Recurse -File -ErrorAction SilentlyContinue)
+Say ("user data after   " + $dataAfter.Count + " file(s)")
+if ($dataBefore.Count -gt 0 -and $dataAfter.Count -lt $dataBefore.Count) {
+    Say "                  FAILED - the uninstaller removed user data, which DAT-001 preserves"
+    $failures++
+} elseif ($dataBefore.Count -gt 0) {
+    Say "                  preserved, as DAT-001 intends - this is not a leftover"
+}
+Say '```'
+
 Rule "Verdict"
 if ($failures -eq 0) {
     Say "**PASS** - the pre-install check found nothing installed, the artifact installed per-user"
@@ -162,6 +217,10 @@ if ($failures -eq 0) {
 Say ""
 Say "**Not covered here, and it is ``OPS-004``'s:** whether the installer *feels* normal. A script"
 Say "cannot answer that, which is why ``T-318``'s Windows half keeps a human step."
+Say ""
+Say "**``T-039``'s four gates are the four sections above** - silent install, placement, launch,"
+Say "and uninstall with user data preserved. Each fails this run rather than being reported and"
+Say "passed over, which is the acceptance criterion it was written with."
 
 Say ""
 Say "<!-- RUN-COMPLETE -->"

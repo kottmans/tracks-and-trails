@@ -14,6 +14,116 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-039 — Verify Windows installer behavior on the runner
+
+**Status:** **In Review** — all four gates implemented and passing 2026-09-12, in Windows Sandbox
+rather than on `windows-latest`. **The mechanism changed and that is a judgement, recorded below.**
+**Owner:** Implementer
+**Priority:** Medium now, High once Phase 5 starts — it must land before the first public release
+**Phase:** Phase 5
+**Depends on:** the Phase 5 installer, `T-026` (establishes the real-plugin Windows job)
+**Relevant context:** `OPS-004`, `REL-001`, `docs/project/TESTING.md` §9, `REQUIREMENTS.md` §3
+**Affected surfaces:** `.github/workflows/ci.yml`, `docs/project/TESTING.md` §9, `REQUIREMENTS.md` §3
+**Risk:** Medium — same failure mode as `T-026`: a shallow check would retire a
+release-blocking manual item without replacing it
+
+#### 2026-09-12 — the four gates, and why they do not run on `windows-latest`
+
+**All four pass**, in `packaging/windows-sandbox/evidence.ps1`, against
+`Tracks-and-Trails-0.1.0.dev0-setup.exe`. Evidence:
+[`windows-0.1.0.dev0.md`](evidence/windows-0.1.0.dev0.md).
+
+| Gate | Result |
+|---|---|
+| 1 · silent install, success exit, no prompt | **exit 0 in 18.6 s**, per-user, no elevation |
+| 2 · file and shortcut placement | 225 files, `_internal\licenses\`, `_internal\ffmpeg.exe`, Start Menu shortcut; **desktop icon absent**, as the opt-in default asks |
+| 3 · the installed application launches | window in **~2 s**, titled *Tracks & Trails*, **no orphans** after close |
+| 4 · uninstall and removal | **exit 0**, install root removed, shortcut removed, **user data preserved** |
+
+**Gate 4 makes the distinction the criteria ask for rather than tolerating a leftover.** Five
+files under `%LOCALAPPDATA%\tracksandtrails` before the uninstall and five after: `DAT-001` says
+settings and the job database survive by intent, so the check asserts they are **still there**,
+and separately that the install root is **empty**. A single "nothing left behind" test would have
+failed the requirement it was meant to protect.
+
+**Each is a gate, proved by mutation** (`T031-R2`, and the acceptance criterion's own words).
+Replacing the uninstaller with a no-op that exits 0:
+
+```
+install root      225 FILE(S) LEFT: tracks-and-trails.exe, unins000.dat, ...
+start menu        SHORTCUT LEFT BEHIND
+**FAIL** - 2 check(s) did not pass.
+```
+
+**The scope says *"assert, on `windows-latest`"* and this does not. That is deliberate.** When
+this task was written, CI's Windows leg was a hosted runner — *"a CI runner is a genuinely clean
+machine, which is what makes this worth automating at all"*. `OPS-010` has since routed Windows to
+`STARBASE`, the maintainer's own desktop. Installing and uninstalling an application there on
+every run would (a) not be clean-machine evidence, since the machine already has Python, a
+toolchain and a developer's yt-dlp, and (b) make the machine's state a function of whoever pushed
+— which is the concern `OPS-012` §3 exists for.
+
+**Windows Sandbox is clean on every launch and discarded on close**, which is the property the
+hosted runner used to supply, and `REL-006` already chose it for `T-318`. So these gates ride
+`T-318`'s harness rather than a second one — which is also what the scope asked for in spirit:
+*"reusing `T-026`'s harness rather than a second one"*.
+
+**What that gives up, stated rather than implied:** these do not run on every push. They run when
+the Sandbox evidence is taken, which is per release candidate. A regression in the installer
+between candidates would not be caught the day it landed. Restoring per-push coverage would mean
+un-routing Windows CI from `STARBASE`, which `OPS-010` decided against for reasons that have not
+changed.
+
+**Its gates are independent of signature** (`T-317`'s fourth criterion, recorded here where the
+gates will be written). `REL-005` ships `0.1.0` unsigned and names a certificate as the `1.0`
+condition — so these checks must hold in **both** states. A silent install must succeed whether or
+not the installer is signed, and **no assertion here may pass only because a signed binary skipped
+a prompt**: that is a test measuring SmartScreen rather than the installer, and it would go red
+the day signing arrives, which is the one day nobody would suspect the test.
+
+#### Scope
+
+Split out of `T-026` when `OPS-004` was accepted on 2026-07-26. `OPS-004` reclassified four
+things as automatable on the Windows runner; three of them `T-026` does now, but installer
+verification cannot be written before an installer exists, and `T-026` had to stay completable
+because it is what closes Phase 0's last exit criterion.
+
+A CI runner is a genuinely clean machine, which is what makes this worth automating at all:
+installing onto a box that has never held the application is exactly the case a developer
+machine cannot reproduce.
+
+Assert, on `windows-latest`:
+
+1. **Silent install** completes with a success exit code and no interactive prompt.
+2. **File and shortcut placement** — the installed tree, the Start Menu entry, and any
+   registered association land where the installer claims.
+3. **The installed application launches** under the real `windows` platform plugin, reusing
+   `T-026`'s harness rather than a second one.
+4. **Uninstall and removal** — the uninstaller exits clean and leaves nothing behind except
+   what is deliberately preserved (user settings and the job database, per `DAT-001`).
+
+#### Acceptance criteria
+
+- Each of the four is a **gate**, stated as a mutation that turns the suite red: a missing
+  shortcut, a file placed outside the install root, a non-zero silent-install exit code, and a
+  leftover file after uninstall each fail the job. Screenshots, if any, stay retained evidence
+  and fail nothing on their own (`T031-R2`, `P0-R7`)
+- Uninstall leaving user data behind is asserted as **intended** behavior, not tolerated as a
+  leftover — the test distinguishes the two
+- `docs/project/TESTING.md` §9's manual list drops installer placement and removal, and
+  `REQUIREMENTS.md` §3 narrows to match — **only once this job is landed and green**
+- The added CI time is recorded against `T-006`'s budget
+
+#### Out of scope
+
+- Whether the installer *feels* normal — `OPS-004`'s subjective residue, still human, still
+  blocks first release
+- Upgrade-over-existing-install and downgrade paths — real, but a separate task once the
+  versioning story exists
+- Any non-Windows packaging
+
+---
+
 ### T-325 — Cold start, measured on the artifact that ships
 
 **Status:** **In Review** — measured 2026-09-12 on both artifacts, cold included, and **the ruling
@@ -3830,65 +3940,3 @@ producible locally.
 
 ---
 
-### T-039 — Verify Windows installer behavior on the runner
-
-**Status:** **Blocked — until Phase 5 produces an installer.** Proposed work with nothing to do
-until then; the installer it would verify does not exist yet
-**Owner:** Implementer
-**Priority:** Medium now, High once Phase 5 starts — it must land before the first public release
-**Phase:** Phase 5
-**Depends on:** the Phase 5 installer, `T-026` (establishes the real-plugin Windows job)
-**Relevant context:** `OPS-004`, `REL-001`, `docs/project/TESTING.md` §9, `REQUIREMENTS.md` §3
-**Affected surfaces:** `.github/workflows/ci.yml`, `docs/project/TESTING.md` §9, `REQUIREMENTS.md` §3
-**Risk:** Medium — same failure mode as `T-026`: a shallow check would retire a
-release-blocking manual item without replacing it
-
-**Its gates are independent of signature** (`T-317`'s fourth criterion, recorded here where the
-gates will be written). `REL-005` ships `0.1.0` unsigned and names a certificate as the `1.0`
-condition — so these checks must hold in **both** states. A silent install must succeed whether or
-not the installer is signed, and **no assertion here may pass only because a signed binary skipped
-a prompt**: that is a test measuring SmartScreen rather than the installer, and it would go red
-the day signing arrives, which is the one day nobody would suspect the test.
-
-#### Scope
-
-Split out of `T-026` when `OPS-004` was accepted on 2026-07-26. `OPS-004` reclassified four
-things as automatable on the Windows runner; three of them `T-026` does now, but installer
-verification cannot be written before an installer exists, and `T-026` had to stay completable
-because it is what closes Phase 0's last exit criterion.
-
-A CI runner is a genuinely clean machine, which is what makes this worth automating at all:
-installing onto a box that has never held the application is exactly the case a developer
-machine cannot reproduce.
-
-Assert, on `windows-latest`:
-
-1. **Silent install** completes with a success exit code and no interactive prompt.
-2. **File and shortcut placement** — the installed tree, the Start Menu entry, and any
-   registered association land where the installer claims.
-3. **The installed application launches** under the real `windows` platform plugin, reusing
-   `T-026`'s harness rather than a second one.
-4. **Uninstall and removal** — the uninstaller exits clean and leaves nothing behind except
-   what is deliberately preserved (user settings and the job database, per `DAT-001`).
-
-#### Acceptance criteria
-
-- Each of the four is a **gate**, stated as a mutation that turns the suite red: a missing
-  shortcut, a file placed outside the install root, a non-zero silent-install exit code, and a
-  leftover file after uninstall each fail the job. Screenshots, if any, stay retained evidence
-  and fail nothing on their own (`T031-R2`, `P0-R7`)
-- Uninstall leaving user data behind is asserted as **intended** behavior, not tolerated as a
-  leftover — the test distinguishes the two
-- `docs/project/TESTING.md` §9's manual list drops installer placement and removal, and
-  `REQUIREMENTS.md` §3 narrows to match — **only once this job is landed and green**
-- The added CI time is recorded against `T-006`'s budget
-
-#### Out of scope
-
-- Whether the installer *feels* normal — `OPS-004`'s subjective residue, still human, still
-  blocks first release
-- Upgrade-over-existing-install and downgrade paths — real, but a separate task once the
-  versioning story exists
-- Any non-Windows packaging
-
----

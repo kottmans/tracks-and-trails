@@ -7,7 +7,7 @@ the artifact itself.
 ## Machine
 
 ```
-date      2026-09-12 19:36:56Z
+date      2026-09-12 20:33:27Z
 windows   Microsoft Windows 10 Enterprise
 build     19041
 host      Windows Sandbox on STARBASE
@@ -44,7 +44,7 @@ Per-user, silent, no elevation (`NFR-004`, `T-322`). An elevation prompt here is
 finding, not a detail.
 ```
 exit code     0
-elapsed       16.6s
+elapsed       18.6s
 installed to  C:\Users\WDAGUtilityAccount\AppData\Local\Programs\Tracks & Trails
 ```
 
@@ -63,9 +63,24 @@ desktop icon  absent, as the default asks
 `--version` is not a launch test: it returns before a `QApplication` exists. This starts
 the real application and waits for a window handle.
 ```
-window        appeared after ~2s
+window        appeared after ~2.5s
 title         Tracks & Trails
 orphans       none
+```
+
+## Uninstall, and what survives it
+
+`T-039`'s fourth gate. `DAT-001` says settings, the job database and downloaded files
+**survive an uninstall by intent** -- so this asserts two different things, and the
+distinction is the point: leftovers under the install root are a failure, leftovers under the
+user directories are the requirement being met.
+```
+user data before  5 file(s) under %LOCALAPPDATA%\tracksandtrails
+uninstall exit    0
+install root      removed
+start menu        removed
+user data after   5 file(s)
+                  preserved, as DAT-001 intends - this is not a leftover
 ```
 
 ## Verdict
@@ -75,5 +90,9 @@ without elevation, placed what it should, and opened a window.
 
 **Not covered here, and it is `OPS-004`'s:** whether the installer *feels* normal. A script
 cannot answer that, which is why `T-318`'s Windows half keeps a human step.
+
+**`T-039`'s four gates are the four sections above** - silent install, placement, launch,
+and uninstall with user data preserved. Each fails this run rather than being reported and
+passed over, which is the acceptance criterion it was written with.
 
 <!-- RUN-COMPLETE -->
