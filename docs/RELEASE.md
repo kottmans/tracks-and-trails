@@ -84,6 +84,28 @@ Linux AppImage, `T-322` for the installer — and the gate is run as §8 describ
 publishes it after checking the artifacts attached are the ones the gate passed. Nothing in this
 project publishes automatically, and `T-324`'s criteria say so.
 
+### What the release page must state
+
+Two system requirements, neither of which the artifacts can or should satisfy themselves
+([`REL-007`](project/DECISIONS.md#rel-007--the-artifacts-use-the-system-certificate-store-and-bundle-none),
+[`REL-004`](project/DECISIONS.md#rel-004--the-linux-artifact-ships-as-an-appimage)):
+
+- **Linux: glibc 2.36 or newer** — Debian 12, Ubuntu 24.04 LTS and later. `packaging/build_appimage.sh`
+  builds on Debian 12 deliberately, so this is the floor that buys. **Ubuntu 22.04 is glibc 2.35
+  and out of reach.**
+- **A working system certificate store** — `ca-certificates` on a Debian or Ubuntu machine. Every
+  desktop distribution ships it; a container or a stripped image may not, and without it no HTTPS
+  request can be verified. `REL-007` records why the artifact uses the system store rather than
+  bundling its own: bundling one would make the application ignore a corporate or user-added CA.
+- **Linux: ffmpeg from the distribution**, for merging and audio extraction (`OPS-001`). Bundled on
+  Windows, not on Linux, and `REQ-024` finds it on `PATH`.
+
+**These belong in the README's Install section too, and it does not have one yet.** `T-320`
+deferred that while *"there are no installers or packages yet"* is still true — so the first
+release commit that makes it false adds the section and these three lines with it. Until then this
+is their only home, which is stated here so the next person does not have to rediscover them from
+a build script's comments.
+
 ### The clean machine (§8 item 7)
 
 Neither runner is clean any more — `OPS-010` gave that up for Windows and `OPS-012` for Linux,

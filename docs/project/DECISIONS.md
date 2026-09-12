@@ -54,6 +54,7 @@ Current requirements and architecture retain their own canonical authority.
 | [REL-004](#rel-004--the-linux-artifact-ships-as-an-appimage) | The Linux artifact ships as an AppImage | Accepted | — |
 | [REL-005](#rel-005--the-first-windows-installer-ships-unsigned) | The first Windows installer ships unsigned | Accepted | — |
 | [REL-006](#rel-006--a-clean-machine-is-a-disposable-vm-the-maintainer-owns) | A clean machine is a disposable VM the maintainer owns | Accepted | — |
+| [REL-007](#rel-007--the-artifacts-use-the-system-certificate-store-and-bundle-none) | The artifacts use the system certificate store and bundle none | Accepted | — |
 | [REL-002](#rel-002--collect_submodulesyt_dlp-stays-as-insurance-against-a-pin-we-do-not-have-yet) | `collect_submodules("yt_dlp")` stays, as insurance against a pin we do not have yet | Accepted | — |
 | [REL-001](#rel-001--ship-frozen-self-contained-artifacts-no-python-required-on-the-users-machine) | Ship frozen, self-contained artifacts: no Python required on the user's machine | Accepted | — |
 | [OPS-004](#ops-004--windows-ci-runners-provide-a-real-desktop-verify-against-it) | Windows CI runners provide a real desktop; verify against it | Accepted | [OPS-005](#ops-005--starbase-is-the-windows-verification-platform-hosted-only-findings-do-not-gate-the-phase); [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously) |
@@ -1014,6 +1015,65 @@ requirements.
   particular candidate.
 - **Reopening condition:** a hosted allowance that makes `A` free again, or a release cadence that
   makes hand-taken evidence the bottleneck.
+
+---
+
+## REL-007 — The artifacts use the system certificate store and bundle none
+
+**Status:** **Accepted** (2026-09-12) — maintainer decision, ruling on `T-321`'s proposal
+**Date:** 2026-09-12
+**Relates to:** `REL-001` (self-contained artifacts), `REL-004` (the AppImage), `REQ-029`.
+**Found by:** `T-318`'s clean-machine harness, on the day it landed.
+
+### Context
+
+`T-321`'s `--download-probe` failed on its first clean-machine run:
+
+```
+FAIL: the download failed as network: ERROR: [generic] big_buck_bunny_720p_surround:
+Unable to download webpage: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed:
+self-signed certificate in certificate chain (_ssl.c:1082)
+```
+
+**The AppImage carries no CA bundle.** `ubuntu:24.04` ships with `/etc/ssl/certs` **empty** —
+measured, zero files — and the frozen tree contains no `certifi`, so OpenSSL has nothing to
+verify against and every HTTPS request fails. Adding `ca-certificates` and **nothing else** (still
+no Python, no Qt, no ffmpeg, no toolchain) makes the same probe download 61,878,609 bytes in
+6.5 s from the bundled baseline yt-dlp.
+
+This sits awkwardly beside `REL-001`'s *"self-contained"*, which is why it was put rather than
+fixed: the obvious repair is not obviously right.
+
+### Decision
+
+**Use the system certificate store. Bundle no CA data, and state the dependency.**
+
+Two alternatives were put and rejected:
+
+- **Bundle `certifi` as a fallback**, used only when the system store is empty or unusable. It
+  keeps corporate roots working and fixes the bare container. It is also code and a test for a
+  case no desktop user meets, and "unusable" is a judgement a TLS stack makes better than we do.
+  **This is the option to revisit** if a user ever reports it.
+- **Bundle `certifi` outright.** Simplest, and **wrong**: it makes the application ignore the
+  machine's own trust store, so a user behind a TLS-inspecting proxy or with a private CA — the
+  people most likely to need a working one — gets an application that cannot reach anything their
+  browser can.
+
+### Consequences
+
+- **A machine with no CA store cannot do HTTPS at all**, and that is true of every application on
+  it, not this one. The dependency is a property of the platform, not a gap in the artifact.
+- **The release page states it**, alongside the glibc floor. `docs/RELEASE.md` carries both as
+  release-page requirements; the README gains them when it gains an Install section, which
+  `T-320` deferred while *"there are no installers or packages yet"* is still true.
+- **`T-318`'s Linux harness installs `ca-certificates` with the reason in its own output**, so a
+  future reader sees a stated boundary rather than a quietly satisfied one. It is listed there
+  beside `libgl1`/`libegl1`, which is the same class of decision: an AppImage must not ship the
+  graphics stack either.
+- **A user-added or corporate CA keeps working**, which is the property option C would have lost
+  and the reason it was refused.
+- **Reopening condition:** a report from a real user whose machine has no usable trust store, or
+  a platform where yt-dlp's HTTPS stack stops consulting the system store.
 
 ---
 
