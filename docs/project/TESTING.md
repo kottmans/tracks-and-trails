@@ -316,8 +316,10 @@ date and platform:
   foreground and file-association half. Per `OPS-004` the request, path handling and shell verb
   are automatable, but none of that exists to test yet; revisit when the feature lands
 - Visual correctness of light and dark themes
-- Installer flow on a clean machine — until `T-039` automates placement and removal, at which
-  point only whether it *feels* normal stays here
+- Whether the installer *feels* normal on a clean machine. Silent install, placement, launch and
+  uninstall-with-user-data-preserved are gated by `T-039` in Windows Sandbox
+  (`packaging/windows-sandbox/`), so they are not manual items and are not recorded as passed by
+  hand
 - Real-world download of a large file, watching memory and responsiveness
 
 ### What Windows CI does and does not cover (`OPS-004`)
@@ -343,7 +345,9 @@ Two gaps in the automation are worth naming rather than discovering later:
   after it had been done, which is the drift `COORD-R5` reported; until it landed, Windows
   keyboard use beyond the menu bar stayed
   unverified.
-- **Installer behavior is not gated.** `T-039`, once Phase 5 produces an installer.
+- **Installer behavior is gated per release candidate, not per push.** `T-039`'s four gates run
+  in Windows Sandbox, because installing onto `STARBASE` on every push would be neither clean nor
+  consistent with `OPS-012` §3. A regression between candidates is caught at the next candidate.
 
 Do not record a manual item as passed because this job is green. It covers what it covers.
 

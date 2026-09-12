@@ -71,6 +71,12 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 SetupIconFile=..\src\tracks_and_trails\resources\icons\icon.ico
+; **Our logo, not Inno's stock box-and-disc** (`T-322`). Setting `SetupIconFile` covered the
+; .exe's own icon and nothing else, so every page of the wizard carried the default artwork.
+; Rendered from the logo masters by `tools/icons/render_installer_art.py`; Inno picks the size
+; nearest the display's DPI from each list, so a high-DPI screen gets a sharp logo, not a scaled one.
+WizardSmallImageFile=installer-art\wizard-small-55x55.png,installer-art\wizard-small-83x80.png,installer-art\wizard-small-110x106.png,installer-art\wizard-small-138x140.png
+WizardImageFile=installer-art\wizard-large-164x314.png,installer-art\wizard-large-246x459.png,installer-art\wizard-large-328x604.png,installer-art\wizard-large-410x797.png
 UninstallDisplayIcon={app}\{#AppExe}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible

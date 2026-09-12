@@ -1,0 +1,22 @@
+<!--
+  Windows Sandbox for a person, not a script (T-327).
+
+  clean-machine.wsb runs evidence.ps1 on logon, which installs silently and uninstalls again.
+  This one runs nothing: it opens a clean Windows with the installer folder mapped READ-ONLY,
+  so the session starts from exactly what a user would have. Copy the installer out of the
+  mapped folder onto the Sandbox desktop before running it.
+
+  Networking is on so item 5, a real download, is possible. Closing the Sandbox window
+  discards everything inside it.
+-->
+<Configuration>
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>C:\dev\sandbox-share</HostFolder>
+      <SandboxFolder>C:\Users\WDAGUtilityAccount\Desktop\share</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+  <Networking>Enable</Networking>
+  <AudioInput>Disable</AudioInput>
+</Configuration>

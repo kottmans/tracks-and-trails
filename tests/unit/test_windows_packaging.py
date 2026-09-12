@@ -304,3 +304,23 @@ def test_signing_is_a_line_to_edit_rather_than_a_line_to_write() -> None:
 def test_every_installer_define_is_non_empty(declaration: str) -> None:
     """The floor. An empty `#define` compiles and produces an installer with a blank name."""
     assert defined(declaration).strip()
+
+
+def test_the_wizard_artwork_the_installer_names_exists() -> None:
+    """**Our logo, not Inno's stock box-and-disc** — and the two declarations agree.
+
+    The maintainer's first real install (2026-09-12) showed the default artwork on every page:
+    `SetupIconFile` covers the .exe's icon and nothing else. The images are rendered by
+    `tools/icons/render_installer_art.py` and named again in the `.iss`; ISCC fails loudly on a
+    missing file, but only on Windows, so a renamed size would otherwise surface at release time.
+    """
+    text = INSTALLER.read_text(encoding="utf-8")
+    art = REPOSITORY / "packaging"
+    for directive in ("WizardSmallImageFile", "WizardImageFile"):
+        match = re.search(rf"^{directive}=(.+)$", text, re.M)
+        assert match is not None, (
+            f"the installer no longer sets {directive}, so Inno's default art returns"
+        )
+        for name in match.group(1).split(","):
+            path = art / name.strip().replace("\\", "/")
+            assert path.is_file(), f"{directive} names {name.strip()}, which does not exist"
