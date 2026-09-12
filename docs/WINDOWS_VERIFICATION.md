@@ -30,6 +30,24 @@ of them:
 PySide6 6.11.1 — the same versions the runners report, which is what makes a difference in results
 attributable to configuration rather than to versions.
 
+**Check what that checkout is before trusting anything run in it** (measured 2026-09-11, at the
+cost of three mutation runs). `C:\dev\tracks-and-trails`'s `origin` was
+`C:/dev/tt.bundle` — a **local bundle file** hand-carried to the machine, not the repository. Every
+`git pull` answered *"Already up to date"* while the checkout sat **six weeks stale** at a
+2026-07-29 commit, with uncommitted edits to `core/logging.py` on top. Three mutation tables were
+produced against July's code before anyone asked what `git log` said.
+
+```
+git status -sb          # branch, tracking, and whether the tree is dirty
+git log --oneline -1    # and what it actually is
+git remote -v           # a path, not a URL, means it cannot follow the repository
+```
+
+**CI is not affected**, and the distinction matters: the runner checks out fresh into
+`C:\actions-runner\_work\` every job, so CI results are about the commit they name. It is the
+*interactive* checkout — this file's whole subject, and where `T-327`'s manual session and
+`T-212`'s recorded run are meant to happen — that drifts silently.
+
 Two checkouts live on it, deliberately:
 
 | Path | Installed | Stands for |

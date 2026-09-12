@@ -323,8 +323,28 @@ of the four carries that marker.
 dialog construction order already does. The tests are right about the delivered order. They are
 not evidence that the *declaration* is load-bearing, and the control assumed they were.
 
+#### What the same evening then showed, and it voids the table above
+
+**The machine's interactive checkout was six weeks stale**, at a 2026-07-29 commit, with
+uncommitted edits to `core/logging.py`. Its `origin` is `C:/dev/tt.bundle` — a hand-carried bundle
+file — so every `git pull` answered *"Already up to date"* while following nothing. **The run
+above tested July's code**, as did a second run whose baseline broke outright.
+
+**So the `SURVIVED (unexpected)` result is not evidence**, and this task does not rest on it: the
+reasoning below was reproduced on Linux from the committed tree, where the mutation fails 4 tests
+in `test_accessibility.py` and `test_add_dialog.py` — none carrying the `windows_desktop` marker
+the driver selects. The Windows numbers are still to be taken.
+
 #### Acceptance criteria
 
+- **The driver refuses, or at least records, a tree it cannot identify.** It already refuses the
+  wrong interpreter and the wrong directory, and it printed six cases from a six-week-old checkout
+  without a word. `git log --oneline -1` and a dirty-tree check in its header would have cost
+  thirty seconds and saved three runs
+- **It distinguishes a killed mutation from a broken run.** The second run reported `KILLED` for
+  every case including the expected survivor, because it treats any non-zero exit as a kill and
+  its summary line had been swallowed — the same class of mistake its own comments record being
+  fixed for once already
 - The positive control is one the selected suite **cannot** pass — or the driver selects the
   tests that detect the existing one, stated either way rather than left to coincide
 - The claim in `mut_control_chain`'s docstring and `run_mutations.py`'s comment is corrected: a
