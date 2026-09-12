@@ -1,0 +1,234 @@
+# Build, gate and **draft** a release. Never publish (`T-324`).
+#
+# **`push: tags` and nothing else.** `ci.yml` remains the per-push smoke; this runs only when a
+# `v*` tag appears. No `workflow_dispatch`, because a release has exactly one legitimate trigger
+# and a dispatchable one invites a draft built from an untagged tree. No `pull_request` or
+# `pull_request_target` ever — `SECURITY.md` §CI trust boundary makes that the control that keeps
+# a fork's code off the maintainer's machines, and `tests/unit/test_workflow_triggers.py` fails
+# if either appears.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# **Read-only by default, widened in exactly one job.** `SECURITY.md` requires every workflow to
+# declare `contents: read` at the top level; the `draft` job below re-declares
+# `contents: write` for itself and no other job inherits it. That is the one place this project's
+# CI trust boundary widens, and it widens by one scope, for one job, to create a draft.
+permissions:
+  contents: read
+
+# A release build must not be cancelled by anything, including a second tag: a half-built draft
+# is the one artifact nobody can tell apart from a finished one.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # ---------------------------------------------------------------------------------------------
+  # Step 1 of T-324's scope, and it runs alone so nothing is built against a tag that is wrong.
+  verify:
+    name: the tag agrees with the tree
+    runs-on: ${{ fromJSON(vars.LINUX_RUNNER || '"ubuntu-latest"') }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # **Full history.** The ancestry check below needs it, and `ci.yml`'s shallow clone is
+          # what `T-331` records costing a session's diagnosis when a check silently had no
+          # commits to look at.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+
+      - name: The tag matches __version__
+        # `REL-003` fixes the version in `__init__.py`. `tools/version_tag_check.py` is that rule
+        # as a function with a CLI, refusing a mismatch, a `.devN` commit, and seven tag
+        # spellings the decision did not take.
+        run: python tools/version_tag_check.py --tag "$GITHUB_REF_NAME"
+
+      - name: The tag is on main
+        # A tag on a branch nobody reviewed would build and draft exactly like a real one.
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME points at $GITHUB_SHA, which is not on origin/main."
+            exit 1
+          fi
+          echo "$GITHUB_SHA is on main"
+
+      - name: The changelog has a section for this version
+        # Checked here rather than in the `draft` job, because discovering it after two builds
+        # wastes the builds — and because a draft with an empty body is worse than a stop.
+        run: python tools/changelog_section.py --version "${GITHUB_REF_NAME#v}"
+
+  # ---------------------------------------------------------------------------------------------
+  build-linux:
+    name: AppImage
+    needs: verify
+    runs-on: ${{ fromJSON(vars.LINUX_RUNNER || '"ubuntu-latest"') }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build in the oldest-glibc container
+        # **Not on the runner.** `REL-004` requires building against the oldest glibc the README
+        # claims, and `OPS-012` measured why: the development machine is glibc 2.43, so an
+        # AppImage built there fails on every current LTS while passing every test run there.
+        # `packaging/build_appimage.sh` carries that reasoning and the container it needs.
+        run: |
+          mkdir -p dist
+          podman run --rm -v "$PWD":/src:ro,Z -v "$PWD/dist":/out:Z \
+            docker.io/library/python:3.14-slim-bookworm /src/packaging/build_appimage.sh
+
+      - name: The gates, over the payload that shipped
+        # `build_appimage.sh` already gates the AppDir it assembles. This re-gates what came out,
+        # because the thing that ships is the `.AppImage` and `T-323`'s history is a gate that
+        # passed with its subject removed.
+        run: |
+          artifact=$(ls dist/*.AppImage)
+          chmod +x "$artifact"
+          "$artifact" --appimage-extract >/dev/null
+          python packaging/artifact_gates.py squashfs-root/usr/bin
+
+      - name: The probes, on the release build
+        run: |
+          artifact=$(ls dist/*.AppImage)
+          for probe in --spawn-probe --ytdlp-probe --database-probe --ytdlp-update-probe; do
+            echo "--- $probe"
+            "$artifact" "$probe"
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-linux
+          path: dist/*.AppImage
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------------------------
+  build-windows:
+    name: installer
+    needs: verify
+    runs-on: [self-hosted, windows, desktop]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: The tools this build does not install
+        # **`OPS-012` §3: a self-hosted runner must not provision itself as a side effect of a
+        # build.** Inno Setup is placed on `STARBASE` by a deliberate maintainer act, so this
+        # checks and **fails** rather than installing it — a build that silently installed a
+        # compiler would make the machine's state a function of whoever pushed a tag.
+        run: |
+          if ! command -v ISCC >/dev/null 2>&1 && [ ! -x "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
+            echo "::error::Inno Setup's ISCC.exe is not on STARBASE. Install it by hand (OPS-012 section 3)."
+            exit 1
+          fi
+
+      - name: Install the project and the build extra
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,build]"
+
+      - name: Fetch the pinned ffmpeg
+        # **A named step, not a side effect.** `packaging/tracks-and-trails.spec` deliberately
+        # does not fetch anything — `OPS-012` §3 is about a *build* changing the machine. This is
+        # a reviewable step in a workflow a human reads, downloading one pinned archive into the
+        # workspace and verifying its SHA-256 before extracting. `LIC-001` decides which archive:
+        # an LGPL shared build, never a GPL one.
+        run: python packaging/fetch_ffmpeg.py
+
+      - name: Build the windowed artifact
+        working-directory: packaging
+        env:
+          TT_RELEASE_BUILD: "1"
+        run: pyinstaller --noconfirm --clean --distpath ../dist --workpath ../build tracks-and-trails.spec
+
+      - name: The gates, over the release build
+        run: python packaging/artifact_gates.py dist/tracks-and-trails
+
+      - name: The probes, on the release build
+        # **`console=False` means no `stdout`**, which is the whole reason `_freeze_probe.say`
+        # writes to `TT_PROBE_REPORT`. Reading the console here would read nothing and pass.
+        env:
+          TT_PROBE_REPORT: reports/release-probes.txt
+        run: |
+          mkdir -p reports
+          for probe in --spawn-probe --ytdlp-probe --database-probe --ytdlp-update-probe; do
+            echo "--- $probe"
+            ./dist/tracks-and-trails/tracks-and-trails.exe "$probe" || exit 1
+          done
+          cat reports/release-probes.txt
+
+      - name: Compile the installer
+        # The version comes from the tag, which `verify` has already proved equals `__version__`.
+        # The script refuses to compile without it rather than defaulting (`REL-003`).
+        run: |
+          iscc="ISCC"
+          command -v ISCC >/dev/null 2>&1 || iscc="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+          "$iscc" "/DAppVersion=${GITHUB_REF_NAME#v}" \
+            "/DSourceDir=..\\dist\\tracks-and-trails" packaging/tracks-and-trails.iss
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-windows
+          path: packaging/Output/*.exe
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------------------------
+  draft:
+    name: draft the release
+    needs: [build-linux, build-windows]
+    runs-on: ${{ fromJSON(vars.LINUX_RUNNER || '"ubuntu-latest"') }}
+    # **The one widened scope in this project's CI.** Nothing above it has write access and
+    # nothing below it inherits this.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+
+      - uses: actions/download-artifact@v6
+        with:
+          path: incoming
+
+      - name: Collect the artifacts and checksum them
+        run: |
+          mkdir -p release
+          find incoming -type f \( -name '*.AppImage' -o -name '*.exe' \) -exec cp {} release/ \;
+          cd release
+          # Both artifacts, or neither. A release missing a platform is a release nobody notices
+          # is missing a platform.
+          test -n "$(ls *.AppImage 2>/dev/null)" || { echo "::error::no AppImage"; exit 1; }
+          test -n "$(ls *.exe 2>/dev/null)" || { echo "::error::no installer"; exit 1; }
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Draft it, and never publish it
+        # **`--draft` is not a default here, it is the point** (`T-324`). Publishing is a human
+        # click after `T-328`'s release review, which is the only place a release is inspected
+        # before it is public. The assertion below is the gate on that: if a future edit ever
+        # drops `--draft`, this step fails rather than announcing a release.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python tools/changelog_section.py --version "${GITHUB_REF_NAME#v}" > body.md
+          gh release create "$GITHUB_REF_NAME" \
+            --draft \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file body.md \
+            release/*
+          state=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)
+          if [ "$state" != "true" ]; then
+            echo "::error::$GITHUB_REF_NAME is not a draft. Nothing in this project publishes."
+            exit 1
+          fi
+          echo "drafted $GITHUB_REF_NAME; publishing is a human act after the T-328 review"

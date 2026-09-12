@@ -14,6 +14,115 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-324 — A release workflow that builds, gates and drafts — and never publishes
+
+**Status:** **In Review** — written 2026-09-12. **Its first acceptance criterion needs a tag**, and
+a tag is the one artifact in this project that cannot be quietly corrected, so that one is left to
+the maintainer rather than taken. Filed 2026-09-11 with the Phase 5 plan.
+
+#### 2026-09-12 — the workflow, and the criterion deliberately not met
+
+`.github/workflows/release.yml`, four jobs: `verify` → (`build-linux`, `build-windows`) → `draft`.
+
+**`push: tags` and nothing else.** No `workflow_dispatch`, because a release has exactly one
+legitimate trigger and a dispatchable one invites a draft built from an untagged tree. No
+`pull_request` ever — `SECURITY.md` §CI trust boundary makes the trigger set the control that
+keeps a fork's code off the maintainer's machines, and `tests/unit/test_workflow_triggers.py`
+already scans this file for it.
+
+**The permission widens by exactly one scope, for one job.** `contents: read` at the top level as
+`SECURITY.md` requires; `contents: write` re-declared on `draft` alone. A build job with write
+access could replace a release and has no reason to be able to.
+
+**It drafts, and the drafting is asserted three ways** — the flag is passed, the result is read
+back with `gh release view --json isDraft`, and a test forbids every publishing verb anywhere in
+the file. One of those alone would be easy to lose in an edit.
+
+**Nothing is built before the tag is verified.** `verify` runs alone and checks three things: the
+tag equals `__version__` (`tools/version_tag_check.py`), the commit is an ancestor of
+`origin/main`, and **the changelog has a section for the version**. The last is checked *there*
+rather than at the end, because discovering it after two builds wastes the builds — and because a
+draft with an empty body is worse than a stop, since somebody then publishes it.
+
+**`tools/changelog_section.py` is a function with a CLI**, which is `T240-R1`'s rule: a decision
+buried in `sed` is a decision nobody reviews. **Its tests found two defects in it immediately** —
+the first version matched up to the `]` and left `- 2026-09-12` as the first line of the release
+body, and it required a separator before a pre-release suffix so `0.1.0rc1` was not a version at
+all. Rewritten as a small parse: a body runs from the end of its heading *line* to the next
+version heading, so the date stays out and a `### Added` inside stays in. 14 cases, including that
+`0.1.10` does not satisfy a request for `0.1.0` and that a missing section is told apart from an
+empty one.
+
+**The release builds are gated and probed, not merely built.** `ci.yml`'s `frozen` job proves the
+*smoke* build; the release build differs in the three places that matter — windowed on Windows,
+ffmpeg bundled, built in the oldest-glibc container on Linux. So all four probes and all four
+`T-323` gates run again against what actually ships, and the Windows probe step sets
+`TT_PROBE_REPORT`, because `console=False` leaves a windowed build with no `stdout` and reading
+the console would read nothing and pass.
+
+**`OPS-012` §3 held in the one place it is tempting to break.** The Windows job **checks for Inno
+Setup and fails**, naming the rule, rather than installing it. The pinned ffmpeg fetch *is* a
+step here — and that is consistent rather than an exception: §3 is about a *build* changing the
+machine, and `packaging/tracks-and-trails.spec` still refuses to fetch anything. A named,
+reviewable step in a workflow a human reads is the opposite of a side effect.
+
+**`cancel-in-progress: false`**, deliberately. A half-built draft is the one artifact nobody can
+tell apart from a finished one — and `cancel-in-progress` has already destroyed a Windows evidence
+run twice in this project, most recently on 2026-09-12.
+
+**21 tests.** What is *not* done is the first acceptance criterion: *"a tag on a test branch
+produces a draft release with two artifacts and a checksums file"*. Pushing a tag is an outward
+act `REL-003` governs and `docs/RELEASE.md`'s own review prompt forbids without instruction, and
+the Windows half needs `STARBASE`. **That is left to the maintainer**, and until it is run this
+workflow is reviewed rather than proven.
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 5
+**Depends on:** `T-319`, `T-321`, `T-322`, `T-323`, `T-320`
+**Relevant context:** `.github/workflows/ci.yml`'s `frozen` job (builds both artifacts every push
+and uploads **evidence only**, 30-day retention — nothing today produces a downloadable release);
+`OPS-009`/`OPS-010`/`OPS-012` (where each platform builds); `SECURITY.md` §CI trust boundary
+(read-only default token, no secrets); `docs/RELEASE.md`'s release review (*"do not tag, commit, push,
+or publish unless explicitly instructed"*); `NFR-007`
+**Affected surfaces:** `.github/workflows/release.yml` (new), `docs/RELEASE.md`
+**Risk:** Medium — a workflow with permission to create releases is the one place the CI trust
+boundary widens, and it must widen by exactly one scope
+
+#### Scope
+
+Triggered by a `v*` tag. On the same runners `ci.yml` uses — Windows on `STARBASE`, Linux on the
+oldest-glibc container `T-321` names — it:
+
+1. Asserts the tag matches `__version__` (`T-320`'s rule) and the commit is on `main`
+2. Builds `T-319`'s windowed artifact and `T-322`'s installer; builds `T-321`'s AppImage
+3. Runs every frozen probe and every `T-323` gate against the **release** builds
+4. Writes `SHA256SUMS` for both artifacts
+5. Creates a **draft** GitHub Release with the artifacts, the checksums, and the `CHANGELOG.md`
+   section for the version as its body
+
+**It stops at draft, always.** Publishing is a human click after `T-328`'s review, which is the
+release prompt's own rule and the only place a release can be inspected before it is public. The
+workflow's token gets `contents: write` for that one job and nothing else keeps it (`SECURITY.md`).
+
+#### Acceptance criteria
+
+- A tag on a test branch produces a draft release with two artifacts and a checksums file, and
+  `gh release view` shows `draft: true`
+- A tag whose version disagrees with `__version__` fails at step 1 with the disagreement named
+- The `permissions:` block grants `contents: write` to the release job only; the workflow file is
+  reviewed against `SECURITY.md` §CI trust boundary and the review recorded
+- `docs/RELEASE.md` describes the tag → draft → review → publish sequence, and the rollback of
+  each step
+- The `frozen` job in `ci.yml` is unchanged in scope — it remains the per-push smoke, and this
+  workflow does not run on push
+
+#### Out of scope
+
+- Publishing. Deliberately
+- Signing (`T-317` decides; if signed, the signing step lives here and the key does not)
+
+---
+
 ### T-318 — Decide how "a clean machine" is evidenced for the first release
 
 **Status:** **In Review** — the harness landed 2026-09-12 and has taken Linux evidence for
@@ -2417,56 +2526,6 @@ down rather than an omission discovered at the first SmartScreen screenshot.
 ---
 
 
-### T-324 — A release workflow that builds, gates and drafts — and never publishes
-
-**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 5
-**Depends on:** `T-319`, `T-321`, `T-322`, `T-323`, `T-320`
-**Relevant context:** `.github/workflows/ci.yml`'s `frozen` job (builds both artifacts every push
-and uploads **evidence only**, 30-day retention — nothing today produces a downloadable release);
-`OPS-009`/`OPS-010`/`OPS-012` (where each platform builds); `SECURITY.md` §CI trust boundary
-(read-only default token, no secrets); `docs/RELEASE.md`'s release review (*"do not tag, commit, push,
-or publish unless explicitly instructed"*); `NFR-007`
-**Affected surfaces:** `.github/workflows/release.yml` (new), `docs/RELEASE.md`
-**Risk:** Medium — a workflow with permission to create releases is the one place the CI trust
-boundary widens, and it must widen by exactly one scope
-
-#### Scope
-
-Triggered by a `v*` tag. On the same runners `ci.yml` uses — Windows on `STARBASE`, Linux on the
-oldest-glibc container `T-321` names — it:
-
-1. Asserts the tag matches `__version__` (`T-320`'s rule) and the commit is on `main`
-2. Builds `T-319`'s windowed artifact and `T-322`'s installer; builds `T-321`'s AppImage
-3. Runs every frozen probe and every `T-323` gate against the **release** builds
-4. Writes `SHA256SUMS` for both artifacts
-5. Creates a **draft** GitHub Release with the artifacts, the checksums, and the `CHANGELOG.md`
-   section for the version as its body
-
-**It stops at draft, always.** Publishing is a human click after `T-328`'s review, which is the
-release prompt's own rule and the only place a release can be inspected before it is public. The
-workflow's token gets `contents: write` for that one job and nothing else keeps it (`SECURITY.md`).
-
-#### Acceptance criteria
-
-- A tag on a test branch produces a draft release with two artifacts and a checksums file, and
-  `gh release view` shows `draft: true`
-- A tag whose version disagrees with `__version__` fails at step 1 with the disagreement named
-- The `permissions:` block grants `contents: write` to the release job only; the workflow file is
-  reviewed against `SECURITY.md` §CI trust boundary and the review recorded
-- `docs/RELEASE.md` describes the tag → draft → review → publish sequence, and the rollback of
-  each step
-- The `frozen` job in `ci.yml` is unchanged in scope — it remains the per-push smoke, and this
-  workflow does not run on push
-
-#### Out of scope
-
-- Publishing. Deliberately
-- Signing (`T-317` decides; if signed, the signing step lives here and the key does not)
-
----
 
 ### T-325 — Cold start, measured on the artifact that ships
 
