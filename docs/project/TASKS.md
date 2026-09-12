@@ -16,10 +16,10 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ### T-325 — Cold start, measured on the artifact that ships
 
-**Status:** **In Review** — measured 2026-09-12 on both artifacts, cold included. **`NFR-002` is
-not met on Windows and the task now needs a ruling rather than a re-measure**: cold start is
-**3.976 s against a 3 s bound**. Warm is 1.55 s and was never the question. Filed 2026-09-11 with
-the Phase 5 plan.
+**Status:** **In Review** — measured 2026-09-12 on both artifacts, cold included, and **the ruling
+it needed is taken**: [`REL-008`](DECISIONS.md#rel-008--windows-gets-its-own-startup-number-and-linuxs-stays-where-it-is).
+`NFR-002` stays Linux-only and is met with roughly 5× margin; `NFR-010` adds a 5-second Windows
+bound, which every measurement clears. Filed 2026-09-11 with the Phase 5 plan.
 
 #### 2026-09-12 — the numbers, and the one that is over the bound
 
@@ -72,8 +72,31 @@ waiting for. A tool cannot tell cold from warm; only the caller knows what state
 in. `tools/startup_time.py` now takes `--cold` and says which it was told, rather than asserting
 the one it cannot know.
 
-**What is left is a ruling, not a re-measure.** `NFR-002` says *"cold start"*, and cold start is
-3.976 s. Three options, none of them the implementer's:
+#### 2026-09-12 (final) — the ruling, and a correction to this entry
+
+**This entry said `NFR-002` was not met. That overstated it, and the overstatement is the finding.**
+`NFR-002` reads *"under 3 seconds on the reference **Linux** machine"* — it has never covered
+Windows. `TESTING.md` §8 item 14 said *"the reference machine"*, dropping the word, and a Windows
+figure was duly reported against a Linux requirement as a failure. **Linux passes with about five
+times the margin.** The defect was a gate item disagreeing with the requirement it cites, which is
+the class this project keeps finding — and this time in a document rather than in code.
+
+**Ruled by the maintainer 2026-09-12**, recorded as `REL-008`:
+
+| | number | measured | verdict |
+|---|---|---|---|
+| Linux, `NFR-002` (unchanged) | 3 s | 0.634 s warm, 1.077 s first-touch | **met** |
+| Windows, `NFR-010` (new) | **5 s** | **3.976 s cold**, 4.656 s worst first launch | **met** |
+
+**Five seconds rather than four, from the measurements**: 4 s clears the cold figure by 24 ms,
+which is a coin toss on a busy machine rather than a bound. §8 item 14 now names both platforms and
+is executable — `tools/startup_time.py --cold`.
+
+**One measurement is still missing and is not inferred away**: Linux cold, which needs a reboot of
+the machine doing the work. The margin makes it unlikely to matter; that is an inference, written
+as one.
+
+**The rejected alternatives, for the record** — none of them the implementer's to pick:
 
 | Option | What it costs |
 |---|---|
@@ -81,8 +104,8 @@ the one it cannot know.
 | **Raise the number** — 4 s covers every measurement taken, 5 s leaves margin on a slower machine | Honest, and the release gate then passes on a number somebody chose |
 | **Attack the cost** | Mostly not ours: a Defender exclusion is not something an artifact can arrange for itself, and 155 MB is what bundling ffmpeg costs. **A one-file build would make it worse**, not better — it trades startup for extraction |
 
-**What is not an option is leaving `TESTING` §8 item 14 reading as a pass.** It is a release-gate
-item with a number in it, and the number is not met.
+**§8 item 14 no longer reads as a pass on an untested claim**, which was the one outcome ruled out
+from the start: it names the platform, the artifact and the launch, and points at the tool.
 **Owner:** Implementer measures; Maintainer's machine is the reference
 **Priority:** High — it is a release-gate item with a number in it
 **Phase:** Phase 5

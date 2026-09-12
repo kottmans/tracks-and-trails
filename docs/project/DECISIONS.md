@@ -55,6 +55,7 @@ Current requirements and architecture retain their own canonical authority.
 | [REL-005](#rel-005--the-first-windows-installer-ships-unsigned) | The first Windows installer ships unsigned | Accepted | — |
 | [REL-006](#rel-006--a-clean-machine-is-a-disposable-vm-the-maintainer-owns) | A clean machine is a disposable VM the maintainer owns | Accepted | — |
 | [REL-007](#rel-007--the-artifacts-use-the-system-certificate-store-and-bundle-none) | The artifacts use the system certificate store and bundle none | Accepted | — |
+| [REL-008](#rel-008--windows-gets-its-own-startup-number-and-linuxs-stays-where-it-is) | Windows gets its own startup number, and Linux's stays where it is | Accepted | — |
 | [REL-002](#rel-002--collect_submodulesyt_dlp-stays-as-insurance-against-a-pin-we-do-not-have-yet) | `collect_submodules("yt_dlp")` stays, as insurance against a pin we do not have yet | Accepted | — |
 | [REL-001](#rel-001--ship-frozen-self-contained-artifacts-no-python-required-on-the-users-machine) | Ship frozen, self-contained artifacts: no Python required on the user's machine | Accepted | — |
 | [OPS-004](#ops-004--windows-ci-runners-provide-a-real-desktop-verify-against-it) | Windows CI runners provide a real desktop; verify against it | Accepted | [OPS-005](#ops-005--starbase-is-the-windows-verification-platform-hosted-only-findings-do-not-gate-the-phase); [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously) |
@@ -1074,6 +1075,68 @@ Two alternatives were put and rejected:
   and the reason it was refused.
 - **Reopening condition:** a report from a real user whose machine has no usable trust store, or
   a platform where yt-dlp's HTTPS stack stops consulting the system store.
+
+---
+
+## REL-008 — Windows gets its own startup number, and Linux's stays where it is
+
+**Status:** **Accepted** (2026-09-12) — maintainer decision, ruling on `T-325`'s measurements
+**Date:** 2026-09-12
+**Relates to:** `NFR-002` (unchanged), `NFR-010` (added by this), `TESTING.md` §8 item 14.
+
+### Context
+
+`T-325` measured startup on both shipped artifacts for the first time — `T-007`'s only recorded
+number predates freezing, ffmpeg bundling, the theme and the settings dialog, and was taken from
+source.
+
+| | cold (after reboot) | first launch after a build | warm median |
+|---|---|---|---|
+| Linux AppImage | not taken | 1.077 s | **0.634 s** |
+| Windows release build | **3.976 s** | 3.780 s / 4.656 s | **1.550 s** |
+
+**The finding that decided this is not a number, it is a sentence.** `NFR-002` reads *"under 3
+seconds on the reference **Linux** machine"* — it has never covered Windows. `TESTING.md` §8 item
+14 said *"the reference machine"*, dropping that word, and a Windows figure was duly reported
+against a Linux requirement as a failure. **Linux passes `NFR-002` with roughly five times the
+margin; Windows had no startup requirement at all.**
+
+Three alternatives were put and rejected:
+
+- **Leave Windows unspecified**, restoring only the missing word. Honest and minimal, and it
+  leaves nothing to notice a regression to fifteen seconds on the platform where startup is
+  already 2.4× slower and where a 155 MB bundle plus antivirus makes regression most likely.
+- **Extend `NFR-002` to both at 3 s.** Windows fails today, and most of the cost is not this
+  project's to attack: a Defender exclusion is not something an artifact can arrange for itself,
+  bundling ffmpeg is what `OPS-001` requires, and a one-file build would make *first* launch
+  worse rather than better.
+- **One number for both, raised to 5 s.** Simplest to state, and it gives away Linux margin that
+  is currently free — loosening a bound met five times over removes the signal if Linux regresses.
+
+### Decision
+
+**`NFR-002` stays Linux-only and unchanged. `NFR-010` adds a Windows bound of 5 seconds cold,
+measured on the installed artifact at first launch after a reboot. §8 item 14 names both.**
+
+**Five seconds rather than four, from the measurements**: cold is 3.976 s and the worst
+first-launch-after-build is 4.656 s. A 4-second bound clears the cold figure by **24 ms**, which
+is a coin toss on a busy machine rather than a bound.
+
+### Consequences
+
+- **Each platform's number is tied to what was measured on it**, rather than one number chosen for
+  neither.
+- **The release gate stops reading as a pass on an untested claim.** §8 item 14 is now executable —
+  `tools/startup_time.py --cold` — and names which artifact and which launch.
+- **`--cold` is the caller's assertion, not the tool's.** The harness printed *"measuring warm
+  launches"* over the cold number this decision rests on; a tool cannot tell cold from warm, and
+  only whoever rebooted the machine knows.
+- **The Linux cold number is still untaken**, because a reboot kills the session doing the work.
+  Warm 0.634 s and first-touch 1.077 s against 3 s make it unlikely to matter, and that is an
+  inference rather than a measurement — stated here so it is not mistaken for one.
+- **Reopening condition:** a reference machine change on either platform, or a Windows cold
+  measurement above 5 s, which would mean the first-launch cost has grown rather than that the
+  bound was wrong.
 
 ---
 

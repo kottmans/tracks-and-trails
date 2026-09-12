@@ -295,7 +295,11 @@ All of the following, **on Linux and Windows**, before any tag or distributed bu
     over the artifact, `packaging/artifact_gates.py`, reusing `core/logging`'s own redaction
     vocabulary so a secret class added there is scanned for here. The *repository* half remains
     manual
-14. Cold start under 3 seconds on the reference machine (`NFR-002`)
+14. Cold start under 3 seconds on the reference **Linux** machine (`NFR-002`) **and under 5
+    seconds on Windows** (`NFR-010`) — **executable**, `tools/startup_time.py --cold`, on the
+    artifact a user gets, at first launch after a reboot. *(This said "the reference machine",
+    dropping the word `NFR-002` uses, and a Windows figure was duly reported against a Linux
+    requirement. The platform is named here now because the two numbers differ.)*
 15. **Windows manual verification session completed** — the §9 list performed on a real
     Windows desktop and recorded in the canonical review record. Blocking for the first public release;
     CI green is not a substitute (`OPS-003`).

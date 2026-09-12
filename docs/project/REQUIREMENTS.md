@@ -5,7 +5,7 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-07
+**Last updated:** 2026-09-12
 **Last reviewed:** 2026-08-07
 **Update when:** Product scope, a feature, a user-facing constraint, or acceptance criteria change.
 **Does not contain:** Schema details, framework specifics, task lists, review history.
@@ -185,13 +185,14 @@ application is **not**, and the heading was the first place that read otherwise.
 ## 5. Non-functional requirements
 
 - **NFR-001 — Responsiveness.** UI thread is never blocked on network, disk, or subprocess work. Interactions respond within ~100 ms.
-- **NFR-002 — Startup.** Cold start to interactive window under 3 seconds on the reference Linux machine.
+- **NFR-002 — Startup (Linux).** Cold start to interactive window under 3 seconds on the reference Linux machine. **Measured 2026-09-12 on the AppImage: 0.634 s warm, 1.077 s first launch after a build** (`T-325`). *(The words "reference Linux machine" are load-bearing and were read past once: this requirement has never covered Windows, and `TESTING.md` §8 item 14 said "the reference machine" without them, which is how a Windows figure came to be reported against it. Windows has its own number in `NFR-010`.)*
 - **NFR-003 — Fault isolation.** Per `REQ-028`, extractor faults are contained. Job state is durable: an unclean kill must not corrupt the queue database.
 - **NFR-004 — Portability.** One codebase, no platform forks beyond a documented platform-abstraction layer. All paths use platform-appropriate user config/data/cache directories; nothing is written beside the installed application.
 - **NFR-005 — Accessibility.** Full keyboard navigation, visible focus, screen-reader labels on all controls, and no information conveyed by color alone.
 - **NFR-006 — Honest errors.** Errors state what failed, why, and what the user can do. Extractor messages are surfaced, never swallowed or replaced with a generic message.
 - **NFR-007 — Privacy.** No telemetry, no analytics, no phone-home, no crash reporting to a third party. The only outbound network traffic is downloads the user requested, explicit yt-dlp update checks, **and SponsorBlock lookups when the user has switched them on** (`SEC-003`, 2026-08-07). *(The third destination was added deliberately rather than the promise read loosely. It is opt-in per preset, and the request carries the first four hex characters of `sha256(video_id)` — one bucket in 65,536 — with filtering done locally, so the endpoint does not learn which video was watched. Measured against yt-dlp 2026.07.04, not recalled. A configurable API endpoint was declined: a typo in it would be a new destination.)*
 - **NFR-008 — Resilience to yt-dlp churn.** yt-dlp changes frequently. The integration must isolate that churn behind an adapter so a yt-dlp update does not require changes spread across the codebase.
+- **NFR-010 — Startup (Windows).** Cold start to interactive window under **5 seconds** on the reference Windows machine, measured on the **installed** artifact at first launch after a reboot. *(Added 2026-09-12, maintainer ruling, recorded as [`REL-008`](DECISIONS.md#rel-008--windows-gets-its-own-startup-number-and-linuxs-stays-where-it-is). `NFR-002` is Linux-only by its own words, so Windows had no startup requirement at all — and it is the platform where startup is 2.4× slower and where a 155 MB bundle plus antivirus makes regression most likely. **The number comes from measurement, not preference**: cold 3.976 s, worst first-launch-after-build 4.656 s, warm 1.550 s. A 4-second bound would clear the cold figure by 24 ms, which is a coin toss rather than a bound.)*
 - **NFR-009 — Licensing.** All bundled and runtime dependencies must be license-compatible with distribution (see `LIC-001`). Qt/PySide6 stays dynamically linked.
 
 ## 6. MVP scope
