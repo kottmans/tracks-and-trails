@@ -369,9 +369,51 @@ driven through the window, which is what lets it cover *cancel another* — the 
 item 8 clause no probe can reach, because cancellation is a parent-side signal and a probe has no
 parent.
 
+#### 2026-09-12 (later) — the Windows half, taken in Sandbox, and scripted rather than by hand
+
+**`docs/project/evidence/windows-0.1.0.dev0.md`.** Windows 10 Enterprise inside Windows Sandbox on
+`STARBASE`, installing `Tracks-and-Trails-0.1.0.dev0-setup.exe` (sha256 `7528e12f…`):
+
+| | |
+|---|---|
+| pre-install check | python, pip, ffmpeg, ffprobe, yt-dlp, cl, gcc, qmake6, git — **all absent**; no system Qt |
+| install | **exit 0 in 18.6 s**, per-user, **no elevation prompt** |
+| placed | 225 files, `_internal\licenses\`, `_internal\ffmpeg.exe`, Start Menu shortcut |
+| desktop icon | **absent**, as the opt-in default asks |
+| first launch | window in **~2 s**, titled *Tracks & Trails* |
+| orphans after close | **none** |
+
+**`REL-006`'s premise was unchecked until today.** It chose Windows Sandbox because it is *"clean
+on every launch by design"* — true, and **Sandbox was `Disabled` on `STARBASE`**, with
+`WindowsSandbox.exe` absent. One command and a reboot, but it could as easily have been a Home
+edition, and the decision would have needed revisiting.
+
+**Scripted, which the task did not expect.** `T-318` made this half a template a human fills in,
+because the Linux probes have no Windows equivalent. Sandbox runs a **logon command** and a mapped
+folder carries the result back, so the pre-install check, the silent install, placement, launch
+and orphan check are all `packaging/windows-sandbox/evidence.ps1`. What stays human is `OPS-004`'s
+judgement — whether the installer *feels* normal — which no script answers.
+
+**Three defects in the harness, found by running it:**
+
+1. **An XML comment containing `--`.** Sandbox refused the configuration with *"The configuration
+   file was invalid. Error 0xc00cee2f"* — a double hyphen is illegal inside an XML comment, and
+   my own prose put one there.
+2. **A recursive `Get-ChildItem C:\` looking for `Qt6Core.dll`.** Not a check, a crawl: the run
+   stopped there for twenty-five minutes. Narrowed to the places a system-wide Qt could actually
+   be loaded from.
+3. **The verdict said PASS while the report said `start menu MISSING`.** Two faults at once: the
+   path omitted the `DefaultGroupName` subfolder the `.iss` creates, so it was looking in the
+   wrong place — and **nothing incremented the failure count**, so a reported problem passed
+   anyway. The shortcut was there all along. A check that reports a problem and does not fail is
+   the defect this project keeps finding, and this one was mine.
+
+**Still not covered, and it is `T-039`'s by scope:** uninstall and what survives it. `DAT-001` says
+settings, history and downloaded files stay; that needs a second Sandbox pass driving the
+uninstaller, which `T-039` owns.
+
 **The Windows machine is settled** — maintainer, 2026-09-12: *"The windows half can run on
-starbase."* So this waits on an **artifact**, not on hardware: `T-319` builds the Windows one-dir
-and `T-322`'s installer is what gets installed. The template is ready for both.
+starbase."*
 
 **One distinction the template makes and this entry repeats, because it decides whether the
 evidence counts.** `STARBASE` is where the run is *driven from*; it is not the clean machine. It

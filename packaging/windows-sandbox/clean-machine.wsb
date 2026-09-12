@@ -1,0 +1,31 @@
+<!--
+  Windows Sandbox configuration for T-318's Windows clean-machine evidence.
+
+  REL-006 chose a disposable machine the maintainer owns. Sandbox is clean on every launch by
+  construction and discarded on close, which is exactly the property that decision rests on. It
+  was Disabled on STARBASE until 2026-09-12, so the decision had rested on an unchecked premise.
+
+  The mapped folder is READ-WRITE deliberately: it carries the installer in and the evidence back
+  out. Nothing else crosses the boundary.
+
+  NOTE: an XML comment may not contain a double hyphen. Writing one here produced
+  "The configuration file was invalid. Error 0xc00cee2f" from a file that looked fine.
+
+  Run it:  explorer.exe packaging\windows-sandbox\clean-machine.wsb
+  after copying the installer into C:\dev\sandbox-share.
+-->
+<Configuration>
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>C:\dev\sandbox-share</HostFolder>
+      <SandboxFolder>C:\Users\WDAGUtilityAccount\Desktop\share</SandboxFolder>
+      <ReadOnly>false</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+  <!-- Networking is on because the application is a downloader; a clean machine that cannot
+       reach the network could not run the one real download TESTING section 8 item 8 asks for. -->
+  <Networking>Enable</Networking>
+  <LogonCommand>
+    <Command>powershell.exe -ExecutionPolicy Bypass -NoProfile -File C:\Users\WDAGUtilityAccount\Desktop\share\evidence.ps1</Command>
+  </LogonCommand>
+</Configuration>
