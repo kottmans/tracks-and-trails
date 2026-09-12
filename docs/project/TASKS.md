@@ -276,6 +276,72 @@ accepts it. Until then it is a proposal in a task, which is the narrowest honest
 
 ## Ready
 
+### T-331 — The Windows mutation driver's positive control is not one
+
+**Status:** Ready — filed 2026-09-11 from the first execution of `tools/windows/mutations/` on
+`STARBASE`, which `T-040` has asked for since it was filed.
+**Owner:** Implementer
+**Priority:** Medium — it does not break the product, and it means a driver that claims to know
+when its own verdicts are worthless does not
+**Phase:** Phase 5 (test infrastructure)
+**Depends on:** nothing
+**Relevant context:** `tools/windows/mutations/mut_control_chain.py` and `run_mutations.py`;
+`T-026`, `T-040`, `T-060`/`T060-R2`; `tests/ui/test_windows_desktop.py:483–490`
+**Affected surfaces:** `tools/windows/mutations/`
+**Risk:** Low
+
+#### What happened
+
+The first real run on `STARBASE`, 2026-09-11:
+
+```
+OK                     baseline, unmutated
+SURVIVED (unexpected)  CONTROL: focus_chain returns nothing
+KILLED                 dialog: two declared widgets reordered
+KILLED                 dialog: undeclared focusable control
+KILLED                 progress view: undeclared focusable control
+SURVIVED (expected)    progress view: delivered order reversed
+```
+
+`mut_control_chain` says of itself: *"It MUST be reported as killed. If it survives, the plugin
+mechanism is not taking effect and every other verdict in this run is meaningless."*
+
+#### Both halves of that are wrong, and the run proves it
+
+**The mechanism took effect.** Three mutations were killed in the same run, which is only possible
+if the plugins applied. So the other verdicts stand rather than being void.
+
+**The mutation is caught — by tests this driver does not select.** Applying
+`mut_control_chain` on Linux against `tests/ui/test_accessibility.py` and
+`tests/ui/test_add_dialog.py` fails **4 tests**. The driver runs `-m windows_desktop`, and none
+of the four carries that marker.
+
+**Why the desktop suite cannot see it.** `_set_tab_order` pairs `focus_chain()` and calls
+`setTabOrder`; an empty chain simply makes no calls, leaving **Qt's construction order**.
+`test_windows_desktop.py:490` writes its expected order out by hand rather than deriving it —
+*"that is the whole point"* — so it passes whenever the delivered order matches, and on this
+dialog construction order already does. The tests are right about the delivered order. They are
+not evidence that the *declaration* is load-bearing, and the control assumed they were.
+
+#### Acceptance criteria
+
+- The positive control is one the selected suite **cannot** pass — or the driver selects the
+  tests that detect the existing one, stated either way rather than left to coincide
+- The claim in `mut_control_chain`'s docstring and `run_mutations.py`'s comment is corrected: a
+  surviving control does not by itself void the other verdicts, and this run is why
+- **Run on `STARBASE` and the table recorded**, since a driver's own correctness is exactly the
+  thing that cannot be argued from Linux
+- `run_mutations.py` **writes its table to a file** as well as printing it. `T329-R2` asks for a
+  recorded result and the driver currently leaves only console output, which is how this run
+  nearly went unrecorded
+
+#### Out of scope
+
+- The dialog's construction order, which is correct
+- `T-060`'s expected survivor, which is recorded and understood
+
+---
+
 ### T-329 — The focus-ring floor mismodels a header, and Windows is where it shows
 
 **Status:** **In Progress** — `T329-R1` corrected 2026-09-11; **`T329-R2` is outstanding and
