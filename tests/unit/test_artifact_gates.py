@@ -503,17 +503,13 @@ def test_an_unreadable_file_is_not_a_clean_file(tmp_path: Path) -> None:
         sealed.chmod(0o644)
 
 
-def test_the_interpreters_own_prefix_is_provenance_not_a_leak(
+def test_the_install_prefix_is_provenance_in_a_file_that_quotes_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`T323-R3`: `frozen linux` failed on **110** hits, every one inside the bundled CPython.
+    """`T323-R3`: a file may legitimately quote where the interpreter was installed.
 
-    CI installs Python under the runner's home, so `libpython3.14.so.1.0` quotes that path. It is
-    a fact about where CPython was built, redistributed as-is; no packaging step can change it.
-
-    **The exemption is one computed string, not a class of file.** The second half of this test is
-    the half that matters: a home path that is *not* the interpreter's prefix is still a finding,
-    in the very same binary.
+    A `sysconfig` dump is the obvious case. So the *one string* is stripped and the question is
+    asked again — and a home path that is not that string is still a finding in the same file.
     """
     home = (tmp_path / "home" / "builder").resolve()
     prefix = home / "hostedtoolcache" / "Python" / "3.14.7" / "x64"
@@ -522,10 +518,121 @@ def test_the_interpreters_own_prefix_is_provenance_not_a_leak(
     monkeypatch.setattr(gates.sys, "base_prefix", str(prefix))
 
     root = build(tmp_path / "app")
-    runtime = root / "_internal" / "libpython3.14.so.1.0"
-    runtime.write_bytes(f"{prefix}/lib/python3.14\x00{prefix}/include".encode())
+    dump = root / "_internal" / "sysconfig_data.json"
+    dump.write_text(f'{{"prefix": "{prefix}"}}', encoding="utf-8")
     assert gates.no_secrets_or_personal_paths(root) == []
 
-    runtime.write_bytes(f"{prefix}/lib\x00 and also {home}/checkouts/private".encode())
+    dump.write_text(
+        f'{{"prefix": "{prefix}", "src": "{home}/checkouts/private"}}', encoding="utf-8"
+    )
     problems = gates.no_secrets_or_personal_paths(root)
     assert problems and "home directory" in problems[0], problems
+
+
+def test_the_bundled_interpreters_own_build_paths_are_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T323-R4`: the first fix for this did not work, and CI is where that showed.
+
+    `frozen linux` failed on **110** hits across `libpython3.14.so.1.0` and `lib-dynload/*.so`,
+    for *both* the home literal and the user-name-in-a-path literal. Exempting `sys.base_prefix`
+    could not cover them, because **that is not the path in the binary**: CPython embeds the
+    directory it was *built* in, and whoever built it did so somewhere. Here the install prefix is
+    deliberately nowhere near home, which is the configuration the exemption has to survive.
+    """
+    home = (tmp_path / "home" / "runner").resolve()
+    home.mkdir(parents=True)
+    monkeypatch.setattr(gates.Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(gates.sys, "base_prefix", "/opt/hostedtoolcache/Python/3.14.7/x64")
+    monkeypatch.setattr(gates.getpass, "getuser", lambda: "runner")
+
+    root = build(tmp_path / "app")
+    internal = root / "_internal"
+    dynload = internal / "python3.14" / "lib-dynload"
+    dynload.mkdir(parents=True)
+    embedded = f"{home}/work/python/cpython/Modules/\x00/runner/lib".encode()
+    (internal / "libpython3.14.so.1.0").write_bytes(b"\x7fELF" + embedded)
+    (dynload / "_bz2.cpython-314-x86_64-linux-gnu.so").write_bytes(b"\x7fELF" + embedded)
+
+    assert gates.no_secrets_or_personal_paths(root) == []
+
+
+def test_the_interpreter_exemption_does_not_cover_anything_else(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**The half that keeps it an exemption rather than a hole.**
+
+    The same bytes in a file the interpreter does not own are still a finding — which is what
+    would catch a release built in the maintainer's own checkout.
+    """
+    home = (tmp_path / "home" / "runner").resolve()
+    home.mkdir(parents=True)
+    monkeypatch.setattr(gates.Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(gates.sys, "base_prefix", "/opt/hostedtoolcache/Python/3.14.7/x64")
+
+    root = build(tmp_path / "app")
+    (root / "_internal" / "build_settings.json").write_text(
+        f'{{"checkout": "{home}/software_projects/tracks-and-trails"}}', encoding="utf-8"
+    )
+    problems = gates.no_secrets_or_personal_paths(root)
+    assert problems and "home directory" in problems[0], problems
+
+
+def test_only_path_literals_are_excused_in_an_interpreter_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Provenance explains a build path. It does not explain a cookie.
+
+    So the exemption is scoped to the two path literals, and everything else in the vocabulary
+    still runs over the interpreter's files.
+    """
+    home = (tmp_path / "home" / "runner").resolve()
+    home.mkdir(parents=True)
+    monkeypatch.setattr(gates.Path, "home", classmethod(lambda cls: home))
+
+    root = build(tmp_path / "app")
+    runtime = root / "_internal" / "libpython3.14.so.1.0"
+    runtime.write_bytes(f"\x7fELF{home}/work\x00Cookie: sid=abc123\n".encode())
+    problems = gates.no_secrets_or_personal_paths(root)
+    assert problems and "cookie header carrying a value" in problems[0], problems
+
+
+def test_a_netrc_reference_is_not_excused_by_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`.netrc` sits outside the exemption, and that claim was in a docstring untested.
+
+    A mutation that excused *every* literal in an interpreter file — not only the two path ones —
+    survived the whole file. Where CPython was built explains a build path. It does not explain a
+    reference to a credentials store, so that one is still reported wherever it appears.
+    """
+    home = (tmp_path / "home" / "runner").resolve()
+    home.mkdir(parents=True)
+    monkeypatch.setattr(gates.Path, "home", classmethod(lambda cls: home))
+
+    root = build(tmp_path / "app")
+    runtime = root / "_internal" / "libpython3.14.so.1.0"
+    runtime.write_bytes(f"\x7fELF{home}/work\x00/root/.netrc\x00".encode())
+    problems = gates.no_secrets_or_personal_paths(root)
+    assert problems and "netrc" in problems[0], problems
+
+
+@pytest.mark.parametrize(
+    ("relative", "owned"),
+    [
+        ("_internal/libpython3.14.so.1.0", True),
+        ("_internal/python3.14/lib-dynload/_bz2.cpython-314-x86_64-linux-gnu.so", True),
+        ("_internal/python3.dll", True),
+        ("_internal/DLLs/_socket.pyd", True),
+        # Everything this project or its dependencies put there is **not** exempt.
+        ("_internal/build_settings.json", False),
+        ("_internal/yt_dlp/extractor/youtube.py", False),
+        ("_internal/tracks_and_trails/app.pyc", False),
+        ("_internal/libQt6Core.so.6", False),
+        ("tracks-and-trails", False),
+    ],
+)
+def test_interpreter_ownership_is_narrow(relative: str, owned: bool) -> None:
+    """*"Anything under `_internal`"* would be the whole bundle, including this application's own
+    code and yt-dlp's — which is the difference between an exemption and a hole."""
+    assert gates.is_interpreter_owned(Path(relative)) is owned

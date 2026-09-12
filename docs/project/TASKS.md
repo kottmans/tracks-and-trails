@@ -59,8 +59,17 @@ driven through the window, which is what lets it cover *cancel another* — the 
 item 8 clause no probe can reach, because cancellation is a parent-side signal and a probe has no
 parent.
 
-**What is not done:** no Windows candidate exists yet to take evidence on. `T-319` builds it, and
-`T-322`'s installer is what Sandbox would install. The template is ready for both.
+**The Windows machine is settled** — maintainer, 2026-09-12: *"The windows half can run on
+starbase."* So this waits on an **artifact**, not on hardware: `T-319` builds the Windows one-dir
+and `T-322`'s installer is what gets installed. The template is ready for both.
+
+**One distinction the template makes and this entry repeats, because it decides whether the
+evidence counts.** `STARBASE` is where the run is *driven from*; it is not the clean machine. It
+carries Python, a toolchain, ffmpeg and a developer's yt-dlp, so the pre-install check run there
+would report `PRESENT` on every line and fail — correctly. **Windows Sandbox on `STARBASE`** is
+the clean machine: fresh on every launch, discarded on close, and `REL-006` chose it for exactly
+that property. The ffmpeg line matters most there: `OPS-001` bundles ffmpeg on Windows, so a
+machine with ffmpeg already on `PATH` cannot tell a bundled copy from a borrowed one.
 **Owner:** Maintainer decision; Implementer records it and builds whichever harness it names
 **Priority:** High — the two exit criteria it serves are the phase's definition of done
 **Phase:** Phase 5
@@ -209,7 +218,13 @@ podman run --rm -v "$PWD":/src:ro,Z -v "$PWD/dist":/out:Z \
 **The base is not the Ubuntu LTS this task proposed, and the swap is an improvement.** It carries
 Python 3.14 already and is **glibc 2.36** against Ubuntu 24.04's 2.39, so it covers more machines;
 there is no 3.14 image on an older Debian. **The floor that buys is Debian 12 / Ubuntu 24.04 and
-newer — Ubuntu 22.04 is glibc 2.35 and is out of reach**, and the README claims exactly that.
+newer — Ubuntu 22.04 is glibc 2.35 and is out of reach.**
+
+*(This said "and the README claims exactly that". **It did not** — `Debian 12` and `Ubuntu 24.04`
+appear nowhere in `README.md`, checked 2026-09-12. The floor lived only in a build script's
+comments. It is now in `docs/RELEASE.md` as a release-page requirement, and the README's Install
+section takes it when `T-320` adds one. Corrected rather than deleted, because a false claim about
+where a claim lives is the kind this project keeps finding.)*
 
 **Why the container rather than this desk, measured rather than argued:**
 
@@ -347,8 +362,14 @@ the user behind a TLS-inspecting proxy. Three ways out:
 | **C. Bundle `certifi` outright** | Simplest, and **wrong for anyone behind a TLS-inspecting proxy** |
 
 **Recommendation: A**, with the requirement written down. B is defensible if a user ever reports
-it; C should not be taken. Recorded here rather than decided, and the clean-machine harness
-installs the package with the reason stated in its own output either way.
+it; C should not be taken.
+
+**Ruled A by the maintainer on 2026-09-12**, recorded as
+[`REL-007`](DECISIONS.md#rel-007--the-artifacts-use-the-system-certificate-store-and-bundle-none).
+The requirement is written down in `docs/RELEASE.md` under *What the release page must state*,
+with the glibc floor beside it, and `T-320`'s deferred README Install section is named as where
+both go when it exists. The clean-machine harness installs the package with the reason in its own
+output, so the boundary is stated rather than quietly satisfied.
 
 **The evidence file is `docs/project/evidence/linux-0.1.0.dev0.md`** — pre-install check, all six
 probes, and a launch held offscreen for 20 s. `--version` is still not a launch test; the launch
@@ -727,6 +748,54 @@ that is what covering the binaries costs, and it is affordable for something tha
 (the release-review prompt invited prose where a tool now produces evidence) are both closed. R4's
 first attempt cited *"item 1"* for the version check; §8 item 1 is lint and mypy, and version
 consistency is not a §8 item at all. Corrected against the list rather than from memory.
+
+#### 2026-09-12 (later) — `T323-R4`: the R3 fix did not work, and CI is where that showed
+
+**The first `frozen linux` run to execute this gate failed it**, on the same 110 hits `T323-R3`
+was supposed to have fixed:
+
+```
+FAIL  item 13 · no secrets or personal paths
+        _internal/libpython3.14.so.1.0 contains the build machine's home directory
+        _internal/libpython3.14.so.1.0 contains the build machine's user name, in a path
+        _internal/python3.14/lib-dynload/_asyncio.cpython-314-x86_64-linux-gnu.so contains the build machine's home directory
+        … and 90 more
+```
+
+**R3 exempted `sys.base_prefix` — the path the interpreter is *installed* at — and that is not
+the path in the binary.** CPython embeds the directory it was **built** in, in `__FILE__`
+strings, `sysconfig` data and debug sections. Whoever built that CPython did so somewhere, and if
+they did it in a home directory then every copy of it quotes one for ever. The run also reported
+the **user-name-in-a-path** literal, which R3's exemption did not cover at all.
+
+**Why this was not caught before pushing, which is the part worth recording.** R3 was verified
+two ways, and neither could have failed: a unit test that monkeypatched `Path.home()` and
+`sys.base_prefix` into agreement, and a local artifact whose Python lives at `/usr` — where the
+exemption never fires because there is nothing to exempt. **The configuration that breaks it is
+the one CI has and this desk does not**, and the gate had never run in CI before that push.
+
+**The fix is by file, and only for the two path literals.** `is_interpreter_owned` names the
+CPython runtime and its extension modules — `libpython*`, `lib-dynload/`, `python3.dll`, `DLLs/`
+— which PyInstaller copies in byte-for-byte. A path inside one is a fact about a dependency, not
+about this build: we copy those files, we do not author them.
+
+**What that gives up, stated rather than implied:** a personal path existing *only* inside the
+bundled interpreter would not be reported. Nothing here can put one there, and the alternative
+measured worse — the gate failed every CI build, which is how a gate gets switched off.
+
+**Reproduced against a real artifact, not only in unit tests.** CI's topology planted into a
+fresh PyInstaller build on this machine — the build path in `libpython3.14.so.1.0` and twenty
+`lib-dynload/*.so`, with the install prefix deliberately at `/usr`, nowhere near home:
+
+| Planted | Gate |
+|---|---|
+| home + user name in 21 interpreter files | **passes**, reporting `42 path literal(s) excused as provenance` |
+| the same path in `_internal/build_settings.json` | **FAIL** — the exemption is by file, not by string |
+| `Cookie: sid=…` inside `libpython3.14.so.1.0` | **FAIL** — only the path literals are excused |
+
+Four mutations, four caught — including one that **survived the first attempt**: excusing *every*
+literal rather than the two path ones would have let a `.netrc` reference through an interpreter
+file, and the docstring claiming otherwise was untested. 46 tests now.
 
 **22 tests added, and every defect above mutated back in:**
 

@@ -281,6 +281,25 @@ def ytdlp_is_pure_python(root: Path) -> list[str]:
     return problems
 
 
+#: Files a **redistributed interpreter** owns, which PyInstaller copies in byte-for-byte.
+#:
+#: Named by shape rather than by a list of versions, because the version moves.
+#: `libpython3.14.so.1.0` and `python3.14/lib-dynload/_bz2.cpython-314-x86_64-linux-gnu.so` are
+#: the two forms measured in a real build (`T323-R4`); `python3.dll` and `DLLs/` are the Windows
+#: spellings.
+def is_interpreter_owned(where: Path) -> bool:
+    """Whether `where` (relative to the artifact root) is part of the bundled interpreter.
+
+    **Deliberately narrow.** It is not *"anything under `_internal`"* — that is the whole bundle,
+    including this application's own code and yt-dlp's. It is the CPython runtime and its
+    extension modules, which are the files that carry the paths CPython was built at.
+    """
+    parts = where.as_posix().split("/")
+    if where.name.startswith(("libpython", "python3.dll")):
+        return True
+    return "lib-dynload" in parts or "DLLs" in parts
+
+
 def no_secrets_or_personal_paths(root: Path) -> list[str]:
     """§8 item 13 · `NFR-007` — nothing about the machine that built it, and no cookie material.
 
@@ -315,18 +334,29 @@ def no_secrets_or_personal_paths(root: Path) -> list[str]:
     home = str(Path.home())
     user = getpass.getuser()
 
-    #: **The interpreter's own installation prefix is provenance, not a leak** (`T323-R3`).
+    #: **A redistributed interpreter's own paths are provenance, not a leak** (`T323-R3`, and
+    #: `T323-R4` which is why this is a second attempt).
     #:
-    #: `frozen linux` failed this check on **110** hits, every one of them inside
-    #: `libpython3.14.so.1.0` or `lib-dynload/*.so` — the interpreter, carrying the path it was
-    #: installed at. CI installs Python under the runner's home, so the bundled runtime quotes it.
-    #: That is a fact about where CPython was built, redistributed as-is, and no packaging step
-    #: here can change it.
+    #: `frozen linux` failed on **110** hits, every one inside `libpython3.14.so.1.0` or
+    #: `lib-dynload/*.so`. The first fix exempted `sys.base_prefix` — the path the interpreter is
+    #: *installed* at — and it did not work, because **that is not the path in the binary**.
+    #: CPython embeds the directory it was **built** in, in `__FILE__` strings, `sysconfig` data
+    #: and debug sections. Whoever built that CPython did so somewhere, and if they did it in a
+    #: home directory then every copy of it quotes one for ever. The measured run reported *both*
+    #: the home literal and the user-name-in-a-path literal, which the prefix exemption did not
+    #: cover at all.
     #:
-    #: **This exempts one computed string, not a class of file.** A binary is still scanned; what
-    #: is allowed is the interpreter's own prefix appearing anywhere. A home path that is *not*
-    #: that prefix is still a finding, in any file — which is what would catch a build made in the
-    #: maintainer's own checkout.
+    #: **So the exemption is by file, and only for the path literals.** These files are copied
+    #: into the bundle byte-for-byte by PyInstaller; nothing this project does writes to them, so
+    #: a path inside one is a fact about a dependency rather than about this build.
+    #:
+    #: **What that gives up, stated rather than implied:** a personal path that existed *only*
+    #: inside the bundled interpreter would not be reported. Nothing in this project can put one
+    #: there — we copy the file, we do not author it — and the alternative measured worse: the
+    #: gate failed every CI build, which is how a gate gets switched off.
+    #:
+    #: **Cookie material and URL credentials are still scanned in these files**, because those
+    #: would *not* be explained by provenance. Only the two path literals are excused here.
     interpreter_prefix = str(Path(sys.base_prefix).resolve())
 
     literals: dict[str, str] = {
@@ -337,6 +367,14 @@ def no_secrets_or_personal_paths(root: Path) -> list[str]:
         ".netrc": "a netrc reference",
     }
     literals = {value: why for value, why in literals.items() if len(value) >= 6}
+
+    #: The literals the interpreter exemption covers: paths, and nothing else. `.netrc` is
+    #: deliberately outside it — a netrc reference is not explained by where CPython was built.
+    path_literals = frozenset(
+        value
+        for value in (home, home.replace("/", "\\"), f"/{user}/", f"\\{user}\\")
+        if len(value) >= 6
+    )
 
     #: Cheap, linear byte searches over **every** file, binary included. Deliberately distinctive:
     #: a bare `cookie:` matched a Kerberos format string in `libkrb5.so.3`, so the header form is
@@ -371,11 +409,17 @@ def no_secrets_or_personal_paths(root: Path) -> list[str]:
             if marker in lowered:
                 problems.append(f"{where} contains {why}")
 
+        interpreter_owned = is_interpreter_owned(where)
         for literal, why in literals.items():
             if literal.encode("utf-8", "ignore") not in raw:
                 continue
+            if literal in path_literals and interpreter_owned:
+                # Provenance of a dependency we copy rather than author (`T323-R4`).
+                exempted += 1
+                continue
             if literal == home and interpreter_prefix.startswith(home):
-                # Only the interpreter's own prefix is allowed, and only where it is the match.
+                # A non-interpreter file may still legitimately quote the install prefix — a
+                # `sysconfig` dump, say. Strip that one string and ask whether `home` survives.
                 remaining = raw.replace(interpreter_prefix.encode("utf-8", "ignore"), b"")
                 if literal.encode("utf-8", "ignore") not in remaining:
                     exempted += 1
@@ -407,9 +451,12 @@ def no_secrets_or_personal_paths(root: Path) -> list[str]:
             f"them in full; raise the bound or split them"
         )
     if exempted:
+        # **Reported, never silent.** An exemption nobody can see is indistinguishable from a
+        # check that never ran, which is the shape of every finding this gate has had.
         print(
-            f"      note: {exempted} file(s) quote the interpreter's own install prefix "
-            f"({interpreter_prefix}), which is provenance rather than a leak (T323-R3)"
+            f"      note: {exempted} path literal(s) excused as provenance — the bundled "
+            f"interpreter's own files, and the install prefix {interpreter_prefix} "
+            f"(T323-R3, T323-R4)"
         )
     return problems
 
