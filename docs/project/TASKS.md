@@ -767,9 +767,16 @@ bundled `.so` files.
 **This is the first evidence this project has that the bundle is self-contained.** Every previous
 Linux run was on a machine that already had Python and Qt installed.
 
-**Still outstanding:** one real download on each machine; the launch on the Fedora desktop; the
-`.desktop` and `metainfo.xml` validated *from inside* the AppImage rather than from source; and
-the icon appearing in a launcher, which wants a desktop rather than a container.
+**Validated from inside the built AppImage**, not from the sources it was made from:
+`desktop-file-validate` **clean** on the shipped `.desktop`, `appstreamcli validate`
+**successful** on the shipped `metainfo.xml`, and the icon present both at the AppDir root and
+under `usr/share/icons/hicolor/256x256/apps/` — the two places launchers look.
+
+**Still outstanding, and all three want a desktop rather than a container:** the launch on the
+Fedora desktop, the icon appearing in a launcher, and **one real download to completion**.
+`packaging/frozen_smoke.py` does not cover the last of those — it answers `ARC-002`'s process
+question and downloads nothing — so `TESTING` §8 item 8's *"run one real download"* has no
+automated route on this artifact and is a sitting, not a script.
 
 #### 2026-09-11 — the AppDir's three files, and what is deliberately still missing
 
