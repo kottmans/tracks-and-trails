@@ -889,6 +889,40 @@ and small, and they cost system packaging per distribution and a dependency matr
 
 ---
 
+### Amended 2026-09-11 — the Linux half is a container, and the number that decides it
+
+**The maintainer chose the container branch this decision already offered**, after asking to test
+on their own machines instead. That is not available for the question the criterion asks, and the
+measurement says why:
+
+| | glibc |
+|---|---|
+| The development machine (Fedora) | **2.43** |
+| Ubuntu 24.04 LTS | 2.39 |
+| Ubuntu 22.04 LTS | 2.35 |
+
+An AppImage built on the development machine **requires 2.43** and dies on either LTS with
+`GLIBC_2.43 not found` — which is `T-321`'s recorded risk verbatim: *"the artifact builds, runs on
+the build host, and dies on the user's machine."* **Testing it on that same machine would pass**,
+because the machine is the build host. So the one test proposed could not detect the most likely
+way the Linux artifact fails.
+
+**`podman` is already installed**, so this costs no VM and no second machine: an Ubuntu LTS
+container is the oldest-glibc **build host** `REL-004` requires *and* a runtime with no Python, Qt
+or toolchain, which is what exit criterion 1 and `TESTING` §8 item 7 ask for. One container, both
+answers.
+
+**Windows is unchanged**: Windows Sandbox on `STARBASE`, clean on every launch by design.
+`STARBASE` itself carries Python, PySide6, a venv and a checkout, so installing there proves the
+installer runs and **not** that the artifact is self-contained — which is the distinction `T-066`
+found CI getting wrong once already.
+
+**What this does not change:** the title above still says *VM*, and it stays, because the decision
+is about a disposable clean machine the maintainer owns rather than about the technology. The
+reopening condition is unchanged.
+
+---
+
 ## REL-005 — The first Windows installer ships unsigned
 
 **Status:** **Accepted** (2026-09-11) — maintainer decision, ruling on `T-317`'s proposal
