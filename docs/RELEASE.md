@@ -112,8 +112,13 @@ deleted when a new one lands.
 
 **Their data — not promised, and this is the important half.** `DAT-001`'s migrations are
 **forward-only**. A database migrated by a newer version is not readable by an older one, and the
-application **refuses** it rather than opening it and corrupting it silently. So a user who
-downgrades across a schema change keeps their files and loses their queue and history.
+application **refuses** it rather than opening it and corrupting it silently: the older build
+shows a message naming the file and exits 4, having written nothing. So a user who downgrades
+across a schema change keeps their files and loses their queue and history.
+
+*(Until 2026-09-12 this paragraph described a refusal the code did not perform — `migrate()` skips
+every migration at or below the database's version, so a newer database matched nothing and
+opened. `T320-R2` found it; `persistence/db.NewerSchemaError` is the refusal it described.)*
 
 **Say this on the release page whenever a release contains a migration.** A rollback path that
 quietly does not exist is worse than one the user was warned about, and this document states it

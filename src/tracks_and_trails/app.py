@@ -237,9 +237,23 @@ def run(argv: Sequence[str]) -> int:
     theme.apply(app)
 
     from tracks_and_trails.core.instance_lock import AlreadyRunningError
+    from tracks_and_trails.persistence.db import NewerSchemaError
 
     try:
         composition = compose(app)
+    except NewerSchemaError as refusal:
+        # **A downgrade across a schema change, refused rather than opened** (`T-320`, `DAT-001`).
+        # Same treatment as the already-running refusal, and for the same reason: this is a
+        # decision the application made, not a crash, and the user is looking at an icon rather
+        # than a terminal. `critical` rather than `information` because unlike a second launch,
+        # this one leaves the user with nothing until they act.
+        from PySide6.QtWidgets import QMessageBox
+
+        logging.getLogger("tracksandtrails.app").error("refusing to start: %s", refusal)
+        QMessageBox.critical(None, APP_NAME, str(refusal))
+        # Distinct from 3, so a script can tell "another copy is running" from "your library is
+        # newer than this build" — they need different actions.
+        return 4
     except AlreadyRunningError as refusal:
         # **It says which thing it did** (`ARC-006`): silence is indistinguishable from a hang, and
         # a second launch that exits quietly looks like a broken shortcut. A message box because

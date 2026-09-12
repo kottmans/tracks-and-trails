@@ -98,18 +98,33 @@ def test_a_tag_that_is_not_a_release_tag_is_refused(tag: str) -> None:
     assert "not a release tag" in problem
 
 
-def test_the_repository_as_it_stands_today_cannot_be_tagged() -> None:
-    """A live positive control, not a constructed one (`T-320`).
+def test_the_tool_agrees_with_the_checkout_it_is_run_in() -> None:
+    """A live control, not a constructed one (`T-320`) — and it has to hold in **both** states.
 
-    `main` is supposed to carry `.devN`. If this ever passes, either a release commit is checked
-    out — in which case the tag is the next step and this test has told the truth — or somebody has
-    dropped the suffix on `main`, which is the mistake `REL-003` exists to prevent.
+    This asserted flatly that the checkout could not be tagged, because `main` carries `.devN`
+    between releases. But the release commit that drops the suffix is exactly the commit §8 item 2
+    runs the full suite on, so the assertion turned the release gate red at the one moment it has
+    to be green. Measured: this and `test_the_tool_runs_as_a_script_against_this_checkout` both
+    failed on `__version__ = "0.1.0"` (`T320-R1`).
+
+    The property that holds either way is the one worth asserting: **the tool's verdict about this
+    checkout is correct**. Between releases that means refusing to tag; on a release commit it
+    means accepting that version's own tag and no other.
     """
     version = installed_version()
-    assert check(f"v{version.split('.dev')[0]}", version) is not None, (
-        f"__version__ is {version!r}, which is a released version sitting on main. REL-003 keeps "
-        f"the .devN suffix between releases"
-    )
+    release = version.split(".dev")[0]
+
+    if version == release:
+        assert check(f"v{release}", version) is None, (
+            f"__version__ is {version!r}, a release version, and the tool will not accept its own "
+            f"tag v{release}. A release commit that cannot be tagged is a blocked release"
+        )
+        assert check(f"v{release}.1", version) is not None, "any other tag must still be refused"
+    else:
+        assert check(f"v{release}", version) is not None, (
+            f"__version__ is {version!r}, which is a released version sitting on main. REL-003 "
+            f"keeps the .devN suffix between releases"
+        )
 
 
 def test_the_command_line_reports_and_exits() -> None:
@@ -124,12 +139,20 @@ def test_the_tool_runs_as_a_script_against_this_checkout() -> None:
     An import-time mistake — `installed_version` inserting the wrong path, say — is invisible to
     every test above, because the test process already has the package importable.
     """
+    version = installed_version()
+    release = version.split(".dev")[0]
     finished = subprocess.run(
-        [sys.executable, "tools/version_tag_check.py", "--tag", "v0.1.0"],
+        [sys.executable, "tools/version_tag_check.py", "--tag", f"v{release}"],
         cwd=REPOSITORY,
         capture_output=True,
         text=True,
         check=False,
     )
-    assert finished.returncode == 1, finished.stdout + finished.stderr
-    assert "development build" in finished.stderr
+    # Whichever state the checkout is in, the script has to reach a verdict — which is the
+    # import-time question this test exists for. Both branches run it for real.
+    if version == release:
+        assert finished.returncode == 0, finished.stdout + finished.stderr
+        assert "matches" in finished.stdout
+    else:
+        assert finished.returncode == 1, finished.stdout + finished.stderr
+        assert "development build" in finished.stderr

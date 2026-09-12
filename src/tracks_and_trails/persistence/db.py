@@ -105,6 +105,47 @@ def schema_version(connection: sqlite3.Connection) -> int:
     return int(row[0])
 
 
+class NewerSchemaError(RuntimeError):
+    """This database was written by a newer version of the application (`DAT-001`, `T-320`).
+
+    **`RELEASE.md` and `T-320` both said the application refuses such a database. It did not.**
+    `migrate()` walks the migrations it has and skips every one at or below the database's
+    version — so a database at version 11 opened by a build that knows ten migrations matched
+    nothing, applied nothing, and opened. The newer schema's columns are then read by code that
+    does not know about them, and written by code that does not maintain them.
+
+    Forward-only migrations mean there is nothing this version can do about it: there is no down
+    migration to run and no safe subset to open read-only. Refusing is the whole remedy, and it is
+    the one the documentation had already promised a user.
+    """
+
+    def __init__(self, found: int, understood: int, database: str = "") -> None:
+        self.found = found
+        self.understood = understood
+        self.database = database
+        where = f"\n\n{database}" if database else ""
+        super().__init__(
+            f"This library was created by a newer version of the application. Its database "
+            f"format is {found}, and this version understands {understood}.\n\nNothing has been "
+            f"changed. Install the newer version again to open it, or move the file aside to "
+            f"start a new library.{where}"
+        )
+
+
+def _database_file(connection: sqlite3.Connection) -> str:
+    """The main database's path, so a refusal can name the file the user has to act on.
+
+    Empty for an in-memory database, which has no file to name.
+    """
+    try:
+        for _sequence, name, file in connection.execute("PRAGMA database_list"):
+            if name == "main":
+                return str(file or "")
+    except sqlite3.Error:  # pragma: no cover - a connection too broken to interrogate
+        return ""
+    return ""
+
+
 def migrate(connection: sqlite3.Connection) -> list[int]:
     """Apply every pending migration in order, returning the versions applied.
 
@@ -133,6 +174,14 @@ def migrate(connection: sqlite3.Connection) -> list[int]:
 
     applied: list[int] = []
     current = schema_version(connection)
+
+    # **A database from the future is refused, not skipped** (`T-320`). Without this the loop
+    # below matches nothing, applies nothing, and returns cleanly — which reads as a migrated
+    # database and is how a downgrade silently opened a schema it does not understand.
+    newest = migrations[-1][0]
+    if current > newest:
+        raise NewerSchemaError(current, newest, _database_file(connection))
+
     for version, path in migrations:
         if version <= current:
             continue

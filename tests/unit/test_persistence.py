@@ -601,6 +601,82 @@ def test_migrating_twice_applies_nothing_the_second_time(tmp_path: Path) -> None
     connection.close()
 
 
+def test_a_database_from_a_newer_version_is_refused_rather_than_opened(tmp_path: Path) -> None:
+    """`T-320`: `RELEASE.md` promised this refusal and the code did not perform it.
+
+    `migrate()` skips every migration at or below the database's version, so a database one ahead
+    matched nothing, applied nothing, and returned `[]` — indistinguishable from an up-to-date
+    database. A downgrade across a schema change then opened a schema this build does not know,
+    which is precisely what forward-only migrations cannot survive.
+    """
+    database = tmp_path / "from_the_future.sqlite3"
+    connection = db.connect(database)
+    ahead = db.latest_version() + 1
+    connection.execute(f"PRAGMA user_version = {ahead:d}")
+    connection.close()
+
+    with pytest.raises(db.NewerSchemaError) as refusal:
+        db.connect(database)
+
+    assert refusal.value.found == ahead
+    assert refusal.value.understood == db.latest_version()
+
+
+def test_the_refusal_names_the_file_and_says_what_to_do(tmp_path: Path) -> None:
+    """The message is shown to a user in a dialog, not to a developer in a traceback.
+
+    So it has to carry the three things they need: that nothing was damaged, which file it is, and
+    the one action that opens it again.
+    """
+    database = tmp_path / "library.sqlite3"
+    connection = db.connect(database)
+    connection.execute(f"PRAGMA user_version = {db.latest_version() + 3:d}")
+    connection.close()
+
+    with pytest.raises(db.NewerSchemaError) as refusal:
+        db.connect(database)
+
+    message = str(refusal.value)
+    assert "Nothing has been changed" in message
+    assert str(database) in message, "a user cannot act on a refusal that does not name the file"
+    assert "newer version" in message
+
+
+def test_a_database_at_exactly_the_latest_version_still_opens(tmp_path: Path) -> None:
+    """The boundary, because *newer* and *newest* are one off from each other.
+
+    A refusal written with `>=` would reject every up-to-date database on the planet, which is a
+    worse failure than the one it is fixing.
+    """
+    database = tmp_path / "current.sqlite3"
+    connection = db.connect(database)
+    assert db.schema_version(connection) == db.latest_version()
+    connection.close()
+
+    reopened = db.connect(database)
+    assert db.migrate(reopened) == []
+    reopened.close()
+
+
+def test_the_refusal_leaves_the_database_untouched(tmp_path: Path) -> None:
+    """What the message claims, checked rather than asserted in prose.
+
+    *"Nothing has been changed"* is a promise about bytes on disk, and a refusal that had already
+    half-migrated would be making it falsely.
+    """
+    database = tmp_path / "library.sqlite3"
+    connection = db.connect(database)
+    connection.execute(f"PRAGMA user_version = {db.latest_version() + 1:d}")
+    connection.commit()
+    connection.close()
+    before = database.read_bytes()
+
+    with pytest.raises(db.NewerSchemaError):
+        db.connect(database)
+
+    assert database.read_bytes() == before, "the refusal wrote to the database it refused"
+
+
 def test_a_version_1_database_is_migrated_when_it_is_opened(tmp_path: Path) -> None:
     """`T-117`: an existing library opens and gains the column, rather than being refused.
 

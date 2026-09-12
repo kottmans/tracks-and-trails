@@ -542,7 +542,45 @@ build stamps the version this decides, and `T-319`, `T-321`, `T-322` and `T-324`
   back; **their data does not.** `DAT-001`'s migrations are forward-only and the application
   *refuses* a newer database rather than corrupting it, so a downgrade across a schema change costs
   the queue and history. `RELEASE.md` says so and requires it on the release page whenever a
-  release carries a migration.
+  release carries a migration. *(That refusal did not exist when this was written — see
+  `T320-R2` below.)*
+
+#### 2026-09-12 — the review's two findings
+
+**`T320-R1`: a release version turned the suite red.** Two tests here asserted flatly that this
+checkout cannot be tagged, because `main` carries `.devN` between releases. But the commit that
+drops the suffix is exactly the commit §8 item 2 runs the full suite on — so the assertions turned
+the release gate red at the one moment it has to be green. Measured on `__version__ = "0.1.0"`:
+`test_the_repository_as_it_stands_today_cannot_be_tagged` and
+`test_the_tool_runs_as_a_script_against_this_checkout` both failed.
+
+The property that holds in **both** states is the one worth asserting: *the tool's verdict about
+this checkout is correct*. Between releases that means refusing to tag; on a release commit it
+means accepting that version's own tag and no other. Both tests now branch on which state they
+find, and both were run in both states.
+
+**`T320-R2`: the documented refusal did not exist.** `RELEASE.md` and this entry both said the
+application *refuses* a database from a newer version rather than corrupting it. `migrate()` skips
+every migration at or below the database's version, so a database at 11 opened by a build that
+knows 10 matched nothing, applied nothing, and returned `[]` — indistinguishable from an
+up-to-date database. It then opened, and `compose()` ran recovery over a schema it does not
+understand on the very next line.
+
+`persistence/db.NewerSchemaError` is the refusal the documentation had already promised: raised
+from `migrate()` before anything is applied, carrying the two versions and the file's path,
+surfaced by `run()` as a message box and **exit 4** — distinct from 3 so a script can tell *another
+copy is running* from *your library is newer than this build*.
+
+| Mutation | Result |
+|---|---|
+| remove the guard (the behaviour as submitted) | 3 tests fail |
+| `>=` instead of `>` | the boundary test fails, and two ordinary restart tests with it |
+
+Five tests: the refusal, its message (it has to name the file — a dialog a user cannot act on is
+not a remedy), the boundary at exactly the latest version, that the refused database is **byte-for
+-byte unchanged**, and that it aborts `compose()` before recovery. The last hop — `run()`'s
+`except` clause — is inside the uncovered region `present()`'s docstring already names, and is
+left there rather than claimed.
 
 **The judgement call, flagged rather than taken quietly.** Scope says the README *"gains an Install
 section pointing at releases and loses 'there are no installers or packages yet'"*. **It has not**,

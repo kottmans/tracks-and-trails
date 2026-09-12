@@ -4019,3 +4019,27 @@ def test_what_a_stored_proxy_costs_the_log_is_bounded_at_both_ends(
         )
     finally:
         app_logging.forget_the_secrets()
+
+
+def test_a_newer_database_stops_composition_rather_than_opening_it(
+    composed: Callable[..., application.Composition], tmp_path: Path
+) -> None:
+    """`T-320`: the refusal has to reach the startup path, not only `persistence/db`.
+
+    `compose()` opens the database and then **recovers interrupted jobs on the very next line**,
+    rewriting rows. So a database from a newer build has to stop composition outright — before
+    recovery touches a schema this build does not understand, and before a window exists to show
+    a queue read through the wrong columns.
+
+    `run()` turns this into a message box and exit 4. That last hop is inside the uncovered region
+    `present()`'s docstring names: `run()` builds its own `QApplication` and cannot be called from
+    a session that already has one.
+    """
+    database = tmp_path / "from_the_future.db"
+    connection = db.connect(database)
+    connection.execute(f"PRAGMA user_version = {db.latest_version() + 1:d}")
+    connection.commit()
+    connection.close()
+
+    with pytest.raises(db.NewerSchemaError):
+        composed(database=database)
