@@ -1324,9 +1324,18 @@ What is now pinned, each against its other declaration or its requirement:
 `AppVersion` default that would give the installer a second opinion about the version, and
 dropping `recursesubdirs` so only the executable ships.
 
-**Still blocked on the same thing as `T-319`:** compiling and installing needs `STARBASE`, and
-`STARBASE_HOST` is unset here with no local record of it — `tools/windows/run-on-starbase.sh` has
-no default because the repository must not carry an account name or a LAN address.
+**`STARBASE` is reachable now** — the maintainer authorised the key on 2026-09-12 and `T-319`'s
+build ran there. **Inno Setup is not installed on it**, checked three ways: `where ISCC` finds
+nothing, neither `Program Files` directory contains it, and its uninstall key is absent.
+
+**So this stays blocked, and deliberately.** `OPS-012` §3 forbids a self-hosted runner
+provisioning itself as a side effect of a build, and this task's own scope calls installing it *"a
+deliberate manual act on `STARBASE`"*. Installing a compiler because a build wanted one is the
+thing that rule exists to prevent, so it was not done.
+
+**What it needs:** Inno Setup 6 installed on `STARBASE` by hand. Then `ISCC.exe
+/DAppVersion=0.1.0.dev0 /DSourceDir=..\dist\tracks-and-trails packaging\tracks-and-trails.iss`
+compiles against the release build that now exists there, and `T-039` can begin.
 **Relevant context:** `REL-001` (*"PyInstaller one-dir build + Inno Setup installer"*); `OPS-004`
 (silent install, placement, uninstall are automatable — `T-039` does that; whether it *feels*
 normal stays human); `DAT-001` (user data survives an uninstall); `NFR-004` (nothing written
