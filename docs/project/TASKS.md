@@ -469,11 +469,10 @@ recorded here only so that choosing it is a choice.
 
 ### T-330 — The Windows job runs the suite serially, and is at 97% of its bound
 
-**Status:** **In Review** — implemented 2026-09-12; **the three consecutive green runs its own
-criteria ask for are outstanding**, and until they exist this is a change that has not been
-watched. Filed 2026-09-11 from three consecutive runs at **98%, 98% and 97%** of the 40-minute
-bound. **Maintainer ruled the direction the same day**: parallelise, rather than raise the
-number.
+**Status:** **In Review** — implemented and **evidenced 2026-09-12: three consecutive green runs**,
+`windows desktop` at 16.3, 18.2 and 22.7 minutes against a 40-minute bound it had been crossing at
+97–98%. Filed 2026-09-11. **Maintainer ruled the direction the same day**: parallelise, rather than
+raise the number.
 **Owner:** Implementer
 **Priority:** Medium — nothing is failing, and the next test added tips it into timeouts
 **Phase:** Phase 5 (CI capacity; found during Phase 4's exit evidence)
@@ -588,7 +587,33 @@ up Windows Sandbox for `T-318`, and a run cancelled or failed by a restart mid-j
 slot and leave a red that means nothing. Three *consecutive* green runs is the criterion, and a
 run killed by a reboot is not a data point about parallelism.
 
-**Not yet closed.** The acceptance criteria ask for **three consecutive green runs**, and `T-056`
+#### 2026-09-12 (final) — three consecutive green runs, and the spread is worth stating
+
+| Run | head | `windows desktop` | of the bound |
+|---|---|---|---|
+| [`34708223001`](https://github.com/kottmans/tracks-and-trails/actions/runs/34708223001) | `66accdc` | **16.3 min** | 41% |
+| [`34712837969`](https://github.com/kottmans/tracks-and-trails/actions/runs/34712837969) | `3c2b1b9` | **18.2 min** | 46% |
+| [`34715120131`](https://github.com/kottmans/tracks-and-trails/actions/runs/34715120131) | `180b1f3` | **22.7 min** | 57% |
+
+**Every job green in all three.** Median 18.2 min against the serial 39.1–39.5.
+
+**The spread is wider than the serial runs', and that is recorded rather than smoothed.** Four
+serial jobs fell within 0.4 minutes of each other; these three span **6.4**. `-n auto` takes the
+worker count from the machine, so a busy host changes both the count and each worker's share —
+and this host was busy: `T-319`'s release builds, `T-325`'s launch measurements and `T-318`'s
+Sandbox run all happened on it during these three runs, which the maintainer explicitly permitted
+rather than waiting. **The 22.7 overlapped the Sandbox evidence run**, which is a whole Windows VM.
+
+So the honest reading is: **parallel is ~2× faster and noisier**, the worst observed is 57% of the
+bound against 98% before, and the noise has an identified cause that a CI-only run would not have.
+`T-259`'s reporter still warns past 85%, so a regression toward the bound would be seen.
+
+**`T-074` did not appear.** The `xdist` worker count changed from 1 to 16 across three runs and
+the intermittent segfault this task named as its risk did not recur — which is evidence it was not
+provoked, not evidence it is gone.
+
+**Not closed by this entry alone.** The acceptance criteria ask for **three consecutive green
+runs**, and `T-056`
 — an open Windows defect about whether a process is alive — is exactly the question parallel load
 perturbs. That is also what the `check` job's comment means by *"the Windows legs stay serial
 until someone can watch a parallel run there"*: this is the watching. **The new elapsed time is
