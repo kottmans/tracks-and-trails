@@ -1099,6 +1099,34 @@ so it cannot acquire a second opinion about the version `REL-003` fixes in `__in
 rather than tested: the structure and directives are checked, and **silent install, placement,
 launch, uninstall and removal are all `T-039`'s, on a machine that has Inno Setup**. Installing it
 is a deliberate manual act on `STARBASE` per `OPS-012` §3.
+
+#### 2026-09-12 (later) — the half a Windows machine would not have caught either
+
+**Compiling it still needs Inno Setup, and that bound stands.** What does not need it is the other
+half: **every declaration in this script repeats something declared elsewhere, and nothing fails
+when a copy drifts.** The installer would compile, install, and leave a Start Menu shortcut
+pointing at a filename the spec stopped producing — a defect a successful compile cannot see. Same
+class as `test_appdir_metadata.py` for the Linux AppDir, and it is in
+`tests/unit/test_windows_packaging.py` beside `T-319`'s.
+
+What is now pinned, each against its other declaration or its requirement:
+
+| Claim | Checked against |
+|---|---|
+| `AppExe` is the executable the build produces | the PyInstaller spec's own `name=` |
+| the script refuses to compile without `/DAppVersion=` **and defines no default** | `REL-003`, which fixes the version in `__init__.py` |
+| no administrator prompt, per-user location | `NFR-004`; a second warning on top of `REL-005`'s SmartScreen click-through is how an install gets abandoned |
+| Start Menu shortcut always, desktop icon **unchecked** | the scope's named defaults |
+| the whole one-dir tree, `recursesubdirs` included | `LIC-001` — `licenses\` has to reach the user, and `_internal\` has to reach them at all |
+| `SignTool` present but **commented** | `REL-005` ships `0.1.0` unsigned, so enabling it is an edit to a line that exists |
+
+**Four mutations, four caught**: a pre-ticked desktop shortcut, `PrivilegesRequired=admin`, an
+`AppVersion` default that would give the installer a second opinion about the version, and
+dropping `recursesubdirs` so only the executable ships.
+
+**Still blocked on the same thing as `T-319`:** compiling and installing needs `STARBASE`, and
+`STARBASE_HOST` is unset here with no local record of it — `tools/windows/run-on-starbase.sh` has
+no default because the repository must not carry an account name or a LAN address.
 **Relevant context:** `REL-001` (*"PyInstaller one-dir build + Inno Setup installer"*); `OPS-004`
 (silent install, placement, uninstall are automatable — `T-039` does that; whether it *feels*
 normal stays human); `DAT-001` (user data survives an uninstall); `NFR-004` (nothing written
