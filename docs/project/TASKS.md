@@ -753,12 +753,30 @@ newer — Ubuntu 22.04 is glibc 2.35 and is out of reach**, and the README claim
 checking the binary would conclude the desktop build was fine. The requirement lives in the
 bundled `.so` files.
 
-**`Tracks_and_Trails-0.1.0.dev0-x86_64.AppImage`, 49.9 MB.** On `ubuntu:24.04` with **no
-`python3`, no Qt and no ffmpeg**:
+**The first build of it could not open a window, and that is the finding.** The slim image has no
+Qt runtime libraries, so PyInstaller's PySide6 hook could not import `QtCore` in the child process
+it uses to ask Qt where its plugins live. It logged `failed to obtain Qt library info` as a
+**warning** and carried on, producing an artifact with **no platform plugins at all**.
+
+**It passed everything below.** `--version`, the spawn probe, the yt-dlp probe, the database probe,
+all four artifact gates — because **none of them creates a `QApplication`**. It died on the
+maintainer's real desktop with `SIGABRT` inside bundled `libQt6Core`, and the coredump showed it
+resolving `libbrotlicommon`, `libharfbuzz`, `libfontconfig` and `libglib` from **Fedora RPMs**,
+because those had not been bundled either. Qt's own message named it exactly: *"Could not find the
+Qt platform plugin"*.
+
+The build now installs Qt's runtime dependencies, and **asserts the platform plugins came across**
+before going any further — the check that would have caught this on the first build. Nothing else
+in this project asks whether a window can open from a frozen artifact.
+
+**`Tracks_and_Trails-0.1.0.dev0-x86_64.AppImage`, 68.2 MB** (49.9 MB before Qt's libraries and
+plugins were actually in it). On `ubuntu:24.04` with **no `python3`, no Qt, no ffmpeg and no
+toolchain**:
 
 | Check | Result |
 |---|---|
-| `--version` | `0.1.0.dev0`, exit 0 |
+| **The application itself**, `QT_QPA_PLATFORM=offscreen` | **still running at 20 s**, no crash markers |
+| `--version` | `0.1.0.dev0`, exit 0 — **and this is not a launch test**: it exits before a `QApplication` exists, which is how the broken build passed |
 | `--spawn-probe` (`T-020`) | *spawned a child from this build, exchanged one message, and reaped it* |
 | `--ytdlp-probe` (`T-033`) | *the frozen artifact carries a usable yt-dlp with its extractors* |
 | `--database-probe` | ok |
@@ -772,8 +790,15 @@ Linux run was on a machine that already had Python and Qt installed.
 **successful** on the shipped `metainfo.xml`, and the icon present both at the AppDir root and
 under `usr/share/icons/hicolor/256x256/apps/` — the two places launchers look.
 
-**Still outstanding, and all three want a desktop rather than a container:** the launch on the
-Fedora desktop, the icon appearing in a launcher, and **one real download to completion**.
+**`libGL.so.1` is deliberately not bundled**, and the clean-machine model accounts for it: an
+AppImage must not ship the graphics stack, because it has to match the user's driver. A bare
+`ubuntu:24.04` has none at all, which no real desktop lacks, so the test container installs
+`libgl1`/`libegl1` and nothing else — still no Python, no Qt, no toolchain.
+
+**It starts on the development desktop too** — Fedora, glibc 2.43, built against 2.36.
+
+**Still outstanding, and both want a desktop rather than a container:** the icon appearing in a
+launcher, and **one real download to completion**.
 `packaging/frozen_smoke.py` does not cover the last of those — it answers `ARC-002`'s process
 question and downloads nothing — so `TESTING` §8 item 8's *"run one real download"* has no
 automated route on this artifact and is a sitting, not a script.
