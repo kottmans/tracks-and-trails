@@ -1080,6 +1080,33 @@ integration slice serially. Measured locally on Linux, the same suite is **184 s
 against **1,045 s** serial — 5.7×. Windows need not match that, but 36:22 serial is the number to
 attack rather than the 40 that contains it.
 
+#### 2026-09-12 — implemented; the three runs are what remains
+
+The `Full suite` step was one serial `pytest -v` over everything. It is now the **same two
+invocations the Linux `check` job uses**, in the same order: `tests/unit tests/ui` with `-n auto`,
+then `tests/integration` serial.
+
+**The integration slice stays serial deliberately**, not by omission. `T-123` has two open defects
+that appear only under parallel load there — `test_manager.py` scans every process on the machine
+and kills other workers' children, and a retry deadline stops firing under load. Parallelising
+that half would trade a slow job for a flaky one.
+
+**The split collects the same tests as the bare invocation it replaces**, checked rather than
+assumed: `pytest --collect-only tests` and
+`pytest --collect-only tests/unit tests/ui tests/integration` both report **4,245**. `tests/network`
+is deselected by `addopts` either way, and nothing else lives outside those three directories.
+
+**`reports/pytest.{xml,txt}` becomes `reports/pytest-unit-ui.*` and `reports/pytest-integration.*`**,
+matching the Linux job. Nothing reads those names — checked; the only references are three
+historical review records describing runs that already happened.
+
+**Not yet closed.** The acceptance criteria ask for **three consecutive green runs**, and `T-056`
+— an open Windows defect about whether a process is alive — is exactly the question parallel load
+perturbs. That is also what the `check` job's comment means by *"the Windows legs stay serial
+until someone can watch a parallel run there"*: this is the watching. **The new elapsed time is
+recorded here once those runs exist**; until then this task is not done, and if it destabilises,
+the finding is recorded and the job goes back to serial.
+
 #### Acceptance criteria
 
 - The Windows unit/UI slice runs parallel, the integration slice stays serial, **and the split is

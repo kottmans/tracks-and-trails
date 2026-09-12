@@ -787,10 +787,32 @@ jobs:
         # loudly instead of skipping inside a passing job and leaving exit criterion 2 evidenced by
         # nothing (`T-189`). Restoring ffmpeg is a deliberate maintainer act, which is why this
         # fails rather than installs.
+        #
+        # **Split, with the unit/UI half parallel** (`T-330`). This was one serial `pytest -v`
+        # over the whole suite, and three consecutive runs measured **39.3, 39.3 and 38.9
+        # minutes** against a 40-minute bound — 98%, 98%, 97%. `T-259`'s rule is that a bound
+        # crossed by *growth* is re-measured rather than raised, and the maintainer ruled the
+        # direction: parallelise, do not raise the number.
+        #
+        # **The same shape as the Linux `check` job at the top of this file**, deliberately, and
+        # not a second arrangement: `tests/unit tests/ui` parallel, `tests/integration` serial.
+        # The serial integration slice is not an oversight — `T-123` has two open defects that
+        # only appear under parallel load there, one of them `test_manager.py` scanning every
+        # process on the machine and killing other workers' children.
+        #
+        # **This is the "someone watches a parallel run on Windows" that the `check` job's
+        # comment defers to**, and `T-056` — an open Windows defect about whether a process is
+        # alive — is why it is watched rather than assumed. `T-330` closes only on three
+        # consecutive green runs; if it destabilises, the finding is recorded and this goes back
+        # to serial, because a flaky fast job is worse than a slow reliable one.
         env:
           QT_QPA_PLATFORM: offscreen
           TRACKSANDTRAILS_REQUIRE_FFMPEG: "1"
-        run: pytest -v --junitxml="reports/pytest.xml" 2>&1 | tee "reports/pytest.txt"
+        run: |
+          pytest -v -n auto tests/unit tests/ui \
+            --junitxml="reports/pytest-unit-ui.xml" 2>&1 | tee "reports/pytest-unit-ui.txt"
+          pytest -v tests/integration \
+            --junitxml="reports/pytest-integration.xml" 2>&1 | tee "reports/pytest-integration.txt"
 
       - name: Report any crash dump
         # `T092-R1`: **metadata only, and only dumps this run could have produced.**
