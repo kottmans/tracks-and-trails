@@ -249,13 +249,55 @@ control mutation, not a changed measurement.
 full-suite step runs, and therefore the one in which this gate guards the product. Tree at
 `a4db6f8`, **clean**, venv rebuilt from `pyproject.toml` first.
 
-| Run | Result |
-|---|---|
-| Baseline, unmutated | **2 passed in 3.36 s** |
-| With the mutation | **2 failed in 3.80 s** |
+**The runs, verbatim** (`T329-R3`: this was a summary table, and a table is a claim *about*
+evidence rather than the evidence — the two are not interchangeable when the number is the point).
 
-**Both palettes, all six headers**, each reporting `0 pixels change in brightness on focus, under
-the 121 its size asks for`.
+Baseline, unmutated:
+
+```
+PS C:\dev\tracks-and-trails> .venv\Scripts\python.exe -m pytest -q "tests/ui/test_colour_is_never_alone.py::test_focus_is_visible_on_every_control_the_application_shows"
+..                                                                                                               [100%]
+2 passed in 3.36s
+```
+
+With `mut_header_no_extra_ring` loaded, which replaces `SortableHeader.paintSection` with
+`QHeaderView.paintSection` so the application's extra ring is never painted:
+
+```
+PS C:\dev\tracks-and-trails> $env:PYTHONPATH="tools\windows\mutations"
+PS C:\dev\tracks-and-trails> .venv\Scripts\python.exe -m pytest -q -p mut_header_no_extra_ring "tests/ui/test_colour_is_never_alone.py::test_focus_is_visible_on_every_control_the_application_shows"
+FF                                                                                                               [100%]
+...
+E       AssertionError: in light, focus is drawn by changing a colour rather than the edge on:
+SortableHeader  on format panel: 0 pixels change in brightness on focus, under the 121 its size asks for;
+SortableHeader  on format panel: 0 pixels change in brightness on focus, under the 121 its size asks for;
+SortableHeader  on format table: 0 pixels change in brightness on focus, under the 121 its size asks for;
+SortableHeader  on format table: 0 pixels change in brightness on focus, under the 121 its size asks for;
+SortableHeader  on queue format dialog: 0 pixels change in brightness on focus, under the 121 its size asks for;
+SortableHeader  on queue format dialog: 0 pixels change in brightness on focus, under the 121 its size asks for
+
+tests\ui\test_colour_is_never_alone.py:1093: AssertionError
+=============================================== short test summary info ===============================================
+FAILED tests/ui/test_colour_is_never_alone.py::test_focus_is_visible_on_every_control_the_application_shows[light] - AssertionError: in light, focus is drawn by changing a colour rather than the edge on: SortableHeader  on format pa...
+FAILED tests/ui/test_colour_is_never_alone.py::test_focus_is_visible_on_every_control_the_application_shows[dark] - AssertionError: in dark, focus is drawn by changing a colour rather than the edge on: SortableHeader  on format pan...
+2 failed in 3.80s
+```
+
+**Both palettes, all six headers** — the `[light]` failure is quoted in full above and `[dark]`
+reports the same six at the same floor. The ellipsis stands only for Qt's
+`propagateSizeHints()`/`raise()` warnings from the offscreen plugin, which the run emits in
+volume and which say nothing about this gate.
+
+**The Windows floor is 121 where Linux is 134**, and that is the section-based model working
+rather than a discrepancy: the floor is derived from the focused section's own geometry, so it
+followed Windows drawing that section about twelve pixels narrower. A perimeter floor baked in
+from Linux would not have. Both are far above the 0 the mutation produces.
+
+**Getting there took five environment faults, none of them this correction**, recorded where the
+next person meets them: `T-331` for the driver, and `docs/WINDOWS_VERIFICATION.md` for the
+bundle-backed remote, the shallow runner clone, the stale checkout and the stale venv. Filed the same day from the first native Windows run of the corrected tree
+(`P4EXIT-R2`'s evidence run, `34645329305` at `65f57e9`). **Blocks that evidence**: `windows
+desktop` failed on it, so `R2` cannot be satisfied while it stands.
 
 **The Windows floor is 121 where Linux is 134**, and that is the section-based model working
 rather than a discrepancy: the floor is derived from the focused section's own geometry, so it
