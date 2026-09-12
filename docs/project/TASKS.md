@@ -16,20 +16,25 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ### T-325 — Cold start, measured on the artifact that ships
 
-**Status:** **In Review** — measured 2026-09-12 on both artifacts. **It does not come back a clean
-pass, and the outcome needs a maintainer ruling**: warm meets `NFR-002` on both platforms, the
-first launch of a freshly written Windows artifact exceeds it twice over, and cold-after-reboot
-could not be measured here. Filed 2026-09-11 with the Phase 5 plan.
+**Status:** **In Review** — measured 2026-09-12 on both artifacts, cold included. **`NFR-002` is
+not met on Windows and the task now needs a ruling rather than a re-measure**: cold start is
+**3.976 s against a 3 s bound**. Warm is 1.55 s and was never the question. Filed 2026-09-11 with
+the Phase 5 plan.
 
 #### 2026-09-12 — the numbers, and the one that is over the bound
 
 Full captures in
 [`evidence/2026-09-12-T325-startup-times.md`](evidence/2026-09-12-T325-startup-times.md).
 
-| | first run | warm median | `NFR-002` |
-|---|---|---|---|
-| Linux AppImage, reference machine | 1.077 s | **0.634 s** | within |
-| Windows release build, `STARBASE` | **3.780 s** / **4.656 s** | **1.550 s** | **first launch over** |
+| | cold (after reboot) | first run (fresh build) | warm median | `NFR-002` |
+|---|---|---|---|---|
+| Linux AppImage, reference machine | not taken | 1.077 s | **0.634 s** | within |
+| Windows release build, `STARBASE` | **3.976 s** | **3.780** / **4.656 s** | **1.550 s** | **not met** |
+
+**The cold number is the maintainer's own measurement**, taken seconds after `Restart-Computer`
+and before anything else was launched — the one run neither the implementer nor CI can take, since
+a reboot kills the runner and the session driving it. One run by construction: a second launch is
+no longer cold.
 
 **Instrumented, not timed by hand**, which the scope asks for in terms. `core.startup
 .record_first_paint` writes one wall-clock line when the compositor confirms the surface is on
@@ -61,10 +66,23 @@ Neither is the implementer's to do on a machine somebody is using.
 **The freeze costs about 1.9×, against the 2–4× the Risk line anticipated** — 0.33 s from source
 against 0.634 s frozen on Linux. Real in direction, immaterial in absolute terms.
 
-**What is left is a ruling, not a re-measure**, which is what the scope says: accept 3 s as a
-*warm-start* bound and record that first launch is slower, amend the number with the reason, or
-treat the first-launch cost as a task. A Defender exclusion is not something an artifact can
-arrange for itself, so the third option is mostly not ours.
+**The harness mislabelled that run, and the fix is recorded because the label matters.** It
+printed *"measuring warm launches"* unconditionally — over the cold number the task had been
+waiting for. A tool cannot tell cold from warm; only the caller knows what state the machine is
+in. `tools/startup_time.py` now takes `--cold` and says which it was told, rather than asserting
+the one it cannot know.
+
+**What is left is a ruling, not a re-measure.** `NFR-002` says *"cold start"*, and cold start is
+3.976 s. Three options, none of them the implementer's:
+
+| Option | What it costs |
+|---|---|
+| **Amend `NFR-002`** to a warm-start bound, stating the cold figure beside it | It is a change of requirement rather than a reading of one — the requirement says cold |
+| **Raise the number** — 4 s covers every measurement taken, 5 s leaves margin on a slower machine | Honest, and the release gate then passes on a number somebody chose |
+| **Attack the cost** | Mostly not ours: a Defender exclusion is not something an artifact can arrange for itself, and 155 MB is what bundling ffmpeg costs. **A one-file build would make it worse**, not better — it trades startup for extraction |
+
+**What is not an option is leaving `TESTING` §8 item 14 reading as a pass.** It is a release-gate
+item with a number in it, and the number is not met.
 **Owner:** Implementer measures; Maintainer's machine is the reference
 **Priority:** High — it is a release-gate item with a number in it
 **Phase:** Phase 5

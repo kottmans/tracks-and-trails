@@ -50,6 +50,20 @@ tree.
 | 5 | 1.563 | 1.536 | 1.574 |
 | **median** | 1.563 | 1.536 | 1.550 |
 
+## Windows — cold, after a reboot
+
+Taken by the maintainer seconds after `Restart-Computer`, before anything else was launched. This
+is the measurement `T-325` defines as cold, and the only one neither the implementer nor CI can
+take: a reboot kills the `STARBASE` runner and the session driving it.
+
+```
+  run 1  3.976s
+OVER THE BOUND: 3.976s against NFR-002's 3.0s.
+```
+
+**One run, deliberately.** A second launch is no longer cold, so the sample size is one by
+construction and five runs would have been four warm ones averaged into it.
+
 ## The finding
 
 **Warm meets `NFR-002` on both platforms, with room**: 0.634 s and 1.55 s against 3 s. Windows is
@@ -70,10 +84,31 @@ precisely the state a user's machine is in immediately after an installer has wr
 the same caches, and it was **not measured** because a reboot kills the `STARBASE` runner and
 Linux's `drop_caches` needs root.
 
-**So `NFR-002`'s status is: warm met on both platforms; first-launch-after-write over the bound on
-Windows, twice; cold-after-reboot unmeasured.** `T-325` says the honest outcomes are *meets*,
-*does not meet and here is the profile*, or a maintainer amendment of the number with the reason.
-This is the second of those for the case a user actually meets, and it is not the implementer's to
-resolve: the options are to accept 3 s as a warm-start bound and say so, to amend the number, or to
-attack the first-launch cost (a Defender exclusion is not something an artifact can arrange for
-itself).
+**`NFR-002` is not met on Windows.** The cold measurement settles it: **3.976 s against a 3 s
+bound**, and it is the third independent first-launch figure over the line — 3.780 s and 4.656 s
+on freshly built artifacts, 3.976 s after a reboot. Warm is 1.55 s and was never the question.
+
+| Windows | seconds | `NFR-002` |
+|---|---|---|
+| cold, after reboot | **3.976** | **over** |
+| first launch, freshly built | **3.780**, **4.656** | **over** |
+| warm | 1.550 | within |
+
+**Linux is not in question**: 0.634 s warm, 1.077 s first-touch, against 3 s. Its cold number was
+not taken — that needs a reboot of the machine this work runs on — but the gap is large enough
+that nothing turns on it.
+
+`T-325` says the honest outcomes are *meets*, *does not meet and here is the profile*, or a
+maintainer amendment of the number with the reason. **This is the second**, and the profile is
+above. It is not the implementer's to resolve; the options are:
+
+- **Amend `NFR-002`** to a warm-start bound and state the cold figure beside it. The requirement
+  says *"cold start"*, so this is a change of requirement, not a reading of it.
+- **Raise the number.** 4 s covers every measurement taken; 5 s leaves margin on a slower machine.
+- **Attack the cost.** Most of it is not ours to attack — a Defender exclusion is not something an
+  artifact can arrange for itself, and a 155 MB tree is what bundling ffmpeg costs. What *is* ours
+  is the one-dir layout: a one-file build trades startup for a slower first run, so it would make
+  this worse, not better.
+
+**What is not an option is leaving `TESTING` §8 item 14 reading as a pass.** It is a release-gate
+item with a number in it, and the number is not met.

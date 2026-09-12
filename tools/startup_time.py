@@ -82,6 +82,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--extra", action="append", default=[], help="an extra argument for the artifact"
     )
+    parser.add_argument(
+        "--cold",
+        action="store_true",
+        help="label this run cold: the caller has just rebooted, and only the caller can know",
+    )
     arguments = parser.parse_args(argv)
 
     command = [arguments.artifact, *arguments.extra]
@@ -97,7 +102,14 @@ def main(argv: list[str] | None = None) -> int:
             "WIN_PD_OVERRIDE_LOCAL_APPDATA": f"{profile}/local",
         }
         print(f"artifact  {arguments.artifact}")
-        print("measuring warm launches; a cold number needs a reboot (T-325)")
+        # **The tool cannot tell cold from warm and must not claim to.** It said *"measuring warm
+        # launches"* unconditionally, and then printed that over a run taken seconds after a
+        # reboot — which was the cold number `T-325` had been waiting for, mislabelled by its own
+        # harness. Only the caller knows what state the machine is in, so the caller says.
+        if arguments.cold:
+            print("labelled COLD by the caller: first launch after a reboot")
+        else:
+            print("warm unless --cold was passed; a cold number needs a reboot (T-325)")
         print(f"bound     {arguments.bound}s (NFR-002)")
 
         timings: list[float] = []
@@ -110,7 +122,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  run {run}  {seconds:.3f}s")
 
     median = statistics.median(timings)
-    print(f"\nmedian    {median:.3f}s over {len(timings)} runs")
+    kind = "cold" if arguments.cold else "warm"
+    print(f"\n{kind} median    {median:.3f}s over {len(timings)} runs")
     print(f"slowest   {max(timings):.3f}s")
     print(f"fastest   {min(timings):.3f}s")
     if median > arguments.bound:
