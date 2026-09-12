@@ -76,3 +76,7 @@ downloads/
 # reviewer can read one; they are never committed. What is durable lives in docs/project/REVIEWS.md and the
 # task entry.
 docs/project/handoffs/
+
+# T-319: 174 MB of third-party Windows binary, fetched by packaging/fetch_ffmpeg.py with a
+# pinned digest. Reproducible from that script, so it does not belong in the history.
+packaging/vendor/

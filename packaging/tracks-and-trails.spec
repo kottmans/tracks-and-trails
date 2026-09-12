@@ -115,10 +115,36 @@ if RELEASE_BUILD and sys.platform == "win32":
         encoding="utf-8",
     )
 
+# **ffmpeg, bundled on Windows only** (`OPS-001`, `T-319`). `binaries` rather than `datas`, so
+# PyInstaller puts them beside the executable — which is exactly where
+# `downloader.environment.bundled_ffmpeg` looks, and the two agree by construction rather than by
+# a matching pair of string literals.
+#
+# **Fetched, never committed.** `packaging/fetch_ffmpeg.py` downloads one pinned `BtbN`
+# `win64-lgpl-shared` archive and verifies its SHA-256; 155 MB of third-party binary does not
+# belong in the history. **This spec does not run that script**, because `OPS-012` §3 forbids a
+# self-hosted runner provisioning itself as a side effect of a build. It reads what is on disk and
+# **fails** if it is not there, which is a build that stops rather than a release that silently
+# ships without the tool `REQ-010`'s audio extraction needs.
+ffmpeg_binaries: list[tuple[str, str]] = []
+if RELEASE_BUILD and sys.platform == "win32":
+    _vendor = Path(SPECPATH) / "vendor" / "ffmpeg"
+    _wanted = sorted(
+        [*_vendor.glob("*.exe"), *_vendor.glob("*.dll")], key=lambda path: path.name
+    )
+    if not any(path.name == "ffmpeg.exe" for path in _wanted):
+        raise SystemExit(
+            f"no ffmpeg.exe in {_vendor}. OPS-001 bundles ffmpeg on Windows and LIC-001 requires "
+            f"an LGPL build; run `python packaging/fetch_ffmpeg.py` first. This spec deliberately "
+            f"does not fetch it itself (OPS-012 section 3)."
+        )
+    # `"."` is the executable's own directory in a one-dir build.
+    ffmpeg_binaries = [(str(path), ".") for path in _wanted]
+
 a = Analysis(
     ["../src/tracks_and_trails/__main__.py"],
     pathex=["../src"],
-    binaries=[],
+    binaries=ffmpeg_binaries,
     datas=datas,
     hiddenimports=["tracks_and_trails._freeze_probe", *ytdlp_hiddenimports],
     hookspath=[],

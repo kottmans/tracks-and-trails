@@ -13,12 +13,15 @@ Qt (via PySide6) — LGPLv3
     in this project's LIC-001 decision, and packaging/artifact_gates.py checks it
     on every build rather than leaving it to be believed.
 
-FFmpeg — LGPL  (Windows distributions only)
-    ffmpeg-LGPL.txt, present where ffmpeg is bundled. On Linux ffmpeg is a system
-    dependency and is not distributed with this application (OPS-001), so that file
-    is absent from Linux artifacts by design.
-    The bundled Windows build is an LGPL build, never a GPL one; which build, its
-    version and its source are recorded in packaging/licenses/README.md.
+FFmpeg — LGPL-3.0-or-later  (Windows distributions only)
+    ffmpeg-LGPL.txt. This whole directory is bundled as a unit, so that text also
+    ships in Linux artifacts — where ffmpeg is a system dependency and is NOT
+    distributed with this application (OPS-001). Read it as the licence of the
+    Windows build; on Linux it covers nothing this artifact contains.
+    The bundled Windows build is an LGPL build, never a GPL one, and it is shared
+    rather than static so the libraries stay replaceable (LIC-001). Which build,
+    its digest and its source are recorded in packaging/licenses/README.md and
+    pinned in packaging/fetch_ffmpeg.py.
 
 yt-dlp — Unlicense
     yt-dlp-Unlicense.txt. Public domain; no obligations attach.

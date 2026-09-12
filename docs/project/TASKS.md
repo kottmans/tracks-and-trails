@@ -1329,16 +1329,68 @@ the report file, ending `OK: the frozen artifact carries a usable yt-dlp with it
 unit cases cover the helper, including that an unwritable report does not fail the probe — the
 report is evidence, not the probe's purpose.
 
-**Not done, and none of it can be done from here:** the **ffmpeg binary and its LGPL licence
-text**, and every acceptance criterion beginning *"on the built artifact"* — no console window on
-the runner, `find_ffmpeg` reporting `source="bundled"`, `--version` on the built exe. Those need a
-Windows build.
+#### 2026-09-12 (later) — the ffmpeg binary, its licence, and the open question answered
 
-**One open question rather than an invented answer:** the ffmpeg binary is ~100 MB and must be an
-**LGPL** build (`BtbN`'s `*-lgpl-shared`, never `gyan.dev`'s GPL). Committing it is wrong; the
-choices are a build-time download with a recorded URL and checksum, or a copy placed on `STARBASE`
-by hand the way Inno Setup is. `OPS-012` §3 argues for the second and the release workflow argues
-for the first.
+**The open question was between a build-time download with a recorded URL and checksum and a copy
+placed on `STARBASE` by hand — `OPS-012` §3 arguing for the second, the release workflow for the
+first. The answer is one mechanism with two callers**, which satisfies both rather than picking:
+`packaging/fetch_ffmpeg.py` is scripted, pinned and digest-verified, so it is reproducible and
+reviewable; and **it is not wired into the build**, so a self-hosted runner never provisions
+itself as a side effect of a build. The spec reads what is on disk and **raises** if it is absent,
+naming the script. *(Recorded as a judgement rather than a ruling; the maintainer said to do this
+task, not that this is the shape.)*
+
+**Which ffmpeg, and every part of the name is load-bearing:**
+
+    BtbN/FFmpeg-Builds  autobuild-2026-09-12-13-12
+    ffmpeg-n9.0.1-29-gad500d59cb-win64-lgpl-shared-9.0.zip
+    sha256 609245cc0a906c1423f2cdb96e27925302d375fe8024dcbc4b3f6aaf757a43ff
+
+`lgpl` because `LIC-001` forbids bundling a GPL ffmpeg with an MIT application — `gyan.dev`'s
+builds are GPL. `shared` because the same requirement says the libraries must stay *replaceable*,
+which a static build is not. An `autobuild-*` tag rather than `latest`, because `latest` is
+rolling and the same URL would serve different bytes tomorrow.
+
+**Verified rather than assumed.** The configure line embedded in `ffmpeg.exe` carries
+`--enable-version3` and **no `--enable-gpl`** and **no `--enable-nonfree`**; `avutil-61.dll`
+self-reports `libavutil license: LGPL version 3 or later`. So it is LGPL **3**, and the
+`Qt-GPLv3.txt` already shipped covers its incorporated GPL terms.
+
+**`ffprobe.exe` is bundled and `ffplay.exe` is not.** Not a size decision: yt-dlp's
+`FFmpegExtractAudioPP.run` calls `get_audio_codec`, which runs **ffprobe on the downloaded file**,
+so `REQ-010`'s audio extraction needs it. Nothing here launches a media player. Nine files,
+**155 MB**, gitignored — that half of the question was never in doubt.
+
+**The licence cannot drift from the build.** `fetch_ffmpeg.py` compares the committed
+`ffmpeg-LGPL.txt` against the archive's own `LICENSE.txt` on every run and **refuses** if they
+differ, because the gate downstream only asserts the file is present and non-empty — it cannot
+know which ffmpeg it belongs to. Tested: a substituted licence text fails with the reason.
+
+**Refusals checked before the happy path was trusted:**
+
+| Handed | Result |
+|---|---|
+| a digest that does not match what the URL serves | **exit 1**, and nothing written before verification |
+| a licence text that is not the archive's | **exit 1**, naming the fix |
+| a corrupted cached archive | re-downloads and repairs, which is the right answer |
+| a second run | uses the verified cache, no download |
+
+**`NOTICE.txt` corrected while here.** It said `ffmpeg-LGPL.txt` is *"absent from Linux artifacts
+by design"*. It is not: `licenses/` is bundled as a unit, so the text ships on Linux too, where
+ffmpeg is a system dependency and covers nothing in the artifact. The notice now says that rather
+than the opposite.
+
+**Verified on Linux**: `TT_RELEASE_BUILD=1` builds, the ffmpeg branch is correctly skipped
+(`OPS-001`), and `ffmpeg-LGPL.txt` is in the artifact's `licenses/`. **19 cross-reference tests,
+11 mutations, 11 caught** — a GPL build, a static build, a rolling pin, a dropped ffprobe, ffmpeg
+placed under `_internal/` where `bundled_ffmpeg` would not find it, a release permitted to build
+without it, and the smoke build bundling 155 MB it does not need.
+
+**Still not done, and it needs a Windows machine:** every acceptance criterion beginning *"on the
+built artifact"* — no console window, `find_ffmpeg` reporting `source="bundled"`, `--version` on
+the built exe. **`STARBASE_HOST` is unset here and there is no local record of it**, by design:
+`tools/windows/run-on-starbase.sh` has no default because the repository must not carry an account
+name or a LAN address. So the remaining half is one environment variable away, not one task away.
 
 *(Filed 2026-09-11 with the Phase 5 plan.)*
 **Owner:** Implementer
