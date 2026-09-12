@@ -60,6 +60,12 @@ Three files change only here, never in advance:
 
 - **`CHANGELOG.md`** is *created in the release commit* (`DOC-002`). An empty changelog written
   ahead of time is the speculative document that decision forbids.
+- **Keep a database fixture of the version being released** under
+  `tests/fixtures/historical/`, from `0.2` onward. §8 item 5 is *"the previous release's database
+  opens, migrates, and retains data"*, and for `0.1.0` it is **`N/A` — there is no previous
+  release**. That is only true once. Without a `0.1.0` database kept at the `0.1.0` tag, `0.2`'s
+  migration check has nothing to open, and it cannot be reconstructed afterwards from a schema
+  file: what it has to prove is that *real rows* survive. (`T-326`.)
 - **`SECURITY.md` §Supported versions** is filled at the first tag: the latest minor receives
   fixes, older ones do not. It currently says there are no released versions, which is true until
   this step.

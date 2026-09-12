@@ -81,13 +81,22 @@ def test_one_real_url_downloads_end_to_end(
         assert spin(
             lambda: bool(dialog.rows) and all(row.committable for row in dialog.rows), timeout=120
         ), dialog.status_text()
+        started = time.monotonic()
         dialog.add_to_queue()
         assert spin(lambda: bool(dialog.queued_job_ids), timeout=60), dialog.status_text()
         job_id = dialog.queued_job_ids[0]
         dialog.close()
 
-        started = time.monotonic()
-        composition.manager.start(job_id)
+        # **No explicit `manager.start()`, and that is the correction this test needed.** It
+        # called one, and the first real run of `pytest -m network` -- 2026-09-12, `T-326` item 3
+        # -- failed in 3.35s with `already has a download session; one job holds one session at a
+        # time`. The queue is running, so `add_to_queue` **admits** the job and admission starts
+        # it; the explicit start was a second one.
+        #
+        # It had drifted from the offline sibling this docstring says it is *"deliberately the
+        # same shape"* as. `test_a_url_becomes_a_file_with_the_bytes_it_reported` presses Start
+        # once and then only waits, which is what a user does. Never having been run, the drift
+        # could not show.
         # The queue **row**, since `UX-005` removed the detail pane. Still the UI rather than the
         # store, for the reason the pane was watched before it: the database leads the UI, so a
         # store-based wait passes in the gap before anything on screen has changed.

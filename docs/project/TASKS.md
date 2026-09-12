@@ -1644,6 +1644,101 @@ accepts it. Until then it is a proposal in a task, which is the narrowest honest
 
 ## Ready
 
+### T-326 — The release-candidate suite: everything the gate asks a machine for, on both platforms
+
+**Status:** **In Progress** — the items that do not need a release candidate were run 2026-09-12;
+the rest wait on a `v*` tag, which is `T-324`'s trigger and the maintainer's act. **The
+enumeration found a gap in §7's own coverage**, below. Filed 2026-09-11 with the Phase 5 plan.
+
+#### 2026-09-12 — what a machine could do without a candidate
+
+Evidence:
+[`2026-09-12-T326-release-candidate-suite.md`](evidence/2026-09-12-T326-release-candidate-suite.md).
+
+**Item 3 — `pytest -m network`, both platforms, and its first run found a defect.** This suite
+runs nowhere automatically (`addopts` excludes it), so CI has never executed it.
+
+| Platform | Result |
+|---|---|
+| Linux | **2 passed, 2 skipped** in 9.88 s |
+| Windows, `STARBASE`, logged-on session | **2 passed** in 31.73 s |
+
+**It failed the first time in 3.35 s, and not because of the network.**
+`test_one_real_url_downloads_end_to_end` raised *"already has a download session"*: it pressed
+Start on the queue **and** called `manager.start(job_id)`, but with the queue running
+`add_to_queue` admits the job and admission starts it. It had drifted from the offline sibling its
+own docstring calls *"deliberately the same shape"* — that one presses Start once and then waits,
+which is what a user does. **Its docstring also says it had never been executed**, which is
+exactly why the drift could not show. Corrected; both platforms pass.
+
+**Item 4 — every §7 mandatory test enumerated by name**, so the next release diffs the list rather
+than re-reading the table. Ten of eleven areas map to named tests; the widget-destruction rule maps
+to `tests/qt_lifecycle.py` enforcing it at every `tests/ui` boundary, which is how §7 itself
+describes it.
+
+**The eleventh is a gap, and finding it is what the item is for.** §7 requires *"a settings change
+mid-flight does not alter a running job's `DownloadRequest`"* and **no test asserts it**. What
+exists is the structural half — `test_every_model_is_frozen` proves the dataclass is frozen, and
+`ARC-008` has composition read settings once. Frozen means it cannot be *mutated*; it does not
+prove a running job keeps the request it started with, and the failure mode is a **new** request
+being built and handed to something in flight. **Reported rather than resolved**: writing it is a
+test, and whose task it is is the maintainer's call — it is §7 coverage, so arguably a phase-exit
+obligation rather than this task's, whose job is to check the list rather than fill it.
+
+**Item 5 — `N/A` for `0.1.0`, and that is only true once.** There is no previous release to
+migrate from. The `0.2` obligation is now written into `docs/RELEASE.md`'s release-commit steps:
+**keep a `0.1.0` database fixture at the `0.1.0` tag**, because it cannot be reconstructed
+afterwards — what it has to prove is that *real rows* survive, not that a schema loads.
+
+**Item 10a — not applicable**: `OPS-002`'s baseline is not bumped in `0.1.0`, recorded so nobody
+looks for a canary run that was never owed.
+
+**Items 1, 2, 8 and 10 wait on a candidate.** 8 and 10 *have* been run by hand on the release
+artifacts — 5 of 5 probes on Windows, 4 of 4 on the AppImage — but the gate asks for them **at the
+candidate, through the workflow**, and that needs the tag.
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 5
+**Depends on:** `T-324` (a release candidate to run against)
+**Relevant context:** `TESTING.md` §8 items 1–5, 8, 10, 10a; §7's mandatory-coverage table;
+`pyproject.toml`'s `addopts = "-m 'not network …'"` — **the network suite is not in CI**;
+`ytdlp-canary.yml` (`workflow_dispatch`); `OPS-002`; `DAT-001`
+**Affected surfaces:** `docs/project/evidence/`, possibly a `release-candidate` job in `T-324`'s
+workflow
+**Risk:** Low — these are runs, not builds; the risk is claiming one that did not happen
+
+#### Scope
+
+The release gate's machine half, run **against the candidate** rather than against `main`:
+
+- Items 1–2: static gates and the full default suite, both platforms — `ci.yml` already does this
+  per push; the record here is the run ids at the RC commit
+- Item 3: **`pytest -m network`** against the pinned baseline, both platforms — this suite runs
+  nowhere automatically today, so it is a deliberate manual run with its output retained
+- Item 4: every §7 mandatory test present — enumerated by name against the table, once, with the
+  test ids recorded so the next release diffs the list rather than re-reading it
+- Item 5: **the migration check is `N/A` for a first release and says so** — there is no previous
+  release's database. The obligation is written into `docs/RELEASE.md` for `0.2`: keep a `0.1.0`
+  database fixture and open it
+- Item 8: the frozen smoke, on the **release** builds — `T-324` runs it; the record is the run id
+- Item 10: the in-app yt-dlp update from the release artifact — `T-324` runs the probe; the record
+  is the run id
+- Item 10a: only if the baseline is bumped in this release; for `0.1.0` it is not, and that is
+  recorded
+
+#### Acceptance criteria
+
+- One evidence file for the release candidate listing each item, the command or run id that
+  satisfied it, and the platform — no item marked passed without its artifact
+- The network-suite output is retained for both platforms
+- `docs/RELEASE.md` gains the `0.2` migration-fixture obligation
+
+#### Out of scope
+
+- Items 6, 7, 11–15: `T-212`, `T-318`, `T-323`, `T-325`, `T-327` respectively
+
+---
+
 ### T-322 — The Windows installer
 
 **Status:** **In Progress** — the script is written 2026-09-12; it cannot be built or verified
@@ -3034,51 +3129,6 @@ evidence than a Phase 4 run would have been.
 
 
 
-### T-326 — The release-candidate suite: everything the gate asks a machine for, on both platforms
-
-**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 5
-**Depends on:** `T-324` (a release candidate to run against)
-**Relevant context:** `TESTING.md` §8 items 1–5, 8, 10, 10a; §7's mandatory-coverage table;
-`pyproject.toml`'s `addopts = "-m 'not network …'"` — **the network suite is not in CI**;
-`ytdlp-canary.yml` (`workflow_dispatch`); `OPS-002`; `DAT-001`
-**Affected surfaces:** `docs/project/evidence/`, possibly a `release-candidate` job in `T-324`'s
-workflow
-**Risk:** Low — these are runs, not builds; the risk is claiming one that did not happen
-
-#### Scope
-
-The release gate's machine half, run **against the candidate** rather than against `main`:
-
-- Items 1–2: static gates and the full default suite, both platforms — `ci.yml` already does this
-  per push; the record here is the run ids at the RC commit
-- Item 3: **`pytest -m network`** against the pinned baseline, both platforms — this suite runs
-  nowhere automatically today, so it is a deliberate manual run with its output retained
-- Item 4: every §7 mandatory test present — enumerated by name against the table, once, with the
-  test ids recorded so the next release diffs the list rather than re-reading it
-- Item 5: **the migration check is `N/A` for a first release and says so** — there is no previous
-  release's database. The obligation is written into `docs/RELEASE.md` for `0.2`: keep a `0.1.0`
-  database fixture and open it
-- Item 8: the frozen smoke, on the **release** builds — `T-324` runs it; the record is the run id
-- Item 10: the in-app yt-dlp update from the release artifact — `T-324` runs the probe; the record
-  is the run id
-- Item 10a: only if the baseline is bumped in this release; for `0.1.0` it is not, and that is
-  recorded
-
-#### Acceptance criteria
-
-- One evidence file for the release candidate listing each item, the command or run id that
-  satisfied it, and the platform — no item marked passed without its artifact
-- The network-suite output is retained for both platforms
-- `docs/RELEASE.md` gains the `0.2` migration-fixture obligation
-
-#### Out of scope
-
-- Items 6, 7, 11–15: `T-212`, `T-318`, `T-323`, `T-325`, `T-327` respectively
-
----
 
 ### T-327 — The Windows manual verification session
 
