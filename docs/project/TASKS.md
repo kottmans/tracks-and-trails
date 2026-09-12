@@ -1793,6 +1793,24 @@ What is now pinned, each against its other declaration or its requirement:
 `AppVersion` default that would give the installer a second opinion about the version, and
 dropping `recursesubdirs` so only the executable ships.
 
+#### 2026-09-12 — no "pin to taskbar" option, by ruling
+
+**Maintainer ruling, 2026-09-12: the installer does not pin to the taskbar**; the user pins it
+themselves. Recorded so the checkbox is not proposed again.
+
+**Windows does not let installers pin apps, deliberately.** Microsoft withdrew the pin action in
+Windows 10 because installers abused it, and on Windows 11 the taskbar belongs to the user. The
+only supported route (`TaskbarManager.RequestPinCurrentAppAsync`) asks the user to confirm and is
+limited to apps with package identity (MSIX), which this is not. The remaining routes work around
+that restriction and break between Windows builds. For an **unsigned** installer (`REL-005`),
+reaching into the taskbar's private settings is also the kind of behaviour that makes antivirus
+suspicious, on the screen where a stranger is deciding whether to trust the download.
+
+**What the installer does instead** is what a well-behaved one is allowed to do: a Start Menu entry
+always, a desktop icon if ticked, and *Launch* on the last page — from which pinning is one
+right-click. A last-page hint about pinning was offered and not chosen. **Reopening condition:** the
+application ships as an MSIX package, which would make the supported in-app prompt available.
+
 #### 2026-09-12 (later) — compiled, and the first compile found two defects
 
 **The maintainer installed Inno Setup 6.7.3 on `STARBASE`** — the deliberate manual act `OPS-012`
