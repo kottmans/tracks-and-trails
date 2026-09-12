@@ -55,6 +55,34 @@ _UNRELATED_URL = "https://example.com/not-a-video"
 TIMEOUT_SECONDS = 120
 
 
+#: Names a file the probes append their report lines to, as well as printing them (`T-319`).
+#:
+#: **A windowed build has no `stdout`.** `REL-001`'s release artifact is built `console=False` so a
+#: user gets no console window behind the application, and on Windows that means the four probes
+#: CI depends on print into nothing. This is the same shape as `PROBE_LOG_ENV` above rather than a
+#: fifth mechanism: one variable, set by the caller, ignored when unset.
+PROBE_REPORT_ENV = "TT_PROBE_REPORT"
+
+
+def say(line: str, *, error: bool = False) -> None:
+    """Print a probe's report line, and append it to the report file when one is configured.
+
+    Both, never either: the console build's output is what a person reads when running the probe
+    by hand, and the file is what CI reads when the build has no console to read.
+    """
+    print(line, file=sys.stderr if error else sys.stdout)
+    path = os.environ.get(PROBE_REPORT_ENV)
+    if not path:
+        return
+    try:
+        with Path(path).open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+    except OSError:
+        # The report is evidence, not the probe's purpose. A probe that failed because it could
+        # not write its own log would be reporting on the log.
+        return
+
+
 def record_app_start() -> None:
     """Record one top-level application start, if a probe log is configured.
 
@@ -101,32 +129,32 @@ def run_probe() -> int:
     except Exception as exc:
         child.terminate()
         child.join(timeout=TIMEOUT_SECONDS)
-        print(f"FAIL: no message from the spawned child: {exc!r}", file=sys.stderr)
+        say(f"FAIL: no message from the spawned child: {exc!r}", error=True)
         return 1
     finally:
         child.join(timeout=TIMEOUT_SECONDS)
 
-    print(f"frozen           {is_frozen()}")
-    print(f"parent pid       {os.getpid()}")
-    print(f"child pid        {payload.get('pid')}")
-    print(f"child frozen     {payload.get('frozen')}")
-    print(f"message          {payload.get('message')}")
-    print(f"child exitcode   {child.exitcode}")
+    say(f"frozen           {is_frozen()}")
+    say(f"parent pid       {os.getpid()}")
+    say(f"child pid        {payload.get('pid')}")
+    say(f"child frozen     {payload.get('frozen')}")
+    say(f"message          {payload.get('message')}")
+    say(f"child exitcode   {child.exitcode}")
 
     if payload.get("message") != PROBE_MESSAGE:
-        print(f"FAIL: unexpected message {payload!r}", file=sys.stderr)
+        say(f"FAIL: unexpected message {payload!r}", error=True)
         return 1
     if payload.get("pid") == os.getpid():
-        print("FAIL: the worker ran in the parent process; no child was spawned", file=sys.stderr)
+        say("FAIL: the worker ran in the parent process; no child was spawned", error=True)
         return 1
     if child.is_alive():
-        print("FAIL: the child is still alive after join; it would be orphaned", file=sys.stderr)
+        say("FAIL: the child is still alive after join; it would be orphaned", error=True)
         return 1
     if child.exitcode != 0:
-        print(f"FAIL: child exited {child.exitcode}", file=sys.stderr)
+        say(f"FAIL: child exited {child.exitcode}", error=True)
         return 1
 
-    print("OK: spawned a child from this build, exchanged one message, and reaped it")
+    say("OK: spawned a child from this build, exchanged one message, and reaped it")
     return 0
 
 
@@ -152,12 +180,12 @@ def run_ytdlp_probe() -> int:
     try:
         resolved = _import_ytdlp(ytdlp_candidates(None))
     except ImportError as error:
-        print(f"FAIL: no usable yt-dlp in the frozen artifact: {error}", file=sys.stderr)
+        say(f"FAIL: no usable yt-dlp in the frozen artifact: {error}", error=True)
         return 1
 
-    print(f"ytdlp version   {resolved.version}")
-    print(f"ytdlp source    {resolved.source}")
-    print(f"ytdlp pin       {BASELINE_YTDLP_VERSION}")
+    say(f"ytdlp version   {resolved.version}")
+    say(f"ytdlp source    {resolved.source}")
+    say(f"ytdlp pin       {BASELINE_YTDLP_VERSION}")
 
     # `T033-R1`: the first acceptance criterion. Printing the version is not asserting it — a
     # stale or wrong yt-dlp passed every other check here, because "some yt-dlp with lots of
@@ -167,26 +195,26 @@ def run_ytdlp_probe() -> int:
     #
     # Compared normalised: the pin reads `2026.7.4` and the package reports `2026.07.04`.
     if normalise_version(resolved.version) != normalise_version(BASELINE_YTDLP_VERSION):
-        print(
+        say(
             f"FAIL: the artifact bundles yt-dlp {resolved.version}, but this build pins "
             f"{BASELINE_YTDLP_VERSION}. The frozen baseline is not the tested one (T-033, "
             "OPS-002).",
-            file=sys.stderr,
+            error=True,
         )
         return 1
 
     extractors = resolved.module.extractor.gen_extractor_classes()
     names = [cls.IE_NAME for cls in extractors]
-    print(f"extractors      {len(names)}")
+    say(f"extractors      {len(names)}")
 
     # A handful of extractors is what you get when only the core was bundled. A real yt-dlp has
     # hundreds; the exact number changes upstream, so the bound is deliberately loose.
     if len(names) < 100:
-        print(
+        say(
             f"FAIL: only {len(names)} extractors resolved. The artifact carries yt-dlp's core "
             "without its extractors, so every URL would fail as if the site had changed "
             "(T-033).",
-            file=sys.stderr,
+            error=True,
         )
         return 1
 
@@ -201,11 +229,11 @@ def run_ytdlp_probe() -> int:
     try:
         placeholder = resolved.module.extractor.get_info_extractor("Youtube")
     except KeyError:
-        print(
+        say(
             "FAIL: yt-dlp is present and reports extractors, but a known extractor could not "
             "be resolved by name. The lazy-extractor machinery did not survive freezing "
             "(T-033).",
-            file=sys.stderr,
+            error=True,
         )
         return 1
 
@@ -221,32 +249,32 @@ def run_ytdlp_probe() -> int:
     try:
         extractor = placeholder()
     except ImportError as error:
-        print(
+        say(
             f"FAIL: the extractor's real module could not be imported: {error}. The artifact "
             "carries yt-dlp's lazy extractor table but not the extractor code behind it, so "
             "every matching URL would fail as if the site had changed (T-033).",
-            file=sys.stderr,
+            error=True,
         )
         return 1
 
     real = type(extractor)
-    print(f"resolved        {real.IE_NAME} from {real.__module__}")
+    say(f"resolved        {real.IE_NAME} from {real.__module__}")
 
     if "lazy" in real.__module__:
-        print(
+        say(
             f"FAIL: {real.IE_NAME} is still the lazy placeholder ({real.__module__}); the "
             "concrete extractor module was never loaded (T-033).",
-            file=sys.stderr,
+            error=True,
         )
         return 1
 
     # The stable, offline half of what an extractor does: decide whether it handles a URL. No
     # network — a packaging gate that needs the internet is a gate that fails on a bad day.
     if not real.suitable(_KNOWN_URL) or real.suitable(_UNRELATED_URL):
-        print(
+        say(
             f"FAIL: {real.IE_NAME} loaded but does not match its own URL pattern; the "
             "extractor code in this artifact is not the one it claims to be (T-033).",
-            file=sys.stderr,
+            error=True,
         )
         return 1
 
@@ -257,12 +285,12 @@ def run_ytdlp_probe() -> int:
     # is all a probe should know.
     solver = bundled_solver(resolved.module)
     if not solver.usable:
-        print(f"FAIL: {solver.problem} (T-033, T033-R4)", file=sys.stderr)
+        say(f"FAIL: {solver.problem} (T-033, T033-R4)", error=True)
         return 1
-    print(f"solver          {solver.name} v{solver.version}, hash verified")
-    print(f"solver extras   {len(solver.also)} also present: {', '.join(solver.also) or '-'}")
+    say(f"solver          {solver.name} v{solver.version}, hash verified")
+    say(f"solver extras   {len(solver.also)} also present: {', '.join(solver.also) or '-'}")
 
-    print("OK: the frozen artifact carries a usable yt-dlp with its extractors")
+    say("OK: the frozen artifact carries a usable yt-dlp with its extractors")
     return 0
 
 
@@ -288,16 +316,16 @@ def run_database_probe() -> int:
     try:
         migrations = db.available_migrations()
     except (OSError, ValueError) as error:
-        print(f"FAIL: the migration directory is unusable: {error}", file=sys.stderr)
+        say(f"FAIL: the migration directory is unusable: {error}", error=True)
         return 1
 
-    print(f"migrations      {len(migrations)}")
+    say(f"migrations      {len(migrations)}")
     if not migrations:
-        print(
+        say(
             "FAIL: the frozen artifact carries no migration SQL. The spec did not collect "
             "persistence/migrations/*.sql, so the database would be created empty and every "
             "write would fail with 'no such table' (T-014, T014-R3).",
-            file=sys.stderr,
+            error=True,
         )
         return 1
 
@@ -306,12 +334,12 @@ def run_database_probe() -> int:
         try:
             with db.open_database(path) as connection:
                 version = db.schema_version(connection)
-                print(f"schema version  {version}")
+                say(f"schema version  {version}")
                 if version != db.latest_version():
-                    print(
+                    say(
                         f"FAIL: the database came up at version {version}, expected "
                         f"{db.latest_version()}.",
-                        file=sys.stderr,
+                        error=True,
                     )
                     return 1
 
@@ -325,16 +353,16 @@ def run_database_probe() -> int:
                 job = Job(id="probe", url=request.url, request=request)
                 repository.add(job)
                 if repository.get("probe") != job:
-                    print(
+                    say(
                         "FAIL: a job written inside the artifact did not read back.",
-                        file=sys.stderr,
+                        error=True,
                     )
                     return 1
         except Exception as error:
-            print(f"FAIL: the frozen artifact could not use its database: {error}", file=sys.stderr)
+            say(f"FAIL: the frozen artifact could not use its database: {error}", error=True)
             return 1
 
-    print("database        ok")
+    say("database        ok")
     return 0
 
 
@@ -427,44 +455,44 @@ def run_ytdlp_update_probe() -> int:
         directory = Path(workspace) / "ytdlp"
 
         before = resolve_in_a_child(directory)
-        print(f"before install  {before.version} — {before.source}")
+        say(f"before install  {before.version} — {before.source}")
         if normalise_version(before.version) != normalise_version(BASELINE_YTDLP_VERSION):
-            print(
+            say(
                 f"FAIL: the artifact resolves {before.version}, not the pinned baseline "
                 f"{BASELINE_YTDLP_VERSION}",
-                file=sys.stderr,
+                error=True,
             )
             return 1
 
         installed = install_latest(directory, opener)
-        print(f"installed       {installed.version}")
+        say(f"installed       {installed.version}")
 
         after = resolve_in_a_child(directory)
-        print(f"after install   {after.version} — {after.source}")
+        say(f"after install   {after.version} — {after.source}")
         if after.version != _PROBE_YTDLP_VERSION or not after.is_user_managed:
-            print(
+            say(
                 "FAIL: a spawned child did not resolve the installed copy — an update inside the "
                 f"frozen artifact lands where nothing reads it (got {after.version!r} from "
                 f"{after.source!r}; rejected={after.rejected})",
-                file=sys.stderr,
+                error=True,
             )
             return 1
 
         if not revert_to_baseline(directory):
-            print("FAIL: revert reported nothing to remove", file=sys.stderr)
+            say("FAIL: revert reported nothing to remove", error=True)
             return 1
 
         restored = resolve_in_a_child(directory)
-        print(f"after revert    {restored.version} — {restored.source}")
+        say(f"after revert    {restored.version} — {restored.source}")
         if normalise_version(restored.version) != normalise_version(BASELINE_YTDLP_VERSION):
-            print(
+            say(
                 f"FAIL: reverting did not restore the baseline (got {restored.version})",
-                file=sys.stderr,
+                error=True,
             )
             return 1
         if restored.is_user_managed:
-            print("FAIL: the reverted copy is still being resolved", file=sys.stderr)
+            say("FAIL: the reverted copy is still being resolved", error=True)
             return 1
 
-    print("OK: install, resolve in a child, and revert all work in the frozen artifact")
+    say("OK: install, resolve in a child, and revert all work in the frozen artifact")
     return 0

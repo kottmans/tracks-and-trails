@@ -8,6 +8,8 @@
 # One-dir, matching REL-001's Windows target. One-file would extract to a temp directory on
 # every launch and change the very sys.executable semantics under test.
 
+import os
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
@@ -67,6 +69,52 @@ datas += [(str(Path(SPECPATH) / "licenses"), "licenses")]
 ytdlp_hiddenimports = collect_submodules("yt_dlp")
 datas += collect_data_files("yt_dlp")
 
+# **One spec, two modes** (`T-319`). The release build is the same `Analysis` with a different
+# console setting, selected by an environment variable rather than by a second spec file: two
+# specs are two things to keep true, and `T-233`/`T-237` were both about spec comments drifting
+# from the spec beside them.
+#
+#     TT_RELEASE_BUILD=1 pyinstaller packaging/tracks-and-trails.spec
+#
+# **`console=False` costs the probes their `stdout`**, which is why `_freeze_probe.say` writes to
+# `TT_PROBE_REPORT` as well as printing. CI reads the file for a windowed build and the console
+# for the smoke one; the probes themselves do not know which build they are in.
+RELEASE_BUILD = os.environ.get("TT_RELEASE_BUILD") == "1"
+
+# **The Windows version resource** (`T-319`), written here from `__init__.py` rather than kept as
+# a file: `[tool.hatch.version]` already reads that module, and a checked-in resource would be a
+# third place for the version to disagree with itself.
+#
+# Written only for a release build, and only on Windows, where the field means anything.
+VERSION_FILE = Path(SPECPATH) / "windows-version-info.txt"
+if RELEASE_BUILD and sys.platform == "win32":
+    sys.path.insert(0, str(Path(SPECPATH).parent / "src"))
+    from tracks_and_trails import __version__ as _release_version
+
+    _parts = [int(piece) for piece in _release_version.split(".dev")[0].split(".")] + [0, 0, 0, 0]
+    _quad = tuple(_parts[:4])
+    VERSION_FILE.write_text(
+        f"""VSVersionInfo(
+  ffi=FixedFileInfo(filevers={_quad}, prodvers={_quad}, mask=0x3f, flags=0x0,
+                    OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
+  kids=[
+    StringFileInfo([StringTable("040904B0", [
+        StringStruct("CompanyName", "Sean Kottman"),
+        StringStruct("FileDescription", "Tracks & Trails"),
+        StringStruct("FileVersion", "{_release_version}"),
+        StringStruct("InternalName", "tracks-and-trails"),
+        StringStruct("LegalCopyright", "MIT licensed. Third-party notices in licenses/."),
+        StringStruct("OriginalFilename", "tracks-and-trails.exe"),
+        StringStruct("ProductName", "Tracks & Trails"),
+        StringStruct("ProductVersion", "{_release_version}"),
+    ])]),
+    VarFileInfo([VarStruct("Translation", [1033, 1200])]),
+  ],
+)
+""",
+        encoding="utf-8",
+    )
+
 a = Analysis(
     ["../src/tracks_and_trails/__main__.py"],
     pathex=["../src"],
@@ -89,7 +137,16 @@ exe = EXE(
     debug=False,
     strip=False,
     upx=False,
-    console=True,  # Phase 5 makes this windowed; the probe needs stdout in CI.
+    # A user must not get a console window behind the application. The smoke build keeps one
+    # because `packaging/frozen_smoke.py` and CI read the probes from it.
+    console=not RELEASE_BUILD,
+    # `icon.ico` is the multi-size icon `T-274` produced; PyInstaller ignores it on Linux, so it
+    # is set unconditionally rather than behind another branch.
+    icon=str(Path(SPECPATH).parent / "src/tracks_and_trails/resources/icons/icon.ico"),
+    # Windows file/product metadata, so the executable's Properties pane is not blank. Generated
+    # beside the spec rather than checked in: every field in it comes from `__version__` and
+    # `pyproject.toml`, and a checked-in copy is a third place for the version to disagree.
+    version=str(VERSION_FILE) if RELEASE_BUILD and VERSION_FILE.exists() else None,
 )
 coll = COLLECT(
     exe,

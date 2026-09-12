@@ -629,6 +629,89 @@ accepts it. Until then it is a proposal in a task, which is the narrowest honest
 
 ## Ready
 
+### T-322 — The Windows installer
+
+**Status:** **In Progress** — the script is written 2026-09-12; it cannot be built or verified
+without Inno Setup on `STARBASE`.
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 5
+**Depends on:** `T-319` (what it installs), `T-320` (the version), `T-317` (whether it is signed)
+
+#### 2026-09-12 — the script, with every default the scope named
+
+`packaging/tracks-and-trails.iss`. **Per-user with no administrator prompt**, because the
+application writes nothing beside itself (`NFR-004`) and a per-machine install would add an admin
+prompt on top of the SmartScreen warning `REL-005` already accepts — two warnings before the first
+launch. Start Menu shortcut always, desktop shortcut **opt-in and unchecked**. The whole one-dir
+tree including `licenses\`. `SignTool` is present but commented, so adding a certificate is an
+edit to a line that exists rather than a new one.
+
+**The uninstaller says what survives it** on its own final page: settings, download history and
+downloaded files stay (`DAT-001`). `T-039` asserts the two halves separately — leftovers under the
+install root are a failure, leftovers under the user directories are the intent.
+
+**The version is passed in** (`/DAppVersion=`) and the script **refuses to compile without it**,
+so it cannot acquire a second opinion about the version `REL-003` fixes in `__init__.py`.
+
+**Nothing here is verified.** An Inno Setup script is not executable on Linux, so this is authored
+rather than tested: the structure and directives are checked, and **silent install, placement,
+launch, uninstall and removal are all `T-039`'s, on a machine that has Inno Setup**. Installing it
+is a deliberate manual act on `STARBASE` per `OPS-012` §3.
+**Relevant context:** `REL-001` (*"PyInstaller one-dir build + Inno Setup installer"*); `OPS-004`
+(silent install, placement, uninstall are automatable — `T-039` does that; whether it *feels*
+normal stays human); `DAT-001` (user data survives an uninstall); `NFR-004` (nothing written
+beside the installed application); `OPS-012` §3 (a self-hosted runner must not provision itself)
+**Affected surfaces:** `packaging/tracks-and-trails.iss` (new), `.github/workflows/`,
+`docs/RELEASE.md`
+**Risk:** Medium — an installer is the first thing a user judges, and every default it picks is a
+decision
+
+#### Scope
+
+An Inno Setup script producing `Tracks-and-Trails-X.Y.Z-setup.exe`. **The defaults, proposed and
+each one reversible by ruling:**
+
+- **Per-user install, no administrator prompt.** The application writes nothing beside itself
+  (`NFR-004`), so it needs no elevation; a per-machine install would need an admin prompt on top
+  of whatever `T-317` decided about SmartScreen, which is two warnings before the first launch.
+- **Start Menu shortcut always; desktop shortcut opt-in**, unchecked by default.
+- **Silent install** honours `/VERYSILENT /NORESTART` — `T-039` asserts this.
+- **Uninstall removes the installed tree and shortcuts and leaves user data, settings and the job
+  database in place**, and says so on the uninstaller's final page — `DAT-001`. `T-039` asserts
+  the two halves separately: leftovers under the install root are a failure; leftovers under the
+  user directories are the intended behaviour.
+- **No file associations and no protocol handler** in `0.1.0`. `T-104` (a second launch handing
+  its URL to the running instance) is not built, so an association would open a message box
+  rather than a download. Recorded here so it is a known omission rather than a surprise.
+- **Licence texts installed** alongside the application — `LIC-001`'s artifact obligation, gated
+  by `T-323`.
+
+**Inno Setup on `STARBASE`** is a prerequisite, installed by hand once and recorded — a self-hosted
+runner must not provision itself as a side effect of a build (`OPS-012` §3, and the `setup-python`
+incident it cites).
+
+#### Acceptance criteria
+
+- The installer is built by `T-324`'s workflow from `T-319`'s windowed artifact, and its version
+  string matches `__version__`
+- A silent install on a clean machine (`T-318`) completes, the Start Menu entry launches the
+  application under the real platform plugin, and an uninstall leaves nothing under the install
+  root and everything under the user directories
+- `T-039` is unblocked and its four gates are green on the runner
+- The installer's own strings name the application, version and publisher; nothing in them names
+  a developer path (`T-323`'s scan covers the tree; this covers the installer)
+- If `T-317` chose unsigned: the SmartScreen prompt is screenshot once on the clean machine and
+  filed as evidence, so the README's description of it is of the real thing
+
+#### Out of scope
+
+- Upgrade-over-existing and downgrade paths — real, and their own task once `T-320`'s policy
+  exists to say what a downgrade even means
+- Auto-update
+
+---
+
 ### T-331 — The Windows mutation driver's positive control is not one
 
 **Status:** **In Progress** — the driver is corrected and validated on Linux 2026-09-11; the
@@ -838,11 +921,37 @@ the user their own copy.
 allowlist, working as designed. It is a locate-side name: it imports nothing, executes nothing and
 answers neither *what version* nor *does it work*.
 
-**Not done, and none of it can be done from here:** `console=False` and the probes' file reports,
-the ffmpeg binary and its LGPL licence text, the Windows version resource and icon, and every
-acceptance criterion that begins *"on the built artifact"*. Those need a Windows build, and the
-choice of ffmpeg source — `BtbN`'s `*-lgpl-shared`, never `gyan.dev`'s GPL builds — is recorded
-here on completion with its licence text.
+#### 2026-09-12 — scope items 1 and 3, and the reason they could be done here
+
+**One spec, two modes**, selected by `TT_RELEASE_BUILD=1` rather than by a second spec file —
+`T-233`/`T-237` were both about spec comments drifting from the spec beside them. The release mode
+sets `console=False`, the icon, and a Windows version resource generated at build time from
+`__init__.py` rather than checked in, because `[tool.hatch.version]` already reads that module and
+a checked-in resource is a third place for the version to disagree.
+
+**`console=False` costs the probes their `stdout`, and that is the interesting half.** All four
+probes now report through `_freeze_probe.say`, which prints *and* appends to `TT_PROBE_REPORT`
+when the caller sets one — the same shape as `TT_PROBE_LOG` beside it rather than a fifth
+mechanism. **45 report lines** were converted; a test asserts **no bare `print` survives** in that
+module, because a probe that kept one would report nothing in a windowed build while its siblings
+reported normally, and the file would not even be empty.
+
+**Verified by building it**, which is why these were worth doing on Linux: `TT_RELEASE_BUILD=1`
+builds, and `--ytdlp-probe` against that artifact with an isolated `HOME` wrote its eight lines to
+the report file, ending `OK: the frozen artifact carries a usable yt-dlp with its extractors`. Six
+unit cases cover the helper, including that an unwritable report does not fail the probe — the
+report is evidence, not the probe's purpose.
+
+**Not done, and none of it can be done from here:** the **ffmpeg binary and its LGPL licence
+text**, and every acceptance criterion beginning *"on the built artifact"* — no console window on
+the runner, `find_ffmpeg` reporting `source="bundled"`, `--version` on the built exe. Those need a
+Windows build.
+
+**One open question rather than an invented answer:** the ffmpeg binary is ~100 MB and must be an
+**LGPL** build (`BtbN`'s `*-lgpl-shared`, never `gyan.dev`'s GPL). Committing it is wrong; the
+choices are a build-time download with a recorded URL and checksum, or a copy placed on `STARBASE`
+by hand the way Inno Setup is. `OPS-012` §3 argues for the second and the release workflow argues
+for the first.
 
 *(Filed 2026-09-11 with the Phase 5 plan.)*
 **Owner:** Implementer
@@ -1894,67 +2003,6 @@ recorded here only so that choosing it is a choice.
 #### Out of scope
 
 - Restoring clean-machine CI permanently. `OPS-010`/`OPS-012` stand; this is per-release evidence
-
----
-
-### T-322 — The Windows installer
-
-**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 5
-**Depends on:** `T-319` (what it installs), `T-320` (the version), `T-317` (whether it is signed)
-**Relevant context:** `REL-001` (*"PyInstaller one-dir build + Inno Setup installer"*); `OPS-004`
-(silent install, placement, uninstall are automatable — `T-039` does that; whether it *feels*
-normal stays human); `DAT-001` (user data survives an uninstall); `NFR-004` (nothing written
-beside the installed application); `OPS-012` §3 (a self-hosted runner must not provision itself)
-**Affected surfaces:** `packaging/tracks-and-trails.iss` (new), `.github/workflows/`,
-`docs/RELEASE.md`
-**Risk:** Medium — an installer is the first thing a user judges, and every default it picks is a
-decision
-
-#### Scope
-
-An Inno Setup script producing `Tracks-and-Trails-X.Y.Z-setup.exe`. **The defaults, proposed and
-each one reversible by ruling:**
-
-- **Per-user install, no administrator prompt.** The application writes nothing beside itself
-  (`NFR-004`), so it needs no elevation; a per-machine install would need an admin prompt on top
-  of whatever `T-317` decided about SmartScreen, which is two warnings before the first launch.
-- **Start Menu shortcut always; desktop shortcut opt-in**, unchecked by default.
-- **Silent install** honours `/VERYSILENT /NORESTART` — `T-039` asserts this.
-- **Uninstall removes the installed tree and shortcuts and leaves user data, settings and the job
-  database in place**, and says so on the uninstaller's final page — `DAT-001`. `T-039` asserts
-  the two halves separately: leftovers under the install root are a failure; leftovers under the
-  user directories are the intended behaviour.
-- **No file associations and no protocol handler** in `0.1.0`. `T-104` (a second launch handing
-  its URL to the running instance) is not built, so an association would open a message box
-  rather than a download. Recorded here so it is a known omission rather than a surprise.
-- **Licence texts installed** alongside the application — `LIC-001`'s artifact obligation, gated
-  by `T-323`.
-
-**Inno Setup on `STARBASE`** is a prerequisite, installed by hand once and recorded — a self-hosted
-runner must not provision itself as a side effect of a build (`OPS-012` §3, and the `setup-python`
-incident it cites).
-
-#### Acceptance criteria
-
-- The installer is built by `T-324`'s workflow from `T-319`'s windowed artifact, and its version
-  string matches `__version__`
-- A silent install on a clean machine (`T-318`) completes, the Start Menu entry launches the
-  application under the real platform plugin, and an uninstall leaves nothing under the install
-  root and everything under the user directories
-- `T-039` is unblocked and its four gates are green on the runner
-- The installer's own strings name the application, version and publisher; nothing in them names
-  a developer path (`T-323`'s scan covers the tree; this covers the installer)
-- If `T-317` chose unsigned: the SmartScreen prompt is screenshot once on the clean machine and
-  filed as evidence, so the README's description of it is of the real thing
-
-#### Out of scope
-
-- Upgrade-over-existing and downgrade paths — real, and their own task once `T-320`'s policy
-  exists to say what a downgrade even means
-- Auto-update
 
 ---
 
