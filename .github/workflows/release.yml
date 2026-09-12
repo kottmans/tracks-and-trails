@@ -124,11 +124,30 @@ jobs:
         # build.** Inno Setup is placed on `STARBASE` by a deliberate maintainer act, so this
         # checks and **fails** rather than installing it — a build that silently installed a
         # compiler would make the machine's state a function of whoever pushed a tag.
+        #
+        # **Three locations, because one was wrong** (`T-322`). This looked only at
+        # `C:\Program Files (x86)` and would have reported Inno Setup missing on a machine that
+        # had it: `winget install JRSoftware.InnoSetup` installs **per-user**, under
+        # `%LOCALAPPDATA%\Programs\Inno Setup 6\`. Measured on `STARBASE` 2026-09-12. The path
+        # is exported so the compile step uses what was actually found rather than guessing again.
         run: |
-          if ! command -v ISCC >/dev/null 2>&1 && [ ! -x "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
-            echo "::error::Inno Setup's ISCC.exe is not on STARBASE. Install it by hand (OPS-012 section 3)."
-            exit 1
+          for candidate in \
+              "$LOCALAPPDATA/Programs/Inno Setup 6/ISCC.exe" \
+              "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" \
+              "/c/Program Files/Inno Setup 6/ISCC.exe"; do
+            if [ -x "$candidate" ]; then
+              echo "ISCC=$candidate" >> "$GITHUB_ENV"
+              echo "found $candidate"
+              exit 0
+            fi
+          done
+          if command -v ISCC >/dev/null 2>&1; then
+            echo "ISCC=$(command -v ISCC)" >> "$GITHUB_ENV"
+            exit 0
           fi
+          echo "::error::Inno Setup's ISCC.exe is not on this machine."
+          echo "::error::Install it by hand per OPS-012 section 3 -- winget install --id JRSoftware.InnoSetup -e"
+          exit 1
 
       - name: Install the project and the build extra
         run: |
@@ -167,11 +186,13 @@ jobs:
 
       - name: Compile the installer
         # The version comes from the tag, which `verify` has already proved equals `__version__`.
-        # The script refuses to compile without it rather than defaulting (`REL-003`).
+        # The script refuses to compile without it rather than defaulting (`REL-003`), and derives
+        # its own numeric `VersionInfoVersion` — Inno rejects a PEP 440 string outright, which the
+        # first compile found (`T-322`).
+        #
+        # `$ISCC` is whatever the step above actually located, not a path guessed here.
         run: |
-          iscc="ISCC"
-          command -v ISCC >/dev/null 2>&1 || iscc="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
-          "$iscc" "/DAppVersion=${GITHUB_REF_NAME#v}" \
+          "$ISCC" "/DAppVersion=${GITHUB_REF_NAME#v}" \
             "/DSourceDir=..\\dist\\tracks-and-trails" packaging/tracks-and-trails.iss
 
       - uses: actions/upload-artifact@v7

@@ -219,8 +219,24 @@ def test_it_refuses_rather_than_installing_inno_setup() -> None:
     text = "\n".join(str(step.get("run", "")) for step in steps("build-windows"))
     assert "ISCC" in text
     assert "OPS-012" in text, "the refusal does not name the rule it enforces"
-    for installer in ("choco install", "winget install", "Invoke-WebRequest"):
-        assert installer not in text, f"the workflow installs tooling with {installer!r}"
+
+    # **Naming the remedy is not performing it**, which this test could not originally tell apart:
+    # it forbade the string `winget install` anywhere, and then failed when the error message
+    # started telling the human exactly how to install Inno Setup. A workflow that *reports* the
+    # fix is the behaviour `OPS-012` §3 wants; one that *runs* it is what the rule forbids. So the
+    # line has to be output rather than a command.
+    for installer in (
+        "choco install",
+        "winget install",
+        "Invoke-WebRequest",
+        "Add-WindowsCapability",
+    ):
+        performing = [
+            line
+            for line in text.splitlines()
+            if installer in line and "echo" not in line and "#" not in line.split(installer)[0]
+        ]
+        assert not performing, f"the workflow installs tooling with {installer!r}: {performing}"
 
 
 def test_both_artifacts_and_a_checksum_file_are_required() -> None:

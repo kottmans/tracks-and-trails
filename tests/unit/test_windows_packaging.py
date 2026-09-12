@@ -216,6 +216,51 @@ def test_the_installer_will_not_invent_a_version() -> None:
     )
 
 
+def test_the_installer_derives_a_numeric_version_rather_than_taking_one() -> None:
+    """**The first compile found this.** `VersionInfoVersion` will not take a PEP 440 string.
+
+    `AppVersion` comes straight from `__init__.py` via `REL-003`, which between releases is
+    `0.1.0.dev0` — and Inno rejects it: *"Value of [Setup] section directive VersionInfoVersion
+    is invalid"*, compile aborted. Measured on `STARBASE` 2026-09-12.
+
+    **Derived rather than passed in**, so there is still one version input: a second `/D` define
+    would be a second opinion, which is what `REL-003` exists to prevent. Verified on the
+    compiled installer: `FileVersion 0.1.0.0` beside `ProductVersion 0.1.0.dev0`.
+    """
+    text = INSTALLER.read_text(encoding="utf-8")
+    assert "VersionInfoVersion={#NumericVersion}" in text, (
+        "VersionInfoVersion takes AppVersion again, which Inno rejects for a .devN version"
+    )
+    assert "#define NumericVersion" in text, "nothing derives the numeric version"
+    assert 'StringChange(AppVersion, ".dev", ".")' in text, (
+        "the derivation no longer maps .devN to a fourth numeric component"
+    )
+    # A suffix it cannot map must stop the compile rather than be guessed at.
+    assert "#error" in text.split("#define NumericVersion")[1].split("[Setup]")[0], (
+        "an unmappable version suffix would be stamped into the binary instead of refused"
+    )
+
+
+def test_the_workflow_finds_inno_setup_where_winget_puts_it() -> None:
+    """**A path guessed rather than discovered, and it was wrong** (`T-322`).
+
+    The release workflow looked only at `C:\\Program Files (x86)` and would have reported Inno
+    Setup missing on a machine that had it: `winget install JRSoftware.InnoSetup` installs
+    **per-user**, under `%LOCALAPPDATA%\\Programs\\Inno Setup 6\\`. Same class as the ffmpeg
+    destination in `T-319` — a location asserted from a comment rather than from a build.
+    """
+    workflow = (REPOSITORY / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "LOCALAPPDATA/Programs/Inno Setup 6" in workflow, (
+        "the per-user install location winget actually uses is not searched"
+    )
+    assert "Program Files (x86)/Inno Setup 6" in workflow, (
+        "the per-machine location is not searched"
+    )
+    assert 'echo "ISCC=' in workflow, (
+        "the located path is not exported, so the compile step guesses again"
+    )
+
+
 def test_the_installer_asks_for_no_administrator() -> None:
     """`NFR-004`: the application writes nothing beside itself, so a per-machine install would add
     an admin prompt on top of the SmartScreen warning `REL-005` already accepts. Two warnings

@@ -6,6 +6,12 @@
 ;
 ;   ISCC.exe /DAppVersion=0.1.0 /DSourceDir=..\dist\tracks-and-trails packaging\tracks-and-trails.iss
 ;
+; **`ISCC.exe` is not on `PATH` and its location depends on how it was installed.** `winget
+; install JRSoftware.InnoSetup` puts it **per-user** under
+; `%LOCALAPPDATA%\Programs\Inno Setup 6\`, not in `C:\Program Files (x86)\` — measured on
+; `STARBASE` 2026-09-12, where a workflow step looking only at Program Files reported it missing
+; on a machine that had it.
+;
 ; **Every default below is a decision, and each is reversible by ruling** — an installer is the
 ; first thing a user judges, and a default nobody chose is still a choice.
 
@@ -14,6 +20,25 @@
 #endif
 #ifndef SourceDir
   #define SourceDir "..\dist\tracks-and-trails"
+#endif
+
+; **`VersionInfoVersion` will not take a PEP 440 version, and the first compile proved it**
+; (`T-322`). `AppVersion` comes straight from `__init__.py` via `REL-003`, which between releases
+; is `0.1.0.dev0` — and Inno rejects that outright: *"Value of [Setup] section directive
+; VersionInfoVersion is invalid"*, compile aborted. The file's own numeric resource has to be
+; numeric.
+;
+; **Derived here rather than passed in**, so there is still exactly one version input. A second
+; `/D` define would be a second opinion about the version, which is the thing `REL-003` and this
+; script's `#error` above exist to prevent. `.dev0` becomes a fourth numeric component —
+; `0.1.0.dev0` → `0.1.0.0` — and a release version passes through untouched.
+;
+; Anything else fails the compile rather than being guessed at: if a pre-release channel is ever
+; adopted (`v0.1.0-rc1`, which `tools/version_tag_check.py` currently refuses), this stops and
+; asks, instead of stamping the binary with a version nobody chose.
+#define NumericVersion StringChange(AppVersion, ".dev", ".")
+#if NumericVersion != Trim(NumericVersion) || Pos("-", NumericVersion) > 0 || Pos("+", NumericVersion) > 0
+  #error VersionInfoVersion must be numeric; AppVersion has a suffix this script cannot map. Decide the mapping rather than letting Inno guess.
 #endif
 
 #define AppName "Tracks & Trails"
@@ -29,7 +54,7 @@ AppVerName={#AppName} {#AppVersion}
 AppPublisher={#AppPublisher}
 AppPublisherURL={#AppUrl}
 AppSupportURL={#AppUrl}/issues
-VersionInfoVersion={#AppVersion}
+VersionInfoVersion={#NumericVersion}
 
 ; **Per-user, no administrator prompt** (`NFR-004`). The application writes nothing beside itself,
 ; so it needs no elevation — and a per-machine install would add an admin prompt on top of the

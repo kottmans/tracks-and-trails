@@ -1324,18 +1324,53 @@ What is now pinned, each against its other declaration or its requirement:
 `AppVersion` default that would give the installer a second opinion about the version, and
 dropping `recursesubdirs` so only the executable ships.
 
-**`STARBASE` is reachable now** — the maintainer authorised the key on 2026-09-12 and `T-319`'s
-build ran there. **Inno Setup is not installed on it**, checked three ways: `where ISCC` finds
-nothing, neither `Program Files` directory contains it, and its uninstall key is absent.
+#### 2026-09-12 (later) — compiled, and the first compile found two defects
 
-**So this stays blocked, and deliberately.** `OPS-012` §3 forbids a self-hosted runner
-provisioning itself as a side effect of a build, and this task's own scope calls installing it *"a
-deliberate manual act on `STARBASE`"*. Installing a compiler because a build wanted one is the
-thing that rule exists to prevent, so it was not done.
+**The maintainer installed Inno Setup 6.7.3 on `STARBASE`** — the deliberate manual act `OPS-012`
+§3 requires, and which this task declined to do for itself. It then compiled:
 
-**What it needs:** Inno Setup 6 installed on `STARBASE` by hand. Then `ISCC.exe
-/DAppVersion=0.1.0.dev0 /DSourceDir=..\dist\tracks-and-trails packaging\tracks-and-trails.iss`
-compiles against the release build that now exists there, and `T-039` can begin.
+```
+Successful compile (85.516 sec).
+C:\dev\tracks-and-trails\dist\Tracks-and-Trails-0.1.0.dev0-setup.exe
+91,776,949 bytes
+sha256 7528e12f3547a8b904b9247de745c24502e4d881c2e5a5b9ab9fb9552b56514b
+FileVersion     0.1.0.0
+ProductVersion  0.1.0.dev0
+CompanyName     Sean Kottman
+FileDescription Tracks & Trails Setup
+```
+
+**1. `VersionInfoVersion` will not take a PEP 440 version.** `AppVersion` comes straight from
+`__init__.py` via `REL-003`, which between releases is `0.1.0.dev0` — and Inno rejects it
+outright: *"Value of [Setup] section directive VersionInfoVersion is invalid"*, compile aborted at
+line 32. The file's own numeric resource has to be numeric.
+
+**Derived in the script rather than passed in**, so there is still exactly one version input: a
+second `/D` define would be a second opinion about the version, which is what `REL-003` and this
+script's `#error` exist to prevent. `.dev0` becomes a fourth numeric component, and the compiled
+installer shows the result — `FileVersion 0.1.0.0` beside `ProductVersion 0.1.0.dev0`, the
+numeric resource numeric and the human-readable one true. A suffix the mapping cannot handle
+**fails the compile** rather than being guessed at.
+
+**2. `ISCC.exe` is not where the release workflow looked.** `winget install
+JRSoftware.InnoSetup` installs **per-user**, at `%LOCALAPPDATA%\Programs\Inno Setup 6\` — not
+`C:\Program Files (x86)\`. `release.yml` checked only the latter and would have reported Inno
+Setup missing on a machine that had it. It now searches three locations plus `PATH` and **exports
+what it found**, so the compile step uses a located path rather than guessing again.
+
+**That is the same defect class as `T-319`'s ffmpeg destination**, one task apart: a location
+asserted from a comment instead of from a build. Both were found by running the thing.
+
+**One of the new tests caught me in a third instance of it.** A test forbade the string
+`winget install` anywhere in the workflow, to enforce `OPS-012` §3 — and then failed when the
+error message started telling the human how to install Inno Setup. Naming a remedy is not
+performing it; the test now looks at whether a line is *executed* rather than whether a string
+appears, and the workflow's message is split so each line carries its own `echo`.
+
+**Still not verified, and it is `T-039`'s by scope:** silent install, placement, launch,
+uninstall and what survives it. Those need the installer *run*, and running it on `STARBASE`
+would neither be clean-machine evidence nor leave the machine as it was — `T-318`'s Windows
+Sandbox evidence is where that belongs.
 **Relevant context:** `REL-001` (*"PyInstaller one-dir build + Inno Setup installer"*); `OPS-004`
 (silent install, placement, uninstall are automatable — `T-039` does that; whether it *feels*
 normal stays human); `DAT-001` (user data survives an uninstall); `NFR-004` (nothing written
