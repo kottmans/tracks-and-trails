@@ -84,7 +84,7 @@ CASES = [
 ALL_PASSED, TESTS_FAILED, INTERRUPTED, INTERNAL_ERROR, USAGE_ERROR, NO_TESTS = range(6)
 
 #: pytest's own result line. Its absence is a fact worth reporting rather than papering over.
-RESULT_LINE = re.compile(r"\b\d+ (passed|failed|error|skipped)\b")
+RESULT_LINE = re.compile(r"\b\d+ (passed|failed|errors?|skipped|deselected)\b")
 
 
 def run(plugin, selection):
