@@ -23,10 +23,6 @@ MUTATIONS = Path(__file__).resolve().parent
 ROOT = Path.cwd()
 PYTHON = Path(sys.executable)
 
-if not (ROOT / "pyproject.toml").is_file():
-    raise SystemExit(f"run this from the repository root; {ROOT} has no pyproject.toml")
-if ".venv" not in str(PYTHON):
-    raise SystemExit(f"run this with the project venv's python, not {PYTHON}")
 
 #: `T-026`'s classes run the desktop-marked suite on the real plugin, because that is what they
 #: are about: window stations, focus chains and native widgets.
@@ -51,10 +47,12 @@ CHAIN = (["tests/ui/test_accessibility.py", "tests/ui/test_add_dialog.py"], "off
 
 CASES = [
     ("baseline, unmutated", None, "pass", DESKTOP),
-    # The positive control runs first for a reason: if it does not fail, the plugin mechanism is
-    # broken and no verdict below means anything. This driver documented that principle and did
-    # not apply it, which is how its first table reported three clean kills from runs that had
-    # executed no tests at all.
+    # **What the control proves, and what it does not** (`T331-R2`). It shows the plugin
+    # mechanism takes effect on this machine: a mutation no product arrangement can pass is
+    # caught. If it survived, that would say the mechanism is suspect and the table must be read
+    # with care — it would **not** void a later kill, because each kill carries its own evidence:
+    # a baseline that passed and a run with real assertion failures. *(This said a surviving
+    # control made every verdict below meaningless, which the 2026-09-11 run disproved.)*
     #
     # **It is the title control since `T-331`.** The previous one emptied the dialog's focus
     # chain, and that can survive for a product reason — construction order already matches the
@@ -87,6 +85,54 @@ ALL_PASSED, TESTS_FAILED, INTERRUPTED, INTERNAL_ERROR, USAGE_ERROR, NO_TESTS = r
 
 #: pytest's own result line. Its absence is a fact worth reporting rather than papering over.
 RESULT_LINE = re.compile(r"\b\d+ (passed|failed|errors?|skipped|deselected)\b")
+
+
+def counts(summary):
+    """`{"passed": n, "failed": n, "errors": n}` from pytest's result line; zeros when absent."""
+    found = {"passed": 0, "failed": 0, "errors": 0}
+    for number, word in re.findall(r"\b(\d+) (passed|failed|errors?)\b", summary or ""):
+        found["errors" if word.startswith("error") else word] += int(number)
+    return found
+
+
+def verdict(expectation, code, summary, baseline_broken):
+    """The table's word for one run — and **nothing is a kill without an assertion failing**.
+
+    `T331-R1`: this awarded KILLED to any exit 1, so a run with only errors — a fixture that could
+    not build, a collection that half-failed — or with no result line at all read as a caught
+    mutation, and a baseline exiting 2 to 5 was never marked broken, so its mutations were judged
+    against nothing. Now:
+
+    - a **baseline** is OK only on exit 0 with tests passed and none failed or errored; anything
+      else marks its selection broken, whatever the exit code;
+    - a **kill** needs exit 1 *and* at least one failed test — teardown errors beside real
+      failures are kept, as the Windows runs showed they cascade — and anything else from exit 1
+      is `NO RESULT (errors only)` or `NO RESULT (no summary)`;
+    - a **survivor** needs exit 0 with tests passed; every other exit is `NO RESULT`.
+    """
+    seen = counts(summary)
+    has_summary = RESULT_LINE.search(summary or "") is not None and "NO SUMMARY LINE" not in (
+        summary or ""
+    )
+    if expectation == "pass":
+        clean = code == ALL_PASSED and has_summary and seen["passed"] > 0
+        clean = clean and seen["failed"] == 0 and seen["errors"] == 0
+        if clean:
+            return "OK"
+        return (
+            "BROKEN BASELINE" if code in (ALL_PASSED, TESTS_FAILED) else f"NO RESULT (exit {code})"
+        )
+    if baseline_broken:
+        return "NO RESULT (baseline broken)"
+    if code == TESTS_FAILED:
+        if not has_summary:
+            return "NO RESULT (no summary)"
+        if seen["failed"] == 0:
+            return "NO RESULT (errors only)"
+        return "KILLED" if expectation == "fail" else "KILLED (unexpected)"
+    if code == ALL_PASSED and has_summary and seen["passed"] > 0 and seen["errors"] == 0:
+        return "SURVIVED (unexpected)" if expectation == "fail" else "SURVIVED (expected)"
+    return f"NO RESULT (exit {code})"
 
 
 def run(plugin, selection):
@@ -145,75 +191,77 @@ def describe_the_tree():
     return git("log", "--oneline", "-1"), git("status", "--porcelain")
 
 
-HEAD, DIRTY = describe_the_tree()
-ALLOW_DIRTY = "--allow-dirty" in sys.argv
+def main():
+    if not (ROOT / "pyproject.toml").is_file():
+        raise SystemExit(f"run this from the repository root; {ROOT} has no pyproject.toml")
+    if ".venv" not in str(PYTHON):
+        raise SystemExit(f"run this with the project venv's python, not {PYTHON}")
 
-lines = [
-    f"python : {PYTHON}",
-    f"cwd    : {ROOT}",
-    f"HEAD   : {HEAD or '(not a git checkout — this table names no tree)'}",
-    f"tree   : {'DIRTY' if DIRTY else 'clean'}",
-]
-if DIRTY:
-    lines += ["", "uncommitted:"] + [f"  {line}" for line in DIRTY.splitlines()]
-report = list(lines)
-print("\n".join(lines) + "\n")
+    head, dirty = describe_the_tree()
+    allow_dirty = "--allow-dirty" in sys.argv
 
-if DIRTY and not ALLOW_DIRTY:
-    # **Refuses rather than warns**, because a warning is what scrolled past on 2026-09-11.
-    print(
-        "refusing to run: the working tree has uncommitted changes, so no verdict below would\n"
-        "name a tree anybody can return to. Commit, stash, or pass --allow-dirty if you mean it."
-    )
-    sys.exit(2)
+    lines = [
+        f"python : {PYTHON}",
+        f"cwd    : {ROOT}",
+        f"HEAD   : {head or '(not a git checkout — this table names no tree)'}",
+        f"tree   : {'dirty' if dirty else 'clean'}",
+    ]
+    if dirty:
+        lines += ["", "uncommitted:"] + [f"  {line}" for line in dirty.splitlines()]
+    report = list(lines)
+    print("\n".join(lines) + "\n")
 
-results = []
-broken = set()
-for name, plugin, expectation, selection in CASES:
-    code, summary, full = run(plugin, selection)
-    key = tuple(selection[0])
-    if code not in (ALL_PASSED, TESTS_FAILED):
-        # Ran nothing, or could not. Never a verdict about the mutation.
-        verdict = f"NO RESULT (exit {code})"
-    elif expectation == "pass":
-        verdict = "OK" if code == ALL_PASSED else "BROKEN BASELINE"
-        if code != ALL_PASSED:
+    if dirty and not allow_dirty:
+        # **Refuses rather than warns**, because a warning is what scrolled past on 2026-09-11.
+        print(
+            "refusing to run: the working tree has uncommitted changes, so no verdict below\n"
+            "would name a tree anybody can return to. Commit, stash, or pass --allow-dirty\n"
+            "if you mean it."
+        )
+        sys.exit(2)
+
+    results = []
+    broken = set()
+    for name, plugin, expectation, selection in CASES:
+        code, summary, full = run(plugin, selection)
+        key = tuple(selection[0])
+        # **A baseline that is not clean breaks its selection, whatever its exit code**
+        # (`T331-R1`).
+        # Without this the second run of 2026-09-11 reported KILLED for every case — including the
+        # one expected to survive — because the suite was failing whatever the plugin did.
+        word = verdict(expectation, code, summary, key in broken)
+        if expectation == "pass" and word != "OK":
             broken.add(key)
-    elif key in broken:
-        # **The baseline for this selection failed, so nothing here is a verdict** (`T-331`).
-        # Without this the second run of 2026-09-11 reported KILLED for every case — including
-        # the one expected to survive — because the suite was failing whatever the plugin did.
-        verdict = "NO RESULT (baseline broken)"
-    elif expectation == "fail":
-        verdict = "KILLED" if code == TESTS_FAILED else "SURVIVED (unexpected)"
-    else:
-        verdict = "SURVIVED (expected)" if code == ALL_PASSED else "KILLED (unexpected)"
-    results.append((verdict, name, summary, full))
-    block = f"{verdict:<22} {name}\n{'':<22} exit {code}: {summary}"
-    report.append("\n" + block)
-    print(block + "\n")
+        results.append((word, name, summary, full))
+        block = f"{word:<22} {name}\n{'':<22} exit {code}: {summary}"
+        report.append("\n" + block)
+        print(block + "\n")
 
-print("=" * 72)
-report.append("\n" + "=" * 72)
-for verdict, name, _summary, _full in results:
-    print(f"{verdict:<22} {name}")
-    report.append(f"{verdict:<22} {name}")
+    print("=" * 72)
+    report.append("\n" + "=" * 72)
+    for word, name, _summary, _full in results:
+        print(f"{word:<22} {name}")
+        report.append(f"{word:<22} {name}")
 
-# **Written, not only printed** (`T-331`). `T329-R2` asks for a *recorded* result, and this
-# driver's own table nearly went unrecorded because it lived in a console window.
-RECORD = ROOT / "reports" / "windows-mutations.txt"
-RECORD.parent.mkdir(parents=True, exist_ok=True)
-RECORD.write_text(
-    "\n".join(report)
-    + "\n\n"
-    + "\n\n".join(f"{'=' * 72}\n{name}\n{'=' * 72}\n{full}" for _, name, _, full in results),
-    encoding="utf-8",
-)
-print(f"\nrecorded: {RECORD}")
+    # **Written, not only printed** (`T-331`). `T329-R2` asks for a *recorded* result, and this
+    # driver's own table nearly went unrecorded because it lived in a console window.
+    record = ROOT / "reports" / "windows-mutations.txt"
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(
+        "\n".join(report)
+        + "\n\n"
+        + "\n\n".join(f"{'=' * 72}\n{name}\n{'=' * 72}\n{full}" for _, name, _, full in results),
+        encoding="utf-8",
+    )
+    print(f"\nrecorded: {record}")
 
-unexpected = [
-    r
-    for r in results
-    if "unexpected" in r[0] or r[0] == "BROKEN BASELINE" or r[0].startswith("NO RESULT")
-]
-sys.exit(1 if unexpected else 0)
+    unexpected = [
+        r
+        for r in results
+        if "unexpected" in r[0] or r[0] == "BROKEN BASELINE" or r[0].startswith("NO RESULT")
+    ]
+    sys.exit(1 if unexpected else 0)
+
+
+if __name__ == "__main__":
+    main()

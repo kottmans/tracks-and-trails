@@ -114,6 +114,27 @@ reasoning below was reproduced on Linux from the committed tree, where the mutat
 in `test_accessibility.py` and `test_add_dialog.py` — none carrying the `windows_desktop` marker
 the driver selects. The Windows numbers are still to be taken.
 
+#### 2026-09-13 — `T331-R1`/`R2`: nothing is a kill without an assertion failing
+
+**The review was right that the table could still lie.** `run_mutations.py` awarded KILLED to any
+exit 1 — so a run with only errors, or with no result line, read as a caught mutation — and a
+baseline exiting 2 to 5 was never marked broken, so its mutations were judged against nothing.
+
+**`verdict()` now decides from evidence, and is a pure function with tests.** A baseline is `OK`
+only on exit 0 with tests passed and none failed or errored, and any other baseline breaks its
+selection; a kill needs exit 1 **and** at least one failed test, keeping the teardown errors that
+cascade beside real failures on Windows; exit 1 with errors only is `NO RESULT (errors only)`, and
+with no summary `NO RESULT (no summary)`; a survivor needs exit 0 with tests passed. The driver's
+checks and its run moved behind `main()`, so importing it runs nothing.
+`tests/unit/test_mutation_verdicts.py` holds thirteen cases, the review's among them and the real
+Windows lines from the run below. **Mutation:** dropping the errors-only rule fails one.
+
+**`T331-R2`:** the comment above the title control no longer says a surviving control voids every
+verdict; it says what the control proves and that each kill carries its own evidence.
+
+**The two `STARBASE` tables below were read under the old rules, and stand under the new ones**:
+every KILLED there has failed tests beside its errors, and every baseline passed clean.
+
 #### 2026-09-13 — the `STARBASE` run, and what two of its verdicts said about the driver
 
 **Run on `STARBASE`**, tree `4320859`, **clean** by the driver's own header — after moving seven
