@@ -83,13 +83,18 @@ prove is that *real rows* survive.
 `2026.07.04` and the release ships it. Recorded so a reader does not look for a canary run that
 was never owed.
 
+> **Superseded 2026-09-13** (`T326-R2`). True when captured; `T-332` moved the pin to **2026.8.19**
+> later on 2026-09-12, because 2026.7.4 cannot download from YouTube. **Item 10a is owed** for
+> `0.1.0`: the `yt-dlp canary` workflow at 2026.8.19, dispatched and green, with its run id recorded
+> at the candidate. The paragraph above is kept as the evidence it was.
+
 ## Items waiting on a release candidate
 
 | Item | What will satisfy it |
 |---|---|
 | 1 · static gates, both platforms | the `ruff`/`mypy` steps' run id **at the RC commit** |
 | 2 · full default suite, both platforms | the `linux` and `windows desktop` job ids at the RC commit |
-| 8 · frozen smoke on the release builds | `T-324`'s `build-linux` / `build-windows` probe steps |
+| 8 · frozen smoke on the release builds | `T-324`'s `build-linux` / `build-windows` probe steps **for launch, the real download and no recursive launch** — *and a sitting for "cancel another" and a normal exit*, which no probe performs (`T326-R2`; the row said the probe steps covered the whole item) |
 | 10 · in-app yt-dlp update from the release artifact | `T-324`'s `--ytdlp-update-probe` step |
 
 **Items 8 and 10 have been run by hand on the release artifacts** — 5 of 5 probes on the Windows

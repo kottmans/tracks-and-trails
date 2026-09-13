@@ -4061,3 +4061,106 @@ def test_a_newer_database_stops_composition_rather_than_opening_it(
 
     with pytest.raises(db.NewerSchemaError):
         composed(database=database)
+
+
+def child_recording_its_request_then_waiting(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **kwargs: Any
+) -> None:
+    """`child_probing_then_waiting`, and a download writes down the request it was handed.
+
+    The file is written once, at session start, because the session's request is fixed at spawn;
+    what the test compares it against is the stored row, after settings have moved.
+    """
+    if kind is SessionKind.DOWNLOAD:
+        record = Path(request.output_directory) / f"request-{job_id}.json"
+        record.parent.mkdir(parents=True, exist_ok=True)
+        record.write_text(
+            json.dumps({"proxy": request.proxy, "rate_limit_bytes": request.rate_limit_bytes}),
+            encoding="utf-8",
+        )
+    child_probing_then_waiting(kind, job_id, request, queue, **kwargs)
+
+
+def test_a_settings_change_mid_flight_does_not_alter_a_running_jobs_request(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """**`TESTING` §7, *Settings freeze*** — mandatory, and missing until `T326-R1` found it.
+
+    *"A settings change mid-flight does not alter a running job's `DownloadRequest`."* Frozen
+    dataclasses prove a request cannot be **mutated**; they do not prove a running job keeps the one
+    it started with, because the failure is a **new** request built from the new settings and handed
+    to — or written over — something in flight. So this runs a real download, changes the proxy and
+    the rate limit on the Settings screen while it runs, and asserts three things:
+
+    - the setting really changed — a request built *now* carries it (the positive control);
+    - the stored row of the running job still carries what it was queued with;
+    - and the worker was handed that same request, which a spawned session cannot be re-handed.
+    """
+    settings_file = tmp_path / "settings.toml"
+    composition = composed(
+        settings_file=settings_file, entry_point=child_recording_its_request_then_waiting
+    )
+    composition.manager.start_queue()
+    dialog = composition.window.open_add_dialog()
+    assert dialog is not None
+    type_urls(dialog, "https://composed.invalid/running-while-settings-change")
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows) and dialog.rows[0].committable, timeout=60), (
+        f"the URL never resolved: {dialog.status_text()}"
+    )
+    dialog.add_to_queue()
+    assert spin(lambda: len(dialog.queued_job_ids) == 1, timeout=30), "the row was never queued"
+    job_id = dialog.queued_job_ids[0]
+    dialog.close()
+    QApplication.processEvents()
+
+    def running() -> bool:
+        stored = composition.store.get(job_id)
+        return stored is not None and stored.status is JobStatus.RUNNING
+
+    assert spin(running, timeout=60), "the download never started"
+    before = composition.store.get(job_id)
+    assert before is not None
+    assert before.request.proxy is None and before.request.rate_limit_bytes is None
+    record = Path(before.request.output_directory) / f"request-{job_id}.json"
+    assert spin(record.exists, timeout=60), "the worker never recorded the request it was handed"
+
+    screen = _settings_screen(composition)
+    try:
+        proxy = screen.findChild(QLineEdit, PROXY_NAME)
+        rate = screen.findChild(QSpinBox, RATE_LIMIT_NAME)
+        assert proxy is not None and rate is not None
+        QTest.keyClicks(proxy, "http://proxy.invalid:8080")
+        QTest.keyClick(proxy, Qt.Key.Key_Return)
+        rate.setValue(512)
+        QApplication.processEvents()
+    finally:
+        screen.close()
+        QApplication.processEvents()
+    assert core_settings.load(settings_file).settings.network.proxy == "http://proxy.invalid:8080"
+
+    fresh = composition.window.open_add_dialog()
+    assert fresh is not None
+    try:
+        type_urls(fresh, "https://composed.invalid/queued-after-the-change")
+        fresh.resolve()
+        assert spin(lambda: bool(fresh.rows) and fresh.rows[0].committable, timeout=60)
+        built_now = fresh._request_for(fresh.rows[0])
+    finally:
+        fresh.close()
+        QApplication.processEvents()
+    assert built_now.proxy == "http://proxy.invalid:8080", (
+        "a request built after the change does not carry it, so nothing below proves anything"
+    )
+
+    after = composition.store.get(job_id)
+    assert after is not None and after.status is JobStatus.RUNNING, "the job stopped running"
+    assert after.request == before.request, (
+        f"the running job's stored request changed with the settings: {after.request}"
+    )
+    handed = json.loads(record.read_text(encoding="utf-8"))
+    assert handed == {"proxy": None, "rate_limit_bytes": None}, (
+        f"the worker was handed a request carrying the new settings: {handed}"
+    )

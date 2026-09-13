@@ -1956,6 +1956,21 @@ candidate, through the workflow**, and that needs the tag.
 workflow
 **Risk:** Low — these are runs, not builds; the risk is claiming one that did not happen
 
+#### 2026-09-13 — the review's two findings
+
+**`T326-R1`: the missing §7 test is written.** *Settings freeze* —
+`tests/integration/test_composition.py::test_a_settings_change_mid_flight_does_not_alter_a_running_jobs_request`.
+A real download runs in the composed application; the proxy and rate limit are changed on the
+Settings screen while it runs. It asserts the change is live (a request built afterwards carries
+it), that the running job's stored request is unchanged, and that the worker was handed the request
+it was queued with. **Mutation:** making the network handler rewrite running jobs' stored requests
+fails it. §7's eleven areas now all map to named tests.
+
+**`T326-R2`: the routing is corrected** — item 10a is owed after `T-332`, and item 8's cancellation
+and normal-exit clause is a sitting rather than a probe. The retained evidence gets an appended,
+dated superseding note rather than an edit. `docs/RELEASE.md`'s fixture step said *"from `0.2`
+onward"*, contradicting its own next sentence; it now says from `0.1.0` on.
+
 #### Scope
 
 The release gate's machine half, run **against the candidate** rather than against `main`:
@@ -1969,11 +1984,13 @@ The release gate's machine half, run **against the candidate** rather than again
 - Item 5: **the migration check is `N/A` for a first release and says so** — there is no previous
   release's database. The obligation is written into `docs/RELEASE.md` for `0.2`: keep a `0.1.0`
   database fixture and open it
-- Item 8: the frozen smoke, on the **release** builds — `T-324` runs it; the record is the run id
+- Item 8: the frozen smoke, on the **release** builds — `T-324`'s probes cover launch, the real
+  download and no recursive launch, and the record is the run id; **"cancel another" and a normal
+  exit are a sitting**, which no probe performs (`T326-R2`)
 - Item 10: the in-app yt-dlp update from the release artifact — `T-324` runs the probe; the record
   is the run id
-- Item 10a: only if the baseline is bumped in this release; for `0.1.0` it is not, and that is
-  recorded
+- Item 10a: only if the baseline is bumped in this release — **and for `0.1.0` it is**: `T-332`
+  moved it to 2026.8.19, so the canary at that version is owed *(said "for `0.1.0` it is not")*
 
 #### Acceptance criteria
 
