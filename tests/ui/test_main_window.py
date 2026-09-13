@@ -914,7 +914,7 @@ def test_the_window_opens_with_the_queue_stopped_and_says_so(qapp: QApplication)
     changes_the_real_manager` asserts the pair; this asserts the window's half on its own, so a
     failure says which side moved.
     """
-    window = MainWindow(concurrency=3, control_bar=True)
+    window = _stopped_window_over([_job("held", 0)])
     action = window.run_action
     assert action is not None
 
@@ -1323,7 +1323,7 @@ def test_only_the_stopped_state_is_emphasised(qapp: QApplication) -> None:
     previous = qapp.styleSheet()
     theme.apply(qapp, theme.LIGHT)
     try:
-        window = MainWindow(concurrency=3, control_bar=True)
+        window = _stopped_window_over([_job("held", 0)])
         gate = window.findChild(QLabel, "queueGateState")
         assert gate is not None
 
@@ -1869,3 +1869,70 @@ def test_the_status_bar_summary_has_no_closing_full_stop(qapp: QApplication, sum
     label = window.findChild(QLabel, "environmentSummary")
     assert label is not None
     assert label.toolTip() == summary
+
+
+def _stopped_window_over(jobs: list[Job]) -> MainWindow:
+    """`_window_over`, with the queue left stopped — the state a window opens in (`UX-006`)."""
+    return MainWindow(
+        control_bar=True,
+        manager=DownloadManager(_EmptyJobStore(), concurrency=1),
+        queue=_FakeQueue(jobs),
+    )
+
+
+@pytest.mark.parametrize(
+    ("statuses", "asks"),
+    [
+        ((), False),
+        ((JobStatus.COMPLETED, JobStatus.FAILED), False),
+        ((JobStatus.COMPLETED, JobStatus.QUEUED), True),
+        ((JobStatus.READY,), True),
+    ],
+    ids=["empty", "only-finished", "one-queued", "one-ready"],
+)
+def test_a_stopped_queue_asks_for_start_only_while_something_is_waiting(
+    qapp: QApplication, statuses: tuple[JobStatus, ...], asks: bool
+) -> None:
+    """**Maintainer ruling, 2026-09-13.** Since `T-334` a queue stops itself when its work is done,
+    and the emphasised *press Start to download* then sat over a queue with nothing to start.
+
+    With nothing queued or ready the line is plain *Queue stopped* and not emphasised; with a held
+    download it keeps the call to action. A running queue says *Queue running* either way.
+    """
+    window = _stopped_window_over([_job(f"j{i}", i, status) for i, status in enumerate(statuses)])
+    gate = window.findChild(QLabel, "queueGateState")
+    assert gate is not None
+    try:
+        if asks:
+            assert gate.text() == "Queue stopped — press Start to download"
+        else:
+            assert gate.text() == "Queue stopped"
+        assert gate.property(ACTIONABLE_STATUS_PROPERTY) is asks
+
+        window.show_queue_running(True)
+        assert gate.text() == "Queue running"
+        assert gate.property(ACTIONABLE_STATUS_PROPERTY) is False
+    finally:
+        window.close()
+        window.deleteLater()
+
+
+def test_the_gate_line_quietens_when_the_last_held_download_finishes(qapp: QApplication) -> None:
+    """The ruling's live half: the rows change under an open window, and the line follows them.
+
+    A queue that finishes its last download reloads its rows; nothing about the run state changes
+    in that moment, so a line that listened only to `show_queue_running` would keep asking.
+    """
+    jobs = [_job("held", 0)]
+    window = _stopped_window_over(jobs)
+    gate = window.findChild(QLabel, "queueGateState")
+    assert gate is not None and window._queue is not None
+    try:
+        assert gate.text() == "Queue stopped — press Start to download"
+        jobs[0] = _job("held", 0, JobStatus.COMPLETED)
+        window._queue.refresh()
+        assert gate.text() == "Queue stopped", "the rows changed and the line kept asking for Start"
+        assert gate.property(ACTIONABLE_STATUS_PROPERTY) is False
+    finally:
+        window.close()
+        window.deleteLater()

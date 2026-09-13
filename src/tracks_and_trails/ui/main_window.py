@@ -703,6 +703,8 @@ class MainWindow(QMainWindow):
         #: item 3, which `T181-R1` found could not stand. The row was built; this comment outlived
         #: the argument by one correction round, which is why `T181-R2` exists.)*
         self._gate = QLabel(self)
+        #: The run state the gate line last showed, so a change in the rows can re-say it.
+        self._gate_running = False
         self._gate.setObjectName("queueGateState")
         self._gate.setAccessibleName("Queue state")
         self._gate.setTextFormat(Qt.TextFormat.PlainText)
@@ -782,6 +784,13 @@ class MainWindow(QMainWindow):
         # (`P2EXIT-R13`). An empty view hides its list and cannot hold focus at construction, so a
         # first run would otherwise start with no view focusable at all.
         self._queue.table.model().modelReset.connect(self._first_rows_arrived)
+        # **The gate line follows the rows as well as the run state** (2026-09-13 ruling): whether
+        # it asks for Start depends on something waiting, which changes as rows come and go.
+        rows = self._queue.model
+        for signal in (rows.modelReset, rows.rowsInserted, rows.rowsRemoved, rows.dataChanged):
+            signal.connect(self._rows_changed_the_gate)
+        # And once now: the view loaded its rows before these connections existed.
+        self._rows_changed_the_gate()
         self._row_counts = {id(self._queue): self._queue.table.model().rowCount()}
         self._give_the_rows_the_keyboard()
 
@@ -1599,19 +1608,36 @@ class MainWindow(QMainWindow):
         The stopped wording names the remedy rather than only the state: *press Start* is the one
         thing a user looking at a full queue and no activity needs to be told, and a label that
         said only "Queue stopped" would describe the problem without answering it.
+
+        **Only while something is waiting** (maintainer ruling, 2026-09-13). Since `T-334` a queue
+        stops itself when its work is done, and the emphasised *press Start to download* then sat
+        over a queue with nothing to start. With no queued or ready row the line says plainly
+        *Queue stopped* and is not emphasised; the call to action returns the moment a download
+        is held.
         """
-        self._gate.setText(
-            "Queue running" if running else "Queue stopped — press Start to download"
-        )
-        # **Emphasised only while stopped** (`T-192`). The stopped line is the one that asks for a
-        # press; the running one reports. Re-polished by hand because Qt does not restyle on a
-        # property change on its own — a dynamic-property selector that is set and never repolished
-        # is a rule that applies once, at construction, and then silently stops.
-        self._gate.setProperty(ACTIONABLE_STATUS_PROPERTY, not running)
+        self._gate_running = running
+        waiting = self._queue is not None and self._queue.model.holds_work()
+        asks = not running and waiting
+        if running:
+            text = "Queue running"
+        elif waiting:
+            text = "Queue stopped — press Start to download"
+        else:
+            text = "Queue stopped"
+        self._gate.setText(text)
+        # **Emphasised only while it asks for a press** (`T-192`). The stopped line with work
+        # waiting is the one that asks; the running one reports, and so does a stopped, empty
+        # queue. Re-polished by hand because Qt does not restyle on a property change on its own —
+        # a dynamic-property selector that is set and never repolished is a rule that applies
+        # once, at construction, and then silently stops.
+        self._gate.setProperty(ACTIONABLE_STATUS_PROPERTY, asks)
         style = self._gate.style()
         if style is not None:
             style.unpolish(self._gate)
             style.polish(self._gate)
+
+    def _rows_changed_the_gate(self, *_ignored: object) -> None:
+        self._show_gate_state(running=self._gate_running)
 
     def _run_toggled(self, running: bool) -> None:
         """Hand the queue's run state to whoever composition said owns it.

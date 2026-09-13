@@ -5070,6 +5070,10 @@ that waits **Held** for the next Start, the review the queue already gives at la
   is still running runs; a row can only be Held once nothing is.
 - Items 1 and 3–8 are unchanged, and so is the drain: stopping itself interrupts nothing, because
   by then nothing is running.
+- **The status line follows it** (maintainer ruling, 2026-09-13, the Implementer's recommendation):
+  with nothing queued or ready, a stopped queue says plain *Queue stopped*, unemphasised; the
+  emphasised *Queue stopped — press Start to download* appears only while a download is held,
+  because only then does a press start anything.
 
 ---
 

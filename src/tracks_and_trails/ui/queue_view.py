@@ -546,6 +546,14 @@ class QueueModel(QAbstractTableModel):
             return None
         return self._rows[entry].job.id
 
+    def holds_work(self) -> bool:
+        """Whether any download is waiting on the queue's gate — queued or ready (`HELD_STATUSES`).
+
+        The status bar's call to press Start depends on it (`T-334`'s follow-up): a stopped queue
+        with nothing waiting has nothing a press would start.
+        """
+        return any(row.job.status in HELD_STATUSES for row in self._rows)
+
     def download_count(self) -> int:
         """How many **downloads** the queue holds, which is not how many rows it shows (`T-140`).
 
