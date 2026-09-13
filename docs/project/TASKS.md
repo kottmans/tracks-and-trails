@@ -546,8 +546,10 @@ workflow's token gets `contents: write` for that one job and nothing else keeps 
 
 ### T-318 — Decide how "a clean machine" is evidenced for the first release
 
-**Status:** **In Review** — the harness landed 2026-09-12 and has taken Linux evidence for
-`0.1.0.dev0`. The Windows half waits on `T-319`/`T-322` for a candidate to install. **Gates the
+**Status:** **In Review** — the harness landed 2026-09-12 and has taken evidence for `0.1.0.dev0` on
+**both** platforms: Linux in `ubuntu:24.04`, Windows in Windows Sandbox on `STARBASE`, scripted by
+`packaging/windows-sandbox/evidence.ps1`. *(This said the Windows half waited on `T-319`/`T-322`;
+both produced a candidate the same day.)* **Gates the
 exit** (criteria 1, 2 and release-gate item 7). Filed 2026-09-11 with the Phase 5 plan.
 
 **The decision is taken.** The maintainer ruled on 2026-09-11 for option **B**, recorded as
@@ -1749,6 +1751,26 @@ not a defect.
 
 **Items 2–6 not yet done.** The review record is written when the session is, in the maintainer's
 own words.
+
+#### 2026-09-12 (later) — what the session found, and where each went
+
+**Item 1 is confirmed** on the rebuilt installer: no install-mode question, and the wizard artwork
+sharp at Inno 6.7's real slot sizes. Then, using the installed application in Sandbox, the
+maintainer found **seven defects**, none visible to an automated run. Each is fixed, pushed and
+tested; the review record will cite them.
+
+| Found | Cause | Commit |
+|---|---|---|
+| a short grey line after each status-bar message | Qt's Windows item frame | `3294cfd` |
+| a closing full stop on the ffmpeg summary | sentence punctuation beside a caption | `c7ef559` |
+| dark-mode menu titles unreadable under the pointer | no `QMenuBar` rule, so the native pale highlight | `b060966` |
+| **every YouTube download failed**, `CERTIFICATE_VERIFY_FAILED` | Python trusts only roots already in the Windows store; `REL-007` amended to verify through the OS (`truststore`) | `1f377db`, `4e20c70` |
+| the chosen entry of a drop-down invisible | `QListView::item:selected` reaching the popup under the Windows style | `5461053` |
+| **YouTube downloads then failed with 403** | the bundled yt-dlp 2026.7.4; `T-332` bumps it | `663838e` |
+
+Two changes of behaviour came out of the same sitting, each ruled by the maintainer: the yt-dlp
+section shows in-use, bundled and latest side by side (`T-333`), and a started queue stops itself
+once its work is done (`T-334`).
 **Owner:** Maintainer performs; Implementer prepares the list and records the result
 **Priority:** High — the one exit criterion the plan says cannot be met from the development
 environment
@@ -1846,8 +1868,11 @@ migrate from. The `0.2` obligation is now written into `docs/RELEASE.md`'s relea
 **keep a `0.1.0` database fixture at the `0.1.0` tag**, because it cannot be reconstructed
 afterwards — what it has to prove is that *real rows* survive, not that a schema loads.
 
-**Item 10a — not applicable**: `OPS-002`'s baseline is not bumped in `0.1.0`, recorded so nobody
-looks for a canary run that was never owed.
+**Item 10a — owed after all.** This read *"not applicable: `OPS-002`'s baseline is not bumped in
+`0.1.0`"*, which was true when written. **`T-332` moved the pin to 2026.8.19 the same evening**,
+because 2026.7.4 cannot download from YouTube, so the canary at 2026.8.19 is part of this release's
+evidence. `T-332` ran the suite locally at that version before moving the pin — eleven failures,
+exactly the canary's expected-stale list — but the workflow itself has not been dispatched.
 
 **Items 1, 2, 8 and 10 wait on a candidate.** 8 and 10 *have* been run by hand on the release
 artifacts — 5 of 5 probes on Windows, 4 of 4 on the AppImage — but the gate asks for them **at the
@@ -1897,8 +1922,10 @@ The release gate's machine half, run **against the candidate** rather than again
 
 ### T-322 — The Windows installer
 
-**Status:** **In Progress** — the script is written 2026-09-12; it cannot be built or verified
-without Inno Setup on `STARBASE`.
+**Status:** **In Progress** — **compiled on `STARBASE`** 2026-09-12, installed and uninstalled in
+Windows Sandbox by `T-039`'s gates, and polished in the maintainer's session (below). Open: built by
+`T-324`'s workflow, which needs a tag, and `T-317`'s SmartScreen screenshot. *(This said it could not
+be built without Inno Setup; the maintainer installed it.)*
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 5
@@ -2258,8 +2285,10 @@ the driver selects. The Windows numbers are still to be taken.
 
 ### T-319 — The Windows release build: windowed, versioned, with ffmpeg inside
 
-**Status:** **In Progress** — the ffmpeg search order landed 2026-09-11; the build itself needs
-a Windows machine. Filed the same day with the Phase 5 plan.
+**Status:** **In Progress** — the release build is **built and measured on `STARBASE`** 2026-09-12
+(below). Open: the `frozen windows` CI job building both modes and reading the file reports, the
+no-console assertion through `T-026`'s harness, and the deleted-binary degradation. *(This said
+the build needed a Windows machine, which was true until the maintainer authorised `STARBASE`.)* Filed the same day with the Phase 5 plan.
 
 #### 2026-09-11 — scope item 2's search order, which is the half that runs on any platform
 
