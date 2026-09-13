@@ -62,8 +62,10 @@ a gate actually fails on.
 
 Still *known-unverified* on Windows, and to be reported as such: whether rendering **looks**
 right, whether Narrator **sounds** coherent, whether the installer **feels** normal, shell
-foreground and file-association behavior, and long-running stability. Not yet covered by
-automation: installer placement and removal (`T-039`). **Widget tab order is covered** as of
+foreground and file-association behavior, and long-running stability. **Installer placement and
+removal are automated** (`T-039`): a scripted clean Windows Sandbox run, once per release candidate
+by the maintainer's 2026-09-13 ruling, that fails on a misplaced file, a leftover installed file or
+a changed user file. *(This said they were not yet covered by automation.)* **Widget tab order is covered** as of
 2026-07-28 (`T-040`), on Windows as well as Linux; this said it was "blocked until focusable
 controls exist", which stopped being true when `T-016` supplied them (`COORD-R5`). A single real Windows session discharges the subjective
 residue and blocks the first public release.

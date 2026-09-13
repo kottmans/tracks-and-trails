@@ -123,8 +123,8 @@ so a *Latest* row either waits for a button press or the requirement is amended.
 
 ### T-039 — Verify Windows installer behavior on the runner
 
-**Status:** **In Review** — all four gates implemented and passing 2026-09-12, in Windows Sandbox
-rather than on `windows-latest`. **The mechanism changed and that is a judgement, recorded below.**
+**Status:** **In Review** — all four gates implemented and passing in Windows Sandbox, `T039-R1`
+resolved, and **`T039-R2` ruled by the maintainer 2026-09-13: per release candidate** (below).
 **Owner:** Implementer
 **Priority:** Medium now, High once Phase 5 starts — it must land before the first public release
 **Phase:** Phase 5
@@ -240,17 +240,29 @@ Assert, on `windows-latest`:
 4. **Uninstall and removal** — the uninstaller exits clean and leaves nothing behind except
    what is deliberately preserved (user settings and the job database, per `DAT-001`).
 
+#### 2026-09-13 — `T039-R2` ruled: per release candidate
+
+**Asked with three options, the maintainer chose the recommendation**: keep the scripted Sandbox run
+as the gate, once per release candidate, rather than a per-push job on a hosted `windows-latest`
+runner or both. The criteria below are amended in place and keep what they said. `REQUIREMENTS.md`
+§3 now says installer placement and removal are automated, on that cadence.
+
 #### Acceptance criteria
 
-- Each of the four is a **gate**, stated as a mutation that turns the suite red: a missing
+- **Amended 2026-09-13 by the maintainer's ruling on `T039-R2`:** the gates run **once per
+  release candidate** in a clean Windows Sandbox through `tools/windows/sandbox_evidence.sh`,
+  whose non-zero exit is the failure — not on every push on `windows-latest`. Stated as given up:
+  an installer regression is caught when a candidate is taken, not the day it lands.
+- Each of the four is a **gate**, stated as a mutation that turns the run red: a missing
   shortcut, a file placed outside the install root, a non-zero silent-install exit code, and a
-  leftover file after uninstall each fail the job. Screenshots, if any, stay retained evidence
+  leftover installed file after uninstall each fail it. Screenshots, if any, stay retained evidence
   and fail nothing on their own (`T031-R2`, `P0-R7`)
 - Uninstall leaving user data behind is asserted as **intended** behavior, not tolerated as a
   leftover — the test distinguishes the two
 - `docs/project/TESTING.md` §9's manual list drops installer placement and removal, and
   `REQUIREMENTS.md` §3 narrows to match — **only once this job is landed and green**
-- The added CI time is recorded against `T-006`'s budget
+- ~~The added CI time is recorded against `T-006`'s budget~~ — **none added**: by the 2026-09-13
+  ruling these run per candidate, outside CI
 
 #### Out of scope
 
@@ -542,7 +554,9 @@ kept. What is owed, and needs the maintainer because each needs a reboot of a ma
 
 #### Acceptance criteria
 
-- An evidence file per platform with machine, method, the ten raw numbers and the two medians
+- An evidence file per platform with machine, method, the artifact's digest, **one cold launch
+  after a reboot** and the warm median *(amended 2026-09-13 by the maintainer's ruling on `T325-R2`;
+  said "the ten raw numbers and the two medians", five cold and five warm per platform)*
 - `TESTING.md` §8 item 14 cites the file, and names *which* build and version were measured
 - A failure produces a task with a profile attached, and this task closes as *measured* either way
 
@@ -1874,7 +1888,10 @@ every gate is being exercised for the first time at once
    `T-318`'s clean-machine files, `T-327`'s and `T-212`'s sessions. Recorded in a review record
    indexed by `REVIEWS.md`. Its verdict is the phase's.
 3. **Publish**: the draft becomes public by the maintainer's hand. The README's install section
-   goes live in the same push.
+   goes live in the same push — and, **by the maintainer's ruling of 2026-09-13**, it says the
+   AppImage runs as it is, and that a menu entry comes from AppImageLauncher or Gear Lever or from
+   the two lines it gives. The `.desktop` inside the bundle points inside the bundle, so it cannot
+   serve as one (`T-321`).
 4. **Reopen `main`**: `__version__` bumps to `0.1.1.dev0`; `IMPLEMENTATION_PLAN.md` marks Phase 5
    exited and Phase 4.5 as next; `STATUS.md` says there is a release.
 
