@@ -110,7 +110,7 @@ def test_the_failure_names_the_packaging_cause() -> None:
 
 @pytest.mark.parametrize(
     ("pin", "expected"),
-    [("2026.7.4", 0), ("2019.1.1", 1)],
+    [("2026.8.19", 0), ("2019.1.1", 1)],
 )
 def test_the_gate_checks_the_bundled_version_against_the_pin(pin: str, expected: int) -> None:
     """`T033-R1`. Parametrised over both outcomes so neither branch can rot unnoticed."""

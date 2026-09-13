@@ -87,7 +87,7 @@ FFMPEG_DEPENDENT_FEATURES: Final = tuple(feature.value for feature in FfmpegFeat
 #: does not ship `pyproject.toml`, and bundling it to answer one question would put build
 #: metadata inside the artifact. `tests/unit/test_environment.py` asserts the two agree, so the
 #: duplication cannot drift silently — which is the only thing that makes it acceptable.
-BASELINE_YTDLP_VERSION: Final = "2026.7.4"
+BASELINE_YTDLP_VERSION: Final = "2026.8.19"
 
 
 def normalise_version(version: str) -> tuple[int, ...]:

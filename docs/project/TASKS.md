@@ -1994,6 +1994,54 @@ incident it cites).
 
 ---
 
+### T-332 — Bundle yt-dlp 2026.8.19: the pinned baseline cannot download from YouTube
+
+**Status:** **In Progress** — filed 2026-09-12 from `T-327`'s session, on the maintainer's
+direction: *"the bundled version should be updated before we make the first tagged release."*
+**Owner:** Implementer
+**Priority:** High — the first release's first YouTube download fails without it
+**Phase:** Phase 5
+**Depends on:** nothing; **blocks** `T-328`
+**Relevant context:** `OPS-002` (*"bumping the baseline is a release-gate step"*); `TESTING.md` §8
+item 10a; `REL-002` (re-evaluated whenever the pin changes); `docs/RELEASE.md` (a bump is at least
+a minor release — moot before `0.1.0`, which has no previous release)
+**Affected surfaces:** `pyproject.toml`; `environment.BASELINE_YTDLP_VERSION`;
+`docs/YTDLP_OPTION_AUDIT.md`; `packaging/licenses/README.md`; the Windows installer
+
+#### What was found
+
+In Windows Sandbox, after `REL-007`'s 2026-09-12 amendment fixed certificate verification, a
+YouTube download in the `Best video up to 1080p (MP4)` preset read the video and then failed with
+`HTTP Error 403: Forbidden`. Reproduced on `STARBASE` against the same video and selector, whole
+file, not a first-bytes test:
+
+| yt-dlp | result |
+|---|---|
+| 2026.07.04, the pin | extraction succeeds, `403` partway into the video stream |
+| 2026.08.19, current | `399+140` downloaded and merged, 104,454,162 bytes |
+
+A first-10 KB test (`"test": True`) **passed on both**, which is why it is not the evidence here.
+The maintainer's Linux install already ran a user-managed 2026.08.19, which is why the same videos
+worked there; updating in the Sandbox's Settings fixed it there too.
+
+#### Done 2026-09-12
+
+- **The suite at 2026.8.19, pin unmoved**: 11 failed, 4,334 passed — **exactly** the eleven
+  `ytdlp-canary.yml` lists in `EXPECTED_STALE`, and nothing else. That is item 10a's question
+  answered locally; the canary workflow has not been dispatched.
+- **The option audit re-run**: `create_parser()` compared between the versions — 292 parser
+  entries in both, none added or removed, no help string changed. Recorded in the audit.
+- **The licence text** is byte-identical between the two wheels.
+- **The pin moved** in `pyproject.toml`, `BASELINE_YTDLP_VERSION` and the freeze-probe test.
+
+#### Acceptance criteria
+
+- [x] The pin, the constant and the audit name 2026.8.19, and the pin-bound tests pass against it
+- [ ] CI green on both platforms at the new pin
+- [ ] `REL-002`'s negative build repeated at the new pin, with the result recorded there
+- [ ] The rebuilt Windows installer downloads a YouTube video in a clean Sandbox in the
+      `Best video up to 1080p (MP4)` preset — the case that failed, not the probe's selector
+
 ### T-331 — The Windows mutation driver's positive control is not one
 
 **Status:** **In Progress** — the driver is corrected and validated on Linux 2026-09-11; the
@@ -3230,6 +3278,40 @@ evidence than a Phase 4 run would have been.
 
 
 
+
+### T-333 — The yt-dlp section should say which version is newest at a glance
+
+**Status:** Proposed — filed 2026-09-12 from `T-327`'s session; **needs a ruling** before it is Ready
+**Owner:** Implementer designs; Maintainer rules
+**Priority:** Medium
+**Phase:** Phase 5
+**Relevant context:** `OPS-002` and its 2026-08-27 amendment (`T-290`: updating is a recovery move,
+not upkeep); `NFR-007` (*"explicit yt-dlp update checks"* — a check on opening Settings would not be
+explicit); `REQ-025` (the version shown is the one a worker imported)
+**Affected surfaces:** `ui/settings_dialog.py`'s yt-dlp group
+
+The maintainer, in the Sandbox: *"it should be more obvious what version you have, what the bundled
+version is and what the latest is … There's also a wall of text there that kind of hides it."*
+
+Today the group is three paragraphs and one `Version in use` line. **The latest version is known to
+nobody until a network request is made**, and `NFR-007` allows that only as an explicit check —
+so a *Latest* row either waits for a button press or the requirement is amended.
+
+### T-334 — Should a started queue stop itself once it has nothing left to do?
+
+**Status:** Proposed — filed 2026-09-12 from `T-327`'s session; **needs a ruling**, because it reverses
+`UX-006` item 2
+**Owner:** Maintainer rules; Implementer builds
+**Priority:** Medium
+**Phase:** Phase 5
+**Relevant context:** `UX-006` item 2 — *"A started queue stays started … Draining does not re-arm
+it"*; `UX-002` (automatic retry waits 2 s, 4 s, 8 s, so an empty-looking queue can still have work
+due); `UX-001` (stop drains)
+**Affected surfaces:** `DownloadManager`'s gate; the toolbar's Start/Stop; the status-bar gate text
+
+The maintainer, in the Sandbox: *"I wonder if the start/run status should revert back to stopped after
+all the videos in the queue have been downloaded? Otherwise you get in a state where you are running
+a queue with no active tasks."*
 
 ### T-328 — The first release
 

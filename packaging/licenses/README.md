@@ -14,7 +14,7 @@ ships unmet.
 |---|---|---|---|---|---|
 | `Qt-LGPLv3.txt` | Qt, via PySide6 6.11.1 | LGPL-3.0 | <https://www.gnu.org/licenses/lgpl-3.0.txt> | 2026-09-11 | 7,652 |
 | `Qt-GPLv3.txt` | Qt, via PySide6 6.11.1 | GPL-3.0 | <https://www.gnu.org/licenses/gpl-3.0.txt> | 2026-09-11 | 35,149 |
-| `yt-dlp-Unlicense.txt` | yt-dlp 2026.7.4 | Unlicense | the installed wheel's own `dist-info/licenses/LICENSE` | 2026-09-11 | 1,211 |
+| `yt-dlp-Unlicense.txt` | yt-dlp 2026.8.19 | Unlicense | the installed wheel's own `dist-info/licenses/LICENSE` — byte-identical to 2026.7.4's, compared at the `T-332` bump | 2026-09-12 | 1,211 |
 | `truststore-MIT.txt` | truststore 0.10.4 | MIT | the installed wheel's own `dist-info/licenses/LICENSE` | 2026-09-12 | 1,086 |
 | `NOTICE.txt` | — | — | written here | 2026-09-11 | — |
 | `ffmpeg-LGPL.txt` | ffmpeg 9.0.1-29-gad500d59cb, `win64-lgpl-shared` | LGPL-3.0-or-later | the archive's own `LICENSE.txt` (see below) | 2026-09-12 | 7,651 |

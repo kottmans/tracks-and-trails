@@ -20,9 +20,14 @@ permissions the same day. **The refusal list is 92.**
 *(**This header said 89 and named only `SEC-003` and `SEC-004` while the summary below said 92 and
 named `SEC-005`** — one document giving both the pre-ruling and post-ruling answer to the question
 `T-184` consumes. `T256-R2`, and the second time that finding had to be written for this file.)*
-**yt-dlp version:** **2026.07.04**, the exact pin in `pyproject.toml`. An audit of an unnamed
+**yt-dlp version:** **2026.08.19**, the exact pin in `pyproject.toml`. An audit of an unnamed
 version cannot be re-run when upstream moves, so the version is part of the claim and
 `tests/unit/test_option_audit.py` fails if the installed one stops matching.
+*(Taken against **2026.07.04** until `T-332` moved the pin on 2026-09-12. **Re-run, not re-dated**:
+yt-dlp's `create_parser()` was compared between the two versions, and the option set is
+identical — the same 292 parser entries, none added or removed, and **no help string changed**
+— so no row's classification had anything new to judge, and the derived checks in the test pass
+unchanged against the new version.)*
 **Rows:** **250** — every option yt-dlp documents, each appearing exactly once. Counted from the
 installed option parser, not from the README and not estimated.
 
