@@ -215,3 +215,75 @@ Final review-document checks passed: Ruff lint and formatting (410 files),
 records. The nine appended review files preserve their entire pre-review byte
 sequences as prefixes. The migration verifier also passed: 381 original entries,
 105 files and all 2,403,546 historical bytes preserved.
+
+## 2026-09-13 — Final focused gate corrections through ddc8f3d
+
+**Reviewer:** Codex, independent of the implementer.
+**Base:** `acdc57071026fac0dfb15743fe24651cb1fcf013`.
+**Head:** `ddc8f3d18854991f89d5b8656bf1c7b6be65e15f`.
+**Authorization/scope:** The maintainer supplied the finished corrections and
+requested this additional focused pass on T323-R2, T331-R1/R2 and the two
+completion wording changes. The requested rebase dropped local `a804600` as the
+duplicate of `d461527`; their review records/index are identical.
+**Verdict:** Approved for these corrections. No new blocking finding was
+established. Remaining CI, physical, manual and candidate obligations are not
+waived, and no task closure or release approval is performed.
+
+| Finding | Disposition |
+|---|---|
+| [T323-R2](T-323.md) | **Resolved.** Whole-string context preserves the separator across the previous chunk boundary; extensionless and journal stores are recognized. All T-323 findings are now resolved. |
+| [T331-R1](T-331.md) | **Resolved.** Error-only/incomplete runs cannot earn a kill, and every unclean baseline invalidates its selection. The original whole-driver counterexamples now fail correctly. |
+| [T331-R2](T-331.md) | **Resolved.** The control comment no longer invalidates independent evidence from other mutations. |
+| [T322-R2](T-322.md) | **Resolved.** Uninstall criteria require removal of installed files and preservation of user-owned files, including inside the installation directory. |
+| [T326-R3](T-326.md) | **Resolved.** The real transfer routes to the candidate's clean-machine evidence, separately from the offline probes and manual cancel/exit. |
+
+The disclosed reach test gap does **not** require another test for this approval.
+An independent probe verifies the shipped 4 KB reach detects a cookie-store name
+whose separator is 600 bytes away, while a 512-byte reach misses it. The committed
+regressions cover the actual chunk-boundary and extensionless-path defects; they
+need not make every change of the search budget fail. No new test, task or further
+review pass is requested for that observation.
+
+### Validation and CI boundary
+
+Local environment remains Python 3.14.7 / PySide6 6.11.1. No product source or
+committed test was changed by this reviewer.
+
+| Check | Actual result |
+|---|---|
+| Artifact-gate and mutation-verdict suites | **71 passed**, 0.76 s |
+| Task placement, task-reading and toolchain checks | **82 passed, 2 failed**, 3.03 s; the failures were the shell's unactivated PATH selecting no matching Ruff/mypy command. Re-running all five toolchain tests with the venv on PATH gives **5 passed**, 0.20 s, clearing both. Thus **84 distinct checks pass after environment correction**. |
+| Ruff lint and whole-tree format | Passed, 411 files formatted |
+| Bare mypy and bare mypy with `--platform win32` | Both passed, 182 source/test files |
+| Original whole-driver reproduction | Normal control exit 0; interrupted baseline, error-only mutation and missing-summary mutation each exit 1 with NO RESULT for the affected cases |
+| Original binary-path reproductions | Short path, 600-byte printable prefix, extensionless Windows path and journal path rejected; API/dictionary controls clear |
+| Prior Windows mutation report replay | The ten `4320859` verdicts retain their historical meanings under the new classifier; the supplied later table has clean baselines and failed-test counts for its kills |
+
+Independently downloaded [CI run 34769053672](https://github.com/kottmans/tracks-and-trails/actions/runs/34769053672)
+evidence at the exact head. **Linux passed**: 3,937 unit/UI tests passed with
+21 skipped, plus 464 integration tests passed — **4,401 passed in total**.
+The frozen Linux report passes all four artifact gates, retaining its explicit
+interpreter-provenance exemption. These are CI results, not a fresh local full
+suite claimed by this reviewer.
+
+At the recorded CI snapshot, Windows desktop was still running and frozen Windows
+was queued; STARBASE coverage had passed and the intentionally disabled Linux
+orphan job was skipped. Prose and commit-message workflows passed. **The whole CI
+run is not yet reported green.** No fresh Windows mutation run was performed:
+the reviewed driver change classifies results and does not change execution of
+the desktop tests.
+
+Local logs are in `/tmp/tt-phase5-final-gates-review/`; the prior whole-driver
+instrument remains in `/tmp/tt-phase5-corrections-review/`. The substantive
+sequences and outcomes remain in the canonical task records.
+
+T039-R2 still awaits the Sandbox-frequency decision. T325-R2 still needs the
+specified cold/warm evidence or an explicit criterion amendment. T-327/T-333's
+remaining manual observations and T-326's candidate evidence remain open. The
+reviewer neither rebooted a machine nor created a tag, workflow run or release.
+Only these review records and their index are changed; nothing is pushed.
+
+Review-document validation passed: Ruff, `git diff --check`, all 177 local file
+links, and exact preservation of the five earlier review-file byte prefixes.
+The migration verifier also passed for 381 entries in 105 files, retaining all
+2,403,546 historical bytes.

@@ -154,7 +154,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-333](reviews/T-333.md) | T-333, OPS-002 amendment | 0 |
 | [T-334](reviews/T-334.md) | T-334, UX-006 amendment | 0 |
 | [T-326 / T-332](reviews/T-326.md) | T-326, T-332, remaining T-327 verification | 0 |
-| [Phase 5 second batch](reviews/phase-5-second-batch.md) | Shared validation and coordination, 2e2507b to 8e67f6f | 0 |
+| [Phase 5 second batch](reviews/phase-5-second-batch.md) | Shared validation and coordination, 2e2507b to 8e67f6f; corrections through ddc8f3d | 0 |
 | <a id="2026-07-26--note-commit-shas-in-this-file-were-remapped"></a>[commit-reference-remap](reviews/commit-reference-remap.md) | T-033 | 1 |
 | <a id="2026-07-29--coord-r7-authorized-final-documentation-re-review"></a>[coordination-2026-07-29](reviews/coordination-2026-07-29.md) | coordination 2026 07 29 | 1 |
 | <a id="2026-08-05--history--row-layout-merge-review"></a>[history-row-layout-integration](reviews/history-row-layout-integration.md) | history row layout integration | 1 |
