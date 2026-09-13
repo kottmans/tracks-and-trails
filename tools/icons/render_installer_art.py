@@ -34,7 +34,8 @@ from PySide6.QtCore import QRectF
 from PySide6.QtGui import QColor, QGuiApplication, QImage, QPainter
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from render_icons import ROOT, load_master
+from PySide6.QtSvg import QSvgRenderer
+from render_icons import ROOT, load_master, render
 
 OUT = ROOT / "packaging" / "installer-art"
 
@@ -50,14 +51,36 @@ SMALL_GROUND = QColor("#FFFFFF")
 #: `ui/theme.py` LIGHT `window` — a deliberate panel beside a white page, not a stock grey.
 LARGE_GROUND = QColor("#F5F7F4")
 
-#: How much of the large panel's width the logo takes, and where its centre sits vertically.
+#: How much of the large panel's width the logo's **ink** takes, and where its centre sits.
+#:
+#: **Ink, not artboard** — the maintainer asked for the logo bigger, since this panel is one of the
+#: few places anyone sees it large. The master's artboard carries the designer's margin: measured,
+#: the ink is only 68% of the artboard's width. Sizing the artboard made the logo 63% of the panel;
+#: sizing the ink directly lets it take most of the width, with the margin falling outside the
+#: panel where it is transparent anyway.
+#:
 #: Slightly above the middle, because the optical centre of a tall panel is above its measured one.
-LARGE_LOGO_WIDTH = 0.92
-LARGE_LOGO_CENTRE = 0.42
+LARGE_INK_WIDTH = 0.86
+LARGE_LOGO_CENTRE = 0.44
+
+#: The corner slot is fixed by Inno, so the gain there is only the margin: ink to 92% of its height.
+SMALL_INK_HEIGHT = 0.92
+
+
+def ink_fraction(renderer: QSvgRenderer) -> tuple[float, float]:
+    """The share of the artboard's width and height the logo actually inks.
+
+    Measured from a render rather than hard-coded, so a re-cut master resizes correctly. The ink
+    is centred in the pack's artboards, which is what lets `compose` centre the artboard.
+    """
+    image = render(renderer, 512)
+    xs = [x for x in range(512) for y in range(0, 512, 4) if image.pixelColor(x, y).alpha() > 8]
+    ys = [y for y in range(512) for x in range(0, 512, 4) if image.pixelColor(x, y).alpha() > 8]
+    return (max(xs) - min(xs)) / 512, (max(ys) - min(ys)) / 512
 
 
 def compose(width: int, height: int, ground: QColor, side: float, centre_y: float) -> QImage:
-    """An opaque image of `ground` with the logo as a `side` square centred at `centre_y`."""
+    """An opaque image of `ground` with the logo's artboard as a `side` square at `centre_y`."""
     image = QImage(width, height, QImage.Format.Format_RGB32)
     image.fill(ground)
     painter = QPainter(image)
@@ -74,17 +97,17 @@ def main() -> int:
     QGuiApplication.instance() or QGuiApplication(sys.argv)
     OUT.mkdir(parents=True, exist_ok=True)
     written = []
+    ink_w, ink_h = ink_fraction(load_master("icon.svg"))
     for width, height in SMALL_SIZES:
-        side = float(min(width, height))
+        side = height * SMALL_INK_HEIGHT / ink_h
         image = compose(width, height, SMALL_GROUND, side, height / 2)
         path = OUT / f"wizard-small-{width}x{height}.png"
         if not image.save(str(path), "PNG"):
             raise SystemExit(f"could not write {path}")
         written.append(path)
     for width, height in LARGE_SIZES:
-        image = compose(
-            width, height, LARGE_GROUND, width * LARGE_LOGO_WIDTH, height * LARGE_LOGO_CENTRE
-        )
+        side = width * LARGE_INK_WIDTH / ink_w
+        image = compose(width, height, LARGE_GROUND, side, height * LARGE_LOGO_CENTRE)
         path = OUT / f"wizard-large-{width}x{height}.png"
         if not image.save(str(path), "PNG"):
             raise SystemExit(f"could not write {path}")
