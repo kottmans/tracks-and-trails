@@ -134,6 +134,37 @@ rather than on `windows-latest`. **The mechanism changed and that is a judgement
 **Risk:** Medium — same failure mode as `T-026`: a shallow check would retire a
 release-blocking manual item without replacing it
 
+#### 2026-09-13 — `T039-R1`: a failure contract, and gates that see what they missed
+
+**The review's four gaps, each closed and each shown failing a real run.**
+
+- **No failure contract.** The script wrote a Markdown verdict nothing read. It now ends with a
+  machine-readable `<!-- VERDICT: PASS|FAIL n -->` line and a failing exit code, and
+  **`tools/windows/sandbox_evidence.sh`** is the consumer: it stages the installer *and*
+  `evidence.ps1`, launches Sandbox, waits for the report, closes it, and **exits non-zero unless the
+  verdict is PASS**. It refuses to start while any Sandbox is open.
+- **Placement checked a few named files.** Every `Dest filename:` in Inno's own install log must now
+  lie under the install root or its Start Menu folder.
+- **User data was counted, not fingerprinted.** Each file's SHA-256 before the uninstall must match
+  after it, and **no user data at all is a failure**, not a warning.
+- **Leftovers were "the install root is empty"**, which `T322-R1` shows is the wrong question: the
+  user's files there must stay. Leftovers are now the installed files the log names; a sentinel
+  placed before installing and a file saved into the directory before uninstalling must both
+  survive byte-for-byte.
+
+**Three negative controls, each an installer compiled from the same tree, each run through the
+runner:**
+
+| Installer mutation | Run's verdict | Runner exit | What it said |
+|---|---|---|---|
+| none (the fix) | **PASS** | 0 | 227 logged destinations, none outside; 226 installed files removed; both user files and all 5 data files unchanged |
+| `filesandordirs` on `{app}` restored | **FAIL 2** | 1 | *pre-existing sentinel DELETED*, *user-saved file DELETED* |
+| a stray `[Files]` entry to Documents, and an uninstall rule deleting the user data files | **FAIL 2** | 1 | *1 WRITTEN OUTSIDE the install root*, *4 removed or changed by the uninstaller … library.sqlite3* |
+
+The earlier no-op-uninstaller mutation, above, covers leftovers. **`T039-R2` is not answered here**:
+whether these per-candidate Sandbox runs replace the criterion's per-push `windows-latest` job is the
+maintainer's to rule.
+
 #### 2026-09-12 — the four gates, and why they do not run on `windows-latest`
 
 **All four pass**, in `packaging/windows-sandbox/evidence.ps1`, against

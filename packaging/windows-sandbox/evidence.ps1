@@ -76,7 +76,18 @@ Say '```'
 Rule "Install"
 Say "Per-user, silent, no elevation (``NFR-004``, ``T-322``). An elevation prompt here is a"
 Say "finding, not a detail."
+Say ""
+Say "**Into a directory that already holds a file** (``T322-R1``). The uninstaller once deleted its"
+Say "whole directory recursively; a sentinel placed there *before* installing has to survive the"
+Say "uninstall byte-for-byte, which an empty default directory could never test."
 Say '```'
+$installRoot = "$env:LOCALAPPDATA\Programs\Tracks & Trails"
+function Fingerprint($path) { (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLower() }
+New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
+$sentinel = Join-Path $installRoot "was-here-before-install.txt"
+Set-Content -LiteralPath $sentinel -Value ("placed before install " + [guid]::NewGuid()) -Encoding utf8
+$sentinelHash = Fingerprint $sentinel
+Say ("sentinel      " + $sentinelHash.Substring(0, 16) + "... in the install directory")
 if ($setup) {
     $started = Get-Date
     $run = Start-Process -FilePath $setup.FullName `
@@ -122,6 +133,26 @@ if ($startMenu) {
 $desktop = "$env:USERPROFILE\Desktop\Tracks & Trails.lnk"
 Say ("desktop icon  " + $(if (Test-Path $desktop) { "PRESENT - should be opt-in and unchecked" } else { "absent, as the default asks" }))
 if (Test-Path $desktop) { $failures++ }
+# **Every destination the installer logged, not a few named files** (`T039-R1`). A payload file
+# written anywhere else -- a stray `[Files]` entry to Documents, say -- passed the checks above,
+# which only asked whether the expected things were present.
+$installLog = "C:\Users\WDAGUtilityAccount\Desktop\share\install.log"
+$startMenuRoot = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Tracks & Trails"
+$logged = @()
+if (Test-Path $installLog) {
+    $logged = @(Get-Content -LiteralPath $installLog | ForEach-Object {
+        if ($_ -match "Dest filename: (.+)$") { $Matches[1].Trim() }
+    })
+}
+$outside = @($logged | Where-Object {
+    -not ($_.StartsWith($installRoot + "\", "OrdinalIgnoreCase") -or $_.StartsWith($startMenuRoot + "\", "OrdinalIgnoreCase"))
+})
+Say ("logged        " + $logged.Count + " destination(s) in the installer's own log")
+if ($logged.Count -eq 0) { Say "              FAILED - no install log to judge placement from"; $failures++ }
+if ($outside.Count -gt 0) {
+    Say ("outside       " + $outside.Count + " WRITTEN OUTSIDE the install root and Start Menu: " + (($outside | Select-Object -First 3) -join "; "))
+    $failures++
+} else { Say "outside       none" }
 Say '```'
 
 Rule "First launch"
@@ -201,18 +232,36 @@ Say '```'
 
 Rule "Uninstall, and what survives it"
 Say "``T-039``'s fourth gate. ``DAT-001`` says settings, the job database and downloaded files"
-Say "**survive an uninstall by intent** -- so this asserts two different things, and the"
-Say "distinction is the point: leftovers under the install root are a failure, leftovers under the"
-Say "user directories are the requirement being met."
+Say "**survive an uninstall by intent** -- so this asserts separate things, and the distinction is"
+Say "the point: a file the installer logged and left behind is a failure; the user's data, a file"
+Say "the user saved into the install directory, and one that was there before, must all survive"
+Say "byte-for-byte (``T322-R1``)."
 Say '```'
 # The application writes its database under `user_data_dir("tracksandtrails")`, which on Windows
 # is %LOCALAPPDATA%\tracksandtrails. The first launch above created it.
+#
+# **Fingerprinted, not counted** (`T039-R1`). Five files before and five after accepted a database
+# replaced or corrupted by the uninstall; each file's content hash is compared instead.
 $userData = "$env:LOCALAPPDATA\tracksandtrails"
-$dataBefore = @(Get-ChildItem -Path $userData -Recurse -File -ErrorAction SilentlyContinue)
+$dataBefore = @{}
+Get-ChildItem -Path $userData -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+    $dataBefore[$_.FullName] = Fingerprint $_.FullName
+}
 Say ("user data before  " + $dataBefore.Count + " file(s) under %LOCALAPPDATA%\tracksandtrails")
 if ($dataBefore.Count -eq 0) {
-    Say "                  WARNING: nothing to preserve, so the DAT-001 half proves nothing"
+    # A warning used to go here. Launching and downloading create the database, so an empty
+    # directory means the preservation half has nothing to prove -- which is a failed check.
+    Say "                  FAILED - nothing to preserve, so the DAT-001 half cannot be judged"
+    $failures++
 }
+# **A file the user saved into the install directory** (`T322-R1`), beside the sentinel that was
+# there before installing. Both are the user's, and both must outlive the uninstaller.
+$userFile = Join-Path $installRoot "my-saved-video.mp4"
+$bytes = New-Object byte[] 65536
+(New-Object System.Random).NextBytes($bytes)
+[System.IO.File]::WriteAllBytes($userFile, $bytes)
+$userFileHash = Fingerprint $userFile
+$installedFiles = @($logged | Where-Object { $_.StartsWith($installRoot + "\", "OrdinalIgnoreCase") })
 
 if ($exe) {
     $root = Split-Path $exe -Parent
@@ -227,15 +276,36 @@ if ($exe) {
         if ($u.ExitCode -ne 0) { $failures++ }
         # Inno's uninstaller returns before it has finished removing itself.
         for ($i = 0; $i -lt 60; $i++) {
-            if (-not (Test-Path $root)) { break }
+            if (-not (Test-Path (Join-Path $root "unins000.exe"))) { break }
             Start-Sleep -Milliseconds 500
         }
 
-        $left = @(Get-ChildItem -Path $root -Recurse -File -ErrorAction SilentlyContinue)
-        if ($left.Count -eq 0) {
-            Say "install root      removed"
+        # **Leftovers are judged against what the installer said it installed**, not against an
+        # empty directory: the user's own files there are meant to stay.
+        $installedLeft = @($installedFiles | Where-Object { Test-Path -LiteralPath $_ })
+        if ($installedLeft.Count -eq 0) {
+            Say ("installed files   all " + $installedFiles.Count + " removed")
         } else {
-            Say ("install root      " + $left.Count + " FILE(S) LEFT: " + (($left | Select-Object -First 5).Name -join ", "))
+            Say ("installed files   " + $installedLeft.Count + " LEFT: " + (($installedLeft | Select-Object -First 5 | ForEach-Object { Split-Path $_ -Leaf }) -join ", "))
+            $failures++
+        }
+        foreach ($kept in @(@{ Path = $sentinel; Hash = $sentinelHash; Name = "pre-existing sentinel" },
+                            @{ Path = $userFile; Hash = $userFileHash; Name = "user-saved file" })) {
+            if (-not (Test-Path -LiteralPath $kept.Path)) {
+                Say ("user file         " + $kept.Name + " DELETED by the uninstaller - T322-R1")
+                $failures++
+            } elseif ((Fingerprint $kept.Path) -ne $kept.Hash) {
+                Say ("user file         " + $kept.Name + " CHANGED by the uninstaller")
+                $failures++
+            } else {
+                Say ("user file         " + $kept.Name + " kept, unchanged")
+            }
+        }
+        $strays = @(Get-ChildItem -Path $root -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
+            $_.FullName -ne $sentinel -and $_.FullName -ne $userFile
+        })
+        if ($strays.Count -gt 0) {
+            Say ("install root      " + $strays.Count + " OTHER FILE(S) LEFT: " + (($strays | Select-Object -First 5).Name -join ", "))
             $failures++
         }
         $stillThere = $startMenuCandidates | Where-Object { Test-Path $_ }
@@ -244,13 +314,15 @@ if ($exe) {
     }
 }
 
-$dataAfter = @(Get-ChildItem -Path $userData -Recurse -File -ErrorAction SilentlyContinue)
-Say ("user data after   " + $dataAfter.Count + " file(s)")
-if ($dataBefore.Count -gt 0 -and $dataAfter.Count -lt $dataBefore.Count) {
-    Say "                  FAILED - the uninstaller removed user data, which DAT-001 preserves"
+$changed = @($dataBefore.Keys | Where-Object {
+    -not (Test-Path -LiteralPath $_) -or (Fingerprint $_) -ne $dataBefore[$_]
+})
+Say ("user data after   " + @(Get-ChildItem -Path $userData -Recurse -File -ErrorAction SilentlyContinue).Count + " file(s)")
+if ($changed.Count -gt 0) {
+    Say ("                  FAILED - " + $changed.Count + " removed or changed by the uninstaller, which DAT-001 preserves: " + (($changed | Select-Object -First 3 | ForEach-Object { Split-Path $_ -Leaf }) -join ", "))
     $failures++
 } elseif ($dataBefore.Count -gt 0) {
-    Say "                  preserved, as DAT-001 intends - this is not a leftover"
+    Say "                  every file present and byte-identical, as DAT-001 intends"
 }
 Say '```'
 
@@ -270,4 +342,9 @@ Say "and uninstall with user data preserved. Each fails this run rather than bei
 Say "passed over, which is the acceptance criterion it was written with."
 
 Say ""
+# **The failure contract** (`T039-R1`). A Markdown verdict is for a person; this line is what
+# `tools/windows/sandbox_evidence.sh` reads, and it exits non-zero unless it says PASS. The exit
+# code below is for anything that runs this script directly.
+Say ("<!-- VERDICT: " + $(if ($failures -eq 0) { "PASS" } else { "FAIL " + $failures }) + " -->")
 Say "<!-- RUN-COMPLETE -->"
+exit $(if ($failures -eq 0) { 0 } else { 1 })

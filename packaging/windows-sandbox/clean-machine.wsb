@@ -11,8 +11,9 @@
   NOTE: an XML comment may not contain a double hyphen. Writing one here produced
   "The configuration file was invalid. Error 0xc00cee2f" from a file that looked fine.
 
-  Run it:  explorer.exe packaging\windows-sandbox\clean-machine.wsb
-  after copying the installer into C:\dev\sandbox-share.
+  Run it through tools/windows/sandbox_evidence.sh, which copies the installer AND
+  evidence.ps1 into C:\dev\sandbox-share, launches this file, and fails unless the report
+  says PASS. By hand: put both in the share, then explorer.exe on this file.
 -->
 <Configuration>
   <MappedFolders>
