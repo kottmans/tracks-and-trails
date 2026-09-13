@@ -791,6 +791,10 @@ per-item template ruling, which is the maintainer's and is not agreed work until
   > a record, deliberately. **The obligation is not cancelled, it is moved**: `T-212` is a Phase 5
   > deliverable and the recorded run happens before the first release, where it also lands closer
   > to what a user installs than a run against a developer checkout would.
+  >
+  > *(**2026-09-13:** the maintainer cancelled `T-212`, so the recorded run will not happen. §8 item 6
+  > moved to `T-328`'s release review, and `T-327`'s Windows session is the manual check the release
+  > relies on. The paragraph above is kept as the exit record it was.)*
 - Reviewed and signed off
 
 ---
@@ -922,8 +926,9 @@ intends otherwise, that is a separate ruling and belongs here beside this one.
   and a sandboxed format cannot see it. `T-320`, `T-317` and `T-318`'s rulings were taken the same
   day, so **no Phase 5 task now waits on a decision.**
 - **A real Windows desktop.** The manual verification session below is the one item that cannot be
-  satisfied from the current development environment. `T-212`'s recorded checklist run joins it
-  here, so the two sittings can be arranged together.
+  satisfied from the current development environment. *(`T-212`'s recorded checklist run was to join
+  it; the maintainer cancelled `T-212` on 2026-09-13, and §8 item 6 moved to `T-328`'s release
+  review.)*
 
 **Trigger:** `docs/RELEASE.md`, `SECURITY.md`, and `CHANGELOG.md` are created here
 (`DOC-002`). A `REL-` decision recording the Linux packaging format must be accepted before
@@ -961,7 +966,7 @@ gate the start; the rest are sequenced by dependency.
 | Tag → build → gate → **draft** release, never publish | `T-324` | Workflow |
 | Cold start under 3 s, on the artifact (`NFR-002`) | `T-325` | Measurement |
 | Full suite, network suite, §7 list, migration `N/A` (§8 items 1–5, 8, 10) | `T-326` | Runs |
-| Windows manual verification session (§8 item 15) | `T-327`, with `T-212` in the same sitting | **Human** |
+| Windows manual verification session (§8 item 15) | `T-327` | **Human** |
 | Release review, tag, publish, reopen `main` | `T-328` | Exit |
 
 **Not scheduled here, deliberately:** application self-update (`REL-001` leaves it open and it

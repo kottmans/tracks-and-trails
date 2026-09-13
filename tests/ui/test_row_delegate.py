@@ -2654,7 +2654,7 @@ def test_an_abandoned_block_is_not_drawn_like_a_finished_one(qapp: QApplication)
 
     **Both themes, because the fix reads a semantic colour** rather than nudging an alpha. A hex
     that separates the three on the light theme can collapse two of them on the dark one, and the
-    dark theme is the one nobody has looked at yet (`docs/CRITERION_8_CHECKLIST.md` §5).
+    dark theme is the one nobody had looked at yet (Phase 2's criterion 8 checklist, §5).
 
     Sampled from the middle of each block, one state per render, so nothing here depends on how
     the blocks are laid out — that is `T-155`'s question and it has its own test.

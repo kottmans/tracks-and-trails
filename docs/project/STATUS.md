@@ -41,9 +41,9 @@ facts live in the task and review records it summarised.*
 - **Otherwise open:** `T-332` (baseline bump: every criterion met, awaiting review), `T-322` (the
   SmartScreen screenshot and a workflow build), `T-039` (on `T039-R2`), `T-324`/`T-326` (a tag),
   `T-333` (the installed-build observation), `T-328` (the release).
-- **`T-212`'s recorded checklist run** and the four Windows-only diagnostic tasks (`T-074`,
-  `T-092`, `T-068`, `T-056`) are Phase 5 work, each to be given a disposition before the release
-  (`T-328`).
+- **The four Windows-only diagnostic tasks** (`T-074`, `T-092`, `T-068`, `T-056`) are Phase 5 work,
+  each to be given a disposition before the release (`T-328`). `T-212`'s checklist run was
+  cancelled by the maintainer on 2026-09-13; §8 item 6 moved to `T-328`'s release review.
 - **No automatic orphan detection runs on either platform**, since 2026-09-08. `T-302` owns
   designing detection that survives hosted runners; `tools/orphan_scan.py` runs by hand meanwhile.
 - **Four UI tests fail one point above the default font** (`T-301`). Contained test debt; reproduce

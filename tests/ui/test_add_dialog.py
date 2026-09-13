@@ -2872,7 +2872,7 @@ OFF_ROW_MARGIN: Final = 20
 #: Dialog sizes the *Chosen* summary is required to survive (`T306-R3`).
 #:
 #: **Grounded in the application rather than invented.** `T-306`'s acceptance criterion asked for
-#: *"the sizes `T-212` row 6 uses"* — section 6 of `docs/PHASE_4_CHECKLIST.md` is Settings, the
+#: *"the sizes `T-212` row 6 uses"* — section 6 of the Phase 4 checklist was Settings, the
 #: format table is rows **5.4**, **5.6** and **5.7**, and none of them names a dimension. That
 #: wording was the implementer's and it could not be executed. So: `MainWindow.DEFAULT_SIZE`, the
 #: window this dialog opens over; half that height, which is the case a footer at the bottom edge

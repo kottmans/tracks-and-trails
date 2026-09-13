@@ -645,7 +645,7 @@ class SettingsDialog(QDialog):
         #
         # **It commits on `editingFinished` and `Return`, never per keystroke** — a deliberate
         # exception to the screen's *"every control applies as it is changed"* rule
-        # (`docs/PHASE_4_CHECKLIST.md` row 6.2), because applying as typed would set `/h`, then
+        # (the retired Phase 4 checklist's row 6.2), because applying as typed would set `/h`, then
         # `/ho`, then `/hom`, each of them a different destination.
         self._directory_field = QLineEdit(box)
         self._directory_field.setObjectName("downloadDirectoryValue")

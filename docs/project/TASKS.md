@@ -614,7 +614,7 @@ it on — Windows Sandbox if that is what it chose)
 rendering looks right, whether Narrator sounds coherent, whether the installer feels normal, shell
 foreground and file-association behaviour, long-running stability*; `IMPLEMENTATION_PLAN.md`
 §Phase 4's screen-reader amendment (coherence *"belongs to the pre-release session"* — this is
-that session, for Windows); `REQUIREMENTS.md` §3; `T-212` (the same sitting, other list)
+that session, for Windows); `REQUIREMENTS.md` §3
 **Affected surfaces:** a review record under `docs/project/reviews/`, indexed by `REVIEWS.md`;
 `REQUIREMENTS.md` §3's *known-unverified* paragraph, which this discharges
 **Risk:** Low to run; the risk is the schedule — it needs the maintainer, a Windows desktop and an
@@ -636,8 +636,8 @@ a reason `OPS-003` and `OPS-004` recorded:
 5. A long real download with the window in use throughout — stability under real use
 6. Uninstall, watching what it says about user data
 
-**`T-212`'s recorded checklist run is the same sitting**, deliberately: one afternoon with the
-built artifact rather than two.
+*(Said `T-212`'s recorded checklist run was the same sitting. `T-212` was cancelled 2026-09-13 by the
+maintainer; this session is the manual check the release relies on.)*
 
 #### Acceptance criteria
 
@@ -768,7 +768,8 @@ The release gate's machine half, run **against the candidate** rather than again
 
 #### Out of scope
 
-- Items 6, 7, 11–15: `T-212`, `T-318`, `T-323`, `T-325`, `T-327` respectively
+- Items 6, 7, 11–15: `T-328`'s release review, `T-318`, `T-323`, `T-325`, `T-327` respectively
+  *(item 6 was `T-212`'s until its cancellation on 2026-09-13)*
 
 ---
 
@@ -1747,128 +1748,13 @@ any other text this application supplies, because an extractor argument can carr
 phase became the next one to run. `T-039` also carries `**Phase:** Phase 5` and stays under
 `## Blocked`, because that section is about status rather than phase.*
 
-### T-212 — The recorded checklist run: the built window against the agreed flow
-
-Historical evidence relocated 2026-09-08:
-[Additional historical evidence](COMPLETED_TASKS.md#t212-validation).
-
-**Carries one row by maintainer direction, 2026-08-13:** the **deferred panel mount**. `T-221` was
-closed on a real-display observation — the maintainer did not see the one-turn transient — and the
-maintainer directed that it be re-checked by hand in this pass rather than left as an open task.
-One observation on one machine is evidence about that machine; this run is where a second is taken
-deliberately, in front of the whole built window, and **recorded** in `docs/project/evidence/`. Both panel
-kinds, since `T-209`'s audit found both spend that turn at 190×26.
-
-> **Superseded — ruled by the maintainer on 2026-09-10:** *"the direction is overridden by the work
-> done for T-312."*
->
-> The mechanism it aimed at no longer exists. A panel is a **page of the add dialog** now rather
-> than a widget mounted into a list row, so there is no `setIndexWidget` turn at 190×26 for either
-> kind and the transient the direction asked to have confirmed cannot occur. **This run no longer
-> carries a directed row**, and `T-221` needs no second observation.
->
-> Checklist row `5.6` stays, as an ordinary row rather than a directed one: a page swap can still
-> land badly, and looking costs nothing. It is no longer evidence anybody is owed.
-
-**Status:** Proposed — filed 2026-08-09, owning the exit criterion the maintainer added the same
-day; **the checklist half is written**, 2026-08-16, at `docs/PHASE_4_CHECKLIST.md` — before the
-run, which is this task's first acceptance criterion. **Forty-eight** rows across seven sections
-— counted; forty-seven when written, after the entry first said forty-one from an estimate, and
-`6.1a` added 2026-08-28 with `T-292` — derived from
-`docs/UX_SPEC.md` §2/§3/§8/§11/§12 and the accepted criteria of every surface Phase 4
-added or reshaped, in `docs/CRITERION_8_CHECKLIST.md`'s shape and under its guards: rows say what
-a user should see, task ids are back-references, and a failed row becomes a task entry rather than
-an inline repair. The maintainer-directed panel-mount row is **5.6**, covering both panel kinds.
-**What remains is the run itself** — a real display and a person looking at it — recorded in
-`docs/project/evidence/` at a named head. A **run sheet** is published for the sitting, generated *from* this
-file so the two cannot drift: it marks each row pass / fail / not run, keeps the marks per head,
-and emits the `docs/project/evidence/` markdown to paste back. The criterion had no owner in the map above, which is exactly the
-failure that map exists to surface.
-**Owner:** Implementer
-**Priority:** High — it is a release gate. *(Was: "a phase exit criterion, and the phase cannot
-exit without the evidence". **Amended 2026-09-10**: the maintainer ran the list informally, ruled
-that sufficient for Phase 4 closure, and moved the recorded run to Phase 5 — so it now gates the
-first release rather than the phase.)*
-**Phase:** **Phase 5** *(moved 2026-09-10 from Phase 4, by maintainer ruling: "I did a mostly
-full informal run … please defer that task to the end of phase 4.5 or as part of phase 5"; Phase 5
-rather than 4.5 because 4.5 was resequenced the same day to follow the release, and a checklist
-run that happens **after** shipping is not a release gate at all)* — **last.** The plan's own criterion text says why: a run taken before the
-phase's surfaces land checks an application that is about to change.
-**Depends on:** `T-146`, `T-195`–`T-202`, and the add-dialog chain — `T-203`, `T-204`'s
-corrections (`T-207`, `T-209`, `T-210`, `T-211`) and whatever `T-208`'s investigation changes.
-**Relevant context:** `IMPLEMENTATION_PLAN.md` §Phase 4 exit criteria; Phase 2's criterion 8 —
-`docs/project/evidence/2026-08-05-criterion-8-checklist-run.md` and its two successor runs; `P2EXIT-R10`,
-`P2EXIT-R12`; `docs/UX_SPEC.md`
-**Affected surfaces:** `docs/project/evidence/` (the recorded run) and new task entries for what it finds
-**Risk:** Medium — not that the run is hard, but that it is treated as a formality. Phase 2's
-first run found **eleven defects against 2153 passing tests, none reported by any gate**, and
-needed two further runs to reach 40 of 40
-
-#### Scope
-
-The criterion reads: *"The built window matches the flow that was agreed — evidenced by a recorded
-checklist run against the running application, in `docs/project/evidence/`, the way Phase 2's criterion 8 was
-evidenced."* This task writes the checklist, runs it against the running application, records the
-run, and files what it finds. The checklist derives from `docs/UX_SPEC.md` — the agreed flow — plus
-the accepted criteria of the surfaces this phase adds: the settings screen and its panes, the
-reshaped add-dialog row, and the phase's queue and error-presentation changes.
-
-**A walked-through session is not evidence.** `P2EXIT-R12` was a checklist claiming a pass over its
-own recorded failures, and `P2EXIT-R10` was the same row claimed met and reset twice. The recorded
-run is the deliverable; the pass is only what it hopefully shows.
-
-#### Moved to Phase 5 on 2026-09-10, and what that changes
-
-**Ruled by the maintainer** after an informal pass over the built window: *"I did a mostly full
-informal run … and I think things are looking good for it. Please defer that task to the end of
-phase 4.5 or as part of phase 5."*
-
-**Phase 5, not the end of 4.5**, because 4.5 was resequenced the same day to follow the first
-release — a checklist run taken after shipping gates nothing. In Phase 5 it sits beside the Windows
-manual verification session, which needs a real desktop too, so the two sittings can be arranged
-together.
-
-**What the informal run does not do, said plainly.** This task's own reasoning is that *a
-walked-through session is not evidence* — Phase 2's equivalent found **eleven defects against 2153
-passing tests** and needed two further runs to reach 40 of 40. The informal pass is what closes
-Phase 4; it is not what closes this task. The acceptance criteria below are unchanged, and the run
-happens against the built artifact rather than a developer checkout, which is strictly better
-evidence than a Phase 4 run would have been.
-
-#### Acceptance criteria
-
-- **The checklist is written before the run**, derived from `docs/UX_SPEC.md` and the phase's
-  accepted task criteria, and covers every surface Phase 4 added or reshaped
-- **The run is recorded in `docs/project/evidence/`**, item by item, pass or fail, at a named commit — the
-  format Phase 2's criterion-8 runs established
-- **A failed item becomes its own task entry**, filed rather than repaired inline and re-claimed
-  within the same run
-- **A re-run after corrections repeats the whole checklist**, not only the failed rows — Phase 2
-  needed three runs, and each was complete
-- **The evidence names the commit and states that every depended-on task above was integrated at
-  it** — a run over a tree still missing one of them is the "about to change" application the plan
-  warns against
-
-#### Out of scope
-
-- **Fixing what the run finds.** Each finding is its own filed task with its own review
-- **The Windows half.** `OPS-003`: there is no Windows machine, so the run is Linux; the
-  pre-release Windows session inherits the same checklist, and the gap is named the way the plan's
-  screen-reader split names its Narrator gap
-
-
-
-
-
-
-
 ### T-328 — The first release
 
 **Status:** Proposed — filed 2026-09-11 with the Phase 5 plan. **This is the phase exit.**
 **Owner:** Reviewer runs the release review; Maintainer tags and publishes
 **Priority:** High
 **Phase:** Phase 5
-**Depends on:** every task above, `T-212`, `T-039`
+**Depends on:** every task above, `T-039` *(and `T-212`, cancelled 2026-09-13)*
 **Relevant context:** `docs/RELEASE.md`'s release review; `TESTING.md` §8 in full; §14
 (one initial review plus one focused pass, and *"a red canary is not a reason to skip the bump"*);
 `DOC-002` (`CHANGELOG.md` at the first tag); `IMPLEMENTATION_PLAN.md` §Phase 5 exit criteria;
@@ -1885,7 +1771,9 @@ every gate is being exercised for the first time at once
    `v0.1.0`. `T-324` drafts the release.
 2. **The release review**, per `docs/RELEASE.md`: `TESTING.md` §8 item by item, on both
    platforms, each with its evidence — `T-323`'s gates, `T-325`'s numbers, `T-326`'s runs,
-   `T-318`'s clean-machine files, `T-327`'s and `T-212`'s sessions. Recorded in a review record
+   `T-318`'s clean-machine files, `T-327`'s session — and **§8 item 6, the `REQUIREMENTS.md` §11
+   acceptance criteria verified by hand and recorded here**, since `T-212` was cancelled
+   2026-09-13. Recorded in a review record
    indexed by `REVIEWS.md`. Its verdict is the phase's.
 3. **Publish**: the draft becomes public by the maintainer's hand. The README's install section
    goes live in the same push — and, **by the maintainer's ruling of 2026-09-13**, it says the

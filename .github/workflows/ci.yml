@@ -73,9 +73,7 @@ on:
       # A new file under `docs/` is therefore **not** ignored until somebody adds it here, having
       # checked that no test reads it. Fail-closed is the right direction for this list: the cost
       # of a needless run is minutes, and the cost of a missed one is a gate nobody notices is gone.
-      - "docs/CRITERION_8_CHECKLIST.md"
       - "docs/DEVELOPMENT.md"
-      - "docs/PHASE_4_CHECKLIST.md"
       - "docs/UX_SPEC.md"
       - "docs/WINDOWS_VERIFICATION.md"
       - "docs/mockups/**"
