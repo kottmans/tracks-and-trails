@@ -17,8 +17,16 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from PySide6.QtCore import QPoint, QRect, Qt
-from PySide6.QtGui import QAccessible, QContextMenuEvent, QFontMetrics, QImage, QPainter
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, Qt
+from PySide6.QtGui import (
+    QAccessible,
+    QColor,
+    QContextMenuEvent,
+    QFontMetrics,
+    QImage,
+    QMouseEvent,
+    QPainter,
+)
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
@@ -1573,6 +1581,130 @@ def test_the_verb_under_the_pointer_is_drawn_differently(
     assert painted() == cold, (
         "clearing the hover did not restore the row, so the highlight outlives the pointer"
     )
+
+
+def _paint_row(delegate: RowDelegate, view: Any, index: Any, width: int = 700) -> QImage:
+    """One row, painted **the way the list paints it**: through the view, under the real sheet.
+
+    `T-134`'s test above paints with no widget, which reaches the unstyled platform style — and
+    that style draws a hover the application never showed (found in the `T-327` session).
+    """
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, width, 90)
+    option.font = view.table.font()
+    option.fontMetrics = QFontMetrics(option.font)
+    option.widget = view.table
+    option.palette = view.table.palette()
+    image = QImage(width, 90, QImage.Format.Format_ARGB32)
+    image.fill(0)
+    painter = QPainter(image)
+    try:
+        delegate.paint(painter, option, index)
+    finally:
+        painter.end()
+    return image
+
+
+@pytest.mark.parametrize("chosen", list(theme.THEMES.values()), ids=lambda t: t.name)
+def test_a_row_button_has_a_face_that_answers_the_pointer_and_the_press(
+    qapp: QApplication, tmp_path: Path, chosen: theme.Theme
+) -> None:
+    """Found in the `T-327` session: *Remove* had "no indication it is a button" and did not change
+    under the pointer or when clicked.
+
+    Drawn through the list's style, the sheet's button rules never matched, so rest, hover and
+    press were one face. Asked here of the fill **inside** the button, in both themes, as the
+    toolbar's own faces are: `surface`, then `hover`, then `rule` — and the press is the real one,
+    delivered to `editorEvent`, not a field set by hand.
+    """
+    theme.apply(qapp, chosen)
+    window = _window_over([_job("job-1", 0, JobStatus.CANCELLED)], tmp_path)
+    view = window.queue_view
+    assert view is not None
+    delegate = view.table.itemDelegate()
+    assert isinstance(delegate, RowDelegate)
+    index = view.model.index(0, 0)
+
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, 700, 90)
+    option.font = view.table.font()
+    body, area = delegate._verb_area(option, index)
+    rects = delegate._verb_rects(QFontMetrics(option.font), area, body, index)
+    assert rects and rects[0][0] is Verb.REMOVE, f"a cancelled row drew {rects}"
+    _verb, rect = rects[0]
+    # Inside the border and clear of the label, which is centred.
+    inside = QPoint(rect.left() + 3, rect.top() + 3)
+
+    def fill() -> str:
+        return f"#{_paint_row(delegate, view, index).pixel(inside) & 0xFFFFFF:06X}"
+
+    delegate.forget_hover()
+    assert fill() == chosen.surface.upper(), "a resting row button is not the toolbar's face"
+
+    delegate._hover_at(option, index, rect.center())
+    assert fill() == chosen.hover.upper(), "a row button under the pointer does not change"
+
+    press = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        QPointF(rect.center()),
+        QPointF(rect.center()),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    assert delegate.editorEvent(press, view.model, option, index), "the press was not taken"
+    assert fill() == chosen.rule.upper(), "a row button held down looks the same as hovered"
+
+    release = QMouseEvent(
+        QEvent.Type.MouseButtonRelease,
+        QPointF(rect.center()),
+        QPointF(rect.center()),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    delegate.editorEvent(release, view.model, option, index)
+    assert fill() == chosen.hover.upper(), "releasing left the button drawn held down"
+    window.close()
+
+
+@pytest.mark.parametrize("chosen", list(theme.THEMES.values()), ids=lambda t: t.name)
+def test_the_state_chip_is_a_filled_label_not_an_outlined_button(
+    qapp: QApplication, tmp_path: Path, chosen: theme.Theme
+) -> None:
+    """Ruled by the maintainer 2026-09-13: *Cancelled* was drawn in a button's outline and read as a
+    button that did nothing. A chip is a soft fill with no outline.
+
+    Asked of the chip's own left and right edge columns, which is where an outline would be: they
+    must be the fill, not ink.
+    """
+    theme.apply(qapp, chosen)
+    window = _window_over([_job("job-1", 0, JobStatus.CANCELLED)], tmp_path)
+    view = window.queue_view
+    assert view is not None
+    delegate = view.table.itemDelegate()
+    assert isinstance(delegate, RowDelegate)
+    index = view.model.index(0, 0)
+    delegate.forget_hover()
+    image = _paint_row(delegate, view, index)
+
+    fill = QColor(chosen.rule).rgb() & 0xFFFFFF
+    columns = [
+        x
+        for x in range(image.width())
+        if any(image.pixel(x, y) & 0xFFFFFF == fill for y in range(0, 30))
+    ]
+    assert columns, f"no {chosen.rule} fill anywhere on the title line, so the chip is not filled"
+    left, right = min(columns), max(columns)
+    middle = [y for y in range(0, 30) if image.pixel((left + right) // 2, y) & 0xFFFFFF == fill]
+    assert middle, "the fill has no height at the chip's centre"
+    row = (min(middle) + max(middle)) // 2
+    for x in (left + 1, right - 1):
+        assert image.pixel(x, row) & 0xFFFFFF == fill, (
+            f"the chip's edge at x={x} is #{image.pixel(x, row) & 0xFFFFFF:06x}, not its fill: "
+            "it still has an outline"
+        )
+    window.close()
 
 
 def test_a_row_that_showed_every_verb_draws_no_overflow(qapp: QApplication, tmp_path: Path) -> None:

@@ -40,6 +40,7 @@ from PySide6.QtCore import (
     QModelIndex,
     QPoint,
     QRect,
+    QRectF,
     QSize,
     Qt,
     Signal,
@@ -61,7 +62,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QStyle,
     QStyledItemDelegate,
-    QStyleOptionButton,
     QStyleOptionComboBox,
     QStyleOptionViewItem,
     QWidget,
@@ -569,6 +569,9 @@ VERB_PADDING: Final = 8
 #: The gap between adjacent verb buttons.
 VERB_GAP: Final = 4
 
+#: A row button's corner radius — the toolbar's, so the two kinds of button match.
+VERB_RADIUS: Final = 4
+
 #: How tall the row's format control is drawn. A combo box's own height, near enough, and bounded
 #: by the row so a large font cannot push it outside its own row.
 CONTROL_HEIGHT: Final = 26
@@ -818,6 +821,10 @@ class RowDelegate(QStyledItemDelegate):
         #: Which row's `⋮` zone is held down, or `None` (`T-224`). Cleared when the press is
         #: released or leaves, so a menu opened by the press does not leave the zone stuck sunken.
         self._pressed_zone: int | None = None
+        #: Which verb is held down, as `(row, verb)`, or `None` — `_hovered`'s shape, for the
+        #: sunken face (found in the `T-327` session). Cleared on release, wherever it lands, and
+        #: when the pointer leaves, for the reason `_pressed_zone` gives.
+        self._pressed_verb: tuple[int, Verb | None] | None = None
         #: Which row's `⋮` zone the pointer is over, or `None` (`T-224`, `UX-012`).
         #:
         #: **Separate from `_hovered`**, which is keyed by `Verb` and belongs to the queue's verb
@@ -969,7 +976,7 @@ class RowDelegate(QStyledItemDelegate):
 
         verbs_left = self._paint_verbs(painter, text_area, body, option, index)
         self._paint_text(
-            painter, text_area, body, index, primary, muted, verbs_left, option.palette
+            painter, text_area, body, index, primary, muted, verbs_left, option.palette, selected
         )
         painter.restore()
 
@@ -1562,21 +1569,38 @@ class RowDelegate(QStyledItemDelegate):
         if not rects:
             return None
 
-        widget = cast("QWidget | None", option.widget)
-        style = widget.style() if widget is not None else QApplication.style()
-        for verb, rect in rects:
-            button = QStyleOptionButton()
-            button.rect = rect
-            button.palette = option.palette
-            button.text = MORE_LABEL if verb is None else LABELS[verb]
-            button.state = QStyle.StateFlag.State_Enabled | QStyle.StateFlag.State_Raised
-            # **The one signal that says this is a control and not a picture of one** (`T-134`).
-            # `T118-R12` won the argument that a reserved slot with nothing painted in it is an
-            # affordance only for someone who already knows it is there; a painted button that
-            # never reacts to the pointer is that same defect one step later.
-            if self._hovered == (index.row(), verb):
-                button.state |= QStyle.StateFlag.State_MouseOver
-            style.drawControl(QStyle.ControlElement.CE_PushButton, button, painter, widget)
+        # **Drawn from the theme, not through the view's style** (found in the `T-327` session).
+        # `QStyleSheetStyle` resolves rules against the widget it is handed, and here that is the
+        # *list*: the sheet's `QPushButton` rules never matched, so the button came out as a
+        # list-coloured outline with the same face at rest, under the pointer and held down —
+        # *"no indication they are a button"*, in the maintainer's words. `T-134`'s test painted
+        # without a widget, reached the unstyled platform style, and saw a hover the application
+        # never showed. These are the toolbar's faces (`QToolBar QToolButton` and its states), so a
+        # button on a row and a button on the bar are one kind of thing.
+        active = theme.applied()
+        painter.save()
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            for verb, rect in rects:
+                where = (index.row(), verb)
+                if self._pressed_verb == where:
+                    fill, edge = active.rule, active.primary
+                elif self._hovered == where:
+                    fill, edge = active.hover, active.primary
+                else:
+                    fill, edge = active.surface, active.border
+                painter.setPen(QColor(edge))
+                painter.setBrush(QColor(fill))
+                face = QRectF(rect).adjusted(0.5, 0.5, -0.5, -0.5)
+                painter.drawRoundedRect(face, VERB_RADIUS, VERB_RADIUS)
+                painter.setPen(QColor(active.text))
+                painter.drawText(
+                    rect,
+                    int(Qt.AlignmentFlag.AlignCenter),
+                    MORE_LABEL if verb is None else LABELS[verb],
+                )
+        finally:
+            painter.restore()
         return min(rect.left() for _, rect in rects) - VERB_GAP
 
     def _is_being_edited(self, index: QModelIndex | _PersistentIndex) -> bool:
@@ -1871,6 +1895,7 @@ class RowDelegate(QStyledItemDelegate):
         muted: QColor,
         verbs_left: int | None,
         palette: QPalette,
+        selected: bool = False,
     ) -> None:
         if area.width() <= 0:
             return
@@ -1910,8 +1935,18 @@ class RowDelegate(QStyledItemDelegate):
                 min(chip_width, area.width()),
                 metrics.height(),
             )
-            painter.setPen(muted)
-            painter.drawRoundedRect(chip.adjusted(0, 0, -1, -1), CHIP_RADIUS, CHIP_RADIUS)
+            # **A soft fill and no outline** (ruled by the maintainer 2026-09-13, `T-327`
+            # session). Outlined in the muted ink, the chip was the same shape as the row's
+            # buttons, and *Cancelled* read as a button that did nothing. A label is filled; a
+            # button is outlined and answers the pointer. On a selected row the tint is the
+            # selection itself, so the chip takes `surface` there to stay visible.
+            active = theme.applied()
+            painter.save()
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(active.surface if selected else active.rule))
+            painter.drawRoundedRect(chip, CHIP_RADIUS, CHIP_RADIUS)
+            painter.restore()
+            painter.setPen(primary)
             painter.drawText(chip, int(Qt.AlignmentFlag.AlignCenter), chip_text)
             headline_width = max(chip.left() - GAP - area.left(), 0)
 
@@ -2129,11 +2164,17 @@ class RowDelegate(QStyledItemDelegate):
 
     def forget_hover(self) -> None:
         """Clear the hovered verb and zone, repainting if that changed anything (`T-134`)."""
-        if self._hovered is None and self._hovered_zone is None and self._pressed_zone is None:
+        if (
+            self._hovered is None
+            and self._hovered_zone is None
+            and self._pressed_zone is None
+            and self._pressed_verb is None
+        ):
             return
         self._hovered = None
         self._hovered_zone = None
         self._pressed_zone = None
+        self._pressed_verb = None
         self._repaint()
 
     def _hover_at(
@@ -2210,14 +2251,24 @@ class RowDelegate(QStyledItemDelegate):
                 self._pressed_zone = index.row()
                 self._repaint()
                 return True
+            # **A verb's sunken face, on the same terms** (found in the `T-327` session): set on
+            # the press so a paint can see it, and consumed, because a button that selects the row
+            # under it on the way down is two controls in one place.
+            body, text_area = self._verb_area(option, index)
+            for verb, rect in self._verb_rects(QFontMetrics(option.font), text_area, body, index):
+                if rect.contains(event.position().toPoint()):
+                    self._pressed_verb = (index.row(), verb)
+                    self._repaint()
+                    return True
             return False
         if event.type() != QEvent.Type.MouseButtonRelease:
             return False
         # **Released, wherever it landed** (`T224-R1`). A press inside the zone and a release
         # outside it must not leave the face drawn sunken — that is the "button stuck down" the
         # first build's comment was worried about, arrived at from the other direction.
-        if self._pressed_zone is not None:
+        if self._pressed_zone is not None or self._pressed_verb is not None:
             self._pressed_zone = None
+            self._pressed_verb = None
             self._repaint()
         body, text_area = self._verb_area(option, index)
         where = event.position().toPoint()
