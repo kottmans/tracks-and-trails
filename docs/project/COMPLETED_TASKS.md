@@ -2,7 +2,7 @@
 
 **Purpose:** Running record of completed and cancelled tasks and their evidence.
 **Owner:** Task/status owner; Coordinator / Integrator during a parallel wave
-**Last updated:** 2026-09-11
+**Last updated:** 2026-09-13
 **Update when:** A task closes, reopens, or needs a dated correction or navigation update.
 
 [TASKS](TASKS.md) contains unfinished work. Move each newly Complete or Cancelled
@@ -25,6 +25,1845 @@ quoted context, outside the operative task catalog.
 - [Earlier coordination context](#earlier-coordination-context)
 
 ## Complete
+
+### T-106 — Decide the Linux packaging format before Phase 5
+
+**Status:** **Complete — Approved at `2e2507b`** by independent review, closed 2026-09-13. The Linux artifact ships as an AppImage, recorded as [`REL-004`](DECISIONS.md#rel-004--the-linux-artifact-ships-as-an-appimage), and `T-321` built it. *(Filed 2026-08-01 from the Phase 5 roadmap review.)*
+**Owner:** Architect / maintainer decision
+**Priority:** Medium — nothing is blocked until Phase 5, and the answer shapes work well before then
+**Phase:** Phase 5 prerequisite
+**Depends on:** nothing
+**Relevant context:** `REL-001` (ship frozen artifacts, no Python on the user's machine),
+`IMPLEMENTATION_PLAN.md` §Phase 5, `LIC-001`, `NFR-009` (Qt stays dynamically linked), `OPS-001`
+**Affected surfaces:** `docs/project/DECISIONS.md`, and later `packaging/`
+**Risk:** Medium — taken late, it constrains a build that has already been written
+
+#### Scope
+
+§Phase 5's trigger reads: *"A `REL-` decision recording the Linux packaging format must be accepted
+before the first build."* The only `REL-` entry is `REL-001`, which decides that artifacts are
+frozen and self-contained and says nothing about **format**. The deliverable list says only
+"Linux: packaging per the `REL-` decision" — pointing at an entry that does not exist.
+
+**Why it is worth taking early rather than at Phase 5.** The candidates differ in ways that reach
+back into the build: AppImage wants everything in one tree and is closest to what PyInstaller
+already produces; Flatpak has its own runtime and sandbox, which changes how the application finds
+`ffmpeg` and where it may write (`NFR-004`, `REQ-024`); a `.deb`/`.rpm` pair means system packaging
+per distribution and a dependency story rather than a bundle. `NFR-009` constrains all of them —
+Qt must stay dynamically linked (`LIC-001`'s LGPL condition).
+
+#### Acceptance criteria
+
+- A `REL-` entry naming the format, with the rejected alternatives and **why**, in the house style
+- States how the choice interacts with `REQ-024`'s ffmpeg detection and `NFR-004`'s directories,
+  since that is where a sandboxed format differs most from a bundle
+- States what it means for `NFR-009`, and how that is checked in the release gate
+- Names its reopening condition
+
+#### Proposal, 2026-09-11 — for the maintainer to accept, amend or reject
+
+**Recommended: AppImage.** Three reasons, in order of weight:
+
+1. **`OPS-001` makes ffmpeg a *system* dependency on Linux**, and a Flatpak cannot see the host's
+   ffmpeg without a portal or an extension. Choosing Flatpak would either reverse `OPS-001` on
+   Linux (bundle ffmpeg after all) or ship a sandbox in which the merge feature is dead on arrival.
+   An AppImage runs as an ordinary process and `find_ffmpeg`'s `PATH` search works unchanged.
+2. **It is what `packaging/tracks-and-trails.spec` already produces.** PyInstaller one-dir *is* an
+   AppDir minus a `.desktop`, an icon and `AppRun`; `T-020`/`T-033` have been building and probing
+   that tree in CI since Phase 0. Flatpak means a manifest, a runtime and a second build system.
+3. **`NFR-004`'s directories are unaffected**: `platformdirs` resolves the same `XDG_*` paths from
+   an AppImage as from source, which `T-298`'s frozen-isolation gate already pins.
+
+**What it costs, stated.** An AppImage carries no dependency story — Qt's own `.so` files ship
+inside it (`NFR-009`, still dynamically linked *within* the bundle), so it is large (the smoke
+artifact is ~223 MiB before ffmpeg) and it must be built against the **oldest glibc it claims to
+support** (`OPS-012`'s recorded surrender: a Fedora-built binary may not run on an older distro).
+That is `T-321`'s problem and is named there, not deferred.
+
+**Reopening condition:** if ffmpeg is ever bundled on Linux, or a distribution store becomes a
+requirement, revisit Flatpak. `.deb`/`.rpm` stay where `REL-001` left them — a later secondary, never
+the primary.
+
+**Acceptance is unchanged**: this becomes a `REL-` entry in the house style only when the maintainer
+accepts it. Until then it is a proposal in a task, which is the narrowest honest record.
+
+#### Out of scope
+
+- Building anything. This is the decision; Phase 5 owns the packaging work (`T-321`)
+- Windows, which `OPS-001` already settles
+
+### T-334 — A started queue stops itself once it has nothing left to do
+
+**Status:** **Complete — Approved at `d461527`** on 2026-09-13 by independent review. A started queue stops itself once its last download ends with nothing running, waiting, due a retry or held; a durable probe counts as work (`T334-R1`), and `UX-006` item 2 is amended.
+**Owner:** Maintainer rules; Implementer builds
+**Priority:** Medium
+**Phase:** Phase 5
+**Relevant context:** `UX-006` item 2 — *"A started queue stays started … Draining does not re-arm
+it"*; `UX-002` (automatic retry waits 2 s, 4 s, 8 s, so an empty-looking queue can still have work
+due); `UX-001` (stop drains)
+**Affected surfaces:** `DownloadManager`'s gate; the toolbar's Start/Stop; the status-bar gate text
+
+The maintainer, in the Sandbox: *"I wonder if the start/run status should revert back to stopped after
+all the videos in the queue have been downloaded? Otherwise you get in a state where you are running
+a queue with no active tasks."*
+
+#### Built 2026-09-12
+
+`DownloadManager._stop_when_drained`, armed when a download session is released and asked again
+whenever a job's write chain empties. **The second trigger is the race**: a failed download's
+retry is scheduled only in the `then` of the write recording the failure, which can land after the
+session is released, so a check at release alone could stop the queue a moment before the retry
+exists. A write still in flight therefore counts as work.
+
+Tests in `tests/integration/test_manager.py`, replacing `…stays_started_for_work_added_afterwards`:
+the queue stops after its last download and holds a later URL for Start; Start on an empty queue
+survives a paste being read; and a queue with retries due stops only after the last attempt, run
+both with synchronous writes and with the failure confirmed 1.5 s late. **Each clause mutated,
+each killed**: dropping the retry clause (3 failures), the in-flight-write clause (2), the re-check
+when a chain empties (2), or the ended-download arming (1).
+
+#### 2026-09-13 — `T334-R1`: a durable probe is queue work
+
+**The reviewer was right, and reproduced it with real spawned workers.** `_has_download_work`
+counted DOWNLOAD sessions, waiting downloads and download retries — on the reasoning that a probe is
+never gated and so is not queue work. That holds for a **staged** probe, the add dialog reading a
+paste, and not for a **durable** one: a restored `QUEUED` row or a playlist entry probes first, and
+`_probe_settled` then admits its download. A download finishing while such a probe ran stopped the
+queue, and the probe's download waited `Held` behind a Stop nobody pressed.
+
+**Corrected by what distinguishes them, which is staging, not the session kind.** Every job in every
+collection counts — running or reserved, waiting, due a retry — unless it is in `_staged`. The
+in-flight-write clause is unchanged.
+
+**Tests, with real spawned children gated by barrier files:** a durable probe still running when a
+`READY` row's download ends, and a durable probe **due an automatic retry** at that moment. Both
+keep the queue started, then download the probed row, then stop. **Mutation:** restoring the
+download-only counting fails both; the earlier four tests still pass.
+
+#### Acceptance criteria
+
+- [x] A queue stops when its last download ends with nothing waiting, due or held
+- [x] Start on an empty queue does not undo itself; a staged probe does not stop a queue, and a
+      durable probe — running or due a retry — keeps it started (`T334-R1`)
+- [x] An automatic retry that is due keeps the queue started
+- [x] `UX-006` amended; `REQ-015`'s gate paragraph updated
+
+### T-331 — The Windows mutation driver's positive control is not one
+
+**Status:** **Complete — Approved at `08251df`** on 2026-09-13 by independent review. The Windows mutation driver names and refuses an unidentifiable tree, awards a kill only for a failed assertion against a clean baseline (`T331-R1`), and its `STARBASE` run and rerun are recorded.
+
+#### 2026-09-11 — corrected, and what the Linux run establishes
+
+**It names the tree, and refuses one it cannot.** The header prints `HEAD` and whether the working
+tree is dirty, and a dirty tree **stops the run** rather than warning — a warning is exactly what
+scrolled past on 2026-09-11. `--allow-dirty` is the deliberate override.
+
+**A broken baseline no longer manufactures kills.** Each selection's baseline is tracked, and
+every later case in a selection whose baseline failed reports `NO RESULT (baseline broken)`. The
+second run that evening reported `KILLED` for all six cases including the expected survivor,
+purely because the suite was failing whatever the plugin did.
+
+**The summary is pytest's result line**, found by pattern rather than taken as the last line of
+output, and its absence is reported as `NO SUMMARY LINE` instead of a row of progress dots.
+
+**The table and every full output are written to `reports/windows-mutations.txt`.** `T329-R2` asks
+for a recorded result and this driver left only a console window.
+
+**The control is a control now.** `mut_control_title` changes the window title, and
+`test_windows_desktop.py` asks **Windows** for it through `GetWindowTextW` rather than asking Qt —
+so no arrangement of widgets can pass it. `mut_control_chain` is reclassified as a mutation and
+runs against the suite that detects it; its docstring no longer claims that its survival voids
+every other verdict.
+
+**Validated on Linux, where three of the four new behaviours are observable:**
+
+| Case | Verdict |
+|---|---|
+| the six desktop cases | `NO RESULT (exit 5)` — deselected here, and *reported* as no result rather than passed over |
+| baseline: the chain suite | **OK**, 205 passed |
+| dialog: the declared chain is emptied | **KILLED**, 4 failed / 201 passed |
+| baseline: the rendered focus sweep | **OK** |
+| header: draws no focus ring of its own | **KILLED** |
+
+The chain row is the finding demonstrated: the mutation the old driver called a surviving control
+is killed outright by the suite that detects it.
+
+**What remains is the `STARBASE` run**, which is the one thing about a driver's own correctness
+that cannot be argued from Linux.
+**Owner:** Implementer
+**Priority:** Medium — it does not break the product, and it means a driver that claims to know
+when its own verdicts are worthless does not
+**Phase:** Phase 5 (test infrastructure)
+**Depends on:** nothing
+**Relevant context:** `tools/windows/mutations/mut_control_chain.py` and `run_mutations.py`;
+`T-026`, `T-040`, `T-060`/`T060-R2`; `tests/ui/test_windows_desktop.py:483–490`
+**Affected surfaces:** `tools/windows/mutations/`
+**Risk:** Low
+
+#### What happened
+
+The first real run on `STARBASE`, 2026-09-11:
+
+```
+OK                     baseline, unmutated
+SURVIVED (unexpected)  CONTROL: focus_chain returns nothing
+KILLED                 dialog: two declared widgets reordered
+KILLED                 dialog: undeclared focusable control
+KILLED                 progress view: undeclared focusable control
+SURVIVED (expected)    progress view: delivered order reversed
+```
+
+`mut_control_chain` says of itself: *"It MUST be reported as killed. If it survives, the plugin
+mechanism is not taking effect and every other verdict in this run is meaningless."*
+
+#### Both halves of that are wrong, and the run proves it
+
+**The mechanism took effect.** Three mutations were killed in the same run, which is only possible
+if the plugins applied. So the other verdicts stand rather than being void.
+
+**The mutation is caught — by tests this driver does not select.** Applying
+`mut_control_chain` on Linux against `tests/ui/test_accessibility.py` and
+`tests/ui/test_add_dialog.py` fails **4 tests**. The driver runs `-m windows_desktop`, and none
+of the four carries that marker.
+
+**Why the desktop suite cannot see it.** `_set_tab_order` pairs `focus_chain()` and calls
+`setTabOrder`; an empty chain simply makes no calls, leaving **Qt's construction order**.
+`test_windows_desktop.py:490` writes its expected order out by hand rather than deriving it —
+*"that is the whole point"* — so it passes whenever the delivered order matches, and on this
+dialog construction order already does. The tests are right about the delivered order. They are
+not evidence that the *declaration* is load-bearing, and the control assumed they were.
+
+#### What the same evening then showed, and it voids the table above
+
+**The machine's interactive checkout was six weeks stale**, at a 2026-07-29 commit, with
+uncommitted edits to `core/logging.py`. Its `origin` is `C:/dev/tt.bundle` — a hand-carried bundle
+file — so every `git pull` answered *"Already up to date"* while following nothing. **The run
+above tested July's code**, as did a second run whose baseline broke outright.
+
+**So the `SURVIVED (unexpected)` result is not evidence**, and this task does not rest on it: the
+reasoning below was reproduced on Linux from the committed tree, where the mutation fails 4 tests
+in `test_accessibility.py` and `test_add_dialog.py` — none carrying the `windows_desktop` marker
+the driver selects. The Windows numbers are still to be taken.
+
+#### 2026-09-13 — `T331-R1`/`R2`: nothing is a kill without an assertion failing
+
+**The review was right that the table could still lie.** `run_mutations.py` awarded KILLED to any
+exit 1 — so a run with only errors, or with no result line, read as a caught mutation — and a
+baseline exiting 2 to 5 was never marked broken, so its mutations were judged against nothing.
+
+**`verdict()` now decides from evidence, and is a pure function with tests.** A baseline is `OK`
+only on exit 0 with tests passed and none failed or errored, and any other baseline breaks its
+selection; a kill needs exit 1 **and** at least one failed test, keeping the teardown errors that
+cascade beside real failures on Windows; exit 1 with errors only is `NO RESULT (errors only)`, and
+with no summary `NO RESULT (no summary)`; a survivor needs exit 0 with tests passed. The driver's
+checks and its run moved behind `main()`, so importing it runs nothing.
+`tests/unit/test_mutation_verdicts.py` holds thirteen cases, the review's among them and the real
+Windows lines from the run below. **Mutation:** dropping the errors-only rule fails one.
+
+**`T331-R2`:** the comment above the title control no longer says a surviving control voids every
+verdict; it says what the control proves and that each kill carries its own evidence.
+
+**The two `STARBASE` tables below were read under the old rules, and stand under the new ones**:
+every KILLED there has failed tests beside its errors, and every baseline passed clean.
+
+#### 2026-09-13 — the `STARBASE` run, and what two of its verdicts said about the driver
+
+**Run on `STARBASE`**, tree `4320859`, **clean** by the driver's own header — after moving seven
+untracked leftovers from earlier build sessions aside, which it refused to run over, as designed.
+The table, verbatim from `reports/windows-mutations.txt`:
+
+```
+OK                     baseline, unmutated                          39 passed
+KILLED                 CONTROL: the window title is wrong           2 failed, 37 passed, 38 errors
+SURVIVED (unexpected)  dialog: two declared widgets reordered       39 passed
+KILLED                 dialog: undeclared focusable control         8 failed, 31 passed, 11 errors
+KILLED                 progress view: undeclared focusable control  2 failed, 37 passed, 3 errors
+KILLED (unexpected)    progress view: delivered order reversed      1 failed, 38 passed, 3 errors
+OK                     baseline: the chain suite, unmutated         205 passed
+KILLED                 dialog: the declared chain is emptied        4 failed, 201 passed
+OK                     baseline: the rendered focus sweep           2 passed
+KILLED                 header: draws no focus ring of its own       2 failed
+```
+
+**The control is a control**: the title mutation is killed by the tests that ask Windows for it.
+
+**Both unexpected verdicts are stale mutations, not product defects.**
+
+- **The dialog swap survived because it no longer swapped what it said.** It exchanged indices 3
+  and 4 under a docstring naming `titleValue` and `uploaderValue`; since `T-312` those are
+  `statusMessage` and `presetChoice`, and the status line is `NoFocus` in three of the four states
+  the suite checks. It now swaps **`urlInput` and `stagingList` by name**, both reachable in every
+  state.
+- **The progress-view reversal was killed because the view grew.** Its docstring said no state
+  offered more than two controls, so a reversal was unobservable; `T-084` added the diagnostics box,
+  a failed job offers three, and the reversal is observable. Its expectation is now `fail`.
+
+**The `errors` beside every kill are teardown cascades** — once a desktop test fails, later tests
+meet the leftover state — and they are why the driver counts the pytest result line rather than
+exit codes alone.
+
+**The rerun, on the pushed tree** — `40b1dd8`, clean — **matches every expectation**:
+
+```
+OK      baseline, unmutated                          39 passed
+KILLED  CONTROL: the window title is wrong           2 failed, 37 passed, 38 errors
+KILLED  dialog: two declared widgets reordered       8 failed, 31 passed, 11 errors
+KILLED  dialog: undeclared focusable control         8 failed, 31 passed, 11 errors
+KILLED  progress view: undeclared focusable control  2 failed, 37 passed, 3 errors
+KILLED  progress view: delivered order reversed      1 failed, 38 passed, 3 errors
+OK      baseline: the chain suite, unmutated         205 passed
+KILLED  dialog: the declared chain is emptied        4 failed, 201 passed
+OK      baseline: the rendered focus sweep           2 passed
+KILLED  header: draws no focus ring of its own       2 failed
+```
+
+#### Acceptance criteria
+
+- **The driver refuses, or at least records, a tree it cannot identify.** It already refuses the
+  wrong interpreter and the wrong directory, and it printed six cases from a six-week-old checkout
+  without a word. `git log --oneline -1` and a dirty-tree check in its header would have cost
+  thirty seconds and saved three runs
+- **It distinguishes a killed mutation from a broken run.** The second run reported `KILLED` for
+  every case including the expected survivor, because it treats any non-zero exit as a kill and
+  its summary line had been swallowed — the same class of mistake its own comments record being
+  fixed for once already
+- The positive control is one the selected suite **cannot** pass — or the driver selects the
+  tests that detect the existing one, stated either way rather than left to coincide
+- The claim in `mut_control_chain`'s docstring and `run_mutations.py`'s comment is corrected: a
+  surviving control does not by itself void the other verdicts, and this run is why
+- **Run on `STARBASE` and the table recorded**, since a driver's own correctness is exactly the
+  thing that cannot be argued from Linux — **done 2026-09-13**, and rerun on the pushed tree with
+  every verdict as expected
+- `run_mutations.py` **writes its table to a file** as well as printing it. `T329-R2` asks for a
+  recorded result and the driver currently leaves only console output, which is how this run
+  nearly went unrecorded
+
+#### Out of scope
+
+- The dialog's construction order, which is correct
+- `T-060`'s expected survivor, which is recorded and understood
+
+### T-323 — Executable gates over the built artifact
+
+**Status:** **Complete — Approved at `08251df`** on 2026-09-13 by independent review. Four release-gate items are executable; Windows Qt linkage is read from PE import tables (`T323-R1`) and binary cookie-store paths are found without the costly patterns (`T323-R2`), after the maintainer-authorized additional pass.
+
+#### 2026-09-11 — the four checks, and the two things they found
+
+`packaging/artifact_gates.py`, wired into the `frozen` job. **All four run in 1.2 s** over a real
+PyInstaller build.
+
+**It found its subject missing on the first run.** The artifact carried **no licence texts at
+all** — `packaging/licenses/` did not exist and the spec bundled nothing — so `LIC-001`'s
+*"their license texts must ship with every distributed artifact"* was unmet in every build to
+date. The texts are now in `packaging/licenses/` with provenance in its `README.md`, and the spec
+bundles them via `SPECPATH` rather than a relative path that resolves against the caller's cwd.
+
+**And `T031-R2`'s rule earned its keep.** The Qt check originally globbed for the library files
+and **passed with `libQt6Widgets.so.6` deleted** — the bundle carries Qt **twice**, at
+`_internal/` and `_internal/PySide6/Qt/lib/`, so one copy satisfied it. It now also asks `ldd`
+where each dependency resolves: a static build lists none, a build borrowing the host's Qt
+resolves outside the tree, and a deleted library resolves to *not found*.
+
+**The mutations, on a real build:**
+
+| Item | Mutation | Result |
+|---|---|---|
+| 11 · Qt dynamic | remove **every** copy of a required module | **FAIL** |
+| 12 · licences | delete any one of the four files | **FAIL** |
+| 13 · no secrets | plant the home path in a data file | **FAIL** |
+| 9 · yt-dlp purity | drop a `.so` or `.pyd` into the tree | **FAIL** |
+
+**Scope's suggested mutation for item 11 — *"deleting one fails"* — is not a mutation of the
+property**, and that is recorded rather than worked around: with two copies shipped, deleting one
+leaves Qt dynamically linked and resolving inside the artifact, which is all the item claims.
+
+**One false positive, kept as a test.** Searching for the bare user name reported
+`libbrotlicommon.so.1` — brotli's built-in English dictionary contains those four letters inside
+ordinary words — while the real home path appeared in **no file**. The name now counts only
+bracketed by path separators; `core/logging`'s own four-byte floor has the same reasoning.
+
+**Outstanding:** `ffmpeg-LGPL.txt`, which needs `T-319`'s binary choice; the check requires it only
+where ffmpeg is bundled, so no artifact is failed for lacking a licence for something it does not
+ship. `T-324` wires the same script into the release workflow when it exists.
+
+#### 2026-09-12 — the review's four findings, and what the first one cost
+
+**`T323-R1` found the item 11 gate passing with its subject deleted — again.** The entry above
+records that defect being fixed by adding the loader check. It was not fixed. The reviewer's
+mutation — delete the real `libQt6Widgets.so.6` — still passed **every** gate, three ways at once:
+
+1. The glob accepted a **dangling symlink**. The note above says the bundle carries Qt at two
+   paths; what it does not say, and what makes the difference, is that the second is a *symlink to
+   the first*, not an independent copy. `rglob` returns a dangling link, so deleting the only real
+   file left something that looked like a library.
+2. The loader half then inspected `extensions[:4]` — an arbitrary cap. **QtWidgets sorts fifth**
+   in a real build, so the one module the mutation removed was the one never asked about.
+3. And an inspection that *could not run* — no `ldd`, a failed call — returned no problems, which
+   is indistinguishable from no problem found.
+
+Fixed: `is_file()` (which follows the link), no cap, every binding inspected, **positive
+per-module linkage evidence** required rather than absence of complaints, and any failed
+inspection reported. Reproduced the reviewer's exact topology — real library plus symlink, delete
+the real one — and it now fails two ways: the dangling-symlink message, and the loader reporting
+`resolves libQt6Widgets.so.6 to /lib64/libQt6Widgets.so.6, outside the artifact`.
+
+**`T323-R2` — planted cookie material escaped the scan.** Patterns ran only over an allowlist of
+text suffixes and skipped lines past column 2000, so a `Cookie:` header in a `.bin`, in an
+extensionless file, or on a long line all survived. Nothing is decided by suffix or line length
+now. What a file's content decides is only **which half of the vocabulary** runs, and that split
+is by measured cost, over this artifact's 337 binary files (206 MB):
+
+| Pattern | Over 206 MB of binaries | In the gate |
+|---|---|---|
+| `_COOKIE_WITH_A_VALUE` | 10.7 s, no false positives | every file |
+| `_URL_CREDENTIALS` | 13.2 s, no false positives | every file |
+| `_COOKIE_FILENAME` | **171 s on `libQt6Gui.so.6` alone** | text only |
+| `_COOKIE_PATH` | same nested-quantifier shape | text only |
+
+**Truncating does not rescue the costly two** — the same library capped to `MAX_SCANNED_BYTES`
+still took 170.7 s, because the blow-up happens inside the first two megabytes. So the split is by
+file kind, stated on the constants, not by a size bound pretending to be a cost control. All six
+of the reviewer's counterexamples now fail the gate, including a NUL-leading binary, which the
+first fix would still have skipped. **The gate now takes 23.4 s, not the 1.2 s recorded above** —
+that is what covering the binaries costs, and it is affordable for something that runs per build.
+
+**`T323-R3`** (the interpreter's own install prefix is provenance, not a leak) and **`T323-R4`**
+(the release-review prompt invited prose where a tool now produces evidence) are both closed. R4's
+first attempt cited *"item 1"* for the version check; §8 item 1 is lint and mypy, and version
+consistency is not a §8 item at all. Corrected against the list rather than from memory.
+
+#### 2026-09-12 (later) — `T323-R4`: the R3 fix did not work, and CI is where that showed
+
+**The first `frozen linux` run to execute this gate failed it**, on the same 110 hits `T323-R3`
+was supposed to have fixed:
+
+```
+FAIL  item 13 · no secrets or personal paths
+        _internal/libpython3.14.so.1.0 contains the build machine's home directory
+        _internal/libpython3.14.so.1.0 contains the build machine's user name, in a path
+        _internal/python3.14/lib-dynload/_asyncio.cpython-314-x86_64-linux-gnu.so contains the build machine's home directory
+        … and 90 more
+```
+
+**R3 exempted `sys.base_prefix` — the path the interpreter is *installed* at — and that is not
+the path in the binary.** CPython embeds the directory it was **built** in, in `__FILE__`
+strings, `sysconfig` data and debug sections. Whoever built that CPython did so somewhere, and if
+they did it in a home directory then every copy of it quotes one for ever. The run also reported
+the **user-name-in-a-path** literal, which R3's exemption did not cover at all.
+
+**Why this was not caught before pushing, which is the part worth recording.** R3 was verified
+two ways, and neither could have failed: a unit test that monkeypatched `Path.home()` and
+`sys.base_prefix` into agreement, and a local artifact whose Python lives at `/usr` — where the
+exemption never fires because there is nothing to exempt. **The configuration that breaks it is
+the one CI has and this desk does not**, and the gate had never run in CI before that push.
+
+**The fix is by file, and only for the two path literals.** `is_interpreter_owned` names the
+CPython runtime and its extension modules — `libpython*`, `lib-dynload/`, `python3.dll`, `DLLs/`
+— which PyInstaller copies in byte-for-byte. A path inside one is a fact about a dependency, not
+about this build: we copy those files, we do not author them.
+
+**What that gives up, stated rather than implied:** a personal path existing *only* inside the
+bundled interpreter would not be reported. Nothing here can put one there, and the alternative
+measured worse — the gate failed every CI build, which is how a gate gets switched off.
+
+**Reproduced against a real artifact, not only in unit tests.** CI's topology planted into a
+fresh PyInstaller build on this machine — the build path in `libpython3.14.so.1.0` and twenty
+`lib-dynload/*.so`, with the install prefix deliberately at `/usr`, nowhere near home:
+
+| Planted | Gate |
+|---|---|
+| home + user name in 21 interpreter files | **passes**, reporting `42 path literal(s) excused as provenance` |
+| the same path in `_internal/build_settings.json` | **FAIL** — the exemption is by file, not by string |
+| `Cookie: sid=…` inside `libpython3.14.so.1.0` | **FAIL** — only the path literals are excused |
+
+Four mutations, four caught — including one that **survived the first attempt**: excusing *every*
+literal rather than the two path ones would have let a `.netrc` reference through an interpreter
+file, and the docstring claiming otherwise was untested. 46 tests now.
+
+**22 tests added, and every defect above mutated back in:**
+
+| Mutation | Caught by |
+|---|---|
+| skip NUL-bearing files for the pattern half | `test_a_cookie_header_inside_a_real_binary_is_found` |
+| cap the loader half at four bindings | `test_every_binding_is_inspected_not_only_the_first_few` |
+| glob without `is_file()` | `test_a_dangling_symlink_is_not_a_usable_library` |
+| an inspection that cannot run returns no problems | `test_an_inspection_that_cannot_run_is_not_a_pass` |
+| drop the positive per-module linkage evidence | `test_bindings_that_declare_no_qt_at_all_do_not_pass_silently` |
+| truncate silently instead of reporting | `test_truncating_the_costly_half_is_reported` |
+| exempt the whole file once the prefix appears | `test_the_interpreters_own_prefix_is_provenance_not_a_leak` |
+| skip the filename check | `test_a_cookie_store_is_a_leak_by_its_name` |
+
+8 of 8, each caught by exactly the test that names it. The `ldd` cases use a **script on `PATH`**
+rather than a patched `subprocess.run`, so the call the gate actually makes stays inside the test.
+
+**Owner:** Implementer
+**Priority:** High — four release-gate items are currently prose, and prose is not a gate
+**Phase:** Phase 5
+**Depends on:** `T-319` and `T-321` for something to gate; written so it runs against the smoke
+build until they land
+**Relevant context:** `TESTING.md` §8 items 9, 11, 12, 13; `NFR-009`; `LIC-001` (*"ship the
+license texts, and keep those libraries dynamically linked so a user could substitute their own
+build"*); `OPS-002` (the wheel-extraction update path needs a pure yt-dlp); `NFR-007`; `T-033`'s
+probe extension and `T033-R4`'s data blindness; `T-298`
+**Affected surfaces:** `packaging/`, `.github/workflows/ci.yml`'s `frozen` job, a new
+`packaging/artifact_gates.py`, `docs/project/TESTING.md` §8
+**Risk:** Low — each check is small; the risk is the usual one, a gate that passes with its
+subject removed, which is why each is mutation-checked
+
+#### 2026-09-13 — the maintainer-authorized pass: `T323-R2`'s two omissions
+
+**The maintainer authorized the additional pass `TESTING` §14 requires.** `T323-R1` is resolved by it;
+`T323-R2` came back with two omissions in `binary_cookie_store`, both reproduced and both corrected.
+
+- **A hit at a chunk boundary lost its separator.** The printable string was taken from 512-byte
+  chunks of a window, so `NUL, 600 "A" bytes, /vault/session.cookies.sqlite` put `cookie` at the
+  start of the second chunk and the `/` before it in the first; the scan passed. The string is now
+  followed **out to its real edges**, at most `_STRING_REACH` (4,096) bytes either side, never cut.
+- **Chromium's store has no extension.** `C:\vault\Default\Cookies` did not match the
+  store-extension rule. The pattern now also accepts a path component that **is** `Cookies`
+  (optionally `-journal`), so `…/Default/Cookies` is found while `QNetworkCookie.RawForm`, brotli's
+  `cookie.rely` and `QNetworkCookies.cpp` are not.
+
+**Re-measured over the real artifact's 369 binaries: 0.43 s, no false positives**, and the full gate
+still passes item 13 on it. Four new cases, the reviewer's two among them. **Mutations:** restoring
+the 512-byte chunking fails both long-run cases; removing the extensionless branch fails three.
+**The stated remainder:** a store path more than 4,096 printable bytes from its `cookie`.
+
+#### 2026-09-13 — the second review: one of two remaining findings corrected
+
+**`T323-R2`, second round: a cookie-store path inside a binary still passed.** The reviewer's `.bin`
+— a NUL in its first block and `/vault/session.cookies.sqlite` inside — returned no problems: the
+costly patterns skip binaries, and this gate's comment claiming the byte markers covered it was
+wrong. **`binary_cookie_store` closes it without the cost**: a byte search for `cookie`, then only
+the printable string around each hit, asked a tighter pattern — a separator, a name containing
+`cookie`, and a cookie store's extension. Measured over a real artifact's **369 binaries in
+0.45 s, no false positives**; the loose filename pattern flags brotli's dictionary and PySide's
+`QNetworkCookie.RawForm`, both kept as a negative test. The full gate still passes item 13 on that
+artifact in 12.7 s. **Mutation:** removing the binary branch fails the reviewer's counterexample.
+
+**`T323-R1`, second round: Windows now reads the import tables.** Item 11 on Windows was
+presence-only, and a `QtCore.pyd` holding `not a PE` passed. `pe_imports` reads a PE file's import
+directory directly — DOS header, PE signature, COFF and optional headers, section table — so no
+`dumpbin` is needed, and `_qt_links_resolve_inside_a_windows_artifact` asks the Linux half's three
+questions of it: every binding is a real PE file; every `Qt6*.dll` it imports is a real PE file
+**inside the artifact**; and each required module is evidenced by some binding importing it. What it
+cannot see, stated in the function: where Windows would load from at run time.
+
+**Measured on a real Windows release build on `STARBASE`** (`dist-release` from this tree):
+
+| Artifact | Item 11 |
+|---|---|
+| as built | **ok** — Core, Gui and Widgets each evidenced from the real `.pyd` import tables |
+| `QtWidgets.pyd` replaced by `not a PE` | **FAIL** — *is not a Windows binary that can be inspected: no MZ header*, and no evidence for QtWidgets |
+| `Qt6Widgets.dll` deleted | **FAIL** — *imports Qt6Widgets.dll, which is not in the artifact* |
+
+Unit tests build a minimal valid PE32+ file with a chosen import list: the reader round-trips it, a
+correct tree passes, and the reviewer's garbage bindings, a missing DLL and bindings importing no
+Qt each fail. `TESTING` §8 item 11 and `docs/RELEASE.md` describe the narrower remainder.
+
+**Both corrections still wait on the maintainer's `TESTING` §14 choice** before a further review
+pass, since the ordinary budget is spent.
+
+#### Scope
+
+Four checks, each **a mutation that turns the job red** (the house rule since `T031-R2`):
+
+| §8 item | Check | The mutation that must fail it |
+|---|---|---|
+| 11 · Qt dynamically linked | The bundle contains Qt as shared libraries (`libQt6*.so*` / `Qt6*.dll`) and the executable imports none of Qt's symbols statically | Strip the Qt libraries from `dist/` and re-link a static stand-in — or simpler: assert the library files' presence *and* that `ldd`/`dumpbin /dependents` on the Qt plugin names them; deleting one fails |
+| 12 · Licence texts present | `licenses/` in the artifact holds Qt's LGPLv3, ffmpeg's LGPL (Windows), yt-dlp's Unlicense, and a `NOTICE` stating the dynamic-link obligation in `LIC-001`'s words | Delete any one file |
+| 13 · No secrets or personal paths | A scan of every file in `dist/` for the maintainer's home path, user name, `.netrc`, cookie-jar names and anything `logging.remember_a_secret` would redact | Plant one string in a data file |
+| 9 · yt-dlp purity | The bundled `yt_dlp` tree contains no compiled extension (`*.so`, `*.pyd`), so `OPS-002`'s wheel-extraction update remains viable | Drop a `.pyd` into the tree |
+
+**The scan for item 13 is the interesting one.** It reuses `core/logging`'s redaction vocabulary
+rather than a second list, so a secret class added there is scanned for here without anyone
+remembering — `T015-R1`'s rule applied to a gate.
+
+#### Acceptance criteria
+
+- All four checks run in the `frozen` job on both platforms and in `T-324`'s release workflow, and
+  each was turned red by its named mutation on a real build, with the run ids recorded
+- `docs/project/TESTING.md` §8 marks items 9, 11, 12 and 13 as **executable**, pointing at the
+  check, and the manual release prompt in `docs/RELEASE.md` is narrowed to what remains manual
+- The licence directory's contents are the exact upstream texts, with their versions and sources
+  recorded in `packaging/licenses/README.md`
+
+#### Out of scope
+
+- Items 7, 14 and 15 — clean machine, cold start, the human session — which are `T-318`, `T-325`
+  and `T-327` because a machine cannot take them
+
+### T-319 — The Windows release build: windowed, versioned, with ffmpeg inside
+
+**Status:** **Complete — Approved at `d461527`** on 2026-09-13 by independent review. The Windows release build is windowed, versioned and carries the pinned LGPL ffmpeg; CI builds both modes and checks the windowed probes and console. Approved within its build scope.
+
+#### 2026-09-11 — scope item 2's search order, which is the half that runs on any platform
+
+`find_ffmpeg` gains a **bundled** candidate between the explicit override and `PATH`, exactly as
+scope item 2 describes, plus `bundled_ffmpeg()` to locate it beside the executable where the spec
+will put it.
+
+**The ordering is the point and it is mutation-tested.** A user with their own newer ffmpeg
+installed must not silently displace the build this artifact was tested against — a different
+build is a different set of encoders, and `OPS-001` bundles one so the feature works without the
+user arranging anything. Moving the branch after `PATH` fails
+`test_the_bundled_copy_is_preferred_over_one_on_path` and nothing else. The explicit override
+still outranks both, because that is the user saying which one they mean.
+
+**One judgement recorded rather than left implicit:** a bundled binary that exists but is not
+executable **falls through to `PATH`** instead of being reported unusable, which is the opposite of
+the override's rule. The override is something the user asked for, so failing it silently would
+hide their setting; this is something the artifact provided, and a broken one should not also cost
+the user their own copy.
+
+`bundled_ffmpeg` had to be justified into `test_environment.REVIEWED_PUBLIC_API` — `T035-R3`'s
+allowlist, working as designed. It is a locate-side name: it imports nothing, executes nothing and
+answers neither *what version* nor *does it work*.
+
+#### 2026-09-12 — scope items 1 and 3, and the reason they could be done here
+
+**One spec, two modes**, selected by `TT_RELEASE_BUILD=1` rather than by a second spec file —
+`T-233`/`T-237` were both about spec comments drifting from the spec beside them. The release mode
+sets `console=False`, the icon, and a Windows version resource generated at build time from
+`__init__.py` rather than checked in, because `[tool.hatch.version]` already reads that module and
+a checked-in resource is a third place for the version to disagree.
+
+**`console=False` costs the probes their `stdout`, and that is the interesting half.** All four
+probes now report through `_freeze_probe.say`, which prints *and* appends to `TT_PROBE_REPORT`
+when the caller sets one — the same shape as `TT_PROBE_LOG` beside it rather than a fifth
+mechanism. **45 report lines** were converted; a test asserts **no bare `print` survives** in that
+module, because a probe that kept one would report nothing in a windowed build while its siblings
+reported normally, and the file would not even be empty.
+
+**Verified by building it**, which is why these were worth doing on Linux: `TT_RELEASE_BUILD=1`
+builds, and `--ytdlp-probe` against that artifact with an isolated `HOME` wrote its eight lines to
+the report file, ending `OK: the frozen artifact carries a usable yt-dlp with its extractors`. Six
+unit cases cover the helper, including that an unwritable report does not fail the probe — the
+report is evidence, not the probe's purpose.
+
+#### 2026-09-12 (later) — the ffmpeg binary, its licence, and the open question answered
+
+**The open question was between a build-time download with a recorded URL and checksum and a copy
+placed on `STARBASE` by hand — `OPS-012` §3 arguing for the second, the release workflow for the
+first. The answer is one mechanism with two callers**, which satisfies both rather than picking:
+`packaging/fetch_ffmpeg.py` is scripted, pinned and digest-verified, so it is reproducible and
+reviewable; and **it is not wired into the build**, so a self-hosted runner never provisions
+itself as a side effect of a build. The spec reads what is on disk and **raises** if it is absent,
+naming the script. *(Recorded as a judgement rather than a ruling; the maintainer said to do this
+task, not that this is the shape.)*
+
+**Which ffmpeg, and every part of the name is load-bearing:**
+
+    BtbN/FFmpeg-Builds  autobuild-2026-09-12-13-12
+    ffmpeg-n9.0.1-29-gad500d59cb-win64-lgpl-shared-9.0.zip
+    sha256 609245cc0a906c1423f2cdb96e27925302d375fe8024dcbc4b3f6aaf757a43ff
+
+`lgpl` because `LIC-001` forbids bundling a GPL ffmpeg with an MIT application — `gyan.dev`'s
+builds are GPL. `shared` because the same requirement says the libraries must stay *replaceable*,
+which a static build is not. An `autobuild-*` tag rather than `latest`, because `latest` is
+rolling and the same URL would serve different bytes tomorrow.
+
+**Verified rather than assumed.** The configure line embedded in `ffmpeg.exe` carries
+`--enable-version3` and **no `--enable-gpl`** and **no `--enable-nonfree`**; `avutil-61.dll`
+self-reports `libavutil license: LGPL version 3 or later`. So it is LGPL **3**, and the
+`Qt-GPLv3.txt` already shipped covers its incorporated GPL terms.
+
+**`ffprobe.exe` is bundled and `ffplay.exe` is not.** Not a size decision: yt-dlp's
+`FFmpegExtractAudioPP.run` calls `get_audio_codec`, which runs **ffprobe on the downloaded file**,
+so `REQ-010`'s audio extraction needs it. Nothing here launches a media player. Nine files,
+**155 MB**, gitignored — that half of the question was never in doubt.
+
+**The licence cannot drift from the build.** `fetch_ffmpeg.py` compares the committed
+`ffmpeg-LGPL.txt` against the archive's own `LICENSE.txt` on every run and **refuses** if they
+differ, because the gate downstream only asserts the file is present and non-empty — it cannot
+know which ffmpeg it belongs to. Tested: a substituted licence text fails with the reason.
+
+**Refusals checked before the happy path was trusted:**
+
+| Handed | Result |
+|---|---|
+| a digest that does not match what the URL serves | **exit 1**, and nothing written before verification |
+| a licence text that is not the archive's | **exit 1**, naming the fix |
+| a corrupted cached archive | re-downloads and repairs, which is the right answer |
+| a second run | uses the verified cache, no download |
+
+**`NOTICE.txt` corrected while here.** It said `ffmpeg-LGPL.txt` is *"absent from Linux artifacts
+by design"*. It is not: `licenses/` is bundled as a unit, so the text ships on Linux too, where
+ffmpeg is a system dependency and covers nothing in the artifact. The notice now says that rather
+than the opposite.
+
+**Verified on Linux**: `TT_RELEASE_BUILD=1` builds, the ffmpeg branch is correctly skipped
+(`OPS-001`), and `ffmpeg-LGPL.txt` is in the artifact's `licenses/`. **19 cross-reference tests,
+11 mutations, 11 caught** — a GPL build, a static build, a rolling pin, a dropped ffprobe, ffmpeg
+placed under `_internal/` where `bundled_ffmpeg` would not find it, a release permitted to build
+without it, and the smoke build bundling 155 MB it does not need.
+
+#### 2026-09-12 (later still) — built on `STARBASE`, and it found two defects
+
+**Every criterion beginning *"on the built artifact"* is now met, measured on a real Windows
+release build** at `ace8e31` plus the three fixes below. The route is
+`tools/windows/run-on-starbase.sh`, so each command ran in the **logged-on session** rather than
+SSH's session 0.
+
+| Criterion | Measured |
+|---|---|
+| no console window | PE subsystem field = **2 (GUI)**, read from the executable's own header rather than inferred from the spec |
+| `find_ffmpeg` reports `source="bundled"` | `bundled with this build (OPS-001)`, resolving `_internal\ffmpeg.exe` |
+| `--version` on the built exe | `0.1.0.dev0`, rc 0 |
+| the Windows version resource | `FileVersion 0.1.0.dev0`, `ProductVersion 0.1.0.dev0`, `CompanyName Sean Kottman`, `FileDescription Tracks & Trails` |
+| `T-323`'s four gates | **all four pass**, over an artifact now carrying 155 MB of third-party binary |
+| every frozen probe | **5 of 5 pass** — spawn, yt-dlp, database, in-app update, and the new ffmpeg probe |
+
+**Three defects, and none of them was visible from Linux.**
+
+**1. The licence check compared bytes, and git converts them.** `core.autocrlf=true` is the
+Windows default and `STARBASE` has it set, so the committed `ffmpeg-LGPL.txt` is checked out with
+CRLF while the archive's copy has LF: **7,816 bytes against 7,651**, exactly one extra byte per
+line. `fetch_ffmpeg.py` failed on its first Windows run and would have failed on every release
+build. It now compares content with line endings normalised, and still refuses a licence whose
+content differs.
+
+**2. `bundled_ffmpeg()` looked in the wrong directory, on the strength of a comment.** It read
+`Path(sys.executable).parent`, because the spec said `binaries` with a destination of `"."` puts
+files *beside the executable*. **PyInstaller 6 puts a one-dir bundle under `_internal/`**, so
+`"."` is the root of *that*: the build put ffmpeg at `_internal\ffmpeg.exe`, one level below where
+the application was looking. It now asks `sys._MEIPASS` — the runtime's own answer — and keeps the
+executable's directory as a second candidate.
+
+**The test agreed with the bug.** `test_a_frozen_build_finds_the_ffmpeg_beside_its_executable`
+planted the file beside a fake `sys.executable` and passed, and a cross-reference test asserted
+the destination *"is where `bundled_ffmpeg` looks"*. Both were written from the same wrong
+premise as the code, so neither could contradict it. They now build the real `_internal/` layout,
+and the cross-reference test asserts only what spec text can honestly support — that the binaries
+are declared and passed — leaving *where they land* to the probe that can see it.
+
+**3. A probe that compared a sentence to a keyword.** The first `--ffmpeg-probe` tested
+`report.source == "bundled"` and failed a build that was entirely correct: `FfmpegReport.source`
+is prose for a human, `"bundled with this build (OPS-001)"`. It now compares the resolved **path**
+against the bundled one — which is what the criterion actually asks — and checks the wording only
+for the word, so the UI cannot say one thing while the loader does another.
+
+**`--ffmpeg-probe` is new, and it exists because nothing else could answer this.** The unit tests
+plant files beside a fake executable; only a probe inside the artifact can say which ffmpeg a
+frozen build resolves. It also checks `ffprobe.exe` is beside it, since yt-dlp runs ffprobe on
+the downloaded file for `REQ-010`'s audio extraction.
+
+**One claim in the entry above needs narrowing.** It says *"`console=False` costs the probes their
+`stdout`"*. Measured: a parent that **captures** the handle — `subprocess` with pipes, or a shell
+redirect — still receives it, and all five probes were read that way. What `console=False` removes
+is a console *window* for a user who double-clicks. `TT_PROBE_REPORT` is therefore robustness
+rather than necessity in CI, which is still worth having: it is the only route that survives a
+caller which does not redirect.
+
+*(This paragraph previously read **"still not done, and it needs a Windows machine"**, listing
+the three built-artifact criteria and noting that `STARBASE_HOST` was unset here. The maintainer
+authorised the key on 2026-09-12 and all three are measured above. Kept as a correction rather
+than deleted: the blocker was one environment variable, exactly as it said, and saying so is what
+made it worth asking for.)*
+
+#### 2026-09-13 — both modes in CI, the windowed probes by their files, and no console
+
+**`ci.yml`'s `frozen windows` job now builds the release mode as well** — fetching the pinned ffmpeg
+in a named step, then `TT_RELEASE_BUILD=1` into `dist-release/` — and asks it the two questions
+only a windowed build raises, through `packaging/windowed_checks.py`:
+
+- **`probes`** runs all five frozen probes with each report in its own file and the console
+  **discarded**, and fails any probe whose report lacks its success line. A probe that stopped
+  writing its report — the defect the criterion names — fails there; `judge_probe` holds that logic
+  and `tests/unit/test_windowed_checks.py` asserts each failure mode, and that every marker is a line
+  `_freeze_probe` actually says.
+- **`console`** starts a build with `CREATE_NEW_CONSOLE` and looks for a `conhost.exe` in its tree or
+  a `ConsoleWindowClass` window owned by it. **The smoke build runs first, expecting a console** —
+  the positive control — then the release build, expecting none.
+
+**Measured on `STARBASE`** from this tree, before the workflow has run it:
+
+```
+ok    --spawn-probe / --ytdlp-probe / --database-probe / --ytdlp-update-probe / --ffmpeg-probe
+windowed probes: 5 of 5 passed through their report
+console   conhost.exe (pid 7968); a ConsoleWindowClass window owned by pid 10420   (smoke, expected)
+console   none seen in 15 s                                                          (release)
+artifact-gates: all 4 checks passed on dist-release\tracks-and-trails
+```
+
+`docs/DEVELOPMENT.md` documents both modes. **The workflow has run them too**: CI run
+[`34742480032`](https://github.com/kottmans/tracks-and-trails/actions/runs/34742480032) at `40b1dd8`,
+where `frozen windows` passed *Build the windowed release artifact*, *Probe the windowed build
+through its report files* and *The windowed build opens no console, and the check can see one*.
+
+#### 2026-09-13 — the bundled ffmpeg deleted: it degrades, and says why
+
+The criterion *"the same build with the bundled binary deleted degrades exactly as `REQ-024`
+describes rather than crashing"*, measured on a **copy** of the `STARBASE` release build at
+`0b3703a` with `_internal\ffmpeg.exe` and `ffprobe.exe` deleted, in a throwaway profile, and with
+`PATH` cut to `System32` — **`STARBASE` has its own ffmpeg**, which would otherwise have been found
+and made this pass for the wrong reason (`where ffmpeg` confirmed none).
+
+| Run | Result |
+|---|---|
+| `--ffmpeg-probe` | **exit 1**, `bundled ffmpeg (none)`, `resolved source not found on PATH`, and the `OPS-001` failure sentence — no traceback |
+| `--download-probe` on a YouTube URL, whose selector needs a merge | **exit 1** as `ffmpeg_missing`, **before downloading**: *"ffmpeg is required for this download but was not found … Unavailable: merging separate video and audio streams; extracting or converting audio; remuxing and recoding; embedding thumbnails, metadata, chapters and subtitles."* |
+
+That second line is `REQ-024` in the artifact: the features are named, and the refusal comes at
+the start rather than at merge time. **Not covered here:** the window's status-bar wording without
+ffmpeg, which is the same `FfmpegReport.summary()` and is asserted by
+`tests/integration/test_composition.py::test_startup_states_what_this_installation_cannot_do`
+rather than in the artifact.
+
+*(Filed 2026-09-11 with the Phase 5 plan.)*
+**Owner:** Implementer
+**Priority:** High — it is the artifact
+**Phase:** Phase 5
+**Depends on:** `T-320` (the version it stamps); `T-317` only for the signing step, which may be a
+no-op
+**Relevant context:** `REL-001`; `OPS-001` (ffmpeg bundled on Windows, **LGPL build only**);
+`LIC-001`; `NFR-009`; `packaging/tracks-and-trails.spec` and its `console=True` note, which says
+*"Phase 5 makes this windowed; the probe needs stdout in CI"*; `app.py`'s four `--*-probe` flags;
+`downloader/environment.find_ffmpeg`; `T-020`, `T-033`, `REL-002`
+**Affected surfaces:** `packaging/tracks-and-trails.spec`, `_freeze_probe.py`, `app.py`,
+`downloader/environment.py`, `.github/workflows/ci.yml`'s `frozen` job, `docs/DEVELOPMENT.md`
+**Risk:** Medium — the windowed switch is the one place the smoke build and the release build
+genuinely differ, and the probes CI depends on write to a `stdout` that a windowed process does
+not have
+
+#### Scope
+
+**One spec, two modes.** The Phase 0 spec stays the CI smoke build; the release build is the same
+`Analysis` with three differences, selected by an environment variable rather than a second file
+(two specs is two things to keep true — `T-233`/`T-237` were both about spec comments drifting):
+
+1. **`console=False`.** A user must not get a console window behind the application. The probes
+   then have no `stdout`, so `_freeze_probe` **writes its report to a file as well as printing**,
+   and CI reads the file. `dist/frozen-probe.log` already exists for one probe; extend the pattern
+   to all four rather than adding a fifth mechanism.
+2. **ffmpeg bundled.** An **LGPL** build — `OPS-001` and `LIC-001` are explicit, and the two common
+   Windows build sources differ on exactly this: `gyan.dev`'s builds are GPL and may **not** be
+   bundled; `BtbN`'s `*-lgpl-shared` builds may. The choice of source is recorded in the task on
+   completion with its licence text. `find_ffmpeg` gains a **bundled** candidate, searched *after*
+   the explicit override and *before* `PATH`, so a user's own newer ffmpeg on `PATH` does not
+   silently win over the one that was tested — and the Settings screen reports the source, which
+   it already does for the override.
+3. **Version metadata.** A Windows version resource (file and product version from
+   `__version__`, product name, copyright), and `icon.ico` on the executable.
+
+**What does not change**: `freeze_support()` first (`REL-001`'s highest-risk item, `T-020`'s
+smoke keeps proving it), one-dir, Qt dynamically linked inside the bundle, `collect_data_files`
+for yt-dlp (`REL-002`).
+
+#### Acceptance criteria
+
+- The `frozen windows` job builds in **both** modes and runs all four probes against the
+  **windowed** build, reading their file reports; a mutation that drops the file-write turns the
+  job red rather than silently green
+- Launching the windowed build opens no console window — asserted on the runner by
+  `T-026`'s harness (no console `HWND` belonging to the process)
+- `find_ffmpeg` on the built artifact reports `source="bundled"`, and the same build with the
+  bundled binary deleted degrades exactly as `REQ-024` describes rather than crashing
+- The ffmpeg licence text and a statement of *which* build it is (source, version, LGPL) ship
+  inside the artifact — `T-323` gates their presence; this task puts them there
+- `--version` on the built artifact prints `__version__` (`test_skeleton`'s existing contract,
+  now on the frozen binary)
+- `docs/DEVELOPMENT.md`'s *Building the frozen artifact* section documents both modes
+
+#### Out of scope
+
+- The installer (`T-322`). This produces `dist/tracks-and-trails/`; that wraps it
+- The Linux artifact (`T-321`)
+- Size work. `REL-001` accepted the size; record the number, do not chase it
+
+### T-318 — Decide how "a clean machine" is evidenced for the first release
+
+**Status:** **Complete — Approved at `d461527`** on 2026-09-13 by independent review. Clean-machine evidence is scripted on both platforms, and the retained Windows Sandbox run includes real downloads. Approved within its evidence-method scope; `T-039`'s frequency question stays with that task.
+
+**The decision is taken.** The maintainer ruled on 2026-09-11 for option **B**, recorded as
+[`REL-006`](DECISIONS.md#rel-006--a-clean-machine-is-a-disposable-vm-the-maintainer-owns):
+disposable VMs the maintainer owns, with *A* as the fallback. **The harness landed 2026-09-12**,
+below.
+
+#### 2026-09-13 — the review's two findings
+
+**`T318-R1`: the Windows download is now in a retained report.** The 2026-09-12 Windows evidence had
+install, launch and uninstall, and no download; the later YouTube success lived only in a scratch
+file. **`docs/project/evidence/windows-0.1.0.dev0-sandbox-2026-09-13.md`** retains a complete run of a
+build carrying `REL-007`'s amendment and yt-dlp 2026.8.19: installer sha256 `5c5c3ec3…`, yt-dlp
+`2026.08.19 from bundled baseline`, **`GTS Root R1` absent**, and **two completed transfers** —
+*Me at the zoo* (474,478 bytes, the probe's selector) and *Big Buck Bunny* in the 1080p MP4 preset
+(134,886,020 bytes in 12.6 s), the case that failed on 2026.7.4. It is a development build, and says
+so; the candidate's own report is `T-326`'s. The maintainer's original certificate failure stays
+recorded as human evidence, as the review allowed.
+
+**`T318-R2`: the procedure documents are current.** `docs/RELEASE.md` and
+`docs/project/evidence/README.md` said the Windows half was taken by hand against a template and
+covered *cancel another*. Both now give `tools/windows/sandbox_evidence.sh`, say it stages the
+harness as well as the installer, and keep *cancel another* and a normal exit as a sitting — the
+script force-stops the application, and a probe has no parent. The `.wsb`'s comment says the same.
+
+#### 2026-09-12 — the harness, and the VM that is not a VM
+
+**The maintainer narrowed `REL-006` the same week it was taken**: *"I don't really want to use VMs
+for testing the packages. I'd rather just test the app image on my own machine and test the windows
+installer on starbase."* So the Linux clean machine is a **disposable container** and the Windows
+one is **Windows Sandbox on `STARBASE`**. Both satisfy what B was chosen for — clean by
+construction, owned by the maintainer, no hosted minutes — and the container costs a pull rather
+than the afternoon B was priced at. `REL-006`'s *"written down well enough to recreate in a year"*
+is then met by a committed script instead of a setup document, which is the stronger form.
+
+| Platform | How | Evidence |
+|---|---|---|
+| Linux | `tools/clean_machine_linux.sh <artifact>`, which supplies `ubuntu:24.04` and runs `tools/clean_machine_evidence.sh` on it | `docs/project/evidence/linux-<version>.md` |
+| Windows | By hand in Sandbox, against `docs/project/evidence/TEMPLATE-windows.md` | `windows-<version>.md` |
+
+**`ubuntu:24.04` and not the build image.** `packaging/build_appimage.sh` builds on Debian 12 so
+the artifact reaches as far back as possible; this runs it on the oldest LTS the README claims.
+Testing on the machine that built it would prove nothing about either.
+
+**The pre-install check is first and it can fail the run** — the first acceptance criterion, and
+the reason it is first: evidence taken on a machine that turns out to have had Python on it is not
+evidence, and finding that out afterwards is too late. Thirteen tools probed with `command -v`,
+plus a count of system Qt libraries, **output retained in full** rather than reduced to a verdict.
+
+**What it caught on its first run is recorded in `T-321`** — the artifact carries no CA bundle, so
+the real download failed on a machine whose `/etc/ssl/certs` is empty. That is the harness earning
+its place on the day it landed.
+
+**Why the Windows half is a template and not a script.** Everything the Linux evidence needs can
+be answered without a display; `--download-probe` exists for exactly that. The Windows half is
+driven through the window, which is what lets it cover *cancel another* — the one `TESTING` §8
+item 8 clause no probe can reach, because cancellation is a parent-side signal and a probe has no
+parent.
+
+#### 2026-09-12 (later) — the Windows half, taken in Sandbox, and scripted rather than by hand
+
+**`docs/project/evidence/windows-0.1.0.dev0.md`.** Windows 10 Enterprise inside Windows Sandbox on
+`STARBASE`, installing `Tracks-and-Trails-0.1.0.dev0-setup.exe` (sha256 `7528e12f…`):
+
+| | |
+|---|---|
+| pre-install check | python, pip, ffmpeg, ffprobe, yt-dlp, cl, gcc, qmake6, git — **all absent**; no system Qt |
+| install | **exit 0 in 18.6 s**, per-user, **no elevation prompt** |
+| placed | 225 files, `_internal\licenses\`, `_internal\ffmpeg.exe`, Start Menu shortcut |
+| desktop icon | **absent**, as the opt-in default asks |
+| first launch | window in **~2 s**, titled *Tracks & Trails* |
+| orphans after close | **none** |
+
+**`REL-006`'s premise was unchecked until today.** It chose Windows Sandbox because it is *"clean
+on every launch by design"* — true, and **Sandbox was `Disabled` on `STARBASE`**, with
+`WindowsSandbox.exe` absent. One command and a reboot, but it could as easily have been a Home
+edition, and the decision would have needed revisiting.
+
+**Scripted, which the task did not expect.** `T-318` made this half a template a human fills in,
+because the Linux probes have no Windows equivalent. Sandbox runs a **logon command** and a mapped
+folder carries the result back, so the pre-install check, the silent install, placement, launch
+and orphan check are all `packaging/windows-sandbox/evidence.ps1`. What stays human is `OPS-004`'s
+judgement — whether the installer *feels* normal — which no script answers.
+
+**Three defects in the harness, found by running it:**
+
+1. **An XML comment containing `--`.** Sandbox refused the configuration with *"The configuration
+   file was invalid. Error 0xc00cee2f"* — a double hyphen is illegal inside an XML comment, and
+   my own prose put one there.
+2. **A recursive `Get-ChildItem C:\` looking for `Qt6Core.dll`.** Not a check, a crawl: the run
+   stopped there for twenty-five minutes. Narrowed to the places a system-wide Qt could actually
+   be loaded from.
+3. **The verdict said PASS while the report said `start menu MISSING`.** Two faults at once: the
+   path omitted the `DefaultGroupName` subfolder the `.iss` creates, so it was looking in the
+   wrong place — and **nothing incremented the failure count**, so a reported problem passed
+   anyway. The shortcut was there all along. A check that reports a problem and does not fail is
+   the defect this project keeps finding, and this one was mine.
+
+**Still not covered, and it is `T-039`'s by scope:** uninstall and what survives it. `DAT-001` says
+settings, history and downloaded files stay; that needs a second Sandbox pass driving the
+uninstaller, which `T-039` owns.
+
+**The Windows machine is settled** — maintainer, 2026-09-12: *"The windows half can run on
+starbase."*
+
+**One distinction the template makes and this entry repeats, because it decides whether the
+evidence counts.** `STARBASE` is where the run is *driven from*; it is not the clean machine. It
+carries Python, a toolchain, ffmpeg and a developer's yt-dlp, so the pre-install check run there
+would report `PRESENT` on every line and fail — correctly. **Windows Sandbox on `STARBASE`** is
+the clean machine: fresh on every launch, discarded on close, and `REL-006` chose it for exactly
+that property. The ffmpeg line matters most there: `OPS-001` bundles ffmpeg on Windows, so a
+machine with ffmpeg already on `PATH` cannot tell a bundled copy from a borrowed one.
+**Owner:** Maintainer decision; Implementer records it and builds whichever harness it names
+**Priority:** High — the two exit criteria it serves are the phase's definition of done
+**Phase:** Phase 5
+**Depends on:** nothing
+**Relevant context:** `OPS-010` and `OPS-012`, which each record surrendering clean-machine CI
+evidence on one platform; `TESTING.md` §8 item 7; `REQ-029`; `REL-001`; `T-066` (CI once installed
+the project differently from the documentation, and the clean machine is what caught it)
+**Affected surfaces:** `docs/project/DECISIONS.md`; possibly `.github/workflows/`; evidence under
+`docs/project/evidence/`
+**Risk:** Medium — the phase's own exit criteria say *"a clean … machine"* twice, and nothing in CI
+runs on one any more
+
+#### Scope
+
+Both self-hosted routings were taken with eyes open: `OPS-010` gave up clean-machine evidence for
+Windows and `OPS-012` for Linux, each saying so in writing. Phase 5's exit criteria were written
+before either. So the phase now demands something CI no longer produces, and the honest options
+are:
+
+| Option | Clean? | Cost |
+|---|---|---|
+| **A. One hosted run per release candidate** — unset `WINDOWS_RUNNER`/`LINUX_RUNNER` for the RC | Yes, both platforms | Hosted minutes, which `OPS-010` says ran out; and it evidences `ubuntu-latest`, not an older distro |
+| **B. Disposable VMs the maintainer owns** — Windows Sandbox on the desktop, and a throwaway Ubuntu LTS VM or container for Linux | Yes; Sandbox is clean on every launch by design | One afternoon to set up; the Linux VM doubles as `T-321`'s oldest-glibc target |
+| **C. Accept developer-machine evidence** with the surrender recorded | No | Nothing now; the first user with a missing `.so` is the test |
+
+**Recommendation: B.** It is genuinely clean, it costs no hosted minutes, and the Linux half is the
+same machine `T-321` needs anyway. *A* is the fallback if *B* cannot be arranged, and *C* is
+recorded here only so that choosing it is a choice.
+
+#### Acceptance criteria
+
+- A `REL-` (or `OPS-`) entry naming the option, and **what "clean" means operationally**: no
+  Python, no Qt, no ffmpeg on Windows (it is bundled), no developer toolchain — checked by a
+  command run before the install, whose output is retained
+- For each platform, an evidence file under `docs/project/evidence/` per release candidate:
+  machine identity, the pre-install check, the install, first launch, one real download, exit
+- If *A*: the variable flip is written into `docs/RELEASE.md` as a step, with its reversal
+- If *B*: the setup is documented well enough that the maintainer can recreate the VM in a year
+
+#### Out of scope
+
+- Restoring clean-machine CI permanently. `OPS-010`/`OPS-012` stand; this is per-release evidence
+
+### T-330 — The Windows job runs the suite serially, and is at 97% of its bound
+
+**Status:** **Complete — Approved at `7825888`** on 2026-09-13 by independent review. The `windows desktop` unit/UI slice runs in parallel: three consecutive green runs at 16.3, 18.2 and 22.7 minutes against a 40-minute bound.
+**Owner:** Implementer
+**Priority:** Medium — nothing is failing, and the next test added tips it into timeouts
+**Phase:** Phase 5 (CI capacity; found during Phase 4's exit evidence)
+**Depends on:** nothing
+**Relevant context:** `T-259` (*"a bound is crossed by growth, not by faults — re-measure before
+raising it"*); `.github/workflows/ci.yml:794` the Windows invocation and `:430` the Linux one;
+`OPS-010`; `T-074` (the intermittent Windows segfault, Blocked)
+**Affected surfaces:** `.github/workflows/ci.yml`'s `windows-desktop` job
+**Risk:** Medium — `xdist` on Windows is the one change that could surface `T-074`
+
+#### The measurement
+
+| Head | Elapsed | Of the 40-minute bound |
+|---|---|---|
+| `2ea1aa6` | 39.3 min | 98% |
+| `88fc6b1` | 39.3 min | 98% |
+| `59598de` | 38.9 min | **97%** |
+
+The job's own reporter warns past 85%, citing `T-259`. **A timeout also reads as *cancelled*
+rather than *slow***, which cost an hour of diagnosis on 2026-09-11 before the orphaned-session
+trap was identified — so the failure mode is not merely a red job, it is a misleading one.
+
+#### The cause, and why this is not a bound problem
+
+**Windows runs the whole suite serially.** `ci.yml:794` is `pytest -v --junitxml=…` with no
+`-n`. The Linux `check` job at `:430` runs its unit/UI slice with `$parallel` and only the
+integration slice serially. Measured locally on Linux, the same suite is **184 s** with `-n auto`
+against **1,045 s** serial — 5.7×. Windows need not match that, but 36:22 serial is the number to
+attack rather than the 40 that contains it.
+
+#### 2026-09-12 — implemented; the three runs are what remains
+
+The `Full suite` step was one serial `pytest -v` over everything. It is now the **same two
+invocations the Linux `check` job uses**, in the same order: `tests/unit tests/ui` with `-n auto`,
+then `tests/integration` serial.
+
+**The integration slice stays serial deliberately**, not by omission. `T-123` has two open defects
+that appear only under parallel load there — `test_manager.py` scans every process on the machine
+and kills other workers' children, and a retry deadline stops firing under load. Parallelising
+that half would trade a slow job for a flaky one.
+
+**The split collects the same tests as the bare invocation it replaces**, checked rather than
+assumed: `pytest --collect-only tests` and
+`pytest --collect-only tests/unit tests/ui tests/integration` both report **4,245**. `tests/network`
+is deselected by `addopts` either way, and nothing else lives outside those three directories.
+
+**`reports/pytest.{xml,txt}` becomes `reports/pytest-unit-ui.*` and `reports/pytest-integration.*`**,
+matching the Linux job. Nothing reads those names — checked; the only references are three
+historical review records describing runs that already happened.
+
+#### 2026-09-12 (later) — driven on `STARBASE` directly, before spending another CI run
+
+**The parallel slice runs clean on Windows in 4 minutes.** Run through
+`tools/windows/run-on-starbase.sh` — the logged-on session, `QT_QPA_PLATFORM=offscreen`, exactly
+what the job's own step invokes:
+
+```
+3848 passed, 40 skipped, 17 warnings in 240.43s (0:04:00)
+```
+
+**Against the serial baseline of 39.1–39.5 minutes** the maintainer's own runner console
+corroborated for four consecutive jobs on 2026-09-11. The step is not the whole job, so the job
+total will not fall by that ratio — but the number the bound was being crossed by is the one that
+moved.
+
+**Done here rather than by pushing**, because five CI attempts had already been spent on this: four
+cancelled by pushes of mine and one failed on an `os.geteuid` call that Linux mypy cannot see. A
+Windows CI run costs ~40 minutes of the one available slot; the same evidence cost four minutes
+over SSH.
+
+**Three failures on the first attempt, none of them parallelism** — and establishing that was the
+point:
+
+| Failure | Cause |
+|---|---|
+| `test_toolchain_versions` ×2 | `.venv\Scripts` was not on `PATH`; the tests shell out to `ruff`/`mypy` by name |
+| `test_the_default_spawner_actually_runs_the_command` | runs `["true"]`, which on Windows exists **only under Git bash** |
+
+**All three failed *serially* too**, which is what ruled parallelism out — the discriminator, run
+before drawing a conclusion.
+
+**The third is a real latent defect and is fixed.** That test's docstring said *"`true` is on
+every Linux image"* and it carries **no platform guard**: it passes on the `windows desktop` job
+only because that job's steps run under Git bash, which puts Git's `usr/bin` on `PATH`. A test
+whose result depends on which shell invoked pytest will break for a reason unrelated to what it
+asserts. It now runs `sys.executable -c ""`, which exists on any machine that can run the suite.
+
+**`test_artifact_gates.py`'s `ldd` shim was Unix-only, which the earlier CI run found.** Six tests
+failed on Windows and **two passed for the wrong reason** — they assert only *that problems are
+reported*, and received the missing-linkage-evidence complaint rather than the one they were
+written for. The shim now skips on Windows with the reason stated; nothing is given up, because
+the loader half of §8 item 11 is Linux-only by construction and
+`test_windows_keeps_the_presence_check_alone` covers the Windows path.
+
+#### 2026-09-12 (later still) — run 1 of 3, green, and the number the bound asked for
+
+**`windows desktop` in 16.3 minutes.** Run
+[`34708223001`](https://github.com/kottmans/tracks-and-trails/actions/runs/34708223001) at
+`66accdc`, every job green.
+
+| | elapsed | of the 40-minute bound |
+|---|---|---|
+| serial, four consecutive jobs 2026-09-11 | 39.1–39.5 min | **97–98%** |
+| parallel unit/UI slice | **16.3 min** | **41%** |
+
+**That is `T-259`'s measurement, not a smaller percentage asserted.** The bound was being crossed
+by growth; it now has 23 minutes of headroom rather than 40 seconds. The job total more than
+halved even though only one of its steps changed, because that step was most of the job.
+
+**Runs 2 and 3 are deliberately not dispatched yet.** `STARBASE` is about to be rebooted to bring
+up Windows Sandbox for `T-318`, and a run cancelled or failed by a restart mid-job would cost a
+slot and leave a red that means nothing. Three *consecutive* green runs is the criterion, and a
+run killed by a reboot is not a data point about parallelism.
+
+#### 2026-09-12 (final) — three consecutive green runs, and the spread is worth stating
+
+| Run | head | `windows desktop` | of the bound |
+|---|---|---|---|
+| [`34708223001`](https://github.com/kottmans/tracks-and-trails/actions/runs/34708223001) | `66accdc` | **16.3 min** | 41% |
+| [`34712837969`](https://github.com/kottmans/tracks-and-trails/actions/runs/34712837969) | `3c2b1b9` | **18.2 min** | 46% |
+| [`34715120131`](https://github.com/kottmans/tracks-and-trails/actions/runs/34715120131) | `180b1f3` | **22.7 min** | 57% |
+
+**Every job green in all three.** Median 18.2 min against the serial 39.1–39.5.
+
+**The spread is wider than the serial runs', and that is recorded rather than smoothed.** Four
+serial jobs fell within 0.4 minutes of each other; these three span **6.4**. `-n auto` takes the
+worker count from the machine, so a busy host changes both the count and each worker's share —
+and this host was busy: `T-319`'s release builds, `T-325`'s launch measurements and `T-318`'s
+Sandbox run all happened on it during these three runs, which the maintainer explicitly permitted
+rather than waiting. **The 22.7 overlapped the Sandbox evidence run**, which is a whole Windows VM.
+
+So the honest reading is: **parallel is ~2× faster and noisier**, the worst observed is 57% of the
+bound against 98% before, and the noise has an identified cause that a CI-only run would not have.
+`T-259`'s reporter still warns past 85%, so a regression toward the bound would be seen.
+
+**`T-074` did not appear.** The `xdist` worker count changed from 1 to 16 across three runs and
+the intermittent segfault this task named as its risk did not recur — which is evidence it was not
+provoked, not evidence it is gone.
+
+**Not closed by this entry alone.** The acceptance criteria ask for **three consecutive green
+runs**, and `T-056`
+— an open Windows defect about whether a process is alive — is exactly the question parallel load
+perturbs. That is also what the `check` job's comment means by *"the Windows legs stay serial
+until someone can watch a parallel run there"*: this is the watching. **The new elapsed time is
+recorded here once those runs exist**; until then this task is not done, and if it destabilises,
+the finding is recorded and the job goes back to serial.
+
+#### Acceptance criteria
+
+- The Windows unit/UI slice runs parallel, the integration slice stays serial, **and the split is
+  the same shape as the Linux job's** rather than a second arrangement
+- **The new elapsed time is recorded here**, with the bound re-measured against it — `T-259` asks
+  for the measurement, not a smaller percentage
+- **A parallel run is green three times consecutively before this closes.** `T-074` records an
+  intermittent segfault on this machine; `xdist` changes process counts, and one green run would
+  not distinguish a fix from luck
+- If parallelism destabilises it, **the finding is recorded and the job stays serial** — a flaky
+  fast job is worse than a slow reliable one, and that outcome closes this task rather than
+  reopening the bound question
+
+#### Out of scope
+
+- `T-074` itself, which stays Blocked on a person at `STARBASE`
+- The Linux job, which is already split
+
+### T-329 — The focus-ring floor mismodels a header, and Windows is where it shows
+
+**Status:** **Complete — Approved at `7825888`** on 2026-09-13 by independent review. The focus-ring floor measures the header section actually painted, with the Windows mutation evidence `T329-R2` asked for.
+
+#### 2026-09-11 — the review's two findings
+
+**`T329-R1` — corrected. The helper measured the wrong section in every state but the audited
+one.** `_focused_section` read `header.currentIndex()`; `SortableHeader` paints its ring on
+`current_section()`. The two agree at zero — which is the state every sweep opens in — and diverge
+the moment a user sorts another column, where the ring is painted on a section of **64 to 77**
+pixels while the model still reports section 0 and its **84**. The helper now asks whatever paints
+the ring, falling back to the model index and then to section 0 for a plain `QHeaderView` that
+paints none.
+
+**Covered by a case driven off the shared inventory**, not a header built to suit it:
+`test_a_header_is_measured_by_the_section_it_actually_paints` moves each header to a
+differently-sized section and checks the floor follows. **Mutation run**: restoring the
+`currentIndex()` reading fails that case and nothing else.
+
+**`T329-R2` — the Windows mutation, prepared but not run.** The evidence asked for is the
+focus-removal mutation on **both** platforms; only Linux was supplied. It now has a home rather
+than a one-off command:
+
+- `tools/windows/mutations/mut_header_no_extra_ring.py` replaces `SortableHeader.paintSection`
+  with `QHeaderView.paintSection`, so the application's extra ring is never painted — **a rendered
+  control mutation, not a changed measurement**, which is the distinction the review drew.
+- `run_mutations.py` gained per-case *selection* and *platform*, because `T-026`'s classes drive
+  `-m windows_desktop` on the real plugin and this one drives the rendered focus sweep
+  **offscreen** — the configuration the `windows desktop` job's own full-suite step uses, and
+  therefore the one where this gate actually guards the product.
+- **Its own unmutated baseline runs beside it**, since a different selection and platform is a
+  different run and a pass under mutation means nothing without one.
+
+**Validated on Linux before it is trusted on Windows**, reproducing the reviewer's own numbers:
+**0 changed pixels against the 134 floor**, all six headers, both palettes, with the unmutated
+control at **2 passed**.
+
+#### 2026-09-11 — `T329-R2`, executed on `STARBASE`
+
+**Implementation:** `mut_header_no_extra_ring` replaces `SortableHeader.paintSection` with
+`QHeaderView.paintSection`, so the application's extra focus ring is never painted. A rendered
+control mutation, not a changed measurement.
+
+**Platform:** Windows, `STARBASE`, offscreen — the configuration the `windows desktop` job's own
+full-suite step runs, and therefore the one in which this gate guards the product. Tree at
+`a4db6f8`, **clean**, venv rebuilt from `pyproject.toml` first.
+
+**The runs, verbatim** (`T329-R3`: this was a summary table, and a table is a claim *about*
+evidence rather than the evidence — the two are not interchangeable when the number is the point).
+
+Baseline, unmutated:
+
+```
+PS C:\dev\tracks-and-trails> .venv\Scripts\python.exe -m pytest -q "tests/ui/test_colour_is_never_alone.py::test_focus_is_visible_on_every_control_the_application_shows"
+..                                                                                                               [100%]
+2 passed in 3.36s
+```
+
+With `mut_header_no_extra_ring` loaded, which replaces `SortableHeader.paintSection` with
+`QHeaderView.paintSection` so the application's extra ring is never painted:
+
+```
+PS C:\dev\tracks-and-trails> $env:PYTHONPATH="tools\windows\mutations"
+PS C:\dev\tracks-and-trails> .venv\Scripts\python.exe -m pytest -q -p mut_header_no_extra_ring "tests/ui/test_colour_is_never_alone.py::test_focus_is_visible_on_every_control_the_application_shows"
+FF                                                                                                               [100%]
+...
+E       AssertionError: in light, focus is drawn by changing a colour rather than the edge on:
+SortableHeader  on format panel: 0 pixels change in brightness on focus, under the 121 its size asks for;
+SortableHeader  on format panel: 0 pixels change in brightness on focus, under the 121 its size asks for;
+SortableHeader  on format table: 0 pixels change in brightness on focus, under the 121 its size asks for;
+SortableHeader  on format table: 0 pixels change in brightness on focus, under the 121 its size asks for;
+SortableHeader  on queue format dialog: 0 pixels change in brightness on focus, under the 121 its size asks for;
+SortableHeader  on queue format dialog: 0 pixels change in brightness on focus, under the 121 its size asks for
+
+tests\ui\test_colour_is_never_alone.py:1093: AssertionError
+=============================================== short test summary info ===============================================
+FAILED tests/ui/test_colour_is_never_alone.py::test_focus_is_visible_on_every_control_the_application_shows[light] - AssertionError: in light, focus is drawn by changing a colour rather than the edge on: SortableHeader  on format pa...
+FAILED tests/ui/test_colour_is_never_alone.py::test_focus_is_visible_on_every_control_the_application_shows[dark] - AssertionError: in dark, focus is drawn by changing a colour rather than the edge on: SortableHeader  on format pan...
+2 failed in 3.80s
+```
+
+**Both palettes, all six headers** — the `[light]` failure is quoted in full above and `[dark]`
+reports the same six at the same floor. The ellipsis stands only for Qt's
+`propagateSizeHints()`/`raise()` warnings from the offscreen plugin, which the run emits in
+volume and which say nothing about this gate.
+
+**The Windows floor is 121 where Linux is 134**, and that is the section-based model working
+rather than a discrepancy: the floor is derived from the focused section's own geometry, so it
+followed Windows drawing that section about twelve pixels narrower. A perimeter floor baked in
+from Linux would not have. Both are far above the 0 the mutation produces.
+
+**Getting there took five environment faults, none of them this correction**, recorded where the
+next person meets them: `T-331` for the driver, and `docs/WINDOWS_VERIFICATION.md` for the
+bundle-backed remote, the shallow runner clone, the stale checkout and the stale venv. Filed the same day from the first native Windows run of the corrected tree
+(`P4EXIT-R2`'s evidence run, `34645329305` at `65f57e9`). **Blocks that evidence**: `windows
+desktop` failed on it, so `R2` cannot be satisfied while it stands.
+
+#### 2026-09-11 — implemented, and what it measures now
+
+`one_more_ring` grows one branch: a `QHeaderView` is measured by the **section focus is drawn on**,
+not by its own perimeter. `_focused_section` takes the current index's section — logical index 0 on
+every header this sweep reaches, measured at **84×30** against widgets of 198 to 312 — and falls
+back to the first section when there is no current index.
+
+**The race is gone rather than widened.** The floor for those headers is now **134** and
+*constant*, because it no longer scales with a width the indicator never used:
+
+| | ink changed | old floor | new floor | old margin | new margin |
+|---|---|---|---|---|---|
+| Linux | 430 | 392–408 | **134** | +22 to +38 | **+296** |
+| Windows | 386 | 389–404 | **134** | **−3 to −18** | **+252** (projected) |
+
+**The mutation the criteria ask for was run, and it is a real one** rather than an arithmetic
+stand-in: styling the sections flat (`QHeaderView::section { background: …; border: none; }`) makes
+the native focus rect disappear, the measured change falls to **0**, and the sweep fails on that
+header. A control that stops drawing its focus is still caught at the new floor.
+
+**Nothing else moved.** Every control whose focus really is drawn around itself keeps the perimeter
+model, and `MINIMUM_FOCUS_RING_SHARE` is untouched at `0.6` — `T202-R2` measured it at 0.82–1.94
+across every bordered control, and option C would have blunted it for all of them to accommodate
+one mismodelled class.
+**Owner:** Implementer; the choice between the options below is the maintainer's
+**Priority:** High — it is the only thing failing the Windows job, and Phase 4's exit waits on it
+**Phase:** Phase 4 (accessibility gate), found during Phase 5
+**Depends on:** nothing
+**Relevant context:** `one_more_ring` and `MINIMUM_FOCUS_RING_SHARE` in
+`tests/ui/test_colour_is_never_alone.py`; `T202-R2` which measured the constant; `T-200` which
+made `SortableHeader`'s keyboard route real; `NFR-005`
+**Affected surfaces:** `tests/ui/test_colour_is_never_alone.py`
+**Risk:** Medium — it changes a gate that currently carries `P4EXIT-R1`'s evidence
+
+#### What fails
+
+`test_focus_is_visible_on_every_control_the_application_shows`, **both palettes**, on the three
+surfaces carrying a `FormatTable`:
+
+```
+SortableHeader on format panel:        386 pixels change, under the 389 its size asks for
+SortableHeader on format table:        386 pixels change, under the 404 its size asks for
+SortableHeader on queue format dialog: 386 pixels change, under the 389 its size asks for
+```
+
+#### The cause, measured on both platforms rather than inferred
+
+`one_more_ring(widget)` is `2 * (width + height) - 4` — **the perimeter of a one-pixel ring around
+the whole control** — and the floor is `0.6` of it. That model fits a button, a line edit and a
+list. **It does not fit a `QHeaderView`**, which draws focus on its *current section* rather than
+around itself, so the ink it changes is **constant** while the floor rises with the header's width.
+
+| Platform | Pixels changed | Floor at 299 px wide | at 312 px | Margin |
+|---|---|---|---|---|
+| Linux | **430**, constant | 392 | 408 | +38 / **+22** |
+| Windows | **386**, constant | 389 | 404 | **−3** / **−18** |
+
+**So this is a size race, and Linux is 22 pixels from losing it too.** Windows loses first only
+because its section focus rect is smaller. Widen the table by about 30 pixels — one more column,
+a longer codec name, a larger font — and Linux fails identically. `T-259`'s rule applies to a
+different bound but says the same thing: a threshold crossed by growth is not a fault.
+
+**The product is not at fault.** A focused header changes 386–430 pixels of geometry, which is
+exactly what `NFR-005` asks for: focus that reads without colour. The metric, not the application,
+is what mismodels this control.
+
+#### Options
+
+1. **Model a header's focus as its section, not its perimeter.** `one_more_ring` grows a
+   `QHeaderView` case that uses the current section's rect. Keeps the floor scaling for everything
+   else, and states in one place why a header is different. *Cost:* the sweep gains a control-class
+   special case, which is the thing this file has resisted.
+2. **Cap the floor.** Keep the perimeter model but stop the floor rising past what any focus
+   indicator plausibly draws. *Cost:* an arbitrary constant, and it weakens the floor for large
+   controls generally — a list that genuinely stopped drawing its ring could pass.
+3. **Measure the change against the focused region rather than the whole widget.** The most
+   faithful, and the largest change to a gate that is currently load-bearing evidence.
+
+**Recommendation: (1).** It is the only one that keeps the rule exact for every other control, and
+the special case is honest — a header really is a different shape of control, and the file already
+skips `qt_` internals for a comparable reason. **Do not lower `MINIMUM_FOCUS_RING_SHARE`**: it was
+measured at `0.82`–`1.94` across every bordered control (`T202-R2`), and moving it to accommodate
+one mismodelled class would blunt it for the rest.
+
+#### Acceptance criteria
+
+- The Windows job passes without loosening the rule for any control the perimeter model does fit
+- **A mutation proves it still catches the defect it exists for**: a header that recolours on focus
+  without changing geometry fails, on both platforms
+- The Linux margin is no longer a race — stated as a measurement, not an assertion
+- Whatever is chosen is recorded where `MINIMUM_FOCUS_RING_SHARE`'s own measurement is recorded
+
+#### Out of scope
+
+- `MINIMUM_FOCUS_RING_SHARE` itself, unless the ruling says otherwise
+- The Windows job's 40-minute bound, which the same run reported at **98%** — a separate matter
+
+### T-321 — The Linux release artifact, built where it will run
+
+**Status:** **Complete — Approved at `7825888`** on 2026-09-13 by independent review. The Linux AppImage builds in a stock container with a pinned, verified `appimagetool`, runs on a clean machine, and has downloaded there. **Carried to `T-328`:** how a user without AppImageLauncher gets a working menu entry.
+
+#### 2026-09-11 (later) — built in a container, and it runs where nothing is installed
+
+**`packaging/build_appimage.sh`**, run in `python:3.14-slim-bookworm`:
+
+```
+podman run --rm -v "$PWD":/src:ro,Z -v "$PWD/dist":/out:Z \
+    docker.io/library/python:3.14-slim-bookworm /src/packaging/build_appimage.sh
+```
+
+**The base is not the Ubuntu LTS this task proposed, and the swap is an improvement.** It carries
+Python 3.14 already and is **glibc 2.36** against Ubuntu 24.04's 2.39, so it covers more machines;
+there is no 3.14 image on an older Debian. **The floor that buys is Debian 12 / Ubuntu 24.04 and
+newer — Ubuntu 22.04 is glibc 2.35 and is out of reach.**
+
+*(This said "and the README claims exactly that". **It did not** — `Debian 12` and `Ubuntu 24.04`
+appear nowhere in `README.md`, checked 2026-09-12. The floor lived only in a build script's
+comments. It is now in `docs/RELEASE.md` as a release-page requirement, and the README's Install
+section takes it when `T-320` adds one. Corrected rather than deleted, because a false claim about
+where a claim lives is the kind this project keeps finding.)*
+
+**Why the container rather than this desk, measured rather than argued:**
+
+| Built on | Bundled libraries require | Runs on Ubuntu 24.04 |
+|---|---|---|
+| the development machine, glibc 2.43 | **`GLIBC_2.43`** | **no** |
+| the container, glibc 2.36 | **`GLIBC_2.36`** | yes |
+
+**The executable itself needs only `GLIBC_2.14` in both**, which is what makes this silent: anyone
+checking the binary would conclude the desktop build was fine. The requirement lives in the
+bundled `.so` files.
+
+**The first build of it could not open a window, and that is the finding.** The slim image has no
+Qt runtime libraries, so PyInstaller's PySide6 hook could not import `QtCore` in the child process
+it uses to ask Qt where its plugins live. It logged `failed to obtain Qt library info` as a
+**warning** and carried on, producing an artifact with **no platform plugins at all**.
+
+**It passed everything below.** `--version`, the spawn probe, the yt-dlp probe, the database probe,
+all four artifact gates — because **none of them creates a `QApplication`**. It died on the
+maintainer's real desktop with `SIGABRT` inside bundled `libQt6Core`, and the coredump showed it
+resolving `libbrotlicommon`, `libharfbuzz`, `libfontconfig` and `libglib` from **Fedora RPMs**,
+because those had not been bundled either. Qt's own message named it exactly: *"Could not find the
+Qt platform plugin"*.
+
+The build now installs Qt's runtime dependencies, and **asserts the platform plugins came across**
+before going any further — the check that would have caught this on the first build. Nothing else
+in this project asks whether a window can open from a frozen artifact.
+
+**`Tracks_and_Trails-0.1.0.dev0-x86_64.AppImage`, 68.2 MB** (49.9 MB before Qt's libraries and
+plugins were actually in it). On `ubuntu:24.04` with **no `python3`, no Qt, no ffmpeg and no
+toolchain**:
+
+| Check | Result |
+|---|---|
+| **The application itself**, `QT_QPA_PLATFORM=offscreen` | **still running at 20 s**, no crash markers |
+| `--version` | `0.1.0.dev0`, exit 0 — **and this is not a launch test**: it exits before a `QApplication` exists, which is how the broken build passed |
+| `--spawn-probe` (`T-020`) | *spawned a child from this build, exchanged one message, and reaped it* |
+| `--ytdlp-probe` (`T-033`) | *the frozen artifact carries a usable yt-dlp with its extractors* |
+| `--database-probe` | ok |
+| `artifact_gates.py` over the payload | **all four pass** |
+
+**This is the first evidence this project has that the bundle is self-contained.** Every previous
+Linux run was on a machine that already had Python and Qt installed.
+
+**Validated from inside the built AppImage**, not from the sources it was made from:
+`desktop-file-validate` **clean** on the shipped `.desktop`, `appstreamcli validate`
+**successful** on the shipped `metainfo.xml`, and the icon present both at the AppDir root and
+under `usr/share/icons/hicolor/256x256/apps/` — the two places launchers look.
+
+**On the maintainer's Fedora desktop, 2026-09-11:** it starts, **downloads a video to
+completion**, and once its desktop entry is installed it **appears in the launcher with its
+icon**. That is `TESTING` §8 item 8's real download, taken on the artifact that ships.
+
+**`--ytdlp-update-probe` passes on the AppImage too**, which is §8 item 10: install a user-managed
+copy, resolve it in a child, revert to the bundled baseline. Run with a substituted `HOME`, it
+wrote **only** under that profile and nothing under the default one — `T-298`'s isolation, asked
+of the artifact rather than the checkout.
+
+**One gap this exposed, and it is a decision rather than a defect.** The `.desktop` inside the
+AppImage says `Exec=tracks-and-trails`, which resolves only *within* the bundle. Installed as a
+menu entry it has to be rewritten to the AppImage's own path — `AppImageLauncher` does that
+automatically, and a user without it gets a menu entry that does nothing. **Three ways out and
+none is taken yet**: recommend `AppImageLauncher` in the README, ship an `--install` step in the
+artifact, or accept it and document the two-line manual integration. `T-322` meets the same
+question on Windows, where the installer creates the shortcuts.
+
+**`libGL.so.1` is deliberately not bundled**, and the clean-machine model accounts for it: an
+AppImage must not ship the graphics stack, because it has to match the user's driver. A bare
+`ubuntu:24.04` has none at all, which no real desktop lacks, so the test container installs
+`libgl1`/`libegl1` and nothing else — still no Python, no Qt, no toolchain.
+
+**It starts on the development desktop too** — Fedora, glibc 2.43, built against 2.36.
+
+**One stated bound remains.** The clean-machine evidence is a launch, the four probes and the
+gates — **not a real download**, which needs the GUI driven and has no headless route. The real
+download was taken on the Fedora desktop instead, and the criterion asked for one *on each*.
+`packaging/frozen_smoke.py` does not cover the last of those — it answers `ARC-002`'s process
+question and downloads nothing — so `TESTING` §8 item 8's *"run one real download"* has no
+automated route on this artifact and is a sitting, not a script.
+
+#### 2026-09-12 — the review's two findings, and what the first one found
+
+**`T321-R2`: the documented command did not produce an AppImage.** The header of
+`build_appimage.sh` and the entry above both give one `podman run` line as the whole recipe. A
+fresh `python:3.14-slim-bookworm` has no `appimagetool`, and the script packed only
+`if [ -x /usr/local/bin/appimagetool ]` — otherwise it copied out an AppDir and printed `done`.
+Nothing put the tool there. **The 68.2 MB AppImage above was packed with a binary installed by
+hand in a container nobody else has**, which is a manual step masquerading as a recipe.
+
+The script now fetches it: **version 1.9.1, pinned, and verified by SHA-256 before it is used**.
+An unpinned `continuous` download would make the artifact depend on whatever was published that
+morning, and a build tool fetched without a digest is a supply-chain hole in the one script whose
+output gets signed and shipped. **The `else` branch is gone** — packing is the point, and a run
+that quietly produced an AppDir instead looked like a success, which is how this survived.
+
+Verified by running the documented line verbatim on a clean checkout:
+`Tracks_and_Trails-0.1.0.dev0-x86_64.AppImage`, **66 MB**, no manual step.
+
+**`T321-R1`: the clean-machine evidence had no real download**, which the entry above states as a
+bound. A bound that never closes is a gap, and this one covered the single thing a clean machine
+is uniquely able to disprove: that the bundle can reach a real site, over TLS, with its own
+certificates, and write a file.
+
+`--download-probe` closes it. It calls **`run_session`** — the same function the spawned worker
+runs — so yt-dlp is resolved the way a job resolves it, the extractor runs, and the bytes land
+through the real writer. Not the GUI, and deliberately not a parallel implementation. It takes the
+same URL `tests/network/test_real_download.py` uses, so a disagreement between them is the
+artifact rather than the site. **It reports failures**: handed a dead host it exits 1 as `network`,
+handed a 404 it exits 1 as `extractor_error` — checked before it was trusted to pass.
+
+**And on the first clean-machine run it failed.**
+
+```
+FAIL: the download failed as network: ERROR: [generic] big_buck_bunny_720p_surround:
+Unable to download webpage: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed:
+self-signed certificate in certificate chain (_ssl.c:1082)
+```
+
+**The AppImage carries no CA bundle of its own.** `ubuntu:24.04` ships with `/etc/ssl/certs`
+**empty** — measured, zero files — and the bundle contains no `certifi`, so every HTTPS request
+fails. Adding `ca-certificates` and *nothing else* (still no Python, no Qt, no ffmpeg, no
+toolchain) makes the same probe download **61,878,609 bytes in 6.5 s from the bundled baseline
+yt-dlp**.
+
+**This is a decision, not a defect to quietly fix, and it is the maintainer's.** Every desktop
+distribution ships `ca-certificates`, so no real user meets this. But bundling `certifi` is not
+obviously right either: it would make the application ignore the *system* trust store, which is
+where a corporate root or a user-added CA lives — so the fix that helps a bare container breaks
+the user behind a TLS-inspecting proxy. Three ways out:
+
+| Option | What it costs |
+|---|---|
+| **A. Leave it.** Record the dependency in the README's requirements | Nothing. A machine with no CA store cannot do HTTPS at all, and that is true of every application on it |
+| **B. Bundle `certifi` as a fallback** — use it only when the system store is empty or unusable | A little code and a test; keeps corporate CAs working, which a plain bundle would not |
+| **C. Bundle `certifi` outright** | Simplest, and **wrong for anyone behind a TLS-inspecting proxy** |
+
+**Recommendation: A**, with the requirement written down. B is defensible if a user ever reports
+it; C should not be taken.
+
+**Ruled A by the maintainer on 2026-09-12**, recorded as
+[`REL-007`](DECISIONS.md#rel-007--the-artifacts-use-the-system-certificate-store-and-bundle-none).
+The requirement is written down in `docs/RELEASE.md` under *What the release page must state*,
+with the glibc floor beside it, and `T-320`'s deferred README Install section is named as where
+both go when it exists. The clean-machine harness installs the package with the reason in its own
+output, so the boundary is stated rather than quietly satisfied.
+
+**The evidence file is `docs/project/evidence/linux-0.1.0.dev0.md`** — pre-install check, all six
+probes, and a launch held offscreen for 20 s. `--version` is still not a launch test; the launch
+is.
+
+#### 2026-09-11 — the AppDir's three files, and what is deliberately still missing
+
+**Done, and validated by the tools that own the formats** rather than by a parser of mine:
+
+- `packaging/appdir/io.github.kottmans.TracksAndTrails.desktop` — `desktop-file-validate` **clean,
+  no hints.** One main category (`AudioVideo`), because two put the application in two menus and
+  the validator says so.
+- `packaging/appdir/io.github.kottmans.TracksAndTrails.metainfo.xml` — `appstreamcli validate`
+  **successful**, informational messages cleared.
+- `packaging/appdir/AppRun` — **prepends** to `PATH` rather than setting it. That is the whole of
+  `REL-004`'s reasoning in one line: `OPS-001` makes ffmpeg a system dependency on Linux and
+  `REQ-024` finds it on `PATH`, so an `AppRun` that shadowed the host's copy would break merging
+  on every machine that has it — the failure Flatpak was rejected for.
+- `tests/unit/test_appdir_metadata.py` — seven cross-reference checks. Each of these files repeats
+  something declared elsewhere (the binary name from the spec, the licence from `pyproject.toml`,
+  the component id from the desktop file's own name) and nothing fails when a copy drifts.
+  **Both mutations the docstrings name were run**: renaming `Exec` and replacing `PATH` each fail
+  exactly one test. Format validation is *not* reimplemented here — the two validators own that.
+
+**What remains, and why none of it could be done now:**
+
+- **The build host.** `REL-004` requires building against the oldest glibc the README claims, and
+  `REL-006`'s Ubuntu LTS VM is that machine. It does not exist yet.
+- **`appimagetool` is not installed** on the development machine, so no `.AppImage` has been
+  produced — only the AppDir contents that go into one.
+- **Every acceptance criterion about the built artifact** — launching on a clean machine, the three
+  probes running against the AppImage rather than the one-dir tree, the icon appearing in a
+  launcher — needs that artifact and `T-318`'s evidence harness.
+
+*(Filed 2026-09-11 with the Phase 5 plan, written against **AppImage** as `T-106` recommended.
+`REL-004` ruled that way on the same day, so the task starts as written rather than being bent to
+fit a different format.)*
+
+**Owner:** Implementer
+**Priority:** High — it is the other artifact
+**Phase:** Phase 5
+**Depends on:** `T-106` (the format), `T-320` (the version); `T-318` if it chose a Linux VM, since
+that is the build host this task wants
+**Relevant context:** `REL-001`; `OPS-001` (ffmpeg stays a system dependency); `OPS-012`'s surrender
+— *"a Fedora-built binary may not run on an older distro … `REL-001`'s release build is Phase 5
+and must revisit where Linux artifacts are produced"*; `NFR-004`; `NFR-009`; `REQ-024`; `T-298`
+**Affected surfaces:** `packaging/` (an AppDir recipe, `.desktop`, AppStream `metainfo.xml`),
+`.github/workflows/`, `docs/DEVELOPMENT.md`
+**Risk:** Medium — glibc symbol versioning is a silent failure: the artifact builds, runs on the
+build host, and dies with `GLIBC_2.38 not found` on the user's machine
+
+#### Scope
+
+**Build against the oldest glibc the README will claim.** `OPS-012` moved the frozen Linux build
+onto Fedora and recorded exactly this consequence. The release build therefore runs in a
+**container of the oldest supported distribution** — proposed: the current Ubuntu LTS, which is
+also the `apt` platform `OPS-012` says is *"no longer exercised anywhere"* — on the self-hosted
+Linux runner. The README's platform line then says what was actually built and tested against.
+
+**AppDir from the PyInstaller tree**: `AppRun` launching the frozen binary, a `.desktop` entry,
+the icon set that already exists under `resources/icons/`, and an AppStream `metainfo.xml` so
+desktop environments show a name and description rather than a filename. Built with `appimagetool`
+into `Tracks_and_Trails-X.Y.Z-x86_64.AppImage`.
+
+**ffmpeg is not inside** (`OPS-001`), and the existing `REQ-024` path already reports its absence
+and degrades; this task adds nothing there beyond confirming the AppImage's `PATH` search sees the
+host's ffmpeg.
+
+**`NFR-004` holds**: `XDG_*` resolution from inside an AppImage is the same as from source, which
+`T-298`'s isolation gate pins — assert it on the built AppImage, not by inference.
+
+#### Acceptance criteria
+
+- The artifact is produced by a documented command on the container image the README names, and
+  the image's glibc version is recorded with the artifact
+- It launches on a **clean** machine of that distribution (`T-318`'s evidence), and on the
+  Fedora desktop, and runs one real download to completion on each
+- `T-020`'s spawn probe, `T-033`'s yt-dlp probe and `T-298`'s isolation check all pass **against the
+  AppImage**, not only against the one-dir tree it was made from
+- The `.desktop` entry and `metainfo.xml` validate (`desktop-file-validate`, `appstreamcli
+  validate`) and the icon appears in the launcher
+- Qt inside the AppImage is dynamically linked (`T-323` gates it; this task keeps it true)
+
+#### Out of scope
+
+- Flatpak or system packages, unless `T-106` rules otherwise
+- A Linux ffmpeg bundle — `OPS-001`'s reopening condition, not this task's
+
+### T-320 — Versioning policy, release documentation, and the first version number
+
+**Status:** **Complete — Approved at `7825888`** on 2026-09-13 by independent review. The release procedure, version/tag checker and newer-schema refusal exist. **Carried to `T-328`:** the README's install section and changelog land with the release commit, as sequenced.
+
+#### 2026-09-11 — what was built, and the one judgement call in it
+
+- **`docs/RELEASE.md`**, created per `DOC-002`'s *"when Phase 5 begins"* trigger. It references
+  `TESTING` §8 rather than copying it — a copied gate drifts, and the copy is what people read —
+  and names the three items no workflow can perform, so they are planned rather than discovered.
+  Covers the version steps, the tag check, the release-commit-only files, draft-then-publish, the
+  SmartScreen click-through `REL-005` makes necessary, and rollback.
+- **`tools/version_tag_check.py`** and **`tests/unit/test_version_tag_check.py`** — the
+  tag-to-version rule as a pure function with a CLI, the way `T240-R1` requires a decision that a
+  workflow would otherwise bury in shell. **14 cases.** It refuses a mismatched number, a tag on a
+  `.devN` commit, and seven tag spellings `REL-003` did not decide — `v0.1.0-rc1` among them,
+  because accepting a pre-release channel here would be this checker deciding one.
+  `test_the_repository_as_it_stands_today_cannot_be_tagged` is a **live** positive control: it
+  fails if `main` ever stops carrying `.devN`.
+- **Rollback is documented as asymmetric, which is the point.** The project and the user have a way
+  back; **their data does not.** `DAT-001`'s migrations are forward-only and the application
+  *refuses* a newer database rather than corrupting it, so a downgrade across a schema change costs
+  the queue and history. `RELEASE.md` says so and requires it on the release page whenever a
+  release carries a migration. *(That refusal did not exist when this was written — see
+  `T320-R2` below.)*
+
+#### 2026-09-12 — the review's two findings
+
+**`T320-R1`: a release version turned the suite red.** Two tests here asserted flatly that this
+checkout cannot be tagged, because `main` carries `.devN` between releases. But the commit that
+drops the suffix is exactly the commit §8 item 2 runs the full suite on — so the assertions turned
+the release gate red at the one moment it has to be green. Measured on `__version__ = "0.1.0"`:
+`test_the_repository_as_it_stands_today_cannot_be_tagged` and
+`test_the_tool_runs_as_a_script_against_this_checkout` both failed.
+
+The property that holds in **both** states is the one worth asserting: *the tool's verdict about
+this checkout is correct*. Between releases that means refusing to tag; on a release commit it
+means accepting that version's own tag and no other. Both tests now branch on which state they
+find, and both were run in both states.
+
+**`T320-R2`: the documented refusal did not exist.** `RELEASE.md` and this entry both said the
+application *refuses* a database from a newer version rather than corrupting it. `migrate()` skips
+every migration at or below the database's version, so a database at 11 opened by a build that
+knows 10 matched nothing, applied nothing, and returned `[]` — indistinguishable from an
+up-to-date database. It then opened, and `compose()` ran recovery over a schema it does not
+understand on the very next line.
+
+`persistence/db.NewerSchemaError` is the refusal the documentation had already promised: raised
+from `migrate()` before anything is applied, carrying the two versions and the file's path,
+surfaced by `run()` as a message box and **exit 4** — distinct from 3 so a script can tell *another
+copy is running* from *your library is newer than this build*.
+
+| Mutation | Result |
+|---|---|
+| remove the guard (the behaviour as submitted) | 3 tests fail |
+| `>=` instead of `>` | the boundary test fails, and two ordinary restart tests with it |
+
+Five tests: the refusal, its message (it has to name the file — a dialog a user cannot act on is
+not a remedy), the boundary at exactly the latest version, that the refused database is **byte-for
+-byte unchanged**, and that it aborts `compose()` before recovery. The last hop — `run()`'s
+`except` clause — is inside the uncovered region `present()`'s docstring already names, and is
+left there rather than claimed.
+
+**The judgement call, flagged rather than taken quietly.** Scope says the README *"gains an Install
+section pointing at releases and loses 'there are no installers or packages yet'"*. **It has not**,
+because that line is still **true** — no release exists, and swapping it now would make the README
+claim installers that are not there. It is written into `RELEASE.md` as a release-commit step
+beside `CHANGELOG.md` and `SECURITY.md` §Supported versions, both of which the same scope already
+defers to the tag. If the reviewer reads that as unmet rather than sequenced, it is a two-line
+change at the release commit.
+
+**Criterion 5 evidence.** `grep -rniE "parity|everything yt-dlp|all of yt-dlp" README.md` returns
+**no match** (exit 1). The only parity mention in the tree is `docs/YTDLP_OPTION_AUDIT.md`, which
+describes `REQ-030`'s claim rather than making it.
+
+**The scheme and the first number are ruled.** The maintainer accepted the proposal below on
+2026-09-11, recorded as [`REL-003`](DECISIONS.md#rel-003--semver-and-the-first-release-is-010):
+SemVer, `0.y.z` until `1.0` is declared, first release `0.1.0`. **What remains is the
+documentation and the gate** — `docs/RELEASE.md`, `SECURITY.md` §Supported versions, the README's
+install section, and the test that fails a `vX.Y.Z` tag on a commit whose `__version__` is not
+`X.Y.Z`. It stays `Proposed` because Phase 5 has not opened, not because the decision is
+outstanding.
+**Owner:** Implementer proposes; Maintainer rules on the scheme and the first number
+**Priority:** High
+**Phase:** Phase 5
+**Depends on:** nothing
+**Relevant context:** `DOC-002` (`docs/RELEASE.md` is created *"when Phase 5 begins"*;
+`CHANGELOG.md` *"at the first tagged release"*); `SECURITY.md` §Supported versions (*"when releases
+begin, this section will name which of them receive fixes"*); `IMPLEMENTATION_PLAN.md` §Phase 5
+deliverable *"versioning policy, release gate, and rollback procedure documented"*; `DAT-001`;
+`OPS-002`; `docs/RELEASE.md`'s release review; `tests/unit/test_skeleton.py` (asserts
+`--version` prints `__version__`); `[tool.hatch.version]` reads `src/tracks_and_trails/__init__.py`
+**Affected surfaces:** `src/tracks_and_trails/__init__.py`, `docs/RELEASE.md` (new),
+`CHANGELOG.md` (new, at tag time), `SECURITY.md`, `README.md`, `docs/DEVELOPMENT.md`
+**Risk:** Low
+
+#### Scope
+
+**The policy, proposed.** SemVer, `0.y.z` until the maintainer declares `1.0`. `main` carries
+`X.Y.Z.devN` between releases; a release commit sets `__version__ = "X.Y.Z"` and is tagged
+`vX.Y.Z`; the next commit bumps to `X.Y.(Z+1).dev0`. **The first release is `0.1.0`** — it is what
+`__init__.py` already says minus the `.dev0`, and `0.x` is honest about a release that ships before
+`REQ-030`'s parity (`IMPLEMENTATION_PLAN.md` §Phase 4.5's resequencing note). Patch releases carry
+fixes only; a yt-dlp baseline bump is at least a minor release, because it changes behaviour on
+every site (`OPS-002`, release gate item 10a).
+
+**`docs/RELEASE.md`**, created now per `DOC-002`: the gate (`TESTING.md` §8, by reference not
+copy), the version bump, the tag, `T-324`'s workflow, the draft-then-publish step, the SmartScreen
+note if `T-317` chose unsigned, and **rollback** — for the *project*: unpublish the release and
+re-point *latest*; for the *user*: reinstall the previous installer, which the release page keeps;
+for the *data*: **not promised** — `DAT-001`'s migrations are forward-only, so a downgrade across a
+schema change is refused by the application rather than silently corrupting, and the document says
+so instead of implying a rollback that does not exist.
+
+**`SECURITY.md` §Supported versions** filled at the first tag: the latest minor receives fixes,
+older ones do not. **`README.md`** gains an *Install* section pointing at releases and loses *"there
+are no installers or packages yet"* — and is checked for any wording that claims yt-dlp parity,
+which `REQ-030`'s resequencing forbids until Phase 4.5 lands.
+
+#### Acceptance criteria
+
+- `docs/RELEASE.md` exists and a reader with no context can cut a release from it alone
+- The version scheme is a `REL-` decision or a section of `docs/RELEASE.md`, named by the
+  maintainer's ruling on the scheme and on `0.1.0`
+- `test_skeleton`'s `--version` contract still holds, and a test asserts the tag-to-version rule
+  (a `vX.Y.Z` tag on a commit whose `__version__` is not `X.Y.Z` is a gate failure in `T-324`)
+- `CHANGELOG.md` is created **in the release commit**, not before — `DOC-002`'s trigger is the
+  first tagged release, and an empty changelog is the speculative document that decision forbids
+- The README makes no parity claim; grep evidence recorded
+
+#### Out of scope
+
+- Application self-update. `REL-001` and `OPS-002`'s amendment leave it open, and it reopens
+  `OPS-002`; it is not a `0.1.0` deliverable
+
+### T-317 — Decide whether the first Windows installer is signed
+
+**Status:** **Complete — Approved at `7825888`** on 2026-09-13 by independent review. `REL-005`'s unsigned-release follow-through is documented. **Carried to `T-328`:** the README's install section lands with the release commit; the SmartScreen screenshot stays `T-322`'s.
+
+**The decision is taken.** The maintainer ruled on 2026-09-11 for option **A**, recorded as
+[`REL-005`](DECISIONS.md#rel-005--the-first-windows-installer-ships-unsigned): `0.1.0` ships
+unsigned, with B or C named as the `1.0` condition. **The follow-through landed 2026-09-12**,
+below.
+
+#### 2026-09-12 — the follow-through, and the one criterion that is sequenced rather than met
+
+Checked against the acceptance criteria one at a time rather than declared done:
+
+| Criterion | Where |
+|---|---|
+| a `REL-` entry naming the choice, the rejected alternatives and why | `REL-005`, which also carries the reopening condition and the deliberate omission of AppImage signing |
+| if unsigned: `docs/RELEASE.md` states what SmartScreen shows and the exact click-through | §*What a Windows user will see* — the prompt quoted, **More info** → **Run anyway**, and why reputation never accrues without a certificate |
+| `T-039`'s gates stated as **independent of signature** | stated in `T-039`'s own entry, where the gates will be written |
+| names its reopening condition | `REL-005`: the `1.0` release, or evidence the prompt is costing installs |
+
+**The README's install section is the one that is sequenced, not met, and that is `T-320`'s
+judgement rather than a gap here.** The README says *"you cannot install it from a release — there
+are no installers or packages yet"*, which is **true today**; replacing it now would claim
+installers that do not exist. `docs/RELEASE.md` makes the replacement a release-commit step
+alongside `CHANGELOG.md` and `SECURITY.md` §Supported versions, and that step now **requires the
+SmartScreen click-through verbatim** plus the two system requirements — so the wording this task
+asks for is pinned to the commit where a README section can exist without being false.
+
+**`T-039`'s note is the half worth reading.** Its checks have to hold whether or not the installer
+is signed, and **no assertion may pass only because a signed binary skipped a prompt** — that is a
+test measuring SmartScreen rather than the installer, and it would go red the day signing arrives,
+which is the one day nobody would suspect the test.
+
+**Nothing was bought and nothing is signed.** The `.iss` carries a commented `SignTool` line so
+`REL-005`'s condition is met by uncommenting rather than authoring, and
+`tests/unit/test_windows_packaging.py` asserts it is still commented — a signing line that
+switched itself on would be a silent change to what the artifact is.
+**Owner:** Maintainer decision; Implementer records it as a `REL-` entry
+**Priority:** High — every later Windows task is shaped by the answer, and a certificate is a
+purchase with a lead time
+**Phase:** Phase 5
+**Depends on:** nothing
+**Relevant context:** `REL-001`; `OPS-004` (the installer must *feel* normal — a human item);
+`SECURITY.md` §CI trust boundary; `NFR-007`
+**Affected surfaces:** `docs/project/DECISIONS.md`; later `T-322`'s build step and `T-324`'s
+release workflow
+**Risk:** Low to decide; Medium not to — an unsigned installer meets SmartScreen's *"Windows
+protected your PC"* on every first install, which is the single largest reason a desktop user
+abandons an install
+
+#### Scope
+
+Nothing in the record decides this. `DOC-002` names *"a documented release and signing process"* as
+the reason `docs/RELEASE.md` exists, and no `REL-` entry has taken the question up. Three honest
+answers:
+
+| Option | What the user sees | What it costs |
+|---|---|---|
+| **A. Ship unsigned**, document the SmartScreen prompt in the README and release notes | *"Windows protected your PC"* → *More info* → *Run anyway*, on every first install | Nothing. Reputation never accrues, so the prompt never goes away |
+| **B. OV code-signing certificate** | The same prompt until SmartScreen reputation accrues over downloads; then none | A yearly purchase, identity verification, a key to protect |
+| **C. Azure Trusted Signing** (or an EV certificate) | No prompt from the first install | A subscription and an Azure identity; EV needs hardware-backed keys |
+
+**Recommendation: A for `0.1.0`, with B or C named as the `1.0` condition.** The first release is the
+one where the maintainer learns whether anyone installs it; buying identity infrastructure before
+that is the cost inverted. But the choice is the maintainer's because it is their name on the
+certificate, and this task exists so that *"unsigned"* is a decision with its consequences written
+down rather than an omission discovered at the first SmartScreen screenshot.
+
+#### Acceptance criteria
+
+- A `REL-` entry naming the choice, the rejected alternatives and why, in the house style
+- If unsigned: the README's install section and `docs/RELEASE.md` state what SmartScreen will show
+  and the exact click-through, so support is a link rather than a conversation
+- If signed: where the key lives, who can use it, and the rule that CI never holds it in a
+  repository secret readable by a fork (`SECURITY.md` §CI trust boundary)
+- `T-039`'s gates are stated as **independent of signature** — a silent install must succeed
+  either way, and the test must not pass only because a signed binary skipped a prompt
+- Names its reopening condition
+
+#### Out of scope
+
+- Signing the Linux artifact. AppImage signatures are optional and rarely checked; record that as
+  a deliberate omission in the same entry
+- Buying anything. The decision may be *A*; this task does not presume otherwise
 
 ### T-313 — The preset control discards a hand-picked format, and Notes repeats the row
 

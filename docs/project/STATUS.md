@@ -24,29 +24,23 @@ the first release**. Nothing user-facing may claim parity with yt-dlp until 4.5 
 *Refreshed 2026-09-13. The previous snapshot (2026-09-10) is recoverable from `8e67f6f`; its
 facts live in the task and review records it summarised.*
 
-- **The second Phase 5 review returned changes requested** on 2026-09-13
-  ([batch record](reviews/phase-5-second-batch.md)). Approved: `T-320`/`T-317`, `T-321`, `T-329`,
-  `T-330`, `DOC-008`. **Corrections made the same night, awaiting re-review:** `T322-R1`
-  (**Critical** — the uninstaller deleted its whole directory recursively), `T334-R1` (a durable
-  probe not counted as queue work), `T324-R1`/`R2` (the release upload path and the ffmpeg probe),
-  `T325-R1` (the cold gate averaged warm launches), `T326-R1` (the missing §7 settings-freeze test),
-  `T039-R1` (the Sandbox run's failure contract), `T318-R1` (a retained Windows run with real
-  downloads), and the documentation findings `T318-R2`, `T320-R3`, `T326-R2`, `P5B2-R1`, `P5B2-R2`.
-  **`T322-R1` is verified in Windows Sandbox**: the fixed installer keeps the user's files, and the
-  same installer with the old rule deletes them and fails. `T-323`'s two remaining findings are
-  corrected too, but a further review pass there needs the maintainer's §14 choice. Each task entry
-  has a dated section.
+- **The second Phase 5 review is closed** ([batch record](reviews/phase-5-second-batch.md)): every
+  finding the implementer could correct was corrected and verified, including the **Critical**
+  `T322-R1` (the uninstaller deleted its whole directory). **Completed 2026-09-13 and moved to
+  [COMPLETED_TASKS](COMPLETED_TASKS.md):** `T-317`, `T-318`, `T-319`, `T-320`, `T-321`, `T-323`,
+  `T-329`, `T-330`, `T-331`, `T-334`, and the `T-106` decision. Three clauses they left are carried by `T-328`: the README's
+  install section and changelog at the release commit, and how a user without AppImageLauncher gets
+  a working menu entry.
 - **Waiting on the maintainer**, and not implementable around:
   - `T039-R2` — whether candidate-only Sandbox gates replace `T-039`'s per-push CI criterion;
-  - `T-323` — its two remaining Medium findings have used the ordinary review budget, so a further
-    pass needs the maintainer's `TESTING` §14 choice;
-  - `T325-R2` — cold starts need reboots: Linux on the reference machine, Windows on `STARBASE`
-    with the installed artifact identified;
-  - `T-327` items 2–6 — the manual Windows session; `T-333`'s installed-build observation rides it;
+  - `T325-R2` — cold starts need reboots, and the criterion asks for five cold and five warm samples
+    per platform, with the installed Windows artifact identified;
+  - `T-327` items 2–6 — the manual Windows session; `T-333`'s installed-build observation rides it,
+    and `T-322`'s SmartScreen screenshot can be taken in the same sitting;
   - the first `v*` tag, which `T-324`'s draft run and `T-326`'s candidate items need.
-- **In progress without a blocker:** `T-322` (the SmartScreen screenshot, a workflow build), and
-  `T-332`, whose canary at 2026.8.19 is green. `T-319`'s new CI steps passed their first workflow
-  run, `34742480032`. `T-331` is In Review: its Windows run and rerun are recorded.
+- **Otherwise open:** `T-332` (baseline bump: every criterion met, awaiting review), `T-322` (the
+  SmartScreen screenshot and a workflow build), `T-039` (on `T039-R2`), `T-324`/`T-326` (a tag),
+  `T-333` (the installed-build observation), `T-328` (the release).
 - **`T-212`'s recorded checklist run** and the four Windows-only diagnostic tasks (`T-074`,
   `T-092`, `T-068`, `T-056`) are Phase 5 work, each to be given a disposition before the release
   (`T-328`).
