@@ -934,6 +934,16 @@ QWidget:disabled {{
        first, so every more specific rule after it still wins. */
     color: {theme.muted};
 }}
+QLabel, QCheckBox, QRadioButton {{
+    /* **No ground of their own** (found in the `T-327` session on Windows). The `QWidget` rule
+       gives every widget `window`, and a group box is `surface` — so each label and tick box
+       inside one painted a `window` band on the group, one per line of the options dialog, in
+       both themes. These show whatever they sit on instead.
+       **Plain layout containers are not listed**, because no group holds one today: a
+       `QGroupBox .QWidget` clause survived its mutation. `tests/ui/test_group_grounds.py` asks
+       containers too, so the first one added inside a group fails there rather than here. */
+    background: transparent;
+}}
 QGroupBox, QListView, QTableView, QTreeView, QPlainTextEdit, QTextEdit {{
     background-color: {theme.surface};
     border: 1px solid {theme.border};
