@@ -171,7 +171,14 @@ deleted when a new one lands.
 **forward-only**. A database migrated by a newer version is not readable by an older one, and the
 application **refuses** it rather than opening it and corrupting it silently: the older build
 shows a message naming the file and exits 4, having written nothing. So a user who downgrades
-across a schema change keeps their files and loses their queue and history.
+across a schema change keeps their downloaded files **and their database, untouched** — but the
+older version cannot show that queue. The message offers the two ways out: **reinstall the newer
+version**, which opens it as it was, or **move the file aside** to start a new, empty queue in the
+older one, keeping the old file to return to after upgrading again. There is no separate history to
+lose; the application keeps no record of past downloads (`T-186`).
+
+*(Said the user "loses their queue and history" — the queue is kept but unreadable by the older
+version, and there is no history store. `T320-R3`.)*
 
 *(Until 2026-09-12 this paragraph described a refusal the code did not perform — `migrate()` skips
 every migration at or below the database's version, so a newer database matched nothing and
