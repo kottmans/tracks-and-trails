@@ -175,19 +175,68 @@ def test_each_release_build_is_gated_and_probed(job: str) -> None:
     """
     text = "\n".join(str(step.get("run", "")) for step in steps(job))
     assert "artifact_gates.py" in text, f"{job} does not gate what it built"
+    if job == "build-windows":
+        # `T324-R2`: the Windows build runs every probe `windowed_checks.PROBES` names, and that
+        # list must include the ffmpeg probe, the one only a Windows release build can answer.
+        assert "windowed_checks.py probes" in text, "the Windows build is not probed"
+        assert "--ffmpeg-probe" in {flag for flag, _ in windowed_probes()}
+        return
     for probe in ("--spawn-probe", "--ytdlp-probe", "--database-probe", "--ytdlp-update-probe"):
         assert probe in text, f"{job} does not run {probe} on the release build"
+
+
+def windowed_probes() -> tuple[tuple[str, str], ...]:
+    """`packaging/windowed_checks.PROBES`, loaded by path as the other packaging tools are."""
+    import importlib.util
+    import sys
+
+    pytest.importorskip("psutil")
+    tool = REPOSITORY / "packaging" / "windowed_checks.py"
+    specification = importlib.util.spec_from_file_location("windowed_checks", tool)
+    assert specification is not None and specification.loader is not None
+    module = importlib.util.module_from_spec(specification)
+    sys.modules.setdefault("windowed_checks", module)
+    specification.loader.exec_module(module)
+    probes: tuple[tuple[str, str], ...] = module.PROBES
+    return probes
 
 
 def test_the_windows_probes_read_the_report_file_rather_than_stdout() -> None:
     """`console=False` leaves a windowed build with no `stdout`, which is why
     `_freeze_probe.say` writes to `TT_PROBE_REPORT`. Reading the console would read nothing and
-    pass — the exact shape of `T-319`'s finding about a build with no platform plugins."""
-    probing = next(
-        step for step in steps("build-windows") if "--spawn-probe" in str(step.get("run", ""))
+    pass — the exact shape of `T-319`'s finding about a build with no platform plugins.
+
+    `windowed_checks.py` sets a report file per probe and discards the console, so the judgement
+    is made on the file or not at all; `tests/unit/test_windowed_checks.py` holds that logic."""
+    source = (REPOSITORY / "packaging" / "windowed_checks.py").read_text(encoding="utf-8")
+    assert '"TT_PROBE_REPORT": str(report_path)' in source
+    assert "stdout=subprocess.DEVNULL" in source
+
+
+def test_the_installer_is_uploaded_from_where_the_script_writes_it() -> None:
+    """**`T324-R1`.** The upload looked in `packaging/Output`, Inno's default; the script says
+    `OutputDir=..\\dist`. Resolved here the way ISCC resolves it — relative to the script — and a
+    representative compiled name is matched against the upload glob."""
+    import fnmatch
+    import re
+
+    script = (REPOSITORY / "packaging" / "tracks-and-trails.iss").read_text(encoding="utf-8")
+    output_dir = re.search(r"^OutputDir=(.+)$", script, re.MULTILINE)
+    base = re.search(r"^OutputBaseFilename=(.+)$", script, re.MULTILINE)
+    assert output_dir and base, "the installer script no longer states where it writes"
+    directory = (
+        REPOSITORY / "packaging" / output_dir.group(1).strip().replace("\\", "/")
+    ).resolve()
+    compiled = directory / (base.group(1).strip().replace("{#AppVersion}", "0.1.0") + ".exe")
+    relative = compiled.relative_to(REPOSITORY).as_posix()
+
+    upload = next(
+        step["with"]["path"]
+        for step in steps("build-windows")
+        if step.get("uses", "").startswith("actions/upload-artifact")
     )
-    assert (probing.get("env") or {}).get("TT_PROBE_REPORT"), (
-        "the Windows probe step does not set TT_PROBE_REPORT, so a windowed build reports nothing"
+    assert fnmatch.fnmatch(relative, str(upload).strip()), (
+        f"ISCC writes {relative}, and the upload looks for {upload}"
     )
 
 

@@ -173,16 +173,16 @@ jobs:
 
       - name: The probes, on the release build
         # **`console=False` means no `stdout`**, which is the whole reason `_freeze_probe.say`
-        # writes to `TT_PROBE_REPORT`. Reading the console here would read nothing and pass.
-        env:
-          TT_PROBE_REPORT: reports/release-probes.txt
+        # writes to `TT_PROBE_REPORT`. `windowed_checks.py` gives each probe its own report file,
+        # discards the console, and fails a probe whose report lacks its success line.
+        #
+        # **`--ffmpeg-probe` is among them** (`T324-R2`). It was missing here, although it exists
+        # to catch exactly the release-only defect `T-319` found — ffmpeg bundled where the
+        # application does not look — and none of the other probes touches ffmpeg.
         run: |
           mkdir -p reports
-          for probe in --spawn-probe --ytdlp-probe --database-probe --ytdlp-update-probe; do
-            echo "--- $probe"
-            ./dist/tracks-and-trails/tracks-and-trails.exe "$probe" || exit 1
-          done
-          cat reports/release-probes.txt
+          python packaging/windowed_checks.py probes dist/tracks-and-trails \
+            2>&1 | tee reports/release-probes.txt
 
       - name: Compile the installer
         # The version comes from the tag, which `verify` has already proved equals `__version__`.
@@ -198,7 +198,11 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: release-windows
-          path: packaging/Output/*.exe
+          # **Where `tracks-and-trails.iss`'s `OutputDir=..\dist` puts it** (`T324-R1`). This said
+          # `packaging/Output/*.exe`, Inno's default, which the script overrides — so a real
+          # release run would have reached this step with nothing to upload and never drafted.
+          # `tests/unit/test_release_workflow.py` resolves the script's output against this glob.
+          path: dist/*-setup.exe
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------------------------

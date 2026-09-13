@@ -545,17 +545,42 @@ oldest-glibc container `T-321` names — it:
 release prompt's own rule and the only place a release can be inspected before it is public. The
 workflow's token gets `contents: write` for that one job and nothing else keeps it (`SECURITY.md`).
 
+#### 2026-09-13 — the review's two findings
+
+**`T324-R1`: the installer would never have been uploaded.** The upload step looked in
+`packaging/Output/*.exe`, Inno's default — but `tracks-and-trails.iss` sets `OutputDir=..\dist`,
+and `T-322`'s own compile transcript names `dist\Tracks-and-Trails-0.1.0.dev0-setup.exe`. A real
+tag would have built both platforms, failed `if-no-files-found: error`, and drafted nothing. The
+path is `dist/*-setup.exe` now, and
+`test_the_installer_is_uploaded_from_where_the_script_writes_it` resolves the script's `OutputDir`
+and `OutputBaseFilename` the way ISCC does and matches a representative compiled name against the
+upload glob. **Mutation:** restoring `packaging/Output/*.exe` fails it.
+
+**`T324-R2`: the ffmpeg probe was missing from the Windows release build**, though it exists for a
+release-only defect. The loop is replaced by `packaging/windowed_checks.py probes`, which runs all
+five probes — spawn, yt-dlp, database, update, **ffmpeg** — each with its own report file and its
+console discarded, and fails any whose report lacks its success line. The same script is what
+`ci.yml`'s `frozen windows` job now runs for `T-319`. **Missing and unusable helper failures** are
+measured in `T-319`'s 2026-09-13 section: with `ffmpeg.exe` and `ffprobe.exe` deleted the probe
+exits 1 naming `OPS-001`.
+
+**Criterion 1's wording is corrected**, as the review asked: it said *"a tag on a test branch"*,
+and `verify` deliberately refuses a commit that is not on `main`. The criterion now says what the
+workflow can do. **`ci.yml`'s `frozen` job is no longer unchanged**: `T-319`'s own criterion adds
+the windowed build to it; this workflow still does not run on push.
+
 #### Acceptance criteria
 
-- A tag on a test branch produces a draft release with two artifacts and a checksums file, and
-  `gh release view` shows `draft: true`
+- A `v*` tag **on a commit on `main`** produces a draft release with two artifacts and a checksums
+  file, and `gh release view` shows `draft: true` *(said "a tag on a test branch", which `verify`'s
+  main-ancestry check refuses by design)*
 - A tag whose version disagrees with `__version__` fails at step 1 with the disagreement named
 - The `permissions:` block grants `contents: write` to the release job only; the workflow file is
   reviewed against `SECURITY.md` §CI trust boundary and the review recorded
 - `docs/RELEASE.md` describes the tag → draft → review → publish sequence, and the rollback of
   each step
-- The `frozen` job in `ci.yml` is unchanged in scope — it remains the per-push smoke, and this
-  workflow does not run on push
+- This workflow does not run on push. *(Also said the `frozen` job in `ci.yml` stays unchanged in
+  scope; `T-319`'s criterion adds the windowed release build to its Windows leg.)*
 
 #### Out of scope
 
