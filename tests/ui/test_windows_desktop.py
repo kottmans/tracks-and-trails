@@ -41,6 +41,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QStyle,
     QStyleOptionComboBox,
+    QToolTip,
     QWidget,
 )
 
@@ -933,3 +934,51 @@ def test_the_chosen_entry_of_an_open_drop_down_is_drawn_on_its_fill(
         ui_theme.contrast_ratio(f"#{colour:06x}", theme.primary) >= ui_theme.MINIMUM_CONTRAST
         for colour in colours
     ), f"{theme.name}: nothing in the chosen row stands out from its fill, so no text is drawn"
+
+
+@pytest.mark.parametrize("theme", list(ui_theme.THEMES.values()), ids=lambda theme: theme.name)
+def test_a_tooltip_is_drawn_on_the_themes_ground(qapp: QApplication, theme: ui_theme.Theme) -> None:
+    """Found in the `T-327` session: in dark, every tooltip was **white on white**.
+
+    The sheet's `QWidget` rule gave the tip the theme's light `text`, and with no `QToolTip` rule
+    the Windows style drew its own white panel under it. **Here and not offscreen**, because the
+    panel that went wrong is the Windows style's: Fusion draws the tip from the palette, which
+    `apply` had right all along. Measured on `STARBASE` with the rule deleted: dark fails, and
+    light passes only because its `surface` is white too.
+
+    Asked of the pixels of the real tip Qt shows, after it has faded in.
+    """
+    ui_theme.apply(qapp, theme)
+    host = QWidget()
+    host.resize(300, 120)
+    host.show()
+    QTest.qWait(200)
+    QToolTip.showText(host.mapToGlobal(host.rect().center()), "Remove finished rows", host)
+    QTest.qWait(600)
+    try:
+        tips = [
+            widget
+            for widget in QApplication.topLevelWidgets()
+            if widget.metaObject().className() == "QTipLabel" and widget.isVisible()
+        ]
+        assert tips, "no tooltip appeared, so nothing below measures one"
+        image = tips[0].grab().toImage()
+        colours = Counter(
+            image.pixel(x, y) & 0xFFFFFF
+            for x in range(2, image.width() - 2)
+            for y in range(2, image.height() - 2)
+        )
+    finally:
+        QToolTip.hideText()
+        host.close()
+
+    dominant, _count = colours.most_common(1)[0]
+    ground = QColor(theme.surface).rgb() & 0xFFFFFF
+    assert dominant == ground, (
+        f"{theme.name}: the tooltip sits on #{dominant:06x}, not the theme's {theme.surface} — its "
+        f"{theme.text} text is drawn on a ground the theme did not choose"
+    )
+    assert any(
+        ui_theme.contrast_ratio(f"#{colour:06x}", theme.surface) >= ui_theme.MINIMUM_CONTRAST
+        for colour in colours
+    ), f"{theme.name}: nothing in the tooltip stands out from its ground, so its text is unreadable"

@@ -193,8 +193,8 @@ def test_a_themed_button_fills_with_the_themes_own_hover_colour(themed: QApplica
         assert normal_fill == theme.LIGHT.surface.lower(), (
             f"an idle themed button fills {normal_fill}, not the theme's surface"
         )
-        assert hover_fill == theme.LIGHT.sunken.lower(), (
-            f"a themed button under the pointer fills {hover_fill}, not the theme's sunken. "
+        assert hover_fill == theme.LIGHT.hover.lower(), (
+            f"a themed button under the pointer fills {hover_fill}, not the theme's hover. "
             "Nothing tells the user which control they are about to activate"
         )
     finally:
@@ -476,6 +476,36 @@ def test_a_disabled_control_does_not_look_like_a_settable_one(
     assert enabled != disabled, (
         "a disabled combo box draws exactly like a settable one, so a control that does nothing "
         "still invites a choice"
+    )
+
+
+def test_hovering_a_plain_toolbar_verb_fills_it_with_the_themes_hover(
+    themed: QApplication, chosen: theme.Theme
+) -> None:
+    """Found in the `T-327` session: `Start` and `Clear finished` lit "only around the edges".
+
+    In dark the hover fill was `sunken`, **1.05:1** against the button's resting `surface` — the
+    border turned green and the fill did not visibly move. Sampled clear of the label, in both
+    themes, as the primary action's test below is.
+    """
+    theme.apply(themed, chosen)
+    bar = QToolBar()
+    button = QToolButton(bar)
+    button.setText("Clear finished")
+    button.resize(120, 30)
+    bar.resize(200, 34)
+    themed.processEvents()
+
+    resting = _sampled(button)
+    button.setAttribute(Qt.WidgetAttribute.WA_UnderMouse, True)
+    button.style().unpolish(button)
+    button.style().polish(button)
+    themed.processEvents()
+    hovered = _sampled(button)
+
+    assert resting == chosen.surface.upper(), f"a resting verb fills {resting}, not surface"
+    assert hovered == chosen.hover.upper(), (
+        f"hovering fills with {hovered} rather than the theme's {chosen.hover}"
     )
 
 

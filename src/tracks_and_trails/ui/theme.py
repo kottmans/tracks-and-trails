@@ -118,6 +118,16 @@ class Theme:
     #: `on_primary` stays legible on it, and that pair is in the contrast gate.
     primary_hover: str
 
+    #: **Any other control under the pointer**: a plain button, a toolbar verb, a stepper, a tab.
+    #:
+    #: **Not `sunken`, which is what these used, and in dark it could not be seen** (found in the
+    #: `T-327` session on Windows). `sunken` is a recessed ground, darker than `surface` in both
+    #: themes. In light that difference is 1.17:1 and reads as a hover. In dark it measured
+    #: **1.05:1**, so a hovered `Start` or `Clear finished` kept its fill and only the border
+    #: turned green — a highlight "only around the edges". A hover lifts the control toward the
+    #: pointer, so in dark it has to be *lighter* than `surface`, not darker; light keeps its value.
+    hover: str
+
     #: A selected row (`T-130`, `UX-005`'s 2026-08-04 amendment).
     #:
     #: **A tint of `primary` over `surface`, not `primary` itself.** Filling the whole row with the
@@ -151,6 +161,7 @@ LIGHT: Final = Theme(
     on_selection="#101A14",
     accent="#8A6412",
     primary_hover="#467B68",
+    hover="#EAEFE9",
     ok="#14503C",
     warn="#7A5410",
     stop="#8C3D29",
@@ -179,6 +190,7 @@ DARK: Final = Theme(
     on_selection="#E7EFE9",
     accent=GOLD,
     primary_hover="#75B89D",
+    hover="#1C342A",
     ok="#7FC7A6",
     warn=GOLD,
     stop="#E09480",
@@ -462,6 +474,14 @@ BORDERED_CONTROLS: Final = (
             "A popup window. The view itself reports `StrongFocus`, and it is exempt on the menu's "
             "grounds rather than on that one: it exists only while the drop-down is open, so a "
             "ring saying *this has the keyboard* would be drawn on every popup that ever appears."
+        ),
+    ),
+    BorderedControl(
+        selector="QToolTip",
+        takes_focus=False,
+        reason=(
+            "`NoFocus`, and a tooltip window besides. It appears under the pointer and goes when "
+            "the pointer moves; the keyboard never lands on it, so its border only edges the tip."
         ),
     ),
 )
@@ -984,7 +1004,7 @@ QPushButton:hover {{
     /* **The states a style sheet takes away** (`T-129`). Styling `QPushButton` at all switches it
        to style-sheet rendering, and Qt then draws hover and pressed exactly like normal unless
        they are declared — so every button on the row looked inert under the pointer. */
-    background-color: {theme.sunken};
+    background-color: {theme.hover};
     border-color: {theme.primary};
 }}
 QPushButton:pressed {{
@@ -1077,7 +1097,7 @@ QComboBox QAbstractItemView::item:selected {{
     color: {theme.on_primary};
 }}
 QTabBar::tab:hover {{
-    background-color: {theme.sunken};
+    background-color: {theme.hover};
 }}
 /* **`QSpinBox` is deliberately absent from the rule above** (`T-133`, corrected).
    Styling the box at all switches it to `QStyleSheetStyle` and its up and down arrows stop being
@@ -1110,7 +1130,7 @@ QToolButton[stepButton="true"] {{
     font-weight: 600;
 }}
 QToolButton[stepButton="true"]:hover {{
-    background-color: {theme.sunken};
+    background-color: {theme.hover};
     border-color: {theme.primary};
 }}
 QToolButton[stepButton="true"]:pressed {{
@@ -1139,7 +1159,7 @@ QToolBar QToolButton {{
     padding: 3px 9px;
 }}
 QToolBar QToolButton:hover {{
-    background-color: {theme.sunken};
+    background-color: {theme.hover};
     border-color: {theme.primary};
 }}
 QToolBar QToolButton:pressed {{
@@ -1165,7 +1185,7 @@ QToolBar QToolButton:checked {{
     padding: 2px 8px;
 }}
 QToolBar QToolButton:checked:hover {{
-    background-color: {theme.sunken};
+    background-color: {theme.hover};
     border: 2px solid {theme.primary};
     padding: 2px 8px;
 }}
@@ -1225,6 +1245,17 @@ QLabel[newestTag="true"] {{
        make it findable at a glance, so nothing here is information colour alone conveys. */
     color: {theme.primary};
     font-weight: 600;
+}}
+QToolTip {{
+    /* **A tooltip needs its own ground** (found in the `T-327` session on Windows). The
+       `QWidget` rule above gives every widget `text`, and a tooltip took it — but its background
+       came from the Windows style's own tooltip palette, which `apply`'s `ToolTipBase` does not
+       reach. In dark that is near-white text on a near-white tip, and no tooltip could be read.
+       Both colours are declared here, with a border, so the pair comes from one theme. */
+    background-color: {theme.surface};
+    color: {theme.text};
+    border: 1px solid {theme.border};
+    padding: 3px 6px;
 }}
 QStatusBar::item {{
     /* **No frame around status-bar items.** Qt's Windows styles draw one, which shows as a short

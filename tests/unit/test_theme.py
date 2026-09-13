@@ -50,6 +50,8 @@ TEXT_PAIRS = (
     # here for the same reason every other one is: the fill it replaced passed at 7.64:1, and a
     # lighter background is exactly where a text colour quietly stops clearing the floor.
     ("on_selection", "selection"),
+    # A plain control under the pointer keeps its ordinary text, so its fill has to carry it.
+    ("text", "hover"),
     ("accent", "surface"),
     ("ok", "surface"),
     ("warn", "surface"),
@@ -219,8 +221,38 @@ def test_every_role_reaches_the_sheet(theme_name: str) -> None:
     """
     palette: Theme = THEMES[theme_name]
     sheet = stylesheet(palette)
-    for field in ("window", "surface", "sunken", "text", "muted", "rule", "border", "primary"):
+    for field in (
+        "window",
+        "surface",
+        "sunken",
+        "text",
+        "muted",
+        "rule",
+        "border",
+        "primary",
+        "hover",
+    ):
         assert getattr(palette, field) in sheet, f"{field} is defined and never drawn"
+
+
+#: How far a hovered control's fill must move from its resting `surface`.
+#:
+#: **Not a WCAG number, because there is none for hover**: this is the light theme's measured
+#: difference (1.17:1), which reads as a hover and was never reported, taken as the floor both
+#: themes are held to. The dark theme's old hover measured **1.05:1** and was reported from the
+#: `T-327` session as highlighting "only around the edges".
+MINIMUM_HOVER_DIFFERENCE: Final = 1.15
+
+
+@pytest.mark.parametrize("theme_name", sorted(THEMES))
+def test_a_hovered_control_visibly_changes_its_fill(theme_name: str) -> None:
+    """The border turning green is not enough: the fill is most of what a user sees change."""
+    palette: Theme = THEMES[theme_name]
+    measured = contrast_ratio(palette.hover, palette.surface)
+    assert measured >= MINIMUM_HOVER_DIFFERENCE, (
+        f"{theme_name}: a hovered control fills {palette.hover} on a resting {palette.surface}, "
+        f"{measured:.2f}:1 — the fill barely moves, so only the border shows the hover"
+    )
 
 
 #: What a scroll bar's handle must clear against the surface behind it.

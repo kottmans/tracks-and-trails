@@ -56,6 +56,7 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QToolBar,
     QToolButton,
+    QToolTip,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -610,6 +611,18 @@ def build(selector: str, host: QWidget) -> QWidget:
         combo = QComboBox(host)
         combo.addItems(["Alpha", "Beta"])
         return combo.view()
+    if selector == "QToolTip":
+        # **The real tip, not a label dressed as one.** `QTipLabel` is private, so the only way to
+        # hold one is to ask for a tooltip and find the window Qt made; the focus question below is
+        # then answered by the widget a user actually sees.
+        QToolTip.showText(host.mapToGlobal(host.rect().center()), "Remove finished rows", host)
+        tips = [
+            widget
+            for widget in QApplication.topLevelWidgets()
+            if widget.metaObject().className() == "QTipLabel"
+        ]
+        assert tips, "asking for a tooltip made no tip window, so there is nothing to build"
+        return tips[0]
     widget: QWidget = CLASSES[selector](host)
     if isinstance(widget, QComboBox):
         widget.addItems(["Alpha", "Beta"])
@@ -710,6 +723,7 @@ def test_every_bordered_control_can_be_built() -> None:
             "QToolBar QToolButton",
             'QToolBar QToolButton[primaryAction="true"]',
             "QComboBox QAbstractItemView",
+            "QToolTip",
         }, (
             f"{control.selector!r} is in the inventory and build() cannot make one, so it would "
             "silently sit out every rendered assertion below"
