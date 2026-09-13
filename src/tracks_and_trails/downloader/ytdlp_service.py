@@ -117,6 +117,7 @@ class _Sink(QObject):
     resolved = Signal(object)
     installed = Signal(object)
     reverted = Signal(bool)
+    checked = Signal(object)
     failed = Signal(str)
 
 
@@ -175,6 +176,8 @@ class YtdlpService(QObject):
     installed = Signal(object)
     #: Whether there was a user-managed copy to remove.
     reverted = Signal(bool)
+    #: The newest `Release` PyPI lists, from an explicit check (`T-333`). Installs nothing.
+    checked = Signal(object)
     #: Why the last operation did not happen, in the user's terms.
     failed = Signal(str)
     #: Whether an operation is running, so the screen can disable its controls.
@@ -244,6 +247,16 @@ class YtdlpService(QObject):
         return resolve_in_a_child(
             self._directory, entry_point=self._entry_point, cancelled=_the_pool_is_closing
         )
+
+    def check_latest_version(self) -> None:
+        """Ask PyPI which yt-dlp is newest, and emit `checked`. **Writes nothing** (`T-333`).
+
+        **Only ever on a press.** `NFR-007` permits *explicit* yt-dlp update checks, so this is
+        never called when the screen opens; the screen says *not checked* until somebody asks.
+        No worker hold, because the tree is not touched — only the one-operation-at-a-time rule,
+        which keeps a check from racing an install that would answer the same question.
+        """
+        self._run(lambda sink: sink.checked.emit(latest_release()))
 
     def install_latest_version(self) -> None:
         """Install the newest yt-dlp wheel, then re-ask a child what is now in use.
@@ -316,6 +329,7 @@ class YtdlpService(QObject):
         sink.resolved.connect(self._on_resolved)
         sink.installed.connect(self.installed)
         sink.reverted.connect(self.reverted)
+        sink.checked.connect(self._on_checked)
         sink.failed.connect(self._on_failed)
         task = _Task(sink, work)
         if not pool().start(task):
@@ -337,6 +351,12 @@ class YtdlpService(QObject):
         self._release_the_tree()
         self._set_busy(False)
         self.reported.emit(resolution)
+
+    def _on_checked(self, release: object) -> None:
+        """A check ends here; an install or revert ends in `_on_resolved`, after its re-ask."""
+        self._running = None
+        self._set_busy(False)
+        self.checked.emit(release)
 
     def _on_failed(self, reason: str) -> None:
         self._running = None

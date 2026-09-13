@@ -1220,6 +1220,12 @@ QToolButton[disclosure="true"]:hover {{
     border-radius: 3px;
 }}
 
+QLabel[newestTag="true"] {{
+    /* `T-333`: which yt-dlp version is newest. **The word carries it**; the colour and weight only
+       make it findable at a glance, so nothing here is information colour alone conveys. */
+    color: {theme.primary};
+    font-weight: 600;
+}}
 QStatusBar::item {{
     /* **No frame around status-bar items.** Qt's Windows styles draw one, which shows as a short
        grey vertical line after each item — after *"…press Start to download"* on the left and

@@ -622,3 +622,56 @@ def test_a_version_check_never_holds_the_workers(qapp: Any, tmp_path: Path) -> N
     assert not problems, f"a read-only version check was refused: {problems}"
     assert finished
     assert exclusion.events == [], "a version check held the workers"
+
+
+def test_checking_for_the_latest_release_installs_nothing_and_holds_nothing(
+    qapp: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T-333`: *Check* answers which release is newest, and that is all it does.
+
+    `NFR-007` allows the request because a user asked for it; it is not also allowed to change the
+    tree. **Refused holds would make any write fail here**, and the directory must not appear.
+    """
+    exclusion = RecordingExclusion(grants=False)
+    newest = service_module.Release(
+        version="2026.9.2", url="https://example.invalid/w.whl", digest="0", filename="w.whl"
+    )
+    monkeypatch.setattr(service_module, "latest_release", lambda: newest)
+    service = YtdlpService(
+        directory=tmp_path / "ytdlp", entry_point=_reports_a_version, exclusion=exclusion
+    )
+    problems: list[str] = []
+    checked: list[Any] = []
+    busy: list[bool] = []
+    service.failed.connect(problems.append)
+    service.checked.connect(checked.append)
+    service.busy_changed.connect(busy.append)
+
+    service.check_latest_version()
+
+    assert _settles(checked, problems), "the check never settled"
+    assert not problems, f"the check was refused: {problems}"
+    assert checked == [newest]
+    assert busy == [True, False], "the screen was not told the check started and ended"
+    assert exclusion.events == [], "a check held the workers"
+    assert not (tmp_path / "ytdlp").exists(), "a check wrote the user-managed directory"
+
+
+def test_a_check_that_cannot_reach_the_index_says_so(
+    qapp: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unreachable() -> Any:
+        raise UpdateError("The package index could not be reached.")
+
+    monkeypatch.setattr(service_module, "latest_release", unreachable)
+    service = YtdlpService(directory=tmp_path / "ytdlp", entry_point=_reports_a_version)
+    problems: list[str] = []
+    checked: list[Any] = []
+    service.failed.connect(problems.append)
+    service.checked.connect(checked.append)
+
+    service.check_latest_version()
+
+    assert _settles(checked, problems)
+    assert problems == ["The package index could not be reached."]
+    assert service.busy is False

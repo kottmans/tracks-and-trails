@@ -58,6 +58,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFrame,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -80,6 +81,7 @@ from tracks_and_trails.core.settings import (
     RETRIES_MAXIMUM,
     THEME_NAMES,
 )
+from tracks_and_trails.downloader.environment import BASELINE_YTDLP_VERSION, normalise_version
 from tracks_and_trails.ui.keyboard import route_is_elsewhere
 
 __all__ = [
@@ -255,6 +257,20 @@ YTDLP_VERSION_NAME: Final = "ytdlpVersion"
 YTDLP_NOTE_NAME: Final = "ytdlpNote"
 YTDLP_UPDATE_NAME: Final = "ytdlpUpdate"
 YTDLP_REVERT_NAME: Final = "ytdlpRevert"
+YTDLP_BUNDLED_NAME: Final = "ytdlpBundled"
+YTDLP_LATEST_NAME: Final = "ytdlpLatest"
+YTDLP_CHECK_NAME: Final = "ytdlpCheck"
+#: The tag beside whichever row holds the newest version, keyed by row (`T-333`).
+YTDLP_NEWEST_NAMES: Final = {
+    "in_use": "ytdlpNewestInUse",
+    "bundled": "ytdlpNewestBundled",
+    "latest": "ytdlpNewestLatest",
+}
+YTDLP_NEWEST_TAG: Final = "newest"
+YTDLP_CHECK_LABEL: Final = "Check"
+#: What *Latest* says before anybody has asked. **Not a version**, for `YTDLP_VERSION_UNKNOWN`'s
+#: reason, and not fetched on opening either: `NFR-007` allows only an explicit check.
+YTDLP_LATEST_UNCHECKED: Final = "Not checked"
 
 #: Shown before a child has answered. **Not a version and not a guess** (`REQ-025`): the number
 #: comes from a worker's import, which takes a moment, and inventing a placeholder that looks like
@@ -276,16 +292,36 @@ YTDLP_REVERT_LABEL: Final = "Use the bundled version"
 #: step is *"The site may have changed. Updating yt-dlp in Settings often fixes this"*, and a user
 #: who follows it arrives here; a section that then described the move differently would be two
 #: voices on one action (`T-243`'s rule, one screen over).
-YTDLP_RECOVERY_NOTE: Final = (
-    "If a site has stopped working, a newer yt-dlp often fixes it. Otherwise the bundled version "
-    "is the one this application was tested with."
-)
+#:
+#: **One line since `T-333`**, which replaced three paragraphs the maintainer found hid the version.
+#: The rest of what they said moved where it is still true: *tested with this application* is the
+#: bundled row's own detail, and *updating changes downloads only* is the update button's tooltip.
+YTDLP_RECOVERY_NOTE: Final = "If a site has stopped working, a newer yt-dlp often fixes it."
 YTDLP_RECOVERY_NOTE_NAME: Final = "ytdlpRecoveryNote"
-YTDLP_UPDATE_LABEL: Final = "Get a newer yt-dlp"
+#: Before a check has found something newer. Once one has, the button names the version.
+YTDLP_UPDATE_LABEL: Final = "Update to latest"
+YTDLP_UPDATE_EFFECT: Final = (
+    "Updating affects downloads only; Tracks & Trails itself is not changed."
+)
+YTDLP_BUNDLED_DETAIL: Final = "tested with this application"
 
 #: What the update button says while an operation is running, so the screen's own state says why
 #: nothing is responding rather than leaving a dead-looking button (`NFR-006`'s spirit).
 YTDLP_WORKING_LABEL: Final = "Working…"
+
+
+def displayed_version(version: str) -> str:
+    """A yt-dlp version the way yt-dlp prints its own: `2026.8.19` becomes `2026.08.19`.
+
+    The pin and PyPI write the short form and a worker reports the padded one, so a table showing
+    both spellings would make two equal versions look different — the confusion `T-333` exists to
+    remove. Anything that is not three plain numbers is shown as it came.
+    """
+    parts = version.strip().split(".")
+    if len(parts) == 3 and all(part.isdigit() for part in parts):
+        year, month, day = (int(part) for part in parts)
+        return f"{year}.{month:02d}.{day:02d}"
+    return version.strip()
 
 
 @dataclass(frozen=True, slots=True)
@@ -388,6 +424,7 @@ class SettingsDialog(QDialog):
         refuse_template: Callable[[str], str | None] | None = None,
         on_ytdlp_update: Callable[[], None] | None = None,
         on_ytdlp_revert: Callable[[], None] | None = None,
+        on_ytdlp_check: Callable[[], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -440,6 +477,12 @@ class SettingsDialog(QDialog):
         #: Whether the yt-dlp in use came from the user's own copy, so reverting means something.
         #: Held here rather than read back off the button — see `show_ytdlp`.
         self._ytdlp_is_user_managed = False
+        self._on_ytdlp_check = on_ytdlp_check
+        #: The three versions the section compares (`T-333`), as reported — never derived here.
+        #: `None` until known: in use from a worker, latest from an explicit check.
+        self._ytdlp_in_use: str | None = None
+        self._ytdlp_latest: str | None = None
+        self._ytdlp_busy = False
 
         self.setObjectName("settingsDialog")
         self.setWindowTitle("Settings")
@@ -1467,34 +1510,32 @@ class SettingsDialog(QDialog):
         box.setObjectName("ytdlpSection")
         layout = QVBoxLayout(box)
 
-        explanation = QLabel(
-            "Sites change constantly, and yt-dlp is what keeps up with them. Updating affects "
-            "downloads only — Tracks & Trails itself is not changed.",
-            box,
+        # **Three versions in a table, newest tagged** (`T-333`, the maintainer's ruling). The
+        # section was a paragraph, one *Version in use* line and a note, and the version was the
+        # thing it hid. In use, bundled and latest now line up so the newest is readable at a
+        # glance; each is a label a user can select for a bug report.
+        grid = QGridLayout()
+        grid.setColumnStretch(1, 1)
+        self._ytdlp_newest: dict[str, QLabel] = {}
+        self._ytdlp_version = self._ytdlp_row(box, grid, 0, "In use", YTDLP_VERSION_NAME, "in_use")
+        self._ytdlp_bundled = self._ytdlp_row(
+            box, grid, 1, "Bundled", YTDLP_BUNDLED_NAME, "bundled"
         )
-        explanation.setObjectName("ytdlpExplanation")
-        explanation.setTextFormat(Qt.TextFormat.PlainText)
-        explanation.setWordWrap(True)
-        layout.addWidget(explanation)
-
-        row = QHBoxLayout()
-        label = QLabel("Version in use", box)
-        label.setObjectName("ytdlpVersionLabel")
-        row.addWidget(label)
-
-        self._ytdlp_version = QLabel(YTDLP_VERSION_UNKNOWN, box)
-        self._ytdlp_version.setObjectName(YTDLP_VERSION_NAME)
-        self._ytdlp_version.setTextFormat(Qt.TextFormat.PlainText)
-        # Selectable because the first thing a bug report needs is this number, and retyping a
-        # version from a screenshot is how a report ends up describing a different release.
-        self._ytdlp_version.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        row.addWidget(self._ytdlp_version)
-        row.addStretch(1)
-        layout.addLayout(row)
+        self._ytdlp_bundled.setText(
+            f"{displayed_version(BASELINE_YTDLP_VERSION)} — {YTDLP_BUNDLED_DETAIL}"
+        )
+        self._ytdlp_latest_label = self._ytdlp_row(
+            box, grid, 2, "Latest", YTDLP_LATEST_NAME, "latest"
+        )
+        self._ytdlp_latest_label.setText(YTDLP_LATEST_UNCHECKED)
+        self._ytdlp_check = QPushButton(YTDLP_CHECK_LABEL, box)
+        self._ytdlp_check.setObjectName(YTDLP_CHECK_NAME)
+        self._ytdlp_check.setAccessibleName("Check for the latest yt-dlp version")
+        self._ytdlp_check.clicked.connect(self._start_ytdlp_check)
+        grid.addWidget(self._ytdlp_check, 2, 2)
+        layout.addLayout(grid)
 
         # **Says when, above the controls it governs** (`T-290`, `OPS-002`'s 2026-08-27 amendment).
-        # Without this the section reads like every other setting and the newer copy looks like a
-        # thing to keep current; with it, the control below is the way out of a site that broke.
         # The wording matches what `error_text` tells a user on the failure that sends them here,
         # so the two surfaces cannot come to describe the same move differently.
         when = QLabel(YTDLP_RECOVERY_NOTE, box)
@@ -1506,6 +1547,8 @@ class SettingsDialog(QDialog):
         self._ytdlp_update = QPushButton(YTDLP_UPDATE_LABEL, box)
         self._ytdlp_update.setObjectName(YTDLP_UPDATE_NAME)
         self._ytdlp_update.setAccessibleName("Update yt-dlp to the latest version")
+        self._ytdlp_update.setAccessibleDescription(YTDLP_UPDATE_EFFECT)
+        self._ytdlp_update.setToolTip(YTDLP_UPDATE_EFFECT)
         # **Quieter than the control beside it, and still a button** (`T-290`). `OPS-002` requires
         # the resolved version visible and revert one action; neither changes. What changes is that
         # this one stops being a peer of *Use the bundled version*. `theme.py` drops its **fill**
@@ -1532,15 +1575,88 @@ class SettingsDialog(QDialog):
         self._ytdlp_note.setWordWrap(True)
         layout.addWidget(self._ytdlp_note)
 
-        # Nothing to revert *to* until a resolution says a user copy is in use, and nothing to
-        # update until composition has supplied a route. Both are re-decided by `show_ytdlp`.
-        self._ytdlp_update.setEnabled(self._on_ytdlp_update is not None)
-        self._ytdlp_revert.setEnabled(False)
+        self._refresh_ytdlp_controls()
         return box
+
+    def _ytdlp_row(
+        self, parent: QWidget, grid: QGridLayout, row: int, title: str, name: str, key: str
+    ) -> QLabel:
+        """One row of the version table: its title, the version, and its *newest* tag beside it.
+
+        The tag sits against the version rather than in a column of its own, where a stretched
+        column put it a hand's width from the number it was about.
+        """
+        heading = QLabel(title, parent)
+        heading.setObjectName(f"{name}Label")
+        grid.addWidget(heading, row, 0)
+        value = QLabel(YTDLP_VERSION_UNKNOWN, parent)
+        value.setObjectName(name)
+        value.setTextFormat(Qt.TextFormat.PlainText)
+        value.setAccessibleName(f"yt-dlp {title.lower()}")
+        # Selectable because the first thing a bug report needs is this number, and retyping a
+        # version from a screenshot is how a report ends up describing a different release.
+        value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        tag = QLabel(YTDLP_NEWEST_TAG, parent)
+        tag.setObjectName(YTDLP_NEWEST_NAMES[key])
+        tag.setProperty("newestTag", True)
+        tag.setHidden(True)
+        self._ytdlp_newest[key] = tag
+        line = QHBoxLayout()
+        line.addWidget(value)
+        line.addWidget(tag)
+        line.addStretch(1)
+        grid.addLayout(line, row, 1)
+        return value
+
+    def _refresh_ytdlp_controls(self) -> None:
+        """Decide every yt-dlp control from the held facts, in one place (`T-333`).
+
+        **Update is offered only when a check has found something newer than what is running** —
+        the ruling, and `OPS-002`'s amendment kept: the newer copy stays a move a user makes on
+        purpose, now with the number in front of them. **Newest is tagged only once Latest is
+        known**, because until then the section cannot say which is newest, only which is newer.
+        """
+        known = self._ytdlp_in_use is not None and self._ytdlp_latest is not None
+        newer = known and normalise_version(self._ytdlp_latest or "") > normalise_version(
+            self._ytdlp_in_use or ""
+        )
+        self._ytdlp_update.setEnabled(
+            bool(newer) and not self._ytdlp_busy and self._on_ytdlp_update is not None
+        )
+        if self._ytdlp_busy:
+            self._ytdlp_update.setText(YTDLP_WORKING_LABEL)
+        elif newer and self._ytdlp_latest is not None:
+            self._ytdlp_update.setText(f"Update to {displayed_version(self._ytdlp_latest)}")
+        else:
+            self._ytdlp_update.setText(YTDLP_UPDATE_LABEL)
+        self._ytdlp_revert.setEnabled(
+            not self._ytdlp_busy
+            and self._ytdlp_is_user_managed
+            and self._on_ytdlp_revert is not None
+        )
+        self._ytdlp_check.setEnabled(not self._ytdlp_busy and self._on_ytdlp_check is not None)
+
+        versions = {
+            "in_use": self._ytdlp_in_use,
+            "bundled": BASELINE_YTDLP_VERSION,
+            "latest": self._ytdlp_latest,
+        }
+        newest = (
+            max(normalise_version(version) for version in versions.values() if version)
+            if self._ytdlp_latest is not None
+            else None
+        )
+        for row, tag in self._ytdlp_newest.items():
+            version = versions[row]
+            tag.setHidden(newest is None or not version or normalise_version(version) != newest)
 
     def _start_ytdlp_update(self) -> None:
         if self._on_ytdlp_update is not None:
             self._on_ytdlp_update()
+
+    def _start_ytdlp_check(self) -> None:
+        if self._on_ytdlp_check is not None:
+            self._on_ytdlp_check()
 
     def _start_ytdlp_revert(self) -> None:
         if self._on_ytdlp_revert is not None:
@@ -1563,18 +1679,27 @@ class SettingsDialog(QDialog):
         `rejected` is for (`ARCHITECTURE.md` §6: reported, never silently ignored).
         """
         self._ytdlp_version.setText(f"{version} — {source}" if source else version)
+        self._ytdlp_in_use = version or None
         # **Held rather than read back off the button.** `show_ytdlp_busy` disables both controls
         # while an operation runs, so asking the widget afterwards whether reverting is available
         # returns *"no"* because it was just switched off — and the button never comes back. The
         # resolution is the fact; the widget is a rendering of it.
         self._ytdlp_is_user_managed = is_user_managed
-        self._ytdlp_revert.setEnabled(is_user_managed and self._on_ytdlp_revert is not None)
+        self._refresh_ytdlp_controls()
         self._ytdlp_note.setText(
             "An installed copy could not be used, so the bundled version is running: "
             + "; ".join(rejected)
             if rejected
             else ""
         )
+
+    def show_ytdlp_latest(self, version: str) -> None:
+        """The newest version PyPI lists, from a check the user asked for (`T-333`, `NFR-007`)."""
+        self._ytdlp_latest = version or None
+        self._ytdlp_latest_label.setText(
+            displayed_version(version) if version else YTDLP_LATEST_UNCHECKED
+        )
+        self._refresh_ytdlp_controls()
 
     def show_ytdlp_problem(self, reason: str) -> None:
         """Say why the last update, revert or check did not happen.
@@ -1591,16 +1716,11 @@ class SettingsDialog(QDialog):
         A positional `bool` because this mirrors the service's `busy_changed(bool)` signal, which
         is what composition connects it to.
         """
-        self._ytdlp_update.setEnabled(not busy and self._on_ytdlp_update is not None)
-        self._ytdlp_revert.setEnabled(
-            not busy and self._ytdlp_is_user_managed and self._on_ytdlp_revert is not None
-        )
-        # **The constant, not the literal it replaced** (`T290-R1`). `T-290` changed the resting
-        # label at construction and left this restoring the old words — and **every settled screen
-        # comes through here**: `MainWindow.open_settings` asks the service to resolve, and both a
-        # resolution and a failure end the busy state, so the label reverted before the user had
-        # done anything at all. The construction-time test could not see it.
-        self._ytdlp_update.setText(YTDLP_WORKING_LABEL if busy else YTDLP_UPDATE_LABEL)
+        # **Every control is re-decided from held state** (`T290-R1`, `T-333`). Every settled screen
+        # comes through here — opening Settings resolves, and both a resolution and a failure end
+        # the busy state — so restoring a literal label here once undid a change the user never saw.
+        self._ytdlp_busy = busy
+        self._refresh_ytdlp_controls()
         if busy:
             self._ytdlp_note.setText("")
 

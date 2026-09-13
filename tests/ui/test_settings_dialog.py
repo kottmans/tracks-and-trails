@@ -66,7 +66,6 @@ from tracks_and_trails.ui.settings_dialog import (
     YTDLP_RECOVERY_NOTE,
     YTDLP_RECOVERY_NOTE_NAME,
     YTDLP_REVERT_NAME,
-    YTDLP_UPDATE_LABEL,
     YTDLP_UPDATE_NAME,
     SettingsDialog,
 )
@@ -1673,6 +1672,8 @@ def test_a_newer_ytdlp_reads_as_recovery_rather_than_a_setting(
     # disables a button whose route is `None`. A user-managed resolution is what enables revert.
     dialog, _asked = screens(on_ytdlp_update=lambda: None, on_ytdlp_revert=lambda: None)
     dialog.show_ytdlp("2026.9.1", "user-managed copy (OPS-002)", is_user_managed=True)
+    # `T-333`: Update is offered only once a check has found something newer than what runs.
+    dialog.show_ytdlp_latest("2026.9.20")
     update = dialog.findChild(QPushButton, YTDLP_UPDATE_NAME)
     revert = dialog.findChild(QPushButton, YTDLP_REVERT_NAME)
     note = dialog.findChild(QLabel, YTDLP_RECOVERY_NOTE_NAME)
@@ -1697,7 +1698,7 @@ def test_a_newer_ytdlp_reads_as_recovery_rather_than_a_setting(
     # **Still a control, not prose.** The failure message points a user at this screen; a note
     # where the button was would leave that advice with nothing to act on. That it *acts* is
     # `test_pressing_update_asks_composition_to_do_it`'s claim, not a tautology's (`T290-R2`).
-    assert update.text() == YTDLP_UPDATE_LABEL
+    assert update.text() == "Update to 2026.09.20", "the control does not name what it installs"
     assert update.accessibleName(), "the control lost the name a screen reader announces"
 
     # **Rendered, under each palette** (`T290-R2`). A centre pixel of each button is its fill:

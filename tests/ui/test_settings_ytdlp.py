@@ -18,6 +18,10 @@ import pytest
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
 from tracks_and_trails.ui.settings_dialog import (
+    YTDLP_CHECK_NAME,
+    YTDLP_LATEST_NAME,
+    YTDLP_LATEST_UNCHECKED,
+    YTDLP_NEWEST_NAMES,
     YTDLP_NOTE_NAME,
     YTDLP_REVERT_NAME,
     YTDLP_UPDATE_LABEL,
@@ -26,6 +30,7 @@ from tracks_and_trails.ui.settings_dialog import (
     YTDLP_VERSION_UNKNOWN,
     YTDLP_WORKING_LABEL,
     SettingsDialog,
+    displayed_version,
 )
 
 
@@ -196,8 +201,14 @@ def test_a_finished_operation_on_the_baseline_still_offers_no_revert(
 def test_pressing_update_asks_composition_to_do_it(
     screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
 ) -> None:
-    """The screen owns no network and no filesystem; it asks."""
+    """The screen owns no network and no filesystem; it asks.
+
+    **Once a check has found something newer** (`T-333`): before that, there is nothing to say the
+    update would change anything, and the button is withdrawn rather than left to do nothing.
+    """
     screen, asked = screens()
+    screen.show_ytdlp("2026.08.19", "bundled baseline", is_user_managed=False)
+    screen.show_ytdlp_latest("2026.9.2")
 
     control(screen, QPushButton, YTDLP_UPDATE_NAME).click()
 
@@ -261,10 +272,12 @@ def test_the_section_says_updating_does_not_change_the_application(
     """`REQ-025` is explicit — *"without reinstalling Tracks & Trails"* — and the screen is where
     a user decides whether pressing the button is safe."""
     screen, _ = screens()
+    update = control(screen, QPushButton, YTDLP_UPDATE_NAME)
 
-    explanation = control(screen, QLabel, "ytdlpExplanation").text()
-
-    assert "Tracks & Trails itself is not changed" in explanation
+    # **On the control it is about, since `T-333`** — the paragraph it lived in hid the version,
+    # and a tooltip and an accessible description reach both a pointer and a screen reader.
+    assert "Tracks & Trails itself is not changed" in update.toolTip()
+    assert "Tracks & Trails itself is not changed" in update.accessibleDescription()
 
 
 def test_the_recovery_label_survives_every_settled_screen(
@@ -311,3 +324,100 @@ def test_the_recovery_label_survives_every_settled_screen(
     assert control(screen, QPushButton, YTDLP_REVERT_NAME).isEnabled(), (
         "reverting was lost, so this asserts the label on a screen that is broken another way"
     )
+
+
+# --- T-333: in use, bundled and latest, side by side ---------------------------------------------
+
+
+def test_latest_is_not_checked_until_someone_asks(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """`NFR-007` permits an *explicit* check. The screen opening is not one."""
+    screen, asked = screens(on_ytdlp_check=lambda: None)
+
+    assert control(screen, QLabel, YTDLP_LATEST_NAME).text() == YTDLP_LATEST_UNCHECKED
+    assert asked["calls"] == []
+
+
+def test_the_bundled_row_shows_the_pin_as_yt_dlp_spells_versions() -> None:
+    """`2026.8.19` from the pin and `2026.08.19` from a worker are one release, so they must look
+    like one — or the table invents a difference where the maintainer wanted to see none."""
+    assert displayed_version("2026.8.19") == "2026.08.19"
+    assert displayed_version("2026.08.19") == "2026.08.19"
+    assert displayed_version("2026.8.19.dev3") == "2026.8.19.dev3"
+
+
+def test_pressing_check_asks_composition_and_is_withdrawn_while_busy(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    calls: list[str] = []
+    screen, _ = screens(on_ytdlp_check=lambda: calls.append("check"))
+    check = control(screen, QPushButton, YTDLP_CHECK_NAME)
+
+    check.click()
+    assert calls == ["check"]
+
+    screen.show_ytdlp_busy(True)
+    assert not check.isEnabled(), "Check stayed pressable while an operation was running"
+    screen.show_ytdlp_busy(False)
+    assert check.isEnabled()
+
+
+@pytest.mark.parametrize(
+    ("in_use", "latest", "offered"),
+    [
+        ("2026.08.19", None, False),
+        ("2026.08.19", "2026.8.19", False),
+        ("2026.09.02", "2026.8.19", False),
+        ("2026.08.19", "2026.9.2", True),
+    ],
+    ids=["unchecked", "same", "in-use-newer", "latest-newer"],
+)
+def test_update_is_offered_only_when_latest_is_newer_than_what_runs(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+    in_use: str,
+    latest: str | None,
+    offered: bool,
+) -> None:
+    """The maintainer's ruling: an update button with nothing newer behind it does nothing useful.
+
+    Compared by value, so the padded and unpadded spellings of one release are not *newer*.
+    """
+    screen, _ = screens()
+    screen.show_ytdlp(in_use, "bundled baseline", is_user_managed=False)
+    if latest is not None:
+        screen.show_ytdlp_latest(latest)
+    update = control(screen, QPushButton, YTDLP_UPDATE_NAME)
+
+    assert update.isEnabled() is offered
+    if offered:
+        assert update.text() == f"Update to {displayed_version(latest or '')}"
+    else:
+        assert update.text() == YTDLP_UPDATE_LABEL
+
+
+def test_newest_is_tagged_on_every_row_holding_it_and_only_once_latest_is_known(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """*"See at a quick glance what version is the most up to date"* — `T-333`.
+
+    Before a check the screen knows two of the three numbers, so it cannot say which is newest and
+    tags nothing. The in-use version here is newer than the bundled one but older than latest.
+    """
+    screen, _ = screens()
+    screen.show_ytdlp("2099.01.01", "user-managed copy (OPS-002)", is_user_managed=True)
+
+    def tagged() -> set[str]:
+        return {
+            row
+            for row, name in YTDLP_NEWEST_NAMES.items()
+            if not control(screen, QLabel, name).isHidden()
+        }
+
+    assert tagged() == set(), "a row was called newest before anybody checked"
+
+    screen.show_ytdlp_latest("2099.2.1")
+    assert tagged() == {"latest"}
+
+    screen.show_ytdlp_latest("2099.1.1")
+    assert tagged() == {"in_use", "latest"}, "an equal version was not also newest"

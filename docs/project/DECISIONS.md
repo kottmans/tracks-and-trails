@@ -49,7 +49,7 @@ Current requirements and architecture retain their own canonical authority.
 | [ARC-002](#arc-002--consume-yt-dlp-as-a-library-inside-one-isolated-child-process-per-job) | Consume yt-dlp as a library inside one isolated child process per job | Accepted | [ARC-003](#arc-003--versioned-in-arc-002-means-version-controlled-not-version-negotiated) |
 | [DAT-001](#dat-001--sqlite-for-queue-and-history-toml-for-settings) | SQLite for queue and history; TOML for settings | Accepted | [Amended 2026-08-06 (second, and current)](#amended-2026-08-06-second-and-current--there-is-no-history-to-store); [Amended 2026-08-06 (first, superseded)](#amended-2026-08-06-first-superseded--history-is-a-private-ledger-and-the-storage-choice-is-unchanged) |
 | [OPS-001](#ops-001--ffmpeg-is-an-external-dependency-detected-on-linux-bundled-on-windows) | ffmpeg is an external dependency: detected on Linux, bundled on Windows | Accepted | — |
-| [OPS-002](#ops-002--ship-a-pinned-yt-dlp-baseline-that-the-user-can-update-in-place) | Ship a pinned yt-dlp baseline that the user can update in place | Accepted | [Amended 2026-08-27](#amended-2026-08-27--the-override-is-recovery-not-a-standing-choice) |
+| [OPS-002](#ops-002--ship-a-pinned-yt-dlp-baseline-that-the-user-can-update-in-place) | Ship a pinned yt-dlp baseline that the user can update in place | Accepted | [Amended 2026-09-12](#amended-2026-09-12--the-three-versions-side-by-side-and-update-only-to-something-newer); [Amended 2026-08-27](#amended-2026-08-27--the-override-is-recovery-not-a-standing-choice) |
 | [REL-003](#rel-003--semver-and-the-first-release-is-010) | SemVer, and the first release is `0.1.0` | Accepted | — |
 | [REL-004](#rel-004--the-linux-artifact-ships-as-an-appimage) | The Linux artifact ships as an AppImage | Accepted | — |
 | [REL-005](#rel-005--the-first-windows-installer-ships-unsigned) | The first Windows installer ships unsigned | Accepted | — |
@@ -709,6 +709,23 @@ Detect-and-degrade rather than fail-at-merge-time matters: discovering the probl
 
 **Status:** Accepted
 **Date:** 2026-07-25
+
+### Amended 2026-09-12 — the three versions side by side, and update only to something newer
+
+**Status:** **Accepted** — maintainer decision, from `T-327`'s session, taken from the Implementer's
+recommendation. Built by `T-333`.
+
+The maintainer, in Windows Sandbox: the section should make *"more obvious what version you have,
+what the bundled version is and what the latest is"*, and its text *"kind of hides it"*. So the
+Settings section is a table — **in use, bundled, latest** — with the newest tagged, one line of
+help, and **Update enabled only once a check has found a release newer than the one in use**,
+labelled with that version.
+
+- **Latest is fetched only when the user presses Check.** `NFR-007` permits *explicit* update
+  checks; a request on opening Settings would not be one, and was the option not taken.
+- **The 2026-08-27 amendment below stands.** Update stays the quieter control; what changed is that
+  the user can now see what it would install before pressing it, which makes it more deliberate,
+  not less.
 
 ### Amended 2026-08-27 — the override is recovery, not a standing choice
 

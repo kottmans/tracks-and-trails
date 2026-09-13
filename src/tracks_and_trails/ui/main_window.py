@@ -599,6 +599,9 @@ class MainWindow(QMainWindow):
             ytdlp.reported.connect(self._on_ytdlp_reported)
             ytdlp.failed.connect(self._on_ytdlp_failed)
             ytdlp.busy_changed.connect(self._on_ytdlp_busy)
+            # `T-333`: an explicit check, and an install, both say what the newest release is.
+            ytdlp.checked.connect(self._on_ytdlp_latest)
+            ytdlp.installed.connect(self._on_ytdlp_latest)
         #: The cache root both thumbnail stores write under (`T-180`). Composition derives it from
         #: the database so two permitted instances stop sweeping each other's pictures; this window
         #: only carries it to the two widgets that fetch, and never learns what a database is.
@@ -1929,6 +1932,7 @@ class MainWindow(QMainWindow):
             refuse_template=self._refuse_template,
             on_ytdlp_update=None if self._ytdlp is None else self._ytdlp.install_latest_version,
             on_ytdlp_revert=None if self._ytdlp is None else self._ytdlp.revert,
+            on_ytdlp_check=None if self._ytdlp is None else self._ytdlp.check_latest_version,
             parent=self,
         )
         self._settings_dialog = dialog
@@ -1956,6 +1960,12 @@ class MainWindow(QMainWindow):
             is_user_managed=bool(getattr(resolution, "is_user_managed", False)),
             rejected=tuple(getattr(resolution, "rejected", ())),
         )
+
+    def _on_ytdlp_latest(self, release: object) -> None:
+        """Pass the newest release a check or an install found to the open screen (`T-333`)."""
+        dialog = self._settings_dialog
+        if dialog is not None:
+            dialog.show_ytdlp_latest(str(getattr(release, "version", "")))
 
     def _on_ytdlp_failed(self, reason: str) -> None:
         dialog = self._settings_dialog

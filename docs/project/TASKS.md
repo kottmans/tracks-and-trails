@@ -14,6 +14,53 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-333 — The yt-dlp section says which version is newest at a glance
+
+**Status:** **In Review** — ruled 2026-09-12 (a table with a Check button, the Implementer's
+recommendation), recorded as `OPS-002`'s 2026-09-12 amendment, and built the same day. Filed from
+`T-327`'s session.
+**Owner:** Implementer designs; Maintainer rules
+**Priority:** Medium
+**Phase:** Phase 5
+**Relevant context:** `OPS-002` and its 2026-08-27 amendment (`T-290`: updating is a recovery move,
+not upkeep); `NFR-007` (*"explicit yt-dlp update checks"* — a check on opening Settings would not be
+explicit); `REQ-025` (the version shown is the one a worker imported)
+**Affected surfaces:** `ui/settings_dialog.py`'s yt-dlp group
+
+The maintainer, in the Sandbox: *"it should be more obvious what version you have, what the bundled
+version is and what the latest is … There's also a wall of text there that kind of hides it."*
+
+Today the group is three paragraphs and one `Version in use` line. **The latest version is known to
+nobody until a network request is made**, and `NFR-007` allows that only as an explicit check —
+so a *Latest* row either waits for a button press or the requirement is amended.
+
+#### Built 2026-09-12
+
+- **`YtdlpService.check_latest_version`** asks PyPI through the existing `latest_release` and emits
+  `checked`; it holds no workers and writes nothing, which its test asserts with holds refused and
+  the directory absent. An install's `installed` also reports the newest release to the screen.
+- **The section** is a grid: *In use* (from a worker, unchanged), *Bundled* (the pin, spelt the way
+  yt-dlp prints versions), *Latest* (*Not checked* until **Check**). A **newest** tag sits beside
+  every row holding the newest version, and only once Latest is known.
+- **Update** is enabled only when Latest is newer than In use, compared by value, and reads
+  *Update to 2026.09.02*. The three paragraphs became one line; *tested with this application* is
+  the bundled row's detail, and *updating affects downloads only* is the button's tooltip and
+  accessible description.
+- **Tests**: the service check; the composed screen reaching the service through Check and Update
+  (and not checking on opening); unchecked, same, in-use-newer and latest-newer; tags before and
+  after a check. **Mutated**: Update enabled without anything newer (3 failures); tags shown before
+  a check (1).
+
+#### Acceptance criteria
+
+- [x] In use, bundled and latest are shown together, and the newest is tagged
+- [x] Latest is fetched only on an explicit Check (`NFR-007`)
+- [x] Update is offered only when latest is newer than what runs
+- [x] The wall of text is gone, and what it said is still somewhere true
+- [ ] Seen on the Windows installed build
+
+---
+
 ### T-334 — A started queue stops itself once it has nothing left to do
 
 **Status:** **In Review** — ruled 2026-09-12 (stop when drained, the Implementer's recommendation),
@@ -3318,24 +3365,6 @@ evidence than a Phase 4 run would have been.
 
 
 
-
-### T-333 — The yt-dlp section should say which version is newest at a glance
-
-**Status:** Proposed — filed 2026-09-12 from `T-327`'s session; **needs a ruling** before it is Ready
-**Owner:** Implementer designs; Maintainer rules
-**Priority:** Medium
-**Phase:** Phase 5
-**Relevant context:** `OPS-002` and its 2026-08-27 amendment (`T-290`: updating is a recovery move,
-not upkeep); `NFR-007` (*"explicit yt-dlp update checks"* — a check on opening Settings would not be
-explicit); `REQ-025` (the version shown is the one a worker imported)
-**Affected surfaces:** `ui/settings_dialog.py`'s yt-dlp group
-
-The maintainer, in the Sandbox: *"it should be more obvious what version you have, what the bundled
-version is and what the latest is … There's also a wall of text there that kind of hides it."*
-
-Today the group is three paragraphs and one `Version in use` line. **The latest version is known to
-nobody until a network request is made**, and `NFR-007` allows that only as an explicit check —
-so a *Latest* row either waits for a button press or the requirement is amended.
 
 ### T-328 — The first release
 

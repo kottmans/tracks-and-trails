@@ -75,7 +75,7 @@ from tracks_and_trails.downloader.protocol import (
     Succeeded,
     WorkerFinished,
 )
-from tracks_and_trails.downloader.ytdlp_service import Resolution, YtdlpService
+from tracks_and_trails.downloader.ytdlp_service import Release, Resolution, YtdlpService
 from tracks_and_trails.persistence import db
 from tracks_and_trails.persistence.repositories import JobRepository
 from tracks_and_trails.ui import theme as ui_theme
@@ -96,6 +96,7 @@ from tracks_and_trails.ui.settings_dialog import (
     PROXY_NAME,
     RATE_LIMIT_NAME,
     RETRIES_NAME,
+    YTDLP_CHECK_NAME,
     YTDLP_REVERT_NAME,
     YTDLP_UPDATE_NAME,
     YTDLP_VERSION_NAME,
@@ -128,6 +129,9 @@ class QuietYtdlp(YtdlpService):
 
     def revert(self) -> None:
         self.asked.append("revert")
+
+    def check_latest_version(self) -> None:
+        self.asked.append("check")
 
 
 # --- children the composed application spawns -------------------------------------------------
@@ -1015,14 +1019,28 @@ def test_the_settings_screen_composition_opens_can_actually_update_ytdlp(
     screen = composition.window.open_settings()
     assert screen is not None
 
-    update = screen.findChild(QPushButton, YTDLP_UPDATE_NAME)
-    assert update is not None, "the composed settings screen has no yt-dlp update control"
-    assert update.isEnabled(), "composition opened the screen with nothing behind the update"
     service = composition.window._ytdlp
     assert isinstance(service, QuietYtdlp)
     assert service.asked == ["refresh"], (
-        "opening the screen did not ask which yt-dlp is in use, so it would show nothing"
+        "opening the screen did not ask which yt-dlp is in use, so it would show nothing — "
+        "or it checked PyPI on opening, which NFR-007 allows only when asked"
     )
+
+    # `T-333`: *Check* reaches the service, and what the service reports reaches the screen.
+    check = screen.findChild(QPushButton, YTDLP_CHECK_NAME)
+    assert check is not None and check.isEnabled(), "composition wired nothing behind Check"
+    check.click()
+    assert service.asked == ["refresh", "check"]
+
+    service.reported.emit(Resolution(version="2026.08.19", source="bundled baseline"))
+    service.checked.emit(
+        Release(version="2026.9.2", url="https://example.invalid/w.whl", digest="0", filename="w")
+    )
+    update = screen.findChild(QPushButton, YTDLP_UPDATE_NAME)
+    assert update is not None, "the composed settings screen has no yt-dlp update control"
+    assert update.isEnabled(), "a newer release reached the screen and nothing is behind Update"
+    update.click()
+    assert service.asked == ["refresh", "check", "install"]
 
 
 def test_a_reported_resolution_reaches_the_open_settings_screen(
