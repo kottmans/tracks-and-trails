@@ -4812,6 +4812,134 @@ def test_a_started_queue_stops_once_its_last_download_has_ended(
         assert spin(lambda: download.is_idle, timeout=60)
 
 
+def child_gated_by_barriers(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """A session that waits for its test to say when, for `T334-R1`'s orderings.
+
+    Each job's output directory is its own. A probe waits for `probe-go` there and a download for
+    `download-go`, when those files are named in `hold-*`; a probe listed in `fail-first` reports a
+    network failure on its first attempt, so an automatic retry is due.
+    """
+    import time as clock
+
+    from tracks_and_trails.core.models import MediaInfo
+    from tracks_and_trails.downloader.protocol import Failed
+
+    directory = Path(request.output_directory)
+    lane = "probe" if kind is SessionKind.PROBE else "download"
+    attempts = directory / f"{lane}-attempts"
+    attempt = int(attempts.read_text()) + 1 if attempts.exists() else 1
+    attempts.write_text(str(attempt))
+    if kind is SessionKind.PROBE and (directory / "fail-first").exists() and attempt == 1:
+        queue.put(
+            Failed(job_id=job_id, kind=ErrorKind.NETWORK, message="temporary network failure")
+        )
+    else:
+        if (directory / f"hold-{lane}").exists():
+            deadline = clock.monotonic() + 60
+            while not (directory / f"{lane}-go").exists() and clock.monotonic() < deadline:
+                clock.sleep(0.05)
+        if kind is SessionKind.PROBE:
+            queue.put(Probed(job_id=job_id, media=MediaInfo(url=request.url, title=job_id)))
+        else:
+            queue.put(
+                Succeeded(job_id=job_id, output_path=str(directory / "clip.mp4"), total_bytes=10)
+            )
+    queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+    queue.close()
+    queue.join_thread()
+
+
+def durable_and_ready(tmp_path: Path, repository: FakeRepository) -> tuple[Path, Path]:
+    """A restored `QUEUED` row, which probes and then downloads, and a `READY` row beside it."""
+    slow, fast = tmp_path / "slow", tmp_path / "fast"
+    for directory in (slow, fast):
+        directory.mkdir()
+    base = make_job("unused", "https://example.invalid/clip", tmp_path)
+    repository.add(
+        replace(base, id="slow", request=replace(base.request, output_directory=str(slow)))
+    )
+    repository.add(
+        replace(
+            base,
+            id="fast",
+            status=JobStatus.READY,
+            queue_position=1,
+            request=replace(base.request, output_directory=str(fast)),
+        )
+    )
+    return slow, fast
+
+
+def test_a_durable_probe_still_running_keeps_the_queue_started(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """**`T334-R1`.** A download finishing while a queued row is still being probed.
+
+    That probe owes a download — `_probe_settled` admits it — so it is queue work, unlike a staged
+    paste. The first version counted DOWNLOAD sessions only, stopped the queue here, and parked the
+    probe's download behind a Stop nobody pressed. This is the reviewer's reproduction as a test.
+    """
+    repository = FakeRepository()
+    slow, _fast = durable_and_ready(tmp_path, repository)
+    (slow / "hold-probe").touch()
+    download = DownloadManager(repository, entry_point=child_gated_by_barriers, concurrency=2)
+    announced: list[bool] = []
+    download.queue_running.connect(announced.append)
+    try:
+        download.admit_when_started("slow", SessionKind.PROBE)
+        download.admit_when_started("fast", SessionKind.DOWNLOAD)
+        download.start_queue()
+        assert spin(lambda: repository.jobs["fast"].status is JobStatus.COMPLETED, timeout=60)
+        assert spin(lambda: "fast" not in download._sessions, timeout=60)
+        assert "slow" in download._sessions, "the durable probe was not still running"
+        assert not spin(lambda: not download.is_running, timeout=2), (
+            "a download ended while a queued row was still being probed, and the queue stopped"
+        )
+
+        (slow / "probe-go").touch()
+        assert spin(lambda: repository.jobs["slow"].status is JobStatus.COMPLETED, timeout=60), (
+            f"the probed row never downloaded: {repository.jobs['slow'].status}"
+        )
+        assert spin(lambda: not download.is_running, timeout=60)
+        assert announced == [True, False], announced
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_durable_probe_due_a_retry_keeps_the_queue_started(
+    tmp_path: Path, spin: Callable[..., bool], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T334-R1`'s retry variant: the queued row's probe failed and is counting down to a retry."""
+    quick_backoff(monkeypatch, seconds=3.0)
+    repository = FakeRepository()
+    slow, fast = durable_and_ready(tmp_path, repository)
+    (slow / "fail-first").touch()
+    (fast / "hold-download").touch()
+    download = DownloadManager(repository, entry_point=child_gated_by_barriers, concurrency=2)
+    try:
+        download.admit_when_started("slow", SessionKind.PROBE)
+        download.admit_when_started("fast", SessionKind.DOWNLOAD)
+        download.start_queue()
+        assert spin(lambda: "slow" in download._retry_at, timeout=60), "no retry was scheduled"
+
+        (fast / "download-go").touch()
+        assert spin(lambda: "fast" not in download._sessions, timeout=60)
+        assert "slow" in download._retry_at, "the retry fired before the download ended"
+        assert not spin(lambda: not download.is_running, timeout=1), (
+            "a download ended while a queued row's probe was due a retry, and the queue stopped"
+        )
+        assert spin(lambda: repository.jobs["slow"].status is JobStatus.COMPLETED, timeout=60), (
+            f"the retried row never downloaded: {repository.jobs['slow'].status}"
+        )
+        assert spin(lambda: not download.is_running, timeout=60)
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
 def test_start_on_an_empty_queue_waits_for_what_is_added(
     tmp_path: Path, media_url: Callable[..., str], spin: Callable[..., bool]
 ) -> None:

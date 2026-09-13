@@ -64,7 +64,8 @@ so a *Latest* row either waits for a button press or the requirement is amended.
 ### T-334 — A started queue stops itself once it has nothing left to do
 
 **Status:** **In Review** — ruled 2026-09-12 (stop when drained, the Implementer's recommendation),
-recorded as `UX-006`'s 2026-09-12 amendment, and built the same day. Filed from `T-327`'s session.
+recorded as `UX-006`'s 2026-09-12 amendment, and built the same day. **`T334-R1` corrected
+2026-09-13**, below. Filed from `T-327`'s session.
 **Owner:** Maintainer rules; Implementer builds
 **Priority:** Medium
 **Phase:** Phase 5
@@ -92,10 +93,29 @@ both with synchronous writes and with the failure confirmed 1.5 s late. **Each c
 each killed**: dropping the retry clause (3 failures), the in-flight-write clause (2), the re-check
 when a chain empties (2), or the ended-download arming (1).
 
+#### 2026-09-13 — `T334-R1`: a durable probe is queue work
+
+**The reviewer was right, and reproduced it with real spawned workers.** `_has_download_work`
+counted DOWNLOAD sessions, waiting downloads and download retries — on the reasoning that a probe is
+never gated and so is not queue work. That holds for a **staged** probe, the add dialog reading a
+paste, and not for a **durable** one: a restored `QUEUED` row or a playlist entry probes first, and
+`_probe_settled` then admits its download. A download finishing while such a probe ran stopped the
+queue, and the probe's download waited `Held` behind a Stop nobody pressed.
+
+**Corrected by what distinguishes them, which is staging, not the session kind.** Every job in every
+collection counts — running or reserved, waiting, due a retry — unless it is in `_staged`. The
+in-flight-write clause is unchanged.
+
+**Tests, with real spawned children gated by barrier files:** a durable probe still running when a
+`READY` row's download ends, and a durable probe **due an automatic retry** at that moment. Both
+keep the queue started, then download the probed row, then stop. **Mutation:** restoring the
+download-only counting fails both; the earlier four tests still pass.
+
 #### Acceptance criteria
 
 - [x] A queue stops when its last download ends with nothing waiting, due or held
-- [x] Start on an empty queue does not undo itself; a probe does not stop a queue
+- [x] Start on an empty queue does not undo itself; a staged probe does not stop a queue, and a
+      durable probe — running or due a retry — keeps it started (`T334-R1`)
 - [x] An automatic retry that is due keeps the queue started
 - [x] `UX-006` amended; `REQ-015`'s gate paragraph updated
 

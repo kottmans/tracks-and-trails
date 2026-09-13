@@ -750,10 +750,15 @@ class DownloadManager(QObject):
         self._fill_free_slots()
 
     def _has_download_work(self) -> bool:
-        """Whether any download is running, reserved, waiting, due a retry or held for Start.
+        """Whether any **queued** job is running, reserved, waiting, due a retry or held for Start.
 
-        **Downloads only.** A probe is never gated (`UX-006` item 5), so a paste being read in the
-        add dialog is not queue work and must not keep a finished queue running.
+        **Staged pastes are the only exclusion, and the kind of session is no guide** (`T334-R1`).
+        This first counted DOWNLOAD sessions only, on the reasoning that a probe is never gated and
+        so is not queue work. That is true of a *staged* probe — the add dialog reading a paste,
+        which commits nothing — and false of a **durable** one: a restored `QUEUED` row or a
+        playlist entry probes first and `_probe_settled` then admits its download. So a download
+        finishing while such a probe ran stopped the queue, and the probe's download was parked
+        behind a Stop nobody pressed. The reviewer reproduced it with real spawned workers.
 
         **A write still in flight counts, for any job.** A failed download's automatic retry is
         scheduled in the `then` of the write recording the failure, and a due retry is re-started
@@ -761,10 +766,14 @@ class DownloadManager(QObject):
         callback, or between the backoff expiring and the start, the job is in no collection
         below and only its chain says the work is not over.
         """
+
+        def queued(job_id: str) -> bool:
+            return job_id not in self._staged
+
         return bool(
-            self._occupant_ids(SessionKind.DOWNLOAD)
-            or any(self._wants(job_id) is SessionKind.DOWNLOAD for job_id in self._waiting)
-            or any(self._wants(job_id) is SessionKind.DOWNLOAD for job_id in self._retry_at)
+            any(queued(job_id) for job_id in self._occupant_ids())
+            or any(queued(job_id) for job_id in self._waiting)
+            or any(queued(job_id) for job_id in self._retry_at)
             or self._held_for_start
             or self._chains
         )
