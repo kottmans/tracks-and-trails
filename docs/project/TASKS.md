@@ -1756,7 +1756,7 @@ own words.
 
 **Item 1 is confirmed** on the rebuilt installer: no install-mode question, and the wizard artwork
 sharp at Inno 6.7's real slot sizes. Then, using the installed application in Sandbox, the
-maintainer found **seven defects**, none visible to an automated run. Each is fixed, pushed and
+maintainer found **six defects**, none visible to an automated run. Each is fixed, pushed and
 tested; the review record will cite them.
 
 | Found | Cause | Commit |
