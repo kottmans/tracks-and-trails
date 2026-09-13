@@ -18,8 +18,8 @@ is for. The sizes are the ones Inno Setup documents for `WizardStyle=modern` at 
 
 - **Small** — the top-right corner of every inner page. White, because that is the page header's
   own colour, so the logo sits on the page rather than in a box.
-- **Large** — the left panel of the finished page. The application's light window colour
-  (`ui/theme.py`), a shade off the white page, so it reads as a deliberate panel.
+- **Large** — the left panel of the finished page, on warm sand, so it reads as a deliberate
+  panel beside the white page.
 
 **Light only.** The masters are the pack's *Brand-OnLight* cut: dark green and gold that disappear
 on a dark panel. The installer uses the light modern style, so that is the right pairing.
@@ -48,8 +48,12 @@ LARGE_SIZES = ((164, 314), (246, 459), (328, 604), (410, 797))
 #: The inner-page header is the window colour, which is white in the light modern style.
 SMALL_GROUND = QColor("#FFFFFF")
 
-#: `ui/theme.py` LIGHT `window` — a deliberate panel beside a white page, not a stock grey.
-LARGE_GROUND = QColor("#F5F7F4")
+#: Warm sand, chosen by the maintainer on 2026-09-12 from four rendered options beside a mock
+#: wizard page: pale green, warm sand, brand green and deep evergreen. It picks up the trail's gold
+#: and reads as a deliberate panel beside the white page, and it keeps the *Brand-OnLight* logo, so
+#: no second master is needed. (The first cut used the app's near-white window colour, which was
+#: too faint to read as a background at all.)
+LARGE_GROUND = QColor("#F3EBDA")
 
 #: How much of the large panel's width the logo's **ink** takes, and where its centre sits.
 #:
