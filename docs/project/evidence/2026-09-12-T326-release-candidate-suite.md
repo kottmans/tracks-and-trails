@@ -94,7 +94,7 @@ was never owed.
 |---|---|
 | 1 · static gates, both platforms | the `ruff`/`mypy` steps' run id **at the RC commit** |
 | 2 · full default suite, both platforms | the `linux` and `windows desktop` job ids at the RC commit |
-| 8 · frozen smoke on the release builds | `T-324`'s `build-linux` / `build-windows` probe steps **for launch, the real download and no recursive launch** — *and a sitting for "cancel another" and a normal exit*, which no probe performs (`T326-R2`; the row said the probe steps covered the whole item) |
+| 8 · frozen smoke on the release builds | `T-324`'s `build-linux` / `build-windows` probe steps **for launch and no recursive launch**; **the real download from the candidate's clean-machine transfer** (`T-318`'s `--download-probe` evidence), which those offline probe steps do not perform; *and a sitting for "cancel another" and a normal exit*, which no probe performs (`T326-R2`, `T326-R3`; the row first said the probe steps covered the whole item, then credited them with the download) |
 | 10 · in-app yt-dlp update from the release artifact | `T-324`'s `--ytdlp-update-probe` step |
 
 **Items 8 and 10 have been run by hand on the release artifacts** — 5 of 5 probes on the Windows

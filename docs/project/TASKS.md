@@ -2249,9 +2249,11 @@ The release gate's machine half, run **against the candidate** rather than again
 - Item 5: **the migration check is `N/A` for a first release and says so** — there is no previous
   release's database. The obligation is written into `docs/RELEASE.md` for `0.2`: keep a `0.1.0`
   database fixture and open it
-- Item 8: the frozen smoke, on the **release** builds — `T-324`'s probes cover launch, the real
-  download and no recursive launch, and the record is the run id; **"cancel another" and a normal
-  exit are a sitting**, which no probe performs (`T326-R2`)
+- Item 8: the frozen smoke, on the **release** builds — `T-324`'s probe steps cover launch and no
+  recursive launch, and the record is the run id; **the real download is the clean-machine
+  transfer** of `T-318`'s evidence for that candidate (`--download-probe`, which `T-324` does not
+  run); **"cancel another" and a normal exit are a sitting**, which no probe performs (`T326-R2`,
+  `T326-R3` — this credited `T-324`'s offline probes with the download)
 - Item 10: the in-app yt-dlp update from the release artifact — `T-324` runs the probe; the record
   is the run id
 - Item 10a: only if the baseline is bumped in this release — **and for `0.1.0` it is**: `T-332`
