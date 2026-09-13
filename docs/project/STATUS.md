@@ -33,8 +33,6 @@ facts live in the task and review records it summarised.*
   a working menu entry.
 - **Waiting on the maintainer**, and not implementable around:
   - `T039-R2` — whether candidate-only Sandbox gates replace `T-039`'s per-push CI criterion;
-  - `T325-R2` — cold starts need reboots, and the criterion asks for five cold and five warm samples
-    per platform, with the installed Windows artifact identified;
   - `T-327` items 2–6 — the manual Windows session; `T-333`'s installed-build observation rides it,
     and `T-322`'s SmartScreen screenshot can be taken in the same sitting;
   - the first `v*` tag, which `T-324`'s draft run and `T-326`'s candidate items need.

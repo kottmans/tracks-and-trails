@@ -14,6 +14,165 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-325 — Cold start, measured on the artifact that ships
+
+**Status:** **In Review** — `T325-R1` corrected, and **`T325-R2` settled by the maintainer's ruling
+of 2026-09-13**: `0.1.0` ships on the startup numbers already measured, recorded as
+[`REL-008`'s amendment](DECISIONS.md#amended-2026-09-13--0-1-0-ships-on-the-startup-numbers-already-measured)
+with the gaps it accepts — no Linux cold sample, and a Windows cold figure that names no artifact.
+*(Was In Progress: neither requirement shown met, pending reboots.)* *(Said `NFR-002` "is met with
+roughly 5× margin" and that every measurement clears `NFR-010` — claims about cold starts made from
+warm and first-touch numbers, and one unidentified build.)* Filed 2026-09-11 with the Phase 5 plan.
+
+#### 2026-09-12 — the numbers, and the one that is over the bound
+
+Full captures in
+[`evidence/2026-09-12-T325-startup-times.md`](evidence/2026-09-12-T325-startup-times.md).
+
+| | cold (after reboot) | first run (fresh build) | warm median | `NFR-002` |
+|---|---|---|---|---|
+| Linux AppImage, reference machine | not taken | 1.077 s | **0.634 s** | within |
+| Windows release build, `STARBASE` | **3.976 s** | **3.780** / **4.656 s** | **1.550 s** | **not met** |
+
+**The cold number is the maintainer's own measurement**, taken seconds after `Restart-Computer`
+and before anything else was launched — the one run neither the implementer nor CI can take, since
+a reboot kills the runner and the session driving it. One run by construction: a second launch is
+no longer cold.
+
+**Instrumented, not timed by hand**, which the scope asks for in terms. `core.startup
+.record_first_paint` writes one wall-clock line when the compositor confirms the surface is on
+screen; `tools/startup_time.py` takes the other half of the clock before spawning. **`showEvent` is
+deliberately not the hook** — it fires before the window exists on screen, and on Wayland the
+widget is never told at all (`T287-R1`), so this rides the exposure watch that finding installed
+rather than inventing a second notion of *visible*.
+
+**The instrument was checked against a positive before it was trusted**: 0.318 s from source. Its
+first run against an artifact reported *no window after 60s*, which was an AppImage built four
+hours before the recorder existed — the harness reporting an absent instrument rather than a fast
+start, which is the behaviour wanted.
+
+**The finding: the first launch of a freshly written Windows artifact does not meet `NFR-002`, and
+it reproduces.** Two independent builds, 3.780 s and 4.656 s, both over 3 s. A second pass over the
+*same* files minutes later has no outlier at all — so this is a first-touch cost, not variance.
+Defender scanning a newly written 155 MB tree and a cold page cache are the candidates and
+**neither was isolated**; naming one would be a guess.
+
+**That is the state a user's machine is in immediately after the installer writes the files**, which
+is why it is reported as the headline rather than as an outlier next to a passing median. Linux
+shows the same shape — 1.077 s against 0.634 s, a comparable ~1.7× — and stays well inside the
+bound.
+
+**Cold, as the scope defines it, was not measured.** *First launch after a reboot* needs a reboot,
+which kills the `STARBASE` runner, and on Linux additionally `drop_caches`, which needs root.
+Neither is the implementer's to do on a machine somebody is using.
+
+**The freeze costs about 1.9×, against the 2–4× the Risk line anticipated** — 0.33 s from source
+against 0.634 s frozen on Linux. Real in direction, immaterial in absolute terms.
+
+**The harness mislabelled that run, and the fix is recorded because the label matters.** It
+printed *"measuring warm launches"* unconditionally — over the cold number the task had been
+waiting for. A tool cannot tell cold from warm; only the caller knows what state the machine is
+in. `tools/startup_time.py` now takes `--cold` and says which it was told, rather than asserting
+the one it cannot know.
+
+#### 2026-09-12 (final) — the ruling, and a correction to this entry
+
+**This entry said `NFR-002` was not met. That overstated it, and the overstatement is the finding.**
+`NFR-002` reads *"under 3 seconds on the reference **Linux** machine"* — it has never covered
+Windows. `TESTING.md` §8 item 14 said *"the reference machine"*, dropping the word, and a Windows
+figure was duly reported against a Linux requirement as a failure. **Linux passes with about five
+times the margin.** The defect was a gate item disagreeing with the requirement it cites, which is
+the class this project keeps finding — and this time in a document rather than in code.
+
+**Ruled by the maintainer 2026-09-12**, recorded as `REL-008`:
+
+| | number | measured | verdict |
+|---|---|---|---|
+| Linux, `NFR-002` (unchanged) | 3 s | 0.634 s warm, 1.077 s first-touch | ~~met~~ **not shown** — no cold sample (`T325-R2`) |
+| Windows, `NFR-010` (new) | **5 s** | **3.976 s cold**, 4.656 s worst first launch | ~~met~~ **not shown** — the cold run names no artifact (`T325-R2`) |
+
+**Five seconds rather than four, from the measurements**: 4 s clears the cold figure by 24 ms,
+which is a coin toss on a busy machine rather than a bound. §8 item 14 now names both platforms and
+is executable — `tools/startup_time.py --cold`.
+
+**One measurement is still missing and is not inferred away**: Linux cold, which needs a reboot of
+the machine doing the work. The margin makes it unlikely to matter; that is an inference, written
+as one.
+
+**The rejected alternatives, for the record** — none of them the implementer's to pick:
+
+| Option | What it costs |
+|---|---|
+| **Amend `NFR-002`** to a warm-start bound, stating the cold figure beside it | It is a change of requirement rather than a reading of one — the requirement says cold |
+| **Raise the number** — 4 s covers every measurement taken, 5 s leaves margin on a slower machine | Honest, and the release gate then passes on a number somebody chose |
+| **Attack the cost** | Mostly not ours: a Defender exclusion is not something an artifact can arrange for itself, and 155 MB is what bundling ffmpeg costs. **A one-file build would make it worse**, not better — it trades startup for extraction |
+
+**§8 item 14 no longer reads as a pass on an untested claim**, which was the one outcome ruled out
+from the start: it names the platform, the artifact and the launch, and points at the tool.
+**Owner:** Implementer measures; Maintainer's machine is the reference
+**Priority:** High — it is a release-gate item with a number in it
+**Phase:** Phase 5
+**Depends on:** `T-319`, `T-321`, `T-322` (an installed Windows build and an AppImage to time)
+**Relevant context:** `NFR-002` (*"cold start to interactive window under 3 seconds on the
+reference Linux machine"*); `TESTING.md` §8 item 14; `T-007`, which measured this **from source**
+on 2026-07-25 and is the only recorded number
+**Affected surfaces:** `docs/project/evidence/`, `docs/project/TESTING.md` §8
+**Risk:** Low to measure; Medium if it fails — a frozen one-dir build pays for import-time
+unpacking that a source checkout does not, and PyInstaller one-dir launches are commonly 2–4×
+slower than the same code from a venv
+
+#### Scope
+
+`T-007`'s measurement predates freezing, `OPS-002`'s yt-dlp bundling, the thumbnail store, the
+theme and the settings dialog. **It is not evidence about the artifact.** Measure again:
+
+- **Cold**: first launch after a reboot (Linux: additionally `echo 3 > drop_caches` before the
+  launch), timed from process start to the main window's first paint — instrumented by an
+  environment-gated timestamp the application already has the shape for (`_freeze_probe`'s
+  `record_app_start`), not by a stopwatch
+- **Warm**: the second launch, recorded as a second number rather than averaged in
+- Five runs each, on the reference Linux machine for the AppImage and on `STARBASE` for the
+  installed Windows build; the median is the number, the five are retained
+
+**If it fails, that is a task, not a re-measure** — `NFR-002` is a requirement, and the honest
+outcomes are *meets*, *does not meet and here is the profile*, or a maintainer amendment of the
+number with the reason.
+
+#### 2026-09-13 — the review's two findings
+
+**`T325-R1`: the cold gate averaged warm launches.** `--cold` still ran five launches and gated
+their median, but only the first launch after a reboot is cold. The reviewer's counterexample —
+`[6, 1, 1, 1, 1]` against a 5-second bound — printed *"cold median 1.000s"* and exited 0. Under
+`--cold` the tool now gates **the first launch alone** and reports the rest as warm, ungated.
+`test_the_cold_gate_judges_the_cold_launch_alone` runs the real CLI with substituted durations over
+four cases, the reviewer's first; the previous tool fails two of them.
+
+**`T325-R2`: the evidence does not support "met", so the claims are withdrawn rather than argued.**
+The verdict column above and this entry's status are corrected in place, with the old wording
+kept. What is owed, and needs the maintainer because each needs a reboot of a machine they use:
+
+- **Linux cold**: reboot the reference Linux machine, then the AppImage by path and digest,
+  `tools/startup_time.py <AppImage> --cold --runs 1`.
+- **Windows cold on the installed artifact**, which `NFR-010` names: install a known installer
+  (record its sha256), reboot `STARBASE`, then
+  `tools/startup_time.py "%LOCALAPPDATA%\Programs\Tracks & Trails\tracks-and-trails.exe" --cold
+  --runs 1 --bound 5`. The 2026-09-12 figure of 3.976 s stays as history; it names no build.
+
+#### Acceptance criteria
+
+- An evidence file per platform with machine, method and the numbers taken — **for `0.1.0`, the
+  retained 2026-09-12 measurements, by the maintainer's second 2026-09-13 ruling** *(first amended
+  that day to one identified cold launch per platform plus the warm median; originally "the ten raw
+  numbers and the two medians")*
+- `TESTING.md` §8 item 14 cites the file, and names *which* build and version were measured
+- A failure produces a task with a profile attached, and this task closes as *measured* either way
+
+#### Out of scope
+
+- Optimising anything. Measure first
+
+---
+
 ### T-332 — Bundle yt-dlp 2026.8.19: the pinned baseline cannot download from YouTube
 
 **Status:** **In Review** — every acceptance criterion met 2026-09-13, the canary included. Filed
@@ -408,163 +567,6 @@ the windowed build to it; this workflow still does not run on push.
 - Signing (`T-317` decides; if signed, the signing step lives here and the key does not)
 
 ## Ready
-
-### T-325 — Cold start, measured on the artifact that ships
-
-**Status:** **In Progress** — returned by review 2026-09-13 (`T325-R1`, `T325-R2`). The ruling it
-needed is taken, [`REL-008`](DECISIONS.md#rel-008--windows-gets-its-own-startup-number-and-linuxs-stays-where-it-is),
-and the gate's cold defect is corrected; **neither requirement is yet shown met**: Linux has no
-cold measurement, and the Windows cold figure names no artifact. *(Said `NFR-002` "is met with
-roughly 5× margin" and that every measurement clears `NFR-010` — claims about cold starts made from
-warm and first-touch numbers, and one unidentified build.)* Filed 2026-09-11 with the Phase 5 plan.
-
-#### 2026-09-12 — the numbers, and the one that is over the bound
-
-Full captures in
-[`evidence/2026-09-12-T325-startup-times.md`](evidence/2026-09-12-T325-startup-times.md).
-
-| | cold (after reboot) | first run (fresh build) | warm median | `NFR-002` |
-|---|---|---|---|---|
-| Linux AppImage, reference machine | not taken | 1.077 s | **0.634 s** | within |
-| Windows release build, `STARBASE` | **3.976 s** | **3.780** / **4.656 s** | **1.550 s** | **not met** |
-
-**The cold number is the maintainer's own measurement**, taken seconds after `Restart-Computer`
-and before anything else was launched — the one run neither the implementer nor CI can take, since
-a reboot kills the runner and the session driving it. One run by construction: a second launch is
-no longer cold.
-
-**Instrumented, not timed by hand**, which the scope asks for in terms. `core.startup
-.record_first_paint` writes one wall-clock line when the compositor confirms the surface is on
-screen; `tools/startup_time.py` takes the other half of the clock before spawning. **`showEvent` is
-deliberately not the hook** — it fires before the window exists on screen, and on Wayland the
-widget is never told at all (`T287-R1`), so this rides the exposure watch that finding installed
-rather than inventing a second notion of *visible*.
-
-**The instrument was checked against a positive before it was trusted**: 0.318 s from source. Its
-first run against an artifact reported *no window after 60s*, which was an AppImage built four
-hours before the recorder existed — the harness reporting an absent instrument rather than a fast
-start, which is the behaviour wanted.
-
-**The finding: the first launch of a freshly written Windows artifact does not meet `NFR-002`, and
-it reproduces.** Two independent builds, 3.780 s and 4.656 s, both over 3 s. A second pass over the
-*same* files minutes later has no outlier at all — so this is a first-touch cost, not variance.
-Defender scanning a newly written 155 MB tree and a cold page cache are the candidates and
-**neither was isolated**; naming one would be a guess.
-
-**That is the state a user's machine is in immediately after the installer writes the files**, which
-is why it is reported as the headline rather than as an outlier next to a passing median. Linux
-shows the same shape — 1.077 s against 0.634 s, a comparable ~1.7× — and stays well inside the
-bound.
-
-**Cold, as the scope defines it, was not measured.** *First launch after a reboot* needs a reboot,
-which kills the `STARBASE` runner, and on Linux additionally `drop_caches`, which needs root.
-Neither is the implementer's to do on a machine somebody is using.
-
-**The freeze costs about 1.9×, against the 2–4× the Risk line anticipated** — 0.33 s from source
-against 0.634 s frozen on Linux. Real in direction, immaterial in absolute terms.
-
-**The harness mislabelled that run, and the fix is recorded because the label matters.** It
-printed *"measuring warm launches"* unconditionally — over the cold number the task had been
-waiting for. A tool cannot tell cold from warm; only the caller knows what state the machine is
-in. `tools/startup_time.py` now takes `--cold` and says which it was told, rather than asserting
-the one it cannot know.
-
-#### 2026-09-12 (final) — the ruling, and a correction to this entry
-
-**This entry said `NFR-002` was not met. That overstated it, and the overstatement is the finding.**
-`NFR-002` reads *"under 3 seconds on the reference **Linux** machine"* — it has never covered
-Windows. `TESTING.md` §8 item 14 said *"the reference machine"*, dropping the word, and a Windows
-figure was duly reported against a Linux requirement as a failure. **Linux passes with about five
-times the margin.** The defect was a gate item disagreeing with the requirement it cites, which is
-the class this project keeps finding — and this time in a document rather than in code.
-
-**Ruled by the maintainer 2026-09-12**, recorded as `REL-008`:
-
-| | number | measured | verdict |
-|---|---|---|---|
-| Linux, `NFR-002` (unchanged) | 3 s | 0.634 s warm, 1.077 s first-touch | ~~met~~ **not shown** — no cold sample (`T325-R2`) |
-| Windows, `NFR-010` (new) | **5 s** | **3.976 s cold**, 4.656 s worst first launch | ~~met~~ **not shown** — the cold run names no artifact (`T325-R2`) |
-
-**Five seconds rather than four, from the measurements**: 4 s clears the cold figure by 24 ms,
-which is a coin toss on a busy machine rather than a bound. §8 item 14 now names both platforms and
-is executable — `tools/startup_time.py --cold`.
-
-**One measurement is still missing and is not inferred away**: Linux cold, which needs a reboot of
-the machine doing the work. The margin makes it unlikely to matter; that is an inference, written
-as one.
-
-**The rejected alternatives, for the record** — none of them the implementer's to pick:
-
-| Option | What it costs |
-|---|---|
-| **Amend `NFR-002`** to a warm-start bound, stating the cold figure beside it | It is a change of requirement rather than a reading of one — the requirement says cold |
-| **Raise the number** — 4 s covers every measurement taken, 5 s leaves margin on a slower machine | Honest, and the release gate then passes on a number somebody chose |
-| **Attack the cost** | Mostly not ours: a Defender exclusion is not something an artifact can arrange for itself, and 155 MB is what bundling ffmpeg costs. **A one-file build would make it worse**, not better — it trades startup for extraction |
-
-**§8 item 14 no longer reads as a pass on an untested claim**, which was the one outcome ruled out
-from the start: it names the platform, the artifact and the launch, and points at the tool.
-**Owner:** Implementer measures; Maintainer's machine is the reference
-**Priority:** High — it is a release-gate item with a number in it
-**Phase:** Phase 5
-**Depends on:** `T-319`, `T-321`, `T-322` (an installed Windows build and an AppImage to time)
-**Relevant context:** `NFR-002` (*"cold start to interactive window under 3 seconds on the
-reference Linux machine"*); `TESTING.md` §8 item 14; `T-007`, which measured this **from source**
-on 2026-07-25 and is the only recorded number
-**Affected surfaces:** `docs/project/evidence/`, `docs/project/TESTING.md` §8
-**Risk:** Low to measure; Medium if it fails — a frozen one-dir build pays for import-time
-unpacking that a source checkout does not, and PyInstaller one-dir launches are commonly 2–4×
-slower than the same code from a venv
-
-#### Scope
-
-`T-007`'s measurement predates freezing, `OPS-002`'s yt-dlp bundling, the thumbnail store, the
-theme and the settings dialog. **It is not evidence about the artifact.** Measure again:
-
-- **Cold**: first launch after a reboot (Linux: additionally `echo 3 > drop_caches` before the
-  launch), timed from process start to the main window's first paint — instrumented by an
-  environment-gated timestamp the application already has the shape for (`_freeze_probe`'s
-  `record_app_start`), not by a stopwatch
-- **Warm**: the second launch, recorded as a second number rather than averaged in
-- Five runs each, on the reference Linux machine for the AppImage and on `STARBASE` for the
-  installed Windows build; the median is the number, the five are retained
-
-**If it fails, that is a task, not a re-measure** — `NFR-002` is a requirement, and the honest
-outcomes are *meets*, *does not meet and here is the profile*, or a maintainer amendment of the
-number with the reason.
-
-#### 2026-09-13 — the review's two findings
-
-**`T325-R1`: the cold gate averaged warm launches.** `--cold` still ran five launches and gated
-their median, but only the first launch after a reboot is cold. The reviewer's counterexample —
-`[6, 1, 1, 1, 1]` against a 5-second bound — printed *"cold median 1.000s"* and exited 0. Under
-`--cold` the tool now gates **the first launch alone** and reports the rest as warm, ungated.
-`test_the_cold_gate_judges_the_cold_launch_alone` runs the real CLI with substituted durations over
-four cases, the reviewer's first; the previous tool fails two of them.
-
-**`T325-R2`: the evidence does not support "met", so the claims are withdrawn rather than argued.**
-The verdict column above and this entry's status are corrected in place, with the old wording
-kept. What is owed, and needs the maintainer because each needs a reboot of a machine they use:
-
-- **Linux cold**: reboot the reference Linux machine, then the AppImage by path and digest,
-  `tools/startup_time.py <AppImage> --cold --runs 1`.
-- **Windows cold on the installed artifact**, which `NFR-010` names: install a known installer
-  (record its sha256), reboot `STARBASE`, then
-  `tools/startup_time.py "%LOCALAPPDATA%\Programs\Tracks & Trails\tracks-and-trails.exe" --cold
-  --runs 1 --bound 5`. The 2026-09-12 figure of 3.976 s stays as history; it names no build.
-
-#### Acceptance criteria
-
-- An evidence file per platform with machine, method, the artifact's digest, **one cold launch
-  after a reboot** and the warm median *(amended 2026-09-13 by the maintainer's ruling on `T325-R2`;
-  said "the ten raw numbers and the two medians", five cold and five warm per platform)*
-- `TESTING.md` §8 item 14 cites the file, and names *which* build and version were measured
-- A failure produces a task with a profile attached, and this task closes as *measured* either way
-
-#### Out of scope
-
-- Optimising anything. Measure first
-
----
 
 ### T-327 — The Windows manual verification session
 

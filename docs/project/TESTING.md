@@ -300,7 +300,9 @@ All of the following, **on Linux and Windows**, before any tag or distributed bu
     seconds on Windows** (`NFR-010`) — **executable**, `tools/startup_time.py --cold`, on the
     artifact a user gets, at first launch after a reboot. *(This said "the reference machine",
     dropping the word `NFR-002` uses, and a Windows figure was duly reported against a Linux
-    requirement. The platform is named here now because the two numbers differ.)*
+    requirement. The platform is named here now because the two numbers differ.)* **For `0.1.0`
+    only, satisfied by the numbers already measured** — `REL-008`'s 2026-09-13 amendment, which
+    states what that gives up; a later release takes the measurement again.
 15. **Windows manual verification session completed** — the §9 list performed on a real
     Windows desktop and recorded in the canonical review record. Blocking for the first public release;
     CI green is not a substitute (`OPS-003`).

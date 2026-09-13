@@ -55,7 +55,7 @@ Current requirements and architecture retain their own canonical authority.
 | [REL-005](#rel-005--the-first-windows-installer-ships-unsigned) | The first Windows installer ships unsigned | Accepted | — |
 | [REL-006](#rel-006--a-clean-machine-is-a-disposable-vm-the-maintainer-owns) | A clean machine is a disposable VM the maintainer owns | Accepted | — |
 | [REL-007](#rel-007--the-artifacts-use-the-system-certificate-store-and-bundle-none) | The artifacts use the system certificate store and bundle none | Accepted | [Amended 2026-09-12](#amended-2026-09-12--on-windows-the-operating-system-verifies-not-openssl-reading-its-store) |
-| [REL-008](#rel-008--windows-gets-its-own-startup-number-and-linuxs-stays-where-it-is) | Windows gets its own startup number, and Linux's stays where it is | Accepted | — |
+| [REL-008](#rel-008--windows-gets-its-own-startup-number-and-linuxs-stays-where-it-is) | Windows gets its own startup number, and Linux's stays where it is | Accepted | [Amended 2026-09-13](#amended-2026-09-13--0-1-0-ships-on-the-startup-numbers-already-measured) |
 | [REL-002](#rel-002--collect_submodulesyt_dlp-stays-as-insurance-against-a-pin-we-do-not-have-yet) | `collect_submodules("yt_dlp")` stays, as insurance against a pin we do not have yet | Accepted | — |
 | [REL-001](#rel-001--ship-frozen-self-contained-artifacts-no-python-required-on-the-users-machine) | Ship frozen, self-contained artifacts: no Python required on the user's machine | Accepted | — |
 | [OPS-004](#ops-004--windows-ci-runners-provide-a-real-desktop-verify-against-it) | Windows CI runners provide a real desktop; verify against it | Accepted | [OPS-005](#ops-005--starbase-is-the-windows-verification-platform-hosted-only-findings-do-not-gate-the-phase); [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously) |
@@ -1194,6 +1194,25 @@ is a coin toss on a busy machine rather than a bound.
 - **Reopening condition:** a reference machine change on either platform, or a Windows cold
   measurement above 5 s, which would mean the first-launch cost has grown rather than that the
   bound was wrong.
+
+
+### Amended 2026-09-13 — 0.1.0 ships on the startup numbers already measured
+
+**Status:** **Accepted** — maintainer decision, asked with three options and taking the
+recommendation. The maintainer's reason: *"not sure why the cold start tests are necessary? Seems
+like it would run the same regardless, and its a lot of extra manual work for little benefit."*
+
+**For `0.1.0`, no further cold measurement is taken.** `T-325` closes on what exists: Windows
+**3.976 s cold** (a development release build on `STARBASE`, its installer not recorded) and 1.550 s
+warm against `NFR-010`'s 5 s; Linux **0.634 s warm** and 1.077 s first launch after a build against
+`NFR-002`'s 3 s, **with no cold sample**. The bounds and requirements are unchanged.
+
+**What this gives up, stated.** A cold launch is not the same as a warm one — the first launch after
+a reboot reads the whole bundle from disk, which is the 2.4× gap on Windows — so `NFR-002`'s cold
+figure on Linux is inferred from a warm one with about 4.7× margin, and `NFR-010`'s from one sample
+of an unidentified build with about 1 s. **Reopening condition:** a user report of a slow start, or
+a later release whose bundle or startup path changes materially; `tools/startup_time.py --cold`
+already gates the first launch correctly (`T325-R1`).
 
 ---
 
