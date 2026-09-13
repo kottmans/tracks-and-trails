@@ -268,6 +268,13 @@ def test_the_installer_asks_for_no_administrator() -> None:
     text = INSTALLER.read_text(encoding="utf-8")
     assert "PrivilegesRequired=lowest" in text
     assert "{autopf}" in text, "the install location is not the per-user one"
+    # **No install-mode question either** (maintainer ruling, 2026-09-12). `dialog` asked "for me
+    # only / for all users" before anything else, and no automated run could see it: they are all
+    # `/VERYSILENT`. `commandline` keeps `/ALLUSERS` for an administrator.
+    override = re.search(r"^PrivilegesRequiredOverridesAllowed=(\S+)", text, re.M)
+    assert override is not None and override.group(1) == "commandline", (
+        "the installer offers an install-mode choice on a double-click again"
+    )
 
 
 def test_the_desktop_shortcut_is_opt_in() -> None:

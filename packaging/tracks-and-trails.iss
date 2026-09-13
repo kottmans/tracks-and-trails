@@ -60,7 +60,13 @@ VersionInfoVersion={#NumericVersion}
 ; so it needs no elevation — and a per-machine install would add an admin prompt on top of the
 ; SmartScreen warning `REL-005` already accepts, which is two warnings before the first launch.
 PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+; **No install-mode question on a double-click** (maintainer ruling, 2026-09-12). This was
+; `dialog`, which asked "for me only / for all users" before anything else -- found in the
+; maintainer's first interactive install, since every automated run is `/VERYSILENT` and never
+; sees a dialog. It contradicted the comment above: one more question before first launch, and
+; "all users" is an admin prompt. `commandline` keeps the escape hatch for an administrator
+; (`/ALLUSERS`) without asking everyone else a question most people cannot answer.
+PrivilegesRequiredOverridesAllowed=commandline
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes

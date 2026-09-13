@@ -1644,6 +1644,75 @@ accepts it. Until then it is a proposal in a task, which is the narrowest honest
 
 ## Ready
 
+### T-327 — The Windows manual verification session
+
+**Status:** **In Progress** — the maintainer's session began 2026-09-12 in Windows Sandbox. Item 1
+is under way and **has already found one defect**, below. Filed 2026-09-11 with the Phase 5 plan.
+**Human, and blocking**: `TESTING.md` §8 item 15 says *"CI green is not a substitute"*
+
+#### 2026-09-12 — the session so far
+
+**Item 1, install.** The maintainer reports the installer *"works fine"* and, after the wizard
+artwork changes, *"everything looks good"*. **One finding**: an *"Install for me only / Install for
+all users"* question appeared before the wizard — invisible to every automated run, since they are
+all `/VERYSILENT`. Fixed under `T-322` by ruling (`commandline`: no question, `/ALLUSERS` kept for
+administrators). **To confirm on the rebuilt installer.** Also from this session: the wizard pages
+now carry the logo rather than Inno's stock artwork, at the maintainer's request — a polish change,
+not a defect.
+
+**Items 2–6 not yet done.** The review record is written when the session is, in the maintainer's
+own words.
+**Owner:** Maintainer performs; Implementer prepares the list and records the result
+**Priority:** High — the one exit criterion the plan says cannot be met from the development
+environment
+**Phase:** Phase 5
+**Depends on:** `T-322` (an installer to install) and `T-318` (a clean Windows machine to install
+it on — Windows Sandbox if that is what it chose)
+**Relevant context:** `TESTING.md` §9's manual list and its `OPS-004` residue: *whether the
+rendering looks right, whether Narrator sounds coherent, whether the installer feels normal, shell
+foreground and file-association behaviour, long-running stability*; `IMPLEMENTATION_PLAN.md`
+§Phase 4's screen-reader amendment (coherence *"belongs to the pre-release session"* — this is
+that session, for Windows); `REQUIREMENTS.md` §3; `T-212` (the same sitting, other list)
+**Affected surfaces:** a review record under `docs/project/reviews/`, indexed by `REVIEWS.md`;
+`REQUIREMENTS.md` §3's *known-unverified* paragraph, which this discharges
+**Risk:** Low to run; the risk is the schedule — it needs the maintainer, a Windows desktop and an
+installer on the same afternoon
+
+#### Scope
+
+`OPS-004` shrank this to the subjective residue and named each item. The session performs exactly
+that list — no more, because everything else is gated; no less, because each item is there for
+a reason `OPS-003` and `OPS-004` recorded:
+
+1. Install from `T-322`'s installer on the clean machine, watching the prompts (`T-317`'s
+   SmartScreen screenshot is taken here if unsigned)
+2. Rendering under light and dark themes — does it *look* right, beyond matching a baseline
+3. **Narrator**: open the add dialog, stage a URL, open its format table, choose a format, add it,
+   start the queue — is what Narrator says *coherent*, as distinct from the tree being correct
+4. Native file dialogs, *Show in folder*, *Open*: does Explorer come to the foreground, does the
+   dialog start somewhere sensible, is the association the expected one
+5. A long real download with the window in use throughout — stability under real use
+6. Uninstall, watching what it says about user data
+
+**`T-212`'s recorded checklist run is the same sitting**, deliberately: one afternoon with the
+built artifact rather than two.
+
+#### Acceptance criteria
+
+- A dated review record with each of the six items marked and described in the maintainer's own
+  words, indexed by `REVIEWS.md` — the form `TESTING.md` §8 item 15 names
+- `REQUIREMENTS.md` §3's *known-unverified on Windows* paragraph is rewritten to what was
+  actually observed, no further
+- Anything found becomes a task, and a task found here blocks the release only if it is a
+  Critical or High defect (`TESTING.md` §14's severities)
+
+#### Out of scope
+
+- Anything CI already gates. Recording a gated item as *passed by hand* is the drift `TESTING.md`
+  §9 warns against
+
+---
+
 ### T-326 — The release-candidate suite: everything the gate asks a machine for, on both platforms
 
 **Status:** **In Progress** — the items that do not need a release candidate were run 2026-09-12;
@@ -1792,6 +1861,19 @@ What is now pinned, each against its other declaration or its requirement:
 **Four mutations, four caught**: a pre-ticked desktop shortcut, `PrivilegesRequired=admin`, an
 `AppVersion` default that would give the installer a second opinion about the version, and
 dropping `recursesubdirs` so only the executable ships.
+
+#### 2026-09-12 — no install-mode question, found by the manual session
+
+**The installer asked "Install for me only / Install for all users" before anything else.** Found
+in the maintainer's first interactive install (`T-327` item 1). Every automated run — `T-039`'s
+gates included — uses `/VERYSILENT`, which skips every dialog, so **no gate could have seen it**.
+
+`PrivilegesRequiredOverridesAllowed=dialog` caused it, directly beneath a comment arguing for
+fewer prompts before first launch; *"for all users"* is also an admin prompt. **Maintainer ruling:
+no dialog, but keep the escape hatch** — now `commandline`, so a double-click installs per-user
+without asking, and an administrator can still pass `/ALLUSERS`. A test asserts the value; setting
+it back to `dialog` fails it. **`/ALLUSERS` itself is not exercised** — it needs elevation, and
+nothing here runs elevated.
 
 #### 2026-09-12 — no "pin to taskbar" option, by ruling
 
@@ -3148,60 +3230,6 @@ evidence than a Phase 4 run would have been.
 
 
 
-### T-327 — The Windows manual verification session
-
-**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan. **Human, and blocking**: `TESTING.md`
-§8 item 15 says *"CI green is not a substitute"*
-**Owner:** Maintainer performs; Implementer prepares the list and records the result
-**Priority:** High — the one exit criterion the plan says cannot be met from the development
-environment
-**Phase:** Phase 5
-**Depends on:** `T-322` (an installer to install) and `T-318` (a clean Windows machine to install
-it on — Windows Sandbox if that is what it chose)
-**Relevant context:** `TESTING.md` §9's manual list and its `OPS-004` residue: *whether the
-rendering looks right, whether Narrator sounds coherent, whether the installer feels normal, shell
-foreground and file-association behaviour, long-running stability*; `IMPLEMENTATION_PLAN.md`
-§Phase 4's screen-reader amendment (coherence *"belongs to the pre-release session"* — this is
-that session, for Windows); `REQUIREMENTS.md` §3; `T-212` (the same sitting, other list)
-**Affected surfaces:** a review record under `docs/project/reviews/`, indexed by `REVIEWS.md`;
-`REQUIREMENTS.md` §3's *known-unverified* paragraph, which this discharges
-**Risk:** Low to run; the risk is the schedule — it needs the maintainer, a Windows desktop and an
-installer on the same afternoon
-
-#### Scope
-
-`OPS-004` shrank this to the subjective residue and named each item. The session performs exactly
-that list — no more, because everything else is gated; no less, because each item is there for
-a reason `OPS-003` and `OPS-004` recorded:
-
-1. Install from `T-322`'s installer on the clean machine, watching the prompts (`T-317`'s
-   SmartScreen screenshot is taken here if unsigned)
-2. Rendering under light and dark themes — does it *look* right, beyond matching a baseline
-3. **Narrator**: open the add dialog, stage a URL, open its format table, choose a format, add it,
-   start the queue — is what Narrator says *coherent*, as distinct from the tree being correct
-4. Native file dialogs, *Show in folder*, *Open*: does Explorer come to the foreground, does the
-   dialog start somewhere sensible, is the association the expected one
-5. A long real download with the window in use throughout — stability under real use
-6. Uninstall, watching what it says about user data
-
-**`T-212`'s recorded checklist run is the same sitting**, deliberately: one afternoon with the
-built artifact rather than two.
-
-#### Acceptance criteria
-
-- A dated review record with each of the six items marked and described in the maintainer's own
-  words, indexed by `REVIEWS.md` — the form `TESTING.md` §8 item 15 names
-- `REQUIREMENTS.md` §3's *known-unverified on Windows* paragraph is rewritten to what was
-  actually observed, no further
-- Anything found becomes a task, and a task found here blocks the release only if it is a
-  Critical or High defect (`TESTING.md` §14's severities)
-
-#### Out of scope
-
-- Anything CI already gates. Recording a gated item as *passed by hand* is the drift `TESTING.md`
-  §9 warns against
-
----
 
 ### T-328 — The first release
 
