@@ -27,6 +27,11 @@ coverage.xml
 # Frozen build output (T-020). Produced by packaging/tracks-and-trails.spec.
 /dist/
 /build/
+# `T-319`: CI's windowed release build, built beside the smoke one.
+/dist-release/
+/build-release/
+# `T-319`: written by the spec for every release build, from `__init__.py`.
+/packaging/windows-version-info.txt
 *.spec.bak
 
 # CI evidence (T-006). Written by the workflow and uploaded as an artifact; also appears
@@ -80,3 +85,8 @@ docs/project/handoffs/
 # T-319: 174 MB of third-party Windows binary, fetched by packaging/fetch_ffmpeg.py with a
 # pinned digest. Reproducible from that script, so it does not belong in the history.
 packaging/vendor/
+
+# The roadmap is a published artifact, never a repository file (AGENTS.md §6, DEVELOPMENT
+# §Roadmap maintenance). Kept here so a local rendering cannot be committed again (P5B2-R2).
+roadmap*.html
+roadmap*.md
