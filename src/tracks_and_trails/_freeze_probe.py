@@ -76,6 +76,25 @@ DOWNLOAD_PROBE_URL = (
 #: fifth mechanism: one variable, set by the caller, ignored when unset.
 PROBE_REPORT_ENV = "TT_PROBE_REPORT"
 
+#: The format selector `--download-probe` asks for, when set (`T-332`).
+#:
+#: **An environment variable, like the report file**, rather than a second `=` in the flag: the
+#: probe's one token already carries the URL. It exists so the clean-machine run can download in a
+#: **user's preset** — `T-332`'s failure was YouTube refusing the 1080p MP4 preset's streams, which
+#: the probe's own selector never asked for.
+DOWNLOAD_PROBE_FORMAT_ENV = "TT_DOWNLOAD_PROBE_FORMAT"
+
+#: Separate streams first, then one file (`REL-007`'s 2026-09-12 amendment). This was `best`, which
+#: on YouTube picks the old pre-merged format `18` — and YouTube answers that one with `403
+#: Forbidden`, measured on `STARBASE`, while `395+251` for the same video downloaded and merged. A
+#: direct file has no separate streams, so it still falls through to `b`.
+DOWNLOAD_PROBE_DEFAULT_FORMAT = "bv*+ba/b"
+
+
+def download_probe_format() -> str:
+    """The selector the download probe uses: the environment's, or the probe's own default."""
+    return os.environ.get(DOWNLOAD_PROBE_FORMAT_ENV, "").strip() or DOWNLOAD_PROBE_DEFAULT_FORMAT
+
 
 def say(line: str, *, error: bool = False) -> None:
     """Print a probe's report line, and append it to the report file when one is configured.
@@ -615,7 +634,9 @@ def run_download_probe(url: str | None = None) -> int:
     from tracks_and_trails.downloader.worker import run_session
 
     target = url or DOWNLOAD_PROBE_URL
+    selector = download_probe_format()
     say(f"url             {target}")
+    say(f"format          {selector}")
 
     with tempfile.TemporaryDirectory(prefix="tt-download-probe-") as directory:
         request = DownloadRequest(
@@ -623,14 +644,8 @@ def run_download_probe(url: str | None = None) -> int:
             output_directory=directory,
             # A direct media file declares no height, so the height-filtered default legitimately
             # matches nothing — the same reasoning `tests/network/test_real_download.py` records
-            # for choosing its preset.
-            #
-            # **Separate streams first, then one file** (`REL-007`'s 2026-09-12 amendment). This
-            # was `best`, which on YouTube picks the old pre-merged format `18` — and YouTube now
-            # answers that one with `403 Forbidden`, measured on `STARBASE` with the bundled
-            # yt-dlp, while `395+251` for the same video downloaded and merged. A direct file has
-            # no separate streams, so it still falls through to `b`.
-            format_selector="bv*+ba/b",
+            # for choosing its preset. See `DOWNLOAD_PROBE_DEFAULT_FORMAT` for the rest.
+            format_selector=selector,
             output_template="%(title)s.%(ext)s",
         )
         messages: queue_module.Queue[Any] = queue_module.Queue()

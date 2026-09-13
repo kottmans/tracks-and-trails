@@ -416,3 +416,22 @@ def test_the_probe_is_listed_in_the_usage_text() -> None:
     from tracks_and_trails.app import _usage
 
     assert "--download-probe" in _usage()
+
+
+def test_the_download_probe_uses_its_own_format_unless_told_otherwise(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`T-332`: the clean-machine run downloads in a real preset, so the selector can be set.
+
+    A blank value is the default rather than an empty selector, which yt-dlp would refuse and the
+    probe would then report as the site's fault.
+    """
+    from tracks_and_trails import _freeze_probe
+    from tracks_and_trails.core.presets import BEST_VIDEO_1080P
+
+    monkeypatch.delenv(_freeze_probe.DOWNLOAD_PROBE_FORMAT_ENV, raising=False)
+    assert _freeze_probe.download_probe_format() == _freeze_probe.DOWNLOAD_PROBE_DEFAULT_FORMAT
+    monkeypatch.setenv(_freeze_probe.DOWNLOAD_PROBE_FORMAT_ENV, "  ")
+    assert _freeze_probe.download_probe_format() == _freeze_probe.DOWNLOAD_PROBE_DEFAULT_FORMAT
+    monkeypatch.setenv(_freeze_probe.DOWNLOAD_PROBE_FORMAT_ENV, BEST_VIDEO_1080P.format_selector)
+    assert _freeze_probe.download_probe_format() == BEST_VIDEO_1080P.format_selector

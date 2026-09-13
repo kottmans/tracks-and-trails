@@ -371,3 +371,20 @@ def test_the_wizard_artwork_is_the_shape_its_slot_is() -> None:
         assert smallest[0] >= floor[0] and smallest[1] >= floor[1], (
             f"{directive}'s smallest image is {smallest}, below the {floor} slot at 100% scaling"
         )
+
+
+def test_the_sandbox_run_downloads_in_the_preset_that_failed() -> None:
+    """`T-332`: the clean-machine evidence asks for the 1080p MP4 preset's own selector.
+
+    Written into the PowerShell script as a literal, so this is what keeps the two from drifting —
+    a preset edited without the script would leave the Sandbox proving a selector nobody uses.
+    """
+    from tracks_and_trails.core.presets import BEST_VIDEO_1080P
+
+    script = (
+        Path(__file__).parents[2] / "packaging" / "windows-sandbox" / "evidence.ps1"
+    ).read_text("utf-8")
+    found = re.search(r'^\s*\$presetFormat = "([^"]+)"', script, re.MULTILINE)
+    assert found, "evidence.ps1 no longer downloads in a preset"
+    assert found.group(1) == BEST_VIDEO_1080P.format_selector
+    assert "$env:TT_DOWNLOAD_PROBE_FORMAT = $presetFormat" in script

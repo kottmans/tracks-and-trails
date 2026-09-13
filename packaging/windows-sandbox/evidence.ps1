@@ -162,6 +162,9 @@ Say "**The root is checked first**, because a machine that already holds it woul
 Say "or not the fix is in the artifact."
 Say '```'
 $probeUrl = "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+# A longer video for the preset run, because a 19-second clip's streams come in one request and
+# `T-332`'s 403 arrived partway into a stream. Blender's *Big Buck Bunny*, 1080p MP4 available.
+$presetVideo = "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
 $rootHeld = @(Get-ChildItem Cert:\LocalMachine\Root, Cert:\CurrentUser\Root -ErrorAction SilentlyContinue | Where-Object Subject -match "GTS Root R1")
 Say ("GTS Root R1 in store  " + $(if ($rootHeld.Count -eq 0) { "absent - this run can tell a fixed build from a broken one" } else { "PRESENT - this run cannot show the fix; the result below proves nothing about it" }))
 if ($exe) {
@@ -176,6 +179,23 @@ if ($exe) {
     if (Test-Path $probeReport) { Get-Content $probeReport | ForEach-Object { Say $_ } }
     else { Say "probe report          MISSING - the probe wrote nothing" }
     if ($probe.ExitCode -ne 0) { $failures++ }
+
+    # **Again in a user's preset** (`T-332`). The probe's own selector asks for separate streams,
+    # which the bundled yt-dlp 2026.7.4 could fetch while it 403'd the 1080p MP4 preset's -- so a
+    # probe-only run passed the build that failed the maintainer's first real download. This line
+    # must stay the preset's own selector; `tests/unit/test_windows_packaging.py` compares them.
+    $presetFormat = "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]"
+    Say ""
+    Remove-Item $probeReport -ErrorAction SilentlyContinue
+    $env:TT_PROBE_REPORT = $probeReport
+    $env:TT_DOWNLOAD_PROBE_FORMAT = $presetFormat
+    $preset = Start-Process -FilePath $exe -ArgumentList ("--download-probe=" + $presetVideo) -Wait -PassThru
+    Remove-Item Env:\TT_PROBE_REPORT
+    Remove-Item Env:\TT_DOWNLOAD_PROBE_FORMAT
+    Say ("preset probe exit     " + $preset.ExitCode)
+    if (Test-Path $probeReport) { Get-Content $probeReport | ForEach-Object { Say $_ } }
+    else { Say "preset probe report   MISSING - the probe wrote nothing" }
+    if ($preset.ExitCode -ne 0) { $failures++ }
 }
 Say '```'
 
