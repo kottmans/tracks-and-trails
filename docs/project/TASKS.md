@@ -1415,8 +1415,28 @@ the printable string around each hit, asked a tighter pattern — a separator, a
 `QNetworkCookie.RawForm`, both kept as a negative test. The full gate still passes item 13 on that
 artifact in 12.7 s. **Mutation:** removing the binary branch fails the reviewer's counterexample.
 
-**`T323-R1` — Windows linkage — is not corrected**, and it and this correction both wait on the
-maintainer's `TESTING` §14 choice, since the ordinary review budget is spent.
+**`T323-R1`, second round: Windows now reads the import tables.** Item 11 on Windows was
+presence-only, and a `QtCore.pyd` holding `not a PE` passed. `pe_imports` reads a PE file's import
+directory directly — DOS header, PE signature, COFF and optional headers, section table — so no
+`dumpbin` is needed, and `_qt_links_resolve_inside_a_windows_artifact` asks the Linux half's three
+questions of it: every binding is a real PE file; every `Qt6*.dll` it imports is a real PE file
+**inside the artifact**; and each required module is evidenced by some binding importing it. What it
+cannot see, stated in the function: where Windows would load from at run time.
+
+**Measured on a real Windows release build on `STARBASE`** (`dist-release` from this tree):
+
+| Artifact | Item 11 |
+|---|---|
+| as built | **ok** — Core, Gui and Widgets each evidenced from the real `.pyd` import tables |
+| `QtWidgets.pyd` replaced by `not a PE` | **FAIL** — *is not a Windows binary that can be inspected: no MZ header*, and no evidence for QtWidgets |
+| `Qt6Widgets.dll` deleted | **FAIL** — *imports Qt6Widgets.dll, which is not in the artifact* |
+
+Unit tests build a minimal valid PE32+ file with a chosen import list: the reader round-trips it, a
+correct tree passes, and the reviewer's garbage bindings, a missing DLL and bindings importing no
+Qt each fail. `TESTING` §8 item 11 and `docs/RELEASE.md` describe the narrower remainder.
+
+**Both corrections still wait on the maintainer's `TESTING` §14 choice** before a further review
+pass, since the ordinary budget is spent.
 
 #### Scope
 

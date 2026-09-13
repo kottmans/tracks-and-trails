@@ -84,7 +84,7 @@ def skip_where_there_is_no_posix_shell() -> None:
     if sys.platform == "win32":
         pytest.skip(
             "the ldd shim is a POSIX shell script; the loader half of item 11 is Linux-only and "
-            "test_windows_keeps_the_presence_check_alone covers the Windows path"
+            "the PE import-table tests cover the Windows path"
         )
 
 
@@ -110,7 +110,7 @@ def install_ldd(
 
     Nothing is given up. The loader half of §8 item 11 is Linux-only by construction — a Windows
     artifact carries `.pyd` bindings and `_qt_links_resolve_inside_the_artifact` returns early on
-    them, which `test_windows_keeps_the_presence_check_alone` covers directly.
+    them to `_qt_links_resolve_inside_a_windows_artifact`, which the PE tests below cover.
     """
     skip_where_there_is_no_posix_shell()
     canned = directory / "canned"
@@ -374,17 +374,89 @@ def test_bindings_that_declare_no_qt_at_all_do_not_pass_silently(
     assert all("nothing establishes" in problem for problem in problems), problems
 
 
-def test_windows_keeps_the_presence_check_alone(tmp_path: Path) -> None:
-    """`dumpbin` is not on a stock Windows machine, so item 11 there is presence only.
+def minimal_pe(imports: Sequence[str]) -> bytes:
+    """A valid PE32+ file whose import directory names `imports` — the smallest real thing.
 
-    That is a **narrower guarantee stated rather than implied** — this pins the disposition so a
-    later reader does not mistake the Windows pass for a linkage pass.
+    Enough structure for a loader's import walk: DOS header, PE signature, COFF header, an
+    optional header with the import data directory, one section holding the descriptors and names.
     """
-    root = build(tmp_path / "app")
-    directory = root / "_internal" / "PySide6"
-    directory.mkdir(parents=True)
-    (directory / "QtCore.pyd").write_bytes(b"MZ")
+    import struct
+
+    section_rva, section_offset = 0x1000, 0x400
+    descriptors = bytearray()
+    names = bytearray()
+    names_start = 20 * (len(imports) + 1)
+    for name in imports:
+        descriptors += struct.pack("<IIIII", 0, 0, 0, section_rva + names_start + len(names), 0)
+        names += name.encode("ascii") + b"\0"
+    body = bytes(descriptors) + bytes(20) + bytes(names)
+
+    dos = bytearray(0x40)
+    dos[:2] = b"MZ"
+    struct.pack_into("<I", dos, 0x3C, 0x40)
+    optional = bytearray(240)
+    struct.pack_into("<H", optional, 0, 0x20B)
+    struct.pack_into("<I", optional, 108, 16)
+    struct.pack_into("<II", optional, 120, section_rva, len(body))
+    coff = struct.pack("<HHIIIHH", 0x8664, 1, 0, 0, 0, len(optional), 0x2022)
+    section = struct.pack(
+        "<8sIIIIIIHHI", b".idata", len(body), section_rva, len(body), section_offset, 0, 0, 0, 0, 0
+    )
+    header = bytes(dos) + b"PE\0\0" + coff + bytes(optional) + section
+    return header.ljust(section_offset, b"\0") + body
+
+
+def windows_artifact(root: Path, *, imports: Sequence[str] | None = None) -> Path:
+    """A Windows-shaped one-dir tree: Qt DLLs as real PE files, bindings importing them."""
+    internal = root / "_internal"
+    (internal / "PySide6").mkdir(parents=True)
+    for module in gates.REQUIRED_QT_MODULES:
+        (internal / "PySide6" / f"Qt6{module}.dll").write_bytes(minimal_pe(["KERNEL32.dll"]))
+        wanted = imports if imports is not None else [f"Qt6{module}.dll", "python3.dll"]
+        (internal / "PySide6" / f"Qt{module}.pyd").write_bytes(minimal_pe(wanted))
+    return root
+
+
+def test_the_pe_reader_reads_what_the_writer_wrote() -> None:
+    assert gates.pe_imports(minimal_pe(["Qt6Core.dll", "KERNEL32.dll"])) == [
+        "Qt6Core.dll",
+        "KERNEL32.dll",
+    ]
+    with pytest.raises(ValueError, match="MZ"):
+        gates.pe_imports(b"not a PE")
+
+
+def test_a_correctly_linked_windows_artifact_passes(tmp_path: Path) -> None:
+    """The positive control: without it, every failure below could be a reader that fails all."""
+    root = windows_artifact(tmp_path / "app")
     assert gates._qt_links_resolve_inside_the_artifact(root) == []
+
+
+def test_a_windows_binding_that_is_not_a_pe_file_fails(tmp_path: Path) -> None:
+    """**`T323-R1`, the reviewer's counterexample.** Windows was presence-only, so a `QtCore.pyd`
+    containing `not a PE` and three `.dll` files containing `not a DLL` returned no problems."""
+    root = windows_artifact(tmp_path / "app")
+    (root / "_internal" / "PySide6" / "QtCore.pyd").write_bytes(b"not a PE")
+    for module in gates.REQUIRED_QT_MODULES:
+        (root / "_internal" / "PySide6" / f"Qt6{module}.dll").write_bytes(b"not a DLL")
+    problems = gates._qt_links_resolve_inside_the_artifact(root)
+    assert any("QtCore.pyd is not a Windows binary" in problem for problem in problems), problems
+    assert any("is not a usable DLL" in problem for problem in problems), problems
+
+
+def test_a_windows_binding_importing_a_dll_the_artifact_lacks_fails(tmp_path: Path) -> None:
+    root = windows_artifact(tmp_path / "app")
+    (root / "_internal" / "PySide6" / "Qt6Widgets.dll").unlink()
+    problems = gates._qt_links_resolve_inside_the_artifact(root)
+    assert any("imports Qt6Widgets.dll, which is not in the artifact" in p for p in problems)
+
+
+def test_windows_bindings_that_import_no_qt_are_not_evidence(tmp_path: Path) -> None:
+    """A static Qt would import no `Qt6*.dll` at all — no complaints, and no evidence either."""
+    root = windows_artifact(tmp_path / "app", imports=["python3.dll", "KERNEL32.dll"])
+    problems = gates._qt_links_resolve_inside_the_artifact(root)
+    assert len(problems) == len(gates.REQUIRED_QT_MODULES), problems
+    assert all("nothing establishes" in problem for problem in problems)
 
 
 # --- §8 item 13, what escaped the scan (`T323-R2`) -------------------------------------------

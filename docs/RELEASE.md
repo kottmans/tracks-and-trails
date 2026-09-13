@@ -207,9 +207,10 @@ its output rather than restating the items; it is the evidence for those four:
 
     python3 packaging/artifact_gates.py <the built artifact>
 
-Two caveats it will not tell you. On Windows it checks Qt's libraries are present and cannot ask
-the loader anything, which is a narrower guarantee than the Linux run. And item 13's *repository*
-half is not covered by it at all — that stays manual.
+Two caveats it will not tell you. On Windows it reads each PySide6 binding's import table and
+requires every `Qt6*.dll` it names to be a real PE file inside the artifact, but it cannot ask where
+Windows would actually load a DLL from at run time, which the Linux run asks the loader. And item
+13's *repository* half is not covered by it at all — that stays manual.
 
 Version consistency across sources is its own check, against the tag you are about to push:
 

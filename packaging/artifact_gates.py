@@ -215,15 +215,16 @@ def _qt_links_resolve_inside_the_artifact(root: Path) -> list[str]:
     the system copy, which `T323-R1` observed doing exactly that and reporting incompatible
     private Qt symbols.
 
-    **Windows keeps the presence check alone, and that is a narrower guarantee stated rather than
-    implied.** `dumpbin` is not on a stock Windows machine and no equivalent ships with it, so
-    item 11 on Windows establishes that the libraries are present and not that anything links to
-    them. `T-323` records that disposition; this function does not pretend otherwise.
+    **Windows reads the import tables itself** (`T323-R1`, second round). It kept a presence check
+    alone, on the reasoning that `dumpbin` is not on a stock machine — and a `QtCore.pyd` holding
+    the text `not a PE` passed. The loader is not needed to answer the question: a PE file names
+    the DLLs it links in its import directory, which `pe_imports` reads directly. See
+    `_qt_links_resolve_inside_a_windows_artifact`.
     """
     extensions = sorted(root.rglob("PySide6/Qt*.abi3.so"))
     if not extensions:
         if any(root.rglob("PySide6/Qt*.pyd")):
-            return []  # Windows: the presence check above is the whole of item 11 there.
+            return _qt_links_resolve_inside_a_windows_artifact(root)
         return [
             "no PySide6 bindings found to inspect, so the linkage half of item 11 checked nothing"
         ]
@@ -281,6 +282,97 @@ def _qt_links_resolve_inside_the_artifact(root: Path) -> list[str]:
             problems.append(
                 f"no binding in this artifact resolves libQt6{module} to a file inside it, so "
                 f"nothing establishes that Qt{module} is dynamically linked here"
+            )
+    return problems
+
+
+def pe_imports(data: bytes) -> list[str]:
+    """The DLL names a Windows PE file imports, or `ValueError` if it is not a PE file.
+
+    Reads the import directory the loader reads: the DOS header's pointer to the PE signature, the
+    COFF header, the optional header's data directory entry 1, and the section table to turn RVAs
+    into file offsets. **No `dumpbin`, no `pefile`**, so the check runs wherever the gate does.
+    """
+    import struct
+
+    if len(data) < 0x40 or data[:2] != b"MZ":
+        raise ValueError("no MZ header")
+    (pe,) = struct.unpack_from("<I", data, 0x3C)
+    if data[pe : pe + 4] != b"PE\0\0":
+        raise ValueError("no PE signature")
+    sections, optional_size = struct.unpack_from("<H12xH", data, pe + 6)
+    optional = pe + 24
+    (magic,) = struct.unpack_from("<H", data, optional)
+    directories = {0x10B: 96, 0x20B: 112}.get(magic)
+    if directories is None:
+        raise ValueError(f"unknown optional header magic {magic:#x}")
+    import_rva, _size = struct.unpack_from("<II", data, optional + directories + 8)
+    table = [
+        struct.unpack_from("<8xIIII", data, optional + optional_size + 40 * index)
+        for index in range(sections)
+    ]
+
+    def offset(rva: int) -> int:
+        for virtual_size, address, raw_size, pointer in table:
+            if address <= rva < address + max(virtual_size, raw_size):
+                return pointer + rva - address
+        raise ValueError(f"RVA {rva:#x} lies in no section")
+
+    names: list[str] = []
+    if import_rva == 0:
+        return names
+    cursor = offset(import_rva)
+    while True:
+        descriptor = struct.unpack_from("<IIIII", data, cursor)
+        if not any(descriptor):
+            return names
+        start = offset(descriptor[3])
+        names.append(data[start : data.index(b"\0", start)].decode("ascii"))
+        cursor += 20
+
+
+def _qt_links_resolve_inside_a_windows_artifact(root: Path) -> list[str]:
+    """Item 11 on Windows: every binding is a real PE file whose Qt imports are in the artifact.
+
+    The same three properties the Linux half asks of `ldd`, answered from the import tables: each
+    `PySide6/Qt*.pyd` must **be** a Windows binary; every `Qt6*.dll` it imports must be a file
+    inside this artifact, and a real PE file itself; and each required module must be **evidenced**
+    by at least one binding importing it — absence of complaints is not evidence.
+
+    **What it cannot see, stated:** where Windows would actually load a DLL from at run time. The
+    Linux half asks the loader, which can report the host's copy winning; this asks whether the
+    artifact carries the file the binding names, which is what a replaceable, dynamically linked Qt
+    requires of the artifact.
+    """
+    problems: list[str] = []
+    evidenced: set[str] = set()
+    carried = {path.name.lower(): path for path in root.rglob("*.dll") if path.is_file()}
+    for binding in sorted(root.rglob("PySide6/Qt*.pyd")):
+        where = binding.relative_to(root)
+        try:
+            imports = pe_imports(binding.read_bytes())
+        except (ValueError, OSError, IndexError) as failure:
+            problems.append(f"{where} is not a Windows binary that can be inspected: {failure}")
+            continue
+        for name in imports:
+            lowered = name.lower()
+            if not lowered.startswith("qt6"):
+                continue
+            library = carried.get(lowered)
+            if library is None:
+                problems.append(f"{where} imports {name}, which is not in the artifact")
+                continue
+            try:
+                pe_imports(library.read_bytes())
+            except (ValueError, OSError, IndexError) as failure:
+                problems.append(f"{library.relative_to(root)} is not a usable DLL: {failure}")
+                continue
+            evidenced.add(lowered.removeprefix("qt6").removesuffix(".dll"))
+    for module in REQUIRED_QT_MODULES:
+        if module.lower() not in evidenced:
+            problems.append(
+                f"no binding in this artifact imports a usable Qt6{module}.dll carried inside it, "
+                f"so nothing establishes that Qt{module} is dynamically linked here"
             )
     return problems
 

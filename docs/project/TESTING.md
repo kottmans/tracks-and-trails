@@ -286,8 +286,9 @@ All of the following, **on Linux and Windows**, before any tag or distributed bu
     list of what the bump costs, and each item is its own task before the tag
 11. Qt confirmed dynamically linked in the artifact (`NFR-009`, `LIC-001`) — **executable**,
     `packaging/artifact_gates.py`. On Linux it asks the loader where each Qt dependency resolves;
-    on Windows it checks the libraries are present, which is the narrower guarantee `T-323`
-    records rather than implies
+    on Windows it reads each binding's PE import table and requires every `Qt6*.dll` named there to
+    be a real PE file inside the artifact (`T323-R1`) — narrower only in that it cannot see where
+    Windows would load from at run time
 12. License texts for Qt, ffmpeg, and yt-dlp present in the distribution — **executable**,
     `packaging/artifact_gates.py`. ffmpeg's is required only where it is bundled, which
     `OPS-001` makes Windows alone
