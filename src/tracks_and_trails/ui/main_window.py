@@ -1282,9 +1282,14 @@ class MainWindow(QMainWindow):
         that forgot silently promised a capability the installation may not have — offering a merge
         that fails is exactly what `REQ-024` exists to prevent. Passed beside the summary because
         they are one fact: the sentence *says* whether ffmpeg was found.
+
+        **No closing full stop in the bar.** The queue state beside it has none, so a label with
+        one reads as a sentence next to a caption. The stop is dropped here and not in
+        `FfmpegReport.summary()`, because a download refusal appends that summary to a sentence
+        of its own, where the stop belongs. The tooltip keeps the full text.
         """
         self._ffmpeg_available = ffmpeg_available
-        self._environment.setText(summary)
+        self._environment.setText(summary.rstrip().removesuffix("."))
         self._environment.setAccessibleName("Environment")
         self._environment.setToolTip(summary)
 

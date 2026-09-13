@@ -1848,3 +1848,24 @@ def test_a_download_that_starts_while_being_read_is_not_retargeted(qapp: QApplic
     assert window.findChild(FormatDialog) is None, "a table opened for a download already running"
     assert STARTED_MEANWHILE in window.statusBar().currentMessage()
     assert record.written == [], "a running download was retargeted"
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [
+        "ffmpeg found; all post-processing features are available.",
+        "ffmpeg was not found. Unavailable: merging; audio extraction.",
+    ],
+)
+def test_the_status_bar_summary_has_no_closing_full_stop(qapp: QApplication, summary: str) -> None:
+    """The queue state beside it has no stop, so the summary does not end in one either.
+
+    Reported in the `T-327` session. The tooltip keeps the sentence as `FfmpegReport` wrote it.
+    """
+    window = MainWindow()
+    window.report_environment(summary, ffmpeg_available=True)
+
+    assert window.environment_text() == summary.removesuffix(".")
+    label = window.findChild(QLabel, "environmentSummary")
+    assert label is not None
+    assert label.toolTip() == summary
