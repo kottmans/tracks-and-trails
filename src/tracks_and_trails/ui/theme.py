@@ -510,6 +510,9 @@ class StateRule:
     #: How it says it without colour — see `StateChannel` for the four kinds and why each counts.
     channel: str
     reason: str
+    #: The palette field the unselected state sits on, which a `luminance` claim is measured from.
+    #: A menu's items sit on `surface`; the menu bar's sit on the window itself.
+    ground: str = "surface"
 
 
 #: The channels a state may use instead of colour, and what makes each acceptable.
@@ -693,6 +696,16 @@ STATE_RULES: Final = (
             "Qt publishes `state().disabled`, which a screen reader announces whether or not "
             "anything is drawn; asserted directly in tests/ui/test_colour_is_never_alone.py."
         ),
+    ),
+    StateRule(
+        selector="QMenuBar::item:selected, QMenuBar::item:pressed",
+        conveys="which menu title the keyboard or pointer is on, or whose menu is open",
+        channel="luminance",
+        reason=(
+            "The same inversion as a menu item: brand green with its own foreground, measured "
+            "against the window ground the bar sits on rather than a menu's surface."
+        ),
+        ground="window",
     ),
     StateRule(
         selector="QMenu::item:disabled",
@@ -991,6 +1004,22 @@ QMenu::item {{
     border-radius: 3px;
 }}
 QMenu::item:selected {{
+    background-color: {theme.primary};
+    color: {theme.on_primary};
+}}
+QMenuBar::item {{
+    /* **Without this, the dark theme's menu titles vanish under the pointer** (found in the `T-327`
+       session on Windows). No rule named the bar, so the Windows style drew its own pale highlight
+       and the `QWidget` rule above kept the text light: near-white on near-white. Declaring the
+       item hands the whole of it to the sheet, which is why the padding is here too — the native
+       spacing goes with the native highlight. Sized to match it: measured on `STARBASE`, this
+       gives the same title widths the Windows style drew and a bar one pixel shorter (21px, not
+       22px); `4px 10px` made it three pixels taller and every title wider. */
+    background: transparent;
+    padding: 2px 8px;
+    border-radius: 3px;
+}}
+QMenuBar::item:selected, QMenuBar::item:pressed {{
     background-color: {theme.primary};
     color: {theme.on_primary};
 }}

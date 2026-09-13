@@ -250,7 +250,7 @@ def test_every_luminance_claim_is_far_enough_apart_to_be_one(theme: ui_theme.The
     assert claimed, "no rule claims `luminance`, so this test would pass over nothing"
 
     for rule in claimed:
-        ratio = ui_theme.contrast_ratio(theme.surface, theme.primary)
+        ratio = ui_theme.contrast_ratio(getattr(theme, rule.ground), theme.primary)
         assert ratio >= ui_theme.MINIMUM_CONTRAST, (
             f"{rule.selector!r} in {theme.name} sits {ratio:.2f}:1 from its unselected ground, "
             f"under the {ui_theme.MINIMUM_CONTRAST} floor — at that distance it is a hue change "
