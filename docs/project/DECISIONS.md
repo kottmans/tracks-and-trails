@@ -102,6 +102,7 @@ Current requirements and architecture retain their own canonical authority.
 | [UX-010](#ux-010--a-queue-groups-chip-is-progress-done-of-total) | A queue group's chip is progress: done of total | Accepted | — |
 | [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu) | The row picks a preset; the per-row verbs are the row's own menu | Accepted | — |
 | [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) | The concurrency control leaves the toolbar for Settings | Accepted | — |
+| [UX-014](#ux-014--naming-is-a-setting-a-single-download-is-renamed-not-templated) | Naming is a setting; a single download is renamed, not templated | Accepted | — |
 | [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button) | The row's menu says what it removes, and the ⋮ reads as a button | Accepted | — |
 | [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted; revision 2026-09-08.5 by amendment | [Status retention](#doc-007-status-retention); [running completed-task record](#doc-007-completed-tasks); [shared source and captured formatting](#doc-007-shared-source); [review storage](#doc-007-review-storage); [historical review migration](#doc-007-review-migration) |
 
@@ -6290,6 +6291,60 @@ a very pronounced button, people might even miss that they are there."*
 **A per-entry gesture on playlist rows** (*"Choose which entries download…"* pointing at the
 `T-110` picker) was offered alongside the rename and not taken. Adding one later is its own
 ruling; nothing here forecloses it.
+
+---
+
+## UX-014 — Naming is a setting; a single download is renamed, not templated
+
+**Status:** **Accepted** (2026-09-13) — maintainer decision
+**Date:** 2026-09-13
+**Amends:** `REQ-011` (the preview moves: an example in Settings, and the name itself in *Rename*);
+`UX-011` and `UX-012`, whose row menu offered *Naming and folders…*; `REQ-023` for the output
+template setting's presentation. **Settles:** the per-item template question `UX-007` (P-23),
+`UX-009` and `UX-011` each left open.
+**Raised by:** the maintainer in `T-327`'s Sandbox session, opening *Naming and folders…* on one
+item — *"This looks like something that should be in settings as a preference instead of using it
+to rename each individual file this way. Its tedious and no user is gonna want to do that."*
+
+### Context
+
+Naming could be set in **three places**, and the one a user met first was the hardest to use:
+
+- **Settings** held a default output template (`T-195`) as a raw field — `%(title)s.%(ext)s` —
+  with no preview.
+- **Each item** in Add URLs offered *Naming and folders…*, a template editor with a live path
+  preview (`T-112`). Renaming one file meant writing template syntax for it.
+- **Each preset** could carry its own template, shown raw in the preset manager with no check at
+  all.
+
+### Decision
+
+1. **How files are named is a Settings preference, offered as choices.** *Title*, *Uploader –
+   Title*, *Uploader / Title* (a folder per uploader) and *Custom…*, which reveals the template
+   field and its field list. An example path is shown for the current choice. The stored value is
+   the same `output_template` string; the choices are named templates, and empty is still the
+   application's own (*Title*).
+2. ***Naming and folders…* is removed** from the Add URLs row menu, with the per-item template
+   editor behind it.
+3. **A single download is renamed, not templated.** *Rename…* on an item in Add URLs and on a
+   queue row that has not started asks for a **name** — prefilled with the name the setting would
+   produce, extension left off — and the application writes it as a literal: `%` is escaped and the
+   extension stays yt-dlp's. Clearing it goes back to the setting's name. Not offered on a playlist
+   row, whose entries are many files (they keep the playlist folder and the setting's pattern).
+4. **Presets no longer carry a template.** The field leaves `Preset` and the preset manager. A
+   preset saved earlier with one still loads; the template is ignored and not written back.
+
+**Not offered, and why:** a *Playlist / 01 – Title* choice — playlist fields are refused on purpose
+(`core/output_template.py`), because entries download as separate URLs; playlists already get a
+folder named for the playlist. **Renaming a finished file on disk** — a file operation with its own
+collision and containment rules, left out; *Show in folder* is the route.
+
+### What is given up, in writing
+
+- **Per-item templates.** A user who wanted `%(uploader)s/%(title)s` for one item and not others
+  now changes the setting, or renames that item by hand.
+- **Per-preset naming.** A user who kept an *Audio* preset naming files differently loses that on
+  upgrade; the setting names everything.
 
 ---
 

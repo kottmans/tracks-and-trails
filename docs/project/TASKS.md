@@ -614,6 +614,34 @@ the windowed build to it; this workflow still does not run on push.
 
 ## Ready
 
+### T-337 — Naming is a setting; a single download is renamed, not templated
+
+**Status:** **Ready** — ruled 2026-09-13 by the maintainer from `T-327`'s session, recorded as
+`UX-014`; being built.
+**Owner:** Implementer
+**Priority:** High — the per-item template editor is the first naming surface a user meets
+**Phase:** Phase 5
+**Relevant context:** `UX-014`; `REQ-011` as amended; `REQ-023`; `T-112` (the editor this retires),
+`T-195` (the Settings default), `ARC-010` (a template cannot leave the download folder)
+**Affected surfaces:** `core/models.py` and `core/presets.py` (`Preset.output_template`),
+`core/settings.py` (preset loading), `ui/settings_dialog.py`, `ui/add_dialog.py`,
+`ui/preset_manager.py`, `ui/main_window.py` and `ui/queue_view.py` (a queued row's menu)
+
+The maintainer, on the template panel: *"This looks like something that should be in settings as a
+preference instead of using it to rename each individual file this way."*
+
+#### Acceptance criteria
+
+- [ ] Settings offers *Title*, *Uploader – Title*, *Uploader / Title* and *Custom…*, with an example
+      path for the choice, and stores the same `output_template` value as before
+- [ ] *Naming and folders…* and the per-item template editor are gone from Add URLs
+- [ ] *Rename…* on a single item in Add URLs and on a queue row that has not started takes a plain
+      name, previews its path, writes it literally (a `%` in the name is not a field), and clearing
+      it returns to the setting's name
+- [ ] Presets carry no template; a `settings.toml` preset with an `output_template` key still loads
+- [ ] Each of the above has a test that fails without it
+
+
 ### T-327 — The Windows manual verification session
 
 **Status:** **In Progress** — the maintainer's session began 2026-09-12 in Windows Sandbox. Item 1
