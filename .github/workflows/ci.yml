@@ -1247,6 +1247,43 @@ jobs:
           python packaging/artifact_gates.py dist/tracks-and-trails \
             2>&1 | tee "reports/artifact-gates.txt"
 
+      # --- `T-319`: the build that ships is windowed, and nothing above runs it -------------------
+      #
+      # Everything above proves the **smoke** build, which keeps its console so the probes can print.
+      # The release build is `console=False`: its probes report only through `TT_PROBE_REPORT`, and a
+      # user who double-clicks it must get no console window. Neither is visible from the smoke
+      # build, so the Windows leg builds the release mode too and asks both questions of it.
+      - name: Build the windowed release artifact
+        if: runner.os == 'Windows'
+        # The pinned LGPL ffmpeg is fetched by a named, reviewable step rather than by the spec,
+        # which is `OPS-012` §3's line: a build must not change the machine as a side effect.
+        run: |
+          python packaging/fetch_ffmpeg.py 2>&1 | tee "reports/fetch-ffmpeg.txt"
+          cd packaging
+          SECONDS=0
+          TT_RELEASE_BUILD=1 pyinstaller --noconfirm --clean \
+            --distpath ../dist-release --workpath ../build-release tracks-and-trails.spec \
+            > "../reports/pyinstaller-release.txt" 2>&1
+          echo "release build seconds: $SECONDS" | tee -a "../reports/frozen-timing.txt"
+
+      - name: Probe the windowed build through its report files
+        if: runner.os == 'Windows'
+        # Its console output is discarded on purpose: a probe that stopped writing its report must
+        # fail here rather than pass on text a windowed build's user would never see.
+        run: |
+          python packaging/windowed_checks.py probes dist-release/tracks-and-trails \
+            2>&1 | tee "reports/windowed-probes.txt"
+
+      - name: The windowed build opens no console, and the check can see one
+        if: runner.os == 'Windows'
+        # The smoke build first, expecting a console: a check that cannot see one there proves
+        # nothing when it sees none in the build that ships.
+        run: |
+          python packaging/windowed_checks.py console dist/tracks-and-trails --expect console \
+            2>&1 | tee "reports/console-check.txt"
+          python packaging/windowed_checks.py console dist-release/tracks-and-trails --expect none \
+            2>&1 | tee -a "reports/console-check.txt"
+
       - name: Remove this job's profile
         # `always()`, and on the self-hosted machines this is the point of it: `runner.temp`
         # survives the job there, so every frozen run would otherwise leave a profile holding a

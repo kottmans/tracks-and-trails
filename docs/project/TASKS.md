@@ -2613,6 +2613,34 @@ authorised the key on 2026-09-12 and all three are measured above. Kept as a cor
 than deleted: the blocker was one environment variable, exactly as it said, and saying so is what
 made it worth asking for.)*
 
+#### 2026-09-13 — both modes in CI, the windowed probes by their files, and no console
+
+**`ci.yml`'s `frozen windows` job now builds the release mode as well** — fetching the pinned ffmpeg
+in a named step, then `TT_RELEASE_BUILD=1` into `dist-release/` — and asks it the two questions
+only a windowed build raises, through `packaging/windowed_checks.py`:
+
+- **`probes`** runs all five frozen probes with each report in its own file and the console
+  **discarded**, and fails any probe whose report lacks its success line. A probe that stopped
+  writing its report — the defect the criterion names — fails there; `judge_probe` holds that logic
+  and `tests/unit/test_windowed_checks.py` asserts each failure mode, and that every marker is a line
+  `_freeze_probe` actually says.
+- **`console`** starts a build with `CREATE_NEW_CONSOLE` and looks for a `conhost.exe` in its tree or
+  a `ConsoleWindowClass` window owned by it. **The smoke build runs first, expecting a console** —
+  the positive control — then the release build, expecting none.
+
+**Measured on `STARBASE`** from this tree, before the workflow has run it:
+
+```
+ok    --spawn-probe / --ytdlp-probe / --database-probe / --ytdlp-update-probe / --ffmpeg-probe
+windowed probes: 5 of 5 passed through their report
+console   conhost.exe (pid 7968); a ConsoleWindowClass window owned by pid 10420   (smoke, expected)
+console   none seen in 15 s                                                          (release)
+artifact-gates: all 4 checks passed on dist-release\tracks-and-trails
+```
+
+`docs/DEVELOPMENT.md` documents both modes. **The CI run is still owed**: the steps were exercised by
+hand on the machine that runs them, not yet by the workflow.
+
 #### 2026-09-13 — the bundled ffmpeg deleted: it degrades, and says why
 
 The criterion *"the same build with the bundled binary deleted degrades exactly as `REQ-024`

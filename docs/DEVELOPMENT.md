@@ -316,8 +316,25 @@ cd packaging && pyinstaller --noconfirm --clean \
 python packaging/frozen_smoke.py dist/tracks-and-trails
 ```
 
-The smoke test asserts the frozen build spawns a child without relaunching itself. It is a
-Phase 0 build for that check only — not the release build, which is Phase 5.
+The smoke test asserts the frozen build spawns a child without relaunching itself.
+
+**One spec, two modes** (`T-319`). The command above is the **smoke** build: it keeps a console, so
+the probes print, and on Windows it bundles no ffmpeg. The **release** build is the same spec with
+`TT_RELEASE_BUILD=1` — windowed (`console=False`), a Windows version resource, and the pinned LGPL
+ffmpeg bundled, which has to be fetched first:
+
+```bash
+python packaging/fetch_ffmpeg.py          # Windows only: pinned, digest-checked, into packaging/vendor/
+cd packaging && TT_RELEASE_BUILD=1 pyinstaller --noconfirm --clean \
+    --distpath ../dist-release --workpath ../build-release tracks-and-trails.spec && cd ..
+python packaging/windowed_checks.py probes dist-release/tracks-and-trails
+```
+
+A windowed build has no `stdout`, so its probes report through `TT_PROBE_REPORT`, and
+`windowed_checks.py` judges each one by that file alone. On Windows,
+`python packaging/windowed_checks.py console <build> --expect none|console` asks whether launching
+it opens a console window. CI's `frozen windows` job builds both modes and runs both checks;
+`release.yml` builds the release mode from a tag.
 
 Run all four before considering a source change done:
 
