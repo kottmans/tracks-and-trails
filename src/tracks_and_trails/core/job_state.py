@@ -41,7 +41,12 @@ class JobStatus(StrEnum):
     # rather than inheriting this one, which was a guess nothing ever exercised.
 
 
-#: States from which nothing further happens.
+#: States no worker's outcome can move a job out of, and which *Clear finished* clears.
+#:
+#: **Not "nothing further happens" any more** (2026-09-13): a cancelled job can be queued again by
+#: the user, which is one edge back to `QUEUED` and no other. What `TERMINAL` still guarantees is
+#: what its callers rely on — `_settled` drops a late outcome for a job in it, and the store's
+#: clear-finished deletes it.
 #:
 #: `FAILED` is deliberately **not** here: `ARCHITECTURE.md` §5 has `FAILED ──retry──▶ QUEUED`,
 #: and `REQ-018` requires a failed job to stay in the queue and offer retry. A job that failed
@@ -93,7 +98,11 @@ _TRANSITIONS: Final[dict[JobStatus, frozenset[JobStatus]]] = {
     # attempt counter and the queue position are the caller's to update (`REQ-018`).
     JobStatus.FAILED: frozenset({JobStatus.QUEUED}),
     JobStatus.COMPLETED: frozenset(),
-    JobStatus.CANCELLED: frozenset(),
+    # **Queue again, and only that** (ruled by the maintainer 2026-09-13, `UX-005` §4). The user
+    # asks for a cancelled job back; it re-enters at the end of the queue and starts from nothing,
+    # exactly as retry does. Still `TERMINAL`: no worker's outcome can move it, and *Clear finished*
+    # still clears it — only the user's own request can.
+    JobStatus.CANCELLED: frozenset({JobStatus.QUEUED}),
 }
 
 
@@ -143,5 +152,5 @@ def apply(source: JobStatus, target: JobStatus) -> JobStatus:
 
 
 def is_terminal(status: JobStatus) -> bool:
-    """Whether the job is finished for good. See `TERMINAL` for why `FAILED` is not."""
+    """Whether no outcome can move the job any more. See `TERMINAL` for why `FAILED` is not."""
     return status in TERMINAL

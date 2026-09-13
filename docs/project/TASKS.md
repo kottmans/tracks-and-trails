@@ -233,6 +233,52 @@ worked there; updating in the Sandbox's Settings fixed it there too.
 
 ---
 
+### T-335 — A cancelled download can be queued again
+
+**Status:** **In Review** — ruled 2026-09-13 by the maintainer from `T-327`'s session (*Queue again*,
+at the back, from scratch — the Implementer's recommendation), recorded as `UX-005` §4's 2026-09-13
+amendment, and built the same day.
+**Owner:** Implementer designs; Maintainer rules
+**Priority:** Medium
+**Phase:** Phase 5
+**Relevant context:** `UX-005` §4–§5; `REQ-015` (cancel), `REQ-018` and `P2PLAN-R7` (manual retry
+re-enters at the back); `ARCHITECTURE.md` §5's state machine; `UX-008` (a cancel discards the
+partial)
+**Affected surfaces:** `core/job_state.py`, `downloader/manager.py`'s `retry`, `ui/row_verbs.py`,
+`ui/queue_view.py`
+
+The maintainer, in the Sandbox: *"once a video in the queue is cancelled, you should be able to undo
+it."* A cancelled row offered only *Remove*, and the state machine had no way out of `CANCELLED`.
+
+#### Built 2026-09-13
+
+- **`Verb.QUEUE_AGAIN`**, *Queue again*, on cancelled rows before *Remove*; routed through
+  `retry_requested`, the same route as *Retry* and *Start again*.
+- **`CANCELLED → QUEUED`** is the one new edge. `CANCELLED` stays in `TERMINAL`, so `_settled` still
+  drops a late outcome for it and *Clear finished* still clears it; `ARCHITECTURE.md` §5 says so.
+- **`DownloadManager.retry`** accepts a cancelled job and writes it through `requeue_at_end`, at the
+  back. **If the cancelled job's session is still held** — a running job's row says `CANCELLED`
+  when its stream ends, before `_release` has found the process gone — nothing is written until the
+  tick finds it released (`_requeue_when_released`), because `_release` fills free slots before it
+  discards the old attempt's partial, keyed by the same job id. The pending set counts as work for
+  `is_idle`, the tick's keep-alive and the drain rule, and shutdown drops it.
+- **Tests**: a worker that honours the cancel, ends its stream and lingers ignoring `SIGTERM` —
+  *Queue again* pressed while the row says `CANCELLED` and the session is held writes nothing, then
+  `QUEUED` at the back once released (**mutated**: writing immediately fails it); a job cancelled
+  before starting re-queues at once; the verb table and its complement; the routing.
+
+#### Acceptance criteria
+
+- [x] A cancelled row offers *Queue again*, which puts the job at the back of the queue as `QUEUED`
+- [x] No worker outcome can move a cancelled job; only the user's request can
+- [x] Pressed while the cancelled worker is still being stopped, it waits for the release
+- [ ] Seen on the Windows installed build
+
+**Not done, and not asked for:** a playlist header whose members are all cancelled offers no group
+*Queue again*; each entry offers its own.
+
+---
+
 ### T-333 — The yt-dlp section says which version is newest at a glance
 
 **Status:** **In Review** — ruled 2026-09-12 (a table with a Check button, the Implementer's

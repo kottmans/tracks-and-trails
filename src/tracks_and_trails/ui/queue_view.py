@@ -1829,10 +1829,11 @@ class QueueView(QWidget):
             return
         if verb is Verb.CANCEL:
             self._manager.cancel(job_id)
-        elif verb in (Verb.RETRY, Verb.START_AGAIN):
-            # **One route for both** (`T-113`). They are two labels for one action — the
-            # difference is what the download will do, not what the application does with the
-            # press — so a second signal would be two paths that have to be kept identical.
+        elif verb in (Verb.RETRY, Verb.START_AGAIN, Verb.QUEUE_AGAIN):
+            # **One route for all three** (`T-113`, and *Queue again* on 2026-09-13). They are
+            # labels for one action — the job goes to the back and runs again — and the difference
+            # is what the row says, not what the application does with the press, so a second
+            # signal would be two paths that have to be kept identical.
             self.retry_requested.emit(job_id)
         elif verb is Verb.REMOVE:
             self.remove_requested.emit(job_id)

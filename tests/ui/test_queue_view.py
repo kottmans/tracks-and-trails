@@ -3149,6 +3149,30 @@ def test_start_again_is_routed_the_same_way_retry_is(
     assert asked == ["live"]
 
 
+def test_queue_again_is_routed_the_same_way_retry_is(
+    qapp: QApplication,
+    tmp_path: Path,
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+) -> None:
+    """Ruled by the maintainer 2026-09-13: a cancelled row offers *Queue again*, and it acts.
+
+    Asserted on the model's own verbs and then on the signal, for `START_AGAIN`'s reason above: a
+    verb the row draws and nothing routes is a dead button.
+    """
+    queue.add(make_job("stopped", tmp_path, status=JobStatus.CANCELLED, title="A video"))
+    view = views(jobs=queue, manager=managers())
+    offered = view.model.data(view.model.index(0, JOB_COLUMN), VERBS_ROLE)
+    assert Verb.QUEUE_AGAIN in offered, offered
+    asked: list[str] = []
+    view.retry_requested.connect(asked.append)
+
+    view._on_verb("stopped", Verb.QUEUE_AGAIN)
+
+    assert asked == ["stopped"]
+
+
 # --- T-114: what the queue tells the add dialog about duplicates (REQ-022) ---------------------
 
 

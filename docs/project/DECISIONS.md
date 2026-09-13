@@ -4197,6 +4197,21 @@ without anyone checking the window against the mock.
      and removing a queued job is never refused. The two-step spelling was an accident of the
      table, not a policy. *Cancel* stays on queued rows, because a job that is queued may start
      between reading the row and pressing anything.
+   - **Amended 2026-09-13: a cancelled row offers *Queue again*** (ruled by the maintainer in the
+     `T-327` session). A cancel is often a slip or a change of mind, and the row offered only
+     *Remove* — so getting the download back meant removing it and pasting the URL again. *Queue
+     again* puts the job at the **back** of the queue and starts it **from nothing**, exactly as
+     *Retry* does (`P2PLAN-R7`), and whether it was cancelled before or during its download. Its own
+     word rather than *Retry*, for `START_AGAIN`'s reason: nothing failed. The state machine gains
+     `CANCELLED → QUEUED` and nothing else; `CANCELLED` stays terminal to every worker outcome and
+     to *Clear finished*. Chosen over returning the job to its old place (rows around it may have
+     moved, finished or been cleared) and over a transient *Undo* (no help to someone who comes
+     back later). A cancelled job whose worker is still being stopped is re-queued once the manager
+     has released it (`ARCHITECTURE.md` §5).
+   - **Amended 2026-09-13: the state chip is a filled label, not an outline** (ruled by the
+     maintainer, same session). Outlined in the muted ink, *Cancelled* was the same shape as the
+     row's buttons and read as one that did nothing. A chip is a soft fill with no border; a verb is
+     outlined, and answers the pointer and the press.
    - **On the existing line, not in a gutter.** The third line already exists to say *as Best
      video*; the buttons sit at its right end. This costs no row height and leaves the title and a
      verbatim extractor message the **full** width, which `NFR-006` needs and a reserved gutter

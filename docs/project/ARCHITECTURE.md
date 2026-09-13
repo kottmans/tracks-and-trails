@@ -240,7 +240,15 @@ QUEUED ──▶ PROBING ──▶ READY ──▶ RUNNING ──▶ POST_PROCES
    └──────▶ CANCELLED ◀──────────────────────────────┘
 
 FAILED ──retry──▶ QUEUED
+CANCELLED ──queue again──▶ QUEUED
 ```
+
+**A cancelled job can be queued again** (ruled by the maintainer 2026-09-13, `UX-005` §4). It is
+the user's request and nothing else's: `CANCELLED` stays in `TERMINAL`, so no worker outcome can
+move a cancelled job, and *Clear finished* still clears it. Like retry, it re-enters at the end of
+the queue and starts from nothing. The manager does not write it while the cancelled job's worker
+is still being stopped — that worker's late progress would otherwise walk the re-queued row — and
+performs it on the tick once the session is released.
 
 Transitions are validated in one place. An illegal transition raises rather than silently
 corrupting state — a persisted queue that lies about its state is worse than a crash.

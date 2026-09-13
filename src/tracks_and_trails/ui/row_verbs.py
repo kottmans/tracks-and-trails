@@ -14,14 +14,16 @@ by side, and the test writes the same four rows out by hand. Two hand-maintained
 what §13 warns against for *derived* sets; here the whole point is that they are independent copies
 of an external authority, and the test fails when they diverge.
 
-## Three states `UX-005` does not name
+## Two states `UX-005` does not name, and one it now does
 
 Its table has *Running*, *Queued*, *Failed* and *Done*. The pipeline has eight statuses, so
-`PROBING`, `POST_PROCESSING` and `CANCELLED` are decided here by the entry's own principle rather
-than invented: the first two are states in which a worker holds the job, which is what *Running*
-means for this purpose, and a cancelled job has no file to open and nothing to retry, so the only
-honest verb left is the one that removes the row. **This is a reading of `UX-005`, not part of
-it** — worth an amendment to that entry rather than leaving the reading only here.
+`PROBING` and `POST_PROCESSING` are decided here by the entry's own principle rather than invented:
+both are states in which a worker holds the job, which is what *Running* means for this purpose.
+**This is a reading of `UX-005`, not part of it.**
+
+`CANCELLED` was a reading too — *Remove* alone, since there was no file and nothing to retry — until
+the maintainer ruled on 2026-09-13 that a cancelled row offers *Queue again* (`UX-005` §4's
+amendment). It is part of the entry now.
 """
 
 from collections.abc import Iterable
@@ -45,6 +47,10 @@ class Verb(StrEnum):
     #: point: pressing it on a live stream throws away everything already downloaded, and a button
     #: reading *Retry* says the opposite. One signal per meaning is also what `CANCEL_ALL` is for.
     START_AGAIN = "start_again"
+    #: **A cancelled job, back in the queue** (ruled by the maintainer 2026-09-13, `UX-005` §4).
+    #: Its own value rather than `RETRY` under another label, for `START_AGAIN`'s reason: nothing
+    #: failed, so *Retry* would say something untrue about the row.
+    QUEUE_AGAIN = "queue_again"
     REMOVE = "remove"
     OPEN = "open"
     REVEAL = "reveal"
@@ -66,6 +72,7 @@ LABELS: Final[dict[Verb, str]] = {
     # **Named for what it costs**, which is `CANCEL_ALL`'s reasoning applied to the other end of
     # the row: *Retry* on a job that resumes continues, and on one that cannot it starts over.
     Verb.START_AGAIN: "Start again",
+    Verb.QUEUE_AGAIN: "Queue again",
     Verb.REMOVE: "Remove",
     Verb.OPEN: "Open",
     Verb.REVEAL: "Show in folder",
@@ -107,8 +114,10 @@ _BY_STATUS: Final[dict[JobStatus, tuple[Verb, ...]]] = {
     # Done — `REQ-021`'s two file actions, and `UX-005` §8 keeps the row in the Queue tab until
     # *Clear finished*, so this is where a user answers "did it work".
     JobStatus.COMPLETED: (Verb.OPEN, Verb.REVEAL),
-    # Cancelled — no file, nothing to retry. Not in `UX-005`'s table; see the module docstring.
-    JobStatus.CANCELLED: (Verb.REMOVE,),
+    # Cancelled — no file, and nothing failed. **`Queue again` was added 2026-09-13** by the
+    # maintainer's ruling from the `T-327` session: a cancel is often a mistake or a change of
+    # mind, and before this the only way back was to remove the row and paste the URL again.
+    JobStatus.CANCELLED: (Verb.QUEUE_AGAIN, Verb.REMOVE),
 }
 
 

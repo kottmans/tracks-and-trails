@@ -594,6 +594,14 @@ class DownloadManager(QObject):
         #: (`T-083`). Held on the tick rather than on a timer per job, for the reason every other
         #: deadline in this class is: one place where the lifetime rules are applied.
         self._retry_at: dict[str, float] = {}
+        #: Cancelled jobs the user asked to queue again while their session was still being taken
+        #: apart (ruled by the maintainer 2026-09-13, `UX-005` §4). **The write waits, not only the
+        #: start.** A running job's row says `CANCELLED` once its stream ends, but the session is
+        #: this manager's until `_release` finds the process gone — and `_release` fills free slots
+        #: *before* it discards the old attempt's partial, which is keyed by the same job id. A row
+        #: already re-queued would be among the jobs those slots start. So nothing is written until
+        #: `_holds` is false; `_requeue_released` does it on the tick.
+        self._requeue_when_released: set[str] = set()
         #: What to restart, for a job whose start is deferred — parked behind the gate, a slot,
         #: a reorder barrier, or a retry's backoff (`T083-R1`). Absent means `DOWNLOAD`, which
         #: is what every deferred start was silently assumed to be until a retried **probe**
@@ -774,6 +782,7 @@ class DownloadManager(QObject):
             any(queued(job_id) for job_id in self._occupant_ids())
             or any(queued(job_id) for job_id in self._waiting)
             or any(queued(job_id) for job_id in self._retry_at)
+            or bool(self._requeue_when_released)
             or self._held_for_start
             or self._chains
         )
@@ -1093,7 +1102,11 @@ class DownloadManager(QObject):
         what stops it from holding the door.
         """
         return (
-            not self._sessions and not self._reserved and not self._waiting and not self._retry_at
+            not self._sessions
+            and not self._reserved
+            and not self._waiting
+            and not self._retry_at
+            and not self._requeue_when_released
         )
 
     @property
@@ -1988,7 +2001,13 @@ class DownloadManager(QObject):
         self._persist(job_id, revise, then=then, otherwise=otherwise)
 
     def retry(self, job_id: str) -> None:
-        """Re-queue a failed job and start it as soon as the pool can take it (`REQ-018`).
+        """Re-queue a failed **or cancelled** job and start it as soon as the pool can take it.
+
+        `REQ-018` for a failed job; *Queue again* for a cancelled one, ruled by the maintainer on
+        2026-09-13 (`UX-005` §4's amendment). One method, because they are one action — the job goes
+        to the back of the queue and starts from nothing — and the reasoning below holds for both.
+        A cancelled job whose worker is still being stopped is re-queued once it has been released
+        (`_requeue_when_released`), not before.
 
         **The manager owns this, and `T036-R1` is what it cost to have composition own it.** A
         retry is a state transition plus a start, and both are this object's business — so when
@@ -2027,18 +2046,31 @@ class DownloadManager(QObject):
         `MAX + 1` separately would collide rather than tie.
         """
         job = self._repository.get(job_id)
-        if job is None or job.status is not JobStatus.FAILED:
+        if job is None or job.status not in (JobStatus.FAILED, JobStatus.CANCELLED):
+            return
+        if job.status is JobStatus.CANCELLED and self._holds(job_id):
+            if not self._shutting_down:
+                self._requeue_when_released.add(job_id)
+                self._timer.start()
             return
         self._persist(
             job_id,
             lambda current: (
                 current.with_status(JobStatus.QUEUED)
-                if current.status is JobStatus.FAILED
+                if current.status in (JobStatus.FAILED, JobStatus.CANCELLED)
                 else None
             ),
             then=lambda: self._start_when_free(job_id),
             write=self._repository.requeue_at_end,
         )
+
+    def _requeue_released(self) -> None:
+        """Queue again each cancelled job whose session has now been released (`retry`)."""
+        for job_id in sorted(self._requeue_when_released):
+            if self._holds(job_id):
+                continue
+            self._requeue_when_released.discard(job_id)
+            self.retry(job_id)
 
     def _holds(self, job_id: str) -> bool:
         """Whether this manager already owns a session or a reservation for `job_id` (`T116-R1`).
@@ -2302,6 +2334,8 @@ class DownloadManager(QObject):
         # A retry this manager decided on but has not started never will be (`T-083`), and
         # holding `idle` open for one would stop the application quitting.
         self._retry_at.clear()
+        # A queue-again waiting on a session to be released, likewise.
+        self._requeue_when_released.clear()
         # Reserved starts as well as running sessions (`T016-R3`). A start whose transition is
         # still on the writer thread has no process to cancel yet, and skipping it here is how
         # shutdown used to announce `idle` and then spawn a worker from the callback that
@@ -2355,9 +2389,16 @@ class DownloadManager(QObject):
                     self._force_stop(session)
 
         self._perform_due_retries(now)
+        self._requeue_released()
         self._fill_free_slots()
 
-        if self._sessions or self._reserved or self._waiting or self._retry_at:
+        if (
+            self._sessions
+            or self._reserved
+            or self._waiting
+            or self._retry_at
+            or self._requeue_when_released
+        ):
             # A reservation counts as work in flight (`T016-R3`). Its transition is still on the
             # writer thread, and the callback that settles it is what decides whether a worker
             # appears — so `idle` here would be a promise this manager cannot keep. A job waiting

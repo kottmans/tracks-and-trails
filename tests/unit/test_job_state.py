@@ -29,9 +29,9 @@ from tracks_and_trails.core.job_state import (
 )
 
 #: Transcribed by hand from `ARCHITECTURE.md` §5's state diagram and its
-#: `FAILED ──retry──▶ QUEUED` note. **Do not derive this from `_TRANSITIONS`** — that is
-#: precisely the mistake `T010-R1` recorded. Changing production without changing this must
-#: fail the suite; that is the entire point of the file.
+#: `FAILED ──retry──▶ QUEUED` and `CANCELLED ──queue again──▶ QUEUED` notes. **Do not derive
+#: this from `_TRANSITIONS`** — that is precisely the mistake `T010-R1` recorded. Changing
+#: production without changing this must fail the suite; that is the entire point of the file.
 EXPECTED: dict[JobStatus, set[JobStatus]] = {
     JobStatus.QUEUED: {JobStatus.PROBING, JobStatus.FAILED, JobStatus.CANCELLED},
     JobStatus.PROBING: {JobStatus.READY, JobStatus.FAILED, JobStatus.CANCELLED},
@@ -48,7 +48,7 @@ EXPECTED: dict[JobStatus, set[JobStatus]] = {
     },
     JobStatus.FAILED: {JobStatus.QUEUED},
     JobStatus.COMPLETED: set(),
-    JobStatus.CANCELLED: set(),
+    JobStatus.CANCELLED: {JobStatus.QUEUED},
 }
 
 #: States with active work to stop. `CANCELLED` must be reachable from exactly these.
@@ -147,12 +147,20 @@ def test_a_failed_job_is_retryable_but_not_cancellable() -> None:
     assert not can_transition(JobStatus.FAILED, JobStatus.CANCELLED)
 
 
-def test_nothing_is_reachable_from_a_terminal_state() -> None:
-    """A completed or cancelled job is finished. Anything else is state corruption."""
+def test_a_terminal_state_leaves_only_by_the_users_queue_again() -> None:
+    """A completed or cancelled job is finished: no outcome moves it. Anything else is corruption.
+
+    **One exception, and it is the user's** (ruled by the maintainer 2026-09-13): a cancelled job
+    can be queued again, which is `CANCELLED → QUEUED` and nothing else. A completed job has no way
+    out at all.
+    """
     assert frozenset({JobStatus.COMPLETED, JobStatus.CANCELLED}) == TERMINAL
+    assert allowed_from(JobStatus.COMPLETED) == frozenset()
+    assert allowed_from(JobStatus.CANCELLED) == frozenset({JobStatus.QUEUED})
     for status in TERMINAL:
-        assert allowed_from(status) == frozenset(), f"{status} is terminal but has transitions"
         for target in JobStatus:
+            if (status, target) == (JobStatus.CANCELLED, JobStatus.QUEUED):
+                continue
             with pytest.raises(IllegalTransitionError):
                 apply(status, target)
 

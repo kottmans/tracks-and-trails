@@ -587,6 +587,32 @@ def child_ignoring_cancellation(
         time.sleep(0.05)
 
 
+def child_cancelling_then_lingering(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **kwargs: Any
+) -> None:
+    """Report progress, honour the cancel **and end its stream**, then keep the process alive.
+
+    The window *Queue again* has to wait out: the row already says `CANCELLED` — that is written
+    when the stream ends — while the session is still this manager's until `_release` finds the
+    process gone. `SIGTERM` is ignored so the escalation, not the child, decides when that is.
+    """
+    import signal
+
+    from tracks_and_trails.core.errors import ErrorKind
+    from tracks_and_trails.downloader.protocol import Failed
+
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    queue.put(Progress(job_id=job_id, stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=1))
+    kwargs["cancel"].wait()
+    queue.put(Failed(job_id=job_id, kind=ErrorKind.CANCELLED, message="cancelled, lingering"))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=1))
+    queue.close()
+    queue.join_thread()
+    while True:
+        time.sleep(0.05)
+
+
 def child_writing_a_partial_and_ignoring_cancellation(
     kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
 ) -> None:
@@ -5476,6 +5502,79 @@ def test_a_manual_retry_re_enters_the_queue_at_the_back(
             f"a manual retry kept position {after.queue_position}; job-2 and job-3 have never run "
             "and sit at 1 and 2, so re-queuing in place puts a second attempt ahead of two firsts"
         )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_queue_again_waits_for_the_cancelled_session_to_be_released(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    existing_children: set[int],
+) -> None:
+    """Ruled by the maintainer 2026-09-13: a cancelled job can be queued again — **once its old
+    session is gone, not before.**
+
+    A running job's row turns `CANCELLED` when its stream ends, and the session is released only
+    when the process is found dead, which for a worker ignoring `SIGTERM` is the escalation's
+    kill. *Queue again* pressed in between writes nothing; `_release` would otherwise fill free
+    slots — the re-queued job among them — before discarding the old attempt's partial, which is
+    keyed by the same job id. Once released, the job is written `QUEUED` at the back, parked here
+    because the queue is stopped.
+    """
+    queued(repository, "job-1", "job-2", directory=tmp_path)
+    download = manager(entry_point=child_cancelling_then_lingering)
+    recorder = Recorder(download, repository)
+    download.start_queue()
+
+    download.start("job-1")
+    assert spin(lambda: bool(recorder.progress), timeout=60), "the worker never reported"
+    download.cancel("job-1")
+    assert spin(lambda: repository.jobs["job-1"].status is JobStatus.CANCELLED, timeout=10)
+    assert "job-1" in download.active_job_ids() or download._holds("job-1"), (
+        "the session was already released, so this run never reached the window under test"
+    )
+    download.stop_queue()
+    download.retry("job-1")
+
+    held_back = repository.jobs["job-1"].status
+    assert held_back is JobStatus.CANCELLED, (
+        "queue again wrote the row while its cancelled session was still held"
+    )
+    assert spin(lambda: not worker_processes(existing_children), timeout=CANCEL_BUDGET_SECONDS + 3)
+
+    def queued_again() -> bool:
+        return repository.jobs["job-1"].status is JobStatus.QUEUED
+
+    assert spin(queued_again, timeout=10), (
+        "the cancelled job was never queued again once its session had been released"
+    )
+    written = [status for job_id, status in repository.writes if job_id == "job-1"]
+    assert written[-2:] == [JobStatus.CANCELLED, JobStatus.QUEUED], written
+    stored = repository.jobs["job-1"]
+    assert stored.queue_position is not None and stored.queue_position > 1, (
+        f"queued again at position {stored.queue_position}, ahead of job-2 which has never run"
+    )
+    download.shutdown()
+    assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_queue_again_on_a_job_cancelled_before_it_started_is_immediate(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """No worker to wait for, so nothing to defer: the row is `QUEUED` when the call returns."""
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", directory=tmp_path)
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.cancel("job-1")
+        assert repository.jobs["job-1"].status is JobStatus.CANCELLED
+        download.retry("job-1")
+        stored = repository.jobs["job-1"]
+        assert stored.status is JobStatus.QUEUED
+        assert stored.queue_position is not None and stored.queue_position > 1
     finally:
         download.shutdown()
         assert spin(lambda: download.is_idle, timeout=60)

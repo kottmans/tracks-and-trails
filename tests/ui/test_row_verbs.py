@@ -31,6 +31,10 @@ UX_005_TABLE = {
     "queued": (Verb.MOVE_UP, Verb.MOVE_DOWN, Verb.CANCEL, Verb.REMOVE),
     "failed": (Verb.RETRY, Verb.REMOVE),
     "done": (Verb.OPEN, Verb.REVEAL),
+    # **Queue again**, ruled by the maintainer 2026-09-13 (`UX-005` §4's amendment, `T-327`
+    # session). Before, a cancelled row offered only *Remove*, and getting the download back meant
+    # removing it and pasting the URL again.
+    "cancelled": (Verb.QUEUE_AGAIN, Verb.REMOVE),
 }
 
 
@@ -45,6 +49,7 @@ UX_005_TABLE = {
         (JobStatus.READY, "queued"),
         (JobStatus.FAILED, "failed"),
         (JobStatus.COMPLETED, "done"),
+        (JobStatus.CANCELLED, "cancelled"),
     ],
 )
 def test_each_state_offers_exactly_what_the_decision_says(status: JobStatus, row: str) -> None:
@@ -70,17 +75,37 @@ def test_no_state_offers_a_verb_another_state_owns() -> None:
     forbidden = {
         # A download in flight cannot be reordered — it is not waiting for a slot — and there is
         # no per-job pause to offer (`UX-005` §7).
-        JobStatus.RUNNING: {Verb.MOVE_UP, Verb.MOVE_DOWN, Verb.RETRY, Verb.OPEN, Verb.REVEAL},
+        JobStatus.RUNNING: {
+            Verb.MOVE_UP,
+            Verb.MOVE_DOWN,
+            Verb.RETRY,
+            Verb.QUEUE_AGAIN,
+            Verb.OPEN,
+            Verb.REVEAL,
+        },
         # Nothing has been written yet, so there is no file to open or reveal.
-        JobStatus.QUEUED: {Verb.OPEN, Verb.REVEAL, Verb.RETRY},
+        JobStatus.QUEUED: {Verb.OPEN, Verb.REVEAL, Verb.RETRY, Verb.QUEUE_AGAIN},
         # A failure produced no file, and it is not running, so there is nothing to cancel.
-        JobStatus.FAILED: {Verb.OPEN, Verb.REVEAL, Verb.CANCEL, Verb.MOVE_UP, Verb.MOVE_DOWN},
+        # *Queue again* is a cancelled row's word; a failure says *Retry*.
+        JobStatus.FAILED: {
+            Verb.OPEN,
+            Verb.REVEAL,
+            Verb.CANCEL,
+            Verb.MOVE_UP,
+            Verb.MOVE_DOWN,
+            Verb.QUEUE_AGAIN,
+        },
         # A finished download cannot be cancelled or retried — `test_end_to_end` asserted the
         # first of those through the detail pane until `UX-005` removed it, and this is where
         # that assertion now lives.
-        JobStatus.COMPLETED: {Verb.CANCEL, Verb.RETRY, Verb.MOVE_UP, Verb.MOVE_DOWN},
-        # Cancelled: no file, and re-running it is `Retry`'s job on a *failure*, not on a
-        # deliberate stop.
+        JobStatus.COMPLETED: {
+            Verb.CANCEL,
+            Verb.RETRY,
+            Verb.QUEUE_AGAIN,
+            Verb.MOVE_UP,
+            Verb.MOVE_DOWN,
+        },
+        # Cancelled: no file, and nothing failed — so it says *Queue again*, never *Retry*.
         JobStatus.CANCELLED: {Verb.OPEN, Verb.REVEAL, Verb.CANCEL, Verb.RETRY},
     }
     for status, must_not in forbidden.items():
