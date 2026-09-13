@@ -134,9 +134,25 @@ finally holds a real launch offscreen for 20 seconds. `--version` is not a launc
 before a `QApplication` exists, which is how a build with no platform plugins passed everything
 once.
 
-Windows is the same evidence taken by hand in Windows Sandbox on `STARBASE`, against
-`docs/project/evidence/TEMPLATE-windows.md`. That half covers §8 item 8's *cancel another*, which
-no probe can: cancellation is a parent-side signal and a probe has no parent.
+Windows is scripted too, in Windows Sandbox on `STARBASE` (`T-318`, `T-039`):
+
+```
+STARBASE_HOST=<user@host> tools/windows/sandbox_evidence.sh \
+    docs/project/evidence/windows-<version>.md 'C:\dev\tracks-and-trails\dist\Tracks-and-Trails-<version>-setup.exe'
+```
+
+It copies the installer **and** `packaging/windows-sandbox/` into the mapped share, launches
+`clean-machine.wsb`, waits for the report, closes the Sandbox, and **exits non-zero unless the
+report's verdict line says PASS**. Inside, `evidence.ps1` runs the pre-install check, a silent
+install into a directory that already holds a file, placement against the installer's own log, a
+launch, two real downloads — the probe's selector and the 1080p MP4 preset — and an uninstall
+that must leave the user's files and data byte-identical. It refuses to start while any Sandbox is
+open.
+
+**What it does not cover, and stays a sitting:** §8 item 8's *cancel another* and a normal exit —
+the script force-stops the launched application, and a download probe has no parent to cancel it —
+and `OPS-004`'s *does the installer feel normal*. *(This paragraph said the Windows half was taken
+by hand against `TEMPLATE-windows.md` and covered cancellation; `T318-R2`.)*
 
 **Commit both files with the release commit.** They are evidence about one artifact, identified by
 digest, taken on a machine that no longer exists.

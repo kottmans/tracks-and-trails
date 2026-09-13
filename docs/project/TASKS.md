@@ -501,6 +501,24 @@ exit** (criteria 1, 2 and release-gate item 7). Filed 2026-09-11 with the Phase 
 disposable VMs the maintainer owns, with *A* as the fallback. **The harness landed 2026-09-12**,
 below.
 
+#### 2026-09-13 — the review's two findings
+
+**`T318-R1`: the Windows download is now in a retained report.** The 2026-09-12 Windows evidence had
+install, launch and uninstall, and no download; the later YouTube success lived only in a scratch
+file. **`docs/project/evidence/windows-0.1.0.dev0-sandbox-2026-09-13.md`** retains a complete run of a
+build carrying `REL-007`'s amendment and yt-dlp 2026.8.19: installer sha256 `5c5c3ec3…`, yt-dlp
+`2026.08.19 from bundled baseline`, **`GTS Root R1` absent**, and **two completed transfers** —
+*Me at the zoo* (474,478 bytes, the probe's selector) and *Big Buck Bunny* in the 1080p MP4 preset
+(134,886,020 bytes in 12.6 s), the case that failed on 2026.7.4. It is a development build, and says
+so; the candidate's own report is `T-326`'s. The maintainer's original certificate failure stays
+recorded as human evidence, as the review allowed.
+
+**`T318-R2`: the procedure documents are current.** `docs/RELEASE.md` and
+`docs/project/evidence/README.md` said the Windows half was taken by hand against a template and
+covered *cancel another*. Both now give `tools/windows/sandbox_evidence.sh`, say it stages the
+harness as well as the installer, and keep *cancel another* and a normal exit as a sitting — the
+script force-stops the application, and a probe has no parent. The `.wsb`'s comment says the same.
+
 #### 2026-09-12 — the harness, and the VM that is not a VM
 
 **The maintainer narrowed `REL-006` the same week it was taken**: *"I don't really want to use VMs
