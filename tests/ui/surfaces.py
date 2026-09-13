@@ -41,6 +41,7 @@ def screens_below_the_add_dialog() -> list[tuple[str, QWidget]]:
     dependencies, and a module that is imported for its docstring should not pay for that.
     """
     from tracks_and_trails.core.models import FormatInfo, MediaInfo, PlaylistEntry
+    from tracks_and_trails.core.output_template import OutputPreview
     from tracks_and_trails.core.presets import BUILT_IN_PRESETS
     from tracks_and_trails.core.settings import Settings
     from tracks_and_trails.ui.add_dialog import (
@@ -54,7 +55,7 @@ def screens_below_the_add_dialog() -> list[tuple[str, QWidget]]:
     from tracks_and_trails.ui.options_dialog import OptionsDialog
     from tracks_and_trails.ui.playlist_picker import PlaylistPicker
     from tracks_and_trails.ui.preset_manager import PresetManager
-    from tracks_and_trails.ui.rename_editor import RenameEditor
+    from tracks_and_trails.ui.rename_editor import RenameDialog, RenameEditor
     from tracks_and_trails.ui.staging import Row
     from tracks_and_trails.ui.template_editor import TemplateEditor
 
@@ -129,6 +130,11 @@ def screens_below_the_add_dialog() -> list[tuple[str, QWidget]]:
         (
             "queue format dialog",
             _with_a_completed_choice(FormatDialog(formats, title="A clip", ffmpeg_available=True)),
+        ),
+        # **The queue's rename** (`UX-014`), built here for the format dialog's reason above.
+        (
+            "queue rename dialog",
+            RenameDialog("A clip", "A clip", lambda name: OutputPreview(path=f"/d/{name}.ext")),
         ),
     ]
 

@@ -58,6 +58,7 @@ from tracks_and_trails.ui.row_delegate import (
     PADDING,
     PRESET_CHOICES_ROLE,
     PRESET_ROLE,
+    RENAME_TEXT,
     ROW_PRESET_NAME,
     SELECTOR_ROLE,
     STATE_CHIP_ROLE,
@@ -2133,7 +2134,13 @@ def test_the_keyboard_reaches_this_downloads_own_commands(
         # all still there — a route that gained the new commands by losing the old ones would
         # satisfy two `in` checks and be a regression.
         verbs = [LABELS[verb] for verb in view.verbs_of("job-1")]
-        assert offered == [JUST_THIS_ITEM, CHOOSE_FORMATS_TEXT, OPTIONS_TEXT, *verbs], offered
+        assert offered == [
+            JUST_THIS_ITEM,
+            CHOOSE_FORMATS_TEXT,
+            OPTIONS_TEXT,
+            RENAME_TEXT,
+            *verbs,
+        ], offered
     finally:
         menu.close()
 

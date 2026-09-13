@@ -19,6 +19,7 @@ state at all; see `T-007`'s record, where that gap is reported rather than decid
 
 import tomllib
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from functools import partial
 from pathlib import Path
 from typing import Any, Final, cast
@@ -48,9 +49,9 @@ from PySide6.QtWidgets import (
 )
 
 from tracks_and_trails import __version__
-from tracks_and_trails.core import presets, settings
+from tracks_and_trails.core import output_template, presets, settings
 from tracks_and_trails.core.job_state import REORDERABLE
-from tracks_and_trails.core.models import Job, MediaInfo, NetworkOptions, Preset
+from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo, NetworkOptions, Preset
 from tracks_and_trails.core.output_template import OutputPreview
 from tracks_and_trails.core.paths import APP_SLUG
 from tracks_and_trails.core.settings import SettingsProblem
@@ -63,7 +64,8 @@ from tracks_and_trails.ui.job_detail import JobReader
 from tracks_and_trails.ui.keyboard import route_is_elsewhere
 from tracks_and_trails.ui.options_dialog import OptionsDialog, PresetSink
 from tracks_and_trails.ui.queue_view import QueueReader, QueueView, build_queue_view
-from tracks_and_trails.ui.row_delegate import CHOOSE_FORMATS_TEXT, OPTIONS_TEXT
+from tracks_and_trails.ui.rename_editor import RenameDialog
+from tracks_and_trails.ui.row_delegate import CHOOSE_FORMATS_TEXT, OPTIONS_TEXT, RENAME_TEXT
 from tracks_and_trails.ui.row_verbs import LABELS, Verb
 from tracks_and_trails.ui.settings_dialog import SettingsDialog
 
@@ -941,11 +943,10 @@ class MainWindow(QMainWindow):
                     url=job.request.url,
                     output_directory=job.request.output_directory,
                     # **The new format, the old *naming*** — the same argument as the connection
-                    # below, one field over (`T-195`). Retargeting changes what is downloaded, not
-                    # what the file is called, and a shipped preset states no template, so without
-                    # this the row would silently fall back to the template this application ships:
-                    # discarding both the user's Settings default and any naming they set on the
-                    # row itself.
+                    # below, one field over (`T-195`, `UX-014`). Retargeting changes what is
+                    # downloaded, not what the file is called, and a preset carries no naming, so
+                    # without this the row would fall back to the template this application ships:
+                    # discarding both the user's Settings pattern and any rename on the row.
                     default_output_template=job.request.output_template,
                 ),
                 job.request,
@@ -1043,7 +1044,82 @@ class MainWindow(QMainWindow):
         options = menu.addAction(OPTIONS_TEXT)
         options.setObjectName("rowItemOptions")
         options.triggered.connect(partial(self._edit_job_options, job_id))
+        rename = menu.addAction(RENAME_TEXT)
+        rename.setObjectName("rowItemRename")
+        rename.triggered.connect(partial(self._rename_job, job_id))
         return True
+
+    def _rename_job(self, job_id: str) -> RenameDialog | None:
+        """Rename one queued download that has not started (`UX-014`).
+
+        **The job's own naming is the base**, not today's setting: a download queued under
+        *Uploader / Title* keeps its uploader folder when renamed, because renaming one file is not
+        a decision about where files go. The exception is a job already renamed, whose template
+        names no pattern — clearing that name returns it to the setting in force now.
+
+        Written through `retarget`, the route *Options…* and *Choose specific formats…* take, so a
+        download that starts while the window is open is refused there rather than half-renamed.
+        """
+        if self._queue is None or self._manager is None:
+            return None
+        job = self._queue.model.job_for(job_id)
+        if job is None or job.status not in Job.RETARGETABLE:
+            return None
+        current = job.request.output_template
+        typed_before = output_template.renamed_name_of(current)
+        base = current if typed_before is None else self._setting_template()
+        media = MediaInfo(
+            url=job.url,
+            title=job.title or job.url,
+            uploader=job.uploader,
+            duration_seconds=job.duration_seconds,
+            is_playlist=False,
+        )
+        manager = self._manager
+
+        def template_for(name: str) -> str:
+            return output_template.renamed_template(name, within=base) if name else base
+
+        def preview(name: str) -> OutputPreview:
+            refusal = output_template.name_refusal(name)
+            if refusal is not None:
+                return OutputPreview(refusal=refusal)
+            request = replace(job.request, output_template=template_for(name.strip()))
+            return manager.preview_output_path(request, media)
+
+        default_name = output_template.file_stem_of(preview("").path)
+        dialog = RenameDialog(
+            job.title or job.url,
+            typed_before if typed_before is not None else default_name,
+            preview,
+            parent=self,
+        )
+
+        def accepted() -> None:
+            name = dialog.name
+            chosen = "" if name == default_name else name
+            template = template_for(chosen)
+            if template == current:
+                return
+            self._manager_retarget(job_id, replace(job.request, output_template=template))
+
+        dialog.accepted.connect(accepted)
+        # `open`, not `exec`, for `_edit_job_options`' reason.
+        dialog.open()
+        return dialog
+
+    def _setting_template(self) -> str:
+        """The naming the Settings preference gives a new download now."""
+        if self._default_output_template is not None:
+            return self._default_output_template()
+        return presets.DEFAULT_OUTPUT_TEMPLATE
+
+    def _manager_retarget(self, job_id: str, request: DownloadRequest) -> None:
+        if self._manager is None:
+            return
+        self._manager.retarget(
+            job_id, request, then=self.refresh_queue, otherwise=self._report_transiently
+        )
 
     def _edit_job_options(self, job_id: str) -> None:
         """`REQ-010`'s options for one queued download (`T-315`).

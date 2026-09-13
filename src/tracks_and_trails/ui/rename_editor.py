@@ -10,10 +10,20 @@ is a percent sign, the folders stay the setting's and the extension stays yt-dlp
 `DownloadManager.preview_output_path`, handed back through `show_preview`.
 """
 
+from collections.abc import Callable
 from typing import Final
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QAbstractButton, QLabel, QLineEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QAbstractButton,
+    QDialog,
+    QDialogButtonBox,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from tracks_and_trails.core.output_template import OutputPreview
 from tracks_and_trails.ui.keyboard import route_is_elsewhere
@@ -114,3 +124,62 @@ class RenameEditor(QWidget):
 
     def show_preview(self, preview: OutputPreview) -> None:
         present_preview(preview, self._preview, self._preview_caption, self._message)
+
+
+class RenameDialog(QDialog):
+    """`RenameEditor` in a window of its own, for a queued download (`UX-014`).
+
+    **A dialog here, a panel in Add URLs**, for the reason each surface already opens its other
+    per-item commands the way it does: the queue's *Options…* and *Choose specific formats…* are
+    windows, and the add dialog's are panels on the row.
+
+    **OK is unavailable while the name would be refused**, as the format dialog's accept is until a
+    selection names a download: the reason is on screen beside the field, and pressing OK on it
+    could only fail.
+    """
+
+    def __init__(
+        self,
+        title: str,
+        name: str,
+        preview: Callable[[str], OutputPreview],
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("renameDialog")
+        self.setWindowTitle(f"Rename {title}")
+        self._preview = preview
+
+        layout = QVBoxLayout(self)
+        self._editor = RenameEditor(name, self)
+        layout.addWidget(self._editor)
+
+        self._buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self
+        )
+        self._buttons.accepted.connect(self.accept)
+        self._buttons.rejected.connect(self.reject)
+        layout.addWidget(self._buttons)
+
+        self._editor.name_changed.connect(self._show)
+        self._show(name)
+        self.resize(560, self.sizeHint().height())
+
+    @property
+    def editor(self) -> RenameEditor:
+        return self._editor
+
+    @property
+    def name(self) -> str:
+        return self._editor.name.strip()
+
+    @property
+    def ok_button(self) -> QPushButton:
+        button = self._buttons.button(QDialogButtonBox.StandardButton.Ok)
+        assert button is not None
+        return button
+
+    def _show(self, name: str) -> None:
+        answer = self._preview(name)
+        self._editor.show_preview(answer)
+        self.ok_button.setEnabled(not answer.is_refused)

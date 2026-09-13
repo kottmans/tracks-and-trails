@@ -59,7 +59,7 @@ from tracks_and_trails.ui.main_window import (
     save_geometry,
 )
 from tracks_and_trails.ui.options_dialog import OptionsDialog
-from tracks_and_trails.ui.row_delegate import CHOOSE_FORMATS_TEXT, OPTIONS_TEXT
+from tracks_and_trails.ui.row_delegate import CHOOSE_FORMATS_TEXT, OPTIONS_TEXT, RENAME_TEXT
 from tracks_and_trails.ui.row_verbs import LABELS, Verb
 
 
@@ -1800,6 +1800,111 @@ def test_accepting_the_options_editor_unchanged_changes_nothing(qapp: QApplicati
     assert presets.format_choice_of(kept) == presets.format_choice_of(request), (
         "accepting the options editor without changing anything changed the download"
     )
+
+
+# --- UX-014: renaming a download that has not started ----------------------------------------
+
+
+def _renamed(window: MainWindow, typed: str | None) -> None:
+    """Open *Rename…* on job `a`, type `typed` (or leave the prefill), and accept."""
+    dialog = window._rename_job("a")
+    assert dialog is not None, "Rename opened nothing on a queued download"
+    try:
+        if typed is not None:
+            dialog.editor.input_field.setText(typed)
+            dialog.editor.name_changed.emit(typed)
+        dialog.accept()
+        QApplication.processEvents()
+    finally:
+        dialog.close()
+
+
+def test_the_item_menu_offers_rename_on_a_download_that_has_not_started(
+    qapp: QApplication,
+) -> None:
+    window = _window_over([_job("a", 0)])
+    menu = window._show_item_menu("a")
+    assert menu is not None
+    try:
+        assert RENAME_TEXT in [action.text() for action in menu.actions()]
+    finally:
+        menu.close()
+
+
+def test_rename_opens_on_the_name_the_job_would_get_and_writes_it_literally(
+    qapp: QApplication,
+) -> None:
+    """Prefilled from the job's own naming; what is typed is written as a name, `%` and all."""
+    window = _window_over([_job_with(_job("a", 0).request)])
+    record = _intercept(window)
+
+    dialog = window._rename_job("a")
+    assert dialog is not None
+    try:
+        assert dialog.editor.name == "A clip", dialog.editor.name
+    finally:
+        dialog.close()
+
+    _renamed(window, "100% my clip")
+    assert record.written, "accepting a new name wrote nothing"
+    _job_id, request = record.written[-1]
+    assert request.output_template == "100%% my clip.%(ext)s"
+
+
+def test_a_renamed_queued_download_keeps_its_folders(qapp: QApplication) -> None:
+    """Queued under *Uploader / Title*, it stays in the uploader's folder when renamed."""
+    request = replace(_job("a", 0).request, output_template="%(uploader)s/%(title)s.%(ext)s")
+    window = _window_over([_job_with(request)])
+    record = _intercept(window)
+
+    _renamed(window, "My clip")
+
+    assert record.written[-1][1].output_template == "%(uploader)s/My clip.%(ext)s"
+
+
+def test_accepting_rename_unchanged_writes_nothing(qapp: QApplication) -> None:
+    window = _window_over([_job_with(_job("a", 0).request)])
+    record = _intercept(window)
+
+    _renamed(window, None)
+
+    assert record.written == [], "accepting the prefilled name rewrote the download"
+
+
+def test_a_refused_name_cannot_be_accepted(qapp: QApplication) -> None:
+    window = _window_over([_job_with(_job("a", 0).request)])
+    dialog = window._rename_job("a")
+    assert dialog is not None
+    try:
+        dialog.editor.input_field.setText("clips/My clip")
+        dialog.editor.name_changed.emit("clips/My clip")
+        assert not dialog.ok_button.isEnabled(), "OK stayed available on a refused name"
+        assert "cannot contain" in dialog.editor.message_text()
+        dialog.editor.input_field.setText("My clip")
+        dialog.editor.name_changed.emit("My clip")
+        assert dialog.ok_button.isEnabled(), "OK stayed unavailable once the name was usable"
+    finally:
+        dialog.close()
+
+
+def test_clearing_a_rename_returns_to_the_setting_in_force(qapp: QApplication) -> None:
+    """A job already renamed reopens on its name; emptied, it takes today's Settings pattern."""
+    request = replace(_job("a", 0).request, output_template="Typed name.%(ext)s")
+    window = _window_over(
+        [_job_with(request)], default_output_template=lambda: "%(uploader)s - %(title)s.%(ext)s"
+    )
+    record = _intercept(window)
+
+    dialog = window._rename_job("a")
+    assert dialog is not None
+    try:
+        assert dialog.editor.name == "Typed name", "a renamed download reopened on a pattern"
+    finally:
+        dialog.close()
+
+    _renamed(window, "")
+
+    assert record.written[-1][1].output_template == "%(uploader)s - %(title)s.%(ext)s"
 
 
 def test_a_re_read_that_finds_no_formats_says_so_and_opens_nothing(qapp: QApplication) -> None:

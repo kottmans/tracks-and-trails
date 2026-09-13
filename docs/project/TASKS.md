@@ -14,6 +14,61 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-337 — Naming is a setting; a single download is renamed, not templated
+
+**Status:** **In Review** — ruled 2026-09-13 by the maintainer from `T-327`'s session, recorded as
+`UX-014`, and built the same day in three commits.
+**Owner:** Implementer
+**Priority:** High — the per-item template editor is the first naming surface a user meets
+**Phase:** Phase 5
+**Relevant context:** `UX-014`; `REQ-011` as amended; `REQ-023`; `T-112` (the editor this retires),
+`T-195` (the Settings default), `ARC-010` (a template cannot leave the download folder)
+**Affected surfaces:** `core/models.py` and `core/presets.py` (`Preset.output_template`),
+`core/settings.py` (preset loading), `ui/settings_dialog.py`, `ui/add_dialog.py`,
+`ui/preset_manager.py`, `ui/main_window.py` and `ui/queue_view.py` (a queued row's menu)
+
+The maintainer, on the template panel: *"This looks like something that should be in settings as a
+preference instead of using it to rename each individual file this way."*
+
+#### Acceptance criteria
+
+- [x] Settings offers *Title*, *Uploader - Title*, *Uploader / Title* and *Custom…*, with an example
+      path for the choice, and stores the same `output_template` value as before
+- [x] *Naming and folders…* and the per-item template editor are gone from Add URLs
+- [x] *Rename…* on a single item in Add URLs and on a queue row that has not started takes a plain
+      name, previews its path, writes it literally (a `%` in the name is not a field), and clearing
+      it returns to the setting's name
+- [x] Presets carry no template; a `settings.toml` preset with an `output_template` key still loads
+- [x] Each of the above has a test that fails without it
+
+#### Built so far
+
+- **2026-09-13 — presets and Add URLs.** `Preset.output_template` is gone, and with it
+  `with_output_template`, the preset manager's field and the per-item template panel. A saved preset
+  that still has the key loads and loses only that (**mutated**: refusing the key fails the test).
+  *Rename…* replaces *Naming and folders…* in Add URLs on a probed single item: `RenameEditor`,
+  prefilled from the setting's preview, written by `output_template.renamed_template` — `%` escaped
+  (**mutated**: unescaped fails three tests), the setting's folders kept, a separator refused. The
+  end-to-end test renames to `Renamed: 100% "Live"?` and a real download writes the previewed path.
+- **2026-09-13 — Settings.** *How downloads are named* is a choice of `NAMING_CHOICES` plus
+  *Custom…*, which alone shows the template field and its field list; *Title* stores empty. An
+  example path under it comes from the window's `_preview_template`, the route the refusal already
+  used. Tests: every choice offered and written (**mutated**: *Title* writing its template fails),
+  a stored template reopening on its choice or on *Custom…*, the example following the choice. The
+  *Custom…* container painted the group band `a5cd14f` removed for labels; the container clause is
+  back and the band test now opens *Custom…* before measuring (**mutated**: without the clause it
+  fails).
+- **2026-09-13 — the queue.** *Rename…* joins a not-yet-started row's *Just this item* commands and
+  opens `RenameDialog`, the same editor in a window, OK unavailable while the name is refused. The
+  base is the job's own template — so *Uploader / Title* keeps its folder — unless the job was
+  already renamed, when clearing returns to today's setting; written through `retarget`. Tests: the
+  menu entry (and the keyboard route's full order), prefill and literal write, folders kept
+  (**mutated**: basing on the setting fails it), unchanged writes nothing, refused name blocks OK,
+  clearing a rename. The dialog joins `every_surface`'s audit.
+- [ ] Seen on the Windows installed build
+
+---
+
 ### T-325 — Cold start, measured on the artifact that ships
 
 **Status:** **In Review** — `T325-R1` corrected, and **`T325-R2` settled by the maintainer's ruling
@@ -613,52 +668,6 @@ the windowed build to it; this workflow still does not run on push.
 - Signing (`T-317` decides; if signed, the signing step lives here and the key does not)
 
 ## Ready
-
-### T-337 — Naming is a setting; a single download is renamed, not templated
-
-**Status:** **Ready** — ruled 2026-09-13 by the maintainer from `T-327`'s session, recorded as
-`UX-014`; being built.
-**Owner:** Implementer
-**Priority:** High — the per-item template editor is the first naming surface a user meets
-**Phase:** Phase 5
-**Relevant context:** `UX-014`; `REQ-011` as amended; `REQ-023`; `T-112` (the editor this retires),
-`T-195` (the Settings default), `ARC-010` (a template cannot leave the download folder)
-**Affected surfaces:** `core/models.py` and `core/presets.py` (`Preset.output_template`),
-`core/settings.py` (preset loading), `ui/settings_dialog.py`, `ui/add_dialog.py`,
-`ui/preset_manager.py`, `ui/main_window.py` and `ui/queue_view.py` (a queued row's menu)
-
-The maintainer, on the template panel: *"This looks like something that should be in settings as a
-preference instead of using it to rename each individual file this way."*
-
-#### Acceptance criteria
-
-- [x] Settings offers *Title*, *Uploader - Title*, *Uploader / Title* and *Custom…*, with an example
-      path for the choice, and stores the same `output_template` value as before
-- [x] *Naming and folders…* and the per-item template editor are gone from Add URLs
-- [ ] *Rename…* on a single item in Add URLs and on a queue row that has not started takes a plain
-      name, previews its path, writes it literally (a `%` in the name is not a field), and clearing
-      it returns to the setting's name
-- [x] Presets carry no template; a `settings.toml` preset with an `output_template` key still loads
-- [ ] Each of the above has a test that fails without it
-
-#### Built so far
-
-- **2026-09-13 — presets and Add URLs.** `Preset.output_template` is gone, and with it
-  `with_output_template`, the preset manager's field and the per-item template panel. A saved preset
-  that still has the key loads and loses only that (**mutated**: refusing the key fails the test).
-  *Rename…* replaces *Naming and folders…* in Add URLs on a probed single item: `RenameEditor`,
-  prefilled from the setting's preview, written by `output_template.renamed_template` — `%` escaped
-  (**mutated**: unescaped fails three tests), the setting's folders kept, a separator refused. The
-  end-to-end test renames to `Renamed: 100% "Live"?` and a real download writes the previewed path.
-- **2026-09-13 — Settings.** *How downloads are named* is a choice of `NAMING_CHOICES` plus
-  *Custom…*, which alone shows the template field and its field list; *Title* stores empty. An
-  example path under it comes from the window's `_preview_template`, the route the refusal already
-  used. Tests: every choice offered and written (**mutated**: *Title* writing its template fails),
-  a stored template reopening on its choice or on *Custom…*, the example following the choice. The
-  *Custom…* container painted the group band `a5cd14f` removed for labels; the container clause is
-  back and the band test now opens *Custom…* before measuring (**mutated**: without the clause it
-  fails). The queue row's *Rename…* is next.
-
 
 ### T-327 — The Windows manual verification session
 
