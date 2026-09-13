@@ -733,3 +733,32 @@ def test_every_bundled_python_distribution_has_its_licence_shipped() -> None:
     for name, text in gates.LICENCE_FOR_DISTRIBUTION.items():
         assert text in gates.REQUIRED_LICENCES, f"{name}'s licence {text} is not required to ship"
         assert (Path(__file__).parents[2] / "packaging" / "licenses" / text).is_file(), text
+
+
+def test_a_cookie_store_path_inside_a_binary_is_found(tmp_path: Path) -> None:
+    """**`T323-R2`, second round** — the reviewer's counterexample, exactly.
+
+    A `.bin` with a NUL in its first block and `/vault/session.cookies.sqlite` inside passed: the
+    costly patterns skip binaries, and the comment claiming the byte markers covered it was wrong.
+    """
+    root = build(tmp_path / "app")
+    (root / "_internal" / "payload.bin").write_bytes(
+        b"\x00\x01binary" + bytes(32) + b"/vault/session.cookies.sqlite" + bytes(32)
+    )
+    problems = gates.no_secrets_or_personal_paths(root)
+    assert any("cookie store path" in problem for problem in problems), problems
+
+
+def test_a_binarys_cookie_api_strings_are_not_a_cookie_store(tmp_path: Path) -> None:
+    """The false positives that made the loose pattern unusable on binaries, measured on a real
+    artifact: PySide's signature strings and brotli's dictionary text."""
+    root = build(tmp_path / "app")
+    (root / "_internal" / "QtNetwork.abi3.so").write_bytes(
+        b"\x7fELF"
+        + bytes(16)
+        + b"2:PySide6.QtNetwork.QNetworkCookie.RawForm"
+        + bytes(8)
+        + b"<html>conformfacing cookie.rely onhosted .customhe"
+        + bytes(8)
+    )
+    assert not gates.no_secrets_or_personal_paths(root)

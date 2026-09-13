@@ -119,13 +119,47 @@ CHEAP_PATTERNS = (
 #: does not rescue them — the same file capped to two megabytes still took 170.7s, because the
 #: blow-up happens inside the first two megabytes — so the split is by file kind, not by size.
 #:
-#: **This is a stated bound, not a silent one.** A cookie *store* planted inside a compiled
-#: binary would not be found by these two. It would still be found by the byte markers below,
-#: which do run over every file, and by `_COOKIE_WITH_A_VALUE` above if it carries a header.
+#: **In a binary, a cookie-store path is found by `binary_cookie_store` instead** (`T323-R2`,
+#: second round). This comment said a store path inside a compiled binary would be caught by the
+#: byte markers — it was not: the reviewer's `.bin` holding `/vault/session.cookies.sqlite` passed.
 COSTLY_PATTERNS = (
     (_COOKIE_PATH, "a cookie store path"),
     (_COOKIE_FILENAME, "a cookie store filename"),
 )
+
+#: A cookie store **named in a path**, for binary files: a separator, a name containing `cookie`,
+#: and an extension a cookie store has. Tighter than `_COOKIE_FILENAME` on purpose — measured over
+#: this artifact's 369 binaries, the loose pattern flags brotli's English dictionary
+#: (`cookie.rely`) and PySide's signature strings (`QNetworkCookie.RawForm`); this one flags none.
+_BINARY_COOKIE_STORE = re.compile(
+    r"[\\/][^\\/\s\"']*cookies?[^\\/\s\"']*\.(?:sqlite|txt|binarycookies|json|db)\b", re.IGNORECASE
+)
+#: The strings a binary carries are printable runs between NULs and other control bytes.
+_PRINTABLE_RUN = re.compile(rb"[\x20-\x7e]{4,512}")
+
+
+def binary_cookie_store(raw: bytes) -> str | None:
+    """A cookie-store path inside a binary file, or `None` (`T323-R2`).
+
+    **Bounded by construction rather than by truncation.** The costly patterns go quadratic on
+    binary noise, so this never runs a regex over the file: it finds each `cookie` with a byte
+    search, takes only the printable string containing it — at most 512 bytes either side — and
+    asks that. Measured at **0.45 s over all 369 binaries** of a real artifact, with no false
+    positives, where `_COOKIE_FILENAME` alone took 171 s on one library.
+    """
+    lowered = raw.lower()
+    start = 0
+    while (index := lowered.find(b"cookie", start)) >= 0:
+        low = max(0, index - 512)
+        window = raw[low : index + 512]
+        for run in _PRINTABLE_RUN.finditer(window):
+            if run.start() <= index - low < run.end():
+                found = _BINARY_COOKIE_STORE.search(run.group(0).decode("ascii"))
+                if found:
+                    return found.group(0)
+        start = index + 6
+    return None
+
 
 #: Kept so a caller can ask for the whole vocabulary without knowing the cost split.
 CONTENT_PATTERNS = CHEAP_PATTERNS + COSTLY_PATTERNS
@@ -458,6 +492,8 @@ def no_secrets_or_personal_paths(root: Path) -> list[str]:
             if len(text) > MAX_SCANNED_BYTES:
                 truncated.append(str(where))
             found = next((why for pattern, why in COSTLY_PATTERNS if pattern.search(bounded)), None)
+        elif found is None and binary_cookie_store(raw) is not None:
+            found = "a cookie store path"
 
         if found is not None:
             problems.append(f"{where} contains {found}")

@@ -1403,6 +1403,21 @@ probe extension and `T033-R4`'s data blindness; `T-298`
 **Risk:** Low — each check is small; the risk is the usual one, a gate that passes with its
 subject removed, which is why each is mutation-checked
 
+#### 2026-09-13 — the second review: one of two remaining findings corrected
+
+**`T323-R2`, second round: a cookie-store path inside a binary still passed.** The reviewer's `.bin`
+— a NUL in its first block and `/vault/session.cookies.sqlite` inside — returned no problems: the
+costly patterns skip binaries, and this gate's comment claiming the byte markers covered it was
+wrong. **`binary_cookie_store` closes it without the cost**: a byte search for `cookie`, then only
+the printable string around each hit, asked a tighter pattern — a separator, a name containing
+`cookie`, and a cookie store's extension. Measured over a real artifact's **369 binaries in
+0.45 s, no false positives**; the loose filename pattern flags brotli's dictionary and PySide's
+`QNetworkCookie.RawForm`, both kept as a negative test. The full gate still passes item 13 on that
+artifact in 12.7 s. **Mutation:** removing the binary branch fails the reviewer's counterexample.
+
+**`T323-R1` — Windows linkage — is not corrected**, and it and this correction both wait on the
+maintainer's `TESTING` §14 choice, since the ordinary review budget is spent.
+
 #### Scope
 
 Four checks, each **a mutation that turns the job red** (the house rule since `T031-R2`):
