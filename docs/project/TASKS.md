@@ -591,7 +591,7 @@ own words.
 
 **Item 1 is confirmed** on the rebuilt installer: no install-mode question, and the wizard artwork
 sharp at Inno 6.7's real slot sizes. Then, using the installed application in Sandbox, the
-maintainer found **six defects**, none visible to an automated run. Each is fixed, pushed and
+maintainer found **six defects**, none visible to an automated run, and two more on 2026-09-13. Each is fixed, pushed and
 tested; the review record will cite them.
 
 | Found | Cause | Commit |
@@ -602,6 +602,8 @@ tested; the review record will cite them.
 | **every YouTube download failed**, `CERTIFICATE_VERIFY_FAILED` | Python trusts only roots already in the Windows store; `REL-007` amended to verify through the OS (`truststore`) | `1f377db`, `4e20c70` |
 | the chosen entry of a drop-down invisible | `QListView::item:selected` reaching the popup under the Windows style | `5461053` |
 | **YouTube downloads then failed with 403** | the bundled yt-dlp 2026.7.4; `T-332` bumps it | `663838e` |
+| dark mode: `Start` and `Clear finished` highlighted only at the border under the pointer | the hover fill was `sunken`, 1.05:1 against the resting fill; a `hover` role lifts it | `fcff105` |
+| tooltips white on white | no `QToolTip` rule, so the theme's text on the Windows style's white panel | `fcff105` |
 
 Two changes of behaviour came out of the same sitting, each ruled by the maintainer: the yt-dlp
 section shows in-use, bundled and latest side by side (`T-333`), and a started queue stops itself
