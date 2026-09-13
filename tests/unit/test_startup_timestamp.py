@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -82,3 +83,40 @@ def test_the_window_records_it_through_the_exposure_watch() -> None:
         "the startup timestamp is no longer taken from the exposure watch, so it is measuring "
         "something other than the window reaching the screen"
     )
+
+
+def load_startup_tool() -> Any:
+    import importlib.util
+
+    tool = Path(__file__).resolve().parents[2] / "tools" / "startup_time.py"
+    specification = importlib.util.spec_from_file_location("startup_time_tool", tool)
+    assert specification is not None and specification.loader is not None
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize(
+    ("durations", "cold", "expected"),
+    [
+        ([6.0, 1.0, 1.0, 1.0, 1.0], True, 1),
+        ([4.0, 9.0, 9.0, 9.0, 9.0], True, 0),
+        ([6.0, 1.0, 1.0, 1.0, 1.0], False, 0),
+        ([1.0, 6.0, 6.0, 6.0, 1.0], False, 1),
+    ],
+    ids=["cold-over-warm-under", "cold-under-warm-over", "warm-median-under", "warm-median-over"],
+)
+def test_the_cold_gate_judges_the_cold_launch_alone(
+    monkeypatch: pytest.MonkeyPatch, durations: list[float], cold: bool, expected: int
+) -> None:
+    """**`T325-R1`.** Under `--cold` only the first launch is cold, so it alone meets the bound.
+
+    The reviewer's counterexample is the first case: a 6-second cold start with four 1-second warm
+    ones exited 0 against a 5-second bound, because the median of all five was 1 second. The
+    measured durations are substituted; the real argument parsing, loop and verdict run.
+    """
+    tool = load_startup_tool()
+    remaining = iter(durations)
+    monkeypatch.setattr(tool, "one_launch", lambda command, environment: (next(remaining), None))
+    arguments = ["fake-artifact", "--runs", str(len(durations)), "--bound", "5"]
+    assert tool.main([*arguments, "--cold"] if cold else arguments) == expected

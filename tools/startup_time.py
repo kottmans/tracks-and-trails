@@ -121,19 +121,33 @@ def main(argv: list[str] | None = None) -> int:
             timings.append(seconds)
             print(f"  run {run}  {seconds:.3f}s")
 
-    median = statistics.median(timings)
-    kind = "cold" if arguments.cold else "warm"
-    print(f"\n{kind} median    {median:.3f}s over {len(timings)} runs")
-    print(f"slowest   {max(timings):.3f}s")
-    print(f"fastest   {min(timings):.3f}s")
-    if median > arguments.bound:
+    # **A cold number is one launch** (`T325-R1`). Only the first launch after a reboot is cold;
+    # the four after it are warm by construction. This took the median of all five under
+    # `--cold` and gated on it, so `[6, 1, 1, 1, 1]` against a 5-second bound printed
+    # *"cold median 1.000s"* and passed — a cold start over the bound, accepted by the gate that
+    # exists to refuse it. Under `--cold` the first launch is gated alone; the rest are reported
+    # as warm, and not gated, because no requirement bounds them.
+    if arguments.cold:
+        cold = timings[0]
+        print(f"\ncold      {cold:.3f}s (the first launch; the only cold sample this run has)")
+        if len(timings) > 1:
+            warm = statistics.median(timings[1:])
+            print(f"warm median {warm:.3f}s over {len(timings) - 1} runs")
+        gated, label = cold, "cold start"
+    else:
+        median = statistics.median(timings)
+        print(f"\nwarm median {median:.3f}s over {len(timings)} runs")
+        print(f"slowest   {max(timings):.3f}s")
+        print(f"fastest   {min(timings):.3f}s")
+        gated, label = median, "warm median"
+    if gated > arguments.bound:
         print(
-            f"\nOVER THE BOUND: {median:.3f}s against NFR-002's {arguments.bound}s. That is a "
-            f"task, not a re-measure (T-325).",
+            f"\nOVER THE BOUND: {label} {gated:.3f}s against {arguments.bound}s. "
+            "That is a task, not a re-measure (T-325).",
             file=sys.stderr,
         )
         return 1
-    print(f"\nwithin NFR-002's {arguments.bound}s")
+    print(f"\n{label} within {arguments.bound}s")
     return 0
 
 
