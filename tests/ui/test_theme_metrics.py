@@ -22,6 +22,7 @@ from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QColor, QImage, QPainter
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QGroupBox,
     QLabel,
@@ -545,3 +546,65 @@ def test_hovering_the_primary_action_lifts_its_fill_rather_than_ringing_it(
     assert hovered == chosen.primary_hover.upper(), (
         f"hovering fills with {hovered} rather than the theme's {chosen.primary_hover}"
     )
+
+
+@pytest.mark.parametrize("state", ["unticked", "ticked", "partial"])
+def test_a_tick_box_is_drawn_by_the_theme_in_every_state(
+    themed: QApplication, chosen: theme.Theme, state: str
+) -> None:
+    """Ruled by the maintainer 2026-09-13 (`T-327` session): the theme draws the box.
+
+    Windows drew a white square in every theme and state, so a disabled option looked exactly like
+    one that could be ticked. Asked of the indicator's own pixels, enabled then disabled: the fill
+    is the theme's, disabled differs from enabled, and a ticked or partial box carries a mark in a
+    colour its fill does not have — the image loaded, not an empty box.
+    """
+    theme.apply(themed, chosen)
+    box = QCheckBox("Embed them in the file")
+    if state == "partial":
+        box.setTristate(True)
+        box.setCheckState(Qt.CheckState.PartiallyChecked)
+    else:
+        box.setChecked(state == "ticked")
+    box.resize(220, 30)
+    # Clear of the offscreen pointer, which rests at the origin and would otherwise hover the box.
+    box.move(400, 400)
+    box.show()
+    try:
+        faces: dict[bool, Counter[int]] = {}
+        for enabled in (True, False):
+            box.setEnabled(enabled)
+            themed.processEvents()
+            image = box.grab().toImage()
+            option = QStyleOptionButton()
+            box.initStyleOption(option)
+            indicator = (
+                box.style()
+                .subElementRect(QStyle.SubElement.SE_CheckBoxIndicator, option, box)
+                .adjusted(2, 2, -2, -2)
+            )
+            faces[enabled] = Counter(
+                image.pixel(x, y) & 0xFFFFFF
+                for x in range(indicator.left(), indicator.right() + 1)
+                for y in range(indicator.top(), indicator.bottom() + 1)
+            )
+    finally:
+        box.close()
+
+    def hex_of(colour: str) -> int:
+        return int(colour[1:], 16)
+
+    live_fill = chosen.surface if state == "unticked" else chosen.primary
+    dead_fill = chosen.sunken if state == "unticked" else chosen.rule
+    assert faces[True].most_common(1)[0][0] == hex_of(live_fill), (
+        f"an enabled {state} box fills #{faces[True].most_common(1)[0][0]:06x}, not {live_fill}"
+    )
+    assert faces[False].most_common(1)[0][0] == hex_of(dead_fill), (
+        f"a disabled {state} box fills #{faces[False].most_common(1)[0][0]:06x}, not {dead_fill}"
+    )
+    if state != "unticked":
+        for enabled, ink in ((True, chosen.on_primary), (False, chosen.muted)):
+            assert hex_of(ink) in faces[enabled], (
+                f"a {'enabled' if enabled else 'disabled'} {state} box has no {ink} mark in it: "
+                "the image did not load, so it draws as an empty box"
+            )

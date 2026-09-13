@@ -34,6 +34,7 @@ palette cannot prevent and the tests for that widget must.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
@@ -215,6 +216,20 @@ THEMES: Final = {theme.name: theme for theme in (LIGHT, DARK)}
 #: and the editor stays at 7. `test_the_painted_control_insets_its_text_where_the_editor_does` is
 #: the tripwire that makes that divergence a failure rather than a drift.
 COMBO_PADDING_X: Final = 6
+
+#: A check box's or radio button's indicator, its content box in pixels (`T-327` session).
+INDICATOR_SIZE: Final = 14
+
+#: Where the tick and dash marks live, rendered by `tools/icons/render_indicators.py`.
+#:
+#: **Resolved from this file, the way `main_window._ICON_DIR` is**, so the frozen build finds them
+#: under its own `_internal` tree. Forward slashes and quotes in the sheet, because Qt parses the
+#: URL itself and a Windows install path has both backslashes and a space in it.
+INDICATOR_DIR: Final = Path(__file__).resolve().parent.parent / "resources" / "indicators"
+
+
+def _mark(name: str) -> str:
+    return f'url("{(INDICATOR_DIR / f"{name}.png").as_posix()}")'
 
 
 def _channels(colour: str) -> tuple[int, int, int]:
@@ -716,6 +731,65 @@ STATE_RULES: Final = (
             "The fill inverts to the brand green with its own foreground, a change in brightness "
             "rather than hue; the pair is asserted against MINIMUM_CONTRAST rather than trusted."
         ),
+    ),
+    StateRule(
+        selector=(
+            "QCheckBox::indicator:hover, QRadioButton::indicator:hover, "
+            "QAbstractItemView::indicator:hover"
+        ),
+        conveys="nothing — the pointer is over a tick box",
+        channel="pointer-feedback",
+        reason="Only a pointer user can hover, and whether the box is ticked is drawn separately.",
+    ),
+    StateRule(
+        selector="QCheckBox::indicator:checked, QAbstractItemView::indicator:checked",
+        conveys="this option is ticked",
+        channel="geometry",
+        reason="A tick appears in the box; it is a shape, and absent from an unticked box.",
+    ),
+    StateRule(
+        selector="QCheckBox::indicator:indeterminate, QAbstractItemView::indicator:indeterminate",
+        conveys="some of this group's entries are chosen",
+        channel="geometry",
+        reason="A dash appears in the box, a different shape from the tick.",
+    ),
+    StateRule(
+        selector="QRadioButton::indicator:checked",
+        conveys="this choice is the selected one",
+        channel="geometry",
+        reason="A dot appears in the circle, absent from every other choice in the group.",
+    ),
+    StateRule(
+        selector=(
+            "QCheckBox::indicator:disabled, QRadioButton::indicator:disabled, "
+            "QAbstractItemView::indicator:disabled"
+        ),
+        conveys="this option cannot be changed",
+        channel="published-state",
+        reason="Qt publishes the disabled state; the box also stops responding to the pointer.",
+    ),
+    StateRule(
+        selector=(
+            "QCheckBox::indicator:checked:disabled, QAbstractItemView::indicator:checked:disabled"
+        ),
+        conveys="this option is ticked and cannot be changed",
+        channel="geometry",
+        reason="The tick is still drawn, in the disabled ink; disabled is published as well.",
+    ),
+    StateRule(
+        selector=(
+            "QCheckBox::indicator:indeterminate:disabled, "
+            "QAbstractItemView::indicator:indeterminate:disabled"
+        ),
+        conveys="some entries are chosen, and this cannot be changed",
+        channel="geometry",
+        reason="The dash is still drawn, in the disabled ink; disabled is published as well.",
+    ),
+    StateRule(
+        selector="QRadioButton::indicator:checked:disabled",
+        conveys="this choice is selected and cannot be changed",
+        channel="geometry",
+        reason="The dot is still drawn, in the disabled ink; disabled is published as well.",
     ),
     StateRule(
         selector="QWidget:disabled",
@@ -1514,6 +1588,68 @@ QCheckBox, QRadioButton {{
        reported on 2026-09-09. Reserving the two pixels here is what makes the pair below
        arithmetic rather than a guess. */
     border: 2px solid transparent;
+}}
+QCheckBox::indicator, QRadioButton::indicator, QAbstractItemView::indicator {{
+    /* **The theme draws the box, not Windows** (ruled by the maintainer 2026-09-13, `T-327`
+       session). The Windows style drew a white square in every theme and every state: a bright
+       block beside each option in dark, and a disabled option's box identical to an enabled one's.
+
+       **Every state is declared below, because declaring one hands them all to the sheet** —
+       `T-133`'s lesson, from the spin box whose arrows vanished. Unticked, ticked, partial, each
+       disabled, and hover. The tick and the dash are images (`INDICATOR_DIR`); a radio button's dot
+       is a gradient, so it needs none. `QAbstractItemView` is the ticks inside lists: subtitle
+       languages and the playlist picker. */
+    width: {INDICATOR_SIZE}px;
+    height: {INDICATOR_SIZE}px;
+    border: 1px solid {theme.border};
+    background-color: {theme.surface};
+}}
+QCheckBox::indicator, QAbstractItemView::indicator {{
+    border-radius: 3px;
+}}
+QRadioButton::indicator {{
+    border-radius: {INDICATOR_SIZE // 2 + 1}px;
+}}
+QCheckBox::indicator:hover, QRadioButton::indicator:hover, QAbstractItemView::indicator:hover {{
+    background-color: {theme.hover};
+    border-color: {theme.primary};
+}}
+QCheckBox::indicator:checked, QAbstractItemView::indicator:checked {{
+    background-color: {theme.primary};
+    border-color: {theme.primary};
+    image: {_mark(f"tick-{theme.name}")};
+}}
+QCheckBox::indicator:indeterminate, QAbstractItemView::indicator:indeterminate {{
+    background-color: {theme.primary};
+    border-color: {theme.primary};
+    image: {_mark(f"dash-{theme.name}")};
+}}
+QRadioButton::indicator:checked {{
+    border-color: {theme.primary};
+    background-color: qradialgradient(cx: 0.5, cy: 0.5, radius: 0.5, fx: 0.5, fy: 0.5,
+        stop: 0 {theme.primary}, stop: 0.55 {theme.primary},
+        stop: 0.6 {theme.surface}, stop: 1 {theme.surface});
+}}
+QCheckBox::indicator:disabled, QRadioButton::indicator:disabled,
+QAbstractItemView::indicator:disabled {{
+    background-color: {theme.sunken};
+    border-color: {theme.rule};
+}}
+QCheckBox::indicator:checked:disabled, QAbstractItemView::indicator:checked:disabled {{
+    background-color: {theme.rule};
+    border-color: {theme.rule};
+    image: {_mark(f"tick-{theme.name}-disabled")};
+}}
+QCheckBox::indicator:indeterminate:disabled, QAbstractItemView::indicator:indeterminate:disabled {{
+    background-color: {theme.rule};
+    border-color: {theme.rule};
+    image: {_mark(f"dash-{theme.name}-disabled")};
+}}
+QRadioButton::indicator:checked:disabled {{
+    border-color: {theme.rule};
+    background-color: qradialgradient(cx: 0.5, cy: 0.5, radius: 0.5, fx: 0.5, fy: 0.5,
+        stop: 0 {theme.muted}, stop: 0.55 {theme.muted},
+        stop: 0.6 {theme.sunken}, stop: 1 {theme.sunken});
 }}
 QToolButton[stepButton="true"]:focus {{
     /* Vertical only: `min-width` and `max-width` pin the *contents* box at 15px, so the sides are

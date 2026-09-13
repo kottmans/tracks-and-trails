@@ -176,7 +176,9 @@ def test_the_sweep_is_looking_at_a_real_sheet(theme: ui_theme.Theme) -> None:
 # --- interaction states, enumerated by what they convey (T202-R1) ------------------------------
 
 
-_PSEUDO_STATE: Final = re.compile(r":(focus|hover|pressed|checked|selected|disabled|default)\b")
+_PSEUDO_STATE: Final = re.compile(
+    r":(focus|hover|pressed|checked|indeterminate|selected|disabled|default)\b"
+)
 
 
 @pytest.mark.parametrize("theme", THEMES, ids=lambda theme: theme.name)

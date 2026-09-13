@@ -16,6 +16,11 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 datas = collect_data_files("tracks_and_trails", includes=["resources/icons/*"])
 
+# The tick and dash the theme draws inside its own check boxes (`ui/theme.py`'s `INDICATOR_DIR`).
+# **Missing, nothing fails**: Qt draws an indicator whose image cannot be loaded as an empty box,
+# so a ticked option would look unticked. `tests/unit/test_indicator_marks.py` holds this line.
+datas += collect_data_files("tracks_and_trails", includes=["resources/indicators/*"])
+
 # T-014 (T014-R3). Without this the artifact builds, launches, and cannot persist anything.
 #
 # The migrations are .sql files. PyInstaller follows *imports*, and nothing imports a .sql, so
