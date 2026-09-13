@@ -44,9 +44,9 @@ facts live in the task and review records it summarised.*
     with the installed artifact identified;
   - `T-327` items 2–6 — the manual Windows session; `T-333`'s installed-build observation rides it;
   - the first `v*` tag, which `T-324`'s draft run and `T-326`'s candidate items need.
-- **In progress without a blocker:** `T-319` (its new CI steps' first run), `T-322` (the
-  SmartScreen screenshot, a workflow build), `T-331` (a rerun of the two mutations its 2026-09-13
-  Windows run showed were stale), `T-332` (dispatching the canary at 2026.8.19).
+- **In progress without a blocker:** `T-322` (the SmartScreen screenshot, a workflow build), and
+  `T-332`, whose canary at 2026.8.19 is green. `T-319`'s new CI steps passed their first workflow
+  run, `34742480032`. `T-331` is In Review: its Windows run and rerun are recorded.
 - **`T-212`'s recorded checklist run** and the four Windows-only diagnostic tasks (`T-074`,
   `T-092`, `T-068`, `T-056`) are Phase 5 work, each to be given a disposition before the release
   (`T-328`).

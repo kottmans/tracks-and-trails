@@ -14,6 +14,187 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-331 — The Windows mutation driver's positive control is not one
+
+**Status:** **In Review** — every criterion met 2026-09-13: the `STARBASE` run is recorded, its two
+stale mutations corrected, and **the rerun on the pushed tree matches every expectation** (below).
+*(Was In Progress, waiting on the `STARBASE` run.)* Filed 2026-09-11 from the first
+execution of `tools/windows/mutations/` there, which `T-040` had asked for since it was filed.
+
+#### 2026-09-11 — corrected, and what the Linux run establishes
+
+**It names the tree, and refuses one it cannot.** The header prints `HEAD` and whether the working
+tree is dirty, and a dirty tree **stops the run** rather than warning — a warning is exactly what
+scrolled past on 2026-09-11. `--allow-dirty` is the deliberate override.
+
+**A broken baseline no longer manufactures kills.** Each selection's baseline is tracked, and
+every later case in a selection whose baseline failed reports `NO RESULT (baseline broken)`. The
+second run that evening reported `KILLED` for all six cases including the expected survivor,
+purely because the suite was failing whatever the plugin did.
+
+**The summary is pytest's result line**, found by pattern rather than taken as the last line of
+output, and its absence is reported as `NO SUMMARY LINE` instead of a row of progress dots.
+
+**The table and every full output are written to `reports/windows-mutations.txt`.** `T329-R2` asks
+for a recorded result and this driver left only a console window.
+
+**The control is a control now.** `mut_control_title` changes the window title, and
+`test_windows_desktop.py` asks **Windows** for it through `GetWindowTextW` rather than asking Qt —
+so no arrangement of widgets can pass it. `mut_control_chain` is reclassified as a mutation and
+runs against the suite that detects it; its docstring no longer claims that its survival voids
+every other verdict.
+
+**Validated on Linux, where three of the four new behaviours are observable:**
+
+| Case | Verdict |
+|---|---|
+| the six desktop cases | `NO RESULT (exit 5)` — deselected here, and *reported* as no result rather than passed over |
+| baseline: the chain suite | **OK**, 205 passed |
+| dialog: the declared chain is emptied | **KILLED**, 4 failed / 201 passed |
+| baseline: the rendered focus sweep | **OK** |
+| header: draws no focus ring of its own | **KILLED** |
+
+The chain row is the finding demonstrated: the mutation the old driver called a surviving control
+is killed outright by the suite that detects it.
+
+**What remains is the `STARBASE` run**, which is the one thing about a driver's own correctness
+that cannot be argued from Linux.
+**Owner:** Implementer
+**Priority:** Medium — it does not break the product, and it means a driver that claims to know
+when its own verdicts are worthless does not
+**Phase:** Phase 5 (test infrastructure)
+**Depends on:** nothing
+**Relevant context:** `tools/windows/mutations/mut_control_chain.py` and `run_mutations.py`;
+`T-026`, `T-040`, `T-060`/`T060-R2`; `tests/ui/test_windows_desktop.py:483–490`
+**Affected surfaces:** `tools/windows/mutations/`
+**Risk:** Low
+
+#### What happened
+
+The first real run on `STARBASE`, 2026-09-11:
+
+```
+OK                     baseline, unmutated
+SURVIVED (unexpected)  CONTROL: focus_chain returns nothing
+KILLED                 dialog: two declared widgets reordered
+KILLED                 dialog: undeclared focusable control
+KILLED                 progress view: undeclared focusable control
+SURVIVED (expected)    progress view: delivered order reversed
+```
+
+`mut_control_chain` says of itself: *"It MUST be reported as killed. If it survives, the plugin
+mechanism is not taking effect and every other verdict in this run is meaningless."*
+
+#### Both halves of that are wrong, and the run proves it
+
+**The mechanism took effect.** Three mutations were killed in the same run, which is only possible
+if the plugins applied. So the other verdicts stand rather than being void.
+
+**The mutation is caught — by tests this driver does not select.** Applying
+`mut_control_chain` on Linux against `tests/ui/test_accessibility.py` and
+`tests/ui/test_add_dialog.py` fails **4 tests**. The driver runs `-m windows_desktop`, and none
+of the four carries that marker.
+
+**Why the desktop suite cannot see it.** `_set_tab_order` pairs `focus_chain()` and calls
+`setTabOrder`; an empty chain simply makes no calls, leaving **Qt's construction order**.
+`test_windows_desktop.py:490` writes its expected order out by hand rather than deriving it —
+*"that is the whole point"* — so it passes whenever the delivered order matches, and on this
+dialog construction order already does. The tests are right about the delivered order. They are
+not evidence that the *declaration* is load-bearing, and the control assumed they were.
+
+#### What the same evening then showed, and it voids the table above
+
+**The machine's interactive checkout was six weeks stale**, at a 2026-07-29 commit, with
+uncommitted edits to `core/logging.py`. Its `origin` is `C:/dev/tt.bundle` — a hand-carried bundle
+file — so every `git pull` answered *"Already up to date"* while following nothing. **The run
+above tested July's code**, as did a second run whose baseline broke outright.
+
+**So the `SURVIVED (unexpected)` result is not evidence**, and this task does not rest on it: the
+reasoning below was reproduced on Linux from the committed tree, where the mutation fails 4 tests
+in `test_accessibility.py` and `test_add_dialog.py` — none carrying the `windows_desktop` marker
+the driver selects. The Windows numbers are still to be taken.
+
+#### 2026-09-13 — the `STARBASE` run, and what two of its verdicts said about the driver
+
+**Run on `STARBASE`**, tree `4320859`, **clean** by the driver's own header — after moving seven
+untracked leftovers from earlier build sessions aside, which it refused to run over, as designed.
+The table, verbatim from `reports/windows-mutations.txt`:
+
+```
+OK                     baseline, unmutated                          39 passed
+KILLED                 CONTROL: the window title is wrong           2 failed, 37 passed, 38 errors
+SURVIVED (unexpected)  dialog: two declared widgets reordered       39 passed
+KILLED                 dialog: undeclared focusable control         8 failed, 31 passed, 11 errors
+KILLED                 progress view: undeclared focusable control  2 failed, 37 passed, 3 errors
+KILLED (unexpected)    progress view: delivered order reversed      1 failed, 38 passed, 3 errors
+OK                     baseline: the chain suite, unmutated         205 passed
+KILLED                 dialog: the declared chain is emptied        4 failed, 201 passed
+OK                     baseline: the rendered focus sweep           2 passed
+KILLED                 header: draws no focus ring of its own       2 failed
+```
+
+**The control is a control**: the title mutation is killed by the tests that ask Windows for it.
+
+**Both unexpected verdicts are stale mutations, not product defects.**
+
+- **The dialog swap survived because it no longer swapped what it said.** It exchanged indices 3
+  and 4 under a docstring naming `titleValue` and `uploaderValue`; since `T-312` those are
+  `statusMessage` and `presetChoice`, and the status line is `NoFocus` in three of the four states
+  the suite checks. It now swaps **`urlInput` and `stagingList` by name**, both reachable in every
+  state.
+- **The progress-view reversal was killed because the view grew.** Its docstring said no state
+  offered more than two controls, so a reversal was unobservable; `T-084` added the diagnostics box,
+  a failed job offers three, and the reversal is observable. Its expectation is now `fail`.
+
+**The `errors` beside every kill are teardown cascades** — once a desktop test fails, later tests
+meet the leftover state — and they are why the driver counts the pytest result line rather than
+exit codes alone.
+
+**The rerun, on the pushed tree** — `40b1dd8`, clean — **matches every expectation**:
+
+```
+OK      baseline, unmutated                          39 passed
+KILLED  CONTROL: the window title is wrong           2 failed, 37 passed, 38 errors
+KILLED  dialog: two declared widgets reordered       8 failed, 31 passed, 11 errors
+KILLED  dialog: undeclared focusable control         8 failed, 31 passed, 11 errors
+KILLED  progress view: undeclared focusable control  2 failed, 37 passed, 3 errors
+KILLED  progress view: delivered order reversed      1 failed, 38 passed, 3 errors
+OK      baseline: the chain suite, unmutated         205 passed
+KILLED  dialog: the declared chain is emptied        4 failed, 201 passed
+OK      baseline: the rendered focus sweep           2 passed
+KILLED  header: draws no focus ring of its own       2 failed
+```
+
+#### Acceptance criteria
+
+- **The driver refuses, or at least records, a tree it cannot identify.** It already refuses the
+  wrong interpreter and the wrong directory, and it printed six cases from a six-week-old checkout
+  without a word. `git log --oneline -1` and a dirty-tree check in its header would have cost
+  thirty seconds and saved three runs
+- **It distinguishes a killed mutation from a broken run.** The second run reported `KILLED` for
+  every case including the expected survivor, because it treats any non-zero exit as a kill and
+  its summary line had been swallowed — the same class of mistake its own comments record being
+  fixed for once already
+- The positive control is one the selected suite **cannot** pass — or the driver selects the
+  tests that detect the existing one, stated either way rather than left to coincide
+- The claim in `mut_control_chain`'s docstring and `run_mutations.py`'s comment is corrected: a
+  surviving control does not by itself void the other verdicts, and this run is why
+- **Run on `STARBASE` and the table recorded**, since a driver's own correctness is exactly the
+  thing that cannot be argued from Linux — **done 2026-09-13**, and rerun on the pushed tree with
+  every verdict as expected
+- `run_mutations.py` **writes its table to a file** as well as printing it. `T329-R2` asks for a
+  recorded result and the driver currently leaves only console output, which is how this run
+  nearly went unrecorded
+
+#### Out of scope
+
+- The dialog's construction order, which is correct
+- `T-060`'s expected survivor, which is recorded and understood
+
+---
+
+---
+
 ### T-333 — The yt-dlp section says which version is newest at a glance
 
 **Status:** **In Review** — ruled 2026-09-12 (a table with a Check button, the Implementer's
@@ -2361,169 +2542,6 @@ worked there; updating in the Sandbox's Settings fixed it there too.
       **Done 2026-09-13**: *Big Buck Bunny*, 134,886,020 bytes in 12.6 s from the bundled
       2026.08.19, in `docs/project/evidence/windows-0.1.0.dev0-sandbox-2026-09-13.md`
 
-### T-331 — The Windows mutation driver's positive control is not one
-
-**Status:** **In Progress** — the driver is corrected and validated on Linux 2026-09-11; the
-`STARBASE` run its last criterion asks for needs the machine. Filed the same day from the first
-execution of `tools/windows/mutations/` there, which `T-040` had asked for since it was filed.
-
-#### 2026-09-11 — corrected, and what the Linux run establishes
-
-**It names the tree, and refuses one it cannot.** The header prints `HEAD` and whether the working
-tree is dirty, and a dirty tree **stops the run** rather than warning — a warning is exactly what
-scrolled past on 2026-09-11. `--allow-dirty` is the deliberate override.
-
-**A broken baseline no longer manufactures kills.** Each selection's baseline is tracked, and
-every later case in a selection whose baseline failed reports `NO RESULT (baseline broken)`. The
-second run that evening reported `KILLED` for all six cases including the expected survivor,
-purely because the suite was failing whatever the plugin did.
-
-**The summary is pytest's result line**, found by pattern rather than taken as the last line of
-output, and its absence is reported as `NO SUMMARY LINE` instead of a row of progress dots.
-
-**The table and every full output are written to `reports/windows-mutations.txt`.** `T329-R2` asks
-for a recorded result and this driver left only a console window.
-
-**The control is a control now.** `mut_control_title` changes the window title, and
-`test_windows_desktop.py` asks **Windows** for it through `GetWindowTextW` rather than asking Qt —
-so no arrangement of widgets can pass it. `mut_control_chain` is reclassified as a mutation and
-runs against the suite that detects it; its docstring no longer claims that its survival voids
-every other verdict.
-
-**Validated on Linux, where three of the four new behaviours are observable:**
-
-| Case | Verdict |
-|---|---|
-| the six desktop cases | `NO RESULT (exit 5)` — deselected here, and *reported* as no result rather than passed over |
-| baseline: the chain suite | **OK**, 205 passed |
-| dialog: the declared chain is emptied | **KILLED**, 4 failed / 201 passed |
-| baseline: the rendered focus sweep | **OK** |
-| header: draws no focus ring of its own | **KILLED** |
-
-The chain row is the finding demonstrated: the mutation the old driver called a surviving control
-is killed outright by the suite that detects it.
-
-**What remains is the `STARBASE` run**, which is the one thing about a driver's own correctness
-that cannot be argued from Linux.
-**Owner:** Implementer
-**Priority:** Medium — it does not break the product, and it means a driver that claims to know
-when its own verdicts are worthless does not
-**Phase:** Phase 5 (test infrastructure)
-**Depends on:** nothing
-**Relevant context:** `tools/windows/mutations/mut_control_chain.py` and `run_mutations.py`;
-`T-026`, `T-040`, `T-060`/`T060-R2`; `tests/ui/test_windows_desktop.py:483–490`
-**Affected surfaces:** `tools/windows/mutations/`
-**Risk:** Low
-
-#### What happened
-
-The first real run on `STARBASE`, 2026-09-11:
-
-```
-OK                     baseline, unmutated
-SURVIVED (unexpected)  CONTROL: focus_chain returns nothing
-KILLED                 dialog: two declared widgets reordered
-KILLED                 dialog: undeclared focusable control
-KILLED                 progress view: undeclared focusable control
-SURVIVED (expected)    progress view: delivered order reversed
-```
-
-`mut_control_chain` says of itself: *"It MUST be reported as killed. If it survives, the plugin
-mechanism is not taking effect and every other verdict in this run is meaningless."*
-
-#### Both halves of that are wrong, and the run proves it
-
-**The mechanism took effect.** Three mutations were killed in the same run, which is only possible
-if the plugins applied. So the other verdicts stand rather than being void.
-
-**The mutation is caught — by tests this driver does not select.** Applying
-`mut_control_chain` on Linux against `tests/ui/test_accessibility.py` and
-`tests/ui/test_add_dialog.py` fails **4 tests**. The driver runs `-m windows_desktop`, and none
-of the four carries that marker.
-
-**Why the desktop suite cannot see it.** `_set_tab_order` pairs `focus_chain()` and calls
-`setTabOrder`; an empty chain simply makes no calls, leaving **Qt's construction order**.
-`test_windows_desktop.py:490` writes its expected order out by hand rather than deriving it —
-*"that is the whole point"* — so it passes whenever the delivered order matches, and on this
-dialog construction order already does. The tests are right about the delivered order. They are
-not evidence that the *declaration* is load-bearing, and the control assumed they were.
-
-#### What the same evening then showed, and it voids the table above
-
-**The machine's interactive checkout was six weeks stale**, at a 2026-07-29 commit, with
-uncommitted edits to `core/logging.py`. Its `origin` is `C:/dev/tt.bundle` — a hand-carried bundle
-file — so every `git pull` answered *"Already up to date"* while following nothing. **The run
-above tested July's code**, as did a second run whose baseline broke outright.
-
-**So the `SURVIVED (unexpected)` result is not evidence**, and this task does not rest on it: the
-reasoning below was reproduced on Linux from the committed tree, where the mutation fails 4 tests
-in `test_accessibility.py` and `test_add_dialog.py` — none carrying the `windows_desktop` marker
-the driver selects. The Windows numbers are still to be taken.
-
-#### 2026-09-13 — the `STARBASE` run, and what two of its verdicts said about the driver
-
-**Run on `STARBASE`**, tree `4320859`, **clean** by the driver's own header — after moving seven
-untracked leftovers from earlier build sessions aside, which it refused to run over, as designed.
-The table, verbatim from `reports/windows-mutations.txt`:
-
-```
-OK                     baseline, unmutated                          39 passed
-KILLED                 CONTROL: the window title is wrong           2 failed, 37 passed, 38 errors
-SURVIVED (unexpected)  dialog: two declared widgets reordered       39 passed
-KILLED                 dialog: undeclared focusable control         8 failed, 31 passed, 11 errors
-KILLED                 progress view: undeclared focusable control  2 failed, 37 passed, 3 errors
-KILLED (unexpected)    progress view: delivered order reversed      1 failed, 38 passed, 3 errors
-OK                     baseline: the chain suite, unmutated         205 passed
-KILLED                 dialog: the declared chain is emptied        4 failed, 201 passed
-OK                     baseline: the rendered focus sweep           2 passed
-KILLED                 header: draws no focus ring of its own       2 failed
-```
-
-**The control is a control**: the title mutation is killed by the tests that ask Windows for it.
-
-**Both unexpected verdicts are stale mutations, not product defects.**
-
-- **The dialog swap survived because it no longer swapped what it said.** It exchanged indices 3
-  and 4 under a docstring naming `titleValue` and `uploaderValue`; since `T-312` those are
-  `statusMessage` and `presetChoice`, and the status line is `NoFocus` in three of the four states
-  the suite checks. It now swaps **`urlInput` and `stagingList` by name**, both reachable in every
-  state.
-- **The progress-view reversal was killed because the view grew.** Its docstring said no state
-  offered more than two controls, so a reversal was unobservable; `T-084` added the diagnostics box,
-  a failed job offers three, and the reversal is observable. Its expectation is now `fail`.
-
-**The `errors` beside every kill are teardown cascades** — once a desktop test fails, later tests
-meet the leftover state — and they are why the driver counts the pytest result line rather than
-exit codes alone. **A rerun with both corrected mutations is still owed**, on the pushed tree.
-
-#### Acceptance criteria
-
-- **The driver refuses, or at least records, a tree it cannot identify.** It already refuses the
-  wrong interpreter and the wrong directory, and it printed six cases from a six-week-old checkout
-  without a word. `git log --oneline -1` and a dirty-tree check in its header would have cost
-  thirty seconds and saved three runs
-- **It distinguishes a killed mutation from a broken run.** The second run reported `KILLED` for
-  every case including the expected survivor, because it treats any non-zero exit as a kill and
-  its summary line had been swallowed — the same class of mistake its own comments record being
-  fixed for once already
-- The positive control is one the selected suite **cannot** pass — or the driver selects the
-  tests that detect the existing one, stated either way rather than left to coincide
-- The claim in `mut_control_chain`'s docstring and `run_mutations.py`'s comment is corrected: a
-  surviving control does not by itself void the other verdicts, and this run is why
-- **Run on `STARBASE` and the table recorded**, since a driver's own correctness is exactly the
-  thing that cannot be argued from Linux — **done 2026-09-13**, above; a rerun of the two
-  corrected mutations is owed
-- `run_mutations.py` **writes its table to a file** as well as printing it. `T329-R2` asks for a
-  recorded result and the driver currently leaves only console output, which is how this run
-  nearly went unrecorded
-
-#### Out of scope
-
-- The dialog's construction order, which is correct
-- `T-060`'s expected survivor, which is recorded and understood
-
----
-
 
 ### T-319 — The Windows release build: windowed, versioned, with ffmpeg inside
 
@@ -2721,8 +2739,10 @@ console   none seen in 15 s                                                     
 artifact-gates: all 4 checks passed on dist-release\tracks-and-trails
 ```
 
-`docs/DEVELOPMENT.md` documents both modes. **The CI run is still owed**: the steps were exercised by
-hand on the machine that runs them, not yet by the workflow.
+`docs/DEVELOPMENT.md` documents both modes. **The workflow has run them too**: CI run
+[`34742480032`](https://github.com/kottmans/tracks-and-trails/actions/runs/34742480032) at `40b1dd8`,
+where `frozen windows` passed *Build the windowed release artifact*, *Probe the windowed build
+through its report files* and *The windowed build opens no console, and the check can see one*.
 
 #### 2026-09-13 — the bundled ffmpeg deleted: it degrades, and says why
 
