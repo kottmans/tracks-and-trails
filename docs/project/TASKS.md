@@ -1633,6 +1633,25 @@ probe extension and `T033-R4`'s data blindness; `T-298`
 **Risk:** Low — each check is small; the risk is the usual one, a gate that passes with its
 subject removed, which is why each is mutation-checked
 
+#### 2026-09-13 — the maintainer-authorized pass: `T323-R2`'s two omissions
+
+**The maintainer authorized the additional pass `TESTING` §14 requires.** `T323-R1` is resolved by it;
+`T323-R2` came back with two omissions in `binary_cookie_store`, both reproduced and both corrected.
+
+- **A hit at a chunk boundary lost its separator.** The printable string was taken from 512-byte
+  chunks of a window, so `NUL, 600 "A" bytes, /vault/session.cookies.sqlite` put `cookie` at the
+  start of the second chunk and the `/` before it in the first; the scan passed. The string is now
+  followed **out to its real edges**, at most `_STRING_REACH` (4,096) bytes either side, never cut.
+- **Chromium's store has no extension.** `C:\vault\Default\Cookies` did not match the
+  store-extension rule. The pattern now also accepts a path component that **is** `Cookies`
+  (optionally `-journal`), so `…/Default/Cookies` is found while `QNetworkCookie.RawForm`, brotli's
+  `cookie.rely` and `QNetworkCookies.cpp` are not.
+
+**Re-measured over the real artifact's 369 binaries: 0.43 s, no false positives**, and the full gate
+still passes item 13 on it. Four new cases, the reviewer's two among them. **Mutations:** restoring
+the 512-byte chunking fails both long-run cases; removing the extensionless branch fails three.
+**The stated remainder:** a store path more than 4,096 printable bytes from its `cookie`.
+
 #### 2026-09-13 — the second review: one of two remaining findings corrected
 
 **`T323-R2`, second round: a cookie-store path inside a binary still passed.** The reviewer's `.bin`

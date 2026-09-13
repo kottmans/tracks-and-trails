@@ -834,3 +834,22 @@ def test_a_binarys_cookie_api_strings_are_not_a_cookie_store(tmp_path: Path) -> 
         + bytes(8)
     )
     assert not gates.no_secrets_or_personal_paths(root)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b"\x00" + b"A" * 600 + b"/vault/session.cookies.sqlite" + b"\x00",
+        b"\x00" + b"x" * 1500 + b"\\" + b"y" * 10 + b"\\Default\\Cookies\x00",
+        b"\x00C:\\vault\\Default\\Cookies\x00",
+        b"\x00/home/u/.config/google-chrome/Default/Cookies-journal\x00",
+    ],
+    ids=["after-a-long-run", "a-long-run-then-extensionless", "extensionless", "chromium-journal"],
+)
+def test_the_second_reviews_binary_cookie_paths_are_found(tmp_path: Path, payload: bytes) -> None:
+    """**`T323-R2`, second review.** A hit at a 512-byte chunk boundary lost its separator, so the
+    first payload passed; and Chromium's extensionless `Cookies` store was not in the pattern."""
+    root = build(tmp_path / "app")
+    (root / "_internal" / "payload.bin").write_bytes(payload)
+    problems = gates.no_secrets_or_personal_paths(root)
+    assert any("cookie store path" in problem for problem in problems), problems

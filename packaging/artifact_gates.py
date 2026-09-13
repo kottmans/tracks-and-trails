@@ -127,15 +127,34 @@ COSTLY_PATTERNS = (
     (_COOKIE_FILENAME, "a cookie store filename"),
 )
 
-#: A cookie store **named in a path**, for binary files: a separator, a name containing `cookie`,
-#: and an extension a cookie store has. Tighter than `_COOKIE_FILENAME` on purpose — measured over
-#: this artifact's 369 binaries, the loose pattern flags brotli's English dictionary
-#: (`cookie.rely`) and PySide's signature strings (`QNetworkCookie.RawForm`); this one flags none.
+#: A cookie store **named in a path**, for binary files: a separator, then either a name containing
+#: `cookie` with an extension a cookie store has, or a component that **is** `Cookies` — Chromium's
+#: store has no extension (`…\\Default\\Cookies`), which `T323-R2`'s second review found missed.
+#: Tighter than `_COOKIE_FILENAME` on purpose — measured over a real artifact's 369 binaries, the
+#: loose pattern flags brotli's English dictionary (`cookie.rely`) and PySide's signature strings
+#: (`QNetworkCookie.RawForm`); this one flags none.
 _BINARY_COOKIE_STORE = re.compile(
-    r"[\\/][^\\/\s\"']*cookies?[^\\/\s\"']*\.(?:sqlite|txt|binarycookies|json|db)\b", re.IGNORECASE
+    r"[\\/](?:[^\\/\s\"']*cookies?[^\\/\s\"']*\.(?:sqlite|txt|binarycookies|json|db)\b"
+    r"|cookies(?:-journal)?(?![\w.]))",
+    re.IGNORECASE,
 )
-#: The strings a binary carries are printable runs between NULs and other control bytes.
-_PRINTABLE_RUN = re.compile(rb"[\x20-\x7e]{4,512}")
+#: How far either side of a hit the printable string is followed. **A bound on work, not a split**:
+#: the first version cut runs into 512-byte chunks, so a hit at a chunk's start lost the separator
+#: before it and `NUL, 600 "A" bytes, /vault/session.cookies.sqlite` passed (`T323-R2`, second
+#: review). A path longer than this either side of its `cookie` is the stated remainder.
+_STRING_REACH = 4096
+_PRINTABLE = frozenset(range(0x20, 0x7F))
+
+
+def _printable_string_around(raw: bytes, index: int) -> str:
+    """The whole printable string containing `raw[index]`, up to `_STRING_REACH` bytes each way."""
+    low = index
+    while low > 0 and index - low < _STRING_REACH and raw[low - 1] in _PRINTABLE:
+        low -= 1
+    high = index
+    while high < len(raw) and high - index < _STRING_REACH and raw[high] in _PRINTABLE:
+        high += 1
+    return raw[low:high].decode("ascii")
 
 
 def binary_cookie_store(raw: bytes) -> str | None:
@@ -143,20 +162,17 @@ def binary_cookie_store(raw: bytes) -> str | None:
 
     **Bounded by construction rather than by truncation.** The costly patterns go quadratic on
     binary noise, so this never runs a regex over the file: it finds each `cookie` with a byte
-    search, takes only the printable string containing it — at most 512 bytes either side — and
-    asks that. Measured at **0.45 s over all 369 binaries** of a real artifact, with no false
-    positives, where `_COOKIE_FILENAME` alone took 171 s on one library.
+    search, follows the printable string containing it out to its real edges — at most
+    `_STRING_REACH` bytes either side, never cut into chunks — and asks that. Measured at **0.43 s
+    over all 369 binaries** of a real artifact, with no false positives, where `_COOKIE_FILENAME`
+    alone took 171 s on one library.
     """
     lowered = raw.lower()
     start = 0
     while (index := lowered.find(b"cookie", start)) >= 0:
-        low = max(0, index - 512)
-        window = raw[low : index + 512]
-        for run in _PRINTABLE_RUN.finditer(window):
-            if run.start() <= index - low < run.end():
-                found = _BINARY_COOKIE_STORE.search(run.group(0).decode("ascii"))
-                if found:
-                    return found.group(0)
+        found = _BINARY_COOKIE_STORE.search(_printable_string_around(raw, index))
+        if found:
+            return found.group(0)
         start = index + 6
     return None
 
