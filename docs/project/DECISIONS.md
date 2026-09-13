@@ -1234,6 +1234,13 @@ cannot currently see. That is not a close call while the probe is blind.
 - **This is re-evaluated whenever the yt-dlp pin changes**, which `T033-R4` asked for. A pin bump
   is the moment the redundancy evidence expires, and the evidence is a *negative build* — cheap to
   repeat, so repeat it rather than assuming.
+  - **Re-evaluated 2026-09-12 at 2026.8.19** (`T-332`), on Linux, with the probe isolated from the
+    developer's own user-managed yt-dlp — **the first attempt was not**, reported
+    `user-managed copy (OPS-002)` for both builds, and was discarded. Both builds then report
+    `bundled baseline` and **1751 extractors**. The archives differ by exactly two modules, present
+    only with the line: `yt_dlp.__main__` and `yt_dlp.__pyinstaller`, neither imported at runtime.
+    **All 971 `yt_dlp.extractor.*` modules are present without it**, so it is still redundant for
+    this pin, and it stays for the reason above.
 - **It is not a substitute for the probe extension.** Keeping this line does nothing about the data
   blindness `T033-R4` found; the two were separated precisely so that one could not be read as
   covering the other.

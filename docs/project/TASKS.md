@@ -2152,9 +2152,11 @@ worked there; updating in the Sandbox's Settings fixed it there too.
 
 - [x] The pin, the constant and the audit name 2026.8.19, and the pin-bound tests pass against it
 - [ ] CI green on both platforms at the new pin
-- [ ] `REL-002`'s negative build repeated at the new pin, with the result recorded there
+- [x] `REL-002`'s negative build repeated at the new pin, with the result recorded there — still redundant: the archives differ only by `yt_dlp.__main__` and `yt_dlp.__pyinstaller`, 1751 extractors either way
 - [ ] The rebuilt Windows installer downloads a YouTube video in a clean Sandbox in the
-      `Best video up to 1080p (MP4)` preset — the case that failed, not the probe's selector
+      `Best video up to 1080p (MP4)` preset — the case that failed, not the probe's selector.
+      `evidence.ps1` now does this through `TT_DOWNLOAD_PROBE_FORMAT`, with the selector kept equal
+      to the preset's by a test
 
 ### T-331 — The Windows mutation driver's positive control is not one
 
