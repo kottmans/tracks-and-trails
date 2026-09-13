@@ -331,3 +331,43 @@ def test_the_wizard_artwork_the_installer_names_exists() -> None:
         for name in match.group(1).split(","):
             path = art / name.strip().replace("\\", "/")
             assert path.is_file(), f"{directive} names {name.strip()}, which does not exist"
+
+
+def _png_size(path: Path) -> tuple[int, int]:
+    """Width and height from a PNG's IHDR chunk — no imaging library needed."""
+    header = path.read_bytes()[:24]
+    assert header[:8] == b"\x89PNG\r\n\x1a\n", f"{path.name} is not a PNG"
+    return int.from_bytes(header[16:20], "big"), int.from_bytes(header[20:24], "big")
+
+
+def test_the_wizard_artwork_is_the_shape_its_slot_is() -> None:
+    """**The installer logo looked fuzzy, and the sizes were why** (`T-322`, 2026-09-12).
+
+    The first cut used Inno Setup's pre-6.6 sizes from memory: several corner images were not
+    square, and the panel images were not at the 164:314 aspect Inno keeps. Inno picks the nearest
+    image and stretches it to fit, so a wrong shape is a distorted logo and a too-small one is a
+    blurred logo. The slot sizes now come from Inno 6.7's own help; this pins the shape.
+    """
+    text = INSTALLER.read_text(encoding="utf-8")
+
+    def right_shape(directive: str, width: int, height: int) -> bool:
+        if directive == "WizardSmallImageFile":
+            return width == height
+        return abs(width / height - 164 / 314) < 0.01
+
+    for directive in ("WizardSmallImageFile", "WizardImageFile"):
+        match = re.search(rf"^{directive}=(.+)$", text, re.M)
+        assert match is not None
+        sizes = []
+        for name in match.group(1).split(","):
+            width, height = _png_size(REPOSITORY / "packaging" / name.strip().replace("\\", "/"))
+            assert right_shape(directive, width, height), (
+                f"{name.strip()} is {width}x{height}, the wrong shape for {directive}"
+            )
+            sizes.append((width, height))
+        # A 100% slot must have an image at least its size, or it is stretched up and blurs.
+        smallest = min(sizes)
+        floor = (58, 58) if directive == "WizardSmallImageFile" else (202, 386)
+        assert smallest[0] >= floor[0] and smallest[1] >= floor[1], (
+            f"{directive}'s smallest image is {smallest}, below the {floor} slot at 100% scaling"
+        )

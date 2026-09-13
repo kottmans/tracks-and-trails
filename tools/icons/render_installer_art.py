@@ -14,7 +14,7 @@ art cannot drift from the application icon.
 
 **Two images, several sizes each.** Inno picks the closest match to the display's DPI from a
 comma-separated list, and an image scaled up by Windows is a blurred logo on the very screen this
-is for. The sizes are the ones Inno Setup documents for `WizardStyle=modern` at 100% to 250%.
+is for. The sizes are the slot sizes Inno Setup 6.7's help documents at 100% to 250%.
 
 - **Small** — the top-right corner of every inner page. White, because that is the page header's
   own colour, so the logo sits on the page rather than in a box.
@@ -39,11 +39,27 @@ from render_icons import ROOT, load_master, render
 
 OUT = ROOT / "packaging" / "installer-art"
 
-#: `WizardSmallImageFile` sizes Inno Setup documents for 100%, 150%, 200% and 250%.
-SMALL_SIZES = ((55, 55), (83, 80), (110, 106), (138, 140))
+#: `WizardSmallImageFile` slot sizes, 100% to 250% scaling — **read from Inno Setup 6.7's own help**
+#: (`ISetup.chm`, topic `setup_wizardsmallimagefile`), not recalled. The slot is square.
+#:
+#: **The first cut used Inno's pre-6.6 sizes from memory, and they were wrong twice over**: several
+#: were not square, and none matched the current slots. Inno picks the nearest image and stretches
+#: it, so the maintainer's first look at the finished installer found the logo *"a bit fuzzy"*.
+#: One image per slot size means nothing is scaled at any standard DPI.
+SMALL_SIZES = ((58, 58), (77, 77), (97, 97), (116, 116), (124, 124), (143, 143), (159, 159))
 
-#: `WizardImageFile` sizes for the same scales.
-LARGE_SIZES = ((164, 314), (246, 459), (328, 604), (410, 797))
+#: `WizardImageFile` panel sizes for the same scales, from the same help file. **Inno 6.6 made the
+#: modern wizard 120% larger by default** (`WizardSizePercent=120,120`), so the panel at 100% is
+#: 202x386 — the old 164x314 image was being stretched up by about 23%, which is the blur.
+LARGE_SIZES = (
+    (202, 386),
+    (269, 515),
+    (336, 643),
+    (403, 772),
+    (430, 824),
+    (498, 953),
+    (534, 1022),
+)
 
 #: The inner-page header is the window colour, which is white in the light modern style.
 SMALL_GROUND = QColor("#FFFFFF")

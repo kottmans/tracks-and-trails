@@ -81,8 +81,8 @@ SetupIconFile=..\src\tracks_and_trails\resources\icons\icon.ico
 ; .exe's own icon and nothing else, so every page of the wizard carried the default artwork.
 ; Rendered from the logo masters by `tools/icons/render_installer_art.py`; Inno picks the size
 ; nearest the display's DPI from each list, so a high-DPI screen gets a sharp logo, not a scaled one.
-WizardSmallImageFile=installer-art\wizard-small-55x55.png,installer-art\wizard-small-83x80.png,installer-art\wizard-small-110x106.png,installer-art\wizard-small-138x140.png
-WizardImageFile=installer-art\wizard-large-164x314.png,installer-art\wizard-large-246x459.png,installer-art\wizard-large-328x604.png,installer-art\wizard-large-410x797.png
+WizardSmallImageFile=installer-art\wizard-small-58x58.png,installer-art\wizard-small-77x77.png,installer-art\wizard-small-97x97.png,installer-art\wizard-small-116x116.png,installer-art\wizard-small-124x124.png,installer-art\wizard-small-143x143.png,installer-art\wizard-small-159x159.png
+WizardImageFile=installer-art\wizard-large-202x386.png,installer-art\wizard-large-269x515.png,installer-art\wizard-large-336x643.png,installer-art\wizard-large-403x772.png,installer-art\wizard-large-430x824.png,installer-art\wizard-large-498x953.png,installer-art\wizard-large-534x1022.png
 UninstallDisplayIcon={app}\{#AppExe}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
