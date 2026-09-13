@@ -1858,6 +1858,60 @@ scheduled there. The notes say what *is* covered, and that the rest is coming as
 
 ## Blocked
 
+### T-336 — The installed app crashed once with heap corruption opening *Naming and folders…*
+
+**Status:** **Blocked — on a recurrence that carries a dump.** Seen once, 2026-09-13, in `T-327`'s
+Sandbox session; not reproduced since by any route below. Filed the same day.
+**Owner:** Implementer
+**Priority:** High if it recurs; Medium while it does not — a crash is Critical by `TESTING.md` §14,
+and one that cannot be reproduced cannot be ranked by its frequency
+**Phase:** Phase 5
+**Depends on:** a recurrence under crash capture
+**Relevant context:** `T-289` (a Qt widget destroyed on the wrong thread — a double free); `T-074`
+(an access violation never reproduced, and why repetition alone does not discriminate); `T-092`
+(crash dumps on `STARBASE`)
+**Affected surfaces:** unknown until a dump names them
+
+#### What happened
+
+The maintainer, in the installed build in Windows Sandbox: pasted
+`https://www.youtube.com/watch?v=NnPvX-uMYWk` into Add URLs, waited for it to be read, opened the
+row's ⋮ and chose *Naming and folders…*; the application closed. Windows recorded:
+
+- `Application Error`: `tracks-and-trails.exe` 0.1.0.0, faulting module `ntdll.dll`
+  10.0.19041.6456, **exception `0xc0000374` (heap corruption)**, offset `0xff489`, 16:30:01.
+- The application log ends at 16:29:47, mid-probe of the same URL, which had also been probed at
+  16:24:47 in the same session — so the dialog saw that URL twice. Nothing after: a native fault
+  writes no Python record.
+
+**Heap corruption is reported where the heap is next checked, not where it was damaged.** The menu
+choice is where the process died; it is not established as the cause.
+
+#### Not reproduced, by
+
+- The same flow from source on `STARBASE` under the real Windows plugin — real probe, the ⋮ zone
+  and the menu entry clicked through `QTest`, the maintainer's own URL, and with the dialog closed
+  and reopened between two reads of it: **eight runs, no crash**.
+- The output-path preview the panel opens with, under `pythonw.exe` (no console, as installed): clean.
+- The 17 add-dialog tests touching the panel and the menu, under the real plugin: pass.
+- The maintainer, in Sandbox: the installer built before that day's later changes (`d1e03e2`) and
+  the current one (`e037c05`) — **no crash with either**; no dump was produced.
+
+#### To capture it
+
+Kept on `STARBASE`, not in the repository: `C:\dev\interactive-dumps.wsb` (the interactive Sandbox
+plus a writable `C:\dev\sandbox-out`) and `sandbox-share\arm-crash-capture.ps1`, which turns on
+full page heap for `tracks-and-trails.exe` — so a double free or overrun faults at the write that
+does it — and WER full dumps into that folder. WinDbg is installed on `STARBASE` to read one.
+
+#### Acceptance criteria
+
+- [ ] A dump of a recurrence, with the faulting module and stack read
+- [ ] The cause named, fixed, and a test that fails without the fix — or, if it never recurs, a
+      recorded ruling on how long to wait (`T-074`'s repetition-budget lesson)
+
+---
+
 ### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
 
 **Status:** **Blocked — on `T-092`, 2026-08-20. Still undiagnosed, still not blocking Phase 1**
