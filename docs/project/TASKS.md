@@ -2450,10 +2450,13 @@ each one reversible by ruling:**
   of whatever `T-317` decided about SmartScreen, which is two warnings before the first launch.
 - **Start Menu shortcut always; desktop shortcut opt-in**, unchecked by default.
 - **Silent install** honours `/VERYSILENT /NORESTART` — `T-039` asserts this.
-- **Uninstall removes the installed tree and shortcuts and leaves user data, settings and the job
-  database in place**, and says so on the uninstaller's final page — `DAT-001`. `T-039` asserts
-  the two halves separately: leftovers under the install root are a failure; leftovers under the
-  user directories are the intended behaviour.
+- **Uninstall removes the files the installer installed, and its shortcuts, and leaves user data,
+  settings, the job database and anything the user put in the install directory in place**, and
+  says so on the uninstaller's final page — `DAT-001`, `T322-R1`. `T-039` asserts the halves
+  separately: an installed file left behind is a failure; user-owned files — under the user
+  directories *or* inside the install directory — surviving byte-for-byte is the intended
+  behaviour. *(Said "leftovers under the install root are a failure", which demanded an empty
+  directory and so the recursive deletion `T322-R1` removed; `T322-R2`.)*
 - **No file associations and no protocol handler** in `0.1.0`. `T-104` (a second launch handing
   its URL to the running instance) is not built, so an association would open a message box
   rather than a download. Recorded here so it is a known omission rather than a surprise.
@@ -2469,8 +2472,9 @@ incident it cites).
 - The installer is built by `T-324`'s workflow from `T-319`'s windowed artifact, and its version
   string matches `__version__`
 - A silent install on a clean machine (`T-318`) completes, the Start Menu entry launches the
-  application under the real platform plugin, and an uninstall leaves nothing under the install
-  root and everything under the user directories
+  application under the real platform plugin, and an uninstall removes every installed file while
+  leaving user data **and user-owned files in the install directory** unchanged *(said "leaves
+  nothing under the install root"; `T322-R2`)*
 - `T-039` is unblocked and its four gates are green on the runner
 - The installer's own strings name the application, version and publisher; nothing in them names
   a developer path (`T-323`'s scan covers the tree; this covers the installer)
