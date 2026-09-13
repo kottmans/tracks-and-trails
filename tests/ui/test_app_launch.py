@@ -354,6 +354,43 @@ def test_the_download_probe_takes_a_url_in_the_same_token(
     assert asked == ["https://example.invalid/x.mp4"]
 
 
+@pytest.mark.parametrize(
+    ("flag", "probe"),
+    [
+        ("--download-probe", "run_download_probe"),
+        ("--ytdlp-update-probe", "run_ytdlp_update_probe"),
+    ],
+)
+def test_the_application_verifies_certificates_the_platforms_way_before_any_probe(
+    monkeypatch: pytest.MonkeyPatch, flag: str, probe: str
+) -> None:
+    """`REL-007`, amended from `T-327`: the parent's own HTTPS — the yt-dlp updater — is covered.
+
+    A worker patches itself (`tests/integration/test_worker.py`); this is the other process. The
+    probes stand in for the window because they are the earliest thing `run` dispatches to, and
+    the call has to precede them.
+    """
+    from tracks_and_trails import _freeze_probe
+    from tracks_and_trails.app import run as run_app
+    from tracks_and_trails.downloader import tls
+
+    order: list[str] = []
+
+    def verify(*, os_name: str = os.name) -> bool:
+        order.append("verify")
+        return False
+
+    def record(*_args: object) -> int:
+        order.append("probe")
+        return 0
+
+    monkeypatch.setattr(tls, "verify_with_the_operating_system", verify)
+    monkeypatch.setattr(_freeze_probe, probe, record)
+
+    assert run_app(["tracks-and-trails", flag]) == 0
+    assert order == ["verify", "probe"]
+
+
 @pytest.mark.parametrize("misspelling", ["--download-probes", "--download-probe-url", "--download"])
 def test_a_near_miss_is_rejected_rather_than_consumed(
     misspelling: str, monkeypatch: pytest.MonkeyPatch

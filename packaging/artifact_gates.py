@@ -47,6 +47,7 @@ REQUIRED_LICENCES: tuple[str, ...] = (
     "Qt-LGPLv3.txt",
     "Qt-GPLv3.txt",
     "yt-dlp-Unlicense.txt",
+    "truststore-MIT.txt",
     "NOTICE.txt",
 )
 

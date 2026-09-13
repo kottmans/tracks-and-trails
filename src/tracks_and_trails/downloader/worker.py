@@ -85,6 +85,7 @@ from tracks_and_trails.downloader.protocol import (
     Succeeded,
     WorkerFinished,
 )
+from tracks_and_trails.downloader.tls import verify_with_the_operating_system
 
 
 class SessionCancelledError(Exception):
@@ -466,6 +467,9 @@ def run_session(
     reporter = _Reporter(job_id, queue, cancel)
     exit_code = 0
     try:
+        # A spawned child starts with an unpatched `ssl`, so the parent's call does not reach it.
+        # Inside the `try`: a build missing `truststore` fails the job with a reason, not silently.
+        verify_with_the_operating_system()
         resolved = _import_ytdlp(ytdlp_candidates(user_ytdlp_directory))
         _log_the_session_header(kind, resolved)
         reporter.use_cancellation_error(_cancellation_error(resolved))

@@ -89,6 +89,59 @@ def test_importing_the_worker_performs_no_work() -> None:
     assert not facts["imported_qt"], "the worker must inherit no Qt (ARC-002)"
 
 
+def test_a_fresh_worker_session_verifies_certificates_the_platforms_way() -> None:
+    """`REL-007`, amended from `T-327`: a spawned worker patches its own `ssl`.
+
+    **A fresh interpreter, because that is what a spawned child is.** The parent's call to
+    `verify_with_the_operating_system` does not cross a `spawn`, and every test in this process
+    shares one `ssl` module, so only a new interpreter can show what a worker starts with and what
+    `run_session` leaves it with.
+
+    The session is a probe of a port nothing listens on, so it fails fast and offline; what is
+    asserted is the context yt-dlp would have built for it.
+
+    **The child is told it is Windows**, through the function's own default, so that deleting the
+    call from `run_session` fails here on Linux too rather than only on `STARBASE`. `truststore`
+    runs on Linux, so the patched context is real either way.
+    """
+    probe = textwrap.dedent(
+        """
+        import json, ssl
+        from queue import Queue
+
+        from tracks_and_trails.downloader import tls
+
+        tls.verify_with_the_operating_system.__kwdefaults__["os_name"] = "nt"
+
+        from tracks_and_trails.core.models import DownloadRequest
+        from tracks_and_trails.downloader.protocol import SessionKind
+        from tracks_and_trails.downloader.worker import run_session
+
+        before = ssl.SSLContext.__module__
+        request = DownloadRequest(
+            url="https://127.0.0.1:9/nothing-listens-here",
+            output_directory=".",
+            format_selector="best",
+            output_template="%(title)s.%(ext)s",
+        )
+        run_session(SessionKind.PROBE, "job-1", request, Queue())
+
+        from yt_dlp.networking._helper import make_ssl_context
+
+        print(json.dumps({"before": before, "after": type(make_ssl_context()).__module__}))
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, cwd=REPO_ROOT, check=True
+    )
+    facts = json.loads(result.stdout.strip().splitlines()[-1])
+
+    assert facts["before"] == "ssl", f"the child started patched, so this proves nothing: {facts}"
+    assert facts["after"].split(".")[0] == "truststore", (
+        f"a worker session left yt-dlp building OpenSSL's own context: {facts}"
+    )
+
+
 #: The variables that make a display reachable on Linux. Removed rather than blanked: an empty
 #: `DISPLAY` is a *different* condition from an absent one, and libraries branch on both.
 DISPLAY_VARIABLES = ("DISPLAY", "WAYLAND_DISPLAY")

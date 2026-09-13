@@ -26,12 +26,14 @@ classifiers = [
 # Runtime dependencies. Per AGENTS.md §7, each is backed by an accepted decision:
 #   PySide6      ARC-001    platformdirs  DAT-001
 #   yt-dlp       ARC-002 / OPS-002
+#   truststore   REL-007 (amended 2026-09-12): Windows verifies TLS with its own chain builder
 # yt-dlp is pinned exactly, not floated: OPS-002 requires a pinned, tested baseline so
 # behavior is reproducible. Users update their own copy out-of-band instead.
 dependencies = [
     "PySide6>=6.11,<7",
     "platformdirs>=4.0",
     "yt-dlp==2026.7.4",
+    "truststore>=0.10.4",
 ]
 
 [project.optional-dependencies]

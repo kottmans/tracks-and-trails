@@ -164,6 +164,12 @@ def run(argv: Sequence[str]) -> int:
     if "--help" in args or "-h" in args:
         print(_usage(), end="")
         return 0
+    # Before any probe and before Qt, so the yt-dlp updater and every probe below verify
+    # certificates the way the running application does (`REL-007`, `downloader/tls.py`). A
+    # spawned worker makes the same call for itself.
+    from tracks_and_trails.downloader.tls import verify_with_the_operating_system
+
+    verify_with_the_operating_system()
     # Before Qt, and before anything else that would make this need a display. The frozen
     # build runs exactly this path in CI to prove that spawning a child does not relaunch the
     # application (REL-001, ARCHITECTURE.md §3, T-020).

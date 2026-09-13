@@ -152,6 +152,33 @@ if ($exe) {
 }
 Say '```'
 
+Rule "A real download, over TLS, from a site whose root this machine does not hold"
+Say "``REL-007``, amended from ``T-327``. Python's ``ssl`` on Windows trusts only the roots already in"
+Say "the store, and Windows fetches a missing one on demand for its own verifier alone -- so in this"
+Say "Sandbox **every YouTube download failed** with ``CERTIFICATE_VERIFY_FAILED``. The probe runs the"
+Say "same ``run_session`` a worker runs."
+Say ""
+Say "**The root is checked first**, because a machine that already holds it would pass this whether"
+Say "or not the fix is in the artifact."
+Say '```'
+$probeUrl = "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+$rootHeld = @(Get-ChildItem Cert:\LocalMachine\Root, Cert:\CurrentUser\Root -ErrorAction SilentlyContinue | Where-Object Subject -match "GTS Root R1")
+Say ("GTS Root R1 in store  " + $(if ($rootHeld.Count -eq 0) { "absent - this run can tell a fixed build from a broken one" } else { "PRESENT - this run cannot show the fix; the result below proves nothing about it" }))
+if ($exe) {
+    $probeReport = Join-Path $env:TEMP "tt-download-probe.txt"
+    Remove-Item $probeReport -ErrorAction SilentlyContinue
+    $env:TT_PROBE_REPORT = $probeReport
+    # The release build is windowed and has no stdout, so the probe's lines come back through
+    # `TT_PROBE_REPORT` (`T-319`).
+    $probe = Start-Process -FilePath $exe -ArgumentList ("--download-probe=" + $probeUrl) -Wait -PassThru
+    Remove-Item Env:\TT_PROBE_REPORT
+    Say ("probe exit            " + $probe.ExitCode)
+    if (Test-Path $probeReport) { Get-Content $probeReport | ForEach-Object { Say $_ } }
+    else { Say "probe report          MISSING - the probe wrote nothing" }
+    if ($probe.ExitCode -ne 0) { $failures++ }
+}
+Say '```'
+
 Rule "Uninstall, and what survives it"
 Say "``T-039``'s fourth gate. ``DAT-001`` says settings, the job database and downloaded files"
 Say "**survive an uninstall by intent** -- so this asserts two different things, and the"
@@ -210,7 +237,7 @@ Say '```'
 Rule "Verdict"
 if ($failures -eq 0) {
     Say "**PASS** - the pre-install check found nothing installed, the artifact installed per-user"
-    Say "without elevation, placed what it should, and opened a window."
+    Say "without elevation, placed what it should, opened a window, and downloaded over TLS."
 } else {
     Say ("**FAIL** - " + $failures + " check(s) did not pass. The detail is above; nothing here is a summary.")
 }

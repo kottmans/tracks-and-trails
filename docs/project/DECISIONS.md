@@ -54,7 +54,7 @@ Current requirements and architecture retain their own canonical authority.
 | [REL-004](#rel-004--the-linux-artifact-ships-as-an-appimage) | The Linux artifact ships as an AppImage | Accepted | — |
 | [REL-005](#rel-005--the-first-windows-installer-ships-unsigned) | The first Windows installer ships unsigned | Accepted | — |
 | [REL-006](#rel-006--a-clean-machine-is-a-disposable-vm-the-maintainer-owns) | A clean machine is a disposable VM the maintainer owns | Accepted | — |
-| [REL-007](#rel-007--the-artifacts-use-the-system-certificate-store-and-bundle-none) | The artifacts use the system certificate store and bundle none | Accepted | — |
+| [REL-007](#rel-007--the-artifacts-use-the-system-certificate-store-and-bundle-none) | The artifacts use the system certificate store and bundle none | Accepted | [Amended 2026-09-12](#amended-2026-09-12--on-windows-the-operating-system-verifies-not-openssl-reading-its-store) |
 | [REL-008](#rel-008--windows-gets-its-own-startup-number-and-linuxs-stays-where-it-is) | Windows gets its own startup number, and Linux's stays where it is | Accepted | — |
 | [REL-002](#rel-002--collect_submodulesyt_dlp-stays-as-insurance-against-a-pin-we-do-not-have-yet) | `collect_submodules("yt_dlp")` stays, as insurance against a pin we do not have yet | Accepted | — |
 | [REL-001](#rel-001--ship-frozen-self-contained-artifacts-no-python-required-on-the-users-machine) | Ship frozen, self-contained artifacts: no Python required on the user's machine | Accepted | — |
@@ -1075,6 +1075,46 @@ Two alternatives were put and rejected:
   and the reason it was refused.
 - **Reopening condition:** a report from a real user whose machine has no usable trust store, or
   a platform where yt-dlp's HTTPS stack stops consulting the system store.
+
+### Amended 2026-09-12 — on Windows the operating system verifies, not OpenSSL reading its store
+
+**Status:** **Accepted** — maintainer decision (option A of three), from `T-327`'s manual session.
+
+**What was found.** In a fresh Windows Sandbox **every YouTube download failed** with
+`CERTIFICATE_VERIFY_FAILED`, the same videos downloaded on Linux. yt-dlp's `load_default_certs`,
+like Python's, copies the certificates **already present** in the Windows `ROOT` and `CA` stores
+into OpenSSL. Windows does not keep every trusted root there; its own chain builder fetches one
+when it first needs it. In that Sandbox `Invoke-WebRequest https://www.youtube.com` succeeded,
+and `GTS Root R1` was absent from `Cert:\LocalMachine\Root` before and after it. So the decision
+above was right about *whose* trust to use and wrong about the mechanism on Windows: "the system
+store" read by OpenSSL is not what Windows itself trusts. `STARBASE` holds the root from ordinary
+browsing, which is why the network suite never saw it.
+
+**Decision.** On Windows, every process that makes HTTPS requests hands verification to the
+operating system through `truststore` (`src/tracks_and_trails/downloader/tls.py`): the parent in
+`app.run`, for the yt-dlp updater, and each worker in `run_session`, since a spawned child starts
+with an unpatched `ssl`. Linux is unchanged. Still no bundled CA data.
+
+Two alternatives were put and rejected:
+
+- **B. Bundle `certifi` as a Windows fallback** — what yt-dlp's own Windows executable does. A
+  user behind a TLS-inspecting proxy still fails, which is the reason this decision refused it.
+- **C. Keep the mechanism and document it** ("open YouTube in a browser first"). An application
+  whose job is downloading cannot ask for that.
+
+**Consequences.**
+
+- **A corporate or user-added root keeps working**, and a missing public root is fetched as a
+  browser would fetch it. The property this decision was made for is kept, not traded.
+- **A new runtime dependency**, `truststore` (MIT), recorded in `pyproject.toml` against this
+  entry; its licence ships in `packaging/licenses/` and `artifact_gates.REQUIRED_LICENCES` requires
+  it. It is pure Python and also lands in the AppImage, where it is imported by nothing.
+- **Held by tests:** `tests/unit/test_tls.py` (the contexts yt-dlp and `urllib` actually build),
+  `tests/integration/test_worker.py` (a fresh interpreter's session ends up patched), and
+  `tests/ui/test_app_launch.py` (the parent patches before any probe runs). **The clean-machine
+  proof is `packaging/windows-sandbox/evidence.ps1`**, which records whether the Sandbox holds
+  `GTS Root R1` — a machine that does cannot tell a fixed build from a broken one — and then runs
+  the installed artifact's `--download-probe` against a YouTube video.
 
 ---
 

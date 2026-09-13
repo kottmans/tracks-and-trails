@@ -26,5 +26,10 @@ FFmpeg — LGPL-3.0-or-later  (Windows distributions only)
 yt-dlp — Unlicense
     yt-dlp-Unlicense.txt. Public domain; no obligations attach.
 
+truststore — MIT
+    truststore-MIT.txt. Used on Windows so certificates are verified by the
+    operating system (REL-007). The MIT licence requires its notice to ship
+    with every copy, which that file is.
+
 Python and its standard library are distributed under the PSF License Agreement,
 included with the Python runtime embedded in the artifact.
