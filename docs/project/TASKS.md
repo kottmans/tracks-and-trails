@@ -2357,6 +2357,42 @@ reasoning below was reproduced on Linux from the committed tree, where the mutat
 in `test_accessibility.py` and `test_add_dialog.py` — none carrying the `windows_desktop` marker
 the driver selects. The Windows numbers are still to be taken.
 
+#### 2026-09-13 — the `STARBASE` run, and what two of its verdicts said about the driver
+
+**Run on `STARBASE`**, tree `4320859`, **clean** by the driver's own header — after moving seven
+untracked leftovers from earlier build sessions aside, which it refused to run over, as designed.
+The table, verbatim from `reports/windows-mutations.txt`:
+
+```
+OK                     baseline, unmutated                          39 passed
+KILLED                 CONTROL: the window title is wrong           2 failed, 37 passed, 38 errors
+SURVIVED (unexpected)  dialog: two declared widgets reordered       39 passed
+KILLED                 dialog: undeclared focusable control         8 failed, 31 passed, 11 errors
+KILLED                 progress view: undeclared focusable control  2 failed, 37 passed, 3 errors
+KILLED (unexpected)    progress view: delivered order reversed      1 failed, 38 passed, 3 errors
+OK                     baseline: the chain suite, unmutated         205 passed
+KILLED                 dialog: the declared chain is emptied        4 failed, 201 passed
+OK                     baseline: the rendered focus sweep           2 passed
+KILLED                 header: draws no focus ring of its own       2 failed
+```
+
+**The control is a control**: the title mutation is killed by the tests that ask Windows for it.
+
+**Both unexpected verdicts are stale mutations, not product defects.**
+
+- **The dialog swap survived because it no longer swapped what it said.** It exchanged indices 3
+  and 4 under a docstring naming `titleValue` and `uploaderValue`; since `T-312` those are
+  `statusMessage` and `presetChoice`, and the status line is `NoFocus` in three of the four states
+  the suite checks. It now swaps **`urlInput` and `stagingList` by name**, both reachable in every
+  state.
+- **The progress-view reversal was killed because the view grew.** Its docstring said no state
+  offered more than two controls, so a reversal was unobservable; `T-084` added the diagnostics box,
+  a failed job offers three, and the reversal is observable. Its expectation is now `fail`.
+
+**The `errors` beside every kill are teardown cascades** — once a desktop test fails, later tests
+meet the leftover state — and they are why the driver counts the pytest result line rather than
+exit codes alone. **A rerun with both corrected mutations is still owed**, on the pushed tree.
+
 #### Acceptance criteria
 
 - **The driver refuses, or at least records, a tree it cannot identify.** It already refuses the
@@ -2372,7 +2408,8 @@ the driver selects. The Windows numbers are still to be taken.
 - The claim in `mut_control_chain`'s docstring and `run_mutations.py`'s comment is corrected: a
   surviving control does not by itself void the other verdicts, and this run is why
 - **Run on `STARBASE` and the table recorded**, since a driver's own correctness is exactly the
-  thing that cannot be argued from Linux
+  thing that cannot be argued from Linux — **done 2026-09-13**, above; a rerun of the two
+  corrected mutations is owed
 - `run_mutations.py` **writes its table to a file** as well as printing it. `T329-R2` asks for a
   recorded result and the driver currently leaves only console output, which is how this run
   nearly went unrecorded

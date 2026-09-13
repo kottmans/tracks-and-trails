@@ -65,7 +65,9 @@ CASES = [
     ("dialog: two declared widgets reordered", "mut_dialog_swap", "fail", DESKTOP),
     ("dialog: undeclared focusable control", "mut_dialog_stray", "fail", DESKTOP),
     ("progress view: undeclared focusable control", "mut_view_stray", "fail", DESKTOP),
-    ("progress view: delivered order reversed", "mut_view_reverse", "survives", DESKTOP),
+    # **"fail", not "survives"**, since `T-084` gave the failed state a third control; see the
+    # mutation's docstring for the 2026-09-13 run that showed it.
+    ("progress view: delivered order reversed", "mut_view_reverse", "fail", DESKTOP),
     # `T-331`. Run against the suite that detects it rather than the one that cannot.
     ("baseline: the chain suite, unmutated", None, "pass", CHAIN),
     ("dialog: the declared chain is emptied", "mut_control_chain", "fail", CHAIN),

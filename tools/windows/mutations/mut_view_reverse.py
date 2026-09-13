@@ -2,10 +2,13 @@
 
 Reverses what setTabOrder DELIVERS while leaving focus_chain()'s declaration untouched.
 
-EXPECTED TO SURVIVE. No state of the progress view offers more than two reachable controls, and
-a two-element cycle is its own reverse: from either control, Tab and Backtab both deliver the
-other one, from any starting point. Recorded rather than answered with an assertion that appears
-to catch it (docs/project/TESTING.md 12).
+EXPECTED TO BE KILLED since `T-084` (`T-331`, Windows run 2026-09-13). This said it would survive
+because no state of the progress view offered more than two reachable controls, and a two-element
+cycle is its own reverse. `T-084` added the diagnostics box to every state, so a failed, retryable
+job now offers three — error message, retry, diagnostics — and reversing three is observable. The
+run on `STARBASE` reported **KILLED (unexpected)**: the test was right, the expectation was a fact
+about a view that no longer exists. A running job still offers two, which is why only the failed
+state's case fails.
 """
 
 from itertools import pairwise
