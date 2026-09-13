@@ -718,6 +718,15 @@ STATE_RULES: Final = (
         ),
     ),
     StateRule(
+        selector="QWidget:disabled",
+        conveys="this control cannot be used",
+        channel="published-state",
+        reason=(
+            "Qt publishes the disabled state for every widget; this is the floor the class rules "
+            "below restate, so a check box or label no sheet rule names still looks unavailable."
+        ),
+    ),
+    StateRule(
         selector="QPushButton:disabled",
         conveys="this control cannot be used",
         channel="published-state",
@@ -914,6 +923,16 @@ def stylesheet(theme: Theme) -> str:
 QWidget {{
     background-color: {theme.window};
     color: {theme.text};
+}}
+QWidget:disabled {{
+    /* **The rule above takes away Qt's disabled text, for every widget** (found in the `T-327`
+       session on Windows). `palette()` sets the disabled group's text to `muted`, but a sheet
+       colour beats a palette role, so everything the sheet did not name again drew a disabled
+       control in full `text`. The options dialog's *Embed them in the file* was disabled for a
+       source with no subtitles and still looked ready to tick, and the Audio group's labels the
+       same. Controls with their own `:disabled` rule restate this; the rest inherit it here,
+       first, so every more specific rule after it still wins. */
+    color: {theme.muted};
 }}
 QGroupBox, QListView, QTableView, QTreeView, QPlainTextEdit, QTextEdit {{
     background-color: {theme.surface};
