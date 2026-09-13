@@ -103,6 +103,97 @@ UNDECIDED_EXTENSION: Final = "ext"
 EMPTY_REFUSAL: Final = "An output template cannot be empty."
 
 
+@dataclass(frozen=True, slots=True)
+class NamingChoice:
+    """One way of naming files that Settings offers by name (`UX-014`)."""
+
+    label: str
+    template: str
+
+
+#: The naming patterns Settings offers, in the order it offers them (`UX-014`, 2026-09-13).
+#:
+#: **Named templates, not a second setting.** Choosing one stores its template in the same
+#: `Settings.output_template` a typed one goes in, so a file written before this existed reads back
+#: as the choice it matches, and *Custom…* is simply every template that matches none. The first is
+#: the application's own, which is what an empty setting means.
+#:
+#: **No playlist pattern**, although one was asked about: playlist fields are refused on purpose
+#: (`SUPPORTED_FIELDS`), because each entry downloads as its own URL; a playlist already gets a
+#: folder named for it.
+NAMING_CHOICES: Final[tuple[NamingChoice, ...]] = (
+    NamingChoice("Title", "%(title)s.%(ext)s"),
+    NamingChoice("Uploader - Title", "%(uploader)s - %(title)s.%(ext)s"),
+    NamingChoice("Uploader / Title", "%(uploader)s/%(title)s.%(ext)s"),
+)
+
+
+def naming_choice_of(template: str) -> NamingChoice | None:
+    """The offered choice `template` is, or `None` for a custom one. Empty is the first choice."""
+    wanted = template or NAMING_CHOICES[0].template
+    return next((choice for choice in NAMING_CHOICES if choice.template == wanted), None)
+
+
+#: The one template ending a renamed file gets: yt-dlp still decides the extension (`UX-014`).
+_EXTENSION_SUFFIX: Final = ".%(ext)s"
+
+#: Why a typed name was refused when it names a folder. Folders are the setting's to decide.
+NAME_SEPARATOR_REFUSAL: Final = (
+    "A name cannot contain / or \\ — folders come from how downloads are named in Settings."
+)
+
+
+def name_refusal(name: str) -> str | None:
+    """Why `name` cannot be a file's name, or `None` if it can. Empty means *unset*, and is fine."""
+    if "/" in name or "\\" in name:
+        return NAME_SEPARATOR_REFUSAL
+    return None
+
+
+def renamed_template(name: str, *, within: str) -> str:
+    """A template that writes the literal `name`, in the folders `within` would have used.
+
+    **Literal, so a `%` in a name is a percent sign** — `%%` is yt-dlp's escape, and a title like
+    `100% Orange Juice` would otherwise be read as a field. **The folders stay the setting's**: with
+    *Uploader / Title* a renamed file still lands in its uploader's folder, because renaming one
+    file is not a decision about where files go. The extension stays yt-dlp's.
+    """
+    refusal = name_refusal(name)
+    if refusal is not None:
+        raise ValueError(refusal)
+    folders, separator, _file = within.rpartition("/")
+    literal = name.replace("%", "%%") + _EXTENSION_SUFFIX
+    return f"{folders}{separator}{literal}" if separator else literal
+
+
+def renamed_name_of(template: str) -> str | None:
+    """The literal name `template` writes, if `renamed_template` made it; otherwise `None`.
+
+    Read back so a queued download that was renamed opens *Rename* on the name the user typed,
+    rather than on a template. A file part that names any field — `%(` not escaped — is a pattern
+    and not a rename.
+    """
+    _folders, _separator, file_part = template.rpartition("/")
+    if not file_part.endswith(_EXTENSION_SUFFIX):
+        return None
+    stem = file_part[: -len(_EXTENSION_SUFFIX)]
+    if re.search(r"(?<!%)(?:%%)*%\(", stem) or not stem:
+        return None
+    return stem.replace("%%", "%")
+
+
+def file_stem_of(path: str) -> str:
+    """The file name in `path`, without its folders or its extension — what *Rename* prefills.
+
+    Both separators, because a preview path is the platform's and this module is not: a Windows
+    preview has backslashes and a Linux one has slashes. Only the last dot is the extension's, since
+    a title may carry dots of its own.
+    """
+    name = re.split(r"[\\/]", path)[-1]
+    stem, dot, _extension = name.rpartition(".")
+    return stem if dot else name
+
+
 def named_fields(template: str) -> tuple[str, ...]:
     """Every base field name `template` refers to, in the order it refers to them.
 

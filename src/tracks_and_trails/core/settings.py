@@ -206,6 +206,12 @@ _PRESET_TABLE: Final = "preset"
 #: and a hand-edited `built_in = true` would let a saved preset claim to ship with the application.
 _PRESET_FIELDS: Final = tuple(field.name for field in fields(Preset) if field.name != "built_in")
 
+#: Keys a `[[preset]]` table may carry that no longer mean anything, and are **read past** rather
+#: than refused (`UX-014`). `output_template` left `Preset` on 2026-09-13; a preset saved before
+#: then still has it, and refusing an unknown key would drop that user's whole preset for a field
+#: the application now ignores. Not written back: `_preset_lines` writes `_PRESET_FIELDS` only.
+_RETIRED_PRESET_KEYS: Final = frozenset({"output_template"})
+
 #: The name of the preset a newly pasted URL inherits (`REQ-007`, `P-7`, `UX-007`).
 #:
 #: **A top-level key, not a member of `[queue]` or of `[[preset]]`.** It is not a queue setting, and
@@ -1248,13 +1254,13 @@ def _preset_from(raw: Any) -> Preset:
     """
     if not isinstance(raw, dict):
         raise TypeError(f"a preset must be a table, not a {type(raw).__name__}")
-    unknown = sorted(set(raw) - set(_PRESET_FIELDS))
+    unknown = sorted(set(raw) - set(_PRESET_FIELDS) - _RETIRED_PRESET_KEYS)
     if unknown:
         # Named rather than ignored: a key this version does not know is either a typo the user
         # wants to hear about or a field from a future version, and silently dropping it would
         # write the file back without it.
         raise ValueError(f"unknown key(s) {', '.join(unknown)}")
-    values = dict(raw)
+    values = {key: value for key, value in raw.items() if key not in _RETIRED_PRESET_KEYS}
     if "media_kind" in values:
         values["media_kind"] = MediaKind(values["media_kind"])
     if "audio_codec" in values:

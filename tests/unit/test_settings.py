@@ -538,7 +538,6 @@ def a_preset(name: str = "Weekend viewing", **overrides: object) -> Preset:
         "name": name,
         "media_kind": MediaKind.VIDEO,
         "format_selector": "bestvideo+bestaudio/best",
-        "output_template": "%(title)s.%(ext)s",
     }
     return Preset(**{**fields, **overrides})  # type: ignore[arg-type]
 
@@ -607,6 +606,30 @@ def test_a_built_in_cannot_be_saved_as_the_users_own() -> None:
     """Everything in this file is the user's, and a stored `built_in` would claim otherwise."""
     with pytest.raises(ValueError, match="not the user's to save"):
         add_preset(Settings(), preset_registry.AUDIO_MP3)
+
+
+def test_a_preset_saved_with_a_template_still_loads_and_loses_only_the_template(
+    tmp_path: Path,
+) -> None:
+    """**`UX-014`.** Presets stopped carrying naming on 2026-09-13; older files still have it.
+
+    Refusing the key as unknown — which is what `_preset_from` does for any other — would drop a
+    user's whole preset over a field the application now ignores. So it is read past, the rest of
+    the preset survives, nothing is reported, and the next save does not write it back.
+    """
+    target = tmp_path / "settings.toml"
+    target.write_text(
+        '[[preset]]\nname = "Older"\nmedia_kind = "video"\n'
+        'format_selector = "best"\noutput_template = "%(uploader)s/%(title)s.%(ext)s"\n',
+        encoding="utf-8",
+    )
+
+    read = load(target)
+
+    assert [preset.name for preset in read.settings.presets] == ["Older"], read.problem
+    assert read.problem is None, read.problem
+    save(read.settings, target)
+    assert "output_template" not in target.read_text(encoding="utf-8")
 
 
 def test_a_preset_read_back_is_never_built_in(tmp_path: Path) -> None:

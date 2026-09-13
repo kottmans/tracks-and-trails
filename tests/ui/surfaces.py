@@ -7,7 +7,7 @@ drift, and `T238-R5` recorded the first cost of not having these five somewhere 
 could reach: the probe called their absence a deliberate scope when it was an omission.
 
 **They are constructed rather than opened through their routes, and that is a bound rather than a
-preference.** `AddUrlDialog.open_format_table`, `open_playlist_picker`, `open_template_editor`,
+preference.** `AddUrlDialog.open_format_table`, `open_playlist_picker`, `open_rename`,
 `open_options` and `open_preset_manager` are the real routes and `tests/ui/test_add_dialog.py`
 asserts them — but reaching any of them needs a **staged row**, which needs a probe result against
 a recorded fixture. A consumer that drove that would make its own failure ambiguous with a probe
@@ -46,7 +46,7 @@ def screens_below_the_add_dialog() -> list[tuple[str, QWidget]]:
     from tracks_and_trails.ui.add_dialog import (
         FormatPanel,
         PlaylistPanel,
-        TemplatePanel,
+        RenamePanel,
         row_summary,
     )
     from tracks_and_trails.ui.format_dialog import FormatDialog
@@ -54,6 +54,7 @@ def screens_below_the_add_dialog() -> list[tuple[str, QWidget]]:
     from tracks_and_trails.ui.options_dialog import OptionsDialog
     from tracks_and_trails.ui.playlist_picker import PlaylistPicker
     from tracks_and_trails.ui.preset_manager import PresetManager
+    from tracks_and_trails.ui.rename_editor import RenameEditor
     from tracks_and_trails.ui.staging import Row
     from tracks_and_trails.ui.template_editor import TemplateEditor
 
@@ -103,6 +104,7 @@ def screens_below_the_add_dialog() -> list[tuple[str, QWidget]]:
         # screens in their own right, which is what the panels below are for.
         ("format table", FormatTable(formats)),
         ("template editor", TemplateEditor("%(title)s.%(ext)s")),
+        ("rename editor", RenameEditor("A clip")),
         ("playlist picker", PlaylistPicker()),
         ("options dialog", OptionsDialog(preset=BUILT_IN_PRESETS[0])),
         ("preset manager", PresetManager(Settings(), save=lambda _settings: None)),
@@ -118,10 +120,7 @@ def screens_below_the_add_dialog() -> list[tuple[str, QWidget]]:
             "playlist panel",
             PlaylistPanel(staged(playlist=True), row_summary(staged(playlist=True))),
         ),
-        (
-            "template panel",
-            TemplatePanel(staged(), row_summary(staged()), template="%(title)s.%(ext)s"),
-        ),
+        ("rename panel", RenamePanel(staged(), row_summary(staged()), name="A clip")),
         # **The queue's own format dialog** (`P4EXIT-R1`, built by `T-315`). It was constructed
         # nowhere in this sweep, and the reviewer measured what that cost: removing its Cancel
         # button's name and keyboard focus left all 103 accessibility and colour tests passing,

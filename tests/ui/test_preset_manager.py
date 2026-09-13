@@ -77,7 +77,6 @@ def a_preset(name: str = "Weekend viewing", **overrides: object) -> Preset:
         "name": name,
         "media_kind": MediaKind.VIDEO,
         "format_selector": "bestvideo+bestaudio/best",
-        "output_template": "%(title)s.%(ext)s",
     }
     return Preset(**{**fields, **overrides})  # type: ignore[arg-type]
 
@@ -147,7 +146,7 @@ def test_options_on_a_saved_preset_stores_what_the_screen_changed(
 ) -> None:
     """**`T111-R1`.** The accepted `P-3`/`P-16` route, asserted on what is stored.
 
-    `_build_form` deliberately draws only name, selector and template and says the seven options
+    `_build_form` deliberately draws only name and selector and says the seven options
     have an editor already — and nothing here ever opened it, so `REQ-010`'s options could not be
     changed on a saved preset at all. That is most of what `T-109` put in a preset: media kind,
     codec, quality, remux, recode, thumbnail, metadata, chapters and subtitles.

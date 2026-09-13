@@ -176,22 +176,16 @@ def test_a_custom_selector_is_named_by_its_own_syntax() -> None:
     assert format_name(custom) == "bestvideo[height<=480]+bestaudio"
 
 
-def test_only_naming_is_excluded_from_preset_identity() -> None:
-    """**`T-195`.** The exclusion must stay exactly one field wide.
+def test_a_built_in_is_recognised_by_every_field_it_owns() -> None:
+    """A built-in is recognised by **every** field it owns (`T-195`, then `UX-014`).
 
-    `preset_name_for` recognises a built-in by every field it owns *except* the one that says how
-    a file is named. That exclusion is necessary — a shipped preset states no template, so
-    comparing it would mean no built-in ever matched a real request — and it is also the kind of
-    narrowing that quietly grows. A second field dropped in here would make two genuinely different
-    presets look like one, which is the defect the wide comparison exists to prevent.
-
-    Named against `PRESET_OWNED_FIELDS` rather than a written list, so a field added to `Preset`
-    joins the comparison the day it appears.
+    Naming used to be excluded, because a shipped preset stated no template and a request carried a
+    resolved one. Since `UX-014` a preset owns no naming at all, so nothing is excluded — and a
+    narrowing added here later would make two genuinely different presets look like one.
     """
-    from tracks_and_trails.ui.format_text import IDENTIFYING_FIELDS, NOT_IDENTIFYING
+    from tracks_and_trails.ui.format_text import IDENTIFYING_FIELDS
 
-    assert {"output_template"} == NOT_IDENTIFYING
-    assert PRESET_OWNED_FIELDS - {"output_template"} == IDENTIFYING_FIELDS
+    assert PRESET_OWNED_FIELDS == IDENTIFYING_FIELDS
     assert "format_selector" in IDENTIFYING_FIELDS
     assert "audio_quality" in IDENTIFYING_FIELDS, (
         "a bitrate that no built-in offers must still fail to match one"

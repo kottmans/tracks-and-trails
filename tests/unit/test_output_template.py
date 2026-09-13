@@ -8,6 +8,7 @@ labelled with. Rendering is yt-dlp's (`tests/unit/test_ytdlp_adapter.py`), the c
 
 import pytest
 
+from tracks_and_trails.core import output_template
 from tracks_and_trails.core.models import MediaInfo
 from tracks_and_trails.core.output_template import (
     SUPPORTED_FIELDS,
@@ -129,3 +130,61 @@ def test_a_refused_preview_carries_no_path() -> None:
     assert refused.is_refused
     assert refused.path == ""
     assert not OutputPreview(path="/downloads/x.mp4").is_refused
+
+
+# --- UX-014: naming choices, and renaming one download ---------------------------------------
+
+
+def test_every_naming_choice_is_a_template_the_editor_would_accept() -> None:
+    """A choice Settings offers must never be one the refusal checks reject."""
+    for choice in output_template.NAMING_CHOICES:
+        assert output_template.unsupported_refusal(choice.template) is None, choice
+
+
+def test_a_stored_template_reads_back_as_its_choice_and_empty_is_the_first() -> None:
+    first = output_template.NAMING_CHOICES[0]
+    assert output_template.naming_choice_of("") is first
+    for choice in output_template.NAMING_CHOICES:
+        assert output_template.naming_choice_of(choice.template) is choice
+    assert output_template.naming_choice_of("%(title)s [%(duration_string)s].%(ext)s") is None
+
+
+@pytest.mark.parametrize(
+    ("name", "within", "expected"),
+    [
+        ("My clip", "%(title)s.%(ext)s", "My clip.%(ext)s"),
+        ("100% juice", "%(title)s.%(ext)s", "100%% juice.%(ext)s"),
+        ("My clip", "%(uploader)s/%(title)s.%(ext)s", "%(uploader)s/My clip.%(ext)s"),
+        ("%(title)s", "%(title)s.%(ext)s", "%%(title)s.%(ext)s"),
+    ],
+)
+def test_a_rename_is_written_literally_in_the_settings_folders(
+    name: str, within: str, expected: str
+) -> None:
+    """A `%` is a percent sign and a typed field is text; the folders are the setting's."""
+    assert output_template.renamed_template(name, within=within) == expected
+    assert output_template.renamed_name_of(expected) == name, "the rename did not read back"
+
+
+def test_a_pattern_is_not_read_back_as_a_rename() -> None:
+    for choice in output_template.NAMING_CHOICES:
+        assert output_template.renamed_name_of(choice.template) is None, choice
+
+
+@pytest.mark.parametrize("name", ["a/b", "a\\b"])
+def test_a_name_naming_a_folder_is_refused(name: str) -> None:
+    assert output_template.name_refusal(name) == output_template.NAME_SEPARATOR_REFUSAL
+    with pytest.raises(ValueError):
+        output_template.renamed_template(name, within="%(title)s.%(ext)s")
+
+
+@pytest.mark.parametrize(
+    ("path", "stem"),
+    [
+        ("C:\\Users\\me\\Downloads\\Up\\A v1.2 clip.ext", "A v1.2 clip"),
+        ("/home/me/Downloads/A clip.mp4", "A clip"),
+        ("no extension", "no extension"),
+    ],
+)
+def test_the_prefilled_name_is_the_file_without_folders_or_extension(path: str, stem: str) -> None:
+    assert output_template.file_stem_of(path) == stem

@@ -106,9 +106,9 @@ from tracks_and_trails.ui.add_dialog import (
     AddUrlDialog,
     FormatPanel,
     PlaylistPanel,
+    RenamePanel,
     RowPanel,
     StagingList,
-    TemplatePanel,
     describe_kind,
     format_duration,
     headline_text,
@@ -139,15 +139,15 @@ from tracks_and_trails.ui.row_delegate import (
     PRESET_CHOICES_ROLE,
     PRESET_INHERITED_ROLE,
     PRESET_ROLE,
+    RENAME_AVAILABLE_ROLE,
+    RENAME_DATA,
+    RENAME_TEXT,
     ROW_HEIGHT,
     ROW_PRESET_NAME,
     SELECTOR_LINES,
     SELECTOR_ROLE,
     STATE_CHIP_ROLE,
     STATE_ROLE,
-    TEMPLATE_AVAILABLE_ROLE,
-    TEMPLATE_DATA,
-    TEMPLATE_TEXT,
     VERBS_ROLE,
     RowDelegate,
     selector_line_width,
@@ -715,7 +715,7 @@ def choose_in_editor(dialog: AddUrlDialog, control: QComboBox, preset_name: str 
     verb_texts = {
         CHOOSE_FORMATS_DATA: CHOOSE_FORMATS_TEXT,
         OPTIONS_DATA: OPTIONS_TEXT,
-        TEMPLATE_DATA: TEMPLATE_TEXT,
+        RENAME_DATA: RENAME_TEXT,
     }
     if preset_name in verb_texts:
         listing.closeEditor(control, QAbstractItemDelegate.EndEditHint.NoHint)
@@ -3175,17 +3175,17 @@ def test_picking_formats_keeps_everything_else_the_row_was_set_up_with(
 ) -> None:
     """`T-311`, ruled 2026-09-10: **the silent loss, and the test that names each field.**
 
-    Set a row to *Audio only (MP3)* with a filename pattern of its own, then pick a format by hand.
-    Until this ruling the row was handed `custom_preset(selector)` — a `Preset` built from nothing —
-    so the conversion, the pattern, the media kind and the bitrate all disappeared, and nothing on
-    screen said so. Codex confirmed it on a real submitted request.
+    Set a row to *Audio only (MP3)*, then pick a format by hand. Until this ruling the row was
+    handed `custom_preset(selector)` — a `Preset` built from nothing — so the conversion, the media
+    kind and the bitrate all disappeared, and nothing on screen said so. Codex confirmed it on a
+    real submitted request.
 
     Each field is asserted by name rather than by comparing whole presets, so a future change that
     drops exactly one of them fails on that one.
     """
     dialog, row = _staged(dialogs, managers, spin)
     mp3 = next(preset for preset in dialog.presets if "MP3" in preset.name)
-    row.preset = preset_registry.with_output_template(mp3, "%(uploader)s/%(title)s.%(ext)s")
+    row.preset = mp3
     before = dialog.preset_for(row)
 
     control = open_row_editor(dialog, 0)
@@ -3197,7 +3197,6 @@ def test_picking_formats_keeps_everything_else_the_row_was_set_up_with(
 
     after = dialog.preset_for(row)
     assert after.format_selector == "137", "the chosen stream did not reach the download"
-    assert after.output_template == before.output_template, "the filename pattern was discarded"
     assert after.audio_codec == before.audio_codec, "the conversion was discarded"
     assert after.audio_quality == before.audio_quality, "the bitrate was discarded"
     assert after.media_kind == before.media_kind, "the media kind was discarded"
@@ -3381,8 +3380,7 @@ def test_escape_closes_the_table_and_keeps_the_format_that_was_there_before(
     assert chosen.format_selector == "137"
     # **And the rest of the row survived the choice** (`T-311`). This is the defect that ruling
     # was about: the preset used to be replaced wholesale, so a row set up by hand lost its
-    # conversion and its filename pattern the moment a format was picked.
-    assert chosen.output_template == before.output_template
+    # conversion the moment a format was picked.
     assert chosen.audio_codec == before.audio_codec
 
     QTest.keyClick(panel, Qt.Key.Key_Escape)
@@ -4327,198 +4325,184 @@ def test_a_large_playlist_probe_leaves_the_dialog_responsive_and_cancellable(
     )
 
 
-# --- T-112: the output template editor and its live preview (REQ-011, UX_SPEC §9.1) ------------
+# --- UX-014: renaming one download, and the preview under it ----------------------------------
 #
-# The widget is `tests/ui/test_template_editor.py`, the field set is
-# `tests/unit/test_output_template.py`, the containment is `tests/unit/test_paths.py`, and the
-# preview equalling the written path is `tests/integration/test_end_to_end.py`. What is here is the
-# **dialog**: that the editor is reachable, that the preview is live, and — the one that matters —
-# that a refused template never becomes a request.
+# The name helpers are `tests/unit/test_output_template.py`, the containment is
+# `tests/unit/test_paths.py`, and the preview equalling the written path is
+# `tests/integration/test_end_to_end.py`. What is here is the **dialog**: that renaming is reachable
+# where it should be and nowhere else, that the preview follows the name, and that a refused name
+# never becomes a request.
 
 
-def _open_the_template_editor(dialog: AddUrlDialog, index: int = 0) -> Any:
-    """Open one row's template editor through the control, and wait for the deferred mount."""
+def _open_the_rename(dialog: AddUrlDialog, index: int = 0) -> Any:
+    """Open one row's rename through its menu, and wait for the deferred mount."""
     control = open_row_editor(dialog, index)
-    choose_in_editor(dialog, control, TEMPLATE_DATA)
+    choose_in_editor(dialog, control, RENAME_DATA)
     QApplication.processEvents()
-    panel = dialog.open_template_panel
-    assert panel is not None, f"row {index} did not open into its template editor"
+    panel = dialog.open_rename_panel
+    assert panel is not None, f"row {index} did not open into its rename"
     return panel
 
 
-def test_the_editor_opens_showing_the_template_the_row_already_has(
+def test_rename_opens_on_the_name_the_setting_would_give(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],
     dialogs: Callable[..., AddUrlDialog],
     spin: Callable[..., bool],
 ) -> None:
-    """A preview that appears only once you type makes the user prove the feature before it helps.
-
-    The interesting question is *what does the template I already have produce* — so the panel
-    opens with the row's own template in the input and a path already under it.
-    """
+    """The question a user arrives with is *what is this going to be called?* — answered on open."""
     dialog, row = _staged(dialogs, managers, spin)
-    panel = _open_the_template_editor(dialog)
+    panel = _open_the_rename(dialog)
 
     assert panel.row is row
-    assert panel.editor.template == preset_registry.DEFAULT_OUTPUT_TEMPLATE
+    assert panel.editor.name == "A video with formats"
     assert panel.editor.preview_text().endswith("A video with formats.ext"), (
         panel.editor.preview_text()
     )
     assert panel.editor.preview_text().startswith(str(dialog._output_directory))
 
 
-def test_the_preview_follows_every_keystroke(
+def test_the_rename_preview_follows_every_keystroke(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],
     dialogs: Callable[..., AddUrlDialog],
     spin: Callable[..., bool],
 ) -> None:
-    """`REQ-011`'s *live* preview, driven by typing rather than by calling the slot (`P-23`)."""
+    """Driven by typing rather than by calling the slot."""
     dialog, _row = _staged(dialogs, managers, spin)
-    panel = _open_the_template_editor(dialog)
+    panel = _open_the_rename(dialog)
 
     panel.editor.input_field.clear()
-    QTest.keyClicks(panel.editor.input_field, "clips/%(title)s.%(ext)s")
+    QTest.keyClicks(panel.editor.input_field, "My clip")
     QApplication.processEvents()
 
-    preview = panel.editor.preview_text()
-    # Compared as path components, not as a string: the template is written with `/`, but the
-    # preview is a native path, so `endswith("clips/...")` held on Linux and failed on Windows
-    # against the same correct `clips\...`. One assertion covers the subfolder and the name.
-    assert Path(preview).parts[-2:] == ("clips", "A video with formats.ext"), preview
+    assert Path(panel.editor.preview_text()).name == "My clip.ext", panel.editor.preview_text()
 
 
-def test_an_invalid_template_is_refused_at_edit_time_and_never_reaches_the_request(
+def test_a_name_with_a_folder_in_it_is_refused_and_never_reaches_the_request(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],
     dialogs: Callable[..., AddUrlDialog],
     spin: Callable[..., bool],
     sink: FakeSink,
 ) -> None:
-    """**`T-112`'s criterion, both halves of it.**
-
-    *An invalid template never reaches a download, and the refusal is shown at edit time, with the
-    reason* (`P-23`). The second half is where most of the risk is: a dialog that showed the error
-    and wrote the template anyway would satisfy the visible half and queue a broken download the
-    moment the default button was pressed.
+    """Folders are the setting's; a name is one file. Refused at edit time, and Add queues the
+    setting's name rather than the refused one.
     """
     dialog, row = _staged(dialogs, managers, spin)
-    panel = _open_the_template_editor(dialog)
-    # **Two different values, and they stopped being the same at `T-195`.** `good` is what the
-    # preset *stores* — nothing, for a shipped preset, meaning *use the application default* — and
-    # `shown` is what the row would actually be named, which is what the editor opens on and what
-    # the request has to carry. Comparing the request against the stored value asserted that a
-    # resolved template had not been resolved.
-    good = dialog.preset_for(row).output_template
-    shown = panel.editor.template
+    panel = _open_the_rename(dialog)
 
-    panel.editor.input_field.clear()
-    QTest.keyClicks(panel.editor.input_field, "%(title)")
-    QApplication.processEvents()
-
-    assert panel.editor.preview_text() == "", "a refused template still showed a path"
-    message = panel.editor.message_text()
-    assert "incomplete format" in message, message
-    assert dialog.preset_for(row).output_template == good, (
-        "the refused template was written to the row, so Add would queue it"
-    )
-
-    dialog.close_panel(keep=True)
-    dialog.add_to_queue()
-    assert spin(lambda: bool(sink.submissions))
-    assert sink.submissions[0][0].request.output_template == shown
-
-
-def test_a_template_that_leaves_the_download_folder_is_refused(
-    qapp: QApplication,
-    managers: Callable[..., DownloadManager],
-    dialogs: Callable[..., AddUrlDialog],
-    spin: Callable[..., bool],
-) -> None:
-    """Phase 3's fourth exit criterion, reached through the control a user actually types into.
-
-    `tests/unit/test_paths.py` proves `contained_output_path` refuses these; this proves the editor
-    is wired to it, which is a different claim and the one a user experiences.
-    """
-    dialog, row = _staged(dialogs, managers, spin)
-    panel = _open_the_template_editor(dialog)
-    good = dialog.preset_for(row).output_template
-
-    # `/etc` rather than `/tmp`: the point is an absolute path leaving the download folder, and a
-    # `/tmp` literal reads to the linter as a test writing there — which is the one thing this
-    # asserts cannot happen.
-    for escape in ("../outside/%(title)s.%(ext)s", "/etc/outside/%(title)s.%(ext)s"):
-        panel.editor.input_field.setText("")
-        QTest.keyClicks(panel.editor.input_field, escape)
+    for typed in ("clips/My clip", "..\\outside"):
+        panel.editor.input_field.clear()
+        QTest.keyClicks(panel.editor.input_field, typed)
         QApplication.processEvents()
+        assert panel.editor.preview_text() == "", f"{typed!r} still showed a path"
+        assert "cannot contain" in panel.editor.message_text(), panel.editor.message_text()
 
-        assert panel.editor.preview_text() == "", f"{escape!r} previewed a path"
-        assert "outside the chosen directory" in panel.editor.message_text(), (
-            panel.editor.message_text()
-        )
-        assert dialog.preset_for(row).output_template == good, f"{escape!r} reached the row"
+    dialog.close_panel(keep=True)
+    assert row.file_name is None, "the refused name was written to the row"
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+    assert sink.submissions[0][0].request.output_template == preset_registry.DEFAULT_OUTPUT_TEMPLATE
 
 
-def test_an_accepted_template_becomes_the_rows_own_request(
+def test_a_rename_is_written_literally_into_the_request(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],
     dialogs: Callable[..., AddUrlDialog],
     spin: Callable[..., bool],
     sink: FakeSink,
 ) -> None:
-    """Asserted on the submitted `DownloadRequest`, not on the row: the request is what runs."""
+    """Asserted on the submitted request, which is what runs. A `%` is a percent, not a field."""
     dialog, _row = _staged(dialogs, managers, spin)
-    panel = _open_the_template_editor(dialog)
+    panel = _open_the_rename(dialog)
 
     panel.editor.input_field.clear()
-    QTest.keyClicks(panel.editor.input_field, "%(uploader)s/%(title)s.%(ext)s")
+    QTest.keyClicks(panel.editor.input_field, "100% my clip")
     QApplication.processEvents()
     dialog.close_panel(keep=True)
 
     dialog.add_to_queue()
     assert spin(lambda: bool(sink.submissions))
+    assert sink.submissions[0][0].request.output_template == "100%% my clip.%(ext)s"
 
-    assert sink.submissions[0][0].request.output_template == "%(uploader)s/%(title)s.%(ext)s"
+
+def test_a_rename_keeps_the_folders_the_setting_names(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+) -> None:
+    """With *Uploader / Title*, a renamed file still lands in its uploader's folder (`UX-014`)."""
+    dialog, _row = _staged(
+        dialogs, managers, spin, default_output_template="%(uploader)s/%(title)s.%(ext)s"
+    )
+    panel = _open_the_rename(dialog)
+
+    panel.editor.input_field.clear()
+    QTest.keyClicks(panel.editor.input_field, "My clip")
+    QApplication.processEvents()
+    dialog.close_panel(keep=True)
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+    assert sink.submissions[0][0].request.output_template == "%(uploader)s/My clip.%(ext)s"
 
 
-def test_escape_puts_the_earlier_template_back(
+def test_escape_keeps_the_earlier_name_and_done_takes_the_new_one(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],
     dialogs: Callable[..., AddUrlDialog],
     spin: Callable[..., bool],
 ) -> None:
-    """`Esc` *closes, choosing nothing*, which for this panel means the template it opened with.
-
-    **Both directions**, because a panel that never writes at all would pass the `Esc` half on its
-    own. `Done` on the same edit has to land it, or *"choosing nothing"* is the only thing the
-    panel can do.
+    """`Esc` *closes, choosing nothing*; `Done` on the same edit lands it. Both, or a panel that
+    never writes would pass the first half alone.
     """
     dialog, row = _staged(dialogs, managers, spin)
-    panel = _open_the_template_editor(dialog)
-    before = dialog.preset_for(row).output_template
-    edited = "elsewhere/%(title)s.%(ext)s"
+    panel = _open_the_rename(dialog)
 
     panel.editor.input_field.clear()
-    QTest.keyClicks(panel.editor.input_field, edited)
+    QTest.keyClicks(panel.editor.input_field, "Elsewhere")
     QApplication.processEvents()
-
     QTest.keyClick(panel, Qt.Key.Key_Escape)
     QApplication.processEvents()
 
     assert dialog.open_panel is None, "Esc left the panel open"
-    assert dialog.preset_for(row).output_template == before
+    assert row.file_name is None
 
-    reopened = _open_the_template_editor(dialog)
+    reopened = _open_the_rename(dialog)
     reopened.editor.input_field.clear()
-    QTest.keyClicks(reopened.editor.input_field, edited)
+    QTest.keyClicks(reopened.editor.input_field, "Elsewhere")
     QApplication.processEvents()
     button(dialog, "formatPanelDone").click()
     QApplication.processEvents()
 
-    assert dialog.preset_for(row).output_template == edited, (
-        "Done discarded the edit too, so the panel can only ever choose nothing"
-    )
+    assert row.file_name == "Elsewhere", "Done discarded the edit too"
+
+
+def test_clearing_a_rename_or_keeping_the_default_follows_the_setting(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """Empty, or the name the pattern gives anyway, is *no rename*, so the setting still applies."""
+    dialog, row = _staged(dialogs, managers, spin)
+    row.file_name = "Something"
+
+    panel = _open_the_rename(dialog)
+    assert panel.editor.name == "Something", "a renamed row reopened on the pattern's name"
+    panel.editor.input_field.clear()
+    QApplication.processEvents()
+    dialog.close_panel(keep=True)
+    assert dialog.rows[0].file_name is None, "an emptied name was kept as a rename"
+
+    row.file_name = "Something again"
+    panel = _open_the_rename(dialog)
+    panel.editor.input_field.setText("A video with formats")
+    dialog.close_panel(keep=True)
+    assert row.file_name is None, "the pattern's own name was stored as a rename"
 
 
 def test_an_mp3_row_previews_its_real_extension_and_a_video_row_says_it_cannot(
@@ -4535,30 +4519,26 @@ def test_an_mp3_row_previews_its_real_extension_and_a_video_row_says_it_cannot(
     dialog, row = _staged(dialogs, managers, spin)
 
     row.preset = preset_registry.AUDIO_MP3
-    exact = dialog.preview_for(row, "%(title)s.%(ext)s")
-    assert exact.path.endswith(".mp3"), exact.path
+    exact = dialog.rename_preview_for(row, "My clip")
+    assert exact.path.endswith("My clip.mp3"), exact.path
     assert exact.provisional is None, "an MP3 conversion was presented as uncertain"
 
     row.preset = preset_registry.BEST_VIDEO
-    intended = dialog.preview_for(row, "%(title)s.%(ext)s")
+    intended = dialog.rename_preview_for(row, "My clip")
     assert intended.provisional is not None, (
         "a merge was presented as an exact path; yt-dlp picks that container itself"
     )
     assert intended.path.endswith(".ext"), intended.path
 
 
-def test_a_windows_illegal_title_is_previewed_as_the_name_it_will_actually_get(
+def test_a_windows_illegal_title_is_prefilled_as_the_name_it_will_actually_get(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],
     dialogs: Callable[..., AddUrlDialog],
     spin: Callable[..., bool],
 ) -> None:
-    """Phase 3's exit criterion names this case, and it is where a second renderer would show.
-
-    yt-dlp replaces `:` `?` `"` with fullwidth characters of its own on the way out, and
-    `core/paths.py` would replace them with `_`. Both preview and write run the same two steps in
-    the same order, so the preview shows what yt-dlp did — and a hand-written substituter in `ui/`
-    would have shown the underscores instead.
+    """yt-dlp replaces `:` `?` `"` with fullwidth characters on the way out; the name *Rename*
+    offers is that cleaned one, because it comes from the same preview the download's path does.
     """
     dialog = dialogs(managers())
     type_urls(dialog, "https://example.invalid/one")
@@ -4569,73 +4549,60 @@ def test_a_windows_illegal_title_is_previewed_as_the_name_it_will_actually_get(
     dialog._on_media_probed(row.job_id, MediaInfo(url=row.url, title='A: Song? "Live" <x>|y*'))
     QApplication.processEvents()
 
-    preview = dialog.preview_for(row, "%(title)s.%(ext)s")
+    name = dialog.default_name_for(row)
 
-    name = Path(preview.path).name
     assert not set(name) & set('<>:"/\\|?*'), f"an illegal character survived into {name!r}"
     assert "Song" in name and "Live" in name, f"the title was lost rather than cleaned: {name!r}"
 
 
-def test_the_editor_is_not_offered_on_a_row_that_cannot_be_committed(
+def test_rename_is_offered_only_on_a_probed_single_item(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],
     dialogs: Callable[..., AddUrlDialog],
     spin: Callable[..., bool],
 ) -> None:
-    """`UX-005` §5: nothing is offered that would be refused.
-
-    A row still probing has no request to change and no editor at all — the whole control is
-    absent, which is what `PRESET_CHOICES_ROLE` answering `None` means.
+    """`UX-005` §5: nothing is offered that would be refused. A row still probing has no name to
+    prefill; a playlist is many files.
     """
     dialog = dialogs(managers(entry_point=child_never_returning))
     type_urls(dialog, "https://example.invalid/slow")
     dialog.resolve()
     assert spin(lambda: bool(dialog.rows and dialog.rows[0].job_id))
+    assert role_values(dialog, RENAME_AVAILABLE_ROLE) == [False]
 
-    assert role_values(dialog, TEMPLATE_AVAILABLE_ROLE) == [False]
-    assert not dialog.edit_row(0), "an unresolved row offered a control"
+    probed, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, PLAYLIST)
+    assert role_values(probed, RENAME_AVAILABLE_ROLE) == [True, False]
 
 
-def test_a_template_too_long_for_the_default_windows_configuration_is_refused(
+def test_a_rename_too_long_for_the_default_windows_configuration_is_refused(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],
     dialogs: Callable[..., AddUrlDialog],
     spin: Callable[..., bool],
 ) -> None:
-    """`T-067`'s finding: **the default configuration is the case to test.**
-
-    `LongPathsEnabled` is `0` on a default Windows and `1` on GitHub's runners, so a path budget
-    gated only on CI is gated only under a setting most users do not have. `MAX_PATH_CHARACTERS`
-    is enforced in `core/paths.py` before anything touches the filesystem, which is what makes the
-    behaviour identical on both platforms and assertable here.
-
-    What `T-112` adds is *when* the user finds out. The refusal arrives at edit time with the
-    reason (`P-23`), rather than as a failed download after the bytes have been paid for.
+    """`T-067`'s finding: **the default configuration is the case to test.** A path past the budget
+    is refused at edit time, with the reason, rather than as a failed download.
     """
-    dialog, row = _staged(dialogs, managers, spin)
-    good = dialog.preset_for(row).output_template
+    dialog, row = _staged(
+        dialogs, managers, spin, default_output_template=f"{'d' * 300}/%(title)s.%(ext)s"
+    )
 
-    preview = dialog.preview_for(row, f"{'d' * 300}/%(title)s.%(ext)s")
+    preview = dialog.rename_preview_for(row, "My clip")
 
     assert preview.is_refused, f"a path past the budget previewed as {preview.path!r}"
     assert preview.refusal is not None and "no room for a filename" in preview.refusal, (
         preview.refusal
     )
-    assert dialog.preset_for(row).output_template == good
 
 
-def test_a_very_long_title_is_previewed_under_the_name_it_will_be_shortened_to(
+def test_a_very_long_title_is_prefilled_under_the_name_it_will_be_shortened_to(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],
     dialogs: Callable[..., AddUrlDialog],
     spin: Callable[..., bool],
 ) -> None:
-    """The other half of the budget: a title too long is **shortened**, not refused.
-
-    `T-045`'s digest keeps two long titles apart, and the preview has to show the shortened name —
-    otherwise the user is shown one filename and gets another, which is the whole of `T-046`'s
-    finding one field over. Asserted against `contained_output_path` directly, so what is compared
-    is the preview and the function the download names its file with.
+    """A title too long is **shortened**, not refused, and the preview shows the shortened name —
+    compared against `contained_output_path`, the function the download names its file with.
     """
     dialog = dialogs(managers())
     type_urls(dialog, "https://example.invalid/one")
@@ -4646,7 +4613,7 @@ def test_a_very_long_title_is_previewed_under_the_name_it_will_be_shortened_to(
     dialog._on_media_probed(row.job_id, MediaInfo(url=row.url, title="t" * 400))
     QApplication.processEvents()
 
-    preview = dialog.preview_for(row, "%(title)s.%(ext)s")
+    preview = dialog.rename_preview_for(row, "")
 
     name = Path(preview.path).name
     assert not preview.is_refused, preview.refusal
@@ -5368,7 +5335,7 @@ def test_the_row_control_offers_only_presets(
     entries = [control.itemText(i) for i in range(control.count())]
     data = [control.itemData(i) for i in range(control.count())]
 
-    for verb in (CHOOSE_FORMATS_TEXT, OPTIONS_TEXT, TEMPLATE_TEXT, MANAGE_PRESETS_TEXT):
+    for verb in (CHOOSE_FORMATS_TEXT, OPTIONS_TEXT, RENAME_TEXT, MANAGE_PRESETS_TEXT):
         assert verb not in entries, f"{verb!r} is still an entry: {entries}"
     for value in data:
         assert value is None or not str(value).startswith("\x00"), (
@@ -5392,7 +5359,7 @@ def test_the_menu_offers_what_the_row_can_do(
 
     single = dialog.row_menu(dialog.rows[0])
     texts = [action.text() for action in single.actions() if not action.isSeparator()]
-    assert texts[:3] == [CHOOSE_FORMATS_TEXT, OPTIONS_TEXT, TEMPLATE_TEXT], (
+    assert texts[:3] == [CHOOSE_FORMATS_TEXT, OPTIONS_TEXT, RENAME_TEXT], (
         f"a ready single item's verbs are {texts}, not the three under Just this item"
     )
     assert "Remove this URL" in texts
@@ -5407,9 +5374,11 @@ def test_the_menu_offers_what_the_row_can_do(
     assert CHOOSE_FORMATS_TEXT not in playlist_texts, (
         "a playlist offers the format table, but its formats belong to its entries"
     )
-    assert OPTIONS_TEXT in playlist_texts and TEMPLATE_TEXT in playlist_texts, (
-        "the per-item verbs a playlist genuinely has went missing with the one it does not"
+    assert OPTIONS_TEXT in playlist_texts, (
+        "the per-item verb a playlist genuinely has went missing with the ones it does not"
     )
+    # **No rename on a playlist** (`UX-014`): it is many files, which keep the Settings pattern.
+    assert RENAME_TEXT not in playlist_texts, "a playlist offered to rename one file"
 
 
 def test_the_menu_acts_on_the_row_it_was_opened_from(
@@ -6113,12 +6082,14 @@ def test_the_network_options_are_read_when_the_request_is_built(
 
 #: The three verbs that open a panel on a row, and the panel each one must produce.
 #:
-#: **Named by what the user chooses**, so a failure message says *"choosing the template editor on
-#: a row already open on the playlist picker"* rather than naming two methods.
+#: **Named by what the user chooses**, so a failure message says *"choosing the rename on a row
+#: already open on the playlist picker"* rather than naming two methods. The panels are opened by
+#: method rather than through the menu, because the swap is about the panel mechanism, not about
+#: which verbs a playlist row offers.
 _PANEL_VERBS: dict[str, tuple[Callable[[AddUrlDialog, Row], None], type[Any]]] = {
     "the format table": (lambda dialog, row: dialog.open_format_table(row), FormatPanel),
     "the playlist picker": (lambda dialog, row: dialog.open_playlist_picker(row), PlaylistPanel),
-    "the template editor": (lambda dialog, row: dialog.open_template_editor(row), TemplatePanel),
+    "the rename": (lambda dialog, row: dialog.open_rename(row), RenamePanel),
 }
 
 

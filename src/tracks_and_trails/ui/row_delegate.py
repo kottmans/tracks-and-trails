@@ -278,31 +278,23 @@ OPTIONS_TEXT: Final = "Options…"
 #: wrong download rather than a no-op.
 OPTIONS_DATA: Final = "\x00open-options-editor"
 
-#: Whether this row can have `REQ-011`'s output template edited (`T-112`, `UX-SPEC` §9.1).
+#: Whether this row can be renamed (`UX-014`, 2026-09-13).
 #:
-#: **A fourth question, and it is `OPTIONS_AVAILABLE_ROLE`'s twin rather than a copy of it.** The
-#: template needs no probe result of its own — the preview renders from whatever the row knows and
-#: says so where it cannot — but it does need a row that can still be retargeted, for the reason a
-#: durable job cannot: its request is frozen at creation (`ARCHITECTURE.md` §8), so an editor there
-#: would be a control that silently does nothing. Absent means no.
-TEMPLATE_AVAILABLE_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 21
+#: **A single probed item whose request has not been written.** A playlist row is many files, and
+#: an unprobed row cannot yet say whether it is one. The name is prefilled from what the probe
+#: found, so there has to be a probe. Absent means no.
+RENAME_AVAILABLE_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 21
 
-#: The control's entry that opens the output template editor (`docs/UX_SPEC.md` §9.1).
+#: The row menu's entry that renames one download (`UX-014`).
 #:
-#: Below `OPTIONS_TEXT` for the reason that one is below `CHOOSE_FORMATS_TEXT`: entries a user has
-#: learned the positions of do not move when a new one appears.
-#:
-#: **Renamed from "Where it goes…" on 2026-08-09, maintainer direction.** That label promised a
-#: folder picker and opened a `%(field)s` template editor — and the maintainer read it as a
-#: destination picker in review, which is the evidence rather than the theory. What it edits is how
-#: a download is *named and filed*; **where the root is** becomes `REQ-023`'s download directory,
-#: a setting, under `T-146`. Naming the two differently is what keeps them from being confused for
-#: each other once both exist.
-TEMPLATE_TEXT: Final = "Naming and folders…"
+#: **Replaces *Naming and folders…***, which opened a `%(field)s` template editor for one file —
+#: ruled out by the maintainer as tedious for anyone. Naming *patterns* are a Settings preference;
+#: this names one file.
+RENAME_TEXT: Final = "Rename…"
 
 #: Its data, a sentinel for `CHOOSE_FORMATS_DATA`'s reason and with the same consequence if it were
 #: ever looked up as a preset name.
-TEMPLATE_DATA: Final = "\x00open-template-editor"
+RENAME_DATA: Final = "\x00open-rename"
 
 #: Whether this surface can open the preset manager (`T-111`, `UX-SPEC` §8).
 #:

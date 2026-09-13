@@ -140,6 +140,13 @@ class Row:
     #: gate that read a selector instead of a decision refused a download it could have performed.
     #: `REQ-024` needs the decision, so the decision is kept.
     format_selection: object | None = None
+    #: The name this one download is saved under, or `None` for the Settings pattern (`UX-014`).
+    #:
+    #: **A literal name, not a template**, and without its extension: the request writes it through
+    #: `output_template.renamed_template`, so a `%` stays a percent sign and the folders stay the
+    #: setting's. Kept here rather than folded into `preset` because a preset no longer carries
+    #: naming at all.
+    file_name: str | None = None
     #: Which of a playlist's entries are chosen, as a `PlaylistSelection` (`REQ-004`, `T-110`).
     #:
     #: **`None` means "not a playlist, or not probed yet"**, and it is not the same as an empty

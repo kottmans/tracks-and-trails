@@ -634,12 +634,23 @@ preference instead of using it to rename each individual file this way."*
 
 - [ ] Settings offers *Title*, *Uploader – Title*, *Uploader / Title* and *Custom…*, with an example
       path for the choice, and stores the same `output_template` value as before
-- [ ] *Naming and folders…* and the per-item template editor are gone from Add URLs
+- [x] *Naming and folders…* and the per-item template editor are gone from Add URLs
 - [ ] *Rename…* on a single item in Add URLs and on a queue row that has not started takes a plain
       name, previews its path, writes it literally (a `%` in the name is not a field), and clearing
       it returns to the setting's name
-- [ ] Presets carry no template; a `settings.toml` preset with an `output_template` key still loads
+- [x] Presets carry no template; a `settings.toml` preset with an `output_template` key still loads
 - [ ] Each of the above has a test that fails without it
+
+#### Built so far
+
+- **2026-09-13 — presets and Add URLs.** `Preset.output_template` is gone, and with it
+  `with_output_template`, the preset manager's field and the per-item template panel. A saved preset
+  that still has the key loads and loses only that (**mutated**: refusing the key fails the test).
+  *Rename…* replaces *Naming and folders…* in Add URLs on a probed single item: `RenameEditor`,
+  prefilled from the setting's preview, written by `output_template.renamed_template` — `%` escaped
+  (**mutated**: unescaped fails three tests), the setting's folders kept, a separator refused. The
+  end-to-end test renames to `Renamed: 100% "Live"?` and a real download writes the previewed path.
+  Settings' choices and the queue row's *Rename…* are next.
 
 
 ### T-327 — The Windows manual verification session

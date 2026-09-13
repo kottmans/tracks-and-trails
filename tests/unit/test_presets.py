@@ -174,7 +174,6 @@ def test_a_preset_may_carry_any_quality_yt_dlp_accepts(quality: str) -> None:
         name="Audio",
         media_kind=MediaKind.AUDIO,
         format_selector="bestaudio",
-        output_template="%(title)s.%(ext)s",
         audio_codec=AudioCodec.MP3,
         audio_quality=quality,
     )
@@ -194,7 +193,6 @@ def test_a_preset_with_an_unusable_audio_quality_is_refused(quality: str) -> Non
             name="Audio",
             media_kind=MediaKind.AUDIO,
             format_selector="bestaudio",
-            output_template="%(title)s.%(ext)s",
             audio_codec=AudioCodec.MP3,
             audio_quality=quality,
         )
@@ -235,14 +233,10 @@ def test_the_two_models_actually_share_fields() -> None:
     assert len(SHARED_FIELDS) >= 6, SHARED_FIELDS
 
 
-#: The one shared field `to_request` **resolves** instead of copying (`T-195`).
-#:
-#: `Preset.output_template` may be empty, meaning *use the application default*, and
-#: `DownloadRequest.output_template` may not be — so for this field a copy would carry an empty
-#: string into a request that requires a real one. **Named here rather than skipped inside the
-#: test**, so a second field cannot join the exception by being quietly non-equal:
-#: `test_only_the_named_field_is_resolved_rather_than_copied` fails if one does.
-RESOLVED_NOT_COPIED = frozenset({"output_template"})
+#: Shared fields `to_request` does not simply copy. **None since `UX-014`**: naming left `Preset`,
+#: and it was the one field resolved rather than copied. Kept, and asserted empty, so a field that
+#: starts being derived in `to_request` is noticed rather than silently dropped from the copy test.
+RESOLVED_NOT_COPIED: frozenset[str] = frozenset()
 
 
 def test_only_the_named_field_is_resolved_rather_than_copied() -> None:
@@ -271,7 +265,6 @@ def test_every_shared_field_reaches_the_request(preset: Preset, field_name: str)
     Derived from the dataclasses, so adding `Preset.container_format` without adding it to
     `to_request` fails here — rather than at the first download that quietly ignores it.
 
-    `output_template` is excluded and accounted for above: it is *resolved*, not copied.
     """
     request = request_for(preset)
     assert getattr(request, field_name) == getattr(preset, field_name), (
@@ -280,51 +273,24 @@ def test_every_shared_field_reaches_the_request(preset: Preset, field_name: str)
     )
 
 
-@pytest.mark.parametrize("preset", presets.BUILT_IN_PRESETS, ids=lambda p: p.name)
-def test_a_shipped_preset_states_no_template_and_the_request_gets_a_real_one(
-    preset: Preset,
-) -> None:
-    """**`T-195`.** A built-in has an opinion about format, not about filenames.
+def test_a_preset_carries_no_naming_and_the_request_takes_the_callers() -> None:
+    """**`UX-014`.** A preset says what is downloaded; how the file is named is not its business.
 
-    Stating the shipped template on every preset would make a default template set in Settings
-    apply to nothing the user had not personally edited — a setting that appears to work and does
-    nothing. So the shipped presets defer, and `to_request` is where the deferral is resolved.
-
-    `DownloadRequest` still requires a real template, which is the half that keeps everything
-    downstream of this unchanged.
+    Naming is the Settings pattern or one item's rename, and the caller resolves which. So there is
+    no `Preset` field to hold it, and whatever the caller hands `to_request` is what the request
+    carries — for every built-in, without exception.
     """
-    assert preset.output_template == "", (
-        f"{preset.name!r} states a template of its own, so a default set in Settings would not "
-        "reach it"
-    )
+    assert "output_template" not in {field.name for field in fields(Preset)}
+    assert "output_template" not in presets.PRESET_OWNED_FIELDS
     chosen = "%(uploader)s/%(title)s.%(ext)s"
-    request = presets.to_request(
-        preset,
-        url="https://example.invalid/v",
-        output_directory=".",
-        default_output_template=chosen,
-    )
-    assert request.output_template == chosen
-
-
-def test_a_preset_with_its_own_template_is_not_overridden_by_the_default() -> None:
-    """The opt-out, and the direction that makes the deferral safe to have.
-
-    A user who sets a template on a preset has said something specific; the application default is
-    what applies when nobody has. Without this the setting would silently overwrite deliberate
-    choices, which is the failure mode that made "resolve at paste time by guessing" the wrong
-    design.
-    """
-    mine = presets.with_output_template(presets.BUILT_IN_PRESETS[0], "%(title)s [%(ext)s].%(ext)s")
-
-    request = presets.to_request(
-        mine,
-        url="https://example.invalid/v",
-        output_directory=".",
-        default_output_template="%(uploader)s/%(title)s.%(ext)s",
-    )
-
-    assert request.output_template == "%(title)s [%(ext)s].%(ext)s"
+    for preset in presets.BUILT_IN_PRESETS:
+        request = presets.to_request(
+            preset,
+            url="https://example.invalid/v",
+            output_directory=".",
+            default_output_template=chosen,
+        )
+        assert request.output_template == chosen, preset.name
 
 
 def test_the_url_and_directory_are_the_two_things_a_preset_cannot_know() -> None:
@@ -471,7 +437,6 @@ def test_a_preset_owned_field_cannot_be_overridden(field_name: str) -> None:
     """
     sample: dict[str, Any] = {
         "format_selector": "worst",
-        "output_template": "%(id)s.%(ext)s",
         "media_kind": MediaKind.AUDIO,
         "post_processors": ("FFmpegMetadata",),
         "subtitle_languages": ("en",),
@@ -816,12 +781,9 @@ def test_a_request_round_trips_through_the_preset_it_implies() -> None:
             preset, url="https://example.invalid/one", output_directory="."
         )
         recovered = presets.preset_of(request, name=preset.name)
-        # **Request → preset → request, which is the direction a retarget travels.** The other
-        # direction is *not* an identity and must not be asserted as one: a preset stating an
-        # empty `output_template` means *"whatever the caller's default is"*, so `to_request`
-        # resolves it and the request records the concrete string. That is information the preset
-        # never held, and every shipped preset states none — measured, this is the only field of
-        # the fourteen that differs.
+        # **Request → preset → request, which is the direction a retarget travels.** Naming is not
+        # a preset's (`UX-014`), so the caller hands the request's own template back — which is
+        # what every retarget does.
         again = presets.to_request(
             recovered,
             url=request.url,
@@ -858,5 +820,4 @@ def test_the_preset_a_request_implies_carries_options_no_catalogue_preset_has() 
     assert recovered.format_selector == "137+140"
     assert recovered.embed_thumbnail is True
     assert recovered.subtitle_languages == ("en", "ja")
-    assert recovered.output_template == "%(uploader)s/%(title)s.%(ext)s"
     assert not recovered.built_in, "a preset read off one job's request is not one this app ships"

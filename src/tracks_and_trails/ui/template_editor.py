@@ -198,26 +198,34 @@ class TemplateEditor(QWidget):
         return [self._input, self._preview]
 
     def show_preview(self, preview: OutputPreview) -> None:
-        """Display one answer from `DownloadManager.preview_output_path`.
+        """Display one answer from `DownloadManager.preview_output_path` (see `present_preview`)."""
+        present_preview(preview, self._preview, self._preview_caption, self._message)
 
-        The three states are drawn as three, and never mixed: a refusal empties the path field, an
-        exact path carries no note, and a provisional one is labelled *intended* in the caption
-        rather than annotated underneath — the difference between a promise and an intention is
-        part of what the field is, so it belongs in the field's name.
-        """
-        self._preview.setText(preview.path)
-        self._preview_caption.setText(
-            PROVISIONAL_LABEL if preview.provisional is not None else PREVIEW_LABEL
-        )
-        self._message.setText(preview.refusal or preview.provisional or "")
-        # **The state reaches a screen reader too** (`NFR-005`). A caption changing from "will be"
-        # to "is intended to be" is a visual difference; the accessible description is where a user
-        # who cannot see the caption hears the same distinction.
-        if preview.is_refused:
-            spoken = f"No path: {preview.refusal}"
-        elif preview.provisional is not None:
-            spoken = f"{preview.path}. {preview.provisional}"
-        else:
-            spoken = preview.path
-        self._preview.setAccessibleDescription(spoken)
-        self._preview_caption.setAccessibleName(self._preview_caption.text())
+
+def present_preview(
+    preview: OutputPreview, field: QLineEdit, caption: QLabel, message: QLabel
+) -> None:
+    """Draw one `OutputPreview` into a path field, its caption and its message line.
+
+    **One function for both editors that preview a path** — this one and `RenameEditor` — so a
+    refused, an exact and a provisional path are drawn the same way wherever a path is shown.
+
+    The three states are drawn as three, and never mixed: a refusal empties the path field, an
+    exact path carries no note, and a provisional one is labelled *intended* in the caption rather
+    than annotated underneath — the difference between a promise and an intention is part of what
+    the field is, so it belongs in the field's name.
+    """
+    field.setText(preview.path)
+    caption.setText(PROVISIONAL_LABEL if preview.provisional is not None else PREVIEW_LABEL)
+    message.setText(preview.refusal or preview.provisional or "")
+    # **The state reaches a screen reader too** (`NFR-005`). A caption changing from "will be" to
+    # "is intended to be" is a visual difference; the accessible description is where a user who
+    # cannot see the caption hears the same distinction.
+    if preview.is_refused:
+        spoken = f"No path: {preview.refusal}"
+    elif preview.provisional is not None:
+        spoken = f"{preview.path}. {preview.provisional}"
+    else:
+        spoken = preview.path
+    field.setAccessibleDescription(spoken)
+    caption.setAccessibleName(caption.text())

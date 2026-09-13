@@ -59,18 +59,6 @@ from tracks_and_trails.core.models import (
 #: default cannot drift between presets.
 DEFAULT_OUTPUT_TEMPLATE: Final = "%(title)s.%(ext)s"
 
-#: What a **shipped** preset states about naming: nothing (`REQ-023`, `T-195`).
-#:
-#: **A built-in preset has an opinion about format, not about filenames.** Stating
-#: `DEFAULT_OUTPUT_TEMPLATE` here would freeze today's shipped template into every preset, so a user
-#: who set a default template in Settings would find it ignored by every preset they had not
-#: personally edited — a setting that appears to work and does nothing. Empty defers to
-#: `settings.output_template_of`, resolved once in `to_request`.
-#:
-#: A preset that *has* been given a template — through the editor, or `with_output_template` — keeps
-#: it, and the setting does not reach past it. That is the opt-out.
-BUILT_IN_TEMPLATE: Final = ""
-
 #: yt-dlp's `preferredquality` for the MP3 preset: 192 kbps, a bitrate rather than a VBR level.
 #:
 #: Chosen over VBR `0` ("best") because a preset named for a codec should be predictable in
@@ -126,7 +114,6 @@ BEST_VIDEO_1080P: Final = Preset(
     format_selector=(
         "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]"
     ),
-    output_template=BUILT_IN_TEMPLATE,
     built_in=True,
 )
 
@@ -134,7 +121,6 @@ BEST_VIDEO: Final = Preset(
     name="Best video available",
     media_kind=MediaKind.VIDEO,
     format_selector="bestvideo+bestaudio/best",
-    output_template=BUILT_IN_TEMPLATE,
     built_in=True,
 )
 
@@ -142,7 +128,6 @@ AUDIO_MP3: Final = Preset(
     name="Audio only (MP3)",
     media_kind=MediaKind.AUDIO,
     format_selector="bestaudio/best",
-    output_template=BUILT_IN_TEMPLATE,
     # The codec is what makes this preset differ from the one below. `T012-R5`: with it
     # omitted, yt-dlp keeps the source codec and the MP3 preset converts nothing.
     audio_codec=AudioCodec.MP3,
@@ -154,7 +139,6 @@ AUDIO_ORIGINAL: Final = Preset(
     name="Audio only (original)",
     media_kind=MediaKind.AUDIO,
     format_selector="bestaudio/best",
-    output_template=BUILT_IN_TEMPLATE,
     # `AudioCodec.ORIGINAL` carries yt-dlp's `best`, which means "no conversion" rather than
     # "the highest-quality codec". This preset extracts the audio stream as the site served it.
     audio_codec=AudioCodec.ORIGINAL,
@@ -165,7 +149,6 @@ VIDEO_WITH_SUBTITLES: Final = Preset(
     name="Video with embedded subtitles",
     media_kind=MediaKind.VIDEO,
     format_selector="bestvideo+bestaudio/best",
-    output_template=BUILT_IN_TEMPLATE,
     subtitle_languages=SUBTITLE_LANGUAGES,
     embed_subtitles=True,
     built_in=True,
@@ -277,22 +260,6 @@ def with_audio_quality(preset: Preset, quality: str) -> Preset:
     return replace(preset, audio_quality=quality)
 
 
-def with_output_template(preset: Preset, template: str) -> Preset:
-    """`preset`, writing to `template` instead of its own (`REQ-011`, `T-112`).
-
-    A derived preset for `with_audio_quality`'s reason: `output_template` is a field both `Preset`
-    and `DownloadRequest` declare, so it is preset-owned and `to_request` refuses to override it.
-    Deriving keeps the template the user was shown and the one that runs the same object.
-
-    Refuses an empty template rather than letting `DownloadRequest` refuse it later. The caller is
-    an editor, and the point of `P-23` is that the refusal arrives beside the field being typed in
-    rather than when a download starts.
-    """
-    if not template.strip():
-        raise ValueError("an output template cannot be empty")
-    return replace(preset, output_template=template)
-
-
 #: The preset fields `REQ-010` lets a user adjust **on top of** a preset, rather than fields that
 #: say which streams are fetched (`T-109`).
 #:
@@ -313,16 +280,15 @@ POST_PROCESSING_FIELDS: Final[frozenset[str]] = frozenset(
 def with_format_selector(preset: Preset, selector: str) -> Preset:
     """`preset`, downloading `selector` instead of its own streams (`REQ-008`, `T-311`).
 
-    **The third of these, and the one whose absence was a defect.** `with_audio_quality` and
-    `with_output_template` both exist because their field is preset-owned and `to_request` refuses
-    to override a preset-owned field — so changing one means deriving a preset rather than patching
-    a request. `format_selector` is preset-owned for the same reason and had no such function, so
-    the format panel reached for `custom_preset` instead: a `Preset` built from nothing, which
-    discarded the row's conversion, its filename pattern and its media kind without saying so.
+    **The second of these, and the one whose absence was a defect.** `with_audio_quality` exists
+    because its field is preset-owned and `to_request` refuses to override a preset-owned field — so
+    changing one means deriving a preset rather than patching a request. `format_selector` is
+    preset-owned for the same reason and had no such function, so the format panel reached for
+    `custom_preset` instead: a `Preset` built from nothing, which discarded the row's conversion
+    and its media kind without saying so.
 
-    Refuses an empty selector rather than letting `DownloadRequest` refuse it later, which is
-    `with_output_template`'s rule for the same reason: an empty selector means yt-dlp's *default*,
-    not *no choice* (`T-010`).
+    Refuses an empty selector rather than letting `DownloadRequest` refuse it later: an empty
+    selector means yt-dlp's *default*, not *no choice* (`T-010`).
     """
     if not selector.strip():
         raise ValueError("a format selector cannot be empty")
@@ -413,7 +379,6 @@ def custom_preset(selector: str, *, name: str = "Custom selector") -> Preset:
         name=name,
         media_kind=MediaKind.VIDEO,
         format_selector=selector,
-        output_template=BUILT_IN_TEMPLATE,
         built_in=False,
     )
 
@@ -454,7 +419,6 @@ class FormatChoice:
 
     media_kind: MediaKind
     format_selector: str
-    output_template: str
     audio_codec: AudioCodec
     audio_quality: str | None
     subtitle_languages: tuple[str, ...]
@@ -502,12 +466,11 @@ def preset_of(request: DownloadRequest, *, name: str) -> Preset:
     credential, a network setting or a location; none of it belongs to a preset, and
     `with_connection_of` is what carries it across a retarget instead.
 
-    **Not an identity in the other direction, and it must not be treated as one.** A preset
-    stating an empty `output_template` means *"whatever the caller's default is"*, so `to_request`
-    resolves it and the request records the concrete string — information the preset never held.
-    Every shipped preset states none, so `preset_of(to_request(p))` differs from `p` in exactly
-    that field. **Request → preset → request is lossless**, which is the direction a retarget
-    travels, and `test_a_request_round_trips_through_the_preset_it_implies` asserts that one.
+    **Naming is not part of it** (`UX-014`): a preset carries no template, so a request's
+    `output_template` is information the preset never held. **Request → preset → request is
+    lossless only when the caller hands the template back** — `to_request(...,
+    default_output_template=request.output_template)`, which is what every retarget does, and
+    `test_a_request_round_trips_through_the_preset_it_implies` asserts that.
 
     `built_in=False`: this describes one job's request, and nothing that came out of a request is
     something the application ships.
@@ -564,14 +527,10 @@ def to_request(
         url=url,
         output_directory=output_directory,
         format_selector=preset.format_selector,
-        # **Where an empty preset template becomes a real one** (`T-195`). `Preset` may state no
-        # template, meaning *use the application default*; `DownloadRequest` may not, so this is
-        # the single point of resolution and everything downstream of it sees a real string.
-        #
-        # A keyword rather than one of `overrides`, because `output_template` is a preset-owned
-        # field and the guard above rejects overriding those by design — the caller is supplying a
-        # *fallback*, not overruling the preset.
-        output_template=preset.output_template or default_output_template,
+        # **Naming is the caller's, never the preset's** (`UX-014`, 2026-09-13). A preset says what
+        # is downloaded; how the file is named is the Settings preference, or one item's rename,
+        # and the caller resolves which before it gets here.
+        output_template=default_output_template,
         media_kind=preset.media_kind,
         post_processors=preset.post_processors,
         subtitle_languages=preset.subtitle_languages,

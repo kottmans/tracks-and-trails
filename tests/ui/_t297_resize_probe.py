@@ -37,7 +37,6 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from tests.ui.test_add_dialog import (
-    _open_the_template_editor,
     _staged_playlist,
     dialogs,
     managers,
@@ -98,7 +97,10 @@ def test_the_open_row_is_never_painted_uncovered(
     dialog.resize(900, 760)
     dialog.show()
     qapp.processEvents()
-    panel = _open_the_template_editor(dialog, 0)
+    dialog.open_rename(row)
+    qapp.processEvents()
+    panel = dialog.open_rename_panel
+    assert panel is not None, "the rename did not open"
     qapp.processEvents()
     watching.update(panel=panel, target=dialog.rows.index(row), window=dialog)
 

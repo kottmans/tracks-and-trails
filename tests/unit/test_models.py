@@ -64,7 +64,6 @@ def test_every_model_round_trips_through_pickle(job: Job, request_: DownloadRequ
         name="Best video",
         media_kind=MediaKind.VIDEO,
         format_selector="bestvideo+bestaudio/best",
-        output_template="%(title)s.%(ext)s",
     )
 
     for model in (request_, job, media, media.formats[0], preset, MediaKind.VIDEO):
@@ -178,7 +177,6 @@ def test_format_info_declares_the_fields_the_architecture_names() -> None:
                 name="",
                 media_kind=MediaKind.VIDEO,
                 format_selector="best",
-                output_template="%(title)s.%(ext)s",
             ),
             "name",
         ),
@@ -266,7 +264,6 @@ def valid_kwargs(request_: DownloadRequest) -> dict[type, dict[str, object]]:
             "name": "p",
             "media_kind": MediaKind.VIDEO,
             "format_selector": "best",
-            "output_template": "%(title)s.%(ext)s",
         },
         Job: {"id": "j", "url": "https://example.com/x", "request": request_},
         # Every field optional (`T-196`): the empty value is *no proxy, no limit, and yt-dlp's
@@ -672,7 +669,6 @@ def test_every_model_is_frozen(job: Job) -> None:
         name="p",
         media_kind=MediaKind.AUDIO,
         format_selector="bestaudio",
-        output_template="%(title)s.%(ext)s",
     )
     for model, attribute in ((job, "status"), (media, "title"), (preset, "name")):
         with pytest.raises(AttributeError):

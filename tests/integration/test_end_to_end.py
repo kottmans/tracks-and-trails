@@ -1846,12 +1846,14 @@ def test_the_previewed_path_is_the_path_the_download_actually_writes(
         ), f"the URL never resolved: {dialog.status_text()}"
 
         row = dialog.rows[0]
-        dialog.open_template_editor(row)
+        dialog.open_rename(row)
         qapp.processEvents()
-        panel = dialog.open_template_panel
-        assert panel is not None, "the template editor did not open"
-        panel.editor.set_template("music/%(title)s.%(ext)s")
-        panel.editor.template_changed.emit("music/%(title)s.%(ext)s")
+        panel = dialog.open_rename_panel
+        assert panel is not None, "the rename did not open"
+        # **Renamed, with the characters Windows refuses and a `%` in it** (`UX-014`): the name is
+        # written literally, and the file still gets the cleaned name the preview promised.
+        panel.editor.input_field.setText('Renamed: 100% "Live"?')
+        panel.editor.name_changed.emit('Renamed: 100% "Live"?')
         qapp.processEvents()
 
         previewed = panel.editor.preview_text()
@@ -1883,8 +1885,9 @@ def test_the_previewed_path_is_the_path_the_download_actually_writes(
         assert str(written) == previewed, (
             f"the preview promised {previewed!r} and the download wrote {str(written)!r}"
         )
-        assert written.parent == tmp_path / "downloads" / "music", (
-            "the subfolder the template asked for was not created where the preview said"
+        assert written.parent == tmp_path / "downloads", written
+        assert "Renamed" in written.name and "100%" in written.name, (
+            f"the name typed into Rename is not the name written: {written.name!r}"
         )
         assert not set(written.name) & set('<>:"/\\|?*'), (
             f"a character illegal on Windows survived into {written.name!r}"

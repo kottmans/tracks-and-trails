@@ -205,7 +205,7 @@ resolved.
   maintainer's own misreading of it in review is the evidence.*
 - **[T]** *(ruled 2026-08-09, `UX-011`; `T-203` builds it — option E, round 8)* **The three
   per-row verbs live in the row's menu**: `Choose specific formats…`, `Options…` and
-  `Naming and folders…`, under a *Just this item* heading, above the Retry/Remove entries that
+  `Naming and folders…` — **`Rename…` since `UX-014`, 2026-09-13** — under a *Just this item* heading, above the Retry/Remove entries that
   menu already holds. The menu opens **two ways**: from a `⋮` zone drawn on the trailing
   edge of the row's format control, and by the routes the row's context menu already answers —
   right-click, the Menu key, Shift+F10. One menu, not two lookalikes.
@@ -748,16 +748,17 @@ silent on the rest, so these are scope choices.
 
 ## 9 · The rest of Phase 3
 
-### 9.1 Output template editor — `REQ-011`, built by `T-112`
+### 9.1 Naming files — `REQ-011`, built by `T-112`, reshaped by `UX-014` (`T-337`)
 
-- **[T]** *(`UX-011`; the rename is built by `T-203`, the menu route it builds next)* **Reached
-  from the row menu's `Naming and folders…` entry** — renamed from `Where it goes…` on maintainer
-  direction, because that label promised a folder picker and opened a `%(field)s` template editor,
-  and the maintainer's own misreading of it as a destination picker was the evidence. Where files
-  *root* is `REQ-023`'s download directory, on the settings screen (`T-146`, built 2026-08-10);
-  the two are named apart so they cannot be confused, and both now exist. **Whether the per-item
-  template itself survives is `REQ-011`'s open ruling** — `UX-011` moves its entrance and
-  deliberately does not take that ruling by implication.
+- **[T]** *(ruled 2026-09-13, `UX-014`)* **How files are named is a Settings preference**, offered
+  as *Title*, *Uploader - Title*, *Uploader / Title* and *Custom…* (which reveals the template field
+  and its fields), with an example path. **One download is renamed, not templated**: `Rename…` in
+  the row menu of a single probed item in Add URLs, and on a queue row that has not started, takes a
+  plain name prefilled with what the setting would produce; `%` is literal, the extension and the
+  folders stay the setting's, and clearing it returns to the setting. Not on a playlist row.
+  Presets carry no template. *This replaced the per-item template editor behind `Naming and
+  folders…`, which the maintainer ruled out: "no user is gonna want to do that."* The rest of this
+  section describes the preview both surfaces share.
 - **[T]** `REQ-011` as amended (2026-08-01, `T046-R2` and `T046-R4`): a live preview of the resulting
   path, **labelled as the *intended* path** wherever the final container is yt-dlp's to choose.
   Audio extraction to a **named** codec previews exactly, through yt-dlp's own `ACODECS` table — the

@@ -57,7 +57,6 @@ def test_a_container_yt_dlp_does_not_accept_is_refused_at_construction(
                 name="p",
                 media_kind=MediaKind.VIDEO,
                 format_selector="best",
-                output_template="%(title)s.%(ext)s",
                 **{field: "mp5"},  # type: ignore[arg-type]
             )
         else:
@@ -158,7 +157,6 @@ def test_narrowing_what_is_offered_does_not_narrow_what_is_accepted() -> None:
             name="v",
             media_kind=MediaKind.VIDEO,
             format_selector="best",
-            output_template="%(title)s.%(ext)s",
             remux_container=container,
         )
         assert preset.remux_container == container, (

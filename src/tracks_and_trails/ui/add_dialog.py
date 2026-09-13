@@ -120,6 +120,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tracks_and_trails.core import output_template
 from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
@@ -145,6 +146,7 @@ from tracks_and_trails.ui.format_text import FORMAT_PREFIX, format_name
 from tracks_and_trails.ui.options_dialog import OptionsDialog, PresetSink
 from tracks_and_trails.ui.playlist_picker import PlaylistPicker
 from tracks_and_trails.ui.playlist_selection import PlaylistSelection, describe_chosen
+from tracks_and_trails.ui.rename_editor import RenameEditor
 from tracks_and_trails.ui.row_delegate import (
     CHOOSE_FORMATS_DATA,
     CHOOSE_FORMATS_TEXT,
@@ -169,13 +171,13 @@ from tracks_and_trails.ui.row_delegate import (
     PRESET_INHERITED_ROLE,
     PRESET_ROLE,
     PRESETS_MANAGEABLE_ROLE,
+    RENAME_AVAILABLE_ROLE,
+    RENAME_DATA,
+    RENAME_TEXT,
     ROW_PRESET_NAME,
     SELECTOR_ROLE,
     STATE_CHIP_ROLE,
     STATE_ROLE,
-    TEMPLATE_AVAILABLE_ROLE,
-    TEMPLATE_DATA,
-    TEMPLATE_TEXT,
     THUMBNAIL_URL_ROLE,
     RowDelegate,
     minimum_row_width,
@@ -188,7 +190,6 @@ from tracks_and_trails.ui.staging import (
     placeholder_hue,
     summarise,
 )
-from tracks_and_trails.ui.template_editor import TemplateEditor
 from tracks_and_trails.ui.thumbnails import (
     THUMBNAIL_SIZE,
     NetworkThumbnailLoader,
@@ -940,17 +941,12 @@ class PlaylistPanel(RowPanel):
         return self._picker.table
 
 
-class TemplatePanel(RowPanel):
-    """A staging row opened onto its output template (`REQ-011`, `docs/UX_SPEC.md` §9.1, `T-112`).
+class RenamePanel(RowPanel):
+    """A staging row opened onto its file name (`UX-014`).
 
-    **The third panel, and it needed no new mechanism.** `P-19` made the row-that-opens one class
-    when the playlist picker arrived; this is what that buys — the editor supplies a body and a
-    focus order and nothing else, and `Esc`, the mount, the reset survival and the height all come
-    from `RowPanel`.
-
-    A row rather than a dialog for the same reason as the other two: the add dialog is already
-    modal, and a modal over a modal to type one line into is a window the user has to dismiss
-    before they can look at the row it is about.
+    A row rather than a dialog, for the reason every panel here is one: the add dialog is already
+    modal, and a modal over a modal to type one line into is a window between the user and the row
+    it is about. `Esc`, the mount and the height come from `RowPanel`.
     """
 
     def __init__(
@@ -958,32 +954,33 @@ class TemplatePanel(RowPanel):
         row: Row,
         summary: str,
         *,
-        template: str,
+        name: str,
         parent: QWidget | None = None,
     ) -> None:
-        self._initial_template = template
+        self._initial_name = name
         super().__init__(
             row,
             summary,
-            object_name="templatePanel",
-            summary_name="The URL this name is for",
-            done_name="Use this template and close",
+            object_name="renamePanel",
+            summary_name="The download this name is for",
+            done_name="Use this name and close",
             parent=parent,
         )
 
     def _build_body(self, row: Row) -> QWidget:
-        self._editor = TemplateEditor(self._initial_template, self)
+        self._editor = RenameEditor(self._initial_name, self)
         return self._editor
 
     @property
-    def editor(self) -> TemplateEditor:
+    def editor(self) -> RenameEditor:
         return self._editor
 
     def focus_chain(self) -> list[QWidget]:
         return [*self._editor.focus_chain(), self._close]
 
     def initial_focus(self) -> QWidget:
-        """The input, which is the only thing here a user came to change."""
+        """The name, selected, so typing replaces it."""
+        self._editor.input_field.selectAll()
         return self._editor.input_field
 
 
@@ -1140,12 +1137,16 @@ class StagingModel(QAbstractListModel):
             # **No row is grown for a panel now** (`T-312`): the panel is a page of the dialog, so
             # the list keeps its ordinary row heights whether or not one is open.
             return 0
-        if role == TEMPLATE_AVAILABLE_ROLE:
-            # **One condition fewer than the options editor** (`T-112`). `REQ-011`'s preview does
-            # not need a probe: it renders whatever the row knows and labels what it cannot promise,
-            # which is the whole of `REQ-011`'s *intended path* amendment. What it does need is a
-            # row whose request has not been written yet.
-            return row.committable and not self._dialog.is_saving
+        if role == RENAME_AVAILABLE_ROLE:
+            # **A single probed item** (`UX-014`): the name is prefilled from the probe, and a
+            # playlist is many files, which keep the Settings pattern inside the playlist's folder.
+            media = row.media
+            return (
+                row.committable
+                and not self._dialog.is_saving
+                and isinstance(media, MediaInfo)
+                and not media.is_playlist
+            )
         if role == PRESETS_MANAGEABLE_ROLE:
             # **Not a question about this row** (`T-111`). The manager edits the catalogue every row
             # chooses from, so the only condition is that composition wired somewhere to save to —
@@ -1255,9 +1256,9 @@ class StagingModel(QAbstractListModel):
             # called this, so the lookup would clear the row's format instead of opening anything.
             self._dialog.open_options(row)
             return True
-        if value == TEMPLATE_DATA:
-            # The third sentinel, intercepted for the same reason as the first two (`T-112`).
-            self._dialog.open_template_editor(row)
+        if value == RENAME_DATA:
+            # The third sentinel, intercepted for the same reason as the first two (`UX-014`).
+            self._dialog.open_rename(row)
             return True
         if value == MANAGE_PRESETS_DATA:
             # The fourth, and the only one that does not edit this row (`T-111`). Intercepted for
@@ -1931,61 +1932,63 @@ class AddUrlDialog(QDialog):
             row, build, kind=PlaylistPanel, undo=lambda: setattr(row, "entry_selection", before)
         )
 
-    def open_template_editor(self, row: Row) -> None:
-        """Open `row` into `REQ-011`'s template editor and its live preview (`T-112`).
+    def open_rename(self, row: Row) -> None:
+        """Open `row` onto its file name, prefilled with the name it would get (`UX-014`).
 
-        **The preview is asked for as the panel opens**, not on the first keystroke: a field that
-        shows a path only once you have typed into it makes the user prove the feature works before
-        it tells them anything, and the interesting case — *what does the template I already have
-        produce?* — is the one they arrived with.
+        **The preview is asked for as the panel opens**, for `T-112`'s reason: the interesting case
+        is *what is this going to be called?*, which the user arrives with.
         """
-        # A preset that states none shows the application default, because that is what the
-        # row would actually be named (`T-195`). An empty box would say the row has no
-        # template, which is not what an empty `output_template` means.
-        template = self.preset_for(row).output_template or self._default_output_template
-
-        panel_holder: list[TemplatePanel] = []
+        name = row.file_name if row.file_name is not None else self.default_name_for(row)
+        panel_holder: list[RenamePanel] = []
 
         def build() -> RowPanel:
-            panel = TemplatePanel(
-                row,
-                row_summary(row),
-                template=template,
-                parent=self._list,
+            panel = RenamePanel(row, row_summary(row), name=name, parent=self._list)
+            panel.editor.name_changed.connect(
+                lambda text: panel.editor.show_preview(self.rename_preview_for(row, text))
             )
-            panel.editor.template_changed.connect(
-                lambda text: panel.editor.show_preview(self.preview_for(row, text))
-            )
-            panel.editor.show_preview(self.preview_for(row, template))
+            panel.editor.show_preview(self.rename_preview_for(row, name))
             panel_holder.append(panel)
             return panel
 
-        # **Nothing is written until the panel closes**, which is what makes *"an invalid template
-        # never reaches a download"* enforceable at one point rather than at every keystroke. It
-        # is also the only correct answer: a user typing `%(title)s` passes through `%`, `%(` and
-        # `%(title` — each of which yt-dlp accepts as a literal — so writing as they type left the
-        # row holding whichever half-typed prefix happened to be valid last. The first version of
-        # this did exactly that and its own test caught it.
+        # Nothing is written until the panel closes, so a half-typed name never reaches a request.
         self._open_panel(
             row,
             build,
-            kind=TemplatePanel,
+            kind=RenamePanel,
             undo=lambda: None,
-            commit=lambda: self._commit_template(row, panel_holder),
+            commit=lambda: self._commit_rename(row, panel_holder),
         )
 
-    def preview_for(self, row: Row, template: str) -> OutputPreview:
-        """Where `row` would be written under `template` (`REQ-011`).
+    def default_name_for(self, row: Row) -> str:
+        """The name the Settings pattern gives `row`, without its folders or its extension."""
+        preview = self._preview_under(row, self._default_output_template)
+        return output_template.file_stem_of(preview.path) if not preview.is_refused else ""
 
-        **Through the manager**, which is the only route `ARC-002` leaves open — `ui/` may not
-        reach yt-dlp, and rendering an output template is a yt-dlp operation. It is also what makes
-        the preview and the write one function rather than two: `DownloadManager` composes the same
-        `contained_output_path` the worker calls, over the same `prepare_filename`.
+    def template_for(self, row: Row) -> str:
+        """The template `row` is written with: its rename, or the Settings pattern (`UX-014`)."""
+        if row.file_name:
+            return output_template.renamed_template(
+                row.file_name, within=self._default_output_template
+            )
+        return self._default_output_template
 
-        A row with no probe result yet is previewed against what the row *does* know — its URL as a
-        title — so the shape of the path is visible before the probe lands. That is a weaker claim
-        than the probed one and the field says so, because the title is what most templates are
-        mostly made of.
+    def rename_preview_for(self, row: Row, name: str) -> OutputPreview:
+        """Where `row` would be written if it were called `name`. Empty previews the pattern."""
+        refusal = output_template.name_refusal(name)
+        if refusal is not None:
+            return OutputPreview(refusal=refusal)
+        template = (
+            output_template.renamed_template(name, within=self._default_output_template)
+            if name.strip()
+            else self._default_output_template
+        )
+        return self._preview_under(row, template)
+
+    def _preview_under(self, row: Row, template: str) -> OutputPreview:
+        """Where `row` would be written under `template` — through the manager (`ARC-002`).
+
+        A row with no probe result yet is previewed against its URL as a title, so the shape of the
+        path is visible; `RENAME_AVAILABLE_ROLE` only offers renaming once there is a probe.
         """
         media = row.media
         described = (
@@ -1995,33 +1998,32 @@ class AddUrlDialog(QDialog):
         )
         request = self._with_settings_defaults(
             preset_registry.to_request(
-                preset_registry.with_output_template(self.preset_for(row), template or " "),
+                self.preset_for(row),
                 url=row.url,
                 output_directory=str(self._output_directory),
-                default_output_template=self._default_output_template,
+                default_output_template=template,
             )
         )
         return self._manager.preview_output_path(request, described)
 
-    def _commit_template(self, row: Row, panel_holder: Sequence[TemplatePanel]) -> None:
-        """Write the edited template onto `row`, unless it is one that would be refused.
+    def _commit_rename(self, row: Row, panel_holder: Sequence[RenamePanel]) -> None:
+        """Write the typed name onto `row`, unless it would be refused.
 
-        **`T-112`'s criterion, and this is the single point that enforces it**: *an invalid
-        template never reaches a download*. Closing with a refused template keeps the one the row
-        already had and says so, rather than either queueing it or discarding the edit in silence —
-        the message is the same one the editor was showing, so the reason does not disappear with
-        the panel that carried it.
+        **Empty, or the name the pattern would give anyway, clears the rename**, so a row renamed to
+        its own default goes on following the setting. A refused name keeps whatever the row had and
+        says why, in the words the panel was showing.
         """
         if not panel_holder:
             return
-        text = panel_holder[-1].editor.template
-        preview = self.preview_for(row, text)
-        if preview.is_refused:
-            self._show_message(
-                f"{headline_text(row)} keeps its existing file name template. {preview.refusal}"
-            )
+        text = panel_holder[-1].editor.name.strip()
+        if not text or text == self.default_name_for(row):
+            row.file_name = None
             return
-        row.preset = preset_registry.with_output_template(self.preset_for(row), text)
+        preview = self.rename_preview_for(row, text)
+        if preview.is_refused:
+            self._show_message(f"{headline_text(row)} keeps its name. {preview.refusal}")
+            return
+        row.file_name = text
 
     def toggle_playlist(self, job_id: str) -> None:
         """Open or close the playlist a staging row holds — the disclosure's own route.
@@ -2221,9 +2223,9 @@ class AddUrlDialog(QDialog):
         return self._panel if isinstance(self._panel, PlaylistPanel) else None
 
     @property
-    def open_template_panel(self) -> TemplatePanel | None:
+    def open_rename_panel(self) -> RenamePanel | None:
         """The open panel **when it is the output template editor** (`T-112`)."""
-        return self._panel if isinstance(self._panel, TemplatePanel) else None
+        return self._panel if isinstance(self._panel, RenamePanel) else None
 
     def _index_of(self, row: Row) -> QModelIndex:
         """The model index `row` currently occupies, or an invalid one (`T118-R14`'s rule).
@@ -2641,8 +2643,8 @@ class AddUrlDialog(QDialog):
 
         offers_formats = index.isValid() and bool(index.data(FORMATS_AVAILABLE_ROLE))
         offers_options = index.isValid() and bool(index.data(OPTIONS_AVAILABLE_ROLE))
-        offers_template = index.isValid() and bool(index.data(TEMPLATE_AVAILABLE_ROLE))
-        if offers_formats or offers_options or offers_template:
+        offers_rename = index.isValid() and bool(index.data(RENAME_AVAILABLE_ROLE))
+        if offers_formats or offers_options or offers_rename:
             # `UX-011`'s heading, and its order: the per-item verbs sit **above** the entries the
             # menu already held, first `Choose specific formats…`, per `docs/UX_SPEC.md` §4.
             menu.addSection("Just this item")
@@ -2654,10 +2656,10 @@ class AddUrlDialog(QDialog):
                 options = QAction(OPTIONS_TEXT, menu)
                 options.triggered.connect(lambda: self.open_options(row))
                 menu.addAction(options)
-            if offers_template:
-                template = QAction(TEMPLATE_TEXT, menu)
-                template.triggered.connect(lambda: self.open_template_editor(row))
-                menu.addAction(template)
+            if offers_rename:
+                rename = QAction(RENAME_TEXT, menu)
+                rename.triggered.connect(lambda: self.open_rename(row))
+                menu.addAction(rename)
             menu.addSeparator()
 
         if row.state is RowState.FAILED:
@@ -3061,7 +3063,7 @@ class AddUrlDialog(QDialog):
             self.preset_for(row),
             url=row.url,
             output_directory=str(self._output_directory),
-            default_output_template=self._default_output_template,
+            default_output_template=self.template_for(row),
         )
         return self._with_settings_defaults(request)
 

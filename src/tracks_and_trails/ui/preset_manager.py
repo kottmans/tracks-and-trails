@@ -69,7 +69,6 @@ from tracks_and_trails.ui.options_dialog import OptionsDialog
 PRESET_LIST_NAME: Final = "presetManagerList"
 PRESET_NAME_NAME: Final = "presetManagerName"
 SELECTOR_NAME: Final = "presetManagerSelector"
-TEMPLATE_NAME: Final = "presetManagerTemplate"
 NEW_NAME: Final = "presetManagerNew"
 DUPLICATE_NAME: Final = "presetManagerDuplicate"
 DELETE_NAME: Final = "presetManagerDelete"
@@ -192,7 +191,8 @@ class PresetManager(QDialog):
     def _build_form(self) -> QWidget:
         """The fields a preset is edited in. `REQ-010`'s seven are `OptionsDialog`'s, not these.
 
-        Name, selector and template are the fields that have no other editor. The post-processing
+        Name and selector are the fields that have no other editor; naming is not a preset's
+        (`UX-014`), so there is no template field. The post-processing
         options already have one — `docs/UX_SPEC.md` §6's screen, which `T-109` built to be opened
         *"from the preset manager, editing a saved preset"* — and building a second set of controls
         for them here would be two screens answering one question.
@@ -209,11 +209,6 @@ class PresetManager(QDialog):
         self._selector.setObjectName(SELECTOR_NAME)
         self._selector.setAccessibleName("Format selector")
         fields.addRow("Format", self._selector)
-
-        self._template = QLineEdit(form)
-        self._template.setObjectName(TEMPLATE_NAME)
-        self._template.setAccessibleName("Output template")
-        fields.addRow("Save as", self._template)
 
         self._reason = QLabel("", form)
         self._reason.setWordWrap(True)
@@ -317,10 +312,9 @@ class PresetManager(QDialog):
             return
         self._name.setText(preset.name)
         self._selector.setText(preset.format_selector)
-        self._template.setText(preset.output_template)
 
         editable = not preset.built_in
-        for field in (self._name, self._selector, self._template):
+        for field in (self._name, self._selector):
             field.setReadOnly(not editable)
         self._reason.setText(self._reason_for(preset))
 
@@ -428,7 +422,6 @@ class PresetManager(QDialog):
                 preset,
                 name=self._name.text(),
                 format_selector=self._selector.text(),
-                output_template=self._template.text(),
             )
             settings = settings_store.update_preset(self._settings, preset.name, edited)
         except (TypeError, ValueError) as refusal:
