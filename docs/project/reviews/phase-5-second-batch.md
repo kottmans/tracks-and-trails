@@ -112,3 +112,106 @@ Nothing was pushed. The work can return to the implementer for the in-scope
 corrections; the Critical uninstall finding must be independently verified before
 distribution. T-323 alone has exhausted its ordinary Medium-only review budget,
 so a further focused pass there requires the maintainer's explicit §14 choice.
+
+## 2026-09-13 — Correction review through acdc570
+
+**Reviewer:** Codex, independent of the implementer.
+**Base:** `8e67f6ff5b5804a8da907c56aeecac8e9fa5a0a7`.
+**Head:** `acdc57071026fac0dfb15743fe24651cb1fcf013`.
+**Boundary:** The 22-commit correction batch, the supplied new T-319/T-331/T-332
+completion evidence, and the previous findings it answers. This is a focused
+correction review, not another broad audit of settled work.
+**Verdict:** Changes requested on T-331; T-323 and the remaining physical/scope
+items remain Blocked. The installer data-loss and queue-stopping defects are resolved.
+
+The maintainer explicitly authorized the additional T-323 pass. The requested
+`git pull --rebase` dropped local `f2a4b58` as already applied on main as
+`7825888`; review then used the clean `acdc570` tree. No implementation edits were
+made by this reviewer. The final two commits after CI head `40b1dd8` change only
+TASKS and STATUS.
+
+### Dispositions
+
+| Scope | Correction outcome |
+|---|---|
+| [T-322](T-322.md) | Critical T322-R1 **Resolved**, with fixed/negative Sandbox evidence. Workflow-built installer, SmartScreen and T-039 dependencies still prevent completion; align the remaining empty-directory wording in normal completion sync. |
+| [T-334](T-334.md) | T334-R1 **Resolved; Approved**. The original real-worker ordering now completes both jobs and stops exactly once. |
+| [T-324 / T-319](T-324.md) | Upload and ffmpeg findings **Resolved**. T-319 **Approved** after the new Windows release-build, report and console evidence. T-324 still awaits its tagged draft run. |
+| [T-318 / T-039](T-318.md) | Missing retained transfer and harness failure-contract findings **Resolved**. T-318 **Approved**; T-039 still requires the maintainer's candidate-vs-push decision. |
+| [T-325](T-325.md) | Cold-gate defect **Resolved**; measurement finding remains **Open / Blocked**. Withdrawal of unsupported compliance claims is verified; it does not supply cold measurements. |
+| [T-323](T-323.md) | Windows dependency finding **Resolved**. Binary scan still misses paths across its printable-run boundary and extensionless store paths; **Blocked** after the authorized pass. |
+| [T-326 / T-332](T-326.md) | Settings-freeze and original routing findings **Resolved**. T-332 **Approved** on its baseline-bump evidence. T-326 still awaits its candidate and manual operations; correct the residual real-download routing in completion sync. |
+| [T-331](T-331.md) | Initial review: **Changes requested**. Broken or incomplete pytest runs can still receive a successful mutation-kill verdict. |
+| [T-320 / T-317](T-320.md) | T320-R3 **Resolved**; earlier approval unchanged. |
+| T-327 / [T-333](T-333.md) | No new manual observation supplied; the draft stays a draft. The remaining session items and installed version-table observation are not completed by the automated download or CI. |
+
+**P5B2-R1 — Resolved (Low):** STATUS now describes Phase 5 and routes its open
+work; normal completion sync will update this review's dispositions. Older
+verification paragraphs retain their identified historical boundaries.
+**P5B2-R2 — Resolved (Low):** the roadmap was removed from tracking, ignore rules
+were added, and the preserved `../roadmap-phase-5.html` exists beside the checkout.
+No roadmap content was deleted by this reviewer.
+
+The platformdirs licence addition was inspected: the committed text matches the
+local installed 4.11.0 distribution's 1,089-byte licence. The new dependency-tree
+check passes and requires a shipped licence entry for each current runtime Python
+distribution. That check concerns the current resolved Python dependency graph,
+not every possible third-party component or future optional extra.
+
+### Independent validation
+
+Environment: Linux, Python 3.14.7, PySide6 6.11.1, yt-dlp 2026.8.19. The editable
+installation resolves to this checkout, not the implementer's separate worktree.
+
+| Check | Actual result |
+|---|---|
+| Ruff lint and whole-tree format | Passed before review edits: 409 files formatted |
+| Bare mypy; bare mypy with `--platform win32` | Both passed, 181 source/test files |
+| Offscreen unit/UI suite, four workers | **3,919 passed, 21 skipped, 17 warnings**, 98.87 s |
+| Serial integration suite | **464 passed, 6 warnings**, 425.45 s |
+| Combined default coverage | **4,383 passed, 21 skipped**, with no failing default test; these are the two runs above |
+| Original durable-probe reproduction | Queue remains started while probing, then both rows complete and `[True, False]` is emitted |
+| Windowed report transport, real subprocess loop with temporary executable | Five reports written: 5/5, exit 0. Same markers only on discarded stdout: 0/5, exit 1 |
+| Binary cookie-path checks | Original case rejected; 600-byte printable-prefix and extensionless cases accepted incorrectly; see T323-R2 |
+| Whole mutation-driver counterexamples | Normal control passes; error-only and missing-summary mutations incorrectly yield KILLED/exit 0; interrupted baseline still permits later kill labels |
+| Real pytest fixture-error control | Exit 1, **1 error**, no test assertion executed; corroborates the driver's error-only counterexample |
+| Fixed Sandbox report comparison | Committed captured body matches the original full report after BOM/line-ending normalization; original negative reports inspected |
+
+Logs and temporary reproduction scripts are under
+`/tmp/tt-phase5-corrections-review/`. The records retain the substantive sequences
+and results. Default suites ran with the venv on PATH and permitted loopback
+sockets; no user media, installer, live updater or remote workflow was invoked.
+
+### Independently verified CI and canary
+
+[CI run 34742480032](https://github.com/kottmans/tracks-and-trails/actions/runs/34742480032)
+is **success** at `40b1dd883de5cc114ba54d3f34df9587b95b4187`. Linux, Windows desktop,
+both frozen jobs and STARBASE coverage succeeded. The intentionally disabled
+Linux orphan job was skipped. The Windows release evidence records:
+
+```text
+windowed probes: 5 of 5 passed through their report
+smoke: conhost.exe and a ConsoleWindowClass window observed
+release: none seen in 15 s; ok: no console window
+```
+
+[Canary run 34743729647](https://github.com/kottmans/tracks-and-trails/actions/runs/34743729647)
+is **success** at the same head. It resolved yt-dlp **2026.8.19** and reports
+**4,350 passed, 42 skipped, 14 deselected**, 23 warnings, 1,102.99 s. This supersedes
+the earlier “not dispatched” limitation for T-332. T-326 still requires evidence
+for its eventual candidate; neither run is a tagged release run.
+
+The supplied Windows mutation rerun has **ten rows: three baselines and seven
+mutation cases**, not ten mutations. Its table is retained in T-331; the earlier
+full report was also inspected. Actual assertion failures in those runs remain
+useful evidence despite the driver's separately reproduced classification gap.
+
+No task/status closure, tag, reboot, Windows manual-session completion, release
+approval or push was performed. Review records and their index are the only
+repository changes made by this pass.
+
+Final review-document checks passed: Ruff lint and formatting (410 files),
+`git diff --check`, and all 181 local Markdown file targets in the changed
+records. The nine appended review files preserve their entire pre-review byte
+sequences as prefixes. The migration verifier also passed: 381 original entries,
+105 files and all 2,403,546 historical bytes preserved.
