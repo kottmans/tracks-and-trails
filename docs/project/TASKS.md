@@ -2348,8 +2348,13 @@ worked there; updating in the Sandbox's Settings fixed it there too.
 
 - [x] The pin, the constant and the audit name 2026.8.19, and the pin-bound tests pass against it
 - [x] CI green on both platforms at the new pin — run `34739041125` at `4320859`, every job
-- [ ] The `yt-dlp canary` workflow dispatched at 2026.8.19 (`TESTING` §8 item 10a) — not dispatched
-      overnight, because it spends hosted Actions minutes; the local equivalent is recorded above
+- [x] The `yt-dlp canary` workflow dispatched at 2026.8.19 (`TESTING` §8 item 10a) — run
+      [`34743729647`](https://github.com/kottmans/tracks-and-trails/actions/runs/34743729647) at
+      `40b1dd8`, **green**: `pip install --upgrade yt-dlp` resolved **2026.8.19**, PyPI's latest and
+      the pin, and the suite passed **4,350 / 42 skipped** with the expected-stale tests deselected.
+      *(A first draft of this line called dispatching it a cost to hosted minutes; the repository is
+      public, and `LINUX_RUNNER` is unset, so it runs on a free hosted runner.)* **`T-326` still needs
+      it at the release candidate's commit.**
 - [x] `REL-002`'s negative build repeated at the new pin, with the result recorded there — still redundant: the archives differ only by `yt_dlp.__main__` and `yt_dlp.__pyinstaller`, 1751 extractors either way
 - [x] The rebuilt Windows installer downloads a YouTube video in a clean Sandbox in the
       `Best video up to 1080p (MP4)` preset — the case that failed, not the probe's selector.
