@@ -111,17 +111,21 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
-[UninstallDelete]
-; **Only what the installer created.** `DAT-001` keeps the user's settings, queue database and
-; downloads: an uninstaller that deleted a download history would be destroying data the user
-; never put here. `T-039` asserts both halves separately — leftovers under the install root are a
-; failure, leftovers under the user directories are the intended behaviour.
-Type: filesandordirs; Name: "{app}"
+; **No `[UninstallDelete]` section, and that is the rule rather than an omission** (`T322-R1`).
+; It held `Type: filesandordirs; Name: "{app}"`, under a comment saying *only what the installer
+; created* — and `filesandordirs` is recursive deletion of the **whole directory**, including
+; anything the user put there or that was there before this installed into it. Inno's own
+; documentation warns against exactly that. Inno already removes every file its log says it
+; installed, and the directory itself once it is empty, so nothing is lost by having none.
+; The application writes nothing beside itself (`NFR-004`), so there is nothing else of ours to
+; name. `tests/unit/test_windows_packaging.py` refuses a wildcard or recursive entry under `{app}`,
+; and `T-039`'s Sandbox run plants a user file inside the install directory and requires it to
+; survive.
 
 [Messages]
 ; Said on the uninstaller's own final page, because a user deciding whether to uninstall is
 ; entitled to know what survives it.
-ConfirmUninstall=Remove %1?%n%nYour settings, download history and downloaded files are kept. Remove them by hand if you want them gone.
+ConfirmUninstall=Remove %1?%n%nYour settings, download queue and downloaded files are kept, and so is anything you saved in its folder. Remove them by hand if you want them gone.
 
 ; **No file associations and no protocol handler in 0.1.0** (`T-322` scope). `T-104` — handing a
 ; second launch's URL to the running instance — is not built, so an association would open a

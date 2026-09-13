@@ -2051,6 +2051,33 @@ be built without Inno Setup; the maintainer installed it.)*
 **Phase:** Phase 5
 **Depends on:** `T-319` (what it installs), `T-320` (the version), `T-317` (whether it is signed)
 
+#### 2026-09-13 — `T322-R1`, Critical: the uninstaller deleted its whole directory
+
+**The reviewer was right, and the Sandbox shows it.** `[UninstallDelete]` held
+`Type: filesandordirs; Name: "{app}"` under a comment saying *only what the installer created* —
+and `filesandordirs` is recursive deletion of **everything** there, including a user's own files
+and anything that was in the directory before this installed into it. Inno's own documentation
+warns against exactly that, and every automated run installed into an empty directory, so none
+could see it.
+
+**Removed, not narrowed.** Inno removes every file its log installed and the directory once it is
+empty; the application writes nothing beside itself (`NFR-004`), so there is nothing else of ours
+to name. `test_the_uninstaller_deletes_nothing_wholesale_under_the_install_directory` refuses a
+recursive or wildcard entry under `{app}`, with the shipped line as its positive control. The
+uninstall prompt also stopped promising a *download history*, which the application no longer
+keeps (`T-186`).
+
+**Verified in Windows Sandbox with both installers built from the same tree**, by `T-039`'s
+reworked run, which installs into a directory already holding a sentinel file and plants a
+user-saved file inside it before uninstalling:
+
+| Installer | Sentinel | User-saved file | Verdict |
+|---|---|---|---|
+| fixed, sha256 `5c5c3ec3…` | kept, unchanged | kept, unchanged | **PASS** |
+| the old rule restored, `91bd51cb…` | **DELETED** | **DELETED** | **FAIL 2** |
+
+The passing report is `docs/project/evidence/windows-0.1.0.dev0-sandbox-2026-09-13.md`.
+
 #### 2026-09-12 — the script, with every default the scope named
 
 `packaging/tracks-and-trails.iss`. **Per-user with no administrator prompt**, because the

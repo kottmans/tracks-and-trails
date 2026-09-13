@@ -294,6 +294,52 @@ def test_the_installer_ships_the_whole_one_dir_tree() -> None:
     assert "recursesubdirs" in text, "subdirectories are not copied, so _internal/ is left behind"
 
 
+def uninstall_deletions(text: str) -> list[str]:
+    """Every non-comment entry in the installer's `[UninstallDelete]` section, if it has one."""
+    entries: list[str] = []
+    section = ""
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("[") and line.endswith("]"):
+            section = line.lower()
+        elif section == "[uninstalldelete]" and line and not line.startswith(";"):
+            entries.append(line)
+    return entries
+
+
+def test_the_uninstaller_deletes_nothing_wholesale_under_the_install_directory() -> None:
+    """**`T322-R1`, Critical.** `Type: filesandordirs; Name: "{app}"` deleted the whole directory.
+
+    That is recursive deletion of **everything** there, including files a user saved into it or
+    that were there before the installer used it — under a comment saying *only what the installer
+    created*. Inno removes what its log installed without any entry, so the rule is: nothing
+    recursive, and no wildcard, anywhere under `{app}`. A named, application-owned file would pass.
+    """
+    offending = [
+        entry
+        for entry in uninstall_deletions(INSTALLER.read_text(encoding="utf-8"))
+        if "{app}" in entry.lower() and ("filesandordirs" in entry.lower() or "*" in entry)
+    ]
+    assert not offending, f"the uninstaller would delete user files: {offending}"
+
+
+def test_the_wholesale_deletion_check_sees_the_line_that_was_there() -> None:
+    """The positive control: the exact declaration `T322-R1` found must be refused."""
+    shipped = '[UninstallDelete]\n; a comment\nType: filesandordirs; Name: "{app}"\n'
+    assert uninstall_deletions(shipped) == ['Type: filesandordirs; Name: "{app}"']
+
+
+def test_the_uninstall_message_promises_nothing_the_application_does_not_keep() -> None:
+    """`T320-R3`'s neighbour: there is no download history to keep (`T-186`), so it is not named."""
+    message = next(
+        line
+        for line in INSTALLER.read_text(encoding="utf-8").splitlines()
+        if line.startswith("ConfirmUninstall=")
+    )
+    assert "history" not in message.lower()
+    assert "kept" in message
+
+
 def test_signing_is_a_line_to_edit_rather_than_a_line_to_write() -> None:
     """`REL-005` ships `0.1.0` unsigned with a certificate as the `1.0` condition. The difference
     between those two states should be uncommenting, not authoring."""
