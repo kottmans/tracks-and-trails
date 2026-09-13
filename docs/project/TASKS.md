@@ -637,7 +637,7 @@ own words.
 
 **Item 1 is confirmed** on the rebuilt installer: no install-mode question, and the wizard artwork
 sharp at Inno 6.7's real slot sizes. Then, using the installed application in Sandbox, the
-maintainer found **six defects**, none visible to an automated run, and two more on 2026-09-13 — both confirmed fixed by the maintainer on the rebuilt installer (`4324e21c…`) the same day. Each is fixed, pushed and
+maintainer found **six defects**, none visible to an automated run, and more on 2026-09-13. The first two were confirmed fixed by the maintainer on the rebuilt installer (`4324e21c…`) the same day; the rest await the next build. **Vertical bars** the maintainer saw across the empty queue in dark are not drawn by the application — measured on `STARBASE`, the queue paints one colour, `#0a1712`, everywhere but its text — and are most likely the Sandbox's remote display compressing a near-black area. Each is fixed, pushed and
 tested; the review record will cite them.
 
 | Found | Cause | Commit |
@@ -650,6 +650,11 @@ tested; the review record will cite them.
 | **YouTube downloads then failed with 403** | the bundled yt-dlp 2026.7.4; `T-332` bumps it | `663838e` |
 | dark mode: `Start` and `Clear finished` highlighted only at the border under the pointer | the hover fill was `sunken`, 1.05:1 against the resting fill; a `hover` role lifts it | `fcff105` |
 | tooltips white on white | no `QToolTip` rule, so the theme's text on the Windows style's white panel | `fcff105` |
+| a disabled option's label still drawn in full ink | the `QWidget` rule's colour beat the palette's disabled text for every widget without its own `:disabled` rule | `f91ea9d` |
+| a band behind each label and tick box inside a group | every widget painted the `window` ground on the group's `surface` | `a5cd14f` |
+| row buttons with no face, no hover and no press; the status chip read as a button | verbs drawn through the list's style, which no button rule matches; the chip outlined like a button (ruled: a filled label) | `3f576e1` |
+| tick boxes a white square in every theme and state | the Windows style's own indicator (ruled: drawn from the theme) | `9511238` |
+| no way back from a cancel | `CANCELLED` had no exit (ruled: *Queue again*, `T-335`) | `e9549fd` |
 
 Two changes of behaviour came out of the same sitting, each ruled by the maintainer: the yt-dlp
 section shows in-use, bundled and latest side by side (`T-333`), and a started queue stops itself
