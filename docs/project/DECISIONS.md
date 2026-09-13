@@ -88,7 +88,7 @@ Current requirements and architecture retain their own canonical authority.
 | [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously) | Windows runs on `STARBASE`, on every push, and asynchronously | Accepted | [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died); [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
 | [OPS-009](#ops-009--where-each-ci-job-runs-now-that-starbase-is-back-and-minutes-are-metered) | Where each CI job runs, now that `STARBASE` is back and minutes are metered | Partly superseded | [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously); [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died); [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
 | [DAT-006](#dat-006--the-completion-ledger-what-it-stores-and-what-it-deliberately-does-not) | The completion ledger: what it stores, and what it deliberately does not | Withdrawn; purge ruling accepted | [Withdrawn 2026-08-06](#withdrawn-2026-08-06--there-is-no-ledger-so-there-is-nothing-to-decide); [Legacy-data ruling 2026-08-06](#legacy-data-ruling-2026-08-06--the-rows-already-written-are-purged-on-upgrade) |
-| [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch) | The queue does not run until it is started, and it is stopped at every launch | Accepted | — |
+| [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch) | The queue does not run until it is started, and it is stopped at every launch | Accepted | [Amended 2026-09-12](#amended-2026-09-12--a-queue-with-nothing-left-to-do-stops-itself) |
 | [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | — |
 | [UX-007](#ux-007--the-phase-3-surfaces-ruled-all-25-open-p-clauses) | The Phase 3 surfaces, ruled: all 25 open `[P]` clauses | Accepted | — |
 | [SEC-004](#sec-004--the-fifteen-options-sec-003-did-not-see-are-all-forbidden) | The fifteen options `SEC-003` did not see are all forbidden | Accepted | — |
@@ -5021,6 +5021,31 @@ What was missing was never machinery. It was the default.
 - **A per-row `Start now`.** Rejected: it reopens `UX-001` and `P-10` ahead of `T-113`, and needs a
   rule for what it means against the concurrency limit that neither this decision nor that task has
   yet had to take.
+
+### Amended 2026-09-12 — a queue with nothing left to do stops itself
+
+**Status:** **Accepted** — maintainer decision, from `T-327`'s session, taken from the Implementer's
+recommendation. Built by `T-334`.
+
+**Item 2 is replaced.** It read *"A started queue stays started … Draining does not re-arm it: a
+queue that empties and then receives a URL starts that URL."* In use, the maintainer found a window
+reading *running* over a queue with nothing in it.
+
+**2. A started queue runs what it holds and everything added while it has work, and stops itself
+once that work is done** — when a download session ends and no download is left running, waiting
+for a slot, counting down to an automatic retry (`UX-002`), or held for Start. A URL added after
+that waits **Held** for the next Start, the review the queue already gives at launch.
+
+- **Triggered by a download ending, never by the queue being empty.** `Start` pressed before
+  pasting still means *run what I add next*; a probe being read is not queue work and does not stop
+  it (item 5).
+- **A retry that is due is work.** Stopping in the backoff would park the retry behind a Stop
+  nobody pressed.
+- **This is not the batch commit rejected above.** That alternative released only what was queued
+  at the instant of Start, leaving a row *Held* beside running jobs. Here a URL added while anything
+  is still running runs; a row can only be Held once nothing is.
+- Items 1 and 3–8 are unchanged, and so is the drain: stopping itself interrupts nothing, because
+  by then nothing is running.
 
 ---
 

@@ -37,7 +37,7 @@ from typing import Any, Final
 
 import psutil
 import pytest
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtCore import QCoreApplication, QTimer
 
 from tests.qt_lifecycle import drain
 from tracks_and_trails.core import logging as app_logging
@@ -4770,34 +4770,143 @@ def test_a_manager_starts_stopped_and_runs_nothing_until_it_is_started(
         assert spin(lambda: download.is_idle, timeout=60)
 
 
-def test_a_started_queue_stays_started_for_work_added_afterwards(
+def test_a_started_queue_stops_once_its_last_download_has_ended(
     tmp_path: Path, media_url: Callable[..., str], spin: Callable[..., bool]
 ) -> None:
-    """`UX-006` chose a **mode**, not a one-shot batch commit.
+    """`T-334`, amending `UX-006` item 2: a queue with nothing left to do goes back to stopped.
 
-    Draining does not re-arm the gate: a queue that empties and then receives a URL starts it.
-    The rejected alternative — `Start` releasing only what was queued at that instant — would
-    leave a row sitting `Held` beside running jobs with the difference visible nowhere.
+    It used to stay started, which the maintainer found left the window reading *running* over an
+    empty queue. **Still a mode rather than a batch commit** while there is work: this only acts
+    once nothing runs, waits or is due. A URL added afterwards is held for the next Start, the same
+    review `UX-006` gives a queue at launch.
     """
     repository = FakeRepository()
     url = media_url(total_bytes=64 * 1024)
     repository.add(replace(make_job("job-1", url, tmp_path), queue_position=0))
 
     download = DownloadManager(repository, concurrency=1)
+    announced: list[bool] = []
+    download.queue_running.connect(announced.append)
     try:
         download.start_queue()
         download.start("job-1")
         assert spin(lambda: repository.jobs["job-1"].status is JobStatus.COMPLETED, timeout=60), (
             "the first job never finished, so the queue never drained"
         )
-        assert spin(lambda: download.is_idle, timeout=60), "the queue never went idle"
-        assert download.is_running, "draining the queue stopped it; the gate re-armed itself"
+        assert spin(lambda: not download.is_running, timeout=60), (
+            "the queue finished its last download and stayed started"
+        )
+        assert announced == [True, False], f"the window was told {announced}"
 
         repository.add(replace(make_job("job-2", url, tmp_path), queue_position=1))
         download.start("job-2")
-        assert spin(lambda: repository.jobs["job-2"].status is JobStatus.COMPLETED, timeout=60), (
-            "a job added to a drained-but-started queue needed a second Start"
+        assert not spin(lambda: bool(download._sessions), timeout=3), (
+            "a URL added after the queue stopped itself ran without a Start"
         )
+        download.start_queue()
+        assert spin(lambda: repository.jobs["job-2"].status is JobStatus.COMPLETED, timeout=60), (
+            "Start did not run the job added after the queue stopped"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_start_on_an_empty_queue_waits_for_what_is_added(
+    tmp_path: Path, media_url: Callable[..., str], spin: Callable[..., bool]
+) -> None:
+    """`T-334`: stopping is triggered by a download *ending*, never by the queue being empty.
+
+    Otherwise `Start` pressed before pasting would undo itself on the spot, and the URL the user
+    then added would sit `Held` under a Start they had just pressed.
+    """
+    repository = FakeRepository()
+    url = media_url(total_bytes=64 * 1024)
+    download = DownloadManager(repository, concurrency=1)
+    try:
+        download.start_queue()
+        # **A paste being read, before anything is downloaded.** The check is re-asked every time
+        # a write chain empties, so a queue that stopped whenever it was empty would stop here.
+        # A *staged* probe, the add dialog's: a durable job's probe continues into its download
+        # (`ARC-009`), and a queue that then stopped would be right to.
+        probed: list[str] = []
+        download.media_probed.connect(lambda job_id, *_: probed.append(job_id))
+        staged = download.stage(make_job("unused", url, tmp_path).request)
+        assert spin(lambda: staged in probed, timeout=60), "the paste was never read"
+        assert spin(lambda: not download._chains and not download._sessions, timeout=60)
+        assert not spin(lambda: not download.is_running, timeout=2), (
+            "Start on an empty queue flipped back to stopped when a paste was read"
+        )
+        repository.add(replace(make_job("job-1", url, tmp_path), queue_position=0))
+        download.start("job-1")
+        assert spin(lambda: repository.jobs["job-1"].status is JobStatus.COMPLETED, timeout=60), (
+            "a URL added to a started, empty queue did not run"
+        )
+        assert spin(lambda: not download.is_running, timeout=60)
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+class FailureConfirmedLateRepository(FakeRepository):
+    """Confirms a `FAILED` write only after the failed session has had time to be released.
+
+    The real writer answers on a later event-loop turn and can take seconds under a held lock
+    (`ARC-005`); this fake answers immediately, which closes the window `T-334`'s race lives in.
+    """
+
+    def update(self, job: Job, done: Callable[[str | None], None] | None = None) -> None:
+        if job.status is not JobStatus.FAILED or done is None:
+            super().update(job, done)
+            return
+        super().update(job, None)
+        QTimer.singleShot(1500, lambda: done(None))
+
+
+@pytest.mark.parametrize("store", [FakeRepository, FailureConfirmedLateRepository])
+def test_a_queue_stays_started_while_an_automatic_retry_is_due(
+    tmp_path: Path,
+    spin: Callable[..., bool],
+    monkeypatch: pytest.MonkeyPatch,
+    store: type[FakeRepository],
+) -> None:
+    """`T-334` and `UX-002`: a failed download counting down to a retry is work left to do.
+
+    **Between the failure and the retry the job is in no running collection**, and the retry is
+    scheduled only once the failure's write has landed — possibly after the session is released.
+    A queue that stopped in that window would park the retry `Held` behind a Stop nobody pressed.
+    Counted: the child runs once plus once per retry, and the queue stops only after the last.
+    Run a second time with the failure confirmed late, which is the order that race needs.
+    """
+    quick_backoff(monkeypatch, seconds=0.5)
+    repository = store()
+    repository.add(
+        replace(
+            make_job("job-network", "https://retry.invalid/clip", tmp_path),
+            status=JobStatus.READY,
+        )
+    )
+    download = DownloadManager(
+        repository, entry_point=child_recording_kind_then_failing_network, concurrency=1
+    )
+    stopped_with: list[int] = []
+    sessions = tmp_path / "session-kinds.txt"
+
+    def record(running: bool) -> None:
+        if not running:
+            stopped_with.append(len(sessions.read_text("utf-8").splitlines()))
+
+    download.queue_running.connect(record)
+    try:
+        download.start_queue()
+        download.start("job-network")
+        attempts = 1 + manager_module.AUTOMATIC_RETRY_LIMIT
+        assert spin(lambda: bool(stopped_with), timeout=90), "the queue never stopped"
+        assert stopped_with == [attempts], (
+            f"the queue stopped after {stopped_with[0]} of {attempts} sessions: it gave up on an "
+            "automatic retry that was still due"
+        )
+        assert repository.jobs["job-network"].status is JobStatus.FAILED
     finally:
         download.shutdown()
         assert spin(lambda: download.is_idle, timeout=60)

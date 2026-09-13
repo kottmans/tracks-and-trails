@@ -95,8 +95,9 @@ residue and blocks the first public release.
 - **REQ-015** — Per job, support cancel, retry, and remove. Cancelling must terminate the underlying work promptly and must not leave the UI unresponsive. Removing takes a job out of the queue and never deletes a file from disk. **Pause and resume are queue-level, not per-job** (`UX-001`, maintainer, 2026-07-29): pausing lets in-flight downloads finish and starts nothing new, so no partial file is ever created by pausing. Remove never deletes a file; removing a running job cancels it first. *(This read "Per job, support cancel, pause, resume, retry, and remove" until `T-080`'s decision; `core/job_state.py` still carries `RUNNING → PAUSED → RUNNING` edges that nothing now reaches, which `T-080` owns. `UX-001` holds the rationale and its reopening condition — per-job pause becomes coherent when `REQ-017` lands resume in Phase 3.)*
   - **The queue does not run until the user starts it** (`UX-006`, maintainer, 2026-08-07). Adding
     a URL enqueues it and starts nothing; the user reviews the batch and presses **Start**. A
-    started queue keeps running — later additions start immediately — until **Stop**, which drains
-    exactly as above. **The queue is stopped at every launch**, so restoring a queue never resumes
+    started queue keeps running — additions start as soon as a slot allows — until **Stop**, which
+    drains exactly as above, **or until its work is done**: once the last download ends with nothing
+    waiting or due a retry, the queue stops itself (`UX-006` amended 2026-09-12, `T-334`). **The queue is stopped at every launch**, so restoring a queue never resumes
     downloading on its own. Everything that begins work observes the gate, including automatic
     retry (`UX-002`) and a user's own *Retry*; **probing does not** — a stopped queue still resolves
     a paste, or there would be nothing to review. *(Until 2026-08-07 a job started the moment it was

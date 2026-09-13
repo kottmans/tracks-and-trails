@@ -614,6 +614,11 @@ class DownloadManager(QObject):
         #: widest reach and the least visible symptom, which is why `T-181` asserts it on the pool
         #: rather than on a window. It was `_paused = False` until 2026-08-07, i.e. running.
         self._running = False
+        #: A download has ended since the queue was started, so the queue should stop once nothing
+        #: is left to do (`T-334`). Asked again whenever a job's write chain empties, because the
+        #: work that would keep the queue running — an automatic retry — is scheduled only when the
+        #: failure's write has landed, which can be after the session is released.
+        self._drain_pending = False
         #: Jobs asked to be removed whose session has not ended yet (`T-080`). Removal of a running
         #: job is a cancel followed by a delete, and the delete cannot happen until the process is
         #: gone — a row deleted out from under a live session leaves `_require` raising on the next
@@ -735,6 +740,7 @@ class DownloadManager(QObject):
         if self._running or self._shutting_down:
             return
         self._running = True
+        self._drain_pending = False
         self.queue_running.emit(True)
         # **What the last run left is admitted here, and nowhere earlier** (`T-215`). Between
         # setting the gate open and filling slots, so these rows take their turn in the same fill
@@ -742,6 +748,48 @@ class DownloadManager(QObject):
         # so a stop/start cycle does not re-admit what is already running.
         self._admit_held_for_start()
         self._fill_free_slots()
+
+    def _has_download_work(self) -> bool:
+        """Whether any download is running, reserved, waiting, due a retry or held for Start.
+
+        **Downloads only.** A probe is never gated (`UX-006` item 5), so a paste being read in the
+        add dialog is not queue work and must not keep a finished queue running.
+
+        **A write still in flight counts, for any job.** A failed download's automatic retry is
+        scheduled in the `then` of the write recording the failure, and a due retry is re-started
+        in the `then` of the write re-queueing it — so between a session's release and that
+        callback, or between the backoff expiring and the start, the job is in no collection
+        below and only its chain says the work is not over.
+        """
+        return bool(
+            self._occupant_ids(SessionKind.DOWNLOAD)
+            or any(self._wants(job_id) is SessionKind.DOWNLOAD for job_id in self._waiting)
+            or any(self._wants(job_id) is SessionKind.DOWNLOAD for job_id in self._retry_at)
+            or self._held_for_start
+            or self._chains
+        )
+
+    def _stop_when_drained(self) -> None:
+        """Return a started queue to stopped once its last download has ended (`T-334`).
+
+        **`UX-006` item 2, amended 2026-09-12 by the maintainer.** It said a started queue stays
+        started; in use that left a window reading *running* with nothing to run. So the queue stops
+        when a download session ends and no download is left running, waiting, counting down to an
+        automatic retry (`UX-002`), or held for Start. Armed by the end of a download session and
+        asked again as write chains empty, which is what keeps `Start` on an empty queue meaning
+        *run what I add next* rather than flipping straight back.
+
+        `stop_queue` does the rest, so nothing about stopping differs: the same signal, the same
+        refusal during shutdown, and a later URL waits `Held` for the next Start.
+        """
+        if not self._drain_pending:
+            return
+        if not self._running or self._shutting_down:
+            self._drain_pending = False
+            return
+        if not self._has_download_work():
+            self._drain_pending = False
+            self.stop_queue()
 
     # --- the exclusion held while yt-dlp's tree changes (`T198-R3`) ----------------------
 
@@ -2531,6 +2579,9 @@ class DownloadManager(QObject):
         # while its probe was still being released waits on `_waiting`; nothing else would start it
         # until the next tick, and a lane freed here should not cost a job 50 ms of nothing.
         self._fill_free_slots()
+        if session.kind is SessionKind.DOWNLOAD:
+            self._drain_pending = True
+            self._stop_when_drained()
         # **After the tree is reaped, which is the whole of `T113-R3`** (`UX-008`). A user's Cancel
         # or Remove ends the partial's life; an orderly shutdown does not. Doing it here rather
         # than in the worker covers the escalated paths the worker never reaches — `terminate()`
@@ -3104,6 +3155,7 @@ class DownloadManager(QObject):
             return
         if not chain.steps:
             del self._chains[job_id]
+            self._stop_when_drained()
             return
         step = chain.steps.popleft()
         chain.running = True

@@ -14,6 +14,46 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-334 — A started queue stops itself once it has nothing left to do
+
+**Status:** **In Review** — ruled 2026-09-12 (stop when drained, the Implementer's recommendation),
+recorded as `UX-006`'s 2026-09-12 amendment, and built the same day. Filed from `T-327`'s session.
+**Owner:** Maintainer rules; Implementer builds
+**Priority:** Medium
+**Phase:** Phase 5
+**Relevant context:** `UX-006` item 2 — *"A started queue stays started … Draining does not re-arm
+it"*; `UX-002` (automatic retry waits 2 s, 4 s, 8 s, so an empty-looking queue can still have work
+due); `UX-001` (stop drains)
+**Affected surfaces:** `DownloadManager`'s gate; the toolbar's Start/Stop; the status-bar gate text
+
+The maintainer, in the Sandbox: *"I wonder if the start/run status should revert back to stopped after
+all the videos in the queue have been downloaded? Otherwise you get in a state where you are running
+a queue with no active tasks."*
+
+#### Built 2026-09-12
+
+`DownloadManager._stop_when_drained`, armed when a download session is released and asked again
+whenever a job's write chain empties. **The second trigger is the race**: a failed download's
+retry is scheduled only in the `then` of the write recording the failure, which can land after the
+session is released, so a check at release alone could stop the queue a moment before the retry
+exists. A write still in flight therefore counts as work.
+
+Tests in `tests/integration/test_manager.py`, replacing `…stays_started_for_work_added_afterwards`:
+the queue stops after its last download and holds a later URL for Start; Start on an empty queue
+survives a paste being read; and a queue with retries due stops only after the last attempt, run
+both with synchronous writes and with the failure confirmed 1.5 s late. **Each clause mutated,
+each killed**: dropping the retry clause (3 failures), the in-flight-write clause (2), the re-check
+when a chain empties (2), or the ended-download arming (1).
+
+#### Acceptance criteria
+
+- [x] A queue stops when its last download ends with nothing waiting, due or held
+- [x] Start on an empty queue does not undo itself; a probe does not stop a queue
+- [x] An automatic retry that is due keeps the queue started
+- [x] `UX-006` amended; `REQ-015`'s gate paragraph updated
+
+---
+
 ### T-039 — Verify Windows installer behavior on the runner
 
 **Status:** **In Review** — all four gates implemented and passing 2026-09-12, in Windows Sandbox
@@ -3296,22 +3336,6 @@ version is and what the latest is … There's also a wall of text there that kin
 Today the group is three paragraphs and one `Version in use` line. **The latest version is known to
 nobody until a network request is made**, and `NFR-007` allows that only as an explicit check —
 so a *Latest* row either waits for a button press or the requirement is amended.
-
-### T-334 — Should a started queue stop itself once it has nothing left to do?
-
-**Status:** Proposed — filed 2026-09-12 from `T-327`'s session; **needs a ruling**, because it reverses
-`UX-006` item 2
-**Owner:** Maintainer rules; Implementer builds
-**Priority:** Medium
-**Phase:** Phase 5
-**Relevant context:** `UX-006` item 2 — *"A started queue stays started … Draining does not re-arm
-it"*; `UX-002` (automatic retry waits 2 s, 4 s, 8 s, so an empty-looking queue can still have work
-due); `UX-001` (stop drains)
-**Affected surfaces:** `DownloadManager`'s gate; the toolbar's Start/Stop; the status-bar gate text
-
-The maintainer, in the Sandbox: *"I wonder if the start/run status should revert back to stopped after
-all the videos in the queue have been downloaded? Otherwise you get in a state where you are running
-a queue with no active tasks."*
 
 ### T-328 — The first release
 
