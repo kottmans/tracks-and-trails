@@ -624,7 +624,13 @@ def run_download_probe(url: str | None = None) -> int:
             # A direct media file declares no height, so the height-filtered default legitimately
             # matches nothing — the same reasoning `tests/network/test_real_download.py` records
             # for choosing its preset.
-            format_selector="best",
+            #
+            # **Separate streams first, then one file** (`REL-007`'s 2026-09-12 amendment). This
+            # was `best`, which on YouTube picks the old pre-merged format `18` — and YouTube now
+            # answers that one with `403 Forbidden`, measured on `STARBASE` with the bundled
+            # yt-dlp, while `395+251` for the same video downloaded and merged. A direct file has
+            # no separate streams, so it still falls through to `b`.
+            format_selector="bv*+ba/b",
             output_template="%(title)s.%(ext)s",
         )
         messages: queue_module.Queue[Any] = queue_module.Queue()
