@@ -48,8 +48,27 @@ REQUIRED_LICENCES: tuple[str, ...] = (
     "Qt-GPLv3.txt",
     "yt-dlp-Unlicense.txt",
     "truststore-MIT.txt",
+    "platformdirs-MIT.txt",
     "NOTICE.txt",
 )
+
+#: Which shipped licence text covers each third-party **Python distribution** the artifact bundles.
+#:
+#: `tests/unit/test_artifact_gates.py` walks the runtime dependency tree from `pyproject.toml` and
+#: fails on any distribution missing here, which is what turns *"every bundled component ships its
+#: licence"* from a list somebody keeps into a check. `platformdirs` had shipped since Phase 0 with
+#: no licence text, and nothing noticed because nothing asked.
+#:
+#: PySide6 and shiboken6 are licensed as Qt is, so the Qt texts cover them.
+LICENCE_FOR_DISTRIBUTION: dict[str, str] = {
+    "pyside6": "Qt-LGPLv3.txt",
+    "pyside6-essentials": "Qt-LGPLv3.txt",
+    "pyside6-addons": "Qt-LGPLv3.txt",
+    "shiboken6": "Qt-LGPLv3.txt",
+    "yt-dlp": "yt-dlp-Unlicense.txt",
+    "truststore": "truststore-MIT.txt",
+    "platformdirs": "platformdirs-MIT.txt",
+}
 
 #: Required **only where ffmpeg is bundled**, which `OPS-001` makes Windows alone. A Linux
 #: artifact ships no ffmpeg and is not failed for carrying no licence for it.

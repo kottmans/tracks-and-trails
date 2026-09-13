@@ -687,3 +687,49 @@ def test_interpreter_ownership_is_narrow(relative: str, owned: bool) -> None:
     """*"Anything under `_internal`"* would be the whole bundle, including this application's own
     code and yt-dlp's — which is the difference between an exemption and a hole."""
     assert gates.is_interpreter_owned(Path(relative)) is owned
+
+
+def runtime_distributions() -> set[str]:
+    """Every distribution `pyproject.toml`'s runtime dependencies pull in, by normalised name.
+
+    Walked through installed metadata, and a requirement whose marker does not apply here — `tomli`
+    on an interpreter that has `tomllib` — is not a distribution this build can bundle.
+    """
+    import importlib.metadata
+    import tomllib
+
+    from packaging.requirements import Requirement
+    from packaging.utils import canonicalize_name
+
+    project = tomllib.loads((Path(__file__).parents[2] / "pyproject.toml").read_text("utf-8"))
+    pending = [Requirement(text) for text in project["project"]["dependencies"]]
+    found: set[str] = set()
+    while pending:
+        requirement = pending.pop()
+        if requirement.marker is not None and not requirement.marker.evaluate({"extra": ""}):
+            continue
+        name = canonicalize_name(requirement.name)
+        if name in found:
+            continue
+        found.add(name)
+        distribution = importlib.metadata.distribution(requirement.name)
+        pending.extend(Requirement(text) for text in distribution.requires or ())
+    return found
+
+
+def test_every_bundled_python_distribution_has_its_licence_shipped() -> None:
+    """`LIC-001`: the licence of **every** third-party component ships, not of the ones remembered.
+
+    `platformdirs` was bundled from Phase 0 with no licence text at all; the gate checked a list,
+    and the list was written from memory. This derives the components from the dependency tree, so a
+    new dependency without a licence entry fails here rather than shipping.
+    """
+    distributions = runtime_distributions()
+    assert {"yt-dlp", "pyside6", "platformdirs"} <= distributions, (
+        f"the walk found {sorted(distributions)}, so it is not reading the real tree"
+    )
+    unaccounted = sorted(distributions - set(gates.LICENCE_FOR_DISTRIBUTION))
+    assert not unaccounted, f"bundled with no licence text named for it: {unaccounted}"
+    for name, text in gates.LICENCE_FOR_DISTRIBUTION.items():
+        assert text in gates.REQUIRED_LICENCES, f"{name}'s licence {text} is not required to ship"
+        assert (Path(__file__).parents[2] / "packaging" / "licenses" / text).is_file(), text
