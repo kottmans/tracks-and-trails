@@ -313,3 +313,19 @@ def test_the_settings_layer_and_the_palettes_agree_on_the_names() -> None:
     assert core_settings.THEME_DEFAULT in theme.THEMES, (
         "the default theme name resolves to no palette, so a first run has nothing to wear"
     )
+
+
+@pytest.mark.parametrize("name", sorted(theme.THEMES))
+def test_status_bar_items_draw_no_frame(name: str) -> None:
+    """**No separator line after each status-bar item** (maintainer, 2026-09-12).
+
+    Qt's Windows styles frame every status-bar item, which showed as a short grey vertical line
+    after *"…press Start to download"* and after *"…features are available."* — found on the first
+    installed launch. Rendered on `STARBASE` under the real Windows style, `QStatusBar::item`
+    with `border: none` changes exactly those two pixel columns. The offscreen suite cannot see the
+    line at all, so this pins the rule rather than the pixels.
+    """
+    sheet = theme.stylesheet(theme.THEMES[name])
+    rule = re.search(r"QStatusBar::item\s*\{([^}]*)\}", sheet)
+    assert rule is not None, "the status bar's item frame is back: nothing disables it"
+    assert re.search(r"border:\s*none", rule.group(1)), rule.group(1)

@@ -1172,6 +1172,17 @@ QToolButton[disclosure="true"]:hover {{
     border-radius: 3px;
 }}
 
+QStatusBar::item {{
+    /* **No frame around status-bar items.** Qt's Windows styles draw one, which shows as a short
+       grey vertical line after each item — after *"…press Start to download"* on the left and
+       after *"…features are available."* at the right, where the maintainer found it looking
+       wonky on the first installed launch, 2026-09-12. Measured on `STARBASE` under the real
+       Windows style: this rule changes exactly those two pixel columns and nothing else. The
+       items are already separated by the width of the bar (`T-192`), so the line was dividing
+       nothing. */
+    border: none;
+}}
+
 QStatusBar QLabel[actionableStatus="true"] {{
     /* **The one status-bar line that asks the user to press something** (`T-192`). It sat hard
        against the environment summary at the right end, so *"…press Start to download"* and
