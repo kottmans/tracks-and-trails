@@ -2,7 +2,7 @@
 
 **Purpose:** Navigation to canonical task and shared-scope review records.
 **Owner:** Reviewer; Coordinator / Integrator owns shared routing during a wave.
-**Last updated:** 2026-09-12
+**Last updated:** 2026-09-13
 **Update when:** A review record is introduced or its navigation changes.
 
 ## Current navigation
@@ -139,12 +139,21 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-312](reviews/T-312.md) | T-312 | 0 |
 | [T-314](reviews/T-314.md) | T-314, T-315 | 0 |
 | [T-316](reviews/T-316.md) | T-316 | 0 |
-| [T-320](reviews/T-320.md) | T-320 | 0 |
+| [T-320 / T-317](reviews/T-320.md) | T-320, T-317 | 0 |
 | [T-321](reviews/T-321.md) | T-321 | 0 |
 | [T-323](reviews/T-323.md) | T-323 | 0 |
 | [T-106 decision](reviews/T-106.md) | T-106 | 0 |
 | [DOC-008](reviews/DOC-008.md) | DOC-008 | 0 |
 | [T-329](reviews/T-329.md) | T-329 | 0 |
+| [T-318 / T-039](reviews/T-318.md) | T-318, T-039, REL-007 amendment | 0 |
+| [T-322](reviews/T-322.md) | T-322 | 0 |
+| [T-324 / T-319](reviews/T-324.md) | T-324, T-319 | 0 |
+| [T-325](reviews/T-325.md) | T-325, REL-008 | 0 |
+| [T-330](reviews/T-330.md) | T-330 | 0 |
+| [T-333](reviews/T-333.md) | T-333, OPS-002 amendment | 0 |
+| [T-334](reviews/T-334.md) | T-334, UX-006 amendment | 0 |
+| [T-326 / T-332](reviews/T-326.md) | T-326, T-332, remaining T-327 verification | 0 |
+| [Phase 5 second batch](reviews/phase-5-second-batch.md) | Shared validation and coordination, 2e2507b to 8e67f6f | 0 |
 | <a id="2026-07-26--note-commit-shas-in-this-file-were-remapped"></a>[commit-reference-remap](reviews/commit-reference-remap.md) | T-033 | 1 |
 | <a id="2026-07-29--coord-r7-authorized-final-documentation-re-review"></a>[coordination-2026-07-29](reviews/coordination-2026-07-29.md) | coordination 2026 07 29 | 1 |
 | <a id="2026-08-05--history--row-layout-merge-review"></a>[history-row-layout-integration](reviews/history-row-layout-integration.md) | history row layout integration | 1 |
