@@ -38,6 +38,8 @@ from PySide6.QtWidgets import (
 from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core import settings as core_settings
 from tracks_and_trails.core.models import NetworkOptions
+from tracks_and_trails.core.output_template import NAMING_CHOICES, OutputPreview
+from tracks_and_trails.core.presets import DEFAULT_OUTPUT_TEMPLATE
 from tracks_and_trails.ui import theme
 from tracks_and_trails.ui import theme as ui_theme
 from tracks_and_trails.ui.preset_manager import (
@@ -47,9 +49,12 @@ from tracks_and_trails.ui.preset_manager import (
     PresetManager,
 )
 from tracks_and_trails.ui.settings_dialog import (
+    CUSTOM_NAMING_LABEL,
     DEFAULT_PRESET_NAME,
     DEFAULT_RETRIES_LABEL,
     DOWNLOAD_DIRECTORY_PROBLEM_NAME,
+    NAMING_CHOICE_NAME,
+    NAMING_EXAMPLE_NAME,
     NO_COOKIES_NOTE,
     NO_RATE_LIMIT_LABEL,
     OUTPUT_TEMPLATE_NAME,
@@ -1015,6 +1020,81 @@ def test_the_shipped_template_is_the_placeholder_so_empty_reads_as_a_choice(
     assert field.placeholderText() == preset_registry.DEFAULT_OUTPUT_TEMPLATE
 
 
+def test_naming_is_offered_as_choices_and_each_writes_its_template(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """**`UX-014`.** A user picks how files are named by name; the template stays out of sight.
+
+    Every choice is offered and each writes the template it names — except *Title*, the first, which
+    writes empty, so choosing it goes on following the application's own default. The template
+    field is shown only under *Custom…*.
+    """
+    screen, asked = screens(output_template="", shipped_template=DEFAULT_OUTPUT_TEMPLATE)
+    naming = control(screen, QComboBox, NAMING_CHOICE_NAME)
+    field = control(screen, QLineEdit, OUTPUT_TEMPLATE_NAME)
+    screen.show()
+    QApplication.processEvents()
+
+    offered = [naming.itemText(i) for i in range(naming.count())]
+    assert offered == [choice.label for choice in NAMING_CHOICES] + [CUSTOM_NAMING_LABEL]
+    assert naming.currentIndex() == 0, "an unset preference did not read as the first choice"
+    assert not field.isVisible(), "the template field shows before anyone asked for Custom"
+
+    naming.setCurrentIndex(1)
+    assert asked["template"] == NAMING_CHOICES[1].template
+    naming.setCurrentIndex(0)
+    assert asked["template"] == "", "Title pinned today's template instead of following the default"
+
+    naming.setCurrentIndex(naming.count() - 1)
+    QApplication.processEvents()
+    assert field.isVisible(), "Custom did not open the template field"
+
+
+@pytest.mark.parametrize(
+    ("stored", "index", "custom"),
+    [
+        ("%(uploader)s/%(title)s.%(ext)s", 2, False),
+        ("%(title)s [%(duration_string)s].%(ext)s", len(NAMING_CHOICES), True),
+    ],
+)
+def test_a_stored_template_opens_on_the_choice_it_is(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+    stored: str,
+    index: int,
+    custom: bool,
+) -> None:
+    """A template saved before choices existed — or typed under *Custom…* — reads back as itself."""
+    screen, asked = screens(output_template=stored, shipped_template=DEFAULT_OUTPUT_TEMPLATE)
+    screen.show()
+    QApplication.processEvents()
+
+    assert control(screen, QComboBox, NAMING_CHOICE_NAME).currentIndex() == index
+    field = control(screen, QLineEdit, OUTPUT_TEMPLATE_NAME)
+    assert field.isVisible() is custom
+    assert field.text() == stored
+    assert "template" not in asked, "opening the screen wrote the setting"
+
+
+def test_the_example_follows_the_choice(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """The line under the choice shows where an example download would go, and moves with it."""
+    previews: list[str] = []
+
+    def preview(template: str) -> OutputPreview:
+        previews.append(template)
+        return OutputPreview(path=f"/downloads/{template}")
+
+    screen, _ = screens(
+        output_template="", shipped_template=DEFAULT_OUTPUT_TEMPLATE, preview_template=preview
+    )
+    example = control(screen, QLabel, NAMING_EXAMPLE_NAME)
+    assert example.text() == f"For example: /downloads/{DEFAULT_OUTPUT_TEMPLATE}"
+
+    control(screen, QComboBox, NAMING_CHOICE_NAME).setCurrentIndex(2)
+    assert example.text() == f"For example: /downloads/{NAMING_CHOICES[2].template}"
+
+
 def test_a_screen_with_nothing_behind_a_control_says_so_rather_than_drawing_it_dead(
     screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
 ) -> None:
@@ -1024,6 +1104,7 @@ def test_a_screen_with_nothing_behind_a_control_says_so_rather_than_drawing_it_d
     assert not control(screen, QComboBox, DEFAULT_PRESET_NAME).isEnabled()
     assert control(screen, QLabel, "defaultPresetNote").text()
     assert not control(screen, QLineEdit, OUTPUT_TEMPLATE_NAME).isEnabled()
+    assert not control(screen, QComboBox, NAMING_CHOICE_NAME).isEnabled()
 
 
 # --- network options (T-196) ----------------------------------------------------------------
@@ -1418,8 +1499,12 @@ def test_return_in_the_proxy_field_finishes_the_edit_and_opens_nothing(
 
 
 def wrapped_labels(screen: SettingsDialog) -> list[QLabel]:
-    """Every label on the screen with words in it."""
-    return [label for label in screen.findChildren(QLabel) if label.text().strip()]
+    """Every label on the screen with words in it that is **shown** — a hidden one is not drawn."""
+    return [
+        label
+        for label in screen.findChildren(QLabel)
+        if label.text().strip() and label.isVisibleTo(screen)
+    ]
 
 
 def short_by(label: QLabel) -> int:
@@ -1451,6 +1536,10 @@ def test_no_label_is_drawn_shorter_than_the_words_in_it(
     actually given, at three window sizes. A picture cannot fail a build.
     """
     screen, _ = screens(on_network_chosen=lambda _options: None)
+    # **With *Custom…* open** (`UX-014`), which is the tallest the naming section gets: its field
+    # list is hidden otherwise, and a label nobody can see is not measured.
+    naming = control(screen, QComboBox, NAMING_CHOICE_NAME)
+    naming.setCurrentIndex(naming.count() - 1)
     screen.resize(width, height)
     screen.show()
     QApplication.processEvents()

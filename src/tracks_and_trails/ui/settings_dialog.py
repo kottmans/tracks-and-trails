@@ -73,7 +73,12 @@ from PySide6.QtWidgets import (
 )
 
 from tracks_and_trails.core.models import BROWSER_NAMES, NetworkOptions, proxy_refusal
-from tracks_and_trails.core.output_template import unsupported_refusal
+from tracks_and_trails.core.output_template import (
+    NAMING_CHOICES,
+    OutputPreview,
+    naming_choice_of,
+    unsupported_refusal,
+)
 from tracks_and_trails.core.settings import (
     CONCURRENCY_MAXIMUM,
     CONCURRENCY_MINIMUM,
@@ -83,6 +88,7 @@ from tracks_and_trails.core.settings import (
 )
 from tracks_and_trails.downloader.environment import BASELINE_YTDLP_VERSION, normalise_version
 from tracks_and_trails.ui.keyboard import route_is_elsewhere
+from tracks_and_trails.ui.template_editor import fields_text
 
 __all__ = [
     "COOKIES_EXPLANATION",
@@ -124,6 +130,12 @@ THEME_LABELS: Final = {"light": "Light", "dark": "Dark"}
 DEFAULT_PRESET_NAME: Final = "settingsDefaultPreset"
 OUTPUT_TEMPLATE_NAME: Final = "settingsOutputTemplate"
 OUTPUT_TEMPLATE_NOTE_NAME: Final = "settingsOutputTemplateNote"
+#: The naming choice and the example under it (`UX-014`).
+NAMING_CHOICE_NAME: Final = "settingsNamingChoice"
+NAMING_EXAMPLE_NAME: Final = "settingsNamingExample"
+
+#: The last entry of the naming choice: every template that is not one of `NAMING_CHOICES`.
+CUSTOM_NAMING_LABEL: Final = "Custom…"
 
 #: Shown under the folder when no folder has been chosen. **It names the actual path**, because
 #: "the default" is not an answer to *where did my file go*.
@@ -359,7 +371,7 @@ REQ_023_SETTINGS: Final[tuple[Req023Setting, ...]] = (
     Req023Setting("download-directory", "the download folder", "chooseDownloadDirectory"),
     Req023Setting("default-preset", "the default preset", DEFAULT_PRESET_NAME),
     Req023Setting("concurrency", "the concurrency limit", "settingsConcurrencyChoice"),
-    Req023Setting("output-template", "the output template", OUTPUT_TEMPLATE_NAME),
+    Req023Setting("output-template", "how downloads are named", NAMING_CHOICE_NAME),
     Req023Setting("ffmpeg-location", "the ffmpeg location", "chooseFfmpegLocation"),
     Req023Setting("network-options", "network options", PROXY_NAME),
     Req023Setting("cookie-source", "the cookie source", "cookieSourceNone"),
@@ -422,6 +434,7 @@ class SettingsDialog(QDialog):
         on_default_preset_chosen: Callable[[str], None] | None = None,
         on_output_template_chosen: Callable[[str], None] | None = None,
         refuse_template: Callable[[str], str | None] | None = None,
+        preview_template: Callable[[str], OutputPreview | None] | None = None,
         on_ytdlp_update: Callable[[], None] | None = None,
         on_ytdlp_revert: Callable[[], None] | None = None,
         on_ytdlp_check: Callable[[], None] | None = None,
@@ -471,6 +484,9 @@ class SettingsDialog(QDialog):
         #: manager can honestly do — and is why `refuse_template` is what composition always
         #: passes.
         self._refuse_template = refuse_template
+        #: Where a template would put an example download, for the line under the choice
+        #: (`UX-014`). Injected for `refuse_template`'s reason; `None` shows no example.
+        self._preview_template = preview_template
         self._on_output_template_chosen = on_output_template_chosen
         self._on_ytdlp_update = on_ytdlp_update
         self._on_ytdlp_revert = on_ytdlp_revert
@@ -846,23 +862,54 @@ class SettingsDialog(QDialog):
         )
         layout.addWidget(self._preset_note)
 
-        template_label = QLabel(
-            "How downloads are named, when a preset does not say otherwise", box
-        )
-        template_label.setWordWrap(True)
-        layout.addWidget(template_label)
+        naming_label = QLabel("How downloads are named", box)
+        naming_label.setWordWrap(True)
+        layout.addWidget(naming_label)
 
-        self._template_field = QLineEdit(box)
+        # **Named choices first, the template only under *Custom…*** (`UX-014`, 2026-09-13). The
+        # value stored is the same `output_template` string either way, so a template written
+        # before this existed reads back as the choice it matches.
+        writable = self._on_output_template_chosen is not None
+        self._naming_choice = QComboBox(box)
+        self._naming_choice.setObjectName(NAMING_CHOICE_NAME)
+        self._naming_choice.setAccessibleName("How downloads are named")
+        naming_label.setBuddy(self._naming_choice)
+        for choice in NAMING_CHOICES:
+            self._naming_choice.addItem(choice.label, choice.template)
+        self._naming_choice.addItem(CUSTOM_NAMING_LABEL, None)
+        self._naming_choice.setEnabled(writable)
+        layout.addWidget(self._naming_choice)
+
+        self._naming_example = QLabel(box)
+        self._naming_example.setObjectName(NAMING_EXAMPLE_NAME)
+        self._naming_example.setWordWrap(True)
+        # An example path renders a title, which is site-shaped text (`T016-R6`).
+        self._naming_example.setTextFormat(Qt.TextFormat.PlainText)
+        self._naming_example.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(self._naming_example)
+
+        self._custom_naming = QWidget(box)
+        custom_layout = QVBoxLayout(self._custom_naming)
+        custom_layout.setContentsMargins(0, 0, 0, 0)
+
+        self._template_field = QLineEdit(self._custom_naming)
         self._template_field.setObjectName(OUTPUT_TEMPLATE_NAME)
-        self._template_field.setAccessibleName("Default output template")
+        self._template_field.setAccessibleName("Custom file name template")
         self._template_field.setText(self._output_template)
         self._template_field.setPlaceholderText(self._shipped_template)
-        self._template_field.setEnabled(self._on_output_template_chosen is not None)
-        # **Checked as it is typed, written only when it is usable** (`P-23`, `T-195`). `T-112`
-        # made the same call for the per-row editor: showing the error and storing the value
-        # anyway satisfies the visible half of the criterion and queues a broken download.
+        self._template_field.setEnabled(writable)
+        # **Checked as it is typed, written only when it is usable** (`P-23`, `T-195`): showing the
+        # error and storing the value anyway satisfies the visible half and queues a broken
+        # download.
         self._template_field.textChanged.connect(self._on_template_text)
-        layout.addWidget(self._template_field)
+        custom_layout.addWidget(self._template_field)
+
+        fields = QLabel(f"Fields you can use:\n{fields_text()}", self._custom_naming)
+        fields.setObjectName("settingsTemplateFields")
+        fields.setWordWrap(True)
+        fields.setTextFormat(Qt.TextFormat.PlainText)
+        custom_layout.addWidget(fields)
+        layout.addWidget(self._custom_naming)
 
         self._template_note = QLabel(box)
         self._template_note.setObjectName(OUTPUT_TEMPLATE_NOTE_NAME)
@@ -870,6 +917,9 @@ class SettingsDialog(QDialog):
         self._template_note.setTextFormat(Qt.TextFormat.PlainText)
         self._template_note.setWordWrap(True)
         layout.addWidget(self._template_note)
+
+        self._select_naming(self._output_template)
+        self._naming_choice.currentIndexChanged.connect(self._on_naming_index)
 
         return box
 
@@ -879,6 +929,53 @@ class SettingsDialog(QDialog):
         chosen = self._preset_choice.itemData(index)
         if isinstance(chosen, str) and chosen:
             self._on_default_preset_chosen(chosen)
+
+    def _select_naming(self, template: str) -> None:
+        """Show `template` as its choice, or as *Custom…* with the field holding it."""
+        choice = naming_choice_of(template)
+        index = (
+            self._naming_choice.findData(choice.template)
+            if choice is not None
+            else self._naming_choice.count() - 1
+        )
+        blocked = self._naming_choice.blockSignals(True)
+        self._naming_choice.setCurrentIndex(index)
+        self._naming_choice.blockSignals(blocked)
+        self._custom_naming.setVisible(choice is None)
+        self._show_naming_example(template)
+
+    def _on_naming_index(self, index: int) -> None:
+        """A named choice writes its template; *Custom…* opens the field on the current one.
+
+        **The first choice writes empty**, which is what an unset preference already means — so a
+        user who picks *Title* goes on following the application's own default rather than pinning
+        today's spelling of it.
+        """
+        template = self._naming_choice.itemData(index)
+        custom = template is None
+        self._custom_naming.setVisible(custom)
+        if custom:
+            self._template_field.setFocus()
+            self._show_naming_example(self._template_field.text())
+            return
+        stored = "" if template == NAMING_CHOICES[0].template else str(template)
+        self._template_note.setText("")
+        blocked = self._template_field.blockSignals(True)
+        self._template_field.setText(stored)
+        self._template_field.blockSignals(blocked)
+        self._show_naming_example(stored)
+        if self._on_output_template_chosen is not None:
+            self._on_output_template_chosen(stored)
+
+    def _show_naming_example(self, template: str) -> None:
+        """The path an example download would get under `template`, when there is one to show."""
+        preview = (
+            self._preview_template(template or self._shipped_template)
+            if self._preview_template is not None
+            else None
+        )
+        shown = preview is not None and not preview.is_refused and bool(preview.path)
+        self._naming_example.setText(f"For example: {preview.path}" if shown and preview else "")
 
     def _on_template_text(self, text: str) -> None:
         """Refuse at edit time, with the reason, and do not store what was refused.
@@ -893,6 +990,7 @@ class SettingsDialog(QDialog):
         refusal = self._refusal_for(text) if text else None
         self._template_note.setText(refusal or "")
         if refusal is None:
+            self._show_naming_example(text)
             self._on_output_template_chosen(text)
 
     def _refusal_for(self, template: str) -> str | None:
@@ -946,6 +1044,7 @@ class SettingsDialog(QDialog):
         self._template_field.setText(template)
         self._template_field.blockSignals(blocked)
         self._template_note.setText("")
+        self._select_naming(template)
 
     def _build_cookies_section(self) -> QWidget:
         """A cookies file for content the user is already signed in to (`REQ-026`, `T-197`)."""

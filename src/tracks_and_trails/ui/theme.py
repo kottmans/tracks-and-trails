@@ -1008,14 +1008,14 @@ QWidget:disabled {{
        first, so every more specific rule after it still wins. */
     color: {theme.muted};
 }}
-QLabel, QCheckBox, QRadioButton {{
+QLabel, QCheckBox, QRadioButton, QGroupBox .QWidget {{
     /* **No ground of their own** (found in the `T-327` session on Windows). The `QWidget` rule
        gives every widget `window`, and a group box is `surface` — so each label and tick box
        inside one painted a `window` band on the group, one per line of the options dialog, in
        both themes. These show whatever they sit on instead.
-       **Plain layout containers are not listed**, because no group holds one today: a
-       `QGroupBox .QWidget` clause survived its mutation. `tests/ui/test_group_grounds.py` asks
-       containers too, so the first one added inside a group fails there rather than here. */
+       **`QGroupBox .QWidget` is a plain layout container inside a group**, added back when
+       Settings' *Custom…* naming (`UX-014`) became the first one — it painted the same band behind
+       the field list. `.QWidget` matches the exact class, so a combo or a list keeps its fill. */
     background: transparent;
 }}
 QGroupBox, QListView, QTableView, QTreeView, QPlainTextEdit, QTextEdit {{

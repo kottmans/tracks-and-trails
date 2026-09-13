@@ -51,6 +51,7 @@ from tracks_and_trails import __version__
 from tracks_and_trails.core import presets, settings
 from tracks_and_trails.core.job_state import REORDERABLE
 from tracks_and_trails.core.models import Job, MediaInfo, NetworkOptions, Preset
+from tracks_and_trails.core.output_template import OutputPreview
 from tracks_and_trails.core.paths import APP_SLUG
 from tracks_and_trails.core.settings import SettingsProblem
 from tracks_and_trails.downloader.manager import DownloadManager
@@ -475,8 +476,8 @@ def save_geometry(window: QWidget, path: Path | None = None) -> None:
 #: for want of a value.
 _TEMPLATE_PROBE: Final = MediaInfo(
     url="https://example.invalid/preview",
-    title="A download",
-    uploader="An uploader",
+    title="A video title",
+    uploader="Uploader",
     duration_seconds=1,
     is_playlist=False,
 )
@@ -964,6 +965,15 @@ class MainWindow(QMainWindow):
         A window with no manager answers `None`: it cannot ask, and claiming a refusal it did not
         compute would be worse than deferring to the field-name check the screen falls back to.
         """
+        preview = self._preview_template(template)
+        return None if preview is None else preview.refusal
+
+    def _preview_template(self, template: str) -> OutputPreview | None:
+        """Where an example download would go under `template`: Settings' example line (`UX-014`).
+
+        The same route `_refuse_template` asks, so the example and the refusal cannot disagree.
+        `None` without a manager, for that method's reason.
+        """
         if self._manager is None:
             return None
         request = presets.to_request(
@@ -972,7 +982,7 @@ class MainWindow(QMainWindow):
             output_directory=str(self._output_directory),
             default_output_template=template,
         )
-        return self._manager.preview_output_path(request, _TEMPLATE_PROBE).refusal
+        return self._manager.preview_output_path(request, _TEMPLATE_PROBE)
 
     def _show_item_menu(self, job_id: str) -> QMenu | None:
         """This download's own menu, opened from the row's `⋮` (`T-315`).
@@ -1956,6 +1966,7 @@ class MainWindow(QMainWindow):
             on_default_preset_chosen=self._on_default_preset_chosen,
             on_output_template_chosen=self._on_output_template_chosen,
             refuse_template=self._refuse_template,
+            preview_template=self._preview_template,
             on_ytdlp_update=None if self._ytdlp is None else self._ytdlp.install_latest_version,
             on_ytdlp_revert=None if self._ytdlp is None else self._ytdlp.revert,
             on_ytdlp_check=None if self._ytdlp is None else self._ytdlp.check_latest_version,

@@ -632,7 +632,7 @@ preference instead of using it to rename each individual file this way."*
 
 #### Acceptance criteria
 
-- [ ] Settings offers *Title*, *Uploader – Title*, *Uploader / Title* and *Custom…*, with an example
+- [x] Settings offers *Title*, *Uploader - Title*, *Uploader / Title* and *Custom…*, with an example
       path for the choice, and stores the same `output_template` value as before
 - [x] *Naming and folders…* and the per-item template editor are gone from Add URLs
 - [ ] *Rename…* on a single item in Add URLs and on a queue row that has not started takes a plain
@@ -650,7 +650,14 @@ preference instead of using it to rename each individual file this way."*
   prefilled from the setting's preview, written by `output_template.renamed_template` — `%` escaped
   (**mutated**: unescaped fails three tests), the setting's folders kept, a separator refused. The
   end-to-end test renames to `Renamed: 100% "Live"?` and a real download writes the previewed path.
-  Settings' choices and the queue row's *Rename…* are next.
+- **2026-09-13 — Settings.** *How downloads are named* is a choice of `NAMING_CHOICES` plus
+  *Custom…*, which alone shows the template field and its field list; *Title* stores empty. An
+  example path under it comes from the window's `_preview_template`, the route the refusal already
+  used. Tests: every choice offered and written (**mutated**: *Title* writing its template fails),
+  a stored template reopening on its choice or on *Custom…*, the example following the choice. The
+  *Custom…* container painted the group band `a5cd14f` removed for labels; the container clause is
+  back and the band test now opens *Custom…* before measuring (**mutated**: without the clause it
+  fails). The queue row's *Rename…* is next.
 
 
 ### T-327 — The Windows manual verification session
