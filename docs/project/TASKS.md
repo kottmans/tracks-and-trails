@@ -2347,12 +2347,14 @@ worked there; updating in the Sandbox's Settings fixed it there too.
 #### Acceptance criteria
 
 - [x] The pin, the constant and the audit name 2026.8.19, and the pin-bound tests pass against it
-- [ ] CI green on both platforms at the new pin
+- [x] CI green on both platforms at the new pin — run `34739041125` at `4320859`, every job
+- [ ] The `yt-dlp canary` workflow dispatched at 2026.8.19 (`TESTING` §8 item 10a) — not dispatched
+      overnight, because it spends hosted Actions minutes; the local equivalent is recorded above
 - [x] `REL-002`'s negative build repeated at the new pin, with the result recorded there — still redundant: the archives differ only by `yt_dlp.__main__` and `yt_dlp.__pyinstaller`, 1751 extractors either way
-- [ ] The rebuilt Windows installer downloads a YouTube video in a clean Sandbox in the
+- [x] The rebuilt Windows installer downloads a YouTube video in a clean Sandbox in the
       `Best video up to 1080p (MP4)` preset — the case that failed, not the probe's selector.
-      `evidence.ps1` now does this through `TT_DOWNLOAD_PROBE_FORMAT`, with the selector kept equal
-      to the preset's by a test
+      **Done 2026-09-13**: *Big Buck Bunny*, 134,886,020 bytes in 12.6 s from the bundled
+      2026.08.19, in `docs/project/evidence/windows-0.1.0.dev0-sandbox-2026-09-13.md`
 
 ### T-331 — The Windows mutation driver's positive control is not one
 
