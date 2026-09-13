@@ -680,6 +680,15 @@ STATE_RULES: Final = (
         reason="A 2px bar appears down the left edge — `T-130`'s inset, and a shape, not a tint.",
     ),
     StateRule(
+        selector="QComboBox QAbstractItemView::item:selected",
+        conveys="which entry of an open drop-down the keyboard or pointer is on",
+        channel="luminance",
+        reason=(
+            "The same inversion as a menu item, brand green with its own foreground, declared as a "
+            "pair because the list rule's bar otherwise left the text colour without its fill."
+        ),
+    ),
+    StateRule(
         selector="QMenu::item:selected",
         conveys="which menu item the keyboard or pointer is on",
         channel="luminance",
@@ -1056,6 +1065,16 @@ QListView, QTreeView, QTableView {{
 }}
 QListView::item:selected {{
     border-left: 2px solid {theme.primary};
+}}
+QComboBox QAbstractItemView::item:selected {{
+    /* **A drop-down's list is a `QListView`, so the rule above reaches it** (found in the `T-327`
+       session on Windows). Declaring `::item:selected` hands the item to the sheet, which then
+       paints the item's text in the popup's `selection-color` and **no fill at all** — `on_primary`
+       on `surface`: white on white in light, dark green on near-black in dark. The chosen entry
+       vanished from the list it was chosen in. The fill is declared here, beside its text colour,
+       so the pair cannot be separated again. */
+    background-color: {theme.primary};
+    color: {theme.on_primary};
 }}
 QTabBar::tab:hover {{
     background-color: {theme.sunken};

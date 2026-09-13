@@ -23,6 +23,7 @@ import ctypes
 import os
 import subprocess
 import sys
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -31,15 +32,24 @@ from typing import Any
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QGuiApplication
+from PySide6.QtGui import QAction, QColor, QGuiApplication
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QMenu, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QListView,
+    QMenu,
+    QStyle,
+    QStyleOptionComboBox,
+    QWidget,
+)
 
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import SessionKind
+from tracks_and_trails.ui import theme as ui_theme
 from tracks_and_trails.ui.add_dialog import AddUrlDialog
 from tracks_and_trails.ui.job_detail import build_progress_view
 from tracks_and_trails.ui.main_window import APP_NAME, MainWindow
@@ -858,3 +868,68 @@ def test_the_progress_view_chain_offers_exactly_what_its_state_allows(
         f"{case}: from {expected[0]}, two laps of Backtab visited {backwards}; reversed this "
         f"state's chain is {list(reversed(expected))}"
     )
+
+
+@pytest.mark.parametrize("theme", list(ui_theme.THEMES.values()), ids=lambda theme: theme.name)
+def test_the_chosen_entry_of_an_open_drop_down_is_drawn_on_its_fill(
+    qapp: QApplication, theme: ui_theme.Theme
+) -> None:
+    """Found in the `T-327` session: the entry a row had chosen was **invisible** in its own list.
+
+    The drop-down's list is a `QListView`, so `QListView::item:selected` reached it and took over
+    the item's drawing: the text came out in `on_primary` with no fill behind it — white on white
+    in light, dark green on near-black in dark.
+
+    **Here and not in the offscreen suite**, because only the Windows style draws the popup as a
+    list. Fusion — offscreen, on either platform — draws it as a menu, which the item rules never
+    reach, so an offscreen version skipped everywhere it ran, `STARBASE`'s full suite included.
+    Asserted rather than skipped here, for this module's reason: on the job that exists to run it,
+    a wrong environment is an error.
+
+    Asked of the pixels in the chosen row, because the defect was in what was drawn and the sheet
+    had both colours in it the whole time. Built inside a list's viewport, where the staging row's
+    editor lives.
+    """
+    ui_theme.apply(qapp, theme)
+    host = QWidget()
+    host.resize(420, 200)
+    rows = QListView(host)
+    rows.resize(400, 180)
+    box = QComboBox(rows.viewport())
+    for name in ("Best video up to 1080p (MP4) — following the batch", "Best video available"):
+        box.addItem(name)
+    box.setCurrentIndex(1)
+    box.resize(260, 24)
+    shape = QStyleOptionComboBox()
+    box.initStyleOption(shape)
+    # With the box's own option, or the answer is the base style's rather than the sheet's.
+    assert not box.style().styleHint(QStyle.StyleHint.SH_ComboBox_Popup, shape, box), (
+        "this style draws the drop-down as a menu, so nothing below can see the defect"
+    )
+    host.show()
+    qapp.processEvents()
+    box.showPopup()
+    qapp.processEvents()
+    try:
+        view = box.view()
+        image = view.viewport().grab().toImage()
+        row = view.visualRect(view.currentIndex()).adjusted(3, 2, -3, -2).intersected(image.rect())
+        colours = Counter(
+            image.pixel(x, y) & 0xFFFFFF
+            for x in range(row.left(), row.right())
+            for y in range(row.top(), row.bottom())
+        )
+    finally:
+        box.hidePopup()
+        host.close()
+
+    fill = QColor(theme.primary).rgb() & 0xFFFFFF
+    dominant, _count = colours.most_common(1)[0]
+    assert dominant == fill, (
+        f"{theme.name}: the chosen entry sits on #{dominant:06x}, not the selection fill "
+        f"{theme.primary} — its {theme.on_primary} text is drawn on the list's own ground"
+    )
+    assert any(
+        ui_theme.contrast_ratio(f"#{colour:06x}", theme.primary) >= ui_theme.MINIMUM_CONTRAST
+        for colour in colours
+    ), f"{theme.name}: nothing in the chosen row stands out from its fill, so no text is drawn"
