@@ -2456,6 +2456,25 @@ authorised the key on 2026-09-12 and all three are measured above. Kept as a cor
 than deleted: the blocker was one environment variable, exactly as it said, and saying so is what
 made it worth asking for.)*
 
+#### 2026-09-13 — the bundled ffmpeg deleted: it degrades, and says why
+
+The criterion *"the same build with the bundled binary deleted degrades exactly as `REQ-024`
+describes rather than crashing"*, measured on a **copy** of the `STARBASE` release build at
+`0b3703a` with `_internal\ffmpeg.exe` and `ffprobe.exe` deleted, in a throwaway profile, and with
+`PATH` cut to `System32` — **`STARBASE` has its own ffmpeg**, which would otherwise have been found
+and made this pass for the wrong reason (`where ffmpeg` confirmed none).
+
+| Run | Result |
+|---|---|
+| `--ffmpeg-probe` | **exit 1**, `bundled ffmpeg (none)`, `resolved source not found on PATH`, and the `OPS-001` failure sentence — no traceback |
+| `--download-probe` on a YouTube URL, whose selector needs a merge | **exit 1** as `ffmpeg_missing`, **before downloading**: *"ffmpeg is required for this download but was not found … Unavailable: merging separate video and audio streams; extracting or converting audio; remuxing and recoding; embedding thumbnails, metadata, chapters and subtitles."* |
+
+That second line is `REQ-024` in the artifact: the features are named, and the refusal comes at
+the start rather than at merge time. **Not covered here:** the window's status-bar wording without
+ffmpeg, which is the same `FfmpegReport.summary()` and is asserted by
+`tests/integration/test_composition.py::test_startup_states_what_this_installation_cannot_do`
+rather than in the artifact.
+
 *(Filed 2026-09-11 with the Phase 5 plan.)*
 **Owner:** Implementer
 **Priority:** High — it is the artifact
