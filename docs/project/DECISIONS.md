@@ -56,6 +56,7 @@ Current requirements and architecture retain their own canonical authority.
 | [REL-006](#rel-006--a-clean-machine-is-a-disposable-vm-the-maintainer-owns) | A clean machine is a disposable VM the maintainer owns | Accepted | — |
 | [REL-007](#rel-007--the-artifacts-use-the-system-certificate-store-and-bundle-none) | The artifacts use the system certificate store and bundle none | Accepted | [Amended 2026-09-12](#amended-2026-09-12--on-windows-the-operating-system-verifies-not-openssl-reading-its-store) |
 | [REL-008](#rel-008--windows-gets-its-own-startup-number-and-linuxs-stays-where-it-is) | Windows gets its own startup number, and Linux's stays where it is | Accepted | [Amended 2026-09-13](#amended-2026-09-13--0-1-0-ships-on-the-startup-numbers-already-measured) |
+| [REL-009](#rel-009--the-application-says-when-a-newer-release-is-out-and-installs-nothing) | The application says when a newer release is out, and installs nothing | Accepted | — |
 | [REL-002](#rel-002--collect_submodulesyt_dlp-stays-as-insurance-against-a-pin-we-do-not-have-yet) | `collect_submodules("yt_dlp")` stays, as insurance against a pin we do not have yet | Accepted | — |
 | [REL-001](#rel-001--ship-frozen-self-contained-artifacts-no-python-required-on-the-users-machine) | Ship frozen, self-contained artifacts: no Python required on the user's machine | Accepted | — |
 | [OPS-004](#ops-004--windows-ci-runners-provide-a-real-desktop-verify-against-it) | Windows CI runners provide a real desktop; verify against it | Accepted | [OPS-005](#ops-005--starbase-is-the-windows-verification-platform-hosted-only-findings-do-not-gate-the-phase); [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously) |
@@ -1214,6 +1215,53 @@ figure on Linux is inferred from a warm one with about 4.7× margin, and `NFR-01
 of an unidentified build with about 1 s. **Reopening condition:** a user report of a slow start, or
 a later release whose bundle or startup path changes materially; `tools/startup_time.py --cold`
 already gates the first launch correctly (`T325-R1`).
+
+---
+
+## REL-009 — The application says when a newer release is out, and installs nothing
+
+**Status:** **Accepted** (2026-09-13) — maintainer decision, from `T-327`'s session
+**Date:** 2026-09-13
+**Relates to:** `NFR-007` (amended by this), `REL-001` (which left self-update open), `REL-005`,
+`OPS-002`'s note on automatic updates, `T-338` (built by).
+
+### Context
+
+Before the first release the maintainer asked whether the application could tell its users about
+updates. Nothing could: the in-app updater covers yt-dlp alone (`OPS-002`), and `REL-001` left the
+application's own updating open. **A release without a checker has no way to reach its own
+users**, because a checker only helps users who installed a build that contains it, so deferring it
+to `0.1.1` would leave everyone who installed `0.1.0` never told.
+
+Four options were put. Recommended and chosen: notify only, in `0.1.0`.
+
+- **Download and install the update in the application.** Rejected for now: the Windows installer is
+  unsigned (`REL-005`), so every applied update would raise SmartScreen again, it needs its own
+  integrity verification, and the AppImage updates by a different mechanism entirely.
+- **A manual check only.** Rejected: users who never open the Help menu are never told.
+- **Notify, but after `0.1.0`.** Rejected for the reason in the context.
+
+### Decision
+
+1. **Help → Check for Updates…** asks GitHub for this repository's latest published release and
+   says whether it is newer, offering its page when it is.
+2. **Once a day, automatically, on by default**, with *Check for updates automatically* in
+   Preferences to switch it off. An automatic check that finds a newer release shows a quiet notice
+   in the status bar and opens nothing; one that fails says nothing.
+3. **Nothing is downloaded or run.** The user downloads the new installer or AppImage themselves.
+4. **The request carries nothing about the user**: no identifier, no settings, and not the running
+   version. A `User-Agent` naming the application is sent because GitHub's API requires one.
+5. **The page opened is built from the parsed version**, never taken from the response, so the
+   response cannot choose where a browser goes.
+
+### Consequences
+
+- `NFR-007` names a fourth destination, and unlike SponsorBlock it is on by default.
+- The last successful check is recorded in `updates.toml` beside `settings.toml`, and the
+  uninstaller's *Also remove my settings* removes it.
+- A GitHub outage or rate limit costs only a message on an explicit check.
+- **Worth revisiting** once installers are signed: applying an update in place becomes
+  reasonable then, and `OPS-002`'s note about automatic updates would apply.
 
 ---
 

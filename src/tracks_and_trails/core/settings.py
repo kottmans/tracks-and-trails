@@ -106,6 +106,11 @@ _THEME_KEY: Final = "theme"
 _FFMPEG_TABLE: Final = "ffmpeg"
 _LOCATION_KEY: Final = "location"
 
+#: `T-338`'s key: whether the application looks for a newer release by itself (`NFR-007`). Its own
+#: table, like every setting that is not a queue setting.
+_UPDATES_TABLE: Final = "updates"
+_CHECK_AUTOMATICALLY_KEY: Final = "check_automatically"
+
 #: `T-197`'s key: a cookies file, for authenticated access to content the user already has
 #: (`REQ-026`). Its own table, like the others.
 #:
@@ -341,6 +346,11 @@ class Settings:
     #: instance would be safe — but `RUF009` refuses the call either way, and a factory says
     #: *each Settings gets its own* without anyone having to check the frozen-ness first.
     network: NetworkOptions = field(default_factory=NetworkOptions)
+
+    #: Whether a newer release is looked for once a day without being asked (`T-338`).
+    #: **On unless switched off**, by the maintainer's ruling on 2026-09-13, so the file stores it
+    #: only when it is off. *Help → Check for Updates* works either way.
+    check_for_updates: bool = True
 
     def __post_init__(self) -> None:
         # A `Settings` built in code is held to the bound; a file is not. `load()` corrects what it
@@ -984,6 +994,19 @@ def _theme_from(raw: Any) -> tuple[str, str | None]:
     return raw, None
 
 
+def _check_for_updates_from(raw: Any) -> tuple[bool, str | None]:
+    """Coerce the stored update preference. **Never raises**; anything but a boolean is reported
+    and the default kept, for `_theme_from`'s reason."""
+    if raw is None:
+        return True, None
+    if not isinstance(raw, bool):
+        return True, (
+            f"{_UPDATES_TABLE}.{_CHECK_AUTOMATICALLY_KEY} is {raw!r}, which is not true or false. "
+            "Checking for updates is on."
+        )
+    return raw, None
+
+
 def _section_of(document: dict[str, Any], table: str) -> tuple[dict[str, Any], str | None]:
     """One optional table, or an empty one and a reason it could not be read."""
     section = document.get(table)
@@ -1174,6 +1197,10 @@ def load(path: Path | None = None) -> SettingsFile:
     ffmpeg_location, location_reason = _ffmpeg_location_from(ffmpeg_table.get(_LOCATION_KEY))
     network_table, network_table_reason = _section_of(document, _NETWORK_TABLE)
     network, network_reason = _network_from(network_table)
+    updates_table, updates_table_reason = _section_of(document, _UPDATES_TABLE)
+    check_for_updates, updates_reason = _check_for_updates_from(
+        updates_table.get(_CHECK_AUTOMATICALLY_KEY)
+    )
 
     sensitive = _proxy_literals(network_table) + _sensitive_literals(cookies_table)
 
@@ -1197,6 +1224,8 @@ def load(path: Path | None = None) -> SettingsFile:
                 both_reason,
                 network_table_reason,
                 network_reason,
+                updates_table_reason,
+                updates_reason,
             )
             if part
         ]
@@ -1211,6 +1240,7 @@ def load(path: Path | None = None) -> SettingsFile:
             cookie_file=cookie_file,
             cookie_browser=cookie_browser,
             network=network,
+            check_for_updates=check_for_updates,
         )
         if not parts:
             return SettingsFile(settings, secrets=sensitive)
@@ -1784,6 +1814,14 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             f"# The window's palette: {' or '.join(THEME_NAMES)}.\n"
             f"{_THEME_KEY} = {_toml_string(settings.theme)}\n"
         )
+        # **Only when it is off**, like every optional value here: absent means the default.
+        updates_lines = (
+            f"\n\n[{_UPDATES_TABLE}]\n"
+            "# Look for a newer version once a day. Delete the line to turn it back on.\n"
+            f"{_CHECK_AUTOMATICALLY_KEY} = false\n"
+            if not settings.check_for_updates
+            else ""
+        )
         scratch.write_text(
             "# Tracks & Trails settings.\n"
             "# Safe to delete: every value falls back to its default.\n"
@@ -1798,6 +1836,7 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             f"{cookie_lines}"
             f"{ffmpeg_lines}"
             f"{network_lines}"
+            f"{updates_lines}"
             f"{appearance_lines}" + "".join(_preset_lines(preset) for preset in settings.presets),
             encoding="utf-8",
         )
@@ -1891,6 +1930,11 @@ def with_network_options(settings: Settings, options: NetworkOptions) -> Setting
             retries=None if options.retries is None else min(options.retries, RETRIES_MAXIMUM),
         ),
     )
+
+
+def with_update_checks(settings: Settings, enabled: bool) -> Settings:
+    """`settings` with automatic update checks on or off (`T-338`)."""
+    return replace(settings, check_for_updates=enabled)
 
 
 def with_theme(settings: Settings, name: str) -> Settings:

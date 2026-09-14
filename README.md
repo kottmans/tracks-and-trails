@@ -43,7 +43,9 @@ actually built, including what is known-broken and what is unexplained.
 - Configurable output templates with live path preview
 - Settings: network options, cookie source, ffmpeg detection and override, light and dark themes
 - In-app yt-dlp version display and update, so a broken site is fixable without waiting for a release
-- No telemetry, no analytics, no phone-home
+- Tells you when a newer version is out: once a day (switch it off in Preferences) or from Help,
+  Check for Updates. It asks GitHub for the latest release number and sends nothing about you
+- No telemetry, no analytics
 
 ## Running it
 

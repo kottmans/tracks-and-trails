@@ -150,6 +150,15 @@ either way; `docs/DEVELOPMENT.md` carries the table.
 *(There was no Settings menu between 2026-08-06 and then: the shell built to hold the withdrawn
 records control went with the control.)*
 
+**[T]** *(built 2026-09-13 by `T-338`, ruled as `REL-009`)* **`Help` holds `Check for Updates...`
+above `About`**, and Preferences ends with an `Updates` section holding one tick box, *Check for
+updates automatically*, on by default. An explicit check always answers in a box: the newer version
+with *Open Download Page*, *You have the latest version*, or why it could not check. **The daily
+check is quiet**: when it finds a newer release it shows *Version X is available* at the right of
+the status bar, which opens the same box when pressed, and otherwise it shows nothing. *(The
+status-bar placement is the build's choice for a quiet notice; `REL-009` rules that it must not
+interrupt, not where it sits.)*
+
 **The rule the toolbar keeps:** nothing on it acts on a *selection*, and every verb on it names the
 list it empties.
 

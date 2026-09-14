@@ -53,6 +53,7 @@ from PySide6.QtGui import QScreen
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -420,6 +421,13 @@ def still_to_come(settings: Sequence[Req023Setting] = REQ_023_SETTINGS) -> str:
 
 SETTINGS_STILL_TO_COME: Final = still_to_come()
 
+#: `T-338`'s control and what it does, in the words a user reads (no dashes, per the maintainer).
+UPDATE_CHECKS_LABEL: Final = "Check for updates automatically"
+UPDATE_CHECKS_HINT: Final = (
+    "Once a day, ask GitHub whether a newer version is out. Nothing about you or your "
+    "downloads is sent. Help, Check for Updates works either way."
+)
+
 
 class SettingsDialog(QDialog):
     """One screen for the settings `REQ-023` names and this phase has built."""
@@ -457,6 +465,8 @@ class SettingsDialog(QDialog):
         on_ytdlp_update: Callable[[], None] | None = None,
         on_ytdlp_revert: Callable[[], None] | None = None,
         on_ytdlp_check: Callable[[], None] | None = None,
+        check_for_updates: bool = True,
+        on_update_checks_chosen: Callable[[bool], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -518,6 +528,8 @@ class SettingsDialog(QDialog):
         self._ytdlp_in_use: str | None = None
         self._ytdlp_latest: str | None = None
         self._ytdlp_busy = False
+        self._check_for_updates = check_for_updates
+        self._on_update_checks_chosen = on_update_checks_chosen
 
         self.setObjectName("settingsDialog")
         self.setWindowTitle("Preferences")
@@ -547,6 +559,7 @@ class SettingsDialog(QDialog):
         inner.addWidget(self._build_appearance_section())
         inner.addWidget(self._build_queue_section())
         inner.addWidget(self._build_ytdlp_section())
+        inner.addWidget(self._build_updates_section())
 
         if SETTINGS_STILL_TO_COME:
             # **Built only when there is something to say** (`T-196`). An empty label is not
@@ -1534,6 +1547,35 @@ class SettingsDialog(QDialog):
             return
         self._theme = name
         self._on_theme_chosen(name)
+
+    # --- updates ------------------------------------------------------------------------
+
+    def _build_updates_section(self) -> QWidget:
+        """Whether a newer release is looked for without being asked (`T-338`, `NFR-007`).
+
+        **Disabled rather than hidden** when composition wired no writer, for the network section's
+        reason: a control that accepts a click it cannot store is worse than one that says so.
+        """
+        box = QGroupBox("Updates", self)
+        box.setObjectName("updatesSection")
+        layout = QVBoxLayout(box)
+        choice = QCheckBox(UPDATE_CHECKS_LABEL, box)
+        choice.setObjectName("checkForUpdates")
+        choice.setAccessibleName(UPDATE_CHECKS_LABEL)
+        choice.setToolTip(UPDATE_CHECKS_HINT)
+        choice.setAccessibleDescription(UPDATE_CHECKS_HINT)
+        choice.setChecked(self._check_for_updates)
+        choice.setEnabled(self._on_update_checks_chosen is not None)
+        choice.toggled.connect(self._update_checks_picked)
+        layout.addWidget(choice)
+        self._update_checks = choice
+        return box
+
+    def _update_checks_picked(self, checked: bool) -> None:
+        if checked == self._check_for_updates or self._on_update_checks_chosen is None:
+            return
+        self._check_for_updates = checked
+        self._on_update_checks_chosen(checked)
 
     # --- queue --------------------------------------------------------------------------
 
