@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-on-dark-512.png">
-    <img src="src/tracks_and_trails/resources/icons/icon-512.png" width="160" alt="Tracks &amp; Trails logo">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-on-dark.png">
+    <img src="docs/assets/logo-on-light.png" width="200" alt="Tracks &amp; Trails logo">
   </picture>
 </p>
 
@@ -11,8 +11,6 @@ A desktop GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp) on Linux and Window
 
 Tracks & Trails gives yt-dlp a queue-based desktop interface — presets and one-click downloads when you want
 simple, and the full format table, output templates, and post-processors when you don't.
-
-Video and audio are equally first-class.
 
 ---
 

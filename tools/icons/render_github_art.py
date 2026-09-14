@@ -5,10 +5,12 @@
 **Why this exists.** The maintainer asked for the logo on the repository page, 2026-09-14. It
 appears in two places, and neither can use the shipped icon as it is:
 
-- **The README header, in GitHub's dark theme.** The shipped icon is the *Brand-OnLight*
-  colourway: its `#1E5E47` mass tone measures 2.5:1 against GitHub's dark ground `#0d1117`, so
-  the trees and note all but disappear. The light theme uses the shipped
-  `icon-512.png` directly; this renders the dark-theme counterpart.
+- **The README header.** The shipped icon is the *Brand-OnLight* colourway: its `#1E5E47` mass
+  tone measures 2.5:1 against GitHub's dark ground `#0d1117`, so the trees and note all but
+  disappear. So the light theme gets the OnLight cut and the dark theme the OnDark one.
+  **Both are cropped to the ink**, because the maintainer found the first header too small: the
+  master's square artboard is only 68% ink across, so `width="160"` drew a logo about 110 px
+  wide. The crop keeps the pack's minimum clear space, 4% of the artwork width, on every side.
 - **The social preview**, the card shown when the repository link is shared. GitHub wants an
   opaque 1280x640 image, uploaded by hand under *Settings → General → Social preview*. There is
   no API for it, so this file is only ever the source of that upload.
@@ -47,8 +49,13 @@ OUT = ROOT / "docs" / "assets"
 BRAND_ON_LIGHT_MASS = "#1E5E47"
 BRAND_ON_DARK_MASS = "#48906C"
 
-#: Matches the shipped `icon-512.png`, so the two README variants swap at the same resolution.
-README_LOGO_SIZE = 512
+#: The artboard size the README logos are rasterised at before cropping. At 1024 the cropped ink
+#: is about 700 px wide, over three times the README's display width, so high-density screens
+#: still get a sharp image.
+README_RENDER_SIZE = 1024
+
+#: The pack's minimum clear space: *"at least 4% of the artwork width on all four sides."*
+CLEAR_SPACE = 0.04
 
 #: GitHub's recommended social preview size.
 PREVIEW_SIZE = (1280, 640)
@@ -85,9 +92,28 @@ def renderer_for(data: bytes) -> QSvgRenderer:
     return renderer
 
 
-def readme_logo_on_dark() -> QImage:
-    on_dark = master_svg().replace(BRAND_ON_LIGHT_MASS.encode(), BRAND_ON_DARK_MASS.encode())
-    return render(renderer_for(on_dark), README_LOGO_SIZE)
+def crop_to_ink(image: QImage) -> QImage:
+    """`image` cut to its visible pixels plus `CLEAR_SPACE` of the ink's width on each side."""
+    inked = [
+        (x, y)
+        for y in range(image.height())
+        for x in range(image.width())
+        if image.pixelColor(x, y).alpha() > 8
+    ]
+    if not inked:
+        raise SystemExit("the logo rendered fully transparent")
+    xs = [x for x, _ in inked]
+    ys = [y for _, y in inked]
+    margin = round((max(xs) - min(xs) + 1) * CLEAR_SPACE)
+    left, top = max(min(xs) - margin, 0), max(min(ys) - margin, 0)
+    right = min(max(xs) + margin, image.width() - 1)
+    bottom = min(max(ys) + margin, image.height() - 1)
+    return image.copy(left, top, right - left + 1, bottom - top + 1)
+
+
+def readme_logo(mass_tone: str) -> QImage:
+    svg = master_svg().replace(BRAND_ON_LIGHT_MASS.encode(), mass_tone.encode())
+    return crop_to_ink(render(renderer_for(svg), README_RENDER_SIZE))
 
 
 def social_preview() -> QImage:
@@ -144,7 +170,8 @@ def main() -> int:
     QGuiApplication.instance() or QGuiApplication(sys.argv)
     OUT.mkdir(parents=True, exist_ok=True)
     outputs = {
-        OUT / "logo-on-dark-512.png": readme_logo_on_dark(),
+        OUT / "logo-on-light.png": readme_logo(BRAND_ON_LIGHT_MASS),
+        OUT / "logo-on-dark.png": readme_logo(BRAND_ON_DARK_MASS),
         OUT / "social-preview-1280x640.png": social_preview(),
     }
     for path, image in outputs.items():
