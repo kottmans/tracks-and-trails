@@ -276,11 +276,13 @@ tree Narrator reads, and fail on a missing name or role. That is not the same cl
 speech*, which is why it stays listed as known-unverified. The check itself is `T-339`. The review
 record marks item 3 *deferred by ruling* rather than passed.
 
-**For item 1's screenshot**, the approved installer (sha256 `4d431336…`, identical to the Sandbox
-share copy) is attached to a **draft** release, `SmartScreen test (not a release)`, visible only to
-accounts with write access and creating no tag. In the Sandbox: Edge, sign in to GitHub, download it
-from the Releases page, run it. The browser download adds the Mark of the Web a mapped-folder copy
-lacks. **The draft is deleted once the screenshot is filed.**
+**For item 1's screenshot**, a draft release was tried and withdrawn the same hour: a draft's assets
+need a signed-in GitHub account, and the Sandbox has none. The draft was deleted, and it never made a
+tag. **The screenshot is taken instead by giving the Sandbox copy the Mark of the Web a browser
+download adds** (`Zone.Identifier` with `ZoneId=3`) and launching it from Explorer. SmartScreen's
+check is keyed on that mark and made online either way, so the warning is the one a downloaded copy
+gets. **If it shows nothing**, the fallback is the published `v0.1.0` release, which needs no
+sign-in.
 
 **Owner:** Maintainer performs; Implementer prepares the list and records the result
 **Priority:** High — the one exit criterion the plan says cannot be met from the development

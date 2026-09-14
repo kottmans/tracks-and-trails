@@ -29,8 +29,8 @@ task and review records it summarised.*
   all resolved (`T322-R5` approved at `9791c7e`), and the maintainer has seen its uninstaller on the
   installed build; it waits on a workflow build and the SmartScreen screenshot.
 - **Waiting on the maintainer**, and not implementable around:
-  - `T-327`: `T-317`'s SmartScreen screenshot, from the installer on a temporary **draft** release
-    (deleted afterwards); then the session's review record. Narrator (item 3) is deferred past
+  - `T-327`: `T-317`'s SmartScreen screenshot, from the Sandbox copy given the Mark of the Web a
+    browser download adds; then the session's review record. Narrator (item 3) is deferred past
     `0.1.0` by ruling, as `T-339`;
   - the first `v*` tag, which `T-324`'s draft run and `T-326`'s candidate items need.
 - **Otherwise open:** `T-322` (a workflow build and the screenshot), `T-333` (its installed-build
