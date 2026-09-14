@@ -74,6 +74,19 @@ _NON_RETRYABLE: Final = frozenset({ErrorKind.DRM_PROTECTED, ErrorKind.CANCELLED}
 #: added here rather than by rewriting a comparison somewhere else.
 _AUTO_RETRYABLE: Final = frozenset({ErrorKind.NETWORK})
 
+#: The context key a worker sets on a failure that may clear up on its own (maintainer's report,
+#: 2026-09-13). Reads of YouTube in particular fail now and then with an HTTP 403 or an extractor
+#: that did not expect what it got, and succeed when tried again — but those are `EXTRACTOR_ERROR`,
+#: which also covers a private or removed video, which never will. yt-dlp tells the two apart
+#: itself (`ExtractorError.expected`), so the worker records it here rather than the parent
+#: guessing from the message.
+TRANSIENT_CONTEXT_KEY: Final = "transient"
+
+
+def is_transient(context: tuple[tuple[str, str], ...]) -> bool:
+    """Whether a failure's context says it may succeed if tried again."""
+    return dict(context).get(TRANSIENT_CONTEXT_KEY) == "yes"
+
 
 def normalise_context(raw: object) -> tuple[tuple[str, str], ...]:
     """Return `raw` as a sorted, immutable tuple of string pairs, or raise `ValueError`.

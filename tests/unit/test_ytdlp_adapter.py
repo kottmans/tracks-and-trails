@@ -32,7 +32,7 @@ from yt_dlp.utils import (
     UnsupportedError,
 )
 
-from tracks_and_trails.core.errors import ErrorKind
+from tracks_and_trails.core.errors import ErrorKind, is_transient
 from tracks_and_trails.core.logging import redact
 from tracks_and_trails.core.models import (
     AudioCodec,
@@ -1781,3 +1781,27 @@ def test_the_upload_date_is_projected_only_in_its_documented_shape(
         {"title": "T", "webpage_url": "https://example.invalid/x", "upload_date": raw}
     )
     assert media.upload_date == projected
+
+
+def test_an_extraction_yt_dlp_understood_is_final_and_one_it_did_not_may_pass() -> None:
+    """Maintainer's ruling, 2026-09-13: yt-dlp's `expected` decides, not the message text.
+
+    A private or removed video is an `expected` `ExtractorError` and is never marked; an extractor
+    that failed unexpectedly, and an HTTP 403, are marked so a failed read is tried again.
+    """
+    from yt_dlp.utils import ExtractorError as YtdlpExtractorError
+
+    final = adapter.classify_exception(YtdlpExtractorError("Private video", expected=True))
+    passing = adapter.classify_exception(YtdlpExtractorError("Unable to extract nsig function"))
+
+    assert final.kind is passing.kind is ErrorKind.EXTRACTOR_ERROR
+    assert not is_transient(final.context)
+    assert is_transient(passing.context)
+
+
+@pytest.mark.parametrize(("status", "transient"), [(403, True), (404, False), (401, False)])
+def test_only_a_403_among_the_unretried_http_statuses_is_marked(
+    status: int, transient: bool
+) -> None:
+    detail = adapter.classify_exception(_http_error(status))
+    assert is_transient(detail.context) is transient

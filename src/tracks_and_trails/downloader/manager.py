@@ -75,7 +75,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 
 from tracks_and_trails.core import logging as app_logging
 from tracks_and_trails.core import output_template
-from tracks_and_trails.core.errors import ErrorKind
+from tracks_and_trails.core.errors import ErrorKind, is_transient
 from tracks_and_trails.core.job_state import JobStatus, can_transition, is_terminal
 from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo, Preset
 from tracks_and_trails.core.output_template import OutputPreview
@@ -2988,12 +2988,17 @@ class DownloadManager(QObject):
                     ),
                 ),
                 then=lambda: self._failed_and_maybe_retry(
-                    job_id, outcome.kind, outcome.message, session.kind
+                    job_id, outcome.kind, outcome.message, session.kind, outcome.context
                 ),
             )
 
     def _failed_and_maybe_retry(
-        self, job_id: str, kind: ErrorKind, message: str, session_kind: SessionKind
+        self,
+        job_id: str,
+        kind: ErrorKind,
+        message: str,
+        session_kind: SessionKind,
+        context: tuple[tuple[str, str], ...] = (),
     ) -> None:
         """Announce the failure, then decide whether this queue will try again (`T-083`).
 
@@ -3007,10 +3012,15 @@ class DownloadManager(QObject):
         `start`'s default — so a preview the user was still deciding about began writing media.
         """
         self.job_failed.emit(job_id, kind, message)
-        self._schedule_automatic_retry(job_id, kind, session_kind)
+        self._schedule_automatic_retry(job_id, kind, session_kind, transient=is_transient(context))
 
     def _schedule_automatic_retry(
-        self, job_id: str, kind: ErrorKind, session_kind: SessionKind = SessionKind.DOWNLOAD
+        self,
+        job_id: str,
+        kind: ErrorKind,
+        session_kind: SessionKind = SessionKind.DOWNLOAD,
+        *,
+        transient: bool = False,
     ) -> None:
         """Queue an automatic attempt if this failure is one worth repeating (`REQ-018`).
 
@@ -3021,7 +3031,14 @@ class DownloadManager(QObject):
         not final, not that repeating it unattended is useful. Deriving one from the other would
         put `WORKER_CRASH` into a loop on its own.
         """
-        if kind is not ErrorKind.NETWORK or self._shutting_down:
+        # **And a read that failed in a way that may pass** (maintainer's ruling, 2026-09-13). Reads
+        # fetch metadata only, so trying again costs a request; a *download* keeps the network-only
+        # rule, because repeating one repeats the transfer. The worker marks which extractor
+        # failures are transient (`is_transient`); a private or removed video is not marked.
+        transient_read = (
+            session_kind is SessionKind.PROBE and kind is ErrorKind.EXTRACTOR_ERROR and transient
+        )
+        if (kind is not ErrorKind.NETWORK and not transient_read) or self._shutting_down:
             return
         job = self._repository.get(job_id)
         if job is None or job.attempts >= AUTOMATIC_RETRY_LIMIT:

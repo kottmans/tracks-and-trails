@@ -332,8 +332,12 @@ differs per class:
 | `INTERRUPTED` | the application died mid-flight | Fail; offer retry (`REQ-012`, `NFR-003`) |
 | `CANCELLED` | user action | Not an error |
 
-Only `NETWORK` auto-retries. Everything else waits for the user (`REQ-018`) — silently
-retrying a permanent failure just hammers the site. That includes `INTERRUPTED`: an application
+Only `NETWORK` auto-retries — **and, since 2026-09-13, a failed *read* (probe) the worker marks
+transient** (maintainer's ruling): an HTTP 403, or an `ExtractorError` yt-dlp did not mark
+`expected`. YouTube reads fail that way now and then and succeed when tried again; a read costs one
+metadata request, so it gets the same attempt budget. A download keeps the network-only rule, and a
+private or removed video (an `expected` error) is never retried. Everything else waits for the user
+(`REQ-018`) — silently retrying a permanent failure just hammers the site. That includes `INTERRUPTED`: an application
 that crashed mid-download should not relaunch straight back into the download it crashed on.
 
 `INTERRUPTED` is distinct from `WORKER_CRASH` and the difference is observability. A worker

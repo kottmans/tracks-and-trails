@@ -4509,6 +4509,79 @@ def child_recording_kind_then_failing_network(
     queue.put(WorkerFinished(job_id=job_id, exit_code=1))
 
 
+def child_recording_kind_then_failing_extraction(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """Record each session kind, then fail extraction — marked transient when the URL says so."""
+    from tracks_and_trails.core.errors import TRANSIENT_CONTEXT_KEY
+    from tracks_and_trails.downloader.protocol import Failed
+
+    with (Path(request.output_directory) / "session-kinds.txt").open(
+        "a", encoding="utf-8"
+    ) as stream:
+        stream.write(f"{kind.value}\n")
+    transient = "transient" in request.url
+    queue.put(
+        Failed(
+            job_id=job_id,
+            kind=ErrorKind.EXTRACTOR_ERROR,
+            message="HTTP Error 403: Forbidden" if transient else "Private video",
+            context=((TRANSIENT_CONTEXT_KEY, "yes"),) if transient else (),
+        )
+    )
+    queue.put(WorkerFinished(job_id=job_id, exit_code=1))
+
+
+@pytest.mark.parametrize(
+    ("url", "kind", "retries"),
+    [
+        ("https://example.invalid/transient", SessionKind.PROBE, True),
+        ("https://example.invalid/private", SessionKind.PROBE, False),
+        ("https://example.invalid/transient", SessionKind.DOWNLOAD, False),
+    ],
+    ids=["a transient read retries", "a final read does not", "a transient download does not"],
+)
+def test_a_read_that_may_pass_is_retried_and_nothing_else_new_is(
+    tmp_path: Path,
+    spin: Callable[..., bool],
+    monkeypatch: pytest.MonkeyPatch,
+    url: str,
+    kind: SessionKind,
+    retries: bool,
+) -> None:
+    """Maintainer's ruling, 2026-09-13: reads that fail now and then were only ever retried by hand.
+
+    A failed **read** marked transient by the worker (an HTTP 403, an extractor that did not expect
+    what it got) is tried again, within the same attempt budget. A read yt-dlp understood as final
+    (a private video) is not, and a *download* keeps the network-only rule: repeating one repeats
+    the transfer.
+    """
+    quick_backoff(monkeypatch)
+    repository = FakeRepository()
+    repository.add(make_job("job-1", url, tmp_path))
+    download = DownloadManager(repository, entry_point=child_recording_kind_then_failing_extraction)
+    download.start_queue()
+    kinds_path = tmp_path / "session-kinds.txt"
+
+    def sessions() -> int:
+        return len(kinds_path.read_text("utf-8").splitlines()) if kinds_path.exists() else 0
+
+    try:
+        download.start("job-1", kind)
+        assert spin(lambda: sessions() >= 1, timeout=60), "the first session never ran"
+        spin(lambda: sessions() >= 2, timeout=3.0)
+        assert (sessions() >= 2) is retries, (
+            f"{url} as a {kind.value}: {sessions()} session(s) ran, and it "
+            f"{'should' if retries else 'should not'} have been tried again"
+        )
+        if retries:
+            kinds = kinds_path.read_text("utf-8").splitlines()
+            assert set(kinds) == {SessionKind.PROBE.value}, kinds
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
 def test_an_automatic_retry_preserves_a_probe_as_a_probe(
     tmp_path: Path, spin: Callable[..., bool], monkeypatch: pytest.MonkeyPatch
 ) -> None:

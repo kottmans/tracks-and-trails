@@ -41,7 +41,7 @@ from yt_dlp.utils import (
     UnsupportedError,
 )
 
-from tracks_and_trails.core.errors import ErrorKind, FailureDetail
+from tracks_and_trails.core.errors import TRANSIENT_CONTEXT_KEY, ErrorKind, FailureDetail
 from tracks_and_trails.core.models import (
     DownloadRequest,
     FormatInfo,
@@ -177,14 +177,33 @@ def classify_exception(error: BaseException) -> FailureDetail:
     """
     cause = unwrap(error)
     message = extractor_message(error)
+    transient = ((TRANSIENT_CONTEXT_KEY, "yes"),)
 
     # Before the type table: `HTTPError`'s consequence lives in its status, not its class.
     if isinstance(cause, HTTPError):
-        return FailureDetail(kind=_http_status_kind(cause.status), message=message)
+        # **A 403 may pass** (maintainer's report, 2026-09-13): YouTube returns one now and then
+        # for a read that works a moment later. Still `EXTRACTOR_ERROR` (`_http_status_kind` says
+        # why it is not auth), but marked, so a failed read is tried again.
+        return FailureDetail(
+            kind=_http_status_kind(cause.status),
+            message=message,
+            context=transient if cause.status == 403 else (),
+        )
 
     for exception_type, kind in _EXCEPTION_MAPPING:
         if isinstance(cause, exception_type):
-            return FailureDetail(kind=kind, message=message)
+            # **An extractor that did not expect this may succeed next time.** yt-dlp sets
+            # `expected` on the conditions it understands and reports to the user (a private
+            # video, a removed one, a sign-in wall) and leaves it unset when extraction itself
+            # went wrong.
+            unexpected = (
+                kind is ErrorKind.EXTRACTOR_ERROR
+                and isinstance(cause, ExtractorError)
+                and not getattr(cause, "expected", False)
+            )
+            return FailureDetail(
+                kind=kind, message=message, context=transient if unexpected else ()
+            )
     return FailureDetail(kind=ErrorKind.EXTRACTOR_ERROR, message=message)
 
 
