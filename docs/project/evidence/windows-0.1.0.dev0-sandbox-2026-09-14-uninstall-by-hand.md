@@ -14,7 +14,7 @@ sha256 `791179020c681c681197c57a0fdca566305e6928c2f57629b00a23fd45543507` (recom
 uncorrected script, and byte-identical to it), **FAIL 1** on this section alone: *settings kept: False;
 queue database kept: False*, with *Settings and download queue removed.* in its log. **An earlier pair
 of runs passed both installers**: the check read the data before Inno's final step, which is where
-the removal happens. It now waits for `Log closed.` and prints the log's tail, as below.
+the removal happens. It now waits until the uninstall log closes (its pattern accepts `Log closed.` or an exit-code line) and `unins000.exe` is gone, and prints the log's tail, as below.
 
 ---
 

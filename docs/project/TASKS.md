@@ -565,7 +565,7 @@ says.**
 on a silent run, where no box is shown; on the `/ASK` run the tick box replaces it; on any other run
 Inno's box is shown and nothing is removed.
 
-**Tests:** `test_the_only_box_that_promises_to_keep_data_is_never_followed_by_deleting_it` ties the
+**Tests:** `test_a_run_by_hand_without_ask_or_a_silent_flag_keeps_what_inno_s_box_promises` ties the
 confirmation's wording to the only assignment of the flag. Removing `and UninstallSilent` fails it and
 the dialog test.
 
@@ -574,7 +574,7 @@ the dialog test.
 runs `/REMOVEDATA` interactively and answers Inno's box Yes by keystroke. The corrected installer
 passes (settings and queue kept, no removal logged); the installer reviewed at `03c6745` fails that
 section alone, with *Settings and download queue removed.* in its log. **The first pair of runs passed
-both**, because the check looked before Inno's final step; it now waits for Inno's `Log closed.`.
+both**, because the check looked before Inno's final step; it now waits for the uninstall log to close (a `Log closed.` line, or an exit-code line) with `unins000.exe` gone. *(`T322-R6`: the test named here was renamed to what it proves, `test_a_run_by_hand_without_ask_or_a_silent_flag_keeps_what_inno_s_box_promises`; a hand-run `/ASK` without a silent flag still asks first and can remove.)*
 Every earlier check on both runs is unchanged.
 
 #### 2026-09-14 — corrections from the session review: one process, a closed application, honest results

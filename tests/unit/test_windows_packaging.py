@@ -484,13 +484,16 @@ def test_the_data_question_is_asked_once_and_only_a_ticked_box_removes_anything(
     assert len(calls) == 1, "data is removed somewhere nothing asks"
 
 
-def test_the_only_box_that_promises_to_keep_data_is_never_followed_by_deleting_it() -> None:
+def test_a_run_by_hand_without_ask_or_a_silent_flag_keeps_what_inno_s_box_promises() -> None:
     """**`T322-R5`.** `unins000.exe /REMOVEDATA`, run by hand without `/ASK` or a silent flag,
     showed Inno's confirmation, whose message says settings and the queue are kept, then removed
     them.
 
-    The removal flag is honoured only on a silent run (no box) or replaced by the tick box on the
-    `/ASK` run, so the one run that shows Inno's box can never remove anything.
+    **What this proves, and no more** (`T322-R6`): on a run with neither `/ASK` nor a silent flag,
+    `/REMOVEDATA` cannot set the removal flag, because its only assignment requires a silent run. It
+    does not cover `/ASK` supplied by hand without a silent flag, where the custom question comes
+    before Inno's own box and a ticked box still removes. That route predates `T322-R5`, and it is
+    not the command Windows registers.
     """
     text = INSTALLER.read_text(encoding="utf-8")
     message = next(line for line in text.splitlines() if line.startswith("ConfirmUninstall="))
