@@ -14,10 +14,60 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-338 — The application says when a newer release is out
+
+**Status:** **In Review** — ruled 2026-09-13 by the maintainer from `T-327`'s session, recorded as
+`REL-009`, and built the same day.
+**Owner:** Implementer
+**Priority:** High — a release without a checker can never tell its own users about the next one
+**Phase:** Phase 5
+**Relevant context:** `REL-009`; `NFR-007` as amended; `REL-001`, `REL-005`; `OPS-002` (the yt-dlp
+updater this mirrors)
+**Affected surfaces:** `core/app_updates.py` (new), `downloader/app_release.py` (new),
+`downloader/app_update_service.py` (new), `core/settings.py`, `ui/settings_dialog.py`,
+`ui/main_window.py`, `app.py`, `packaging/tracks-and-trails.iss`
+
+#### What was built
+
+- **Help → Check for Updates...** above About. The answer arrives in a box: a newer version with
+  *Open Download Page*, the latest version, or why the check failed.
+- **The daily check**, scheduled by `app.present` five seconds after the window shows, when
+  Preferences allows it and the last *answered* check is a day old. It opens nothing: a newer
+  release puts *Version X is available* in the status bar, and a failure is silent. A press while
+  it is in flight makes that one request's answer visible instead of starting another.
+- **Preferences → Updates → Check for updates automatically**, on by default, stored as
+  `[updates] check_automatically = false` only when switched off.
+- **The request** (`downloader/app_release.py`): one `GET` to GitHub's latest-release API over
+  https, 15 s timeout, 1 MiB cap, a `User-Agent` naming the application without its version.
+  The page is built from the parsed tag; the response's own URLs are never used.
+- **`updates.toml`** beside the settings records the last answered check; the uninstaller's
+  *Also remove my settings* removes it and its scratch file, which the packaging tests enforce
+  against `update_check_path()`.
+- **The notice is named for screen readers before any release is known.** The accessibility audit
+  walks hidden controls and failed the first build on a nameless button.
+- **Its own pool**, sealed and drained at shutdown like the other two, so a launch check never
+  makes the yt-dlp section's buttons answer "another operation is still running".
+- **No test reaches GitHub**: the root conftest replaces the real opener for every test.
+
+#### Found while building
+
+- **Version digits were not ASCII-only.** `\d` matched fullwidth and Arabic-Indic digits, so a tag
+  like `１.0.0` parsed as a version and would have produced a page address. The pattern is
+  `[0-9]` under `re.ASCII`, and the case is in the tests.
+
+#### Not verified yet
+
+- **On Windows, now verified**: at `f29a542` on `STARBASE`'s desktop (`QT_QPA_PLATFORM=windows`),
+  the Windows accessibility test (Help now publishes *Check for Updates...*), the Windows desktop
+  slice, this task's UI and unit tests and the packaging tests: 131 passed. The installer built from
+  that commit is staged for the maintainer's Sandbox session, sha256 `c46f6f6f…`.
+- **Against GitHub itself**: there is no published release yet, so a real check answers *No version
+  has been released yet*. The parsing is tested against recorded shapes, not a live response.
+
 ### T-337 — Naming is a setting; a single download is renamed, not templated
 
 **Status:** **In Review** — ruled 2026-09-13 by the maintainer from `T-327`'s session, recorded as
-`UX-014`, and built the same day in three commits.
+`UX-014`, and built the same day in ten commits (`8ec395c` to `60fb124`).
 **Owner:** Implementer
 **Priority:** High — the per-item template editor is the first naming surface a user meets
 **Phase:** Phase 5

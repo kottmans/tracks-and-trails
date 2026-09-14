@@ -45,6 +45,7 @@ import sys
 from collections.abc import Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
@@ -59,6 +60,7 @@ if TYPE_CHECKING:
 
     from tracks_and_trails.core.instance_lock import InstanceLock
     from tracks_and_trails.core.job_state import JobStatus
+    from tracks_and_trails.downloader.app_update_service import AppUpdateService
     from tracks_and_trails.downloader.environment import FfmpegReport
     from tracks_and_trails.downloader.manager import DownloadManager
     from tracks_and_trails.downloader.pools import SealedPool
@@ -331,6 +333,45 @@ def present(composition: Composition) -> None:
     composition.window.show()
     if composition.settings_problem is not None:
         composition.window.report_settings_problem(composition.settings_problem)
+    start_automatic_update_check(composition)
+
+
+#: How long after the window appears the daily release check starts (`T-338`). Late enough that it
+#: costs nothing a user waits for at launch (`NFR-002`, `NFR-010`); the check itself is off the GUI
+#: thread either way.
+AUTOMATIC_UPDATE_CHECK_DELAY_MS: Final = 5000
+
+
+def start_automatic_update_check(
+    composition: Composition,
+    *,
+    now: datetime | None = None,
+    last_checked: Callable[[], datetime | None] | None = None,
+) -> bool:
+    """Schedule the daily release check when it is on and due. **The answer is whether it was.**
+
+    `last_checked` defaults to reading the record beside the settings file in use; a test hands one
+    in.
+    """
+    from PySide6.QtCore import QTimer
+
+    from tracks_and_trails.core.app_updates import (
+        UPDATE_CHECK_FILENAME,
+        check_is_due,
+        read_last_check,
+    )
+
+    if not composition.check_for_updates:
+        return False
+    record = composition.settings_path.with_name(UPDATE_CHECK_FILENAME)
+    previous = last_checked() if last_checked is not None else read_last_check(record)
+    if not check_is_due(previous, now if now is not None else datetime.now(UTC)):
+        return False
+    service = composition.app_updates
+    QTimer.singleShot(
+        AUTOMATIC_UPDATE_CHECK_DELAY_MS, service, lambda: service.check(explicit=False)
+    )
+    return True
 
 
 def waiting_jobs(repository: JobRepository) -> list[tuple[str, JobStatus]]:
@@ -428,6 +469,9 @@ class Composition:
     #: is a graph nothing can check. It was reachable only as a private attribute of the window,
     #: so the one wiring that keeps a running worker's code tree stable had no assertion on it.
     ytdlp: YtdlpService
+    #: Whether a newer release exists (`T-338`). Held for `ytdlp`'s reason, and so `present` can
+    #: start the automatic check once the window is showing.
+    app_updates: AppUpdateService
     store: PersistentJobStore
     writer: QueueWriter
     connection: sqlite3.Connection
@@ -439,6 +483,8 @@ class Composition:
     #: because `compose()` restyling the `QApplication` would restyle the one every other test in
     #: the session shares — the rule the `theme.apply` note in `run()` states. `run()` applies it.
     theme: str
+    #: Whether the settings file allows the daily check (`T-338`), carried for `theme`'s reason.
+    check_for_updates: bool
     #: The settings problem to report, or `None` (`ARC-008`, `T-308`). **Carried rather than
     #: shown**, for exactly `theme`'s reason one consequence further on: `compose()` opened this as
     #: a window-modal box on a window that `run()` had not shown yet, so the compositor mapped the
@@ -498,6 +544,9 @@ def compose(
     #: is: the real one spawns a child and imports yt-dlp to answer, which every composition
     #: test would otherwise pay for on every `open_settings`.
     ytdlp_service: YtdlpService | None = None,
+    #: The release check (`T-338`). Injected for `ytdlp_service`'s reason: the real one reaches
+    #: GitHub, which no test may do.
+    app_update_service: AppUpdateService | None = None,
 ) -> Composition:
     """Build the object graph and wire it up, then admit what the last run left queued.
 
@@ -519,8 +568,10 @@ def compose(
     from tracks_and_trails.core import models as core_models
     from tracks_and_trails.core import paths
     from tracks_and_trails.core import settings as app_settings
+    from tracks_and_trails.core.app_updates import UPDATE_CHECK_FILENAME, record_check
     from tracks_and_trails.core.instance_lock import InstanceLock
     from tracks_and_trails.downloader import worker
+    from tracks_and_trails.downloader.app_update_service import AppUpdateService
     from tracks_and_trails.downloader.environment import (
         bundled_ffmpeg,
         find_ffmpeg,
@@ -987,6 +1038,12 @@ def compose(
         ui_theme.apply(app, ui_theme.THEMES[chosen.theme])
         remember(chosen, "the theme")
 
+    def choose_update_checks(enabled: bool) -> None:
+        """Keep the daily release check on or off (`T-338`). Takes effect at the next launch."""
+        chosen = app_settings.with_update_checks(held.settings, enabled)
+        held.settings = chosen
+        remember(chosen, "the update preference")
+
     def save_preset(preset: Preset) -> str | None:
         """Keep the options editor's answer under a name (`P-4`, `REQ-007`, `T109-R5`).
 
@@ -1147,6 +1204,14 @@ def compose(
         else ytdlp_service
     )
 
+    app_updates = AppUpdateService() if app_update_service is None else app_update_service
+    # **Only an answer is recorded**, so a launch without a connection tries again next time
+    # rather than waiting a day (`T-338`).
+    update_record = (
+        settings_file if settings_file is not None else app_settings.settings_path()
+    ).with_name(UPDATE_CHECK_FILENAME)
+    app_updates.answered.connect(lambda *_: record_check(datetime.now(UTC), update_record))
+
     window = MainWindow(
         geometry_file,
         manager=manager,
@@ -1234,6 +1299,9 @@ def compose(
         queue=store,
         # Built above, with the manager as its exclusion (`REQ-025`, `T-198`, `T198-R3`).
         ytdlp=ytdlp,
+        app_updates=app_updates,
+        check_for_updates=settings.check_for_updates,
+        on_update_checks_chosen=choose_update_checks,
         # *(A third protocol was passed here until 2026-08-06: read-only over the table `T-085`
         # wrote, for the History view that enumerated records. `REQ-020` is withdrawn, the table is
         # dropped by migration `0009`, and the argument went with them — `T-176`.)*
@@ -1342,6 +1410,7 @@ def compose(
     # `__main__.py` must stay importable without pulling in Qt so `multiprocessing.freeze_support()`
     # runs first in a frozen build (`REL-001`, `ARCHITECTURE.md` §3), and both of these modules
     # import `PySide6`. The first version of this put them at the top (`T289-R21`).
+    from tracks_and_trails.downloader.app_update_service import pool as app_update_pool
     from tracks_and_trails.downloader.ytdlp_service import pool as ytdlp_pool
     from tracks_and_trails.ui.thumbnails import pool as thumbnail_pool
 
@@ -1351,7 +1420,8 @@ def compose(
         writer,
         connection,
         instance,
-        pools=(ytdlp_pool(), thumbnail_pool()),  # both real pools; see the import above
+        # Every real pool; see the import above. `T-338` added the release check's.
+        pools=(ytdlp_pool(), thumbnail_pool(), app_update_pool()),
     )
     window.closing.connect(shutdown.begin)
     # **Every quit, not only the one through the window.** Qt aborts the process if a `QThread`
@@ -1368,6 +1438,7 @@ def compose(
         window=window,
         manager=manager,
         ytdlp=ytdlp,
+        app_updates=app_updates,
         store=store,
         writer=writer,
         connection=connection,
@@ -1376,6 +1447,7 @@ def compose(
         database_path=database_path,
         settings_path=settings_file if settings_file is not None else app_settings.settings_path(),
         theme=settings.theme,
+        check_for_updates=settings.check_for_updates,
         settings_problem=settings_problem,
         cache_root=cache_root,
         shutdown=shutdown,

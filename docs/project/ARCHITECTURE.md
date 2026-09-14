@@ -444,7 +444,9 @@ classification. Classification is a hint, not a replacement.
   data and must never reach a shell.
 - Output-template rendering is not `eval`; it uses yt-dlp's own template mechanism plus the
   containment check in §8.
-- No inbound network surface (§2). No telemetry (`NFR-007`).
+- No inbound network surface (§2). No telemetry (`NFR-007`). The release check (`REL-009`) is one
+  `GET` to a constant address, and the page it offers is built from the parsed version rather than
+  taken from the response.
 - Cookie material is passed to the worker by path, used, and never persisted into the
   database or logs.
 

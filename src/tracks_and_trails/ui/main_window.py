@@ -26,11 +26,12 @@ from typing import Any, Final, cast
 
 import shiboken6
 from platformdirs import user_config_dir
-from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, QUrl, Signal
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
     QCursor,
+    QDesktopServices,
     QGuiApplication,
     QIcon,
     QKeySequence,
@@ -45,16 +46,19 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QSizePolicy,
     QToolBar,
+    QToolButton,
     QWidget,
 )
 
 from tracks_and_trails import __version__
 from tracks_and_trails.core import output_template, presets, settings
+from tracks_and_trails.core.app_updates import is_newer
 from tracks_and_trails.core.job_state import REORDERABLE
 from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo, NetworkOptions, Preset
 from tracks_and_trails.core.output_template import OutputPreview
 from tracks_and_trails.core.paths import APP_SLUG
 from tracks_and_trails.core.settings import SettingsProblem
+from tracks_and_trails.downloader.app_update_service import AppRelease, AppUpdateService
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.ytdlp_service import YtdlpService
 from tracks_and_trails.ui.add_dialog import AddUrlDialog, JobSink
@@ -552,6 +556,13 @@ class MainWindow(QMainWindow):
         #: yt-dlp's version and the two actions `REQ-025` asks for (`T-198`). Injected because
         #: it spawns children and reaches the network, neither of which a window owns.
         ytdlp: YtdlpService | None = None,
+        #: `T-338`: whether a newer release exists, the preference that lets it be asked daily,
+        #: and the preference's writer. Injected because the service reaches the network.
+        app_updates: AppUpdateService | None = None,
+        check_for_updates: bool = True,
+        on_update_checks_chosen: Callable[[bool], None] | None = None,
+        #: Opens a web page. Injected so a test can see the address without a browser opening.
+        open_link: Callable[[str], object] | None = None,
     ) -> None:
         super().__init__()
         self._geometry_file = geometry_file
@@ -612,6 +623,18 @@ class MainWindow(QMainWindow):
             # `T-333`: an explicit check, and an install, both say what the newest release is.
             ytdlp.checked.connect(self._on_ytdlp_latest)
             ytdlp.installed.connect(self._on_ytdlp_latest)
+        self._app_updates = app_updates
+        self._check_for_updates = check_for_updates
+        self._on_update_checks_chosen = on_update_checks_chosen
+        self._open_link = open_link or (lambda url: QDesktopServices.openUrl(QUrl(url)))
+        #: The newest release an answer named, when it is newer than this build.
+        self._available_release: AppRelease | None = None
+        #: The last box a check opened, so a test asserts on it without driving a modal.
+        self._update_box: QMessageBox | None = None
+        if app_updates is not None:
+            # Connected once, on the window, for the yt-dlp service's reason above.
+            app_updates.answered.connect(self._on_app_release)
+            app_updates.failed.connect(self._on_app_update_failed)
         #: The cache root both thumbnail stores write under (`T-180`). Composition derives it from
         #: the database so two permitted instances stop sweeping each other's pictures; this window
         #: only carries it to the two widgets that fetch, and never learns what a database is.
@@ -730,6 +753,18 @@ class MainWindow(QMainWindow):
         #: dialog offers the merge mode from this, and claiming a capability nobody has confirmed
         #: is what `REQ-024` exists to prevent. `app.py` reports it during composition.
         self._ffmpeg_available = False
+        #: **A quiet notice, not a dialog** (`T-338`). An automatic check that finds a newer release
+        #: puts this in the status bar and nothing else: a box at launch interrupts somebody who
+        #: opened the application to download something. Pressing it offers the release page.
+        self._update_notice = QToolButton(self)
+        self._update_notice.setObjectName("updateAvailable")
+        # Named before any release is known (`NFR-005`): the accessibility audit walks hidden
+        # controls too, and a nameless button is announced as just "button".
+        self._update_notice.setAccessibleName("A newer version is available")
+        self._update_notice.setAutoRaise(True)
+        self._update_notice.setHidden(True)
+        self._update_notice.clicked.connect(self._offer_available_release)
+        self.statusBar().addPermanentWidget(self._update_notice)
         self._environment = QLabel(self)
         self._environment.setObjectName("environmentSummary")
         self._environment.setAccessibleName("Environment")
@@ -1994,6 +2029,16 @@ class MainWindow(QMainWindow):
         self._settings_action = settings_action
 
         help_menu = menu_bar.addMenu("&Help")
+        # `T-338`. Three ASCII dots for `Add URLs...`'s reason: it opens a box with the answer.
+        updates_action = QAction("Check for &Updates...", self)
+        updates_action.setMenuRole(QAction.MenuRole.NoRole)
+        updates_action.setStatusTip(f"See whether a newer version of {APP_NAME} is out")
+        updates_action.setObjectName("actionCheckForUpdates")
+        updates_action.setEnabled(self._app_updates is not None)
+        updates_action.triggered.connect(self.check_for_updates)
+        help_menu.addAction(updates_action)
+        #: Held so a test drives the route a user takes.
+        self._updates_action = updates_action
         # **"&About", not "&About {APP_NAME}"** — and the short form also fixes a defect. Qt reads
         # `&` in an action's text as a mnemonic marker, so the ampersand *inside* `APP_NAME`
         # was being consumed: the item rendered as "About Tracks _Trails", underlining the T of
@@ -2085,6 +2130,10 @@ class MainWindow(QMainWindow):
             on_ytdlp_update=None if self._ytdlp is None else self._ytdlp.install_latest_version,
             on_ytdlp_revert=None if self._ytdlp is None else self._ytdlp.revert,
             on_ytdlp_check=None if self._ytdlp is None else self._ytdlp.check_latest_version,
+            check_for_updates=self._check_for_updates,
+            on_update_checks_chosen=(
+                None if self._on_update_checks_chosen is None else self._update_checks_chosen
+            ),
             parent=self,
         )
         self._settings_dialog = dialog
@@ -2209,6 +2258,91 @@ class MainWindow(QMainWindow):
         self._concurrency_limit = limit
         if self._settings_dialog is not None:
             self._settings_dialog.show_concurrency(limit)
+
+    def check_for_updates(self) -> None:
+        """Ask whether a newer release is out, and show the answer when it arrives (`T-338`)."""
+        if self._app_updates is None:
+            return
+        self.statusBar().showMessage("Checking for updates...", MESSAGE_TIMEOUT_MS)
+        self._app_updates.check(explicit=True)
+
+    def _on_app_release(self, release: object, explicit: bool) -> None:
+        """An answer: show the notice when it is newer, and a box when somebody asked."""
+        assert isinstance(release, AppRelease)
+        newer = is_newer(release.version, __version__)
+        if newer:
+            self._available_release = release
+            self._update_notice.setText(f"Version {release.version} is available")
+            self._update_notice.setAccessibleName(f"Version {release.version} is available")
+            self._update_notice.setToolTip("Open the page to download it")
+            self._update_notice.setHidden(False)
+        if not explicit:
+            return
+        self.statusBar().clearMessage()
+        if newer:
+            self._offer_available_release()
+            return
+        box = self._update_message(QMessageBox.Icon.Information)
+        box.setText(f"You have the latest version of {APP_NAME}.")
+        box.setInformativeText(f"Version {__version__}")
+        box.setStandardButtons(QMessageBox.StandardButton.Close)
+        box.open()
+
+    def _on_app_update_failed(self, reason: str, explicit: bool) -> None:
+        """A check that did not answer. **Silent unless somebody asked**: an offline launch is not
+        news, and the next launch tries again."""
+        if not explicit:
+            return
+        self.statusBar().clearMessage()
+        box = self._update_message(QMessageBox.Icon.Warning)
+        box.setText("Couldn't check for updates.")
+        box.setInformativeText(reason)
+        box.setStandardButtons(QMessageBox.StandardButton.Close)
+        box.open()
+
+    def _offer_available_release(self) -> None:
+        """The box that offers the newer release's page."""
+        release = self._available_release
+        if release is None:
+            return
+        box = self._update_message(QMessageBox.Icon.Information)
+        box.setText(f"{APP_NAME} {release.version} is available.")
+        box.setInformativeText(f"You have version {__version__}.")
+        download = box.addButton("Open Download Page", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QMessageBox.StandardButton.Close)
+        box.setDefaultButton(download)
+        download.clicked.connect(lambda: self._open_link(release.page))
+        box.open()
+
+    def _update_message(self, icon: QMessageBox.Icon) -> QMessageBox:
+        box = QMessageBox(self)
+        box.setObjectName("updateCheckDialog")
+        box.setWindowTitle("Check for Updates")
+        box.setIcon(icon)
+        box.setTextFormat(Qt.TextFormat.PlainText)
+        self._update_box = box
+        return box
+
+    @property
+    def update_box(self) -> QMessageBox | None:
+        """The last box a check opened (`T-338`)."""
+        return self._update_box
+
+    @property
+    def updates_action(self) -> QAction:
+        """Help, Check for Updates, so a test drives the route a user takes."""
+        return self._updates_action
+
+    @property
+    def update_notice(self) -> QToolButton:
+        """The status bar's notice of a newer release."""
+        return self._update_notice
+
+    def _update_checks_chosen(self, enabled: bool) -> None:
+        """Remember the screen's answer, so reopening it shows the preference in force."""
+        self._check_for_updates = enabled
+        if self._on_update_checks_chosen is not None:
+            self._on_update_checks_chosen(enabled)
 
     def show_about(self) -> QMessageBox:
         """Build the About box and show it.

@@ -14,8 +14,9 @@ because pytest discovers fixtures from `conftest.py` and plugins, not from an or
 import os
 import sys
 from collections.abc import Iterator
+from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import IO, Any, Protocol, cast
 
 import pytest
 
@@ -23,6 +24,30 @@ from tests import user_directories
 from tests.capabilities import ffmpeg, symlinks
 
 __all__ = ["ffmpeg", "symlinks"]
+
+
+# --- No test asks GitHub for a release (`T-338`) -------------------------------------------------
+#
+# `compose()` builds the real release check, and `present()` schedules it when the day's check is
+# due, which in a fresh test directory it always is. A test that spins the event loop past the
+# delay would then reach GitHub. The opener every real check goes through is replaced for every
+# test, so that cannot happen however a composition was built; tests of the parsing hand in their
+# own opener and never reach this one. Qt-free: `app_release` imports no Qt.
+
+
+@pytest.fixture(autouse=True)
+def _no_release_check_reaches_the_network() -> Iterator[None]:
+    from tracks_and_trails.downloader import app_release
+
+    def refused(_url: str) -> AbstractContextManager[IO[bytes]]:
+        raise app_release.AppReleaseError("Tests do not reach GitHub.")
+
+    real = app_release._open_url
+    setattr(app_release, "_open_url", refused)  # noqa: B010 (mypy types the module attribute)
+    try:
+        yield
+    finally:
+        setattr(app_release, "_open_url", real)  # noqa: B010
 
 
 # --- `docs/project/TESTING.md` §5, which had a rule and no mechanism (`T123-R2`) ------------------
@@ -128,6 +153,7 @@ class _PoolModule(Protocol):
 
 
 _POOL_SINGLETON_MODULES = (
+    "tracks_and_trails.downloader.app_update_service",
     "tracks_and_trails.downloader.ytdlp_service",
     "tracks_and_trails.ui.thumbnails",
 )

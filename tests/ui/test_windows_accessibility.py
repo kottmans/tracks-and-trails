@@ -370,7 +370,8 @@ def test_no_interactive_control_reaches_the_tree_without_a_name(tree: Tree) -> N
     [
         ("&File", ["Add URLs...", "Start", "Clear finished", "Quit"]),
         ("&Settings", ["Preferences..."]),
-        ("&Help", ["About"]),
+        # `T-338` put *Check for Updates...* above `About`.
+        ("&Help", ["Check for Updates...", "About"]),
     ],
 )
 def test_each_menu_publishes_exactly_its_actions(

@@ -2140,3 +2140,41 @@ def test_a_discarded_download_folder_is_labelled_as_the_one_that_was_named(
     assert reason is not None
     assert "The folder named in your settings was" in reason, reason
     assert str(missing) in reason
+
+
+# --- T-338: whether a newer release is looked for without being asked -------------------------
+
+
+def test_update_checks_are_on_when_the_file_says_nothing(tmp_path: Path) -> None:
+    """The maintainer's ruling: on by default. A fresh install and an old file both mean *on*."""
+    target = tmp_path / "settings.toml"
+    assert settings_module.load(target).settings.check_for_updates
+    target.write_text("[queue]\nconcurrency = 2\n", encoding="utf-8")
+    assert settings_module.load(target).settings.check_for_updates
+
+
+def test_switching_update_checks_off_survives_a_save_and_load(tmp_path: Path) -> None:
+    target = tmp_path / "settings.toml"
+    off = settings_module.with_update_checks(settings_module.Settings(), False)
+    assert settings_module.save(off, target) is None
+    loaded = settings_module.load(target)
+    assert loaded.problem is None
+    assert not loaded.settings.check_for_updates
+    back_on = settings_module.with_update_checks(loaded.settings, True)
+    assert settings_module.save(back_on, target) is None
+    assert "[updates]" not in target.read_text(encoding="utf-8")
+    assert settings_module.load(target).settings.check_for_updates
+
+
+@pytest.mark.parametrize("stored", ['"no"', "0", '"false"'])
+def test_an_update_preference_that_is_not_true_or_false_is_reported(
+    tmp_path: Path, stored: str
+) -> None:
+    target = tmp_path / "settings.toml"
+    target.write_text(
+        f"[queue]\nconcurrency = 2\n\n[updates]\ncheck_automatically = {stored}\n", encoding="utf-8"
+    )
+    loaded = settings_module.load(target)
+    assert loaded.settings.check_for_updates
+    assert loaded.settings.concurrency == 2, "a bad update preference cost an unrelated setting"
+    assert loaded.problem is not None and "check_automatically" in loaded.problem.reason

@@ -26,7 +26,7 @@ from PySide6.QtCore import QObject, QRunnable, Signal
 
 from tracks_and_trails import app as application
 from tracks_and_trails.app import OrderlyShutdown, compose
-from tracks_and_trails.downloader import ytdlp_service, ytdlp_update
+from tracks_and_trails.downloader import app_update_service, ytdlp_service, ytdlp_update
 from tracks_and_trails.ui import thumbnails
 
 if TYPE_CHECKING:
@@ -688,7 +688,7 @@ def test_the_service_hands_its_version_query_the_pools_cancellation(
     )
 
 
-def test_composition_hands_the_shutdown_both_real_pools(qapp: QApplication, tmp_path: Path) -> None:
+def test_composition_hands_the_shutdown_every_real_pool(qapp: QApplication, tmp_path: Path) -> None:
     """**The wiring, which every test above would pass without** (`T289-R21`).
 
     Each pool is asserted independently there, but on a pool the *test* fetched. Replacing the
@@ -708,7 +708,11 @@ def test_composition_hands_the_shutdown_both_real_pools(qapp: QApplication, tmp_
     )
     try:
         wired = composition.shutdown._pools
-        assert len(wired) == 2, "composition did not hand over two pools"
+        # `T-338` added the release check's pool.
+        assert len(wired) == 3, "composition did not hand over three pools"
+        assert any(pool is app_update_service.pool() for pool in wired), (
+            "the release check's pool is not waited for"
+        )
         assert any(pool is ytdlp_service.pool() for pool in wired), (
             "the yt-dlp pool is not waited for"
         )

@@ -388,6 +388,7 @@ def windows_layout(monkeypatch: pytest.MonkeyPatch) -> dict[str, PureWindowsPath
 
     import platformdirs.windows as windows
 
+    import tracks_and_trails.core.app_updates as app_updates
     import tracks_and_trails.core.logging as app_logging
     import tracks_and_trails.core.paths as paths
     import tracks_and_trails.core.settings as settings
@@ -423,6 +424,8 @@ def windows_layout(monkeypatch: pytest.MonkeyPatch) -> dict[str, PureWindowsPath
 
     return {
         "settings": windows_path(settings.settings_path()),
+        # `T-338`'s record of the last release check, which sits beside the settings.
+        "update check record": windows_path(app_updates.update_check_path()),
         "window geometry": windows_path(main_window.geometry_path()),
         "queue database": windows_path(db.database_path()),
         "user yt-dlp": windows_path(environment.user_ytdlp_directory()),
@@ -492,7 +495,12 @@ def test_a_yes_removes_everything_the_application_writes(monkeypatch: pytest.Mon
     # The database's WAL companions and the settings scratch file are the application's too
     # (`persistence/db.py` sets WAL; `core/settings.py` writes `settings.toml.writing`).
     database = windows_layout(monkeypatch)["queue database"].name
-    for companion in (f"{database}-wal", f"{database}-shm", "settings.toml.writing"):
+    for companion in (
+        f"{database}-wal",
+        f"{database}-shm",
+        "settings.toml.writing",
+        "updates.toml.writing",
+    ):
         assert companion in removed, f"a yes leaves {companion} behind"
 
 

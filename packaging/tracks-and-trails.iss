@@ -182,6 +182,8 @@ begin
   DeleteFile(Folder + '\settings.toml');
   DeleteFile(Folder + '\settings.toml.writing');
   DeleteFile(Folder + '\window.toml');
+  DeleteFile(Folder + '\updates.toml');
+  DeleteFile(Folder + '\updates.toml.writing');
   DeleteFile(Folder + '\library.sqlite3');
   DeleteFile(Folder + '\library.sqlite3-wal');
   DeleteFile(Folder + '\library.sqlite3-shm');

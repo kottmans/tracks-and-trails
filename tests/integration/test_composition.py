@@ -36,6 +36,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime, timedelta
 from io import StringIO
 from pathlib import Path
 from typing import Any, Final
@@ -45,6 +46,7 @@ from PySide6.QtCore import QMetaMethod, QObject, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QLabel,
     QLineEdit,
@@ -60,12 +62,15 @@ from tracks_and_trails.core import logging as app_logging
 from tracks_and_trails.core import presets
 from tracks_and_trails.core import presets as core_presets
 from tracks_and_trails.core import settings as core_settings
+from tracks_and_trails.core.app_updates import UPDATE_CHECK_FILENAME, read_last_check
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo, NetworkOptions
 from tracks_and_trails.core.paths import thumbnail_cache_path
 from tracks_and_trails.core.settings import SettingsProblem
 from tracks_and_trails.downloader import ytdlp_adapter as adapter
+from tracks_and_trails.downloader.app_release import AppRelease, AppReleaseError
+from tracks_and_trails.downloader.app_update_service import AppUpdateService
 from tracks_and_trails.downloader.protocol import (
     Failed,
     Probed,
@@ -4165,3 +4170,86 @@ def test_a_settings_change_mid_flight_does_not_alter_a_running_jobs_request(
     assert handed == {"proxy": None, "rate_limit_bytes": None}, (
         f"the worker was handed a request carrying the new settings: {handed}"
     )
+
+
+# --- T-338: the daily release check -------------------------------------------------------------
+
+
+class _RecordingUpdates(AppUpdateService):
+    """The production service with its request answered here, recording who asked."""
+
+    def __init__(self, release: AppRelease | None = None) -> None:
+        super().__init__(fetch=lambda: release or AppRelease("0.0.1", "unused"))
+        self.asked: list[bool] = []
+
+    def check(self, *, explicit: bool) -> None:
+        self.asked.append(explicit)
+        super().check(explicit=explicit)
+
+
+def test_the_daily_check_starts_after_launch_when_it_is_due(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`present()` schedules it, quietly, and composition records the answer beside the settings."""
+    monkeypatch.setattr(application, "AUTOMATIC_UPDATE_CHECK_DELAY_MS", 0)
+    service = _RecordingUpdates()
+    composition = composed(app_update_service=service)
+    record = composition.settings_path.with_name(UPDATE_CHECK_FILENAME)
+    assert read_last_check(record) is None
+
+    application.present(composition)
+    assert spin(lambda: service.asked == [False] and not service.busy)
+    assert spin(lambda: read_last_check(record) is not None), "the answer was not recorded"
+    assert composition.window.update_box is None
+
+
+def test_the_daily_check_waits_a_day_and_respects_the_preference(
+    composed: Callable[..., application.Composition],
+) -> None:
+    now = datetime(2026, 9, 13, 12, tzinfo=UTC)
+    composition = composed(app_update_service=_RecordingUpdates())
+    assert application.start_automatic_update_check(composition, now=now, last_checked=lambda: None)
+    assert not application.start_automatic_update_check(
+        composition, now=now, last_checked=lambda: now - timedelta(hours=23)
+    )
+    assert application.start_automatic_update_check(
+        composition, now=now, last_checked=lambda: now - timedelta(hours=24)
+    )
+    switched_off = dataclasses.replace(composition, check_for_updates=False)
+    assert not application.start_automatic_update_check(
+        switched_off, now=now, last_checked=lambda: None
+    )
+
+
+def test_a_failed_check_is_not_recorded(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+) -> None:
+    """An offline launch tries again next time rather than waiting a day."""
+
+    def offline() -> AppRelease:
+        raise AppReleaseError("GitHub could not be reached.")
+
+    service = AppUpdateService(fetch=offline)
+    failures: list[str] = []
+    service.failed.connect(lambda reason, _explicit: failures.append(reason))
+    composition = composed(app_update_service=service)
+    service.check(explicit=False)
+    assert spin(lambda: bool(failures))
+    record = composition.settings_path.with_name(UPDATE_CHECK_FILENAME)
+    assert read_last_check(record) is None
+
+
+def test_switching_the_daily_check_off_in_preferences_is_saved(
+    composed: Callable[..., application.Composition], tmp_path: Path
+) -> None:
+    composition = composed(app_update_service=_RecordingUpdates())
+    screen = composition.window.open_settings()
+    assert screen is not None
+    choice = screen.findChild(QCheckBox, "checkForUpdates")
+    assert choice is not None and choice.isChecked()
+    choice.click()
+    screen.close()
+    assert not core_settings.load(composition.settings_path).settings.check_for_updates
