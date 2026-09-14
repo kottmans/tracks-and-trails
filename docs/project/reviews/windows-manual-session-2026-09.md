@@ -194,3 +194,42 @@ disposition is the reviewer's.
 
 **On severity:** the review reads the TLS failure as High under §14's consequence-based definitions,
 not the recorder's Critical. The table above is left as dated; the reviewer's reading stands.
+
+## 2026-09-14 — Focused review of the session-record corrections
+
+**Reviewer:** Codex, independent of the implementer and recorder.
+**Round:** Focused correction re-review of T327-R1 through T327-R3.
+**Base:** `9db159495d5bc1e0061be1ce1c54ac0178ab827c`.
+**Head:** `07082ac086a37e8f2aa02463d0dd0f69d2dc9e0f`.
+**Verdict:** **Approved for T-327's session record**, with the recorded `0.1.0` Narrator
+exception. This approves the evidence and its scope, not the remaining release-candidate gates.
+
+| ID | Severity | Blocks approval | Disposition and independent evidence |
+|---|---|---|---|
+| T327-R1 | Medium | No | **Resolved.** The appended entry records the maintainer's selected answers: Explorer appeared in front without using the taskbar, and a native picker started in a sensible place. The latter does not identify the picker; the record explicitly preserves that limit. Together with the prior associated-player observation, these answer item 4's three requested behaviors. Item 5 and REQUIREMENTS §3 now describe the video's 24-hour runtime and explicitly leave elapsed download time and completion unreported. No 24-hour soak is claimed or newly required. |
+| T327-R2 | Low | No | **Resolved.** Both the appended session correction and the qualification added to the dated task explanation limit incomplete-removal detection to a deletion failure or an item present at its check. Recreation after its check remains unexercised and is not claimed to be detected. The original report and prior review remain intact. |
+| T327-R3 | Low | No | **Resolved.** REQUIREMENTS §3 identifies both CI and the STARBASE Sandbox session; TESTING §8 item 15 and §9 state the Narrator deferral, and §12 distinguishes observed behavior from the remaining platform/accessibility limits. STATUS now says the SmartScreen screenshot is filed and retains the workflow-build requirement. |
+
+The reports identify the previously named final installer,
+`4d4313364540aac867e6dd3b8a44dbfc94d172378471ac4528b29bad3b97f376`. The human evidence is the
+maintainer's recorded selections, not a Windows run performed by this reviewer. One unnamed
+picker is not an inventory of every dialog; item 4 requested the reported native-dialog behavior,
+not a newly added per-picker matrix. Windows 11, physical Windows hardware and Narrator coherence
+remain outside this session. The original timing and mid-uninstall limitations remain in force.
+
+The same correction supplies T-333's installed-build observation. Its finding is resolved in
+[T-333's own record](T-333.md#2026-09-14--installed-build-observation-review); no completion move
+or source approval is inferred merely from ticking the task's box.
+
+Checks: task placement **30 passed** in 0.61 s; `git diff --check`, Ruff lint and formatting
+passed (423 files). The old session/independent-review bytes remain an exact prefix of the
+corrected record. The historical migration verifier preserves all 381 entries in 105 files,
+totaling 2,403,546 bytes. The additional full Linux run for the separately requested release-commit
+review passed at this head: **4,610 passed, 22 skipped, 17 warnings**, 175.15 s; both bare mypy
+runs, including `--platform win32`, passed on 192 files. No application, installer or test code
+changed in `07082ac`.
+
+T-327 may leave review in the task/status owner's normal completion update. Its accepted manual
+scope does not replace T-326's candidate checks, the workflow artifact checks, or T-328's separate
+publication review. No additional task, tag, publication, new Windows execution or push is
+performed by this disposition.
