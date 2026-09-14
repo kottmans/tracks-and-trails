@@ -123,10 +123,59 @@ Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#StringChange(AppN
 ; survive.
 
 [Messages]
-; Said on the uninstaller's own final page, because a user deciding whether to uninstall is
-; entitled to know what survives it.
-ConfirmUninstall=Remove %1?%n%nYour settings, download queue and downloaded files are kept, and so is anything you saved in its folder. Remove them by hand if you want them gone.
+; Said on the uninstaller's first page, because a user deciding whether to uninstall is entitled
+; to know what survives it. The settings question itself is `[Code]`'s, below.
+ConfirmUninstall=Remove %1?%n%nYour downloaded files are kept, and so is anything you saved in its folder. You will be asked next whether to keep your settings and download queue.
 
 ; **No file associations and no protocol handler in 0.1.0** (`T-322` scope). `T-104` — handing a
 ; second launch's URL to the running instance — is not built, so an association would open a
 ; message box rather than start a download. A known omission rather than a surprise.
+
+[Code]
+// **Keep or remove the application's own data, asked once, after uninstalling** (`T-322`,
+// the maintainer's ruling in `T-327` on 2026-09-13: a user should not have to find the folder by
+// hand). The default answer is **No**, so a stray Enter keeps everything.
+//
+// **A silent uninstall never asks and always keeps** (`UninstallSilent`). `T-039`'s Sandbox run
+// uninstalls with `/VERYSILENT` and fingerprints the data before and after; an unattended removal
+// must not be the one that loses a queue.
+//
+// **Named, application-owned items only, never the folder wholesale** (`T322-R1`'s rule, carried
+// over from `{app}`). Every path below is one the application itself writes under `platformdirs`
+// with `appauthor=False`, which on Windows puts config, data and cache in
+// %LOCALAPPDATA%\tracksandtrails. Anything else found there, a video someone chose to save into
+// it included, survives, and `RemoveDir` then leaves the folder because it is not empty.
+// Downloads are never here: they go to the folder chosen in Preferences.
+// `tests/unit/test_windows_packaging.py` pins each name against the code that writes it.
+
+function ApplicationDataFolder: String;
+begin
+  Result := ExpandConstant('{localappdata}\tracksandtrails');
+end;
+
+procedure RemoveApplicationData;
+var
+  Folder: String;
+begin
+  Folder := ApplicationDataFolder;
+  DeleteFile(Folder + '\settings.toml');
+  DeleteFile(Folder + '\settings.toml.writing');
+  DeleteFile(Folder + '\window.toml');
+  DeleteFile(Folder + '\library.sqlite3');
+  DeleteFile(Folder + '\library.sqlite3-wal');
+  DeleteFile(Folder + '\library.sqlite3-shm');
+  DelTree(Folder + '\ytdlp', True, True, True);
+  DelTree(Folder + '\Cache', True, True, True);
+  RemoveDir(Folder);
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if (CurUninstallStep = usPostUninstall) and (not UninstallSilent) and DirExists(ApplicationDataFolder) then
+  begin
+    if MsgBox('Also remove your {#AppName} settings and download queue?' + #13#10#13#10 +
+              'Choose No to keep them for next time. Your downloaded files are kept either way.',
+              mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+      RemoveApplicationData;
+  end;
+end;

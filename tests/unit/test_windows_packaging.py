@@ -17,7 +17,7 @@ from __future__ import annotations
 import importlib.util
 import re
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from types import ModuleType
 from typing import Final
 
@@ -338,6 +338,175 @@ def test_the_uninstall_message_promises_nothing_the_application_does_not_keep() 
     )
     assert "history" not in message.lower()
     assert "kept" in message
+
+
+# --- T-322: the uninstaller's question about the application's own data ------------------------
+
+LOCAL_APPDATA: Final = r"C:\Users\someone\AppData\Local"
+REMOVAL_CALL: Final = re.compile(r"\b(DeleteFile|DelTree|RemoveDir)\(([^,)]*)")
+
+
+def code_section(text: str) -> str:
+    """The installer's `[Code]` section, which runs last in the file."""
+    _, marker, code = text.partition("\n[Code]\n")
+    assert marker, "the installer has no [Code] section, so nothing asks about settings"
+    return code
+
+
+def data_removals(code: str) -> list[tuple[str, str]]:
+    """Every removal the code makes, as (call, what it names relative to the data folder).
+
+    Only two argument shapes are accepted, `Folder` and `Folder + '\name'`; anything else comes back
+    whole, so a path built some other way fails the check rather than slipping past a parser.
+    """
+    removals: list[tuple[str, str]] = []
+    for call, argument in REMOVAL_CALL.findall(code):
+        named = re.fullmatch(r"Folder \+ '\\([^'\\*]+)'", argument.strip())
+        if argument.strip() == "Folder":
+            removals.append((call, ""))
+        else:
+            removals.append((call, named.group(1) if named else argument.strip()))
+    return removals
+
+
+def is_named_removal(call: str, name: str) -> bool:
+    """A named item in the data folder, or `RemoveDir` of the folder, which needs it empty."""
+    if not name:
+        return call == "RemoveDir"
+    return re.fullmatch(r"[A-Za-z0-9_.\-]+", name) is not None
+
+
+def windows_layout(monkeypatch: pytest.MonkeyPatch) -> dict[str, PureWindowsPath]:
+    """Where the application puts each thing on Windows, computed by the application's own code.
+
+    Each module's `platformdirs` import is swapped for the Windows implementation with the known
+    folder answered, so a `roaming=True`, a dropped `appauthor=False` or a renamed file moves the
+    answer here exactly as it would move it on a user's machine.
+    """
+    import ntpath
+    from types import SimpleNamespace
+
+    import platformdirs.windows as windows
+
+    from tracks_and_trails.core import logging as app_logging
+    from tracks_and_trails.core import paths, settings
+    from tracks_and_trails.downloader import environment
+    from tracks_and_trails.persistence import db
+    from tracks_and_trails.ui import main_window
+
+    monkeypatch.setattr(windows, "os", SimpleNamespace(path=ntpath))
+    monkeypatch.setattr(
+        windows,
+        "get_win_folder",
+        lambda const: LOCAL_APPDATA if const == "CSIDL_LOCAL_APPDATA" else r"C:\Roaming",
+    )
+
+    def on_windows(kind: str):  # type: ignore[no-untyped-def]
+        def resolve(appname=None, appauthor=None, version=None, roaming=False, *_, **__):  # type: ignore[no-untyped-def]
+            dirs = windows.Windows(
+                appname=appname, appauthor=appauthor, version=version, roaming=roaming
+            )
+            return getattr(dirs, kind)
+
+        return resolve
+
+    monkeypatch.setattr(settings, "user_config_dir", on_windows("user_config_dir"))
+    monkeypatch.setattr(main_window, "user_config_dir", on_windows("user_config_dir"))
+    monkeypatch.setattr(db, "user_data_dir", on_windows("user_data_dir"))
+    monkeypatch.setattr(environment, "user_data_dir", on_windows("user_data_dir"))
+    monkeypatch.setattr(app_logging, "user_cache_dir", on_windows("user_cache_dir"))
+    monkeypatch.setattr(paths, "user_cache_dir", on_windows("user_cache_dir"))
+
+    def windows_path(path: Path) -> PureWindowsPath:
+        return PureWindowsPath(str(path).replace("/", "\\"))
+
+    return {
+        "settings": windows_path(settings.settings_path()),
+        "window geometry": windows_path(main_window.geometry_path()),
+        "queue database": windows_path(db.database_path()),
+        "user yt-dlp": windows_path(environment.user_ytdlp_directory()),
+        "application log": windows_path(app_logging.application_log_path()),
+        "a job log": windows_path(app_logging.job_log_path("job")),
+        "thumbnails and cache": windows_path(paths.cache_directory()),
+    }
+
+
+def test_the_data_question_is_asked_only_interactively_and_defaults_to_keeping() -> None:
+    """**The maintainer's ruling in `T-327`**: a user should not have to delete settings by hand.
+
+    Two properties carry the risk. `T-039`'s Sandbox run uninstalls with `/VERYSILENT` and requires
+    the data to survive byte for byte, so a silent uninstall must never remove it; and the default
+    button must be No, so an Enter pressed out of habit keeps a queue rather than losing it.
+    """
+    code = code_section(INSTALLER.read_text(encoding="utf-8"))
+    step = code[code.index("procedure CurUninstallStepChanged") :]
+    guard = step[: step.index("RemoveApplicationData;")]
+    assert "not UninstallSilent" in guard, "a silent uninstall would remove the user's data"
+    assert "usPostUninstall" in guard
+    assert "MB_DEFBUTTON2" in guard and "IDYES" in guard, "the default answer would remove data"
+    calls = re.findall(r"(?<!procedure )\bRemoveApplicationData;", code)
+    assert len(calls) == 1, "data is removed somewhere nothing asks"
+
+
+def test_the_data_folder_is_the_one_the_application_writes_on_windows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The script names `{localappdata}\tracksandtrails` and the application computes its paths.
+    Those are two declarations, so every place the application writes must sit under the one the
+    uninstaller cleans, or a "yes" leaves settings behind."""
+    code = code_section(INSTALLER.read_text(encoding="utf-8"))
+    folder = re.search(r"Result := ExpandConstant\('\{localappdata\}\\([^']+)'\);", code)
+    assert folder is not None, "the data folder is no longer {localappdata}\\<name>"
+    root = PureWindowsPath(LOCAL_APPDATA, folder.group(1))
+    for what, path in windows_layout(monkeypatch).items():
+        assert root in path.parents, f"the {what} is written at {path}, outside {root}"
+
+
+def test_a_yes_removes_everything_the_application_writes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each place from `windows_layout` must be removed by a named entry: its first component
+    below the data folder is deleted, or it is inside a directory that is."""
+    code = code_section(INSTALLER.read_text(encoding="utf-8"))
+    folder = re.search(r"Result := ExpandConstant\('\{localappdata\}\\([^']+)'\);", code)
+    assert folder is not None
+    root = PureWindowsPath(LOCAL_APPDATA, folder.group(1))
+    removed = {name: call for call, name in data_removals(code) if name}
+    for what, path in windows_layout(monkeypatch).items():
+        first = path.relative_to(root).parts[0]
+        assert first in removed, f"a yes leaves the {what} behind ({first})"
+        if len(path.relative_to(root).parts) > 1:
+            assert removed[first] == "DelTree", (
+                f"the {what} is inside {first}, which is not deleted"
+            )
+    # The database's WAL companions and the settings scratch file are the application's too
+    # (`persistence/db.py` sets WAL; `core/settings.py` writes `settings.toml.writing`).
+    database = windows_layout(monkeypatch)["queue database"].name
+    for companion in (f"{database}-wal", f"{database}-shm", "settings.toml.writing"):
+        assert companion in removed, f"a yes leaves {companion} behind"
+
+
+def test_a_yes_removes_nothing_it_does_not_name() -> None:
+    """**`T322-R1`'s rule, carried from `{app}` to the data folder.** Nothing wholesale: the folder
+    itself may only be `RemoveDir`ed, which fails while anything is left in it, so a video someone
+    saved there survives. No wildcard, no `{app}`, no path built any other way."""
+    code = code_section(INSTALLER.read_text(encoding="utf-8"))
+    removals = data_removals(code)
+    assert removals, "the removal parser found nothing, so this check would pass blind"
+    for call, name in removals:
+        assert is_named_removal(call, name), f"{call} of something not named: {name or 'Folder'}"
+
+
+@pytest.mark.parametrize(
+    "shipped",
+    [
+        "DelTree(Folder, True, True, True);",
+        "DelTree(ExpandConstant('{app}'), True, True, True);",
+        "DeleteFile(Folder + '\\*.toml');",
+    ],
+)
+def test_the_named_removal_check_refuses_what_it_exists_to_refuse(shipped: str) -> None:
+    """The positive controls: a wholesale delete, `{app}`, and a wildcard."""
+    [(call, name)] = data_removals(shipped)
+    assert not is_named_removal(call, name)
 
 
 def test_signing_is_a_line_to_edit_rather_than_a_line_to_write() -> None:

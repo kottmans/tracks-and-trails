@@ -231,9 +231,10 @@ if ($exe) {
 Say '```'
 
 Rule "Uninstall, and what survives it"
-Say "``T-039``'s fourth gate. ``DAT-001`` says settings, the job database and downloaded files"
-Say "**survive an uninstall by intent** -- so this asserts separate things, and the distinction is"
-Say "the point: a file the installer logged and left behind is a failure; the user's data, a file"
+Say "``T-039``'s fourth gate. Settings, the job database and downloaded files **survive a silent"
+Say "uninstall by intent** (an interactive one asks first, ``T-322``) -- so this asserts separate"
+Say "things, and the distinction is the point: a file the installer logged and left behind is a"
+Say "failure; the user's data, a file"
 Say "the user saved into the install directory, and one that was there before, must all survive"
 Say "byte-for-byte (``T322-R1``)."
 Say '```'

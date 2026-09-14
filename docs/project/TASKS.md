@@ -729,6 +729,7 @@ tested; the review record will cite them.
 | tick boxes a white square in every theme and state | the Windows style's own indicator (ruled: drawn from the theme) | `9511238` |
 | no way back from a cancel | `CANCELLED` had no exit (ruled: *Queue again*, `T-335`) | `e9549fd` |
 | *Show in folder* reported "exit 1" and opened Documents | `/select,` and the path passed as one argv element, which `subprocess` quoted whole; Explorer's exit code read as failure | `7e82d0f` |
+| removing settings after an uninstall meant finding the folder by hand | the uninstaller only said what it kept (ruled: it asks, and keeps by default) | `T-322`, 2026-09-13 |
 
 Two changes of behaviour came out of the same sitting, each ruled by the maintainer: the yt-dlp
 section shows in-use, bundled and latest side by side (`T-333`), and a started queue stops itself
@@ -912,6 +913,28 @@ be built without Inno Setup; the maintainer installed it.)*
 **Priority:** High
 **Phase:** Phase 5
 **Depends on:** `T-319` (what it installs), `T-320` (the version), `T-317` (whether it is signed)
+
+#### 2026-09-13 (later) — the uninstaller asks whether to keep settings
+
+**The maintainer's ruling in `T-327`:** a user should not have to delete settings by hand. An
+interactive uninstall now ends with *Also remove your Tracks & Trails settings and download queue?*,
+**No by default**, so an Enter pressed out of habit keeps everything. Downloaded files are never
+touched. The first page says the question is coming.
+
+**A silent uninstall never asks and always keeps** (`UninstallSilent`), which is what `T-039`'s
+Sandbox run relies on: it uninstalls with `/VERYSILENT` and fingerprints the data either side.
+
+**Named items only, never the folder wholesale**, which is `T322-R1`'s rule carried from `{app}`
+to `%LOCALAPPDATA%\tracksandtrails`: `settings.toml` and its `.writing` scratch, `window.toml`,
+`library.sqlite3` with its WAL companions, `ytdlp\` and `Cache\`, then `RemoveDir`, which fails
+while anything else is in the folder. A video someone chose to save there survives.
+
+**Pinned against the code that writes each path.** The tests swap each module's `platformdirs`
+import for the Windows implementation and require every place the application writes to sit under
+the folder the script names and be removed by a named entry. Ten mutations, ten caught: the silent
+guard dropped, Yes as the default, `Cache\` or `window.toml` or the WAL file left out, `Cache\`
+deleted as a file, the whole folder `DelTree`d, a wildcard, the folder misnamed, and
+`settings_path` moved to the roaming profile.
 
 #### 2026-09-13 — `T322-R1`, Critical: the uninstaller deleted its whole directory
 
