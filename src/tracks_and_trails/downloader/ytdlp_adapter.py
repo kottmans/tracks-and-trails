@@ -412,6 +412,11 @@ def project_media(
         duration_seconds=_as_optional_float(info.get("duration")),
         uploader=_as_optional_str(info.get("uploader")),
         upload_date=_upload_date(info.get("upload_date")),
+        # The *ID*, *Channel* and *Site* naming fields (`UX-014`). `capture.py` commits a
+        # placeholder for `id`, not the real one, so reading it does not put video ids in fixtures.
+        media_id=_as_optional_str(info.get("id")),
+        channel=_as_optional_str(info.get("channel")),
+        site=_as_optional_str(info.get("extractor_key")),
         # **Both shapes, through the same helper the entries use** (`T-153`). A playlist is
         # probed with `extract_flat`, so its *top level* is the same flat dict its entries are:
         # `thumbnails`, a list, and no singular `thumbnail`. Reading only the singular here is why
@@ -495,11 +500,10 @@ def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
     - **The entry's URL** is useless. `RedactingFormatter` strips every URL's query string
       (`T-018`, allowlist empty by design) and a YouTube video id lives in the query — measured,
       `https://www.youtube.com/watch?v=Zg0WtgC80lY` redacts to `https://www.youtube.com/watch`
-    - **The entry's `id`** survives redaction and is what a human would want, but reading it here
-      puts `id` into the fixture allowlist by construction: `tests/unit/test_fixtures.py` derives
-      that allowlist from this module's AST, and `capture.py` currently strips exactly this value
-      out of committed captures, `ALLOWED_QUERY_PARAMETERS` being empty. Committing entry ids is a
-      reversal of that, not a consequence of this
+    - **The entry's `id`** survives redaction and is what a human would want. The projection reads
+      it since `UX-014` (the *ID* naming field), and `capture.py` commits a placeholder in its place
+      so no real id reaches a fixture — but a log line naming it is still a separate decision,
+      not made here
 
     So the line names the playlist and which positions went. `T-281` records the id as an available
     upgrade if the fixture policy is ever widened deliberately.
@@ -551,6 +555,8 @@ def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
                 title=title,
                 duration_seconds=_as_optional_float(item.get("duration")),
                 thumbnail_url=_entry_thumbnail(item),
+                media_id=_as_optional_str(item.get("id")),
+                channel=_as_optional_str(item.get("channel")),
             )
         )
     if dropped:

@@ -63,6 +63,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QRadioButton,
     QScrollArea,
@@ -135,14 +136,19 @@ OUTPUT_TEMPLATE_NOTE_NAME: Final = "settingsOutputTemplateNote"
 NAMING_EXAMPLE_NAME: Final = "settingsNamingExample"
 
 
+#: The button beside the name that opens the list of fields.
+ADD_FIELD_NAME: Final = "settingsAddField"
+ADD_FIELD_LABEL: Final = "Add a field"
+
+
 def insert_field_name(field: str) -> str:
-    """The object name of the button that inserts `field` into the name."""
+    """The object name of the *Add a field* menu entry that inserts `field` into the name."""
     return f"settingsInsertField_{field}"
 
 
 #: What the naming field is labelled and what it says under it.
 NAMING_LABEL: Final = "How downloads are named"
-NAMING_HINT: Final = "Add fields with the buttons; a / makes a subfolder."
+NAMING_HINT: Final = "Type the name and use Add a field; a / makes a subfolder."
 #: Said when the stored naming is a template the field cannot show as a name.
 UNSHOWN_TEMPLATE_NOTE: Final = (
     "Your saved naming uses template codes this screen cannot show as fields. It stays in force "
@@ -895,19 +901,24 @@ class SettingsDialog(QDialog):
         naming_label.setBuddy(self._template_field)
         shown = template_to_readable(self._output_template)
         self._template_field.setText(shown if shown is not None and self._output_template else "")
-        layout.addWidget(self._template_field)
 
-        buttons = QHBoxLayout()
+        # **One *Add a field* button beside the name, its menu holding the fields** (`T-242`).
+        # A button per field took three rows for nine fields and pushed the screen past the height
+        # it opens at; one row in a line of their own made it scroll sideways. Each entry says what
+        # its field is, which a row of short button labels could not.
+        self._add_field = QPushButton(ADD_FIELD_LABEL, box)
+        self._add_field.setObjectName(ADD_FIELD_NAME)
+        self._add_field.setEnabled(writable)
+        fields_menu = QMenu(self._add_field)
         for field in OFFERED_FIELDS:
-            insert = QPushButton(f"+ {field.label.strip('{}')}", box)
-            insert.setObjectName(insert_field_name(field.name))
-            insert.setAccessibleName(f"Add {field.label.strip('{}')} to the name")
-            insert.setToolTip(f"{field.label}: {field.describes}")
-            insert.setEnabled(writable)
-            insert.clicked.connect(partial(self._insert_field, field.label))
-            buttons.addWidget(insert)
-        buttons.addStretch(1)
-        layout.addLayout(buttons)
+            entry = fields_menu.addAction(f"{field.label} — {field.describes}")
+            entry.setObjectName(insert_field_name(field.name))
+            entry.triggered.connect(partial(self._insert_field, field.label))
+        self._add_field.setMenu(fields_menu)
+        name_row = QHBoxLayout()
+        name_row.addWidget(self._template_field, 1)
+        name_row.addWidget(self._add_field)
+        layout.addLayout(name_row)
 
         self._naming_example = QLabel(box)
         self._naming_example.setObjectName(NAMING_EXAMPLE_NAME)

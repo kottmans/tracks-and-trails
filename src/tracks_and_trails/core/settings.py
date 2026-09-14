@@ -1354,9 +1354,9 @@ def _output_template_from(document: dict[str, Any]) -> tuple[str, str | None]:
         # default. Nothing was discarded, so nothing is reported.
         return "", None
     # The editor's own validator, imported here so there is one definition of "usable template".
-    from tracks_and_trails.core.output_template import unsupported_refusal
+    from tracks_and_trails.core.output_template import settings_refusal
 
-    refusal = unsupported_refusal(raw)
+    refusal = settings_refusal(raw)
     if refusal is not None:
         return "", f"{_OUTPUT_TEMPLATE_KEY} was not used: {refusal}"
     return raw, None

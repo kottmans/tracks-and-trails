@@ -746,12 +746,18 @@ class PlaylistEntry:
     title: str
     duration_seconds: float | None = None
     thumbnail_url: str | None = None
+    #: The site's own id and channel for the item, where the flat extraction reports them — the
+    #: *ID* and *Channel* naming fields (`UX-014`).
+    media_id: str | None = None
+    channel: str | None = None
 
     def __post_init__(self) -> None:
         _require_text("PlaylistEntry", "url", self.url)
         _require_text("PlaylistEntry", "title", self.title)
         _require_optional_duration("PlaylistEntry", "duration_seconds", self.duration_seconds)
         _require_optional_text("PlaylistEntry", "thumbnail_url", self.thumbnail_url)
+        _require_optional_text("PlaylistEntry", "media_id", self.media_id)
+        _require_optional_text("PlaylistEntry", "channel", self.channel)
 
 
 @dataclass(frozen=True, slots=True)
@@ -775,6 +781,12 @@ class MediaInfo:
     #: When the site published it, as yt-dlp's `YYYYMMDD` (`UX-014`'s *Upload date* field). `None`
     #: where the extractor reports none, which a flat playlist entry routinely does.
     upload_date: str | None = None
+    #: The site's own id for it (`id`), its channel (`channel`, which on some sites is not the
+    #: uploader) and which site it is (`extractor_key`, as `Youtube`) — the *ID*, *Channel* and
+    #: *Site* naming fields (`UX-014`).
+    media_id: str | None = None
+    channel: str | None = None
+    site: str | None = None
 
     #: Whether the probed URL is a playlist rather than a single item (`REQ-002`, `T012-R6`).
     #:
@@ -836,6 +848,8 @@ class MediaInfo:
         _require_optional_duration("MediaInfo", "duration_seconds", self.duration_seconds)
         _require_optional_text("MediaInfo", "uploader", self.uploader)
         _require_optional_upload_date("MediaInfo", self.upload_date)
+        for name in ("media_id", "channel", "site"):
+            _require_optional_text("MediaInfo", name, getattr(self, name))
         _require_optional_text("MediaInfo", "thumbnail_url", self.thumbnail_url)
         _require_flag("MediaInfo", "is_live", self.is_live)
         _require_flag("MediaInfo", "is_playlist", self.is_playlist)
@@ -1200,6 +1214,10 @@ class Job:
     #: `MediaInfo.upload_date`, carried across for the reason `uploader` is (`UX-014`): a queued
     #: download renamed later previews the *Upload date* field from it.
     upload_date: str | None = None
+    #: `MediaInfo.media_id`, `channel` and `site`, carried across for `upload_date`'s reason.
+    media_id: str | None = None
+    channel: str | None = None
+    site: str | None = None
 
     #: Failure is stored as two fields rather than a `FailureDetail`, mirroring the columns in
     #: `ARCHITECTURE.md` §5 so the persistence layer (`T-014`) is a direct mapping. The
@@ -1227,6 +1245,8 @@ class Job:
         _require_optional_text("Job", "thumbnail_url", self.thumbnail_url)
         _require_optional_text("Job", "uploader", self.uploader)
         _require_optional_upload_date("Job", self.upload_date)
+        for name in ("media_id", "channel", "site"):
+            _require_optional_text("Job", name, getattr(self, name))
         _require_optional_duration("Job", "duration_seconds", self.duration_seconds)
         _require_optional_text("Job", "playlist_id", self.playlist_id)
         _require_optional_text("Job", "playlist_title", self.playlist_title)

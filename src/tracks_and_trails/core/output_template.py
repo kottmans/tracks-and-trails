@@ -68,6 +68,7 @@ class TemplateField:
 SUPPORTED_FIELDS: Final[tuple[TemplateField, ...]] = (
     TemplateField("title", "the item's title, as the site gives it", "{Title}"),
     TemplateField("uploader", "who published it — NA where the site names nobody", "{Uploader}"),
+    TemplateField("channel", "the channel it is on — NA where the site names none", "{Channel}"),
     # yt-dlp derives this from `duration` itself, and the raw number renders as `507.1` — which
     # is why only the formatted spelling is offered.
     TemplateField("duration_string", "how long it is, as 8-27", "{Duration}"),
@@ -77,16 +78,35 @@ SUPPORTED_FIELDS: Final[tuple[TemplateField, ...]] = (
         "{Upload date}",
         "%(upload_date>%Y-%m-%d)s",
     ),
+    TemplateField("id", "the site's own id for it, as jNQXAC9IVRw", "{ID}"),
+    TemplateField("extractor_key", "which site it came from, as Youtube", "{Site}"),
+    # **Queue-time fields** (`QUEUE_TIME_NAMES`): a playlist entry downloads as its own URL, so
+    # yt-dlp never knows these. The add dialog writes them in when it queues each entry.
+    TemplateField(
+        "playlist_title", "the playlist's name — nothing for a single video", "{Playlist}"
+    ),
+    TemplateField(
+        "playlist_index",
+        "its place in the playlist, as 01 — nothing for a single video",
+        "{Position}",
+    ),
     # **Written, never offered** (`UX-014`): every file has one, so nobody chooses it.
     TemplateField("ext", "the file extension"),
 )
+
+#: Fields no download ever sees: `resolve_queue_fields` writes them in, or takes them out, before a
+#: request exists. `SUPPORTED_NAMES` leaves them out, so one that reached a request unresolved is
+#: refused rather than rendered as `NA`.
+QUEUE_TIME_NAMES: Final = frozenset({"playlist_title", "playlist_index"})
 
 #: The fields a name is built from — `SUPPORTED_FIELDS` less the one the application adds itself.
 OFFERED_FIELDS: Final[tuple[TemplateField, ...]] = tuple(
     field for field in SUPPORTED_FIELDS if field.label
 )
 
-SUPPORTED_NAMES: Final = frozenset(field.name for field in SUPPORTED_FIELDS)
+SUPPORTED_NAMES: Final = frozenset(
+    field.name for field in SUPPORTED_FIELDS if field.name not in QUEUE_TIME_NAMES
+)
 
 #: Every `%(…)` group in a template. The **name** is whatever sits inside the parentheses; what
 #: follows it is yt-dlp's conversion syntax and is none of this module's business.
@@ -195,6 +215,58 @@ def template_to_readable(template: str) -> str | None:
     if "%" in tail or "{" in tail or "}" in tail:
         return None
     return "".join(out) + tail
+
+
+#: What stands between a removed queue-time field and the text beside it. **No dot**: the dot before
+#: the extension is not a separator anybody typed.
+_SEPARATOR_RUN: Final = r"[ \-_,]*"
+
+#: Where a path component ends, for a field removed from the end of one.
+_COMPONENT_END: Final = r"(?=/|\.%\(ext\)s$|$)"
+
+
+def resolve_queue_fields(
+    template: str,
+    *,
+    position: int | None = None,
+    count: int | None = None,
+    playlist: str | None = None,
+) -> str:
+    """`template` with *Playlist* and *Position* written in, or taken out (`UX-014`).
+
+    **For a playlist entry** the position is zero-padded to the playlist's own width — `01` of
+    twelve, `001` of a hundred and twelve — so files sort in order, and the playlist's name is
+    written as literal, folder-safe text. **For anything else** both are removed, together with the
+    separator beside them, so `{Position} - {Title}` names a single video `Title` rather than
+    ` - Title`. Every other field is left for yt-dlp.
+    """
+    from tracks_and_trails.core.paths import sanitize_component
+
+    width = max(2, len(str(count if count is not None else position or 0)))
+    values = {
+        "%(playlist_index)s": f"{position:0{width}d}" if position is not None else "",
+        "%(playlist_title)s": (sanitize_component(playlist).replace("%", "%%") if playlist else ""),
+    }
+    resolved = template
+    for code, value in values.items():
+        if value:
+            resolved = resolved.replace(code, value)
+            continue
+        escaped = re.escape(code)
+        # Brackets that held nothing but this field go with it: `{Title} ({Position})` is `{Title}`.
+        resolved = re.sub(rf"{_SEPARATOR_RUN}[(\[]{escaped}[)\]]", "", resolved)
+        # At the end of a component, the separator before it goes; anywhere else, the one after.
+        resolved = re.sub(rf"{_SEPARATOR_RUN}{escaped}{_COMPONENT_END}", "", resolved)
+        resolved = re.sub(rf"{escaped}{_SEPARATOR_RUN}", "", resolved)
+    # **A folder left with no name is no folder**: `{Playlist}/{Title}` for a single video is
+    # `{Title}`, not `/{Title}` — which would read as the root and be refused as leaving the
+    # download folder.
+    return re.sub(r"/{2,}", "/", resolved).lstrip("/")
+
+
+def settings_refusal(template: str) -> str | None:
+    """`unsupported_refusal` for a Settings template, whose queue-time fields are allowed there."""
+    return unsupported_refusal(resolve_queue_fields(template))
 
 
 def readable_to_template_default() -> str:
@@ -310,7 +382,9 @@ def unsupported_refusal(template: str) -> str | None:
     if not unsupported:
         return None
     named = ", ".join(f"%({name})s" for name in unsupported)
-    offered = ", ".join(f"%({field.name})s" for field in SUPPORTED_FIELDS)
+    offered = ", ".join(
+        f"%({field.name})s" for field in SUPPORTED_FIELDS if field.name in SUPPORTED_NAMES
+    )
     plural = "is not a field" if len(unsupported) == 1 else "are not fields"
     return (
         f"{named} {plural} this application can fill, so it would end up in the filename as the "
@@ -333,6 +407,9 @@ def template_values(media: MediaInfo, extension: str) -> dict[str, object]:
         "uploader": media.uploader,
         "duration": media.duration_seconds,
         "upload_date": media.upload_date,
+        "id": media.media_id,
+        "channel": media.channel,
+        "extractor_key": media.site,
         "ext": extension,
     }
 

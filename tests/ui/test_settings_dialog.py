@@ -49,6 +49,7 @@ from tracks_and_trails.ui.preset_manager import (
     PresetManager,
 )
 from tracks_and_trails.ui.settings_dialog import (
+    ADD_FIELD_NAME,
     DEFAULT_PRESET_NAME,
     DEFAULT_RETRIES_LABEL,
     DOWNLOAD_DIRECTORY_PROBLEM_NAME,
@@ -1020,27 +1021,32 @@ def test_the_default_name_is_the_placeholder_so_empty_reads_as_a_choice(
     assert field.placeholderText() == "{Title}"
 
 
-def test_a_field_button_puts_its_field_in_the_name_where_the_cursor_is(
+def test_add_a_field_puts_the_field_in_the_name_where_the_cursor_is(
     screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
 ) -> None:
     """**`UX-014`, as re-ruled.** The name is built from fields, not typed as template syntax.
 
-    Every offered field has a button, and pressing it inserts the field at the cursor — so a user
-    types *" - "* between two presses and has the name they meant, stored as the template it means.
-    The extension is never part of it.
+    *Add a field* offers every field, each saying what it is, and choosing one inserts it at the
+    cursor — so a user types " - " between two choices and has the name they meant, stored as the
+    template it means. The extension is never part of it.
     """
     screen, asked = screens(output_template="", shipped_template=DEFAULT_OUTPUT_TEMPLATE)
     field = control(screen, QLineEdit, OUTPUT_TEMPLATE_NAME)
+    menu = control(screen, QPushButton, ADD_FIELD_NAME).menu()
+    assert menu is not None, "Add a field opens nothing"
+    entries = {action.objectName(): action for action in menu.actions()}
 
     for offered in OFFERED_FIELDS:
-        assert control(screen, QPushButton, insert_field_name(offered.name)) is not None
-    assert screen.findChild(QPushButton, insert_field_name("ext")) is None, (
+        entry = entries.get(insert_field_name(offered.name))
+        assert entry is not None, f"{offered.label} is not offered"
+        assert offered.describes in entry.text(), f"{offered.label} does not say what it is"
+    assert insert_field_name("ext") not in entries, (
         "the extension is offered as a field, and every file has one anyway"
     )
 
-    control(screen, QPushButton, insert_field_name("uploader")).click()
+    entries[insert_field_name("uploader")].trigger()
     field.insert(" - ")
-    control(screen, QPushButton, insert_field_name("title")).click()
+    entries[insert_field_name("title")].trigger()
 
     assert field.text() == "{Uploader} - {Title}"
     assert asked["template"] == "%(uploader)s - %(title)s.%(ext)s"
@@ -1098,7 +1104,7 @@ def test_a_screen_with_nothing_behind_a_control_says_so_rather_than_drawing_it_d
     assert not control(screen, QComboBox, DEFAULT_PRESET_NAME).isEnabled()
     assert control(screen, QLabel, "defaultPresetNote").text()
     assert not control(screen, QLineEdit, OUTPUT_TEMPLATE_NAME).isEnabled()
-    assert not control(screen, QPushButton, insert_field_name("title")).isEnabled()
+    assert not control(screen, QPushButton, ADD_FIELD_NAME).isEnabled()
 
 
 # --- network options (T-196) ----------------------------------------------------------------

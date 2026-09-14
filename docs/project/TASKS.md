@@ -67,6 +67,15 @@ preference instead of using it to rename each individual file this way."*
   `RenameEditor`. **Mutated**: inserting by replacing the text fails the button test; dropping the
   extension suffix fails six conversion tests. The label-height and band tests no longer need a
   *Custom…* state, and the container clause went with the container.
+- **2026-09-13 — more fields.** At the maintainer's choice: *Channel*, *ID* and *Site* (projected
+  from `channel`, `id`, `extractor_key`; carried on `Job`, migration `0012`, frozen `v12.sql`;
+  `capture.py` commits `fixture-id` for `id`, so the fixture policy on ids holds and the committed
+  policy records were updated for the two new entry keys), and *Playlist* and *Position*, resolved
+  by `output_template.resolve_queue_fields` when a playlist is queued and removed with their
+  separator, bracket or empty folder otherwise; a name using *Playlist* replaces the automatic
+  playlist folder. The field buttons became one *Add a field* menu beside the name, to keep the
+  screen within the width and height it is held to. **Mutated**: keeping the automatic folder fails
+  the entry test; not resolving a single item's fields fails its test.
 - **2026-09-13 — the queue.** *Rename…* joins a not-yet-started row's *Just this item* commands and
   opens `RenameDialog`, the same editor in a window, OK unavailable while the name is refused. The
   base is the job's own template — so *Uploader / Title* keeps its folder — unless the job was

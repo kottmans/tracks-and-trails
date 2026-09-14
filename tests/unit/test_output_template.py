@@ -76,28 +76,30 @@ def test_a_field_this_application_cannot_fill_is_refused_with_its_name() -> None
     yt-dlp renders an unknown field as the literal `NA` and says nothing, so without this the user
     gets a file called `NA.mp4` and a preview that agreed with it.
     """
-    refusal = unsupported_refusal("%(id)s - %(title)s.%(ext)s")
+    refusal = unsupported_refusal("%(view_count)s - %(title)s.%(ext)s")
 
     assert refusal is not None
-    assert "%(id)s" in refusal, refusal
+    assert "%(view_count)s" in refusal, refusal
     assert "NA" in refusal, "the refusal does not say what would actually happen"
-    for field in SUPPORTED_FIELDS:
-        assert f"%({field.name})s" in refusal, f"{field.name} is not offered as an alternative"
+    for name in SUPPORTED_NAMES:
+        assert f"%({name})s" in refusal, f"{name} is not offered as an alternative"
 
 
 def test_several_unsupported_fields_are_all_named_once() -> None:
     """One round trip per fix is one too many when the template names three unknown fields."""
-    assert unsupported_fields("%(id)s/%(uploader)s/%(id)s-%(view_count)s.%(ext)s") == (
-        "id",
+    assert unsupported_fields(
+        "%(like_count)s/%(uploader)s/%(like_count)s-%(view_count)s.%(ext)s"
+    ) == (
+        "like_count",
         "view_count",
     )
 
-    refusal = unsupported_refusal("%(id)s-%(view_count)s.%(ext)s")
+    refusal = unsupported_refusal("%(like_count)s-%(view_count)s.%(ext)s")
     assert refusal is not None and "are not fields" in refusal, refusal
 
 
 def test_a_template_of_supported_fields_is_not_refused() -> None:
-    offered = "".join(f"%({field.name})s-" for field in SUPPORTED_FIELDS)
+    offered = "".join(f"%({name})s-" for name in sorted(SUPPORTED_NAMES))
 
     assert unsupported_refusal(offered) is None
     assert unsupported_fields(offered) == ()
@@ -171,7 +173,7 @@ def test_a_label_that_is_not_a_field_is_refused_by_name() -> None:
 
 @pytest.mark.parametrize(
     "template",
-    ["%(title).30s.%(ext)s", "%(id)s.%(ext)s", "%(title)s [%(ext)s]", "{Title}.%(ext)s"],
+    ["%(title).30s.%(ext)s", "%(view_count)s.%(ext)s", "%(title)s [%(ext)s]", "{Title}.%(ext)s"],
 )
 def test_a_template_a_name_cannot_show_reads_back_as_none(template: str) -> None:
     """Kept as it is rather than rewritten into a name that would mean something else."""
@@ -180,7 +182,17 @@ def test_a_template_a_name_cannot_show_reads_back_as_none(template: str) -> None
 
 def test_every_offered_field_has_a_label_and_the_extension_is_not_offered() -> None:
     offered = {field.name for field in output_template.OFFERED_FIELDS}
-    assert offered == {"title", "uploader", "duration_string", "upload_date"}
+    assert offered == {
+        "title",
+        "uploader",
+        "channel",
+        "upload_date",
+        "duration_string",
+        "id",
+        "extractor_key",
+        "playlist_title",
+        "playlist_index",
+    }
     assert all(field.label for field in output_template.OFFERED_FIELDS)
 
 
@@ -229,3 +241,44 @@ def test_a_name_naming_a_folder_is_refused(name: str) -> None:
 )
 def test_the_prefilled_name_is_the_file_without_folders_or_extension(path: str, stem: str) -> None:
     assert output_template.file_stem_of(path) == stem
+
+
+@pytest.mark.parametrize(
+    ("name", "single", "entry"),
+    [
+        ("{Position} - {Title}", "%(title)s.%(ext)s", "03 - %(title)s.%(ext)s"),
+        ("{Title} - {Position}", "%(title)s.%(ext)s", "%(title)s - 03.%(ext)s"),
+        ("{Title} ({Position})", "%(title)s.%(ext)s", "%(title)s (03).%(ext)s"),
+        ("{Playlist}/{Position} {Title}", "%(title)s.%(ext)s", "Mix/03 %(title)s.%(ext)s"),
+        (
+            "{Uploader}/{Playlist}/{Title}",
+            "%(uploader)s/%(title)s.%(ext)s",
+            "%(uploader)s/Mix/%(title)s.%(ext)s",
+        ),
+    ],
+)
+def test_queue_time_fields_are_written_for_an_entry_and_removed_for_anything_else(
+    name: str, single: str, entry: str
+) -> None:
+    """`UX-014`: *Playlist* and *Position* are the dialog's to write — and to take out cleanly, with
+    the separator, bracket or empty folder that only made sense beside them.
+    """
+    template = output_template.readable_to_template(name)
+    assert output_template.resolve_queue_fields(template) == single
+    assert output_template.resolve_queue_fields(template, position=3, count=12, playlist="Mix") == (
+        entry
+    )
+
+
+def test_a_position_is_padded_to_the_playlists_width_and_a_title_is_made_literal() -> None:
+    template = output_template.readable_to_template("{Playlist}/{Position}")
+    assert output_template.resolve_queue_fields(
+        template, position=7, count=112, playlist="A/B 100%"
+    ).startswith("A_B 100%%/007")
+
+
+def test_a_queue_time_field_that_reaches_a_request_unresolved_is_refused() -> None:
+    """Never rendered as NA: a download does not know it, so it is refused rather than guessed."""
+    template = output_template.readable_to_template("{Position} {Title}")
+    assert output_template.unsupported_refusal(template) is not None
+    assert output_template.settings_refusal(template) is None

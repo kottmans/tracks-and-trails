@@ -5,7 +5,7 @@
     "content_licence": "Big Buck Bunny (c) Blender Foundation, CC BY 3.0. Media URLs are unsigned.",
     "derived_from": "archive_org_big_buck_bunny",
     "note": "Derived, not recorded. The recorded captures predate `fps`, `tbr`, `vcodec` and `acodec` on a format (SEC-002: a fixture carries only what the projection reads, and the projection did not read them until T-107). REQ-003 names all four as columns, so the format table's tests need a fixture that has them. This is that fixture, and it is NOT evidence for Phase 3's exit criterion 1 \u2014 matching `yt-dlp -F` needs a recorded capture, which T-185 owns. As of T188-R1 it is no longer the evidence for REQ-008's merge pair - dash_akamai_big_buck_bunny is, and it is recorded. It keeps the synthetic pair only for the pairable-with-a-complete-format combination the format table needs and no recorded source can supply.",
-    "policy": "allowlist: only fields ytdlp_adapter reads carry values; each playlist entry keeps exactly url, webpage_url, original_url, title, duration, thumbnail and nothing else; every other key is dropped and nothing about it is kept. URLs lose query, userinfo and fragment; user-directory paths are removed",
+    "policy": "allowlist: only fields ytdlp_adapter reads carry values; each playlist entry keeps exactly url, webpage_url, original_url, title, duration, thumbnail, id, channel and nothing else; every other key is dropped and nothing about it is kept. URLs lose query, userinfo and fragment; user-directory paths are removed",
     "what_is_synthetic": [
       "formats[].fps",
       "formats[].tbr",

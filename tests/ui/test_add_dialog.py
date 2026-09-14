@@ -2632,6 +2632,62 @@ def test_a_playlists_entries_land_together_in_one_folder(
     assert folder != downloads, "the entries went straight into the download directory, unfoldered"
 
 
+def test_a_playlists_entries_are_named_by_their_position_and_playlist(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    sink: FakeSink,
+    tmp_path: Path,
+    spin: Callable[..., bool],
+) -> None:
+    """**`UX-014`'s queue-time fields.** yt-dlp never sees a playlist for a per-entry download, so
+    the dialog writes *Playlist* and *Position* into each entry's name — padded, so files sort.
+
+    **And the playlist's automatic folder stands down** when the name already places the playlist,
+    or every entry would land in `Trail Sounds/Trail Sounds/…`.
+    """
+    dialog = dialogs(
+        managers(),
+        default_output_template="%(playlist_title)s/%(playlist_index)s - %(title)s.%(ext)s",
+    )
+    type_urls(dialog, "https://example.invalid/list")
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows) and dialog.rows[0].job_id is not None)
+    _probed_playlist(dialog, title="Trail Sounds", count=4)
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+    submitted = sink.submissions[-1]
+
+    assert [job.request.output_template for job in submitted] == [
+        f"Trail Sounds/0{position} - %(title)s.%(ext)s" for position in range(1, 5)
+    ]
+    assert {Path(job.request.output_directory) for job in submitted} == {tmp_path / "downloads"}, (
+        "the automatic playlist folder was kept although the name already places the playlist"
+    )
+
+
+def test_a_single_item_names_no_playlist_and_leaves_no_separator(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    sink: FakeSink,
+    spin: Callable[..., bool],
+) -> None:
+    """The same name for a video that is in no playlist: the fields and their `" - "` both go."""
+    dialog, _row = _staged(
+        dialogs,
+        managers,
+        spin,
+        default_output_template="%(playlist_title)s/%(playlist_index)s - %(title)s.%(ext)s",
+    )
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+
+    assert sink.submissions[0][0].request.output_template == "%(title)s.%(ext)s"
+
+
 def test_a_playlist_nothing_could_enumerate_stays_a_single_job(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],

@@ -482,6 +482,9 @@ _TEMPLATE_PROBE: Final = MediaInfo(
     uploader="Uploader",
     duration_seconds=1,
     upload_date="20260913",
+    media_id="abc123",
+    channel="Channel",
+    site="Youtube",
     is_playlist=False,
 )
 
@@ -978,11 +981,21 @@ class MainWindow(QMainWindow):
         """
         if self._manager is None:
             return None
+        # **As a playlist's first entry when the name uses the playlist**, so the example shows
+        # what *Playlist* and *Position* write rather than showing them removed (`UX-014`).
+        uses_playlist = "%(playlist_" in template
+        resolved = (
+            output_template.resolve_queue_fields(
+                template, position=1, count=12, playlist="A playlist"
+            )
+            if uses_playlist
+            else output_template.resolve_queue_fields(template)
+        )
         request = presets.to_request(
             presets.BUILT_IN_PRESETS[0],
             url="https://example.invalid/preview",
             output_directory=str(self._output_directory),
-            default_output_template=template,
+            default_output_template=resolved,
         )
         return self._manager.preview_output_path(request, _TEMPLATE_PROBE)
 
@@ -1068,13 +1081,24 @@ class MainWindow(QMainWindow):
             return None
         current = job.request.output_template
         typed_before = output_template.renamed_name_of(current)
-        base = current if typed_before is None else self._setting_template()
+        base = (
+            current
+            if typed_before is None
+            else output_template.resolve_queue_fields(
+                self._setting_template(),
+                position=None if job.playlist_index is None else job.playlist_index + 1,
+                playlist=job.playlist_title,
+            )
+        )
         media = MediaInfo(
             url=job.url,
             title=job.title or job.url,
             uploader=job.uploader,
             duration_seconds=job.duration_seconds,
             upload_date=job.upload_date,
+            media_id=job.media_id,
+            channel=job.channel,
+            site=job.site,
             is_playlist=False,
         )
         manager = self._manager

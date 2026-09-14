@@ -5,7 +5,7 @@
     "content_licence": "No content: the structure of a real capture with two entries emptied.",
     "derived_from": "archive_org_art_of_war_playlist",
     "note": "Derived, not recorded. A playlist holding items the extractor could not read. The shape is measured, not invented: on 2026-08-27 a real 20-item YouTube playlist logged 'YouTube said: INFO - 2 unavailable videos are hidden' and the two entries arrived with an address and an id present and title, duration, channel and uploader all null. The id is not carried here because the projection does not read it and this policy commits nothing it does not read; the address alone reproduces the case, which is that the old guard tested the address and passed. The real playlist is not committed as a capture because it is not a boring source (tests/fixtures/capture.py): it is YouTube, it changes, and the entries would stop being unavailable the day someone restores them.",
-    "policy": "allowlist: only fields ytdlp_adapter reads carry values; each playlist entry keeps exactly url, webpage_url, original_url, title, duration, thumbnail and nothing else; every other key is dropped and nothing about it is kept. URLs lose query, userinfo and fragment; user-directory paths are removed",
+    "policy": "allowlist: only fields ytdlp_adapter reads carry values; each playlist entry keeps exactly url, webpage_url, original_url, title, duration, thumbnail, id, channel and nothing else; every other key is dropped and nothing about it is kept. URLs lose query, userinfo and fragment; user-directory paths are removed",
     "what_is_synthetic": [
       "entries[7]",
       "entries[8]",

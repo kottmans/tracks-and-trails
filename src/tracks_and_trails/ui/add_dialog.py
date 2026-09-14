@@ -1961,26 +1961,32 @@ class AddUrlDialog(QDialog):
 
     def default_name_for(self, row: Row) -> str:
         """The name the Settings pattern gives `row`, without its folders or its extension."""
-        preview = self._preview_under(row, self._default_output_template)
+        preview = self._preview_under(row, self._single_item_template())
         return output_template.file_stem_of(preview.path) if not preview.is_refused else ""
 
     def template_for(self, row: Row) -> str:
-        """The template `row` is written with: its rename, or the Settings pattern (`UX-014`)."""
+        """The template `row` is written with: its rename, or the Settings pattern (`UX-014`).
+
+        **A single item**, so *Playlist* and *Position* are taken out; `_durable_jobs` writes them
+        in for a playlist's entries instead.
+        """
+        pattern = self._single_item_template()
         if row.file_name:
-            return output_template.renamed_template(
-                row.file_name, within=self._default_output_template
-            )
-        return self._default_output_template
+            return output_template.renamed_template(row.file_name, within=pattern)
+        return pattern
+
+    def _single_item_template(self) -> str:
+        """The Settings pattern with its queue-time fields resolved for a single item."""
+        return output_template.resolve_queue_fields(self._default_output_template)
 
     def rename_preview_for(self, row: Row, name: str) -> OutputPreview:
         """Where `row` would be written if it were called `name`. Empty previews the pattern."""
         refusal = output_template.name_refusal(name)
         if refusal is not None:
             return OutputPreview(refusal=refusal)
+        pattern = self._single_item_template()
         template = (
-            output_template.renamed_template(name, within=self._default_output_template)
-            if name.strip()
-            else self._default_output_template
+            output_template.renamed_template(name, within=pattern) if name.strip() else pattern
         )
         return self._preview_under(row, template)
 
@@ -2986,7 +2992,15 @@ class AddUrlDialog(QDialog):
         # function the output path uses, so a title with a slash in it cannot escape the download
         # directory — the entries land together or they do not land at all.
         folder = sanitize_component(probed.title)
-        directory = self._output_directory / folder if folder else self._output_directory
+        # **Unless the naming already says where the playlist's name goes** (`UX-014`): a pattern
+        # using *Playlist* would otherwise land every entry in `Mix/Mix/…`.
+        names_the_playlist = "%(playlist_title)s" in self._default_output_template
+        directory = (
+            self._output_directory / folder
+            if folder and not names_the_playlist
+            else self._output_directory
+        )
+        count = len(probed.entries)
         return [
             Job(
                 id=str(uuid.uuid4()),
@@ -2999,7 +3013,13 @@ class AddUrlDialog(QDialog):
                         self.preset_for(row),
                         url=entry.url,
                         output_directory=str(directory),
-                        default_output_template=self._default_output_template,
+                        # *Playlist* and *Position* written in here, where they are known.
+                        default_output_template=output_template.resolve_queue_fields(
+                            self._default_output_template,
+                            position=index + 1,
+                            count=count,
+                            playlist=probed.title,
+                        ),
                     )
                 ),
                 # **Queued, not ready.** `UX-003` makes a pasted URL a probed one; a flat entry is
@@ -3013,6 +3033,9 @@ class AddUrlDialog(QDialog):
                 # `PlaylistSelection.chosen_with_index`.
                 playlist_index=index,
                 playlist_title=probed.title,
+                media_id=entry.media_id,
+                channel=entry.channel,
+                site=probed.site,
                 created_at=datetime.now().astimezone(),
             )
             for index, entry in chosen
@@ -3045,6 +3068,9 @@ class AddUrlDialog(QDialog):
             uploader=probed.uploader if probed is not None else None,
             duration_seconds=probed.duration_seconds if probed is not None else None,
             upload_date=probed.upload_date if probed is not None else None,
+            media_id=probed.media_id if probed is not None else None,
+            channel=probed.channel if probed is not None else None,
+            site=probed.site if probed is not None else None,
             # **`REQ-017`'s only knowable-in-advance refusal** (`T-113`). The probe says whether
             # this is live and the queue row is where it has to be said, so it crosses with the
             # rest of what the probe learned rather than dying with the dialog — which is what

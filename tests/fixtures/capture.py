@@ -68,6 +68,10 @@ CONSUMED_TOP_LEVEL: Final = (
     "uploader",
     # `UX-014`: the *Upload date* naming field.
     "upload_date",
+    # `UX-014`: the *ID*, *Channel* and *Site* naming fields. `id` is committed as a placeholder.
+    "id",
+    "channel",
+    "extractor_key",
     "url",
     "webpage_url",
 )
@@ -193,7 +197,14 @@ CONSUMED_ENTRY: Final[tuple[str, ...]] = (
     "title",
     "duration",
     "thumbnail",
+    "id",
+    "channel",
 )
+
+#: What a committed fixture holds in place of a site's own item id (`UX-014`). The projection reads
+#: `id` for the *ID* naming field; a real one is a video's address in all but form, which is exactly
+#: what `ALLOWED_QUERY_PARAMETERS` being empty keeps out of this repository.
+FIXTURE_ID: Final = "fixture-id"
 
 
 def keep_consumed(info: Mapping[str, Any]) -> dict[str, Any]:
@@ -221,6 +232,8 @@ def keep_consumed(info: Mapping[str, Any]) -> dict[str, Any]:
             kept[key] = [_keep_entry(item) for item in value]
         elif key == "subtitles" and isinstance(value, Mapping):
             kept[key] = _keep_subtitles(value)
+        elif key == "id":
+            kept[key] = FIXTURE_ID
         else:
             kept[key] = clean_scalar(value)
     return kept
@@ -256,7 +269,11 @@ def _keep_entry(item: Any) -> dict[str, Any]:
     """One playlist entry, allowlisted (`T-137`). Same shape and rule as `_keep_format`."""
     if not isinstance(item, Mapping):
         return {}
-    return {key: clean_scalar(item[key]) for key in CONSUMED_ENTRY if key in item}
+    return {
+        key: FIXTURE_ID if key == "id" else clean_scalar(item[key])
+        for key in CONSUMED_ENTRY
+        if key in item
+    }
 
 
 def _policy_record() -> str:
