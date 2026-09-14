@@ -1,0 +1,19 @@
+============================= test session starts ==============================
+platform linux -- Python 3.14.7, pytest-9.1.1, pluggy-1.6.0
+PySide6 6.11.1 -- Qt runtime 6.11.1 -- Qt compiled 6.11.1
+rootdir: /mnt/storage/software_projects/tracks-and-trails/tracks-and-trails
+configfile: pyproject.toml
+plugins: cov-7.1.0, xdist-3.8.0, qt-4.5.0
+collected 4650 items / 4648 deselected / 2 skipped / 2 selected
+
+tests/network/test_marker.py .                                           [ 50%]
+tests/network/test_real_download.py .                                    [100%]
+
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests/network/test_marker.py::test_network_marker_is_opt_in
+PASSED tests/network/test_real_download.py::test_one_real_url_downloads_end_to_end
+SKIPPED [1] tests/ui/test_windows_accessibility.py:61: UI Automation is a Windows API
+SKIPPED [1] tests/ui/test_windows_desktop.py:61: T-026 verifies behavior on a real Windows desktop; nothing here is meaningful elsewhere. The Linux equivalent is the ordinary offscreen UI suite.
+================ 2 passed, 2 skipped, 4648 deselected in 9.74s =================
+network exit 0

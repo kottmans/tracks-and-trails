@@ -14,11 +14,9 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
-## Ready
-
 ### T-324 — A release workflow that builds, gates and drafts — and never publishes
 
-**Status:** **In Progress** — **the first two `v0.1.0` runs failed** (2026-09-14): `verify` on a missing
+**Status:** **In Review** — **the fourth `v0.1.0` run drafted the release** (run `34881606168`, tag at `3c011b8`, `draft: true`, two artifacts and `SHA256SUMS`), which is the first acceptance criterion. *(Was In Progress:)* **the first two `v0.1.0` runs failed** (2026-09-14): `verify` on a missing
 Python version file, then the AppImage build on a SIGPIPE and the installer compile on Git Bash's
 path conversion. All are corrected (below); the tag moves to the corrected commit again. Written
 2026-09-12. **Its first acceptance criterion needs a tag**, and a tag is the one artifact in this
@@ -239,7 +237,7 @@ the windowed build to it; this workflow still does not run on push.
 
 ### T-326 — The release-candidate suite: everything the gate asks a machine for, on both platforms
 
-**Status:** **In Progress** — the items that do not need a release candidate were run 2026-09-12;
+**Status:** **In Review** — **run against the `0.1.0` candidate on 2026-09-14** ([evidence](evidence/2026-09-14-T326-release-candidate-0.1.0.md)): items 1–5, 8, 10 and 10a each with their artifact on both platforms where the item asks, the network suite retained for both, and the `0.2` migration-fixture obligation in `docs/RELEASE.md`. *(Was In Progress:)* the items that do not need a release candidate were run 2026-09-12;
 the rest wait on a `v*` tag, which is `T-324`'s trigger and the maintainer's act. **The
 enumeration found a gap in §7's own coverage**, below. Filed 2026-09-11 with the Phase 5 plan.
 
@@ -357,7 +355,7 @@ The release gate's machine half, run **against the candidate** rather than again
 
 ### T-322 — The Windows installer
 
-**Status:** **In Progress** — `T322-R3`…`R5` resolved, `R5` approved at `9791c7e`, and **the maintainer saw the uninstaller's dialog, messages and running-application refusal on the installed build on 2026-09-14** (`T-327`). Open: a workflow build. **The SmartScreen screenshot is filed** (2026-09-14, `T-327`);
+**Status:** **In Review** — **built by `T-324`'s workflow for `0.1.0`** (run `34881606168`, `aafc574c…`) and passing the Sandbox gate on that exact installer ([`windows-0.1.0.md`](evidence/windows-0.1.0.md)), which was the last open criterion. *(Was In Progress:)* `T322-R3`…`R5` resolved, `R5` approved at `9791c7e`, and **the maintainer saw the uninstaller's dialog, messages and running-application refusal on the installed build on 2026-09-14** (`T-327`). Open: a workflow build. **The SmartScreen screenshot is filed** (2026-09-14, `T-327`);
 **compiled on `STARBASE`** 2026-09-12, installed and uninstalled in
 Windows Sandbox by `T-039`'s gates, and polished in the maintainer's session (below). Open: built by
 `T-324`'s workflow, which needs a tag, and `T-317`'s SmartScreen screenshot. *(This said it could not
@@ -661,6 +659,8 @@ incident it cites).
 - Auto-update
 
 ---
+
+## Ready
 
 ### T-301 — Four UI tests break when the application font grows by one point
 

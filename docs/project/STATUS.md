@@ -24,17 +24,16 @@ the first release**. Nothing user-facing may claim parity with yt-dlp until 4.5 
 *Refreshed 2026-09-14. The previous snapshot is recoverable from `39dab46`; its facts live in the
 task and review records it summarised.*
 
-- **`0.1.0` is prepared and waits for its tag.** The release commit is approved for release
-  preparation ([record](reviews/T-328.md)); its two Low corrections (the SmartScreen wording and the
-  release sequence) are in the commit after it, which is the one to tag. **Completed 2026-09-14:**
-  `T-327` (the Windows session, Narrator deferred as `T-339`), `T-333`, `T-338`, `T-337`, `T-335`,
-  `T-332`, `T-039` and `T-325`.
-- **Waiting on the maintainer:** moving the `v0.1.0` tag. Its first run failed before building
-  (`T-324`: a Python version file the repository never had, and two more defects found reading on);
-  the workflow is corrected and the tag must point at the corrected commit. Then `T-326`'s
-  candidate items, and publication after `T-328`'s release review.
-- **Otherwise open:** `T-322` (a workflow build of the installer), `T-324`/`T-326` (the tag),
-  `T-328` (the release).
+- **`0.1.0` is drafted and its machine checks are done.** `v0.1.0` is at `3c011b8`; release run
+  `34881606168` drafted it with both artifacts and `SHA256SUMS`, after three failed runs whose causes
+  `T-324` records. `T-326`'s checks ran on the downloaded draft bytes: clean machines on both
+  platforms, the network suite on both, the canary at `2026.8.19`, and the maintainer's cancel-and-quit
+  sitting ([evidence](evidence/2026-09-14-T326-release-candidate-0.1.0.md)). `T-322`, `T-324` and
+  `T-326` are in review.
+- **Next:** `T-328`'s release review, then the maintainer publishes the draft and the README install
+  section goes live, then `main` moves to `0.1.1.dev0`.
+- **Proposed for `0.1.1`:** the manager refusing a retry of a non-retryable failure (found enumerating
+  §7; unreachable from the UI today).
 - **The four Windows-only diagnostic tasks have their dispositions** (`T-328`, maintainer ruling
   2026-09-13): `T-074` is held as a potential task (Proposed — Phase 5), and `T-092`, `T-068` and
   `T-056` are cancelled with what closing gives up recorded. `T-212`'s checklist run was
