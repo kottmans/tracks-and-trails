@@ -266,6 +266,21 @@ users will get it; the draft release `T-324` builds from the tag is the natural 
 **Still open in this session:** item 3 (Narrator) and the SmartScreen screenshot. The review record is
 written when they are.
 
+#### 2026-09-14 (later still) — item 1: the SmartScreen prompt, seen
+
+**The maintainer took both screens** on the unsigned installer (sha256 `4d431336…`), copied into a
+fresh Sandbox and given a browser download's Mark of the Web (`ZoneId=3`), launched from Explorer:
+
+1. **Windows protected your PC** — *Microsoft Defender SmartScreen prevented an unrecognized app from
+   starting. Running this app might put your PC at risk.* — *More info*, **Don't run**.
+2. After *More info*: **App:** `Tracks-and-Trails-0.1.0.dev0-setup.exe`, **Publisher:** *Unknown
+   publisher* — **Run anyway**, **Don't run**.
+
+This is `REL-005`'s accepted cost exactly as a user meets it. `docs/RELEASE.md`'s description was
+corrected to these words: it had *unrecognised*, and neither the second sentence nor the details
+page. **The image files are still to be added** to `docs/project/evidence/`; until then this
+transcription is the record.
+
 #### 2026-09-14 (later) — Narrator deferred past `0.1.0`; the SmartScreen download staged
 
 **Item 3 is deferred by the maintainer's ruling**, offered as a choice between deferring it with the

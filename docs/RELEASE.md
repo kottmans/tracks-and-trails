@@ -161,8 +161,23 @@ digest, taken on a machine that no longer exists.
 
 `REL-005`: the first installer **ships unsigned**. On a first install Windows SmartScreen shows
 
-> **Windows protected your PC** — *Microsoft Defender SmartScreen prevented an unrecognised app
-> from starting.*
+> **Windows protected your PC**
+>
+> Microsoft Defender SmartScreen prevented an unrecognized app from starting. Running this app might
+> put your PC at risk.
+>
+> *More info* · **Don't run**
+
+and, after **More info**:
+
+> App: `Tracks-and-Trails-<version>-setup.exe`
+> Publisher: **Unknown publisher**
+>
+> **Run anyway** · **Don't run**
+
+*(Transcribed from the real prompts on 2026-09-14, `T-327` item 1, on the unsigned installer
+`4d431336…` given a browser download's Mark of the Web in Windows Sandbox. This said
+"unrecognised" and left out the second sentence and the details page.)*
 
 The way through is **More info** → **Run anyway**. Say exactly that on the release page and in the
 README install section, so support is a link rather than a conversation. Reputation never accrues
