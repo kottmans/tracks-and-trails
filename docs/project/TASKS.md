@@ -18,11 +18,30 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ### T-324 — A release workflow that builds, gates and drafts — and never publishes
 
-**Status:** **In Progress** — **the first `v0.1.0` run failed in `verify`** (2026-09-14), before any
-build, and the workflow is corrected (below); it needs the tag moved to the corrected commit. Written
+**Status:** **In Progress** — **the first two `v0.1.0` runs failed** (2026-09-14): `verify` on a missing
+Python version file, then the AppImage build on a SIGPIPE. Both are corrected (below); the tag moves
+to the corrected commit again. Written
 2026-09-12. **Its first acceptance criterion needs a tag**, and a tag is the one artifact in this
 project that cannot be quietly corrected, so that one is left to the maintainer rather than taken.
 Filed 2026-09-11 with the Phase 5 plan.
+
+#### 2026-09-14 (later) — the second run: the AppImage build died of SIGPIPE
+
+**Run `34877484226`, tag moved to `412e93b`:** `verify` passed, which is the first run's fix
+working. **`AppImage` failed in *Build in the oldest-glibc container*, exit 141**, straight after
+printing *ldd (Debian GLIBC 2.36-9+deb12u14) 2.36*. `packaging/build_appimage.sh` runs under
+`set -euo pipefail` and began with `ldd --version | head -1`. `head` exits after one line, `ldd` is
+killed writing the rest, and `pipefail` fails the script. It depends on timing, which is how
+`T-321`'s builds passed.
+
+**Fixed everywhere it occurs:** `sed -n 1p` for the glibc line, `find … -print -quit` for the
+platform-plugin search in the same script, and the same two patterns in
+`tools/clean_machine_evidence.sh` (where it would have turned a match into *"(nothing)"*).
+Measured: under `pipefail`, `seq 1 200000 | head -1` exits 141 and `| sed -n 1p` exits 0.
+
+**Test** (`tests/unit/test_build_scripts.py`): no `pipefail` script under `packaging/` or `tools/`
+ends a pipeline in `head`, with the failing line as a positive control. It fails on the two scripts
+as they were.
 
 #### 2026-09-14 — the first real run, and what it found
 

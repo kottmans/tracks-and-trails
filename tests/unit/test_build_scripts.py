@@ -175,3 +175,46 @@ def test_the_clean_machine_is_not_the_machine_that_built_it() -> None:
     assert "ubuntu:24.04" in wrapper
     assert "bookworm" in build
     assert "bookworm" not in wrapper, "the clean machine is now the build image"
+
+
+#: A pipeline ending in `head`: under `pipefail`, `head` exiting early kills the writer (SIGPIPE).
+_HEAD_PIPE: Final = re.compile(r"\|\s*head\b")
+
+
+def _pipefail_scripts() -> list[Path]:
+    return sorted(
+        path
+        for path in [
+            *(REPOSITORY / "packaging").rglob("*.sh"),
+            *(REPOSITORY / "tools").rglob("*.sh"),
+        ]
+        if "pipefail" in path.read_text(encoding="utf-8")
+    )
+
+
+def _head_pipelines(text: str) -> list[str]:
+    return [
+        line.strip()
+        for line in text.splitlines()
+        if not line.lstrip().startswith("#") and _HEAD_PIPE.search(line)
+    ]
+
+
+@pytest.mark.parametrize("script", _pipefail_scripts(), ids=lambda path: path.name)
+def test_no_pipefail_script_ends_a_pipeline_in_head(script: Path) -> None:
+    """**`T-324`: the first `v0.1.0` release run failed on `ldd --version | head -1`**, exit 141.
+
+    `head` stops reading after its lines, the writer is killed by SIGPIPE, and `pipefail` makes
+    the pipeline fail. It depends on timing, so every earlier build passed. `sed -n 1p` reads to
+    the end and `find … -print -quit` stops the writer itself.
+    """
+    found = _head_pipelines(script.read_text(encoding="utf-8"))
+    assert not found, f"{script.name} ends a pipeline in head under pipefail: {found}"
+
+
+def test_the_head_pipeline_check_sees_the_line_that_failed() -> None:
+    """The positive control: the exact line the release run died on."""
+    assert _head_pipelines("set -euo pipefail\nldd --version | head -1\n") == [
+        "ldd --version | head -1"
+    ]
+    assert _head_pipelines("# `| head -1` in a comment\n") == []

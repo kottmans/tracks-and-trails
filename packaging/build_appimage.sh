@@ -23,7 +23,11 @@ OUT=${OUT:-/out}
 ID=io.github.kottmans.TracksAndTrails
 
 echo "==> glibc on this build host"
-ldd --version | head -1
+# **`sed -n 1p`, not `head -1`** (`T-324`, the first `v0.1.0` run). `head` exits after one line, so
+# `ldd` is killed writing the rest (SIGPIPE, exit 141), and `pipefail` makes that the script's
+# exit. Whether it happens depends on timing, which is how it passed every build before that run.
+# `sed` reads to the end.
+ldd --version | sed -n 1p
 
 echo "==> copying the source out of the read-only mount"
 rm -rf "$WORK"
@@ -113,7 +117,8 @@ install -m 644 src/tracks_and_trails/resources/icons/icon-256.png \
 # degrades to a warning when it cannot read Qt's layout, and an artifact with no platform plugin
 # passes `--version` and every probe. Nothing else in this project asks whether a window can open.
 echo "==> asserting the Qt platform plugins came across"
-PLATFORMS=$(find "$APPDIR/usr/bin" -type d -name platforms | head -1)
+# `-print -quit` rather than `| head -1`, for the SIGPIPE reason at the top of this script.
+PLATFORMS=$(find "$APPDIR/usr/bin" -type d -name platforms -print -quit)
 if [ -z "$PLATFORMS" ] || [ -z "$(ls -A "$PLATFORMS" 2>/dev/null)" ]; then
     echo "FAIL: no Qt platform plugins in the bundle. PyInstaller's PySide6 hook could not read" >&2
     echo "      Qt's library info — check the apt-get list above against Qt's dependencies." >&2

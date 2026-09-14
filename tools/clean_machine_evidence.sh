@@ -36,7 +36,7 @@ echo "sha256        $(sha256sum "$ARTIFACT" 2>/dev/null | cut -d' ' -f1)"
 # not something an AppImage bundles or a release can choose.
 echo "kernel        $(uname -srm)  (the host's, if this is a container)"
 echo "distribution  $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME")"
-echo "glibc         $(ldd --version 2>/dev/null | head -1)"
+echo "glibc         $(ldd --version 2>/dev/null | sed -n 1p)"
 echo '```'
 
 rule "Pre-install check"
@@ -109,7 +109,9 @@ else
     failures=$((failures + 1))
 fi
 echo "--- anything it wrote ---"
-grep -iE "qt\.|error|fatal|abort|plugin|traceback" /tmp/launch.log | head -10 || echo "(nothing)"
+# `sed -n 1,10p`, not `head -10`: under `pipefail` a `head` that stops reading turns a match into
+# a failure, and `|| echo "(nothing)"` would then report nothing found (`T-324`).
+grep -iE "qt\.|error|fatal|abort|plugin|traceback" /tmp/launch.log | sed -n 1,10p || echo "(nothing)"
 echo '```'
 
 rule "Verdict"
