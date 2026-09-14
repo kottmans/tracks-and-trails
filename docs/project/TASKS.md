@@ -67,7 +67,7 @@ updater this mirrors)
 ### T-337 — Naming is a setting; a single download is renamed, not templated
 
 **Status:** **In Review** — ruled 2026-09-13 by the maintainer from `T-327`'s session, recorded as
-`UX-014`, and built the same day in three commits.
+`UX-014`, and built the same day in ten commits (`8ec395c` to `60fb124`).
 **Owner:** Implementer
 **Priority:** High — the per-item template editor is the first naming surface a user meets
 **Phase:** Phase 5
