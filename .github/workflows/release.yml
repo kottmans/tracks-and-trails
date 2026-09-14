@@ -233,6 +233,14 @@ jobs:
         # first compile found (`T-322`).
         #
         # `$ISCC` is whatever the step above actually located, not a path guessed here.
+        #
+        # **`MSYS_NO_PATHCONV`, or Git Bash rewrites the switches** (`T-324`, the second `v0.1.0`
+        # run). This job's shell is Git Bash, which turns an argument starting with `/` into a
+        # Windows path before a native program sees it, so `/DAppVersion=0.1.0` reached ISCC as a
+        # file name: *"You may not specify more than one script filename."* Reproduced on
+        # `STARBASE` through Git Bash both ways; every earlier compile ran from `cmd`.
+        env:
+          MSYS_NO_PATHCONV: "1"
         run: |
           "$ISCC" "/DAppVersion=${GITHUB_REF_NAME#v}" \
             "/DSourceDir=..\\dist\\tracks-and-trails" packaging/tracks-and-trails.iss

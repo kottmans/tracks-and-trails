@@ -361,3 +361,17 @@ def test_the_windows_build_installs_into_its_own_virtualenv_and_profile() -> Non
     assert "Give this job its own user profile" in names[:install], "probes use the real profile"
     venv = steps("build-windows")[names.index("Create the virtualenv")]
     assert "GITHUB_PATH" in str(venv.get("run", "")), "the virtualenv is created and not used"
+
+
+def test_the_installer_compile_stops_git_bash_rewriting_its_switches() -> None:
+    """**`T-324`, the second `v0.1.0` run.** The Windows job's shell is Git Bash, which converts an
+    argument beginning with `/` into a path before a native program sees it. ISCC's `/D` switches
+    arrived as file names and it refused: *"You may not specify more than one script filename."*
+    """
+    compile_steps = [step for step in steps("build-windows") if "$ISCC" in str(step.get("run", ""))]
+    assert compile_steps, "no step compiles the installer, so this check would pass blind"
+    for step in compile_steps:
+        assert "/D" in str(step["run"]), "the compile no longer passes a /D switch; revisit this"
+        assert str(step.get("env", {}).get("MSYS_NO_PATHCONV")) == "1", (
+            "Git Bash will rewrite ISCC's /D switches into paths"
+        )

@@ -19,11 +19,31 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 ### T-324 — A release workflow that builds, gates and drafts — and never publishes
 
 **Status:** **In Progress** — **the first two `v0.1.0` runs failed** (2026-09-14): `verify` on a missing
-Python version file, then the AppImage build on a SIGPIPE. Both are corrected (below); the tag moves
-to the corrected commit again. Written
+Python version file, then the AppImage build on a SIGPIPE and the installer compile on Git Bash's
+path conversion. All are corrected (below); the tag moves to the corrected commit again. Written
 2026-09-12. **Its first acceptance criterion needs a tag**, and a tag is the one artifact in this
 project that cannot be quietly corrected, so that one is left to the maintainer rather than taken.
 Filed 2026-09-11 with the Phase 5 plan.
+
+#### 2026-09-14 (later still) — the second run's installer: Git Bash rewrote ISCC's switches
+
+**The same run's `installer` job** passed every step before the compile: the `STARBASE` Python
+check, its own virtualenv and profile (the first run's reading-on fix, now executed), the ffmpeg
+fetch, the windowed build, `artifact_gates.py` and the probes. **It failed at *Compile the
+installer***: *"You may not specify more than one script filename."* The job's shell is Git Bash,
+which converts an argument beginning with `/` into a Windows path when it starts a native program,
+so `/DAppVersion=0.1.0` reached ISCC as a file name. Every earlier compile ran from `cmd`.
+
+**Reproduced on `STARBASE` through Git Bash both ways**: without `MSYS_NO_PATHCONV` the same message
+and exit 1; with `MSYS_NO_PATHCONV=1` a `Tracks-and-Trails-0.1.0-setup.exe`. (A first check with
+`printf` showed nothing, because a Bash builtin is never converted; it was discarded.) The step now
+sets it, and `test_the_installer_compile_stops_git_bash_rewriting_its_switches` fails on the
+workflow without it.
+
+**The AppImage fix, run before the next tag:** the container build from the corrected tree completed
+locally (`Tracks_and_Trails-0.1.0-x86_64.AppImage`, 68 MB), and the workflow's next two steps passed
+on it: `artifact_gates.py` over the extracted payload (4 of 4) and all four probes; `--version` prints
+`0.1.0`. Still unexercised in a real run: the upload, the draft job and `gh release create`.
 
 #### 2026-09-14 (later) — the second run: the AppImage build died of SIGPIPE
 
