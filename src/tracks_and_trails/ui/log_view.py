@@ -39,6 +39,18 @@ the two sinks against each other so neither drifts into the other.
 `copy_to_clipboard` re-reads the artifact rather than taking what is rendered. The rendering is
 capped so the GUI thread never blocks; the clipboard is not, because `REQ-019` promises the file
 exactly and the omitted beginning is where the session header lives. That was `T084-R2`.
+
+## Where it is opened (`T-340`)
+
+`ui/job_detail.py` was this view's only host, and `UX-005` §2 took the detail pane out of the
+window, so for a while nothing in the running application offered it: `REQ-019` and `§11`
+criterion 6 had tests and no surface, found while preparing the `0.1.0` acceptance sitting. The
+maintainer chose to put it back as a menu entry, *Diagnostics…*, which opens `DiagnosticsDialog`.
+It is offered from a queue row's menus and from a failed line in the Add dialog, because an
+unsupported URL fails there, while it is being read, and never reaches the queue.
+
+**Offered only when the job has logged something** (`has_job_log`). `UX-005` §5 draws nothing that
+would be refused, and a window saying *no diagnostics recorded* in answer to a menu entry is that.
 """
 
 from __future__ import annotations
@@ -46,8 +58,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Final
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontDatabase, QGuiApplication
 from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
@@ -72,6 +87,23 @@ EMPTY_TEXT: Final = "No diagnostics recorded for this download yet."
 TRUNCATION_NOTICE: Final = (
     "… earlier lines are in the log file itself; the most recent {kib} KiB are shown here.\n"
 )
+
+
+#: The menu entry that opens `DiagnosticsDialog`, one text for every menu that offers it.
+DIAGNOSTICS_TEXT: Final = "Diagnostics…"
+
+
+def has_job_log(job_id: str, directory: Path | None = None) -> bool:
+    """Whether `job_id` has logged anything. One `stat`, so a menu can ask as it opens.
+
+    **Not merely whether the file exists.** The manager opens a job's log as its session starts,
+    which creates the file whether or not a line is ever written, so existence would offer
+    *Diagnostics…* on every job that ever ran and open *no diagnostics recorded* for most of them.
+    """
+    try:
+        return job_log_path(job_id, directory).stat().st_size > 0
+    except OSError:
+        return False
 
 
 def read_whole_job_log(job_id: str, directory: Path | None = None) -> str | None:
@@ -255,3 +287,48 @@ class LogView(QWidget):
 def build_log_view(job_id: str, directory: Path | None = None) -> LogView:
     """Construct the view. A named function for `build_queue_view`'s reason."""
     return LogView(job_id, directory=directory)
+
+
+class DiagnosticsDialog(QDialog):
+    """One job's `LogView` in a window of its own, with a Close button (`T-340`).
+
+    **Not modal**: a user copying a log into a bug report is also looking at the queue, and a modal
+    window would make them choose. Deleted on close, so every opening is one widget with one
+    lifetime.
+    """
+
+    def __init__(
+        self,
+        job_id: str,
+        *,
+        name: str,
+        directory: Path | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("diagnosticsDialog")
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        # The name is the job's title or URL, both untrusted, and a window title is plain text.
+        self.setWindowTitle(f"Diagnostics for {name}")
+        layout = QVBoxLayout(self)
+        self._view = build_log_view(job_id, directory)
+        layout.addWidget(self._view)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        self.resize(760, 440)
+        # The text first, so the keyboard lands where selecting and reading happen.
+        self._view.text_widget.setFocus()
+
+    @property
+    def log_view(self) -> LogView:
+        return self._view
+
+
+def show_diagnostics(
+    job_id: str, *, name: str, parent: QWidget, directory: Path | None = None
+) -> DiagnosticsDialog:
+    """Open `job_id`'s diagnostics beside `parent` and return the window."""
+    dialog = DiagnosticsDialog(job_id, name=name, directory=directory, parent=parent)
+    dialog.show()
+    return dialog

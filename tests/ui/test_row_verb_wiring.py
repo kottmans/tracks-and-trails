@@ -40,11 +40,13 @@ from PySide6.QtWidgets import (
 
 from tracks_and_trails.core import presets
 from tracks_and_trails.core.job_state import JobStatus
+from tracks_and_trails.core.logging import job_log_path
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui import theme
 from tracks_and_trails.ui.format_text import FORMAT_PREFIX
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT
+from tracks_and_trails.ui.log_view import DIAGNOSTICS_TEXT, DiagnosticsDialog
 from tracks_and_trails.ui.main_window import (
     JUST_THIS_ITEM,
     MainWindow,
@@ -290,6 +292,73 @@ def test_a_row_the_queue_does_not_hold_offers_no_menu(qapp: QApplication, tmp_pa
     queue = window.queue_view
     assert queue is not None
     assert window._show_row_menu("job-missing", queue.verbs_of("job-missing")) is None
+
+
+def _write_job_log(job_id: str, body: str) -> Path:
+    """A job log where the application writes one, as bytes (`test_log_view.write_log`'s reason)."""
+    path = job_log_path(job_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(body.encode("utf-8"))
+    return path
+
+
+@pytest.mark.parametrize("everything", [False, True], ids=["overflow", "context"])
+def test_a_row_with_a_log_offers_diagnostics_on_both_routes(
+    qapp: QApplication, tmp_path: Path, everything: bool
+) -> None:
+    """`REQ-019`, `§11` criterion 6 (`T-340`): a failed download's log is one menu entry away.
+
+    **The `⋯` with nothing dropped is the case that matters.** A wide failed row draws *Retry* and
+    *Remove* itself, so the `⋯` was handed no verbs and opened nothing; a pointer user then had no
+    way to the log but a right-click. The keyboard routes get it for `NFR-005`'s reason.
+    """
+    body = "[generic] Extracting URL: https://example.invalid/clip\nERROR: Unsupported URL\n" * 40
+    log = _write_job_log("job-1", body)
+    window = _window_over([_job("job-1", 0, JobStatus.FAILED)], tmp_path)
+    queue = window.queue_view
+    assert queue is not None
+    offered = queue.verbs_of("job-1") if everything else ()
+    menu = window._show_row_menu("job-1", offered, everything)
+    assert isinstance(menu, QMenu), "a failed row with a log opened no menu"
+    try:
+        entries = [action for action in menu.actions() if action.objectName() == "rowDiagnostics"]
+        assert [action.text() for action in entries] == [DIAGNOSTICS_TEXT]
+        entries[0].trigger()
+    finally:
+        menu.close()
+
+    opened = [child for child in window.findChildren(DiagnosticsDialog) if child.isVisible()]
+    assert len(opened) == 1, "Diagnostics… opened no window"
+    try:
+        assert "https://example.invalid/clip" in opened[0].windowTitle()
+        assert opened[0].log_view.text() == body
+        assert opened[0].log_view.copy_to_clipboard() == log.read_bytes().decode("utf-8")
+    finally:
+        opened[0].close()
+
+
+@pytest.mark.parametrize("contents", [None, ""], ids=["no-file", "empty-file"])
+def test_a_row_that_logged_nothing_offers_no_diagnostics(
+    qapp: QApplication, tmp_path: Path, contents: str | None
+) -> None:
+    """`UX-005` §5 (`T-340`). A session creates its log file before it writes a line, so an empty
+    file is the ordinary state of a job that never said anything, and it offers nothing either.
+
+    The `⋯` with nothing dropped keeps answering no menu, which is what it did before.
+    """
+    if contents is not None:
+        _write_job_log("job-1", contents)
+    window = _window_over([_job("job-1", 0, JobStatus.FAILED)], tmp_path)
+    queue = window.queue_view
+    assert queue is not None
+
+    assert window._show_row_menu("job-1", (), False) is None
+    menu = window._show_row_menu("job-1", queue.verbs_of("job-1"), True)
+    assert isinstance(menu, QMenu)
+    try:
+        assert DIAGNOSTICS_TEXT not in [action.text() for action in menu.actions()]
+    finally:
+        menu.close()
 
 
 def test_the_drawn_verbs_are_where_the_click_is_tested(qapp: QApplication, tmp_path: Path) -> None:

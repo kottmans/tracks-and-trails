@@ -66,6 +66,12 @@ from tracks_and_trails.ui.file_actions import MESSAGE_TIMEOUT_MS, FileActions
 from tracks_and_trails.ui.format_dialog import FormatDialog
 from tracks_and_trails.ui.job_detail import JobReader
 from tracks_and_trails.ui.keyboard import route_is_elsewhere
+from tracks_and_trails.ui.log_view import (
+    DIAGNOSTICS_TEXT,
+    DiagnosticsDialog,
+    has_job_log,
+    show_diagnostics,
+)
 from tracks_and_trails.ui.options_dialog import OptionsDialog, PresetSink
 from tracks_and_trails.ui.queue_view import QueueReader, QueueView, build_queue_view
 from tracks_and_trails.ui.rename_editor import RenameDialog
@@ -1382,17 +1388,36 @@ class MainWindow(QMainWindow):
         # above the two it did. `T-135` had already settled that the `⋯` holds only what was
         # dropped; the caller says which route asked, because a verb list cannot.
         has_item_commands = everything and self._add_item_commands(menu, row_id)
+        # **Diagnostics on both routes, the `⋯` included** (`T-340`, `REQ-019`). The maintainer
+        # chose the row's `⋯` for it, which widens `T-135`'s *only what the row dropped* by this
+        # one entry: the row never draws it, so without it here a pointer user on a failed row
+        # had no way to the log but a right-click. A playlist header's id names no log, so a
+        # header never offers it, and nor does a job that has logged nothing.
+        has_log = has_job_log(row_id)
         if has_item_commands and offered:
             menu.addSeparator()
-        if not offered and not has_item_commands:
+        if not offered and not has_item_commands and not has_log:
             menu.deleteLater()
             return None
         for verb in offered:
             action = menu.addAction(LABELS[verb])
             action.setObjectName(f"rowVerb_{verb.value}")
             action.triggered.connect(partial(view.trigger_verb, row_id, verb))
+        if has_log:
+            if offered or has_item_commands:
+                menu.addSeparator()
+            diagnostics = menu.addAction(DIAGNOSTICS_TEXT)
+            diagnostics.setObjectName("rowDiagnostics")
+            diagnostics.triggered.connect(partial(self._show_job_diagnostics, view, row_id))
         menu.popup(QCursor.pos())
         return menu
+
+    def _show_job_diagnostics(self, view: QueueView, job_id: str) -> DiagnosticsDialog | None:
+        """Open one job's diagnostics (`T-340`, `REQ-019`), named by its title or its URL."""
+        job = view.model.job_for(job_id)
+        if job is None:
+            return None
+        return show_diagnostics(job_id, name=job.title or job.url, parent=self)
 
     def _attach_file_actions(self) -> None:
         """Open and Show-in-folder on the queue's table (`T-086`, `REQ-021`).

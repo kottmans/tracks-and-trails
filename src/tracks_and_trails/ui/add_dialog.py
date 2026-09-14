@@ -143,6 +143,7 @@ from tracks_and_trails.ui.format_selection import (
 )
 from tracks_and_trails.ui.format_table import FormatTable
 from tracks_and_trails.ui.format_text import FORMAT_PREFIX, format_name
+from tracks_and_trails.ui.log_view import DIAGNOSTICS_TEXT, has_job_log, show_diagnostics
 from tracks_and_trails.ui.options_dialog import OptionsDialog, PresetSink
 from tracks_and_trails.ui.playlist_picker import PlaylistPicker
 from tracks_and_trails.ui.playlist_selection import PlaylistSelection, describe_chosen
@@ -2676,6 +2677,17 @@ class AddUrlDialog(QDialog):
             retry = QAction("Read this URL again", menu)
             retry.triggered.connect(lambda: self._retry_row(row))
             menu.addAction(retry)
+            # `T-340`, `REQ-019`, `§11` criterion 6: an unsupported URL fails **here**, while it is
+            # being read, and never reaches the queue, so this line is where its log is reached.
+            # Only when reading it logged something; a start that was refused has no log at all.
+            failed_job = row.job_id
+            if failed_job is not None and has_job_log(failed_job):
+                diagnostics = QAction(DIAGNOSTICS_TEXT, menu)
+                diagnostics.setObjectName("stagingDiagnostics")
+                diagnostics.triggered.connect(
+                    lambda: show_diagnostics(failed_job, name=row.url, parent=self)
+                )
+                menu.addAction(diagnostics)
         # **`T118-R9`'s discoverability alias is gone** (`UX-012`, `T-223`). It opened the row's
         # format combo through `edit_row` — a control already visible on the row — so on a single
         # item it named a thing the user was looking at, and on a playlist row it read as a no-op

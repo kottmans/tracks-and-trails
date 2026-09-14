@@ -29,6 +29,7 @@ The dialog is driven through its **object names** rather than accessors added fo
 """
 
 import json
+import logging
 import statistics
 import time
 from collections.abc import Callable, Iterator, Sequence
@@ -74,6 +75,7 @@ from tests.qt_lifecycle import drain
 from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
+from tracks_and_trails.core.logging import job_log_path
 from tracks_and_trails.core.models import (
     AudioCodec,
     DownloadRequest,
@@ -118,6 +120,7 @@ from tracks_and_trails.ui.add_dialog import (
     split_urls,
 )
 from tracks_and_trails.ui.format_selection import FormatKind, FormatSelection, kind_of
+from tracks_and_trails.ui.log_view import DIAGNOSTICS_TEXT, DiagnosticsDialog
 from tracks_and_trails.ui.main_window import DEFAULT_SIZE
 from tracks_and_trails.ui.options_dialog import OptionsDialog
 from tracks_and_trails.ui.playlist_selection import PlaylistSelection
@@ -362,6 +365,21 @@ def child_failing_as_recorded(
 ) -> None:
     """Fail with the extractor's own recorded words (`REQ-005`, `NFR-006`)."""
     error = load_error("unsupported_url")
+    queue.put(
+        Failed(job_id=job_id, kind=ErrorKind(error["expected_kind"]), message=error["message"])
+    )
+    queue.put(WorkerFinished(job_id=job_id, exit_code=1))
+
+
+def child_logging_then_failing_as_recorded(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **kwargs: Any
+) -> None:
+    """Log the extractor's words through the worker's real route, then fail with them (`T-340`)."""
+    from tracks_and_trails.downloader import worker
+
+    worker.prepare_this_worker(kwargs.get("log_queue"), kwargs.get("log_job_id"))
+    error = load_error("unsupported_url")
+    logging.getLogger("tracksandtrails.ytdlp").error("ERROR: %s", error["message"])
     queue.put(
         Failed(job_id=job_id, kind=ErrorKind(error["expected_kind"]), message=error["message"])
     )
@@ -1105,6 +1123,79 @@ def test_retrying_a_failed_row_reads_it_again_with_a_new_job(
     assert first_job not in store.jobs, (
         "the failed job was left in the database as work nobody is doing"
     )
+
+
+def test_a_failed_line_opens_its_diagnostics_and_copies_the_whole_log(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`REQ-019` and `§11` criterion 6, where an unsupported URL actually fails (`T-340`).
+
+    It fails **in this list**, while it is being read, and never reaches the queue, so the queue's
+    menu cannot be where its log is found. The line is logged through the worker's real route and
+    the parent's per-job handler, so the file read here is the one the application wrote.
+    """
+    dialog, _ = resolved(
+        dialogs, managers, spin, SINGLE_ITEM, entry_point=child_logging_then_failing_as_recorded
+    )
+    assert states(dialog) == [RowState.FAILED]
+    row = dialog.rows[0]
+    job_id = row.job_id
+    assert job_id is not None
+    recorded = load_error("unsupported_url")["message"]
+    log = job_log_path(job_id)
+    # The per-job handler writes on the listener thread, after the failure may have arrived.
+    assert spin(lambda: log.is_file() and recorded in log.read_text(encoding="utf-8")), (
+        "the worker's line never reached the job's log, so there is nothing for the menu to open"
+    )
+
+    offered = [
+        action for action in dialog.row_menu(row).actions() if action.text() == DIAGNOSTICS_TEXT
+    ]
+    assert len(offered) == 1, "a failed line with a log does not offer its diagnostics"
+    offered[0].trigger()
+
+    windows = [child for child in dialog.findChildren(DiagnosticsDialog) if child.isVisible()]
+    assert len(windows) == 1, "Diagnostics… opened no window"
+    window = windows[0]
+    try:
+        assert row.url in window.windowTitle()
+        assert recorded in window.log_view.text()
+        assert window.log_view.copy_to_clipboard() == log.read_bytes().decode("utf-8")
+    finally:
+        window.close()
+
+
+@pytest.mark.parametrize("logged", [False, True], ids=["failed-silent", "ready"])
+def test_a_line_with_nothing_logged_or_nothing_wrong_offers_no_diagnostics(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    logged: bool,
+) -> None:
+    """`UX-005` §5: nothing offered that would open *no diagnostics recorded* (`T-340`).
+
+    The failed case is the real one: its session **did** open a log, so the file exists and is
+    empty, which is why the menu asks whether anything was written rather than whether a file is
+    there. A line that read successfully is not a failure and keeps its menu as it was.
+    """
+    if logged:
+        dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM)
+        assert states(dialog) == [RowState.READY]
+    else:
+        dialog, _ = resolved(
+            dialogs, managers, spin, SINGLE_ITEM, entry_point=child_failing_as_recorded
+        )
+        assert states(dialog) == [RowState.FAILED]
+        job_id = dialog.rows[0].job_id
+        assert job_id is not None
+        assert spin(lambda: job_log_path(job_id).is_file()), (
+            "the session opened no log file, so this does not test the empty-file case it names"
+        )
+
+    texts = [action.text() for action in dialog.row_menu(dialog.rows[0]).actions()]
+    assert DIAGNOSTICS_TEXT not in texts, f"offered diagnostics with nothing to show: {texts}"
 
 
 def test_add_refuses_when_nothing_has_resolved(

@@ -4270,6 +4270,17 @@ without anyone checking the window against the mock.
 1. **`Queue` and `History` are tabs.** Not a splitter, not one above the other. Each shows a count.
 2. **There is no detail pane.** No docked panel, no side panel, no separate window. A row shows
    what a user needs to know about that job, and selecting one does not open anything.
+   - **Amended 2026-09-14: a job's diagnostics open in a window of their own** (`T-340`, ruled by
+     the maintainer). Removing the pane also removed the only host of `REQ-019`'s log view
+     (`ui/job_detail.py`), so the running application offered no log at all, and `REQUIREMENTS.md`
+     §11 criterion 6 asks for a copyable one. Found while preparing the `0.1.0` acceptance sitting.
+     Asked to choose between adding it and deferring it past `0.1.0` by ruling, the maintainer chose
+     the option reading *"Add "Diagnostics…" to a row's ⋯ menu, opening the existing log view (with
+     Copy diagnostics) in a window."* This is a window opened on request, not a pane: selecting a
+     row still opens nothing. **Two placements beyond the option's words are the Implementer's, for
+     review**: the entry is also on the row's keyboard and right-click menu (`NFR-005`), and on a
+     failed line in the Add dialog, because an unsupported URL fails there and never reaches the
+     queue. It is offered only when the job has logged something (§5).
 3. **Rows are the `T-119` anatomy** — thumbnail, title, uploader and duration, progress and state —
    in both tabs. History changes what the fields *say*, not what they are: where the queue shows
    progress and speed, history shows the saved path, size and when.
@@ -4300,6 +4311,9 @@ without anyone checking the window against the mock.
      maintainer, same session). Outlined in the muted ink, *Cancelled* was the same shape as the
      row's buttons and read as one that did nothing. A chip is a soft fill with no border; a verb is
      outlined, and answers the pointer and the press.
+   - **Amended 2026-09-14: the `⋯` also carries *Diagnostics…*** (`T-340`, the §2 amendment above).
+     `T-135` had the `⋯` hold only the verbs a narrow row dropped; this one entry is never drawn on
+     the row, so it is always in the `⋯` when the job has logged something.
    - **On the existing line, not in a gutter.** The third line already exists to say *as Best
      video*; the buttons sit at its right end. This costs no row height and leaves the title and a
      verbatim extractor message the **full** width, which `NFR-006` needs and a reserved gutter

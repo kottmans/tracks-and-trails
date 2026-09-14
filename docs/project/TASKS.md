@@ -14,6 +14,55 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-340 — A failed download's log could not be opened from anywhere in the application
+
+**Status:** **In Review** — found 2026-09-14 while preparing `T-328`'s §11 acceptance sheet; the
+maintainer chose to fix it in `0.1.0`, which moves the candidate again.
+**Owner:** Implementer
+**Priority:** High — `REQ-019` is an MVP requirement and §11 criterion 6 names a copyable log
+**Phase:** Phase 5 (blocks `T-328`)
+**Relevant context:** `REQ-019`; `REQUIREMENTS.md` §11 criterion 6; `UX-005` §2 and §4 and their
+2026-09-14 amendments; `T-084` (the log view); `T-135` (what the `⋯` holds)
+**Affected surfaces:** `ui/log_view.py`, `ui/main_window.py`, `ui/add_dialog.py`
+
+#### What was wrong
+
+`LogView` (`T-084`) was built only by `ui/job_detail.py`, and `UX-005` §2 removed the detail pane
+from the window. `queue_view.py` already said so (*"nothing in the product constructs that
+widget"*), and no decision moved `REQ-019` elsewhere. Every log-view test passed against a widget
+no user could reach. The candidate evidence for `3c011b8` and `246dcdf` did not notice.
+
+#### What changed
+
+- **`DiagnosticsDialog`** in `ui/log_view.py`: the existing `LogView` in a non-modal window titled
+  *Diagnostics for* the job's title or URL, with Close. Escape closes it. Copy still copies the
+  whole file (`T084-R2`).
+- **The queue row's menus** offer *Diagnostics…* below the verbs, on the `⋯` and on the keyboard and
+  right-click route.
+- **A failed line in the Add dialog** offers it below *Read this URL again*. An unsupported URL
+  fails there and never becomes a queue row, so this is the entry §11 criterion 6 is walked through.
+- **Offered only when the job has logged something** (`has_job_log`). The manager creates a job's
+  log file as its session opens, so a check for the file alone would offer it on every job that ever
+  ran.
+
+#### Acceptance criteria
+
+- [x] A queue row whose job logged something offers *Diagnostics…* on the `⋯`, including when
+  nothing was dropped, and on the context route; the window shows the file and Copy copies all of it
+  (`tests/ui/test_row_verb_wiring.py`)
+- [x] No entry for a job with no log file or an empty one (same file)
+- [x] A failed Add dialog line, logged through the worker's real route and the parent's per-job
+  handler, offers it and the window shows the extractor's message; a silent failure and a line that
+  read offer nothing (`tests/ui/test_add_dialog.py`)
+- [x] The window is non-modal, titled for its job, focused on the text, and closes from Escape and
+  from Close (`tests/ui/test_log_view.py`)
+- [x] Mutations, each run against the new tests: no queue entry (2 fail); the `⋯` still returning
+  nothing when no verb was dropped (1); file existence instead of size (2); no Add dialog entry
+  (1); the Add dialog entry without the log check (1); a modal window (1)
+- [ ] Seen by a person on both platforms, as part of the §11 criterion 6 walk (`T-328`)
+
+---
+
 ### T-324 — A release workflow that builds, gates and drafts — and never publishes
 
 **Status:** **In Review** — **the fourth `v0.1.0` run drafted the release** (run `34881606168`, tag at `3c011b8`, `draft: true`, two artifacts and `SHA256SUMS`), which is the first acceptance criterion. *(Was In Progress:)* **the first two `v0.1.0` runs failed** (2026-09-14): `verify` on a missing
@@ -664,7 +713,7 @@ incident it cites).
 
 ### T-328 — The first release
 
-**Status:** **In Progress** — **candidate `3c011b8` drafted and reviewed, changes requested** (2026-09-14, [record](reviews/T-328.md)): `T328-R3` (Critical, a stale menu's *Retry* re-queued a DRM failure) is corrected below and needs a new candidate; `T328-R4` (High, the nine `REQUIREMENTS.md` §11 criteria not walked by hand on both platforms) is open. *(Was Proposed:)* **scope 1's release commit made 2026-09-14** (`f22b2c7`, approved for release preparation at `d0cfcf2`; `T328-R1` and `T328-R2` corrected in the commit after it, which is the one to tag, since the draft's body is read from the tagged `CHANGELOG.md`): `__version__ = "0.1.0"`, `CHANGELOG.md` created with the `0.1.0` section the draft release will carry, `SECURITY.md` §Supported versions filled. It waits for the maintainer's `v0.1.0` tag. Filed 2026-09-11 with the Phase 5 plan. **This is the phase exit.**
+**Status:** **In Progress** — **candidate `3c011b8` drafted and reviewed, changes requested** (2026-09-14, [record](reviews/T-328.md)): `T328-R3` (Critical, a stale menu's *Retry* re-queued a DRM failure) is corrected below and needs a new candidate; `T328-R4` (High, the nine `REQUIREMENTS.md` §11 criteria not walked by hand on both platforms) is open. **`T-340` (2026-09-14) moves the candidate again**: §11 criterion 6's copyable log could not be opened from the application, and the maintainer chose to fix it in `0.1.0`. *(Was Proposed:)* **scope 1's release commit made 2026-09-14** (`f22b2c7`, approved for release preparation at `d0cfcf2`; `T328-R1` and `T328-R2` corrected in the commit after it, which is the one to tag, since the draft's body is read from the tagged `CHANGELOG.md`): `__version__ = "0.1.0"`, `CHANGELOG.md` created with the `0.1.0` section the draft release will carry, `SECURITY.md` §Supported versions filled. It waits for the maintainer's `v0.1.0` tag. Filed 2026-09-11 with the Phase 5 plan. **This is the phase exit.**
 **Owner:** Reviewer runs the release review; Maintainer tags and publishes
 **Priority:** High
 **Phase:** Phase 5

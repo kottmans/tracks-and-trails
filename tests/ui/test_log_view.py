@@ -234,3 +234,42 @@ def test_copy_refuses_rather_than_copying_the_rendered_view_when_the_file_cannot
 
     assert copied == "", f"copied {copied!r} from a file that could not be read"
     assert "could not be read" in view.status_text()
+
+
+def test_the_diagnostics_window_shows_the_job_and_closes_from_the_keyboard(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`T-340`: the window the menus open. Titled for its job, the text focused, and closed by
+    Escape as well as by its button, because criterion 8 holds for every window.
+
+    Not modal: someone copying a log into a bug report is looking at the queue too.
+    """
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QDialogButtonBox, QWidget
+
+    from tracks_and_trails.ui.log_view import DiagnosticsDialog, show_diagnostics
+
+    write_log(tmp_path, "job-1", "ERROR: Unsupported URL: https://example.com/\n")
+    parent = QWidget()
+    try:
+        dialog = show_diagnostics(
+            "job-1", name="https://example.com/", parent=parent, directory=tmp_path
+        )
+        assert isinstance(dialog, DiagnosticsDialog)
+        assert dialog.isVisible()
+        assert not dialog.isModal()
+        assert dialog.windowTitle() == "Diagnostics for https://example.com/"
+        assert dialog.log_view.text() == "ERROR: Unsupported URL: https://example.com/\n"
+        assert dialog.focusWidget() is dialog.log_view.text_widget
+
+        QTest.keyClick(dialog, Qt.Key.Key_Escape)
+        assert not dialog.isVisible(), "Escape did not close the diagnostics window"
+
+        again = show_diagnostics("job-1", name="x", parent=parent, directory=tmp_path)
+        buttons = again.findChild(QDialogButtonBox)
+        assert buttons is not None
+        buttons.button(QDialogButtonBox.StandardButton.Close).click()
+        assert not again.isVisible(), "Close did not close the diagnostics window"
+    finally:
+        parent.deleteLater()
