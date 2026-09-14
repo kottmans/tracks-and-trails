@@ -6325,8 +6325,9 @@ Naming could be set in **three places**, and the one a user met first was the ha
    One field holds the name as readable text — `{Upload date} {Uploader} - {Title}` — with an
    *Add a field* menu beside it inserting a field at the cursor; typed text stays as typed and a `/`
    makes a folder. **The extension is never shown**, because every file has one. The fields, all
-   ruled the same day: *Title*, *Uploader*, *Channel*, *Duration*, *Upload date* (yt-dlp formats
-   it `2026-09-13`), *ID* and *Site* — carried from the probe into the queue by migrations `0011`
+   ruled the same day: *Title*, *Uploader*, *Channel*, *Duration* (written by the application as `8m27s` or
+   `1h02m05s`, ruled the same day because yt-dlp's `8:27` becomes `8-27` in a file name and reads
+   as a date), *Upload date* (yt-dlp formats it `2026-09-13`), *ID* and *Site* — carried from the probe into the queue by migrations `0011`
    and `0012`, with a placeholder id in committed fixtures — and *Playlist* and *Position*, which
    no per-entry download knows: the add dialog writes them into each entry's name when it queues
    the playlist (Position zero-padded to the playlist's width), removes them with their separator

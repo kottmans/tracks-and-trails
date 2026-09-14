@@ -144,7 +144,7 @@ def test_a_refused_preview_carries_no_path() -> None:
         ("{Uploader} - {Title}", "%(uploader)s - %(title)s.%(ext)s"),
         ("{Uploader}/{Title}", "%(uploader)s/%(title)s.%(ext)s"),
         ("{Upload date} {Title}", "%(upload_date>%Y-%m-%d)s %(title)s.%(ext)s"),
-        ("{Title} ({Duration})", "%(title)s (%(duration_string)s).%(ext)s"),
+        ("{Title} ({Duration})", "%(title)s (%(duration)s).%(ext)s"),
         ("100% {Title}", "100%% %(title)s.%(ext)s"),
     ],
 )
@@ -152,7 +152,7 @@ def test_a_readable_name_is_the_template_it_means_and_reads_back(name: str, temp
     """**`UX-014`.** Fields filled, text literal, extension added — and back again, unchanged."""
     assert output_template.readable_to_template(name) == template
     assert output_template.template_to_readable(template) == name
-    assert output_template.unsupported_refusal(template) is None, template
+    assert output_template.settings_refusal(template) is None, template
 
 
 def test_a_label_matches_regardless_of_case() -> None:
@@ -187,7 +187,7 @@ def test_every_offered_field_has_a_label_and_the_extension_is_not_offered() -> N
         "uploader",
         "channel",
         "upload_date",
-        "duration_string",
+        "duration",
         "id",
         "extractor_key",
         "playlist_title",
@@ -282,3 +282,27 @@ def test_a_queue_time_field_that_reaches_a_request_unresolved_is_refused() -> No
     template = output_template.readable_to_template("{Position} {Title}")
     assert output_template.unsupported_refusal(template) is not None
     assert output_template.settings_refusal(template) is None
+
+
+@pytest.mark.parametrize(
+    ("seconds", "shown"),
+    [(27, "27s"), (60, "1m00s"), (507, "8m27s"), (3725, "1h02m05s"), (90061, "25h01m01s")],
+)
+def test_a_duration_is_written_so_it_cannot_be_mistaken_for_a_date(
+    seconds: int, shown: str
+) -> None:
+    """Ruled 2026-09-13: yt-dlp's `8:27` becomes `8-27` in a file name, the shape of a date. Hours
+    appear only when there are any, and a day-long stream does not wrap back to one hour.
+    """
+    assert output_template.format_duration(seconds) == shown
+
+
+def test_duration_is_written_when_known_and_removed_cleanly_when_not() -> None:
+    template = output_template.readable_to_template("{Title} ({Duration})")
+    assert output_template.resolve_queue_fields(template, duration_seconds=507) == (
+        "%(title)s (8m27s).%(ext)s"
+    )
+    assert output_template.resolve_queue_fields(template) == "%(title)s.%(ext)s"
+    assert output_template.unsupported_refusal(template) is not None, (
+        "an unresolved Duration would reach yt-dlp as the raw number of seconds"
+    )

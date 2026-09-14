@@ -2667,6 +2667,31 @@ def test_a_playlists_entries_are_named_by_their_position_and_playlist(
     )
 
 
+def test_a_single_item_is_named_with_the_duration_its_probe_found(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    sink: FakeSink,
+    spin: Callable[..., bool],
+) -> None:
+    """*Duration* is written in at queue time from the probe, as `8m27s` (ruled 2026-09-13)."""
+    dialog = dialogs(managers(), default_output_template="%(title)s (%(duration)s).%(ext)s")
+    type_urls(dialog, "https://example.invalid/one")
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows and dialog.rows[0].job_id))
+    row = dialog.rows[0]
+    assert row.job_id is not None
+    dialog._on_media_probed(
+        row.job_id, MediaInfo(url=row.url, title="A clip", duration_seconds=507)
+    )
+    QApplication.processEvents()
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+
+    assert sink.submissions[0][0].request.output_template == "%(title)s (8m27s).%(ext)s"
+
+
 def test_a_single_item_names_no_playlist_and_leaves_no_separator(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],

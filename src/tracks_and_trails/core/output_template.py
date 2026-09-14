@@ -71,12 +71,11 @@ SUPPORTED_FIELDS: Final[tuple[TemplateField, ...]] = (
     TemplateField("title", "The video's title", "{Title}"),
     TemplateField("uploader", "Who uploaded it (NA if the site doesn't say)", "{Uploader}"),
     TemplateField("channel", "The channel it's on (NA if the site doesn't say)", "{Channel}"),
-    # yt-dlp derives this from `duration` itself, and the raw number renders as `507.1`, which
-    # is why only the formatted spelling is offered. A colon cannot be in a file name, so yt-dlp
-    # writes 8:27 as 8-27.
-    TemplateField(
-        "duration_string", "How long it is, like 8-27 for 8 minutes 27 seconds", "{Duration}"
-    ),
+    # **Written by the application, like *Position*** (maintainer's ruling, 2026-09-13). yt-dlp's
+    # own `duration_string` is `8:27`, which a file name turns into `8-27`, the same shape as a
+    # date; its strftime form always shows hours and wraps after a day. So the length the probe
+    # found is written in when the download is queued, as `format_duration` spells it.
+    TemplateField("duration", "How long it is, like 8m27s or 1h02m05s", "{Duration}"),
     TemplateField(
         "upload_date",
         "The day it was published, like 2026-09-13 (NA if the site doesn't say)",
@@ -102,7 +101,7 @@ SUPPORTED_FIELDS: Final[tuple[TemplateField, ...]] = (
 #: Fields no download ever sees: `resolve_queue_fields` writes them in, or takes them out, before a
 #: request exists. `SUPPORTED_NAMES` leaves them out, so one that reached a request unresolved is
 #: refused rather than rendered as `NA`.
-QUEUE_TIME_NAMES: Final = frozenset({"playlist_title", "playlist_index"})
+QUEUE_TIME_NAMES: Final = frozenset({"playlist_title", "playlist_index", "duration"})
 
 #: The fields a name is built from — `SUPPORTED_FIELDS` less the one the application adds itself.
 OFFERED_FIELDS: Final[tuple[TemplateField, ...]] = tuple(
@@ -230,14 +229,31 @@ _SEPARATOR_RUN: Final = r"[ \-_,]*"
 _COMPONENT_END: Final = r"(?=/|\.%\(ext\)s$|$)"
 
 
+def format_duration(seconds: float) -> str:
+    """A length as a file name should carry it: `27s`, `8m27s`, `1h02m05s`, `25h01m01s`.
+
+    Hours only when there are any, and never wrapped at a day. Not the clock's `8:27`, which a file
+    name cannot hold and which reads as a date once its colon becomes a dash.
+    """
+    total = max(0, round(seconds))
+    hours, rest = divmod(total, 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m{secs:02d}s"
+    if minutes:
+        return f"{minutes}m{secs:02d}s"
+    return f"{secs}s"
+
+
 def resolve_queue_fields(
     template: str,
     *,
     position: int | None = None,
     count: int | None = None,
     playlist: str | None = None,
+    duration_seconds: float | None = None,
 ) -> str:
-    """`template` with *Playlist* and *Position* written in, or taken out (`UX-014`).
+    """`template` with *Playlist*, *Position* and *Duration* written in, or taken out (`UX-014`).
 
     **For a playlist entry** the position is zero-padded to the playlist's own width — `01` of
     twelve, `001` of a hundred and twelve — so files sort in order, and the playlist's name is
@@ -251,6 +267,7 @@ def resolve_queue_fields(
     values = {
         "%(playlist_index)s": f"{position:0{width}d}" if position is not None else "",
         "%(playlist_title)s": (sanitize_component(playlist).replace("%", "%%") if playlist else ""),
+        "%(duration)s": format_duration(duration_seconds) if duration_seconds is not None else "",
     }
     resolved = template
     for code, value in values.items():
@@ -404,8 +421,8 @@ def template_values(media: MediaInfo, extension: str) -> dict[str, object]:
     parent process has never had one — so the preview is rendered from the same projection the
     staging row draws itself from, which is also what makes the two agree.
 
-    `duration` rather than `duration_string`: yt-dlp derives the second from the first, and letting
-    it do so is what keeps one formatter on both sides.
+    `duration` is the raw number; *Duration* in a name is written before a request exists
+    (`resolve_queue_fields`), so nothing here formats it.
     """
     return {
         "title": media.title,

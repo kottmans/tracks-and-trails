@@ -1961,7 +1961,7 @@ class AddUrlDialog(QDialog):
 
     def default_name_for(self, row: Row) -> str:
         """The name the Settings pattern gives `row`, without its folders or its extension."""
-        preview = self._preview_under(row, self._single_item_template())
+        preview = self._preview_under(row, self._single_item_template(row))
         return output_template.file_stem_of(preview.path) if not preview.is_refused else ""
 
     def template_for(self, row: Row) -> str:
@@ -1970,21 +1970,25 @@ class AddUrlDialog(QDialog):
         **A single item**, so *Playlist* and *Position* are taken out; `_durable_jobs` writes them
         in for a playlist's entries instead.
         """
-        pattern = self._single_item_template()
+        pattern = self._single_item_template(row)
         if row.file_name:
             return output_template.renamed_template(row.file_name, within=pattern)
         return pattern
 
-    def _single_item_template(self) -> str:
-        """The Settings pattern with its queue-time fields resolved for a single item."""
-        return output_template.resolve_queue_fields(self._default_output_template)
+    def _single_item_template(self, row: Row) -> str:
+        """The Settings pattern with its queue-time fields resolved for `row`, a single item."""
+        media = row.media
+        return output_template.resolve_queue_fields(
+            self._default_output_template,
+            duration_seconds=media.duration_seconds if isinstance(media, MediaInfo) else None,
+        )
 
     def rename_preview_for(self, row: Row, name: str) -> OutputPreview:
         """Where `row` would be written if it were called `name`. Empty previews the pattern."""
         refusal = output_template.name_refusal(name)
         if refusal is not None:
             return OutputPreview(refusal=refusal)
-        pattern = self._single_item_template()
+        pattern = self._single_item_template(row)
         template = (
             output_template.renamed_template(name, within=pattern) if name.strip() else pattern
         )
@@ -3019,6 +3023,7 @@ class AddUrlDialog(QDialog):
                             position=index + 1,
                             count=count,
                             playlist=probed.title,
+                            duration_seconds=entry.duration_seconds,
                         ),
                     )
                 ),

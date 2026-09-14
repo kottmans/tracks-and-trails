@@ -480,7 +480,7 @@ _TEMPLATE_PROBE: Final = MediaInfo(
     url="https://example.invalid/preview",
     title="A video title",
     uploader="Uploader",
-    duration_seconds=1,
+    duration_seconds=507,
     upload_date="20260913",
     media_id="abc123",
     channel="Channel",
@@ -986,10 +986,16 @@ class MainWindow(QMainWindow):
         uses_playlist = "%(playlist_" in template
         resolved = (
             output_template.resolve_queue_fields(
-                template, position=1, count=12, playlist="A playlist"
+                template,
+                position=1,
+                count=12,
+                playlist="A playlist",
+                duration_seconds=_TEMPLATE_PROBE.duration_seconds,
             )
             if uses_playlist
-            else output_template.resolve_queue_fields(template)
+            else output_template.resolve_queue_fields(
+                template, duration_seconds=_TEMPLATE_PROBE.duration_seconds
+            )
         )
         request = presets.to_request(
             presets.BUILT_IN_PRESETS[0],
@@ -1088,6 +1094,7 @@ class MainWindow(QMainWindow):
                 self._setting_template(),
                 position=None if job.playlist_index is None else job.playlist_index + 1,
                 playlist=job.playlist_title,
+                duration_seconds=job.duration_seconds,
             )
         )
         media = MediaInfo(
