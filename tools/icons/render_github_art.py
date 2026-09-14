@@ -11,9 +11,12 @@ appears in two places, and neither can use the shipped icon as it is:
   **Both are cropped to the ink**, because the maintainer found the first header too small: the
   master's square artboard is only 68% ink across, so `width="160"` drew a logo about 110 px
   wide. The crop keeps the pack's minimum clear space, 4% of the artwork width, on every side.
-- **The social preview**, the card shown when the repository link is shared. GitHub wants an
-  opaque 1280x640 image, uploaded by hand under *Settings → General → Social preview*. There is
-  no API for it, so this file is only ever the source of that upload.
+- **The social preview**, the card shown when the repository link is shared. GitHub recommends
+  1280x640 and accepts a transparent PNG; **opaque is this project's choice**, not GitHub's
+  requirement. A shared card lands on light and dark grounds nobody here controls, and a
+  transparent card would put the OnLight mark on dark ones, so the sand ground travels with it.
+  It is uploaded by hand under *Settings → General → Social preview*. There is no API for that,
+  so this file is only ever the source of the upload.
 
 **Brand-OnDark by the pack's own values, not a recolour.** `masters/PACK-README.txt` defines
 Brand-OnDark as mass tone `#48906C` with the same `#D9A24C` accent, and says every colourway of a
