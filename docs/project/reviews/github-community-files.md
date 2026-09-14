@@ -216,3 +216,40 @@ body is preserved; its two resolved findings are updated by the appended disposi
 No source, test, asset, task/status record, branch or remote setting was changed by the reviewer.
 No new task is warranted. The review-document commit is separate from the approved implementation
 head, and is not pushed by this review.
+
+## 2026-09-14 — GITHUB-R3 correction verified
+
+**Reviewer:** Codex, independent of implementer Claude Code
+**Task:** None — requested correction verification.
+**Round:** Focused re-review of GITHUB-R3 and its correction diff.
+**Base:** `f43526557f0a6f2e69629e26c88e8cc34a988921`
+**Head:** `4f25aead8c00edd1f63ec7070f61a3ff2820ceef`
+**Platforms verified:** Fedora 44, Python 3.14.7, PySide6 6.11.1; offscreen renderer.
+**Verdict:** **Approved.** All three findings in this scope are resolved; no new findings.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Verification | Disposition/status |
+|---|---|---|---|---|
+| GITHUB-R3 | Low | No | The renderer now says GitHub recommends 1280×640 and accepts transparent PNGs, matching the [official preview guidance](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/customizing-your-repositorys-social-media-preview). It attributes opacity to the project and explains why the sand ground accompanies the OnLight logo across different sharing backgrounds. | **Resolved at `4f25aea`**, independently verified. This row supersedes the previous Open disposition. |
+
+### Checks and actual results
+
+| Check | Result |
+|---|---|
+| Exact diff, module-text and AST comparison | **Pass.** Only `tools/icons/render_github_art.py` changes. Everything after the opening module docstring is byte-identical; removing that docstring yields identical executable ASTs. All committed asset blobs are unchanged. |
+| `.venv/bin/ruff check tools/icons/render_github_art.py`; `.venv/bin/ruff format --check tools/icons/render_github_art.py` | **Pass**; **1 file** already formatted. |
+| `git diff f435265..4f25aea --check`; `python3 tools/commit_message_check.py --range f435265..4f25aea` | **Pass**; **1 commit** checked, with `Review: GITHUB-R3`. |
+| Renderer from an isolated `git archive 4f25aea tools/icons`, using the project interpreter and `QT_QPA_PLATFORM=offscreen` | **Pass.** All three generated PNGs match the committed assets byte-for-byte and have the same SHA-256 values recorded in the preceding round. Outputs were confined to `/tmp`; repository assets were not rewritten. |
+| Read-only status of [CI run 34809985094](https://github.com/kottmans/tracks-and-trails/actions/runs/34809985094) | **In progress**, with no conclusion, at `fcdaf79a1a651e66619a1303d03d49d49712cf9c`. No full-suite result is claimed. |
+
+### Readiness and coordination
+
+This correction changes documentation only; no application suite, type-check or browser rerun
+was needed. The earlier platform, font and helper-type limitations remain as recorded, without
+being reopened by this wording correction. Historical quotations of the incorrect claim remain
+historical evidence and are preserved.
+
+Only this canonical review record is updated. Its existing index link remains accurate; no task
+or status change is needed. Prior dated review bodies are preserved. The review-document commit
+is separate from the approved correction head and is not pushed by this review.
