@@ -1,16 +1,13 @@
-"""The output template editor widget (`REQ-011`, `T-112`, `docs/UX_SPEC.md` §9.1).
+"""The rename editor widget and the path preview under it (`UX-014`, `REQ-011`, `T-112`).
 
-Three rulings, and each is a property a test can fail:
+These were the template editor's tests until `UX-014` retired that widget; the preview rulings they
+assert moved with the preview, and hold for the name a user types now:
 
-- **`P-22`** — the preview is a focusable read-only field and a second stop in the tab order. A
-  label would satisfy "shows the path" and fail this.
-- **`P-23`** — an invalid template is refused at edit time, with the reason. Asserted through
-  `textEdited`, which is what a keystroke raises, rather than by calling the slot.
-- **`P-9`** — the supported fields are listed beside the input, built from the set the validator
-  enforces so the two cannot describe different applications.
+- **`P-22`** — the preview is a focusable read-only field and a second stop in the tab order.
+- **`P-23`** — a refused name is refused at edit time, with the reason, through `textEdited`.
 
 The widget renders nothing and validates nothing: `DownloadManager.preview_output_path` answers
-both questions and this displays the answer. What is under test here is the *displaying*.
+and this displays the answer. What is under test here is the *displaying*.
 """
 
 from collections.abc import Iterator
@@ -20,24 +17,24 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QLineEdit
 
-from tracks_and_trails.core.output_template import SUPPORTED_FIELDS, OutputPreview
-from tracks_and_trails.ui.template_editor import (
+from tracks_and_trails.core.output_template import OutputPreview
+from tracks_and_trails.ui.rename_editor import (
     PREVIEW_LABEL,
     PROVISIONAL_LABEL,
-    TemplateEditor,
+    RenameEditor,
 )
 
 
 @pytest.fixture
-def editor(qapp: QApplication) -> Iterator[TemplateEditor]:
-    widget = TemplateEditor("%(title)s.%(ext)s")
+def editor(qapp: QApplication) -> Iterator[RenameEditor]:
+    widget = RenameEditor("A clip")
     yield widget
     widget.deleteLater()
     qapp.processEvents()
 
 
-def caption_text(editor: TemplateEditor) -> str:
-    label = editor.findChild(QLabel, "outputPreviewCaption")
+def caption_text(editor: RenameEditor) -> str:
+    label = editor.findChild(QLabel, "renamePreviewCaption")
     assert label is not None
     return label.text()
 
@@ -45,7 +42,7 @@ def caption_text(editor: TemplateEditor) -> str:
 # --- P-22: the preview is a field, and it is in the tab order ------------------------------------
 
 
-def test_the_preview_is_a_focusable_read_only_field(editor: TemplateEditor) -> None:
+def test_the_preview_is_a_focusable_read_only_field(editor: RenameEditor) -> None:
     """`UX-007` ruled against this file's own proposal of an unfocusable live region.
 
     *A user who cannot `Tab` to the preview cannot review it at their own pace.* Three properties
@@ -63,7 +60,7 @@ def test_the_preview_is_a_focusable_read_only_field(editor: TemplateEditor) -> N
 
 
 def test_the_preview_is_the_second_stop_after_the_input(
-    editor: TemplateEditor, qapp: QApplication
+    editor: RenameEditor, qapp: QApplication
 ) -> None:
     """*"a single-line input with the preview below it as … a second stop in the tab order"*.
 
@@ -85,29 +82,10 @@ def test_the_preview_is_the_second_stop_after_the_input(
         editor.hide()
 
 
-# --- P-9: the fields are listed beside the input -------------------------------------------------
-
-
-def test_every_supported_field_is_listed_beside_the_input(editor: TemplateEditor) -> None:
-    """`P-9`: listed here rather than linked to, because this set is not yt-dlp's whole set.
-
-    Built from `SUPPORTED_FIELDS` in the widget too, so this asserts the list is *shown*; that it
-    is the same set the validator enforces is `test_output_template.py`'s claim.
-    """
-    fields = editor.findChild(QLabel, "templateFields")
-    assert fields is not None
-    shown = fields.text()
-
-    for field in SUPPORTED_FIELDS:
-        assert f"%({field.name})s" in shown, f"{field.name} is not offered"
-        assert field.describes in shown, f"{field.name} is offered without saying what it is"
-    assert "/" in shown, "nothing says a subfolder is possible, which is half of REQ-011"
-
-
 # --- P-23: the refusal arrives at edit time ------------------------------------------------------
 
 
-def test_a_keystroke_asks_for_a_new_preview(editor: TemplateEditor) -> None:
+def test_a_keystroke_asks_for_a_new_preview(editor: RenameEditor) -> None:
     """`P-23` costs a validation path that runs on every keystroke, and this is that path.
 
     Typed with `QTest.keyClicks` rather than `setText`: `textEdited` is what a keystroke raises and
@@ -115,7 +93,7 @@ def test_a_keystroke_asks_for_a_new_preview(editor: TemplateEditor) -> None:
     surface ends up re-previewing its own writes.
     """
     seen: list[str] = []
-    editor.template_changed.connect(seen.append)
+    editor.name_changed.connect(seen.append)
 
     editor.input_field.clear()
     QTest.keyClicks(editor.input_field, "abc")
@@ -123,24 +101,7 @@ def test_a_keystroke_asks_for_a_new_preview(editor: TemplateEditor) -> None:
     assert seen == ["a", "ab", "abc"], seen
 
 
-def test_setting_the_text_programmatically_is_not_reported_as_typing(
-    editor: TemplateEditor,
-) -> None:
-    """The caller that sets the text is the caller that asks for the first preview.
-
-    A signal here would make it ask twice, and the second answer would arrive against a row whose
-    panel may already have closed.
-    """
-    seen: list[str] = []
-    editor.template_changed.connect(seen.append)
-
-    editor.set_template("%(uploader)s/%(title)s.%(ext)s")
-
-    assert seen == []
-    assert editor.template == "%(uploader)s/%(title)s.%(ext)s"
-
-
-def test_a_refusal_empties_the_path_and_says_why(editor: TemplateEditor) -> None:
+def test_a_refusal_empties_the_path_and_says_why(editor: RenameEditor) -> None:
     """**Never a path and an error together.**
 
     Leaving the last good path on screen beside a refusal is how a user comes to believe a broken
@@ -162,14 +123,14 @@ def test_a_refusal_empties_the_path_and_says_why(editor: TemplateEditor) -> None
 # --- REQ-011 as amended: intended, and said to be --------------------------------------------
 
 
-def test_an_exact_path_is_labelled_as_one(editor: TemplateEditor) -> None:
+def test_an_exact_path_is_labelled_as_one(editor: RenameEditor) -> None:
     editor.show_preview(OutputPreview(path="/downloads/Clip.mp3"))
 
     assert caption_text(editor) == PREVIEW_LABEL
     assert editor.message_text() == "", "an exact path carried a note about being uncertain"
 
 
-def test_a_provisional_path_says_so_in_the_label_and_in_the_note(editor: TemplateEditor) -> None:
+def test_a_provisional_path_says_so_in_the_label_and_in_the_note(editor: RenameEditor) -> None:
     """`REQ-011` amended 2026-08-01: *labelled as the intended path*, not presented as the result.
 
     In the **caption**, because the difference between a promise and an intention is part of what
@@ -187,7 +148,7 @@ def test_a_provisional_path_says_so_in_the_label_and_in_the_note(editor: Templat
 
 
 def test_an_exact_preview_after_a_provisional_one_stops_saying_intended(
-    editor: TemplateEditor,
+    editor: RenameEditor,
 ) -> None:
     """State that only ever turns on is state that ends up wrong. Both directions are asserted."""
     editor.show_preview(OutputPreview(path="/downloads/Clip.ext", provisional="later"))

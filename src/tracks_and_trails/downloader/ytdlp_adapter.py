@@ -347,6 +347,16 @@ def _url_answers(url: str) -> bool:
         return False
 
 
+def _upload_date(value: object) -> str | None:
+    """yt-dlp's `upload_date`, kept only in its documented `YYYYMMDD` shape; anything else is none.
+
+    **Not trusted to be well formed**, for `_as_optional_str`'s reason: an extractor that put a
+    timestamp or a free-text date here would otherwise refuse the whole probe at `MediaInfo`.
+    """
+    text = _as_optional_str(value)
+    return text if text is not None and len(text) == 8 and text.isdigit() else None
+
+
 def project_media(
     info: Mapping[str, Any], *, reachable: Callable[[str], bool] = _url_answers
 ) -> MediaInfo:
@@ -401,6 +411,7 @@ def project_media(
         formats=formats,
         duration_seconds=_as_optional_float(info.get("duration")),
         uploader=_as_optional_str(info.get("uploader")),
+        upload_date=_upload_date(info.get("upload_date")),
         # **Both shapes, through the same helper the entries use** (`T-153`). A playlist is
         # probed with `extract_flat`, so its *top level* is the same flat dict its entries are:
         # `thumbnails`, a list, and no singular `thumbnail`. Reading only the singular here is why

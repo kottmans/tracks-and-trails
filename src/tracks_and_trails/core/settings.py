@@ -1336,7 +1336,7 @@ def _output_template_from(document: dict[str, Any]) -> tuple[str, str | None]:
     """The stored default template, and what had to be discarded to get it (`ARC-008`, `T-195`).
 
     **Validated by the same function the editor uses**, not by a second implementation of the same
-    rule. `output_template.unsupported_refusal` is what `ui/template_editor.py` refuses with, so a
+    rule. `output_template.unsupported_refusal` is what the Settings name field refuses with, so a
     template the editor would reject cannot arrive through the file and be silently honoured — and
     a template it would accept cannot be refused here. Two checks that must agree are two checks
     that will drift (`ARC-002`'s reasoning, `T-059`'s shape).

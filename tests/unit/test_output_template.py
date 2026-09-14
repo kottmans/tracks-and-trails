@@ -87,12 +87,12 @@ def test_a_field_this_application_cannot_fill_is_refused_with_its_name() -> None
 
 def test_several_unsupported_fields_are_all_named_once() -> None:
     """One round trip per fix is one too many when the template names three unknown fields."""
-    assert unsupported_fields("%(id)s/%(uploader)s/%(id)s-%(upload_date)s.%(ext)s") == (
+    assert unsupported_fields("%(id)s/%(uploader)s/%(id)s-%(view_count)s.%(ext)s") == (
         "id",
-        "upload_date",
+        "view_count",
     )
 
-    refusal = unsupported_refusal("%(id)s-%(upload_date)s.%(ext)s")
+    refusal = unsupported_refusal("%(id)s-%(view_count)s.%(ext)s")
     assert refusal is not None and "are not fields" in refusal, refusal
 
 
@@ -135,18 +135,58 @@ def test_a_refused_preview_carries_no_path() -> None:
 # --- UX-014: naming choices, and renaming one download ---------------------------------------
 
 
-def test_every_naming_choice_is_a_template_the_editor_would_accept() -> None:
-    """A choice Settings offers must never be one the refusal checks reject."""
-    for choice in output_template.NAMING_CHOICES:
-        assert output_template.unsupported_refusal(choice.template) is None, choice
+@pytest.mark.parametrize(
+    ("name", "template"),
+    [
+        ("{Title}", "%(title)s.%(ext)s"),
+        ("{Uploader} - {Title}", "%(uploader)s - %(title)s.%(ext)s"),
+        ("{Uploader}/{Title}", "%(uploader)s/%(title)s.%(ext)s"),
+        ("{Upload date} {Title}", "%(upload_date>%Y-%m-%d)s %(title)s.%(ext)s"),
+        ("{Title} ({Duration})", "%(title)s (%(duration_string)s).%(ext)s"),
+        ("100% {Title}", "100%% %(title)s.%(ext)s"),
+    ],
+)
+def test_a_readable_name_is_the_template_it_means_and_reads_back(name: str, template: str) -> None:
+    """**`UX-014`.** Fields filled, text literal, extension added — and back again, unchanged."""
+    assert output_template.readable_to_template(name) == template
+    assert output_template.template_to_readable(template) == name
+    assert output_template.unsupported_refusal(template) is None, template
 
 
-def test_a_stored_template_reads_back_as_its_choice_and_empty_is_the_first() -> None:
-    first = output_template.NAMING_CHOICES[0]
-    assert output_template.naming_choice_of("") is first
-    for choice in output_template.NAMING_CHOICES:
-        assert output_template.naming_choice_of(choice.template) is choice
-    assert output_template.naming_choice_of("%(title)s [%(duration_string)s].%(ext)s") is None
+def test_a_label_matches_regardless_of_case() -> None:
+    assert output_template.readable_to_template("{upload DATE}") == (
+        output_template.readable_to_template("{Upload date}")
+    )
+
+
+def test_an_empty_name_is_the_applications_own_naming() -> None:
+    assert output_template.readable_to_template("  ") == ""
+    assert output_template.template_to_readable("") == "{Title}"
+
+
+def test_a_label_that_is_not_a_field_is_refused_by_name() -> None:
+    with pytest.raises(ValueError, match=r"\{Views\}"):
+        output_template.readable_to_template("{Views} {Title}")
+
+
+@pytest.mark.parametrize(
+    "template",
+    ["%(title).30s.%(ext)s", "%(id)s.%(ext)s", "%(title)s [%(ext)s]", "{Title}.%(ext)s"],
+)
+def test_a_template_a_name_cannot_show_reads_back_as_none(template: str) -> None:
+    """Kept as it is rather than rewritten into a name that would mean something else."""
+    assert output_template.template_to_readable(template) is None
+
+
+def test_every_offered_field_has_a_label_and_the_extension_is_not_offered() -> None:
+    offered = {field.name for field in output_template.OFFERED_FIELDS}
+    assert offered == {"title", "uploader", "duration_string", "upload_date"}
+    assert all(field.label for field in output_template.OFFERED_FIELDS)
+
+
+def test_the_upload_date_is_projected_for_the_preview() -> None:
+    media = MediaInfo(url="https://example.invalid/x", title="T", upload_date="20260913")
+    assert template_values(media, "mp4")["upload_date"] == "20260913"
 
 
 @pytest.mark.parametrize(
@@ -167,8 +207,9 @@ def test_a_rename_is_written_literally_in_the_settings_folders(
 
 
 def test_a_pattern_is_not_read_back_as_a_rename() -> None:
-    for choice in output_template.NAMING_CHOICES:
-        assert output_template.renamed_name_of(choice.template) is None, choice
+    for name in ("{Title}", "{Uploader} - {Title}", "{Upload date} {Title}"):
+        pattern = output_template.readable_to_template(name)
+        assert output_template.renamed_name_of(pattern) is None, pattern
 
 
 @pytest.mark.parametrize("name", ["a/b", "a\\b"])

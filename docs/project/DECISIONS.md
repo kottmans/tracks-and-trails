@@ -6319,11 +6319,17 @@ Naming could be set in **three places**, and the one a user met first was the ha
 
 ### Decision
 
-1. **How files are named is a Settings preference, offered as choices.** *Title*, *Uploader –
-   Title*, *Uploader / Title* (a folder per uploader) and *Custom…*, which reveals the template
-   field and its field list. An example path is shown for the current choice. The stored value is
-   the same `output_template` string; the choices are named templates, and empty is still the
-   application's own (*Title*).
+1. **How files are named is a Settings preference, built from fields.** *(Re-ruled the same day:
+   a first build offered named choices and *Custom…*; the maintainer: "I don't like the preset for
+   the naming, just give a way for the user to change the default with the different fields.")*
+   One field holds the name as readable text — `{Upload date} {Uploader} - {Title}` — with a button
+   per field inserting it at the cursor; typed text stays as typed and a `/` makes a folder. **The
+   extension is never shown**, because every file has one. The fields are *Title*, *Uploader*,
+   *Duration* and ***Upload date*** (added at the same request; yt-dlp formats it `2026-09-13`, and
+   the probe's `upload_date` now crosses into the queue, migration `0011`). An example path, also
+   without its extension, follows the name. The stored value is still the `output_template`
+   string, converted on the way in and out; empty is the application's own (`{Title}`), and a stored
+   template the field cannot show as a name is kept and says so.
 2. ***Naming and folders…* is removed** from the Add URLs row menu, with the per-item template
    editor behind it.
 3. **A single download is renamed, not templated.** *Rename…* on an item in Add URLs and on a

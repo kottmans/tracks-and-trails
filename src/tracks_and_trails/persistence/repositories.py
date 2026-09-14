@@ -83,6 +83,7 @@ _JOB_COLUMNS: Final = (
     "thumbnail_url",
     "uploader",
     "duration_seconds",
+    "upload_date",
     "is_live",
     "playlist_id",
     "playlist_index",
@@ -183,6 +184,7 @@ def _row_to_job(row: sqlite3.Row) -> JobModel:
         thumbnail_url=row["thumbnail_url"],
         uploader=row["uploader"],
         duration_seconds=row["duration_seconds"],
+        upload_date=row["upload_date"],
         # Stored as SQLite's integer boolean; the model declares a `bool` and validates it.
         is_live=bool(row["is_live"]),
         playlist_id=row["playlist_id"],
@@ -219,6 +221,7 @@ def _job_to_values(job: JobModel) -> dict[str, Any]:
         "thumbnail_url": job.thumbnail_url,
         "uploader": job.uploader,
         "duration_seconds": job.duration_seconds,
+        "upload_date": job.upload_date,
         "is_live": int(job.is_live),
         "playlist_id": job.playlist_id,
         "playlist_index": job.playlist_index,

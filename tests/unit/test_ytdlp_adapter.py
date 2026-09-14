@@ -1765,3 +1765,19 @@ def test_yt_dlp_verbose_stays_off_whatever_this_application_logs_at(level: int) 
         "the user configured. REQ-026 binds this and no log level may turn it on"
     )
     assert options.get("logger") is logger, "the logger seam is gone, so this asserts nothing"
+
+
+@pytest.mark.parametrize(
+    ("raw", "projected"),
+    [("20260913", "20260913"), ("2026-09-13", None), (1789000000, None), (None, None)],
+)
+def test_the_upload_date_is_projected_only_in_its_documented_shape(
+    raw: object, projected: str | None
+) -> None:
+    """`UX-014`'s *Upload date* field reads yt-dlp's `YYYYMMDD`; anything else is no date, rather
+    than a probe refused at `MediaInfo` over one malformed value.
+    """
+    media = adapter.project_media(
+        {"title": "T", "webpage_url": "https://example.invalid/x", "upload_date": raw}
+    )
+    assert media.upload_date == projected

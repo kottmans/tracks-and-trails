@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
 from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core import settings as core_settings
 from tracks_and_trails.core.models import NetworkOptions
-from tracks_and_trails.core.output_template import NAMING_CHOICES, OutputPreview
+from tracks_and_trails.core.output_template import OFFERED_FIELDS, OutputPreview
 from tracks_and_trails.core.presets import DEFAULT_OUTPUT_TEMPLATE
 from tracks_and_trails.ui import theme
 from tracks_and_trails.ui import theme as ui_theme
@@ -49,11 +49,9 @@ from tracks_and_trails.ui.preset_manager import (
     PresetManager,
 )
 from tracks_and_trails.ui.settings_dialog import (
-    CUSTOM_NAMING_LABEL,
     DEFAULT_PRESET_NAME,
     DEFAULT_RETRIES_LABEL,
     DOWNLOAD_DIRECTORY_PROBLEM_NAME,
-    NAMING_CHOICE_NAME,
     NAMING_EXAMPLE_NAME,
     NO_COOKIES_NOTE,
     NO_RATE_LIMIT_LABEL,
@@ -68,11 +66,13 @@ from tracks_and_trails.ui.settings_dialog import (
     SETTINGS_STILL_TO_COME,
     STEP_DOWN_LABEL,
     STEP_UP_LABEL,
+    UNSHOWN_TEMPLATE_NOTE,
     YTDLP_RECOVERY_NOTE,
     YTDLP_RECOVERY_NOTE_NAME,
     YTDLP_REVERT_NAME,
     YTDLP_UPDATE_NAME,
     SettingsDialog,
+    insert_field_name,
 )
 
 
@@ -992,17 +992,17 @@ def test_an_unusable_template_is_refused_at_edit_time_and_never_written(
     field = control(screen, QLineEdit, OUTPUT_TEMPLATE_NAME)
     note = control(screen, QLabel, OUTPUT_TEMPLATE_NOTE_NAME)
 
-    field.setText("%(nonsense)s.%(ext)s")
+    field.setText("{Views} - {Title}")
 
-    assert "nonsense" in note.text(), f"no reason was shown: {note.text()!r}"
-    assert "template" not in asked, "a refused template was written anyway"
+    assert "{Views}" in note.text(), f"no reason was shown: {note.text()!r}"
+    assert "template" not in asked, "a refused name was written anyway"
 
-    field.setText("%(uploader)s/%(title)s.%(ext)s")
+    field.setText("{Uploader}/{Title}")
     assert note.text() == "", "the reason outlived the problem"
     assert asked["template"] == "%(uploader)s/%(title)s.%(ext)s"
 
 
-def test_the_shipped_template_is_the_placeholder_so_empty_reads_as_a_choice(
+def test_the_default_name_is_the_placeholder_so_empty_reads_as_a_choice(
     screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
 ) -> None:
     """Empty means *use the application default*, which an empty box alone does not say.
@@ -1017,82 +1017,76 @@ def test_the_shipped_template_is_the_placeholder_so_empty_reads_as_a_choice(
 
     field = control(screen, QLineEdit, OUTPUT_TEMPLATE_NAME)
     assert field.text() == ""
-    assert field.placeholderText() == preset_registry.DEFAULT_OUTPUT_TEMPLATE
+    assert field.placeholderText() == "{Title}"
 
 
-def test_naming_is_offered_as_choices_and_each_writes_its_template(
+def test_a_field_button_puts_its_field_in_the_name_where_the_cursor_is(
     screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
 ) -> None:
-    """**`UX-014`.** A user picks how files are named by name; the template stays out of sight.
+    """**`UX-014`, as re-ruled.** The name is built from fields, not typed as template syntax.
 
-    Every choice is offered and each writes the template it names — except *Title*, the first, which
-    writes empty, so choosing it goes on following the application's own default. The template
-    field is shown only under *Custom…*.
+    Every offered field has a button, and pressing it inserts the field at the cursor — so a user
+    types *" - "* between two presses and has the name they meant, stored as the template it means.
+    The extension is never part of it.
     """
     screen, asked = screens(output_template="", shipped_template=DEFAULT_OUTPUT_TEMPLATE)
-    naming = control(screen, QComboBox, NAMING_CHOICE_NAME)
     field = control(screen, QLineEdit, OUTPUT_TEMPLATE_NAME)
-    screen.show()
-    QApplication.processEvents()
 
-    offered = [naming.itemText(i) for i in range(naming.count())]
-    assert offered == [choice.label for choice in NAMING_CHOICES] + [CUSTOM_NAMING_LABEL]
-    assert naming.currentIndex() == 0, "an unset preference did not read as the first choice"
-    assert not field.isVisible(), "the template field shows before anyone asked for Custom"
+    for offered in OFFERED_FIELDS:
+        assert control(screen, QPushButton, insert_field_name(offered.name)) is not None
+    assert screen.findChild(QPushButton, insert_field_name("ext")) is None, (
+        "the extension is offered as a field, and every file has one anyway"
+    )
 
-    naming.setCurrentIndex(1)
-    assert asked["template"] == NAMING_CHOICES[1].template
-    naming.setCurrentIndex(0)
-    assert asked["template"] == "", "Title pinned today's template instead of following the default"
+    control(screen, QPushButton, insert_field_name("uploader")).click()
+    field.insert(" - ")
+    control(screen, QPushButton, insert_field_name("title")).click()
 
-    naming.setCurrentIndex(naming.count() - 1)
-    QApplication.processEvents()
-    assert field.isVisible(), "Custom did not open the template field"
+    assert field.text() == "{Uploader} - {Title}"
+    assert asked["template"] == "%(uploader)s - %(title)s.%(ext)s"
+    assert ".ext" not in field.text() and "%" not in field.text()
 
 
 @pytest.mark.parametrize(
-    ("stored", "index", "custom"),
+    ("stored", "shown", "unshown"),
     [
-        ("%(uploader)s/%(title)s.%(ext)s", 2, False),
-        ("%(title)s [%(duration_string)s].%(ext)s", len(NAMING_CHOICES), True),
+        ("%(uploader)s/%(title)s.%(ext)s", "{Uploader}/{Title}", False),
+        ("%(upload_date>%Y-%m-%d)s %(title)s.%(ext)s", "{Upload date} {Title}", False),
+        ("", "", False),
+        ("%(title).30s.%(ext)s", "", True),
     ],
 )
-def test_a_stored_template_opens_on_the_choice_it_is(
+def test_a_stored_template_opens_as_the_name_it_is(
     screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
     stored: str,
-    index: int,
-    custom: bool,
+    shown: str,
+    unshown: bool,
 ) -> None:
-    """A template saved before choices existed — or typed under *Custom…* — reads back as itself."""
+    """A stored template reads back as its name; one a name cannot show says so and is kept."""
     screen, asked = screens(output_template=stored, shipped_template=DEFAULT_OUTPUT_TEMPLATE)
-    screen.show()
-    QApplication.processEvents()
 
-    assert control(screen, QComboBox, NAMING_CHOICE_NAME).currentIndex() == index
-    field = control(screen, QLineEdit, OUTPUT_TEMPLATE_NAME)
-    assert field.isVisible() is custom
-    assert field.text() == stored
+    assert control(screen, QLineEdit, OUTPUT_TEMPLATE_NAME).text() == shown
+    note = control(screen, QLabel, OUTPUT_TEMPLATE_NOTE_NAME).text()
+    assert (note == UNSHOWN_TEMPLATE_NOTE) is unshown, note
     assert "template" not in asked, "opening the screen wrote the setting"
 
 
-def test_the_example_follows_the_choice(
+def test_the_example_follows_the_name_and_leaves_the_extension_off(
     screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
 ) -> None:
-    """The line under the choice shows where an example download would go, and moves with it."""
-    previews: list[str] = []
+    """The line under the name shows where an example download would go, without `.ext`."""
 
     def preview(template: str) -> OutputPreview:
-        previews.append(template)
-        return OutputPreview(path=f"/downloads/{template}")
+        return OutputPreview(path=f"/downloads/{template.replace('.%(ext)s', '')}.ext")
 
     screen, _ = screens(
         output_template="", shipped_template=DEFAULT_OUTPUT_TEMPLATE, preview_template=preview
     )
     example = control(screen, QLabel, NAMING_EXAMPLE_NAME)
-    assert example.text() == f"For example: /downloads/{DEFAULT_OUTPUT_TEMPLATE}"
+    assert example.text() == "For example: /downloads/%(title)s"
 
-    control(screen, QComboBox, NAMING_CHOICE_NAME).setCurrentIndex(2)
-    assert example.text() == f"For example: /downloads/{NAMING_CHOICES[2].template}"
+    control(screen, QLineEdit, OUTPUT_TEMPLATE_NAME).setText("{Uploader}/{Title}")
+    assert example.text() == "For example: /downloads/%(uploader)s/%(title)s"
 
 
 def test_a_screen_with_nothing_behind_a_control_says_so_rather_than_drawing_it_dead(
@@ -1104,7 +1098,7 @@ def test_a_screen_with_nothing_behind_a_control_says_so_rather_than_drawing_it_d
     assert not control(screen, QComboBox, DEFAULT_PRESET_NAME).isEnabled()
     assert control(screen, QLabel, "defaultPresetNote").text()
     assert not control(screen, QLineEdit, OUTPUT_TEMPLATE_NAME).isEnabled()
-    assert not control(screen, QComboBox, NAMING_CHOICE_NAME).isEnabled()
+    assert not control(screen, QPushButton, insert_field_name("title")).isEnabled()
 
 
 # --- network options (T-196) ----------------------------------------------------------------
@@ -1536,10 +1530,6 @@ def test_no_label_is_drawn_shorter_than_the_words_in_it(
     actually given, at three window sizes. A picture cannot fail a build.
     """
     screen, _ = screens(on_network_chosen=lambda _options: None)
-    # **With *Custom…* open** (`UX-014`), which is the tallest the naming section gets: its field
-    # list is hidden otherwise, and a label nobody can see is not measured.
-    naming = control(screen, QComboBox, NAMING_CHOICE_NAME)
-    naming.setCurrentIndex(naming.count() - 1)
     screen.resize(width, height)
     screen.show()
     QApplication.processEvents()

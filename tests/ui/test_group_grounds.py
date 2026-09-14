@@ -15,7 +15,6 @@ import pytest
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
-    QComboBox,
     QGroupBox,
     QLabel,
     QRadioButton,
@@ -24,7 +23,6 @@ from PySide6.QtWidgets import (
 
 from tests.ui.conftest import Surface
 from tracks_and_trails.ui import theme
-from tracks_and_trails.ui.settings_dialog import NAMING_CHOICE_NAME
 
 #: The controls that carry no ground of their own. Anything with a fill of its own — a combo, a
 #: line edit, a list — is drawn on purpose and is not asked.
@@ -36,11 +34,6 @@ def test_nothing_inside_a_group_paints_a_band_behind_itself(
     qapp: QApplication, every_surface: list[Surface], chosen: theme.Theme
 ) -> None:
     theme.apply(qapp, chosen)
-    # **Every optional part shown**: a container hidden until a choice opens it is still a band
-    # once it opens, and a hidden one is not measured. Settings' *Custom…* naming is the one today.
-    for surface in every_surface:
-        for naming in surface.widget.findChildren(QComboBox, NAMING_CHOICE_NAME):
-            naming.setCurrentIndex(naming.count() - 1)
     qapp.processEvents()
     ground = int(chosen.surface[1:], 16)
     banded: list[str] = []

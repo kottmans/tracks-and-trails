@@ -750,9 +750,10 @@ silent on the rest, so these are scope choices.
 
 ### 9.1 Naming files — `REQ-011`, built by `T-112`, reshaped by `UX-014` (`T-337`)
 
-- **[T]** *(ruled 2026-09-13, `UX-014`)* **How files are named is a Settings preference**, offered
-  as *Title*, *Uploader - Title*, *Uploader / Title* and *Custom…* (which reveals the template field
-  and its fields), with an example path. **One download is renamed, not templated**: `Rename…` in
+- **[T]** *(ruled 2026-09-13, `UX-014`)* **How files are named is a Settings preference, built from
+  fields**: one box showing `{Uploader} - {Title}`-style text, a button per field (*Title*,
+  *Uploader*, *Duration*, *Upload date*) inserting it at the cursor, no extension shown, and an
+  example path under it. **One download is renamed, not templated**: `Rename…` in
   the row menu of a single probed item in Add URLs, and on a queue row that has not started, takes a
   plain name prefilled with what the setting would produce; `%` is literal, the extension and the
   folders stay the setting's, and clearing it returns to the setting. Not on a playlist row.

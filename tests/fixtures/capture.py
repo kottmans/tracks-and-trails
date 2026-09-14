@@ -66,6 +66,8 @@ CONSUMED_TOP_LEVEL: Final = (
     "thumbnail",
     "title",
     "uploader",
+    # `UX-014`: the *Upload date* naming field.
+    "upload_date",
     "url",
     "webpage_url",
 )

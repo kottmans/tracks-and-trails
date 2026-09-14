@@ -313,7 +313,7 @@ class Surface:
     #: Whether the application opened it, or this file constructed it.
     #:
     #: The screens below the add dialog are genuinely reachable — `AddUrlDialog.open_format_table`,
-    #: `open_template_editor`, `open_options` and `open_preset_manager` are the routes, asserted by
+    #: `open_rename`, `open_options` and `open_preset_manager` are the routes, asserted by
     #: `tests/ui/test_add_dialog.py` — but reaching them needs a *staged row*, which needs a real
     #: probe against a fixture. Driving that here would make an accessibility failure ambiguous
     #: with a probe failure. Everything this file asks of a screen is answerable either way; only

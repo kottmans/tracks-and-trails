@@ -221,6 +221,13 @@ def _require_browser_name(owner: str, name: str, value: object) -> None:
         raise ValueError(f"{owner}.{name} is {value!r}: {refusal}") from refusal
 
 
+def _require_optional_upload_date(owner: str, value: object) -> None:
+    """`None`, or eight digits — yt-dlp's `YYYYMMDD`, which the naming field formats as a date."""
+    _require_optional_text(owner, "upload_date", value)
+    if isinstance(value, str) and not (len(value) == 8 and value.isdigit()):
+        raise ValueError(f"{owner}.upload_date must be YYYYMMDD, not {value!r}")
+
+
 def _require_optional_text(owner: str, name: str, value: object) -> None:
     if value is not None and not isinstance(value, str):
         _fail(owner, name, value, "a string or None")
@@ -765,6 +772,9 @@ class MediaInfo:
     uploader: str | None = None
     thumbnail_url: str | None = None
     is_live: bool = False
+    #: When the site published it, as yt-dlp's `YYYYMMDD` (`UX-014`'s *Upload date* field). `None`
+    #: where the extractor reports none, which a flat playlist entry routinely does.
+    upload_date: str | None = None
 
     #: Whether the probed URL is a playlist rather than a single item (`REQ-002`, `T012-R6`).
     #:
@@ -825,6 +835,7 @@ class MediaInfo:
         )
         _require_optional_duration("MediaInfo", "duration_seconds", self.duration_seconds)
         _require_optional_text("MediaInfo", "uploader", self.uploader)
+        _require_optional_upload_date("MediaInfo", self.upload_date)
         _require_optional_text("MediaInfo", "thumbnail_url", self.thumbnail_url)
         _require_flag("MediaInfo", "is_live", self.is_live)
         _require_flag("MediaInfo", "is_playlist", self.is_playlist)
@@ -1186,6 +1197,9 @@ class Job:
     #: some sites and a duration for a live stream, so neither absence is an error.
     uploader: str | None = None
     duration_seconds: float | None = None
+    #: `MediaInfo.upload_date`, carried across for the reason `uploader` is (`UX-014`): a queued
+    #: download renamed later previews the *Upload date* field from it.
+    upload_date: str | None = None
 
     #: Failure is stored as two fields rather than a `FailureDetail`, mirroring the columns in
     #: `ARCHITECTURE.md` §5 so the persistence layer (`T-014`) is a direct mapping. The
@@ -1212,6 +1226,7 @@ class Job:
         _require_optional_text("Job", "title", self.title)
         _require_optional_text("Job", "thumbnail_url", self.thumbnail_url)
         _require_optional_text("Job", "uploader", self.uploader)
+        _require_optional_upload_date("Job", self.upload_date)
         _require_optional_duration("Job", "duration_seconds", self.duration_seconds)
         _require_optional_text("Job", "playlist_id", self.playlist_id)
         _require_optional_text("Job", "playlist_title", self.playlist_title)

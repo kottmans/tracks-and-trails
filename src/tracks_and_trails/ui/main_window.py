@@ -481,6 +481,7 @@ _TEMPLATE_PROBE: Final = MediaInfo(
     title="A video title",
     uploader="Uploader",
     duration_seconds=1,
+    upload_date="20260913",
     is_playlist=False,
 )
 
@@ -1073,6 +1074,7 @@ class MainWindow(QMainWindow):
             title=job.title or job.url,
             uploader=job.uploader,
             duration_seconds=job.duration_seconds,
+            upload_date=job.upload_date,
             is_playlist=False,
         )
         manager = self._manager

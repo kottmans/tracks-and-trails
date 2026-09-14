@@ -43,25 +43,47 @@ from tracks_and_trails.core.models import MediaInfo
 
 @dataclass(frozen=True, slots=True)
 class TemplateField:
-    """One field the editor offers, with the words it is offered in (`P-9`)."""
+    """One field a name can be built from, and how it is shown and written (`P-9`, `UX-014`)."""
 
     name: str
     describes: str
+    #: What a user sees and types for it in the name, braces and all — `{Title}`. Empty for a field
+    #: the application writes itself rather than offering (the extension).
+    label: str = ""
+    #: How it is written into yt-dlp's template, where that is more than `%(name)s`.
+    code: str = ""
+
+    @property
+    def template_code(self) -> str:
+        return self.code or f"%({self.name})s"
 
 
-#: The fields this application supports, in the order the editor lists them.
+#: The fields this application supports, in the order Settings offers them.
 #:
 #: **Each one is projected from `MediaInfo`**, which is what makes the preview honest: the dialog
 #: can fill it and the download's own extraction fills the same thing. `duration_string` is
 #: derived by yt-dlp from `duration`, so the projection supplies the number and yt-dlp formats it —
-#: one formatter, on both sides, rather than this module inventing a second one.
+#: one formatter, on both sides, rather than this module inventing a second one. `upload_date` is
+#: formatted by yt-dlp too, from its `YYYYMMDD` into a readable date.
 SUPPORTED_FIELDS: Final[tuple[TemplateField, ...]] = (
-    TemplateField("title", "the item's title, as the site gives it"),
-    TemplateField("uploader", "who published it — `NA` where the site names nobody"),
+    TemplateField("title", "the item's title, as the site gives it", "{Title}"),
+    TemplateField("uploader", "who published it — NA where the site names nobody", "{Uploader}"),
     # yt-dlp derives this from `duration` itself, and the raw number renders as `507.1` — which
     # is why only the formatted spelling is offered.
-    TemplateField("duration_string", "how long it is, as `8-27`"),
+    TemplateField("duration_string", "how long it is, as 8-27", "{Duration}"),
+    TemplateField(
+        "upload_date",
+        "when the site published it, as 2026-09-13 — NA where it says nothing",
+        "{Upload date}",
+        "%(upload_date>%Y-%m-%d)s",
+    ),
+    # **Written, never offered** (`UX-014`): every file has one, so nobody chooses it.
     TemplateField("ext", "the file extension"),
+)
+
+#: The fields a name is built from — `SUPPORTED_FIELDS` less the one the application adds itself.
+OFFERED_FIELDS: Final[tuple[TemplateField, ...]] = tuple(
+    field for field in SUPPORTED_FIELDS if field.label
 )
 
 SUPPORTED_NAMES: Final = frozenset(field.name for field in SUPPORTED_FIELDS)
@@ -103,35 +125,81 @@ UNDECIDED_EXTENSION: Final = "ext"
 EMPTY_REFUSAL: Final = "An output template cannot be empty."
 
 
-@dataclass(frozen=True, slots=True)
-class NamingChoice:
-    """One way of naming files that Settings offers by name (`UX-014`)."""
+#: The labels a name may hold, and what each writes (`UX-014`).
+_LABELLED: Final = {field.label.strip("{}").casefold(): field for field in OFFERED_FIELDS}
 
-    label: str
-    template: str
-
-
-#: The naming patterns Settings offers, in the order it offers them (`UX-014`, 2026-09-13).
-#:
-#: **Named templates, not a second setting.** Choosing one stores its template in the same
-#: `Settings.output_template` a typed one goes in, so a file written before this existed reads back
-#: as the choice it matches, and *Custom…* is simply every template that matches none. The first is
-#: the application's own, which is what an empty setting means.
-#:
-#: **No playlist pattern**, although one was asked about: playlist fields are refused on purpose
-#: (`SUPPORTED_FIELDS`), because each entry downloads as its own URL; a playlist already gets a
-#: folder named for it.
-NAMING_CHOICES: Final[tuple[NamingChoice, ...]] = (
-    NamingChoice("Title", "%(title)s.%(ext)s"),
-    NamingChoice("Uploader - Title", "%(uploader)s - %(title)s.%(ext)s"),
-    NamingChoice("Uploader / Title", "%(uploader)s/%(title)s.%(ext)s"),
-)
+#: A `{Label}` in a readable name.
+_LABEL: Final = re.compile(r"\{([^{}]*)\}")
 
 
-def naming_choice_of(template: str) -> NamingChoice | None:
-    """The offered choice `template` is, or `None` for a custom one. Empty is the first choice."""
-    wanted = template or NAMING_CHOICES[0].template
-    return next((choice for choice in NAMING_CHOICES if choice.template == wanted), None)
+def unknown_label_refusal(label: str) -> str:
+    offered = ", ".join(field.label for field in OFFERED_FIELDS)
+    return f"{{{label}}} is not a field this application can fill. The fields are {offered}."
+
+
+def readable_to_template(name: str) -> str:
+    """The yt-dlp template a readable name means: fields filled, text kept, extension added.
+
+    **Empty means the application's own naming** and returns empty, which is what an unset
+    Settings preference already stores. Text is literal — a `%` is escaped — and a `/` still makes
+    a folder, as it did in a template. Raises `ValueError` naming a `{Label}` that is not a field.
+    """
+    if not name.strip():
+        return ""
+    parts: list[str] = []
+    position = 0
+    for match in _LABEL.finditer(name):
+        parts.append(name[position : match.start()].replace("%", "%%"))
+        field = _LABELLED.get(match.group(1).strip().casefold())
+        if field is None:
+            raise ValueError(unknown_label_refusal(match.group(1)))
+        parts.append(field.template_code)
+        position = match.end()
+    parts.append(name[position:].replace("%", "%%"))
+    return "".join(parts) + _EXTENSION_SUFFIX
+
+
+#: One field group as `readable_to_template` writes it: a whole `%(…)s`, or an escaped percent.
+_WRITTEN: Final = re.compile(r"%%|%\(([^)]*)\)s")
+
+
+def template_to_readable(template: str) -> str | None:
+    """The readable name `template` is, or `None` if it holds anything a name cannot show.
+
+    The inverse of `readable_to_template`: every field must be an offered one written the way that
+    function writes it, and the template must end in the extension it adds. A template typed
+    before names existed — `%(title).30s`, say — is not a name, and is kept rather than rewritten.
+    """
+    if not template:
+        return readable_to_template_default()
+    if not template.endswith(_EXTENSION_SUFFIX):
+        return None
+    body = template[: -len(_EXTENSION_SUFFIX)]
+    by_code = {field.template_code: field for field in OFFERED_FIELDS}
+    out: list[str] = []
+    position = 0
+    for match in _WRITTEN.finditer(body):
+        literal = body[position : match.start()]
+        if "%" in literal or "{" in literal or "}" in literal:
+            return None
+        out.append(literal)
+        if match.group(0) == "%%":
+            out.append("%")
+        else:
+            field = by_code.get(match.group(0))
+            if field is None:
+                return None
+            out.append(field.label)
+        position = match.end()
+    tail = body[position:]
+    if "%" in tail or "{" in tail or "}" in tail:
+        return None
+    return "".join(out) + tail
+
+
+def readable_to_template_default() -> str:
+    """The readable form of the application's own naming, which an empty preference means."""
+    return "{Title}"
 
 
 #: The one template ending a renamed file gets: yt-dlp still decides the extension (`UX-014`).
@@ -180,6 +248,13 @@ def renamed_name_of(template: str) -> str | None:
     if re.search(r"(?<!%)(?:%%)*%\(", stem) or not stem:
         return None
     return stem.replace("%%", "%")
+
+
+def path_without_extension(path: str) -> str:
+    """`path` with its file's extension taken off — folders, separators and all else kept."""
+    name = file_stem_of(path)
+    tail = re.split(r"[\\/]", path)[-1]
+    return path[: len(path) - len(tail)] + name
 
 
 def file_stem_of(path: str) -> str:
@@ -257,6 +332,7 @@ def template_values(media: MediaInfo, extension: str) -> dict[str, object]:
         "title": media.title,
         "uploader": media.uploader,
         "duration": media.duration_seconds,
+        "upload_date": media.upload_date,
         "ext": extension,
     }
 

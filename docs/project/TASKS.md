@@ -32,8 +32,9 @@ preference instead of using it to rename each individual file this way."*
 
 #### Acceptance criteria
 
-- [x] Settings offers *Title*, *Uploader - Title*, *Uploader / Title* and *Custom…*, with an example
-      path for the choice, and stores the same `output_template` value as before
+- [x] Settings builds the name from fields (*Title*, *Uploader*, *Duration*, *Upload date*) with no
+      extension shown and an example path, and stores the same `output_template` value as before
+      *(re-ruled 2026-09-13 from named choices)*
 - [x] *Naming and folders…* and the per-item template editor are gone from Add URLs
 - [x] *Rename…* on a single item in Add URLs and on a queue row that has not started takes a plain
       name, previews its path, writes it literally (a `%` in the name is not a field), and clearing
@@ -58,6 +59,14 @@ preference instead of using it to rename each individual file this way."*
   *Custom…* container painted the group band `a5cd14f` removed for labels; the container clause is
   back and the band test now opens *Custom…* before measuring (**mutated**: without the clause it
   fails).
+- **2026-09-13 — Settings, rebuilt.** The maintainer rejected the choices: one field now holds a
+  readable name (`output_template.readable_to_template` / `template_to_readable`), a button per
+  `OFFERED_FIELDS` entry inserts at the cursor, the extension is never shown (nor in the example),
+  and *Upload date* joins the fields — projected by the adapter, carried on `Job` (migration `0011`,
+  frozen fixture `v11.sql`, schema snapshot). `TemplateEditor` is gone; its preview tests moved to
+  `RenameEditor`. **Mutated**: inserting by replacing the text fails the button test; dropping the
+  extension suffix fails six conversion tests. The label-height and band tests no longer need a
+  *Custom…* state, and the container clause went with the container.
 - **2026-09-13 — the queue.** *Rename…* joins a not-yet-started row's *Just this item* commands and
   opens `RenameDialog`, the same editor in a window, OK unavailable while the name is refused. The
   base is the job's own template — so *Uploader / Title* keeps its folder — unless the job was

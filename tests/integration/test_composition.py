@@ -2978,8 +2978,9 @@ def test_choosing_a_template_on_the_screen_reaches_the_file_and_the_next_paste(
     screen = _settings_screen(composition)
     try:
         field = screen.findChild(QLineEdit, OUTPUT_TEMPLATE_NAME)
-        assert field is not None, "the screen has no output-template field"
-        field.setText(chosen)
+        assert field is not None, "the screen has no naming field"
+        # **Typed as a name** (`UX-014`): the screen converts it to the template stored.
+        field.setText("{Uploader}/{Title}")
     finally:
         screen.close()
 
@@ -3047,9 +3048,9 @@ def test_a_refused_template_typed_into_the_screen_is_not_stored(
         field = screen.findChild(QLineEdit, OUTPUT_TEMPLATE_NAME)
         note = screen.findChild(QLabel, OUTPUT_TEMPLATE_NOTE_NAME)
         assert field is not None and note is not None
-        field.setText("../%(title)s.%(ext)s")
+        field.setText("../{Title}")
 
-        assert note.text(), "no reason was shown for a template that escapes the folder"
+        assert note.text(), "no reason was shown for a name that escapes the folder"
     finally:
         screen.close()
 
@@ -3088,7 +3089,7 @@ def test_two_settings_edits_in_a_row_do_not_erase_one_another(
         found = combo.findData(presets.AUDIO_MP3.name)
         assert found >= 0, "the screen does not offer the preset this test selects"
         combo.setCurrentIndex(found)
-        field.setText("%(uploader)s/%(title)s.%(ext)s")
+        field.setText("{Uploader}/{Title}")
     finally:
         screen.close()
 

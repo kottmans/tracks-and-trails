@@ -141,7 +141,7 @@ def is_platform_furniture(node: Node) -> bool:
     the template editor's field as `EditableText 'File name template'` with one child, `Button ''`.
     So the sweep was excusing a genuinely unnamed control on the grounds that the platform had
     handled it, and no other check could see it either — `focusable()` walks the Tab chain and the
-    clear button is `NoFocus`. It is named at its source now (`ui/template_editor.CLEAR_LABEL`),
+    clear button is `NoFocus`. It is named at its source now (`ui/rename_editor.CLEAR_NAME_LABEL`),
     and it is no longer excused here, so the next `setClearButtonEnabled(True)` that ships without
     a name fails `test_every_surface_names_every_control_it_publishes` rather than passing quietly.
     """
@@ -774,7 +774,7 @@ def test_tab_order_follows_visual_order_on_every_surface(
     controls sharing a row may come in either order, because *"the label and its field are on one
     line"* is a layout fact rather than a focus decision.
 
-    `add_dialog`, `format_table`, `template_editor` and `playlist_picker` each call `setTabOrder`
+    `add_dialog`, `format_table`, `rename_editor` and `playlist_picker` each call `setTabOrder`
     already; this is the assertion that they agree with what is drawn, and that the surfaces which
     never called it are not relying on luck.
 

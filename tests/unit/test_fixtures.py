@@ -311,6 +311,7 @@ ALLOWED_INFO_KEYS = frozenset(
         "subtitles",
         "thumbnail",
         "title",
+        "upload_date",
         "uploader",
         "url",
         "webpage_url",

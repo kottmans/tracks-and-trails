@@ -6,7 +6,7 @@ the words the file should be called, prefilled with what the Settings pattern wo
 the surface embedding it writes them literally through `output_template.renamed_template` — a `%`
 is a percent sign, the folders stay the setting's and the extension stays yt-dlp's.
 
-**It renders nothing**, for `template_editor`'s reason: the path shown comes from
+**It renders nothing**: the path shown comes from
 `DownloadManager.preview_output_path`, handed back through `show_preview`.
 """
 
@@ -27,18 +27,54 @@ from PySide6.QtWidgets import (
 
 from tracks_and_trails.core.output_template import OutputPreview
 from tracks_and_trails.ui.keyboard import route_is_elsewhere
-from tracks_and_trails.ui.template_editor import PREVIEW_LABEL, present_preview
+
+#: What the preview is labelled when the path is exact.
+PREVIEW_LABEL: Final = "Where it will be saved"
+
+#: What the preview is labelled when the container is still yt-dlp's to choose (`REQ-011`, amended
+#: 2026-08-01). **The label changes, not a footnote beside it**: the difference between a promise
+#: and an intention belongs in the name of the thing, where somebody skimming will read it.
+PROVISIONAL_LABEL: Final = "Where it is intended to be saved"
 
 #: What the input is labelled.
 NAME_LABEL: Final = "File name"
 
-#: What Qt's clear button is announced as — `template_editor.CLEAR_LABEL`'s reason, one field over.
+#: What Qt's clear button is announced as. Qt adds the button and names nothing (`P4EXIT-R1`).
 CLEAR_NAME_LABEL: Final = "Clear the file name"
 
 #: Said once under the field: what empty means, and that the extension is not the user's to type.
 NAME_HINT: Final = (
     "Leave it empty to use how downloads are named in Settings. The extension is added for you."
 )
+
+
+def present_preview(
+    preview: OutputPreview, field: QLineEdit, caption: QLabel, message: QLabel
+) -> None:
+    """Draw one `OutputPreview` into a path field, its caption and its message line.
+
+    **One function for both editors that preview a path** — this one and `RenameEditor` — so a
+    refused, an exact and a provisional path are drawn the same way wherever a path is shown.
+
+    The three states are drawn as three, and never mixed: a refusal empties the path field, an
+    exact path carries no note, and a provisional one is labelled *intended* in the caption rather
+    than annotated underneath — the difference between a promise and an intention is part of what
+    the field is, so it belongs in the field's name.
+    """
+    field.setText(preview.path)
+    caption.setText(PROVISIONAL_LABEL if preview.provisional is not None else PREVIEW_LABEL)
+    message.setText(preview.refusal or preview.provisional or "")
+    # **The state reaches a screen reader too** (`NFR-005`). A caption changing from "will be" to
+    # "is intended to be" is a visual difference; the accessible description is where a user who
+    # cannot see the caption hears the same distinction.
+    if preview.is_refused:
+        spoken = f"No path: {preview.refusal}"
+    elif preview.provisional is not None:
+        spoken = f"{preview.path}. {preview.provisional}"
+    else:
+        spoken = preview.path
+    field.setAccessibleDescription(spoken)
+    caption.setAccessibleName(caption.text())
 
 
 class RenameEditor(QWidget):

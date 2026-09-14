@@ -57,7 +57,6 @@ def screens_below_the_add_dialog() -> list[tuple[str, QWidget]]:
     from tracks_and_trails.ui.preset_manager import PresetManager
     from tracks_and_trails.ui.rename_editor import RenameDialog, RenameEditor
     from tracks_and_trails.ui.staging import Row
-    from tracks_and_trails.ui.template_editor import TemplateEditor
 
     # **With a row in it.** An empty table publishes no operable control, and a sweep over
     # nothing is what `T-227`'s gate did the moment it succeeded.
@@ -104,7 +103,6 @@ def screens_below_the_add_dialog() -> list[tuple[str, QWidget]]:
         # both read this list for *any application widget*, and a body is one. They are no longer
         # screens in their own right, which is what the panels below are for.
         ("format table", FormatTable(formats)),
-        ("template editor", TemplateEditor("%(title)s.%(ext)s")),
         ("rename editor", RenameEditor("A clip")),
         ("playlist picker", PlaylistPicker()),
         ("options dialog", OptionsDialog(preset=BUILT_IN_PRESETS[0])),

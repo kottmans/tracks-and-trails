@@ -74,9 +74,11 @@ from PySide6.QtWidgets import (
 
 from tracks_and_trails.core.models import BROWSER_NAMES, NetworkOptions, proxy_refusal
 from tracks_and_trails.core.output_template import (
-    NAMING_CHOICES,
+    OFFERED_FIELDS,
     OutputPreview,
-    naming_choice_of,
+    path_without_extension,
+    readable_to_template,
+    template_to_readable,
     unsupported_refusal,
 )
 from tracks_and_trails.core.settings import (
@@ -88,7 +90,6 @@ from tracks_and_trails.core.settings import (
 )
 from tracks_and_trails.downloader.environment import BASELINE_YTDLP_VERSION, normalise_version
 from tracks_and_trails.ui.keyboard import route_is_elsewhere
-from tracks_and_trails.ui.template_editor import fields_text
 
 __all__ = [
     "COOKIES_EXPLANATION",
@@ -130,12 +131,23 @@ THEME_LABELS: Final = {"light": "Light", "dark": "Dark"}
 DEFAULT_PRESET_NAME: Final = "settingsDefaultPreset"
 OUTPUT_TEMPLATE_NAME: Final = "settingsOutputTemplate"
 OUTPUT_TEMPLATE_NOTE_NAME: Final = "settingsOutputTemplateNote"
-#: The naming choice and the example under it (`UX-014`).
-NAMING_CHOICE_NAME: Final = "settingsNamingChoice"
+#: The example under the name, and each field's insert button (`UX-014`).
 NAMING_EXAMPLE_NAME: Final = "settingsNamingExample"
 
-#: The last entry of the naming choice: every template that is not one of `NAMING_CHOICES`.
-CUSTOM_NAMING_LABEL: Final = "Custom…"
+
+def insert_field_name(field: str) -> str:
+    """The object name of the button that inserts `field` into the name."""
+    return f"settingsInsertField_{field}"
+
+
+#: What the naming field is labelled and what it says under it.
+NAMING_LABEL: Final = "How downloads are named"
+NAMING_HINT: Final = "Add fields with the buttons; a / makes a subfolder."
+#: Said when the stored naming is a template the field cannot show as a name.
+UNSHOWN_TEMPLATE_NOTE: Final = (
+    "Your saved naming uses template codes this screen cannot show as fields. It stays in force "
+    "until you type a name here."
+)
 
 #: Shown under the folder when no folder has been chosen. **It names the actual path**, because
 #: "the default" is not an answer to *where did my file go*.
@@ -371,7 +383,7 @@ REQ_023_SETTINGS: Final[tuple[Req023Setting, ...]] = (
     Req023Setting("download-directory", "the download folder", "chooseDownloadDirectory"),
     Req023Setting("default-preset", "the default preset", DEFAULT_PRESET_NAME),
     Req023Setting("concurrency", "the concurrency limit", "settingsConcurrencyChoice"),
-    Req023Setting("output-template", "how downloads are named", NAMING_CHOICE_NAME),
+    Req023Setting("output-template", "how downloads are named", OUTPUT_TEMPLATE_NAME),
     Req023Setting("ffmpeg-location", "the ffmpeg location", "chooseFfmpegLocation"),
     Req023Setting("network-options", "network options", PROXY_NAME),
     Req023Setting("cookie-source", "the cookie source", "cookieSourceNone"),
@@ -862,23 +874,40 @@ class SettingsDialog(QDialog):
         )
         layout.addWidget(self._preset_note)
 
-        naming_label = QLabel("How downloads are named", box)
+        naming_label = QLabel(NAMING_LABEL, box)
         naming_label.setWordWrap(True)
         layout.addWidget(naming_label)
 
-        # **Named choices first, the template only under *Custom…*** (`UX-014`, 2026-09-13). The
-        # value stored is the same `output_template` string either way, so a template written
-        # before this existed reads back as the choice it matches.
+        # **A name built from fields, not a template and not a list of patterns** (`UX-014`, as
+        # the maintainer re-ruled on 2026-09-13). What is typed stays as typed, `{Title}` and its
+        # siblings are fields, and the extension is never shown because every file has one. The
+        # stored value is still the `output_template` string, converted on the way in and out.
         writable = self._on_output_template_chosen is not None
-        self._naming_choice = QComboBox(box)
-        self._naming_choice.setObjectName(NAMING_CHOICE_NAME)
-        self._naming_choice.setAccessibleName("How downloads are named")
-        naming_label.setBuddy(self._naming_choice)
-        for choice in NAMING_CHOICES:
-            self._naming_choice.addItem(choice.label, choice.template)
-        self._naming_choice.addItem(CUSTOM_NAMING_LABEL, None)
-        self._naming_choice.setEnabled(writable)
-        layout.addWidget(self._naming_choice)
+        self._template_field = QLineEdit(box)
+        self._template_field.setObjectName(OUTPUT_TEMPLATE_NAME)
+        self._template_field.setAccessibleName(NAMING_LABEL)
+        self._template_field.setAccessibleDescription(NAMING_HINT)
+        # **The hint is the field's own tooltip, not a line under it**: the buttons say what fields
+        # there are, and a sentence more pushed the screen past the height it opens at (`T-242`).
+        self._template_field.setToolTip(NAMING_HINT)
+        self._template_field.setPlaceholderText("{Title}")
+        self._template_field.setEnabled(writable)
+        naming_label.setBuddy(self._template_field)
+        shown = template_to_readable(self._output_template)
+        self._template_field.setText(shown if shown is not None and self._output_template else "")
+        layout.addWidget(self._template_field)
+
+        buttons = QHBoxLayout()
+        for field in OFFERED_FIELDS:
+            insert = QPushButton(f"+ {field.label.strip('{}')}", box)
+            insert.setObjectName(insert_field_name(field.name))
+            insert.setAccessibleName(f"Add {field.label.strip('{}')} to the name")
+            insert.setToolTip(f"{field.label}: {field.describes}")
+            insert.setEnabled(writable)
+            insert.clicked.connect(partial(self._insert_field, field.label))
+            buttons.addWidget(insert)
+        buttons.addStretch(1)
+        layout.addLayout(buttons)
 
         self._naming_example = QLabel(box)
         self._naming_example.setObjectName(NAMING_EXAMPLE_NAME)
@@ -888,38 +917,17 @@ class SettingsDialog(QDialog):
         self._naming_example.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(self._naming_example)
 
-        self._custom_naming = QWidget(box)
-        custom_layout = QVBoxLayout(self._custom_naming)
-        custom_layout.setContentsMargins(0, 0, 0, 0)
-
-        self._template_field = QLineEdit(self._custom_naming)
-        self._template_field.setObjectName(OUTPUT_TEMPLATE_NAME)
-        self._template_field.setAccessibleName("Custom file name template")
-        self._template_field.setText(self._output_template)
-        self._template_field.setPlaceholderText(self._shipped_template)
-        self._template_field.setEnabled(writable)
-        # **Checked as it is typed, written only when it is usable** (`P-23`, `T-195`): showing the
-        # error and storing the value anyway satisfies the visible half and queues a broken
-        # download.
-        self._template_field.textChanged.connect(self._on_template_text)
-        custom_layout.addWidget(self._template_field)
-
-        fields = QLabel(f"Fields you can use:\n{fields_text()}", self._custom_naming)
-        fields.setObjectName("settingsTemplateFields")
-        fields.setWordWrap(True)
-        fields.setTextFormat(Qt.TextFormat.PlainText)
-        custom_layout.addWidget(fields)
-        layout.addWidget(self._custom_naming)
-
         self._template_note = QLabel(box)
         self._template_note.setObjectName(OUTPUT_TEMPLATE_NOTE_NAME)
-        # The refusal quotes the template, which is the user's own text (`T016-R6`).
+        # The refusal quotes what was typed, which is the user's own text (`T016-R6`).
         self._template_note.setTextFormat(Qt.TextFormat.PlainText)
         self._template_note.setWordWrap(True)
         layout.addWidget(self._template_note)
 
-        self._select_naming(self._output_template)
-        self._naming_choice.currentIndexChanged.connect(self._on_naming_index)
+        self._template_note.setText(UNSHOWN_TEMPLATE_NOTE if shown is None else "")
+        self._show_naming_example(self._output_template)
+        # **Checked as it is typed, written only when it is usable** (`P-23`, `T-195`).
+        self._template_field.textChanged.connect(self._on_template_text)
 
         return box
 
@@ -930,68 +938,45 @@ class SettingsDialog(QDialog):
         if isinstance(chosen, str) and chosen:
             self._on_default_preset_chosen(chosen)
 
-    def _select_naming(self, template: str) -> None:
-        """Show `template` as its choice, or as *Custom…* with the field holding it."""
-        choice = naming_choice_of(template)
-        index = (
-            self._naming_choice.findData(choice.template)
-            if choice is not None
-            else self._naming_choice.count() - 1
-        )
-        blocked = self._naming_choice.blockSignals(True)
-        self._naming_choice.setCurrentIndex(index)
-        self._naming_choice.blockSignals(blocked)
-        self._custom_naming.setVisible(choice is None)
-        self._show_naming_example(template)
-
-    def _on_naming_index(self, index: int) -> None:
-        """A named choice writes its template; *Custom…* opens the field on the current one.
-
-        **The first choice writes empty**, which is what an unset preference already means — so a
-        user who picks *Title* goes on following the application's own default rather than pinning
-        today's spelling of it.
-        """
-        template = self._naming_choice.itemData(index)
-        custom = template is None
-        self._custom_naming.setVisible(custom)
-        if custom:
-            self._template_field.setFocus()
-            self._show_naming_example(self._template_field.text())
-            return
-        stored = "" if template == NAMING_CHOICES[0].template else str(template)
-        self._template_note.setText("")
-        blocked = self._template_field.blockSignals(True)
-        self._template_field.setText(stored)
-        self._template_field.blockSignals(blocked)
-        self._show_naming_example(stored)
-        if self._on_output_template_chosen is not None:
-            self._on_output_template_chosen(stored)
+    def _insert_field(self, label: str) -> None:
+        """Put `label` in the name where the cursor is, and give the keyboard back to the name."""
+        self._template_field.insert(label)
+        self._template_field.setFocus()
 
     def _show_naming_example(self, template: str) -> None:
-        """The path an example download would get under `template`, when there is one to show."""
+        """Where an example download would go, **without its extension** (`UX-014`).
+
+        The extension is not the user's to choose and is always added, so showing `.ext` here only
+        draws attention to a word nobody can change.
+        """
         preview = (
             self._preview_template(template or self._shipped_template)
             if self._preview_template is not None
             else None
         )
-        shown = preview is not None and not preview.is_refused and bool(preview.path)
-        self._naming_example.setText(f"For example: {preview.path}" if shown and preview else "")
+        if preview is None or preview.is_refused or not preview.path:
+            self._naming_example.setText("")
+            return
+        self._naming_example.setText(f"For example: {path_without_extension(preview.path)}")
 
     def _on_template_text(self, text: str) -> None:
-        """Refuse at edit time, with the reason, and do not store what was refused.
+        """Refuse at edit time, with the reason, and do not store what was refused (`P-23`).
 
-        **The same check the per-row editor makes**, reached through
-        `core.output_template.unsupported_refusal` — which is what `manager.preview_output_path`
-        calls, so the editor and this screen cannot come to disagree about what a usable template
-        is. A second implementation of the rule is the defect `ARC-002` reasons about.
+        Empty stores empty — the application's own naming. Otherwise the name is converted, then
+        asked of the same refusal the rename panel uses, which is what the download itself will do.
         """
         if self._on_output_template_chosen is None:
             return
-        refusal = self._refusal_for(text) if text else None
+        try:
+            template = readable_to_template(text)
+        except ValueError as unknown:
+            self._template_note.setText(str(unknown))
+            return
+        refusal = self._refusal_for(template) if template else None
         self._template_note.setText(refusal or "")
         if refusal is None:
-            self._show_naming_example(text)
-            self._on_output_template_chosen(text)
+            self._show_naming_example(template)
+            self._on_output_template_chosen(template)
 
     def _refusal_for(self, template: str) -> str | None:
         """The authoritative refusal where composition supplied one (`T195-R2`)."""
@@ -1037,14 +1022,15 @@ class SettingsDialog(QDialog):
             self._preset_choice.blockSignals(blocked)
 
     def show_output_template(self, template: str) -> None:
-        """Reflect the stored template, without echoing it back through the writer."""
-        if template == self._template_field.text():
-            return
-        blocked = self._template_field.blockSignals(True)
-        self._template_field.setText(template)
-        self._template_field.blockSignals(blocked)
-        self._template_note.setText("")
-        self._select_naming(template)
+        """Reflect the stored naming, without echoing it back through the writer."""
+        shown = template_to_readable(template)
+        text = shown if shown is not None and template else ""
+        if text != self._template_field.text():
+            blocked = self._template_field.blockSignals(True)
+            self._template_field.setText(text)
+            self._template_field.blockSignals(blocked)
+        self._template_note.setText(UNSHOWN_TEMPLATE_NOTE if shown is None else "")
+        self._show_naming_example(template)
 
     def _build_cookies_section(self) -> QWidget:
         """A cookies file for content the user is already signed in to (`REQ-026`, `T-197`)."""
