@@ -278,8 +278,10 @@ fresh Sandbox and given a browser download's Mark of the Web (`ZoneId=3`), launc
 
 This is `REL-005`'s accepted cost exactly as a user meets it. `docs/RELEASE.md`'s description was
 corrected to these words: it had *unrecognised*, and neither the second sentence nor the details
-page. **The image files are still to be added** to `docs/project/evidence/`; until then this
-transcription is the record.
+page. **Filed:** the second screen, as
+[`2026-09-14-T327-smartscreen-more-info.png`](evidence/2026-09-14-T327-smartscreen-more-info.png)
+(531 × 497). The first was not saved; everything it shows except the *More info* link is repeated on
+the second, and the transcription above records the link.
 
 #### 2026-09-14 (later) — Narrator deferred past `0.1.0`; the SmartScreen download staged
 
@@ -470,7 +472,7 @@ The release gate's machine half, run **against the candidate** rather than again
 
 ### T-322 — The Windows installer
 
-**Status:** **In Progress** — `T322-R3`…`R5` resolved, `R5` approved at `9791c7e`, and **the maintainer saw the uninstaller's dialog, messages and running-application refusal on the installed build on 2026-09-14** (`T-327`). Open: a workflow build, and the SmartScreen screenshot, which a mapped-folder copy cannot produce (below);
+**Status:** **In Progress** — `T322-R3`…`R5` resolved, `R5` approved at `9791c7e`, and **the maintainer saw the uninstaller's dialog, messages and running-application refusal on the installed build on 2026-09-14** (`T-327`). Open: a workflow build. **The SmartScreen screenshot is filed** (2026-09-14, `T-327`);
 **compiled on `STARBASE`** 2026-09-12, installed and uninstalled in
 Windows Sandbox by `T-039`'s gates, and polished in the maintainer's session (below). Open: built by
 `T-324`'s workflow, which needs a tag, and `T-317`'s SmartScreen screenshot. *(This said it could not
@@ -763,7 +765,9 @@ incident it cites).
 - The installer's own strings name the application, version and publisher; nothing in them names
   a developer path (`T-323`'s scan covers the tree; this covers the installer)
 - If `T-317` chose unsigned: the SmartScreen prompt is screenshot once on the clean machine and
-  filed as evidence, so the README's description of it is of the real thing
+  filed as evidence, so the README's description of it is of the real thing *(done 2026-09-14:
+  [screenshot](evidence/2026-09-14-T327-smartscreen-more-info.png); `docs/RELEASE.md` corrected to
+  its words, which the README install section takes from under `T-328`)*
 
 #### Out of scope
 
