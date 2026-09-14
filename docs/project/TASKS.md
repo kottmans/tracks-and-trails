@@ -1872,121 +1872,11 @@ any other text this application supplies, because an extractor argument can carr
 
 ## Proposed — Phase 5
 
-### T-336 — The installed app crashed once with heap corruption opening *Naming and folders…*
-
-**Status:** **Proposed — a potential task, not open work** (maintainer, 2026-09-13). Seen once, in
-`T-327`'s Sandbox session, and not reproduced by any route below. It becomes a task only if it
-recurs or can be reproduced; until then nothing is owed on it.
-**Owner:** Implementer
-**Priority:** None while it does not recur; if it does, a crash is Critical by `TESTING.md` §14
-**Phase:** Phase 5
-**Promoted by:** a recurrence — ideally under the crash capture below, so it arrives with a dump
-**Relevant context:** `T-289` (a Qt widget destroyed on the wrong thread — a double free); `T-074`
-(an access violation never reproduced, and why repetition alone does not discriminate); `T-092`
-(crash dumps on `STARBASE`)
-**Affected surfaces:** unknown until a dump names them
-
-#### What happened
-
-The maintainer, in the installed build in Windows Sandbox: pasted
-`https://www.youtube.com/watch?v=NnPvX-uMYWk` into Add URLs, waited for it to be read, opened the
-row's ⋮ and chose *Naming and folders…*; the application closed. Windows recorded:
-
-- `Application Error`: `tracks-and-trails.exe` 0.1.0.0, faulting module `ntdll.dll`
-  10.0.19041.6456, **exception `0xc0000374` (heap corruption)**, offset `0xff489`, 16:30:01.
-- The application log ends at 16:29:47, mid-probe of the same URL, which had also been probed at
-  16:24:47 in the same session — so the dialog saw that URL twice. Nothing after: a native fault
-  writes no Python record.
-
-**Heap corruption is reported where the heap is next checked, not where it was damaged.** The menu
-choice is where the process died; it is not established as the cause.
-
-#### Not reproduced, by
-
-- The same flow from source on `STARBASE` under the real Windows plugin — real probe, the ⋮ zone
-  and the menu entry clicked through `QTest`, the maintainer's own URL, and with the dialog closed
-  and reopened between two reads of it: **eight runs, no crash**.
-- The output-path preview the panel opens with, under `pythonw.exe` (no console, as installed): clean.
-- The 17 add-dialog tests touching the panel and the menu, under the real plugin: pass.
-- The maintainer, in Sandbox: the installer built before that day's later changes (`d1e03e2`) and
-  the current one (`e037c05`) — **no crash with either**; no dump was produced.
-
-#### To capture it
-
-Kept on `STARBASE`, not in the repository: `C:\dev\interactive-dumps.wsb` (the interactive Sandbox
-plus a writable `C:\dev\sandbox-out`) and `sandbox-share\arm-crash-capture.ps1`, which turns on
-full page heap for `tracks-and-trails.exe` — so a double free or overrun faults at the write that
-does it — and WER full dumps into that folder. WinDbg is installed on `STARBASE` to read one.
-
-#### If it is promoted
-
-- A dump of the recurrence, with the faulting module and stack read
-- The cause named and fixed, with a test that fails without the fix
-
----
-
-*Created 2026-09-10, when Phase 4.5 was resequenced to follow the first release and this
-phase became the next one to run. `T-039` also carries `**Phase:** Phase 5` and stays under
-`## Blocked`, because that section is about status rather than phase.*
-
-### T-328 — The first release
-
-**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan. **This is the phase exit.**
-**Owner:** Reviewer runs the release review; Maintainer tags and publishes
-**Priority:** High
-**Phase:** Phase 5
-**Depends on:** every task above, `T-039` *(and `T-212`, cancelled 2026-09-13)*
-**Relevant context:** `docs/RELEASE.md`'s release review; `TESTING.md` §8 in full; §14
-(one initial review plus one focused pass, and *"a red canary is not a reason to skip the bump"*);
-`DOC-002` (`CHANGELOG.md` at the first tag); `IMPLEMENTATION_PLAN.md` §Phase 5 exit criteria;
-§Phase 4.5's resequencing note (**no parity claim**)
-**Affected surfaces:** a release review record; `CHANGELOG.md`; `SECURITY.md` §Supported
-versions; the tag `v0.1.0`; the GitHub Release
-**Risk:** Medium — the first release is the one with no previous release to compare against, so
-every gate is being exercised for the first time at once
-
-#### Scope
-
-1. **Freeze the candidate**: the release commit sets `__version__ = "0.1.0"`, creates
-   `CHANGELOG.md` with a `0.1.0` section, fills `SECURITY.md` §Supported versions, and is tagged
-   `v0.1.0`. `T-324` drafts the release.
-2. **The release review**, per `docs/RELEASE.md`: `TESTING.md` §8 item by item, on both
-   platforms, each with its evidence — `T-323`'s gates, `T-325`'s numbers, `T-326`'s runs,
-   `T-318`'s clean-machine files, `T-327`'s session — and **§8 item 6, the `REQUIREMENTS.md` §11
-   acceptance criteria verified by hand and recorded here**, since `T-212` was cancelled
-   2026-09-13. Recorded in a review record
-   indexed by `REVIEWS.md`. Its verdict is the phase's.
-3. **Publish**: the draft becomes public by the maintainer's hand. The README's install section
-   goes live in the same push — and, **by the maintainer's ruling of 2026-09-13**, it says the
-   AppImage runs as it is, and that a menu entry comes from AppImageLauncher or Gear Lever or from
-   the two lines it gives. The `.desktop` inside the bundle points inside the bundle, so it cannot
-   serve as one (`T-321`).
-4. **Reopen `main`**: `__version__` bumps to `0.1.1.dev0`; `IMPLEMENTATION_PLAN.md` marks Phase 5
-   exited and Phase 4.5 as next; `STATUS.md` says there is a release.
-
-**What the release notes must not say**: that this application reaches everything yt-dlp does.
-`REQ-030` is unmet by design until Phase 4.5, and `REQ-031`'s escape hatch is the first thing
-scheduled there. The notes say what *is* covered, and that the rest is coming as an update.
-
-#### Acceptance criteria
-
-- Every §8 item has evidence in the review record, or is marked `N/A` with the reason (item 5,
-  item 10a) — none marked passed on a green CI run alone
-- The published release carries both artifacts, `SHA256SUMS`, and notes that make no parity claim
-- `IMPLEMENTATION_PLAN.md` §Phase 5 records the exit with the review's verdict and date
-- `OPS-005`'s rule is applied to the four Windows-only diagnostic tasks reassigned here
-  (`T-074`, `T-092`, `T-068`, `T-056`): each gets an explicit disposition — carried or closed —
-  rather than silently outliving the release they were said to matter for
-
-#### Out of scope
-
-- Anything Phase 4.5 owns. The release ships without it, on the maintainer's 2026-09-10 ruling
-
-## Blocked
-
 ### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
 
-**Status:** **Blocked — on `T-092`, 2026-08-20. Still undiagnosed, still not blocking Phase 1**
+**Status:** **Proposed — a potential task, not open work** (maintainer's release ruling, `T-328`, 2026-09-13, taking the recommendation). Never reproduced in 466 attempts, and repetition is spent; a recurrence turns the `windows desktop` job red on its own. It becomes a task again only if it recurs, ideally with crash capture armed (`tools/windows/crash-dumps.ps1`, `docs/WINDOWS_VERIFICATION.md`).
+
+**Status before this ruling:** **Blocked — on `T-092`, 2026-08-20. Still undiagnosed, still not blocking Phase 1**
 (`OPS-007`, maintainer risk decision 2026-07-29). Downgraded **High → Medium**.
 
 **The dependency was always there; the entry just never said it.** This task's own text already
@@ -2348,392 +2238,117 @@ account for rather than one.
 
 ---
 
-### T-092 — Arm `STARBASE` so the next access violation leaves a cause, not a stack
+### T-336 — The installed app crashed once with heap corruption opening *Naming and folders…*
 
-**Status:** **Blocked — prepared 2026-08-01, on *somebody at* `STARBASE`.**
-
-**Re-triaged 2026-08-04: still blocked, but it may no longer be the only route.** This task exists
-because the faulting object of `T-074`'s access violation is unknown and a Windows crash dump was
-the only way to get one. `T-128` records something in the same subsystem crashing on **Linux** at
-roughly 2 in 39 — where a core dump needs `ulimit -c` and a pattern, not a person at a machine and
-consent to write dumps on it. **That does not unblock this**, which is specifically about Windows,
-and the two crashes are not established as one defect. It does mean the *cause* may become
-obtainable without this task, which is worth knowing before anyone spends a trip to the desktop on
-it.
-
-Re-triaged 2026-08-03:
-the machine came back that day and now runs every Windows job, so "blocked on `STARBASE`" no longer
-says what it means. The three remaining criteria need a person to arm dumps, crash a process on
-purpose and open the result — none of which a CI job does. **Availability was never the blocker.** The reviewer classified it
-so on 2026-08-01: the safe correction is accepted (`T092-R1`) and the scope amendment is taken
-(`T092-R2`), and **nothing further can be done from here.** Three criteria need somebody at the
-machine.
-*(This read "Ready — prepared 2026-08-01, and NOT complete", which put a task nobody could pick up
-in the list of tasks to pick up.)* The maintainer's consent was given
-2026-08-01 and the whole configurable half is committed: `tools/windows/crash-dumps.ps1` arms and
-disarms it, `docs/WINDOWS_VERIFICATION.md` records the procedure and its disk cost, and both
-`STARBASE` jobs collect a dump when one exists. **Three of the five acceptance criteria are
-unmet and cannot be met from here** — they require running the script on `STARBASE`, crashing a
-process on purpose, and opening the dump. See "Prepared, and what remains" below.
-*(This read "Ready — the instrument `OPS-007` leans on".)*
+**Status:** **Proposed — a potential task, not open work** (maintainer, 2026-09-13). Seen once, in
+`T-327`'s Sandbox session, and not reproduced by any route below. It becomes a task only if it
+recurs or can be reproduced; until then nothing is owed on it.
 **Owner:** Implementer
-**Priority:** Medium — it buys nothing today and is the whole diagnostic plan if `T-074` recurs
-**Phase:** Phase 1 origin; it is an instrument, not a deliverable, and gates no exit *(**Reassigned to Phase 5 on 2026-09-10 by maintainer ruling**, with the other Windows-only
-tasks: *"defer the windows specific screen tasks to the same phase. They should no longer block
-phase 4 closure."* It did not block Phase 4 before the ruling either — `OPS-005` already had
-hosted-only Windows findings not gating a phase — so this records the intent rather than
-changing a gate. Phase 5 is where it genuinely bites: the release needs a Windows artifact that
-installs and runs.)*
-**Depends on:** `STARBASE`, which exists. Needs the maintainer's consent to write dumps on a
-machine they use
-**Relevant context:** `OPS-007`, `T-074`, `T-073`, `docs/WINDOWS_VERIFICATION.md`
-**Affected surfaces:** `docs/WINDOWS_VERIFICATION.md`, `.github/workflows/ci.yml` and
-`t074-repeat.yml` (a metadata report, never a dump artifact), `STARBASE` machine configuration
-**Risk:** Low to the product — it touches no source. The real risk is on the machine: dumps are
-written unattended and a full-memory dump of a Python process with Qt loaded is not small
+**Priority:** None while it does not recur; if it does, a crash is Critical by `TESTING.md` §14
+**Phase:** Phase 5
+**Promoted by:** a recurrence — ideally under the crash capture below, so it arrives with a dump
+**Relevant context:** `T-289` (a Qt widget destroyed on the wrong thread — a double free); `T-074`
+(an access violation never reproduced, and why repetition alone does not discriminate); `T-092`
+(crash dumps on `STARBASE`)
+**Affected surfaces:** unknown until a dump names them
 
-#### Scope
+#### What happened
 
-`T-074`'s second acceptance criterion is that **the faulting thread and the object it touched are
-identified — a stack is not a cause.** `faulthandler` cannot supply that: it printed
-`[ResultPump]` and `Thread-50 (_monitor)` and named neither the faulting module nor the address.
-A minidump does.
+The maintainer, in the installed build in Windows Sandbox: pasted
+`https://www.youtube.com/watch?v=NnPvX-uMYWk` into Add URLs, waited for it to be read, opened the
+row's ⋮ and chose *Naming and folders…*; the application closed. Windows recorded:
 
-So: configure Windows Error Reporting local dumps on `STARBASE` for the interpreter that runs the
-suite, and have the `t074-repeat.yml` and `windows desktop` jobs **report** any dump written during
-that run — name, size and timestamp into `reports/crashdumps.txt` — leaving the dump on the machine
-for deliberate retrieval. Then a recurrence, in CI or in an ordinary run, produces something a
-debugger can read instead of another anecdote.
+- `Application Error`: `tracks-and-trails.exe` 0.1.0.0, faulting module `ntdll.dll`
+  10.0.19041.6456, **exception `0xc0000374` (heap corruption)**, offset `0xff489`, 16:30:01.
+- The application log ends at 16:29:47, mid-probe of the same URL, which had also been probed at
+  16:24:47 in the same session — so the dialog saw that URL twice. Nothing after: a native fault
+  writes no Python record.
 
-*(**Superseded, and the wording matters because this is the live instruction.** This said "upload any
-dump they find as an artifact", which `T092-R1` found unsafe on three counts: WER is keyed by
-executable *file name* so the folder collects any `python.exe` under that account, nothing filtered
-stale dumps so the deliberate proof dump would be re-uploaded on every later run and announced as a
-recurrence, and a full memory dump can carry an unrelated program's heap into a CI artifact. The
-metadata-only scope is the maintainer's decision of 2026-08-01 — `T092-R2`, which stayed open once
-because the criterion was corrected and this sentence was not.)*
+**Heap corruption is reported where the heap is next checked, not where it was damaged.** The menu
+choice is where the process died; it is not established as the cause.
 
-**Consent first, and this is not a formality.** `STARBASE` is the maintainer's own desktop.
-`OPS-005` and `T-073` both carry the rule that a workflow must never provision it, and
-`docs/WINDOWS_VERIFICATION.md` records what installing Python there already cost. Dump capture is
-machine configuration and belongs in that document as a manual, reversible step — not in a
-workflow.
+#### Not reproduced, by
 
-#### Acceptance criteria
+- The same flow from source on `STARBASE` under the real Windows plugin — real probe, the ⋮ zone
+  and the menu entry clicked through `QTest`, the maintainer's own URL, and with the dialog closed
+  and reopened between two reads of it: **eight runs, no crash**.
+- The output-path preview the panel opens with, under `pythonw.exe` (no console, as installed): clean.
+- The 17 add-dialog tests touching the panel and the menu, under the real plugin: pass.
+- The maintainer, in Sandbox: the installer built before that day's later changes (`d1e03e2`) and
+  the current one (`e037c05`) — **no crash with either**; no dump was produced.
 
-- A **deliberately crashed** Python process on `STARBASE` leaves a dump at a known path — proven by
-  causing an access violation on purpose, not by trusting the registry keys
-- That dump, opened, names a faulting module and address. If it cannot, this task has failed at the
-  thing it exists for and says so rather than reporting the keys as success
-- Dump size and retention are bounded and stated; the disk cost on a real machine is named
-- **The jobs report a dump's existence and never upload it** — name, size and timestamp into
-  `reports/crashdumps.txt`, with the dump left on `STARBASE` for deliberate retrieval. Both the
-  "a dump was written" and "no dump" paths stay green: a missing dump is the normal case and must
-  not redden the gate
-  *(**Scope amended 2026-08-01, maintainer decision** — `T092-R2`. This read "upload a dump when
-  one exists". WER is keyed by executable *file name*, so the folder collects any `python.exe`
-  under that account and a full memory dump can carry an unrelated program's heap into a CI
-  artifact; the old wording could not be met without reintroducing `T092-R1`. The narrower
-  alternative — copy the interpreter to a distinct name and key WER to that — is recorded in
-  `docs/WINDOWS_VERIFICATION.md` rather than taken, because it changes how the suite is
-  launched.)*
-- `docs/WINDOWS_VERIFICATION.md` records the configuration, how to undo it, and the disk cost
+#### To capture it
 
-#### Out of scope
+Kept on `STARBASE`, not in the repository: `C:\dev\interactive-dumps.wsb` (the interactive Sandbox
+plus a writable `C:\dev\sandbox-out`) and `sandbox-share\arm-crash-capture.ps1`, which turns on
+full page heap for `tracks-and-trails.exe` — so a double free or overrun faults at the write that
+does it — and WER full dumps into that folder. WinDbg is installed on `STARBASE` to read one.
 
-- Diagnosing `T-074` — this task cannot, and pretending otherwise is what `T074-R4` caught
-- Any change to `src/`
-- Dump capture on Linux, or on hosted runners, which are discarded anyway
-- Making `T-074`'s recurrence more likely; this is passive capture, not a stress test
+#### If it is promoted
 
-#### Prepared, and what remains, 2026-08-01
-
-**Done, and committed:**
-
-- `tools/windows/crash-dumps.ps1` — arms WER local dumps for `python.exe` under `HKCU` (no
-  elevation, scoped to one executable rather than the whole machine), and `-Remove` undoes it.
-- `docs/WINDOWS_VERIFICATION.md` — why, how to arm it, **how to prove it**, the disk cost, and how
-  to undo it.
-- `ci.yml`'s `windows desktop` job and `t074-repeat.yml` each stamp their start time and write
-  `reports/crashdumps.txt` naming any dump written **during that run** — and upload no dump at all.
-  `if: always()` and `continue-on-error: true`, because **no dump is the normal case and must not
-  redden the gate**.
-  *(This described copying the dump into `reports/`, which is what `T092-R1` found unsafe. The
-  scope amendment above is the maintainer's, taken 2026-08-01.)*
-- Full dumps (`DumpType 2`) rather than mini, stated with the cost: ~300–600 MB each for a Python
-  process with Qt loaded, five kept, so up to ~3 GB. A mini dump routinely lacks the heap the
-  faulting address points into, which is the entire question `T-074` is asking.
-
-**Unmet, and honestly so** — each needs the machine:
-
-| Criterion | State |
-|---|---|
-| A deliberately crashed process leaves a dump at a known path | **Unmet.** Nobody has run the script or the crash |
-| The dump names a faulting module and address | **Unmet**, and it is the one that decides whether this task succeeded at all |
-| Dump size and retention bounded and stated | **Met** — in `docs/WINDOWS_VERIFICATION.md` |
-| The jobs **report** a dump and never upload one | **Half met.** The steps exist and both YAML files parse; no CI job has executed a step since 2026-07-30, so neither branch has run |
-| `docs/WINDOWS_VERIFICATION.md` records config, undo and cost | **Met** |
-
-**Why this is filed as prepared rather than done.** `T074-R4` caught this task's predecessor
-reporting registry keys as evidence. The keys are not the evidence; a dump that names a faulting
-module is. Until somebody runs the two commands in the document on `STARBASE`, the correct status
-is that the instrument is *ready to arm* and has never fired.
-
-
-#### Correction, 2026-08-01 — `T092-R1`
-
-**The prepared upload was unsafe before it had ever run.** Three problems, all real:
-
-- **WER is keyed by the executable's file name**, so `python.exe` collects *any* Python process
-  under that account, not this project. There is no narrower WER key. A dump in the folder is
-  therefore not by itself evidence of `T-074`, and the report now says exactly that.
-- **Nothing cleared or time-filtered the folder**, so the deliberate proof dump — or a months-old
-  one — would be re-uploaded on every later run and announced as a recurrence that never happened.
-  Both jobs now stamp their start time and report only what was written after it.
-- **A full memory dump can carry an unrelated process's heap**, and a CI artifact is a copy of it
-  somewhere else. **Nothing is uploaded now.** The jobs write `reports/crashdumps.txt` with the
-  dump's name, size and timestamp and leave the dump on `STARBASE` for deliberate retrieval.
-
-`docs/WINDOWS_VERIFICATION.md` gains the provenance and disclosure reasoning beside the disk cost,
-which is what it was missing. The narrower alternative — copy the interpreter to a distinct file
-name and key WER to that — is recorded rather than done, because it changes how the suite is
-launched.
-
-**Three acceptance criteria remain unmet and still need the machine.** Nothing here changes that.
+- A dump of the recurrence, with the faulting module and stack read
+- The cause named and fixed, with a test that fails without the fix
 
 ---
 
-### T-068 — Qt writes a font warning to stderr on a real Windows machine
+*Created 2026-09-10, when Phase 4.5 was resequenced to follow the first release and this
+phase became the next one to run. `T-039` also carries `**Phase:** Phase 5` and stays under
+`## Blocked`, because that section is about status rather than phase.*
 
-**Status:** **Blocked — on the runner question, which just got harder**, 2026-07-28; re-triaged
-2026-08-03 and **again 2026-08-04, unchanged and verified**. `OPS-010` restored the Windows suite
-to every push, which sounds like it would help and does not: it restored the **`STARBASE` desktop**
-job, while `check`'s hosted Windows leg stays dropped. `vars.WINDOWS_RUNNER` is set, so hosted
-Windows still does not run at all. The cost of answering this is now explicit — unsetting that
-variable for one run spends hosted Windows minutes at a 2x multiplier, against a nearly exhausted
-quota. The frozen half is now obtainable: `frozen windows` runs on `STARBASE`. The other half
-asks *why the hosted runners never showed the fault*, and hosted Windows **no longer runs at all**
-while `WINDOWS_RUNNER` points at the desktop (`docs/project/TESTING.md` §10). Answering it now needs that
-variable unset deliberately for a run. A consequence of the gate rebuild, recorded rather than
-discovered later. The
-environment fix itself was not contested: the warning was the symptom, and the defect is that Qt
-had **zero font families** under `offscreen` on that machine, so the whole offscreen UI suite ran
-with no fonts. `QT_QPA_FONTDIR` is set before PySide6 is imported, is Windows-only, and honours an
-explicit caller value. The task's own acceptance criteria still require the runner difference to
-be explained and a Windows frozen artifact to be checked; both need a hosted runner. See
-**Evidence**.
+### T-328 — The first release
 
-**No longer a Phase 1 exit dependency** (`OPS-005`, 2026-07-29). Still open, still Blocked. This
-one runs the *other* way from `T-056`: the defect appeared **on** the real machine and the hosted
-runners are the ones that look clean, so the fix is already validated where the fault was. What
-remains is the diagnostic question of why the runners never showed it — worth answering, not worth
-holding a phase for.
-**Owner:** Implementer
-**Priority:** Medium — an assertion about a *clean* run is failing, and the cause is not understood
-**Phase:** Phase 1 *(**Reassigned to Phase 5 on 2026-09-10 by maintainer ruling**, with the other Windows-only
-tasks: *"defer the windows specific screen tasks to the same phase. They should no longer block
-phase 4 closure."* It did not block Phase 4 before the ruling either — `OPS-005` already had
-hosted-only Windows findings not gating a phase — so this records the intent rather than
-changing a gate. Phase 5 is where it genuinely bites: the release needs a Windows artifact that
-installs and runs.)*
-**Depends on:** nothing
-**Relevant context:** `T-007`, `tests/ui/test_app_launch.py`, `OPS-004`
-**Affected surfaces:** `tests/ui/test_app_launch.py`, possibly packaging
-**Risk:** Medium — unknown cause; it may be cosmetic, and it may be a deployment gap
+**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan. **This is the phase exit.**
+**Owner:** Reviewer runs the release review; Maintainer tags and publishes
+**Priority:** High
+**Phase:** Phase 5
+**Depends on:** every task above, `T-039` *(and `T-212`, cancelled 2026-09-13)*
+**Relevant context:** `docs/RELEASE.md`'s release review; `TESTING.md` §8 in full; §14
+(one initial review plus one focused pass, and *"a red canary is not a reason to skip the bump"*);
+`DOC-002` (`CHANGELOG.md` at the first tag); `IMPLEMENTATION_PLAN.md` §Phase 5 exit criteria;
+§Phase 4.5's resequencing note (**no parity claim**)
+**Affected surfaces:** a release review record; `CHANGELOG.md`; `SECURITY.md` §Supported
+versions; the tag `v0.1.0`; the GitHub Release
+**Risk:** Medium — the first release is the one with no previous release to compare against, so
+every gate is being exercised for the first time at once
 
 #### Scope
 
-`test_application_launches_and_exits_cleanly` asserts the application writes nothing to stderr on
-a clean run. On `STARBASE` it writes:
+1. **Freeze the candidate**: the release commit sets `__version__ = "0.1.0"`, creates
+   `CHANGELOG.md` with a `0.1.0` section, fills `SECURITY.md` §Supported versions, and is tagged
+   `v0.1.0`. `T-324` drafts the release.
+2. **The release review**, per `docs/RELEASE.md`: `TESTING.md` §8 item by item, on both
+   platforms, each with its evidence — `T-323`'s gates, `T-325`'s numbers, `T-326`'s runs,
+   `T-318`'s clean-machine files, `T-327`'s session — and **§8 item 6, the `REQUIREMENTS.md` §11
+   acceptance criteria verified by hand and recorded here**, since `T-212` was cancelled
+   2026-09-13. Recorded in a review record
+   indexed by `REVIEWS.md`. Its verdict is the phase's.
+3. **Publish**: the draft becomes public by the maintainer's hand. The README's install section
+   goes live in the same push — and, **by the maintainer's ruling of 2026-09-13**, it says the
+   AppImage runs as it is, and that a menu entry comes from AppImageLauncher or Gear Lever or from
+   the two lines it gives. The `.desktop` inside the bundle points inside the bundle, so it cannot
+   serve as one (`T-321`).
+4. **Reopen `main`**: `__version__` bumps to `0.1.1.dev0`; `IMPLEMENTATION_PLAN.md` marks Phase 5
+   exited and Phase 4.5 as next; `STATUS.md` says there is a release.
 
-```
-QFontDatabase: Cannot find font directory <prefix>/PySide6/lib/fonts.
-Note that Qt no longer ships fonts. Deploy some ... or switch to fontconfig.
-```
-
-**It fails in both the venv and the CI-style install**, so it is not the virtualenv — an
-A/B that also corrects the implementer's first guess, which was that the venv caused it. The
-cause is genuinely unknown and this task exists to find it rather than to silence it.
-
-Two reasons not to treat it as noise. It only appears on a machine that is not a CI runner, which
-is exactly the population `OPS-004` was written to stop assuming about. And a Qt that cannot find
-a font directory under the offscreen platform raises an unanswered question about the **frozen**
-artifact, which is what a user runs.
-
-#### Acceptance criteria
-
-- The cause is identified — not "PySide6 does that", but why this machine and not the runner
-- Whether the frozen build (`T-020`, `T-033`) shows the same warning is answered on Windows
-- If the warning is benign, the test says so deliberately rather than being loosened to pass
-- If it is not benign, the fix is in packaging or startup, not in the assertion
-
-#### Evidence, 2026-07-28
-
-**The warning was the symptom. The defect is an empty font database.** Measured under
-`QT_QPA_PLATFORM=offscreen` on `STARBASE`, in the interactive desktop session:
-
-```
-FAMILIES 0
-SAMPLE  []
-DEFAULT Sans Serif
-```
-
-Zero families. So the **entire offscreen UI suite** runs there against no fonts: every assertion
-about a widget's size, about elision, or about anything else derived from font metrics is measured
-against nothing — and passes. A suite that agrees with itself while measuring an empty font set is
-the shape `docs/project/TESTING.md` §13 exists to catch, which is why this was not allowlisted into
-`PLUGIN_NOISE` alongside `propagateSizeHints`. That allowlist is for artifacts that change no
-measurement; this one changes every measurement.
-
-**Not our code.** A bare `QApplication` produces nothing; a bare `QLabel` reproduces it in full,
-with no project code involved. Same result in the venv and the no-venv checkout, which also
-corrects the first guess recorded against this task — it is not the virtualenv.
-
-**Not the session either.** It reproduces identically in session 2, so it is not an artifact of
-running over SSH, which was the other plausible explanation and had to be ruled out because
-several other results were.
-
-**Fix:** `tests/conftest.py` sets `QT_QPA_FONTDIR` to `%WINDIR%\Fonts` on Windows, with
-`setdefault` so an explicit value wins. Verified: `families()` goes from 0 to a populated list and
-`test_application_launches_and_exits_cleanly` passes.
-
-**Open, and it needs a runner:** *why the runners do not show this.* Their offscreen Qt evidently
-finds fonts by some route this machine lacks, and until CI runs it is unknown whether
-`QT_QPA_FONTDIR` changes anything there. If their database is already populated the variable is
-ignored, which is the expected case — expected, not verified.
-
-#### Out of scope
-
-- Weakening the empty-stderr assertion to make the run green; that assertion caught this
-
----
-
-### T-056 — `still_running` reports a reaped Windows process as alive, intermittently
-
-**Status:** **Blocked — on a reproduction, not on a machine**, 2026-07-28 at `9c92c32`.
-
-**Re-triaged 2026-08-04, and a candidate reproduction was checked and rejected.** The overnight
-`-n auto` run failed exactly this task's subject —
-`test_the_survival_check_can_tell_a_live_process_from_a_dead_one`, `still_running`'s own test — on
-Linux, which looked like the reproduction this task has waited for since July. **It is not.** The
-assertion was *"a running process was reported dead"*: `still_running([alive.pid])` returned `[]`
-for a live process. This task is the **opposite** symptom — a *reaped* process reported **alive**.
-Same helper, inverted direction, and a false negative under parallel load is a different defect
-from a false positive on Windows.
-
-Recorded rather than left for somebody else to find and re-check. What it does say is that
-`still_running` has a second failure mode nobody had seen, which `T-123` carries.
-
-Re-triaged 2026-08-03: `STARBASE`'s return does **not** help. This task already had its Windows
-evidence and that is the finding — reverting the fix passes 20/20 there, so the defect does not
-reproduce on the machine we have. More runs of the same machine cannot close it. The reviewer
-found the implementation correct and could not verify it: the changed branch does not execute on
-Linux, so neither the runtime behaviour nor the mutation that proves it can be observed here. The
-helper decides by exit status on Windows and the third acceptance criterion is answered in its own
-docstring.
-
-**A Windows machine was not enough** (2026-07-28, `STARBASE`, Windows 10 22H2). The corrected
-helper passes 3/3. Reverting it to the presence-based form it replaced passes **20/20** — the
-defect does not reproduce here at all. A positive control (`still_running` always answering
-"nothing alive") **fails** on the test's first assertion, so the patching mechanism is proven and
-the survival is a real measurement rather than a mutation that never applied.
-
-So the next step narrows rather than clears: this wants **`windows-latest`'s image**, Windows
-Server, not Windows as such. `30323328299` remains the only observation of the defect anywhere.
-
-**No longer a Phase 1 exit dependency** (`OPS-005`, 2026-07-29). Still open, still Blocked, but it
-does not gate the phase: `still_running()` is test-only code that never ships, and its documented
-sole error direction is a false **alive** — it can redden CI, it cannot make broken reaping look
-correct. Windows Server is not a supported platform (`REQUIREMENTS.md`), so a finding seen only
-there is a CI-reliability concern rather than a user-facing one.
-
-**What that decision explicitly does not claim.** The mechanism is Windows-*general*: Windows has
-no zombie state and a terminated process stays visible while any handle to it is open, which is
-identical on Windows 10 and on Server. `STARBASE`'s 20/20 is therefore **absence of a trigger, not
-evidence of correctness**. The risk is accepted on the error direction, not on the clean run.
-**Owner:** Implementer
-**Priority:** Medium — an intermittent failure in the helper every `T-019` assertion rests on
-**Phase:** Phase 1 *(**Reassigned to Phase 5 on 2026-09-10 by maintainer ruling**, with the other Windows-only
-tasks: *"defer the windows specific screen tasks to the same phase. They should no longer block
-phase 4 closure."* It did not block Phase 4 before the ruling either — `OPS-005` already had
-hosted-only Windows findings not gating a phase — so this records the intent rather than
-changing a gate. Phase 5 is where it genuinely bites: the release needs a Windows artifact that
-installs and runs.)*
-**Depends on:** nothing
-**Relevant context:** `T-019`, `docs/project/TESTING.md` §7 (Cancellation, Worker crash)
-**Affected surfaces:** `tests/integration/test_manager.py`
-**Risk:** Medium — it decides whether the process-tree suite is telling the truth
-
-#### Scope
-
-`test_the_survival_check_can_tell_a_live_process_from_a_dead_one` failed once on `windows-latest`
-in run `30323328299`: `still_running([dead_pid])` returned `[7208]` for a process the test had
-already reaped. It passed on the runs either side, so it is **intermittent, not a regression** —
-nothing in the `T-016` batch touches `process_tree.py` or that helper.
-
-The likely cause is that `still_running` treats "psutil can still see the pid" as alive, excluding
-only `NoSuchProcess` and `STATUS_ZOMBIE`. Windows has no zombie state, and a terminated process
-stays visible while a handle to it remains open, so there is a window in which a dead process
-reports as running.
-
-**This matters more than a flaky test usually would.** `still_running` is the helper the whole
-`T-019` descendant-reaping suite decides on, and its own docstring says a guard nobody watches
-fail is the shape `docs/project/TESTING.md` §13 exists to catch. A false *alive* fails loudly, as here; the
-concern is whether the same imprecision can produce a false *dead* and make a reaping assertion
-pass without anything having been reaped.
+**What the release notes must not say**: that this application reaches everything yt-dlp does.
+`REQ-030` is unmet by design until Phase 4.5, and `REQ-031`'s escape hatch is the first thing
+scheduled there. The notes say what *is* covered, and that the rest is coming as an update.
 
 #### Acceptance criteria
 
-- The helper distinguishes a running process from a terminated-but-visible one on Windows, by
-  exit status rather than by presence
-- The claim is demonstrated on Windows CI, not reasoned about from Linux
-- Whether the previous form could report a live process as dead is answered explicitly, and the
-  answer is recorded rather than assumed benign
+- Every §8 item has evidence in the review record, or is marked `N/A` with the reason (item 5,
+  item 10a) — none marked passed on a green CI run alone
+- The published release carries both artifacts, `SHA256SUMS`, and notes that make no parity claim
+- `IMPLEMENTATION_PLAN.md` §Phase 5 records the exit with the review's verdict and date
+- `OPS-005`'s rule is applied to the four Windows-only diagnostic tasks reassigned here
+  (`T-074`, `T-092`, `T-068`, `T-056`): each gets an explicit disposition — carried or closed —
+  rather than silently outliving the release they were said to matter for
+  - *Done 2026-09-13, by the maintainer, each taking the recommendation:* `T-074` held as a
+    potential task (Proposed — Phase 5); `T-092`, `T-068` and `T-056` cancelled, each recording
+    what closing gives up, in `COMPLETED_TASKS.md`
 
 #### Out of scope
 
-- Changing `downloader/process_tree.py`, which is `T-019`-approved and not implicated
+- Anything Phase 4.5 owns. The release ships without it, on the maintainer's 2026-09-10 ruling
 
-#### Evidence, 2026-07-28
-
-**The fix is Windows-only, because the imprecision is.** On POSIX the terminated-but-visible state
-*is* the zombie state, so `status()` was already asking the right question. On Windows there is no
-zombie and a corpse stays visible while any handle to it is open, so the helper now uses
-`wait(timeout=0)` there — `WaitForSingleObject` on psutil's own handle, which neither disturbs
-anyone else's handle nor depends on visibility.
-
-**The first attempt used `wait(timeout=0)` on both platforms and broke the suite**, which is worth
-keeping: on POSIX that call is `waitpid`, so inspecting a worker *reaped* it and stole the exit
-status `multiprocessing` was waiting for. `is_alive()` then never reported the process gone and
-the manager never went idle —
-`test_cancelling_a_download_kills_what_the_worker_spawned` failed exactly that way. A survival
-check that changes what it observes is worse than an imprecise one.
-
-**The third criterion is answered, not assumed benign.** The previous form could **not** report a
-live process as dead: it answered "dead" only on `NoSuchProcess` (and `ZombieProcess`, its
-subclass) or on a `STATUS_ZOMBIE` a live process never has, and `AccessDenied` was uncaught and so
-would have failed loudly. Its one error direction was **false alive**, which fails an assertion in
-the open rather than letting a reaping assertion pass over nothing. The answer is recorded in the
-helper's docstring, where the next reader of the helper will find it.
-
-**The test now drives the failing shape**: a third process is killed and deliberately *not* waited
-on. On Linux that is a zombie, which the old form already handled; on Windows it is exactly run
-`30323328299`'s failure.
-
-**Mutations run:** answering by presence alone everywhere — killed. Reporting nothing as alive —
-killed. **Disabling the `win32` branch so it falls back to the POSIX question — survived, and
-cannot do otherwise here**: the branch is unreachable on Linux by construction. That is
-`AGENTS.md` §8's "a host-only check is not the whole gate" in its exact form, and it is why this
-task is not claiming to be done.
-
-**Checks:** `ruff check .`, `ruff format --check .`, configured `mypy` and `mypy --platform win32`
-(72 files each — the win32 scope is what analyses the new branch at all) all pass. Bare `pytest`
-green.
-
-**Blocker:** the Windows demonstration. This machine has no Windows and the branch cannot execute
-here, so approval needs the `windows desktop` job to run the corrected helper and the third
-mutation against it. Same shape as `T-033`'s blocker: the code is done, the evidence is not
-producible locally.
-
----
-
+## Blocked
