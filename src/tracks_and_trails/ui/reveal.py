@@ -17,7 +17,7 @@ stays where it belongs, on the `/select,` Reveal route.
 
 ## A path is an argument, never a command
 
-Reveal is `explorer /select,<path>` on Windows and a file-manager call on Linux. Both take the path
+Reveal is `explorer /select, <path>` on Windows and a file-manager call on Linux. Both take the path
 as an **argv element** — `subprocess` with a list, never a string, and never `shell=True`. A title
 containing a quote, a space, or a leading dash is an ordinary title (`T-034` has the fixtures) and
 must not become an argument boundary. There is no shell in this module and nothing here builds a
@@ -26,7 +26,7 @@ command line by concatenation.
 ## The platform is a parameter, not a narrowing
 
 Every command builder here takes `platform` with `sys.platform` as its default. That is not
-indirection for its own sake: `explorer /select,<path>` is the detail in this module most likely to
+indirection for its own sake: `explorer /select, <path>` is the detail in this module most likely to
 be written wrongly, and with `sys.platform` read inline it could only ever be checked *on Windows* —
 so a Linux-only contributor would change it blind. As a parameter, **the Windows argv is asserted by
 the ordinary test suite on any machine**, and `mypy --platform win32` still typechecks both branches
@@ -199,9 +199,21 @@ def open_command(path: Path, platform: str = sys.platform) -> list[str]:
 def reveal_command(path: Path, platform: str = sys.platform) -> list[str]:
     """The argv for revealing, which is the platform-specific half.
 
-    **`explorer /select,<path>` is one argument, comma and all.** Windows' shell parses the comma;
-    splitting it into two argv elements silently opens the *parent folder* without selecting
-    anything, which looks close enough to working to survive a careless test.
+    **`/select,` and the path are two arguments** — and this said the opposite until the maintainer
+    found *Show in folder* opening Documents on Windows (2026-09-13). Measured on `STARBASE` with a
+    file whose folder and name hold spaces, brackets and CJK text:
+
+    | argv | Explorer did |
+    |---|---|
+    | `["explorer", "/select,<path>"]` (what this was) | opened **Documents**, selected nothing |
+    | `explorer /select,"<path>"` as one string | opened the folder, selected nothing |
+    | `["explorer", "/select,", "<path>"]` | opened the folder, **selected the file** |
+
+    The first fails because `subprocess` renders a list for `CreateProcess` with `list2cmdline`,
+    which quotes an element containing a space *whole* (`"/select,C:/My Videos/clip.mp4"`, in
+    backslashes), and Explorer does not recognise a quoted switch. As its own element the path is
+    quoted alone, which Explorer reads. Every form exited 1, which is why `_spawn` does not read
+    Explorer's exit code.
 
     On Linux the D-Bus `FileManager1` interface is what selects a file, and `dbus-send` is the call
     that needs no new dependency. **When it is absent the parent directory is opened instead** —
@@ -209,7 +221,7 @@ def reveal_command(path: Path, platform: str = sys.platform) -> list[str]:
     find their file, and the folder holding it answers most of that.
     """
     if platform == "win32":
-        return ["explorer", f"/select,{path}"]
+        return ["explorer", "/select,", str(path)]
     if not dbus_available():
         return ["xdg-open", str(path.parent)]
     return [
@@ -304,7 +316,9 @@ def _spawn(command: list[str], run: Spawner | None) -> Refusal | None:
         return Refusal(f"Could not ask your desktop to open the file: {error}")
 
     code = getattr(completed, "returncode", 0)
-    if code:
+    # **Explorer's exit code means nothing** (measured, `reveal_command`): it returned 1 for a
+    # reveal that opened the folder and selected the file, and for one that failed, alike.
+    if code and command[0] != "explorer":
         detail = (getattr(completed, "stderr", "") or "").strip()
         return Refusal(
             f"Your file manager reported an error (exit {code})." + (f" {detail}" if detail else "")

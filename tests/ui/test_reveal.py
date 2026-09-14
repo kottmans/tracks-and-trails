@@ -309,16 +309,23 @@ def test_an_os_error_is_reported_rather_than_raising(downloads: Path) -> None:
 # --- criterion 1: what each platform is actually asked to do ----------------------------------
 
 
-def test_windows_reveal_keeps_select_and_the_path_in_one_argument(downloads: Path) -> None:
-    """**The single most breakable line in the module** (`T-086`).
+def test_windows_reveal_passes_select_and_the_path_as_two_arguments(downloads: Path) -> None:
+    """**The single most breakable line in the module** (`T-086`), and it was broken.
 
-    `explorer /select, <path>` as two arguments opens the parent folder without selecting
-    anything — which looks close enough to working that a manual check on Windows can miss it.
-    Asserted exactly, and from Linux.
+    This asserted `["explorer", f"/select,{path}"]`, on a docstring's belief that two arguments
+    would not select. Measured on `STARBASE` (2026-09-13, the maintainer's report): that form opened
+    **Documents** for any path with a space, because `subprocess` quotes the whole element and
+    Explorer does not read a quoted switch; `["explorer", "/select,", path]` opened the folder with
+    the file selected. Asserted exactly, and from Linux, and the Windows command line is asserted
+    as `subprocess` would build it.
     """
     path = downloads / "A clip.mp4"
 
-    assert reveal_command(path, "win32") == ["explorer", f"/select,{path}"]
+    command = reveal_command(path, "win32")
+    assert command == ["explorer", "/select,", str(path)]
+    assert subprocess.list2cmdline(command).startswith("explorer /select, "), (
+        "the switch is quoted together with the path, which Explorer answers by opening Documents"
+    )
     # The line that used to sit here — `open_command(path, "win32") == ["explorer", str(path)]` —
     # asserted the `T086-R1` defect. Windows Open takes no argv now; see
     # `test_windows_open_uses_the_associated_application_api_and_builds_no_argv`.
@@ -496,3 +503,18 @@ def test_the_windows_starter_refuses_where_os_startfile_does_not_exist(
 
     with pytest.raises(OSError, match="Windows-only"):
         start_associated(tmp_path / "whatever.mp4")
+
+
+def test_explorers_exit_code_is_not_reported_as_a_failure(downloads: Path) -> None:
+    """Explorer exits 1 after a reveal that worked (measured on `STARBASE`), so it is not read.
+
+    The maintainer saw *"Your file manager reported an error (exit 1)"* on every Show in folder.
+    """
+    path = downloads / "clip.mp4"
+    path.write_bytes(b"")
+
+    refusal = reveal_file(
+        path, within=downloads, run=RecordingSpawner(returncode=1), platform="win32"
+    )
+
+    assert refusal is None, refusal
