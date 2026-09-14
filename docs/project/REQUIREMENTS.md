@@ -61,7 +61,7 @@ non-empty names — a claim that outran its evidence. Scope statements here must
 a gate actually fails on.
 
 Still *known-unverified* on Windows, and to be reported as such: whether rendering **looks**
-right, whether Narrator **sounds** coherent, whether the installer **feels** normal, shell
+right, whether Narrator **sounds** coherent *(deferred past `0.1.0` by the maintainer, 2026-09-14: `T-339`)*, whether the installer **feels** normal, shell
 foreground and file-association behavior, and long-running stability. **Installer placement and
 removal are automated** (`T-039`): a scripted clean Windows Sandbox run, once per release candidate
 by the maintainer's 2026-09-13 ruling, that fails on a misplaced file, a leftover installed file or

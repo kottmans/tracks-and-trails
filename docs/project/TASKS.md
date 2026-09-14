@@ -266,6 +266,22 @@ users will get it; the draft release `T-324` builds from the tag is the natural 
 **Still open in this session:** item 3 (Narrator) and the SmartScreen screenshot. The review record is
 written when they are.
 
+#### 2026-09-14 (later) — Narrator deferred past `0.1.0`; the SmartScreen download staged
+
+**Item 3 is deferred by the maintainer's ruling**, offered as a choice between deferring it with the
+gap stated and checking it before the tag: *"im not really sure I care if the narrorator works right
+now or not"*, then **defer, and say so**. `0.1.0` ships with Narrator's speech **not heard by a
+person**. What still gates is automated: the Windows accessibility tests read the UI Automation
+tree Narrator reads, and fail on a missing name or role. That is not the same claim as *coherent
+speech*, which is why it stays listed as known-unverified. The check itself is `T-339`. The review
+record marks item 3 *deferred by ruling* rather than passed.
+
+**For item 1's screenshot**, the approved installer (sha256 `4d431336…`, identical to the Sandbox
+share copy) is attached to a **draft** release, `SmartScreen test (not a release)`, visible only to
+accounts with write access and creating no tag. In the Sandbox: Edge, sign in to GitHub, download it
+from the Releases page, run it. The browser download adds the Mark of the Web a mapped-folder copy
+lacks. **The draft is deleted once the screenshot is filed.**
+
 **Owner:** Maintainer performs; Implementer prepares the list and records the result
 **Priority:** High — the one exit criterion the plan says cannot be met from the development
 environment
@@ -1855,6 +1871,31 @@ account for rather than one.
   its trigger found, not its symptom hidden. The one time this project reached for a retry the
   reviewer's instruction was explicit — *do not retry or xfail*
 - `T-056`, which is a different intermittent on a different platform and is `OPS-005`-downgraded
+
+---
+
+### T-339 — Hear Narrator read the Windows application
+
+**Status:** Proposed — **deferred past `0.1.0` by the maintainer on 2026-09-14** (`T-327` item 3). Not
+release-blocking for `0.1.0`; its release notes say Narrator's speech was not checked by a person.
+**Owner:** Maintainer performs; Implementer records
+**Priority:** Medium — an accessibility claim `NFR-005` makes and a person has not heard
+**Phase:** Phase 5 (after `0.1.0`)
+**Relevant context:** `T-327` item 3, as scoped there; `NFR-005`; `IMPLEMENTATION_PLAN.md` §Phase 4's
+screen-reader amendment (coherence *"belongs to the pre-release session"*);
+`tests/ui/test_windows_accessibility.py`, which gates names and roles but cannot judge speech
+
+#### Scope
+
+With Narrator on, on an installed build: open Add URLs, stage a URL, open its format table, choose a
+format, add it, start the queue, and open Preferences. Is what Narrator says *coherent*: does each
+control announce what it is and what it does, in an order that makes sense?
+
+#### Acceptance criteria
+
+- [ ] The walk above done by a person, described in their words in a dated record
+- [ ] Anything incoherent filed as its own task, with its severity under `TESTING.md` §14
+- [ ] `REQUIREMENTS.md` §3's *known-unverified* line about Narrator rewritten to what was heard
 
 ---
 
