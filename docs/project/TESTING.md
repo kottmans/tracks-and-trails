@@ -266,7 +266,7 @@ All of the following, **on Linux and Windows**, before any tag or distributed bu
    development toolchain** installed (`REQ-029`, `REL-001`) — **executable on Linux**,
    `tools/clean_machine_linux.sh`, which supplies the machine, **fails the run** if the
    pre-install check finds Python, Qt, ffmpeg or a toolchain, and writes the evidence file
-   `T-318` requires. Windows is the same evidence taken by hand in Sandbox
+   `T-318` requires, on `ubuntu:24.04` and again on Fedora (`REL-007`, `T-341`). Windows is the same evidence taken by hand in Sandbox
 8. Frozen-build smoke test passes: launch, run one real download to completion, cancel
    another, exit — confirming no recursive launch and no orphaned processes
    (`freeze_support()`, `REL-001`). **Partly executable**: `--download-probe` runs the real

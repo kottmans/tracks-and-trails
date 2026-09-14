@@ -36,8 +36,15 @@ exec "$ENGINE" run --rm --pull=always \
         export DEBIAN_FRONTEND=noninteractive
         # Silent because this is the harness setting up, not the evidence. What it installed and
         # why is recorded by the evidence script itself, which also proves what it did *not*.
-        apt-get -qq update >/dev/null 2>&1
-        apt-get -qq install -y --no-install-recommends ca-certificates libgl1 libegl1 \
-            >/dev/null 2>&1
+        # **Fedora as well as Ubuntu** (`T-341`): the AppImage bundles a Debian-built OpenSSL, and
+        # only a distribution that keeps its certificates somewhere else shows whether the
+        # application finds them. `IMAGE=registry.fedoraproject.org/fedora:44` runs that machine.
+        if command -v apt-get >/dev/null; then
+            apt-get -qq update >/dev/null 2>&1
+            apt-get -qq install -y --no-install-recommends ca-certificates libgl1 libegl1 \
+                >/dev/null 2>&1
+        else
+            dnf -q install -y ca-certificates mesa-libGL mesa-libEGL >/dev/null 2>&1
+        fi
         exec /tools/clean_machine_evidence.sh "'"/artifact/$(basename "$ARTIFACT")"'"
     '

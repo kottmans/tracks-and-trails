@@ -54,7 +54,7 @@ Current requirements and architecture retain their own canonical authority.
 | [REL-004](#rel-004--the-linux-artifact-ships-as-an-appimage) | The Linux artifact ships as an AppImage | Accepted | — |
 | [REL-005](#rel-005--the-first-windows-installer-ships-unsigned) | The first Windows installer ships unsigned | Accepted | [Corrected 2026-09-14](#corrected-2026-09-14--smartscreen-reputation-can-accrue-and-signing-promises-no-prompt-free-install) |
 | [REL-006](#rel-006--a-clean-machine-is-a-disposable-vm-the-maintainer-owns) | A clean machine is a disposable VM the maintainer owns | Accepted | — |
-| [REL-007](#rel-007--the-artifacts-use-the-system-certificate-store-and-bundle-none) | The artifacts use the system certificate store and bundle none | Accepted | [Amended 2026-09-12](#amended-2026-09-12--on-windows-the-operating-system-verifies-not-openssl-reading-its-store) |
+| [REL-007](#rel-007--the-artifacts-use-the-system-certificate-store-and-bundle-none) | The artifacts use the system certificate store and bundle none | Accepted | [Amended 2026-09-12](#amended-2026-09-12--on-windows-the-operating-system-verifies-not-openssl-reading-its-store); [Corrected 2026-09-14](#corrected-2026-09-14--on-linux-the-store-is-looked-for-where-the-distribution-keeps-it) |
 | [REL-008](#rel-008--windows-gets-its-own-startup-number-and-linuxs-stays-where-it-is) | Windows gets its own startup number, and Linux's stays where it is | Accepted | [Amended 2026-09-13](#amended-2026-09-13--0-1-0-ships-on-the-startup-numbers-already-measured) |
 | [REL-009](#rel-009--the-application-says-when-a-newer-release-is-out-and-installs-nothing) | The application says when a newer release is out, and installs nothing | Accepted | [Amended 2026-09-14](#amended-2026-09-14--the-notice-sits-in-the-status-bar-and-the-schedule-lives-as-long-as-the-application) |
 | [REL-002](#rel-002--collect_submodulesyt_dlp-stays-as-insurance-against-a-pin-we-do-not-have-yet) | `collect_submodules("yt_dlp")` stays, as insurance against a pin we do not have yet | Accepted | — |
@@ -1161,6 +1161,38 @@ Two alternatives were put and rejected:
   proof is `packaging/windows-sandbox/evidence.ps1`**, which records whether the Sandbox holds
   `GTS Root R1` — a machine that does cannot tell a fixed build from a broken one — and then runs
   the installed artifact's `--download-probe` against a YouTube video.
+
+### Corrected 2026-09-14 — on Linux, the store is looked for where the distribution keeps it
+
+**A correction of mechanism (`T-341`), not a new decision**: the machine's own store is still what
+is trusted, and no CA data is bundled. **For the maintainer's review**, since the Implementer chose
+how.
+
+**What was found.** Preparing `T-328`'s acceptance sheet on the maintainer's Fedora 44 machine, the
+draft AppImage's `--download-probe` failed with `CERTIFICATE_VERIFY_FAILED`. The AppImage bundles
+the OpenSSL of its Debian 12 build image, whose compiled-in location is `/usr/lib/ssl`; Fedora
+keeps its store under `/etc/pki` and has no `/usr/lib/ssl`. So on Fedora, and on any distribution
+without that path, **every HTTPS request failed**. The *"Linux is unchanged"* above assumed the
+bundled OpenSSL reads the machine's store; on Debian and Ubuntu it does, and the `ubuntu:24.04`
+clean machine is why nothing saw it. It also affected the `3c011b8` and `246dcdf` candidates.
+Measured: the draft failed as it was, and downloaded with `SSL_CERT_FILE` naming Fedora's bundle.
+
+**Correction.** At startup, and in each worker, when OpenSSL's built-in location holds no
+certificates and the user has set neither `SSL_CERT_FILE` nor `SSL_CERT_DIR`, `SSL_CERT_FILE` is set
+to the first distribution bundle that exists, in the order Go's `crypto/x509` reads them
+(`downloader/tls.py`, `LINUX_CA_BUNDLES`). A machine whose built-in location works is untouched, and
+so is a machine with no bundle anywhere, which stays this decision's *"no CA store"* case.
+
+**Consequences.**
+
+- **A root the distribution's trust tooling installed is in the bundle**, so a corporate CA added
+  with `update-ca-trust` or `update-ca-certificates` keeps working, which is the property this
+  decision was made for.
+- **The Linux clean machine runs on Fedora as well as Ubuntu** (`tools/clean_machine_linux.sh`
+  with `IMAGE=registry.fedoraproject.org/fedora:44`). As a control, the unfixed draft **fails** there
+  and a build with the correction **passes**.
+- **Held by tests:** `tests/unit/test_tls.py`, including a real OpenSSL context loading exactly the
+  bundle the variable was pointed at in-process.
 
 ---
 

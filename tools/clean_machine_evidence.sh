@@ -63,7 +63,8 @@ cat <<'WHY'
 
 **Two things are deliberately installed, and neither is Python, Qt or a toolchain.**
 
-- `libgl1` / `libegl1` — an AppImage must not ship the graphics stack, because it has to match
+- the GL and EGL libraries (`libgl1` / `libegl1`, or `mesa-libGL` / `mesa-libEGL` on Fedora) —
+  an AppImage must not ship the graphics stack, because it has to match
   the user's driver. A bare container has none at all, which no real desktop lacks.
 - `ca-certificates` — the system trust store. **The artifact carries no CA bundle of its own**,
   measured: without this package every HTTPS request fails with `CERTIFICATE_VERIFY_FAILED`

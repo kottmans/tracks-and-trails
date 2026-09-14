@@ -140,7 +140,10 @@ tools/clean_machine_linux.sh dist/Tracks_and_Trails-<version>-x86_64.AppImage \
 It supplies a disposable `ubuntu:24.04` — the oldest LTS the README claims, which is deliberately
 *not* the Debian 12 the artifact is built on — runs a pre-install check that **fails the run** if
 Python, a toolchain, Qt or ffmpeg is present, then every probe including `--download-probe`, and
-finally holds a real launch offscreen for 20 seconds. `--version` is not a launch test; it returns
+finally holds a real launch offscreen for 20 seconds. **Run it a second time on Fedora**
+(`IMAGE=registry.fedoraproject.org/fedora:44`, to `linux-fedora-<version>.md`): the artifact's
+OpenSSL was built on Debian, and only a distribution that keeps its certificates elsewhere shows
+whether the application finds them (`REL-007`'s 2026-09-14 correction). `--version` is not a launch test; it returns
 before a `QApplication` exists, which is how a build with no platform plugins passed everything
 once.
 

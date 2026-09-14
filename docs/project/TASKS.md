@@ -14,6 +14,48 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-341 — The AppImage could not download anything on Fedora
+
+**Status:** **In Review** — found 2026-09-14 on the maintainer's Fedora 44 machine while preparing
+`T-328`'s acceptance sheet. Release-blocking; it moves the candidate again.
+**Owner:** Implementer
+**Priority:** Critical — the Linux artifact's core function failed on a major distribution
+**Phase:** Phase 5 (blocks `T-328`)
+**Relevant context:** `REL-007` and its 2026-09-14 correction; `REL-004`; `T-318`'s clean machine
+**Affected surfaces:** `downloader/tls.py`; `tools/clean_machine_linux.sh`,
+`tools/clean_machine_evidence.sh`; `docs/RELEASE.md`; `TESTING.md` §8 item 7
+
+#### What was wrong
+
+The AppImage's bundled OpenSSL (from the Debian 12 build image) looks for certificates only in
+`/usr/lib/ssl`, which Fedora does not have. The draft for `3f41813` failed `--download-probe` on
+the host with `CERTIFICATE_VERIFY_FAILED`, and so did the `246dcdf` draft; with `SSL_CERT_FILE`
+naming Fedora's bundle both downloaded. The clean machine is `ubuntu:24.04`, which has the path.
+
+#### What changed
+
+- `verify_with_the_operating_system` on Linux: when OpenSSL's built-in location holds nothing and
+  the user set neither variable, `SSL_CERT_FILE` names the first bundle in `LINUX_CA_BUNDLES` that
+  exists. Workers inherit it and also make the call themselves.
+- The clean-machine harness installs its three packages with `dnf` on a Fedora image, and
+  `docs/RELEASE.md` asks for that second run per candidate.
+
+#### Acceptance criteria
+
+- [x] Unit tests: pointed at the first existing bundle; an empty directory counts as no store; a
+  working built-in file or directory, a user's variable, and no bundle anywhere leave it unchanged;
+  a real OpenSSL context loads exactly the bundle named in-process (`tests/unit/test_tls.py`)
+- [x] Mutations, each failing those tests: no write (3 fail); ignoring the built-in store (2);
+  ignoring the user's variables (2); an empty directory counted as a store (1); the last bundle
+  chosen instead of the first existing (2)
+- [x] A local container build with the correction downloads on the Fedora 44 host with no
+  override (61,878,609 bytes)
+- [x] `IMAGE=registry.fedoraproject.org/fedora:44 tools/clean_machine_linux.sh`: the `3f41813`
+  draft **FAIL** (the download, `CERTIFICATE_VERIFY_FAILED`); the corrected local build **PASS**
+- [ ] The same Fedora run on the release workflow's draft artifact (`T-326`)
+
+---
+
 ### T-340 — A failed download's log could not be opened from anywhere in the application
 
 **Status:** **In Review** — found 2026-09-14 while preparing `T-328`'s §11 acceptance sheet; the
@@ -713,7 +755,7 @@ incident it cites).
 
 ### T-328 — The first release
 
-**Status:** **In Progress** — **candidate `3c011b8` drafted and reviewed, changes requested** (2026-09-14, [record](reviews/T-328.md)): `T328-R3` (Critical, a stale menu's *Retry* re-queued a DRM failure) is corrected below and needs a new candidate; `T328-R4` (High, the nine `REQUIREMENTS.md` §11 criteria not walked by hand on both platforms) is open. **`T-340` (2026-09-14) moves the candidate again**: §11 criterion 6's copyable log could not be opened from the application, and the maintainer chose to fix it in `0.1.0`. *(Was Proposed:)* **scope 1's release commit made 2026-09-14** (`f22b2c7`, approved for release preparation at `d0cfcf2`; `T328-R1` and `T328-R2` corrected in the commit after it, which is the one to tag, since the draft's body is read from the tagged `CHANGELOG.md`): `__version__ = "0.1.0"`, `CHANGELOG.md` created with the `0.1.0` section the draft release will carry, `SECURITY.md` §Supported versions filled. It waits for the maintainer's `v0.1.0` tag. Filed 2026-09-11 with the Phase 5 plan. **This is the phase exit.**
+**Status:** **In Progress** — **candidate `3c011b8` drafted and reviewed, changes requested** (2026-09-14, [record](reviews/T-328.md)): `T328-R3` (Critical, a stale menu's *Retry* re-queued a DRM failure) is corrected below and needs a new candidate; `T328-R4` (High, the nine `REQUIREMENTS.md` §11 criteria not walked by hand on both platforms) is open. **`T-340` and `T-341` (2026-09-14) move the candidate again**: §11 criterion 6's copyable log could not be opened from the application, and the maintainer chose to fix it in `0.1.0`; and the AppImage could not download on Fedora. *(Was Proposed:)* **scope 1's release commit made 2026-09-14** (`f22b2c7`, approved for release preparation at `d0cfcf2`; `T328-R1` and `T328-R2` corrected in the commit after it, which is the one to tag, since the draft's body is read from the tagged `CHANGELOG.md`): `__version__ = "0.1.0"`, `CHANGELOG.md` created with the `0.1.0` section the draft release will carry, `SECURITY.md` §Supported versions filled. It waits for the maintainer's `v0.1.0` tag. Filed 2026-09-11 with the Phase 5 plan. **This is the phase exit.**
 **Owner:** Reviewer runs the release review; Maintainer tags and publishes
 **Priority:** High
 **Phase:** Phase 5
