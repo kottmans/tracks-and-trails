@@ -10,6 +10,6 @@ Layer map (ARCHITECTURE.md §4). Dependencies point downward only:
 Both rules are enforced by tests/unit/test_layering.py, not by convention.
 """
 
-__version__ = "0.1.0.dev0"
+__version__ = "0.1.0"
 
 __all__ = ["__version__"]

@@ -1981,7 +1981,7 @@ phase became the next one to run. `T-039` also carries `**Phase:** Phase 5` and 
 
 ### T-328 — The first release
 
-**Status:** Proposed — filed 2026-09-11 with the Phase 5 plan. **This is the phase exit.**
+**Status:** Proposed — **scope 1's release commit made 2026-09-14**: `__version__ = "0.1.0"`, `CHANGELOG.md` created with the `0.1.0` section the draft release will carry, `SECURITY.md` §Supported versions filled. It waits for the maintainer's `v0.1.0` tag. Filed 2026-09-11 with the Phase 5 plan. **This is the phase exit.**
 **Owner:** Reviewer runs the release review; Maintainer tags and publishes
 **Priority:** High
 **Phase:** Phase 5

@@ -4,9 +4,9 @@ Three ways to be quietly wrong: the wrong section, an empty section, and *no* se
 an empty one. The third is the one that matters — a draft release with an empty body is worse than
 a workflow that stopped, because a human then publishes it.
 
-**There is no `CHANGELOG.md` in this repository yet.** `docs/RELEASE.md` makes creating it a
-release-commit step, so every case here builds its own text rather than reading the project's.
-That is also why the missing-file case is asserted: it is the current state.
+**Every case but the last builds its own text** rather than reading the project's `CHANGELOG.md`,
+which `docs/RELEASE.md` made a release-commit step and which exists from `0.1.0`. The last runs the
+script against this checkout, as the workflow does.
 """
 
 from __future__ import annotations
@@ -147,10 +147,8 @@ def test_a_missing_section_is_told_apart_from_an_empty_one() -> None:
 def test_the_cli_reports_a_missing_changelog_as_the_missing_file_it_is(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The repository's current state: `docs/RELEASE.md` makes creating it a release-commit step.
-
-    Reported as an absent file rather than as an empty body, because those need different fixes.
-    """
+    """A changelog path with no file behind it, reported as an absent file rather than as an empty
+    body, because those need different fixes."""
     assert tool.main(["--version", "0.1.0", "--changelog", str(tmp_path / "nope.md")]) == 1
     assert "does not exist" in capsys.readouterr().err
 
@@ -179,13 +177,21 @@ def test_the_tool_runs_as_a_script_against_this_checkout() -> None:
     mistake is invisible to every test above."""
     import subprocess
 
-    finished = subprocess.run(
-        [sys.executable, "tools/changelog_section.py", "--version", "0.1.0"],
-        cwd=REPOSITORY,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    # No CHANGELOG.md exists yet, so the honest outcome is a named refusal.
-    assert finished.returncode == 1, finished.stdout + finished.stderr
-    assert "does not exist" in finished.stderr
+    def run(version: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, "tools/changelog_section.py", "--version", version],
+            cwd=REPOSITORY,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    # **`CHANGELOG.md` exists from the `0.1.0` release commit** (`DOC-002`). This asserted the
+    # refusal a missing file gets, which was the honest outcome until then.
+    released = run("0.1.0")
+    assert released.returncode == 0, released.stdout + released.stderr
+    assert "### Downloads" in released.stdout, "the release body is not the 0.1.0 section"
+    assert "## [0.1.0]" not in released.stdout, "the heading leaked into the release body"
+    # And a version with no section is still refused by name, before any build is wasted.
+    missing = run("9.9.9")
+    assert missing.returncode == 1, missing.stdout + missing.stderr

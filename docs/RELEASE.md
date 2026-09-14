@@ -61,7 +61,11 @@ Three files change only here, never in advance:
 - **`CHANGELOG.md`** is *created in the release commit* (`DOC-002`). An empty changelog written
   ahead of time is the speculative document that decision forbids.
 - **Keep a database fixture of the version being released** under
-  `tests/fixtures/historical/`, **from `0.1.0` on — the first release included**. *(Said "from
+  `tests/fixtures/schema_versions/`, **from `0.1.0` on — the first release included**. *(Said
+  `tests/fixtures/historical/`, a directory that never existed; the frozen databases
+  `test_persistence.py` migrates are `schema_versions/v*.sql`. For `0.1.0` that is `v12.sql`, frozen
+  2026-09-13 from `JobRepository.append` while migration `0012` was the newest, which is the schema
+  `0.1.0` ships.)* *(Said "from
   `0.2` onward", which contradicted the sentence below and would have skipped the one fixture
   `0.2` needs; `T326-R2`.)* §8 item 5 is *"the previous release's database
   opens, migrates, and retains data"*, and for `0.1.0` it is **`N/A` — there is no previous

@@ -7,7 +7,7 @@ themselves — those live in the code, the workflows, and the tests named below.
 **Owner:** Maintainer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-09-08
+**Last updated:** 2026-09-14
 **Update when:** A trust boundary, secret-handling rule, supported version, or reporting route
 changes.
 
@@ -15,9 +15,14 @@ changes.
 
 ## Supported versions
 
-**There are no released versions.** Phase 5 — packaging and the first tagged release — is not
-built. The only supported state is the tip of `main`, run from source. When releases begin, this
-section will name which of them receive fixes.
+| Version | Receives security fixes |
+|---|---|
+| `0.1.x` | Yes: the latest release in this line |
+| the tip of `main`, run from source | Yes, as the development line |
+
+**The latest minor receives fixes; older ones do not** (`docs/RELEASE.md`). While the project is at
+`0.y.z`, a fix ships as a new release rather than a patch to an older minor. `0.1.0` is the first
+release, so there is nothing older yet.
 
 ## Reporting a vulnerability
 
