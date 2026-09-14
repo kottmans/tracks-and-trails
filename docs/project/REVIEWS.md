@@ -2,7 +2,7 @@
 
 **Purpose:** Navigation to canonical task and shared-scope review records.
 **Owner:** Reviewer; Coordinator / Integrator owns shared routing during a wave.
-**Last updated:** 2026-09-13
+**Last updated:** 2026-09-14
 **Update when:** A review record is introduced or its navigation changes.
 
 ## Current navigation
@@ -168,6 +168,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | <a id="2026-08-20--session-coordination-and-evidence-review"></a><a id="2026-08-20--session-evidence-focused-correction-re-review"></a>[session-evidence-2026-08-20](reviews/session-evidence-2026-08-20.md) | T-074, T-238, T-269, T-270, T-272 | 2 |
 | <a id="2026-08-17--duplicate-in-review-entries-repair"></a>[task-ledger-repair](reviews/task-ledger-repair.md) | task ledger repair | 1 |
 | [phase-4-exit](reviews/phase-4-exit.md) | phase 4 exit | 0 |
+| [github-community-files](reviews/github-community-files.md) | GitHub community files and source installation | 0 |
 
 Find a task ID in the middle column to locate its record and any cross-cutting
 review that covered it. A scoped audit does not imply approval of the whole task.
