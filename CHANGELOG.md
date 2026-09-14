@@ -20,12 +20,12 @@ The first release: a desktop app for downloading video and audio with
 
 ### Before you install
 
-- **Windows will warn you when you run the installer.** It is not signed yet, so Microsoft Defender
-  SmartScreen shows *"Windows protected your PC"* and *"Microsoft Defender SmartScreen prevented an
-  unrecognized app from starting. Running this app might put your PC at risk."* Choose **More
-  info**, check the app is `Tracks-and-Trails-0.1.0-setup.exe` from *Unknown publisher*, then
-  choose **Run anyway**. The warning does not go away with more downloads; signing is planned before
-  1.0.
+- **Windows may warn you when you run the installer.** This installer is unsigned, so Microsoft
+  Defender SmartScreen may show *"Windows protected your PC"* and *"Microsoft Defender SmartScreen
+  prevented an unrecognized app from starting. Running this app might put your PC at risk."* If it
+  appears, choose **More info**, check the app is `Tracks-and-Trails-0.1.0-setup.exe` from *Unknown
+  publisher*, then choose **Run anyway**. Each new unsigned build has to establish its own
+  reputation. Signing is planned before 1.0.
 - **Linux needs glibc 2.36 or newer:** Debian 12, Ubuntu 24.04 LTS, or newer. Ubuntu 22.04
   is too old.
 - **Linux needs ffmpeg from your distribution** to merge separate video and audio streams and to

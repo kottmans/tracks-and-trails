@@ -34,11 +34,16 @@ Three of them are not things a workflow can do for you, so plan them first:
 `REL-003`: SemVer, `0.y.z` until the maintainer declares `1.0`.
 
 1. `main` carries `X.Y.Z.devN` between releases.
-2. The **release commit** sets `__version__ = "X.Y.Z"` in `src/tracks_and_trails/__init__.py`.
-   That is the only place it is declared — `pyproject.toml` reads it through
-   `[tool.hatch.version]`.
-3. Tag that commit **`vX.Y.Z`**.
-4. The **next** commit bumps to `X.Y.(Z+1).dev0`.
+2. **Candidate preparation.** The **release commit** sets `__version__ = "X.Y.Z"` in
+   `src/tracks_and_trails/__init__.py`. That is the only place it is declared — `pyproject.toml`
+   reads it through `[tool.hatch.version]`. A correction the release review asks for before
+   publication is a further commit at the same version.
+3. Tag the commit being released **`vX.Y.Z`**. The workflow builds and **drafts**.
+4. **Publication**, after `T-328`'s release review: the maintainer publishes the draft, and the
+   README's install section goes live in the same push.
+5. **Only then** does a commit bump `main` to `X.Y.(Z+1).dev0`. *(This said the next commit after
+   the release commit, which would put a development version on `main` while the candidate could
+   still need a correction at `X.Y.Z`; `T328-R2`, matching `T-328`'s scope.)*
 
 **Patch releases carry fixes only.** A yt-dlp baseline bump is at least a **minor** release, because
 it changes behaviour on every site — and gate item 10a applies: the `yt-dlp canary` workflow must be
@@ -75,9 +80,10 @@ Three files change only here, never in advance:
 - **`SECURITY.md` §Supported versions** is filled at the first tag: the latest minor receives
   fixes, older ones do not. It currently says there are no released versions, which is true until
   this step.
-- **`README.md`**'s capability table says *"you cannot install it from a release — there are no
-  installers or packages yet."* That line is **true until the first release exists**; replace it
-  with an install section pointing at the release page in the same commit, not before. **That
+- **`README.md` is not changed in the release commit.** Its *"There is no release to download yet"*
+  is **true until the first release is published**, so the install section pointing at the release
+  page goes live **at publication**, in the same push, not before. *(This placed it in the release
+  commit, which would claim a download before one exists; `T328-R2`.)* **That
   section must carry the SmartScreen click-through verbatim** — *More info* → *Run anyway* — and
   the two system requirements above it. `T-317` asks for that wording in the README specifically,
   and this is the commit where a README section can exist without claiming something untrue.
@@ -116,8 +122,8 @@ Two system requirements, neither of which the artifacts can or should satisfy th
   Windows, not on Linux, and `REQ-024` finds it on `PATH`.
 
 **These belong in the README's Install section too, and it does not have one yet.** `T-320`
-deferred that while *"there are no installers or packages yet"* is still true — so the first
-release commit that makes it false adds the section and these three lines with it. Until then this
+deferred that while *"there are no installers or packages yet"* is still true — so the publication
+that makes it false adds the section and these three lines with it. Until then this
 is their only home, which is stated here so the next person does not have to rediscover them from
 a build script's comments.
 
@@ -184,9 +190,13 @@ and, after **More info**:
 "unrecognised" and left out the second sentence and the details page.)*
 
 The way through is **More info** → **Run anyway**. Say exactly that on the release page and in the
-README install section, so support is a link rather than a conversation. Reputation never accrues
-without a certificate, so the prompt does not go away with downloads; `REL-005` names a certificate
-as the `1.0` condition.
+README install section, so support is a link rather than a conversation. **Say that Windows *may*
+show it**: SmartScreen reputation can accumulate for an unsigned file, but each new unsigned build
+starts afresh, so no download count or date can be promised. `REL-005` names signing as the `1.0`
+condition. *(This said reputation never accrues without a certificate and the prompt never goes
+away, which Microsoft's
+[SmartScreen reputation guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)
+contradicts; `T328-R1`.)*
 
 The Linux AppImage is unsigned too, deliberately — AppImage signatures are optional and rarely
 checked. `REL-005` records that as a choice rather than an oversight.

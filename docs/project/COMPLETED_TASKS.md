@@ -92,6 +92,214 @@ accepts it. Until then it is a proposal in a task, which is the narrowest honest
 - Building anything. This is the decision; Phase 5 owns the packaging work (`T-321`)
 - Windows, which `OPS-001` already settles
 
+### T-327 — The Windows manual verification session
+
+**Status:** **Complete — Approved at `468728a`** on 2026-09-14 by independent review of `07082ac`, with the recorded `0.1.0` Narrator exception ([record](reviews/windows-manual-session-2026-09.md#2026-09-14--focused-review-of-the-session-record-corrections)). It does not stand in for `T-326`'s candidate checks or `T-328`'s publication review. *(Was In Review:)* **the session is recorded** ([record](reviews/windows-manual-session-2026-09.md), 2026-09-14): items 1, 2, 4, 5 and 6 observed by the maintainer, item 3 deferred by ruling (`T-339`), and `REQUIREMENTS.md` §3 rewritten to match. *(Was In Progress:)* the maintainer's session began 2026-09-12 in Windows Sandbox. Item 1
+is under way and **has already found one defect**, below. Filed 2026-09-11 with the Phase 5 plan.
+**Human, and blocking**: `TESTING.md` §8 item 15 says *"CI green is not a substitute"*
+
+#### 2026-09-12 — the session so far
+
+**Item 1, install.** The maintainer reports the installer *"works fine"* and, after the wizard
+artwork changes, *"everything looks good"*. **One finding**: an *"Install for me only / Install for
+all users"* question appeared before the wizard — invisible to every automated run, since they are
+all `/VERYSILENT`. Fixed under `T-322` by ruling (`commandline`: no question, `/ALLUSERS` kept for
+administrators). **To confirm on the rebuilt installer.** Also from this session: the wizard pages
+now carry the logo rather than Inno's stock artwork, at the maintainer's request — a polish change,
+not a defect.
+
+**Items 2–6 not yet done.** The review record is written when the session is, in the maintainer's
+own words.
+
+#### 2026-09-12 (later) — what the session found, and where each went
+
+**Item 1 is confirmed** on the rebuilt installer: no install-mode question, and the wizard artwork
+sharp at Inno 6.7's real slot sizes. Then, using the installed application in Sandbox, the
+maintainer found **six defects**, none visible to an automated run, and more on 2026-09-13. The first two were confirmed fixed by the maintainer on the rebuilt installer (`4324e21c…`) the same day; the rest await the next build. **Open played no picture and no sound** in Windows Media Player inside the Sandbox, on a 1080p H.264/AAC MP4; the same download plays normally on Linux, so the maintainer judged it the Sandbox's limited graphics and audio rather than a defect (item 4's *Open* otherwise launched the right file in the associated player). **Vertical bars** the maintainer saw across the empty queue in dark are not drawn by the application — measured on `STARBASE`, the queue paints one colour, `#0a1712`, everywhere but its text — and are most likely the Sandbox's remote display compressing a near-black area. Each is fixed, pushed and
+tested; the review record will cite them.
+
+| Found | Cause | Commit |
+|---|---|---|
+| a short grey line after each status-bar message | Qt's Windows item frame | `3294cfd` |
+| a closing full stop on the ffmpeg summary | sentence punctuation beside a caption | `c7ef559` |
+| dark-mode menu titles unreadable under the pointer | no `QMenuBar` rule, so the native pale highlight | `b060966` |
+| **every YouTube download failed**, `CERTIFICATE_VERIFY_FAILED` | Python trusts only roots already in the Windows store; `REL-007` amended to verify through the OS (`truststore`) | `1f377db`, `4e20c70` |
+| the chosen entry of a drop-down invisible | `QListView::item:selected` reaching the popup under the Windows style | `5461053` |
+| **YouTube downloads then failed with 403** | the bundled yt-dlp 2026.7.4; `T-332` bumps it | `663838e` |
+| dark mode: `Start` and `Clear finished` highlighted only at the border under the pointer | the hover fill was `sunken`, 1.05:1 against the resting fill; a `hover` role lifts it | `fcff105` |
+| tooltips white on white | no `QToolTip` rule, so the theme's text on the Windows style's white panel | `fcff105` |
+| a disabled option's label still drawn in full ink | the `QWidget` rule's colour beat the palette's disabled text for every widget without its own `:disabled` rule | `f91ea9d` |
+| a band behind each label and tick box inside a group | every widget painted the `window` ground on the group's `surface` | `a5cd14f` |
+| row buttons with no face, no hover and no press; the status chip read as a button | verbs drawn through the list's style, which no button rule matches; the chip outlined like a button (ruled: a filled label) | `3f576e1` |
+| tick boxes a white square in every theme and state | the Windows style's own indicator (ruled: drawn from the theme) | `9511238` |
+| no way back from a cancel | `CANCELLED` had no exit (ruled: *Queue again*, `T-335`) | `e9549fd` |
+| *Show in folder* reported "exit 1" and opened Documents | `/select,` and the path passed as one argv element, which `subprocess` quoted whole; Explorer's exit code read as failure | `7e82d0f` |
+| removing settings after an uninstall meant finding the folder by hand | the uninstaller only said what it kept (ruled: one dialog with an unticked box) | `T-322`, 2026-09-13 |
+
+Two changes of behaviour came out of the same sitting, each ruled by the maintainer: the yt-dlp
+section shows in-use, bundled and latest side by side (`T-333`), and a started queue stops itself
+once its work is done (`T-334`).
+#### 2026-09-14 — uninstall, Queue Again and Rename on the installed build; no SmartScreen prompt
+
+On the installer approved at `66b674c` (sha256 `4d431336…`), in Windows Sandbox, the maintainer
+verified:
+
+- **Item 6, uninstall.** The single dialog from Windows' app list and its tick box, and the final
+  message for both keeping and removing the settings and queue. With the application open, *"the
+  uninstaller does not continue while the app is open"*. On launching the application during an
+  uninstall: *"I was unable to open the app in the amount of time that it took the uninstaller to
+  run."* That is the maintainer's observation of how short the window is, not a guard; the removal's
+  own checks still report *incomplete* if a file is recreated or held. *(`T327-R2`: incomplete is
+  reported when a deletion fails or a checked item is still present at its check; a file recreated
+  after its check is not detected, and that case was not exercised.)*
+- **Queue Again** (`T-335`) and **Rename** with naming from Preferences (`T-337`) on the installed
+  build, each task's last unchecked criterion.
+
+**Item 1: no SmartScreen prompt appeared.** In the maintainer's words: *"I didn't get a smartscreen
+warning at all when launching the installer."* **That is expected here and is not evidence that the
+installer is trusted.** SmartScreen checks only files that carry the Mark of the Web, which a browser
+download adds, and an installer copied into the Sandbox through its mapped folder has none. `T-317`'s
+screenshot is therefore still owed. It needs the installer downloaded through a browser, which is how
+users will get it; the draft release `T-324` builds from the tag is the natural source.
+
+**Still open in this session:** item 3 (Narrator) and the SmartScreen screenshot. The review record is
+written when they are.
+
+#### 2026-09-14 (later still) — item 1: the SmartScreen prompt, seen
+
+**The maintainer took both screens** on the unsigned installer (sha256 `4d431336…`), copied into a
+fresh Sandbox and given a browser download's Mark of the Web (`ZoneId=3`), launched from Explorer:
+
+1. **Windows protected your PC** — *Microsoft Defender SmartScreen prevented an unrecognized app from
+   starting. Running this app might put your PC at risk.* — *More info*, **Don't run**.
+2. After *More info*: **App:** `Tracks-and-Trails-0.1.0.dev0-setup.exe`, **Publisher:** *Unknown
+   publisher* — **Run anyway**, **Don't run**.
+
+This is `REL-005`'s accepted cost exactly as a user meets it. `docs/RELEASE.md`'s description was
+corrected to these words: it had *unrecognised*, and neither the second sentence nor the details
+page. **Filed:** the second screen, as
+[`2026-09-14-T327-smartscreen-more-info.png`](evidence/2026-09-14-T327-smartscreen-more-info.png)
+(531 × 497). The first was not saved; everything it shows except the *More info* link is repeated on
+the second, and the transcription above records the link.
+
+#### 2026-09-14 (later) — Narrator deferred past `0.1.0`; the SmartScreen download staged
+
+**Item 3 is deferred by the maintainer's ruling**, offered as a choice between deferring it with the
+gap stated and checking it before the tag: *"im not really sure I care if the narrorator works right
+now or not"*, then **defer, and say so**. `0.1.0` ships with Narrator's speech **not heard by a
+person**. What still gates is automated: the Windows accessibility tests read the UI Automation
+tree Narrator reads, and fail on a missing name or role. That is not the same claim as *coherent
+speech*, which is why it stays listed as known-unverified. The check itself is `T-339`. The review
+record marks item 3 *deferred by ruling* rather than passed.
+
+**For item 1's screenshot**, a draft release was tried and withdrawn the same hour: a draft's assets
+need a signed-in GitHub account, and the Sandbox has none. The draft was deleted, and it never made a
+tag. **The screenshot is taken instead by giving the Sandbox copy the Mark of the Web a browser
+download adds** (`Zone.Identifier` with `ZoneId=3`) and launching it from Explorer. SmartScreen's
+check is keyed on that mark and made online either way, so the warning is the one a downloaded copy
+gets. **If it shows nothing**, the fallback is the published `v0.1.0` release, which needs no
+sign-in.
+
+**Owner:** Maintainer performs; Implementer prepares the list and records the result
+**Priority:** High — the one exit criterion the plan says cannot be met from the development
+environment
+**Phase:** Phase 5
+**Depends on:** `T-322` (an installer to install) and `T-318` (a clean Windows machine to install
+it on — Windows Sandbox if that is what it chose)
+**Relevant context:** `TESTING.md` §9's manual list and its `OPS-004` residue: *whether the
+rendering looks right, whether Narrator sounds coherent, whether the installer feels normal, shell
+foreground and file-association behaviour, long-running stability*; `IMPLEMENTATION_PLAN.md`
+§Phase 4's screen-reader amendment (coherence *"belongs to the pre-release session"* — this is
+that session, for Windows); `REQUIREMENTS.md` §3
+**Affected surfaces:** a review record under `docs/project/reviews/`, indexed by `REVIEWS.md`;
+`REQUIREMENTS.md` §3's *known-unverified* paragraph, which this discharges
+**Risk:** Low to run; the risk is the schedule — it needs the maintainer, a Windows desktop and an
+installer on the same afternoon
+
+#### Scope
+
+`OPS-004` shrank this to the subjective residue and named each item. The session performs exactly
+that list — no more, because everything else is gated; no less, because each item is there for
+a reason `OPS-003` and `OPS-004` recorded:
+
+1. Install from `T-322`'s installer on the clean machine, watching the prompts (`T-317`'s
+   SmartScreen screenshot is taken here if unsigned)
+2. Rendering under light and dark themes — does it *look* right, beyond matching a baseline
+3. **Narrator**: open the add dialog, stage a URL, open its format table, choose a format, add it,
+   start the queue — is what Narrator says *coherent*, as distinct from the tree being correct
+4. Native file dialogs, *Show in folder*, *Open*: does Explorer come to the foreground, does the
+   dialog start somewhere sensible, is the association the expected one
+5. A long real download with the window in use throughout — stability under real use
+6. Uninstall, watching what it says about user data
+
+*(Said `T-212`'s recorded checklist run was the same sitting. `T-212` was cancelled 2026-09-13 by the
+maintainer; this session is the manual check the release relies on.)*
+
+#### Acceptance criteria
+
+- A dated review record with each of the six items marked and described in the maintainer's own
+  words, indexed by `REVIEWS.md` — the form `TESTING.md` §8 item 15 names
+- `REQUIREMENTS.md` §3's *known-unverified on Windows* paragraph is rewritten to what was
+  actually observed, no further
+- Anything found becomes a task, and a task found here blocks the release only if it is a
+  Critical or High defect (`TESTING.md` §14's severities)
+
+#### Out of scope
+
+- Anything CI already gates. Recording a gated item as *passed by hand* is the drift `TESTING.md`
+  §9 warns against
+
+---
+
+### T-333 — The yt-dlp section says which version is newest at a glance
+
+**Status:** **Complete — Approved at `468728a`** on 2026-09-14, its installed-build observation reviewed ([record](reviews/T-333.md#2026-09-14--installed-build-observation-review)). *(Was In Review:)* ruled 2026-09-12 (a table with a Check button, the Implementer's
+recommendation), recorded as `OPS-002`'s 2026-09-12 amendment, and built the same day. Filed from
+`T-327`'s session.
+**Owner:** Implementer designs; Maintainer rules
+**Priority:** Medium
+**Phase:** Phase 5
+**Relevant context:** `OPS-002` and its 2026-08-27 amendment (`T-290`: updating is a recovery move,
+not upkeep); `NFR-007` (*"explicit yt-dlp update checks"* — a check on opening Settings would not be
+explicit); `REQ-025` (the version shown is the one a worker imported)
+**Affected surfaces:** `ui/settings_dialog.py`'s yt-dlp group
+
+The maintainer, in the Sandbox: *"it should be more obvious what version you have, what the bundled
+version is and what the latest is … There's also a wall of text there that kind of hides it."*
+
+Today the group is three paragraphs and one `Version in use` line. **The latest version is known to
+nobody until a network request is made**, and `NFR-007` allows that only as an explicit check —
+so a *Latest* row either waits for a button press or the requirement is amended.
+
+#### Built 2026-09-12
+
+- **`YtdlpService.check_latest_version`** asks PyPI through the existing `latest_release` and emits
+  `checked`; it holds no workers and writes nothing, which its test asserts with holds refused and
+  the directory absent. An install's `installed` also reports the newest release to the screen.
+- **The section** is a grid: *In use* (from a worker, unchanged), *Bundled* (the pin, spelt the way
+  yt-dlp prints versions), *Latest* (*Not checked* until **Check**). A **newest** tag sits beside
+  every row holding the newest version, and only once Latest is known.
+- **Update** is enabled only when Latest is newer than In use, compared by value, and reads
+  *Update to 2026.09.02*. The three paragraphs became one line; *tested with this application* is
+  the bundled row's detail, and *updating affects downloads only* is the button's tooltip and
+  accessible description.
+- **Tests**: the service check; the composed screen reaching the service through Check and Update
+  (and not checking on opening); unchecked, same, in-use-newer and latest-newer; tags before and
+  after a check. **Mutated**: Update enabled without anything newer (3 failures); tags shown before
+  a check (1).
+
+#### Acceptance criteria
+
+- [x] In use, bundled and latest are shown together, and the newest is tagged
+- [x] Latest is fetched only on an explicit Check (`NFR-007`)
+- [x] Update is offered only when latest is newer than what runs
+- [x] The wall of text is gone, and what it said is still somewhere true
+- [x] Seen on the Windows installed build *(the maintainer, 2026-09-14, on `4d431336…`: "Yes,
+  looked right", versions shown correctly and *Check* working; `T-327`. `T333-R1`'s disposition is the
+  reviewer's)*
+
+---
+
 ### T-337 — Naming is a setting; a single download is renamed, not templated
 
 **Status:** **Complete** — seen on the installed build by the maintainer on 2026-09-14. *(Was In Review:)* the implementation is **approved at `4e10935`** (review of `03c6745`, [record](reviews/T-337.md#2026-09-14--focused-correction-re-review-at-03c6745)); one criterion remains, *seen on the Windows installed build*, which rides `T-327`. Corrected 2026-09-14 for `T337-R1`…`R5` (below). Ruled 2026-09-13 by the

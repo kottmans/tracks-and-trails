@@ -24,17 +24,15 @@ the first release**. Nothing user-facing may claim parity with yt-dlp until 4.5 
 *Refreshed 2026-09-14. The previous snapshot is recoverable from `39dab46`; its facts live in the
 task and review records it summarised.*
 
-- **The session-changes reviews** ([record](reviews/T-337.md)) are through. **Completed
-  2026-09-14:** `T-338`, `T-337`, `T-335`, `T-332`, `T-039` and `T-325`. `T-322`'s review findings are
-  all resolved (`T322-R5` approved at `9791c7e`), and the maintainer has seen its uninstaller on the
-  installed build, and its SmartScreen screenshot is filed; it waits on a workflow build.
-- **Waiting on the maintainer**, and not implementable around:
-  - nothing in `T-327`: the session is recorded ([record](reviews/windows-manual-session-2026-09.md)),
-    Narrator deferred as `T-339`, and it is in review; Narrator (item 3) is deferred past
-    `0.1.0` by ruling, as `T-339`;
-  - the first `v*` tag, which `T-324`'s draft run and `T-326`'s candidate items need.
-- **Otherwise open:** `T-322` (a workflow build), `T-333` (its installed-build
-  observation), `T-324`/`T-326` (a tag), `T-328` (the release).
+- **`0.1.0` is prepared and waits for its tag.** The release commit is approved for release
+  preparation ([record](reviews/T-328.md)); its two Low corrections (the SmartScreen wording and the
+  release sequence) are in the commit after it, which is the one to tag. **Completed 2026-09-14:**
+  `T-327` (the Windows session, Narrator deferred as `T-339`), `T-333`, `T-338`, `T-337`, `T-335`,
+  `T-332`, `T-039` and `T-325`.
+- **Waiting on the maintainer:** the `v0.1.0` tag, which starts `T-324`'s draft build and `T-326`'s
+  candidate items; then publication, after `T-328`'s release review.
+- **Otherwise open:** `T-322` (a workflow build of the installer), `T-324`/`T-326` (the tag),
+  `T-328` (the release).
 - **The four Windows-only diagnostic tasks have their dispositions** (`T-328`, maintainer ruling
   2026-09-13): `T-074` is held as a potential task (Proposed — Phase 5), and `T-092`, `T-068` and
   `T-056` are cancelled with what closing gives up recorded. `T-212`'s checklist run was

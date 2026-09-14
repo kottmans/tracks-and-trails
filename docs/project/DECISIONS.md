@@ -50,9 +50,9 @@ Current requirements and architecture retain their own canonical authority.
 | [DAT-001](#dat-001--sqlite-for-queue-and-history-toml-for-settings) | SQLite for queue and history; TOML for settings | Accepted | [Amended 2026-08-06 (second, and current)](#amended-2026-08-06-second-and-current--there-is-no-history-to-store); [Amended 2026-08-06 (first, superseded)](#amended-2026-08-06-first-superseded--history-is-a-private-ledger-and-the-storage-choice-is-unchanged) |
 | [OPS-001](#ops-001--ffmpeg-is-an-external-dependency-detected-on-linux-bundled-on-windows) | ffmpeg is an external dependency: detected on Linux, bundled on Windows | Accepted | — |
 | [OPS-002](#ops-002--ship-a-pinned-yt-dlp-baseline-that-the-user-can-update-in-place) | Ship a pinned yt-dlp baseline that the user can update in place | Accepted | [Amended 2026-09-12](#amended-2026-09-12--the-three-versions-side-by-side-and-update-only-to-something-newer); [Amended 2026-08-27](#amended-2026-08-27--the-override-is-recovery-not-a-standing-choice) |
-| [REL-003](#rel-003--semver-and-the-first-release-is-010) | SemVer, and the first release is `0.1.0` | Accepted | — |
+| [REL-003](#rel-003--semver-and-the-first-release-is-010) | SemVer, and the first release is `0.1.0` | Accepted | [Clarified 2026-09-14](#clarified-2026-09-14--the-development-bump-follows-publication) |
 | [REL-004](#rel-004--the-linux-artifact-ships-as-an-appimage) | The Linux artifact ships as an AppImage | Accepted | — |
-| [REL-005](#rel-005--the-first-windows-installer-ships-unsigned) | The first Windows installer ships unsigned | Accepted | — |
+| [REL-005](#rel-005--the-first-windows-installer-ships-unsigned) | The first Windows installer ships unsigned | Accepted | [Corrected 2026-09-14](#corrected-2026-09-14--smartscreen-reputation-can-accrue-and-signing-promises-no-prompt-free-install) |
 | [REL-006](#rel-006--a-clean-machine-is-a-disposable-vm-the-maintainer-owns) | A clean machine is a disposable VM the maintainer owns | Accepted | — |
 | [REL-007](#rel-007--the-artifacts-use-the-system-certificate-store-and-bundle-none) | The artifacts use the system certificate store and bundle none | Accepted | [Amended 2026-09-12](#amended-2026-09-12--on-windows-the-operating-system-verifies-not-openssl-reading-its-store) |
 | [REL-008](#rel-008--windows-gets-its-own-startup-number-and-linuxs-stays-where-it-is) | Windows gets its own startup number, and Linux's stays where it is | Accepted | [Amended 2026-09-13](#amended-2026-09-13--0-1-0-ships-on-the-startup-numbers-already-measured) |
@@ -843,7 +843,7 @@ a minor release loses the word *minor* that carries it.
 
 - `main` carries `X.Y.Z.devN` between releases.
 - A release commit sets `__version__ = "X.Y.Z"` and is tagged `vX.Y.Z`.
-- The next commit bumps to `X.Y.(Z+1).dev0`.
+- The next commit bumps to `X.Y.(Z+1).dev0`. *(Clarified below: after publication.)*
 - Patch releases carry fixes only. **A yt-dlp baseline bump is at least a minor release**, because
   it changes behaviour on every site (`OPS-002`; release gate item 10a).
 
@@ -861,6 +861,15 @@ a minor release loses the word *minor* that carries it.
   tagged release, and an empty changelog is the speculative document that decision forbids.
 - **Declaring `1.0` stays the maintainer's, and this entry does not schedule it.** The natural
   condition is `REQ-030` parity landing in Phase 4.5, but naming that here would be deciding it.
+
+### Clarified 2026-09-14 — the development bump follows publication
+
+**A timing clarification, not a new decision** (`T328-R2`). *"The next commit bumps"* is read as the
+next commit **after the release is published**, which is the order `T-328`'s scope already gives:
+the release commit sets `X.Y.Z` and is tagged; a correction the release review asks for before
+publication lands at the same version; the maintainer publishes the draft and the README's install
+section goes live in that push; then `main` moves to `X.Y.(Z+1).dev0`. Bumping straight after the
+release commit would leave a candidate needing a correction with no `X.Y.Z` commit to make it on.
 
 ---
 
@@ -988,6 +997,24 @@ condition**, so the reopening is scheduled rather than hoped for.
   rarely checked; recorded as an omission taken on purpose rather than overlooked.
 - **Reopening condition:** the `1.0` release, or evidence that the prompt is costing installs —
   whichever comes first.
+
+### Corrected 2026-09-14 — SmartScreen reputation can accrue, and signing promises no prompt-free install
+
+**A factual correction, not a new decision** (`T328-R1`). The context and the second consequence
+above state two things Microsoft's current guidance does not support:
+
+- *"Reputation never accrues, so the prompt never goes away."* Microsoft's
+  [SmartScreen reputation guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)
+  covers unsigned files and says reputation can build for a file's hash. **Each new unsigned build
+  starts afresh**, so the prompt may appear for every release, and no count or date is promised.
+- *"Azure Trusted Signing or an EV certificate does remove the prompt from the first install."* The
+  same guidance says EV no longer bypasses SmartScreen automatically, and the
+  [Artifact Signing FAQ](https://learn.microsoft.com/en-us/azure/artifact-signing/faq) describes the
+  prompt stopping *"once the file hash has sufficient download history"*. Signing names the publisher;
+  it does not guarantee a prompt-free first install.
+
+**The decision stands**: `0.1.0` ships unsigned, and signing is the `1.0` condition. The release
+notes now say Windows *may* show the warning.
 
 ---
 
