@@ -534,7 +534,6 @@ class SettingsDialog(QDialog):
         inner = QVBoxLayout(sections)
         inner.setContentsMargins(0, 0, 0, 0)
         inner.addWidget(self._build_downloads_section())
-        inner.addWidget(self._build_naming_section())
         inner.addWidget(self._build_cookies_section())
         inner.addWidget(self._build_network_section())
         inner.addWidget(self._build_ffmpeg_section())
@@ -723,12 +722,16 @@ class SettingsDialog(QDialog):
         layout.addLayout(row)
 
         self._show_directory()
+        self._add_new_download_controls(box, layout)
         return box
 
     def _show_directory(self) -> None:
         """Put the folder in force on screen, clearing any refusal it answers."""
         self._directory_field.setText(str(self._directory))
         self._directory_problem.setText("")
+        # **Hidden while it says nothing**, so an empty line does not open a gap between the folder
+        # and its buttons; it appears, beside the folder, only with a refusal in it.
+        self._directory_problem.setVisible(False)
         # Nothing to clear when nothing was chosen. Disabled rather than hidden, so the row does
         # not change shape under the pointer (`T-060`'s rule for the retry button).
         self._use_default.setEnabled(not self._directory_is_default)
@@ -815,6 +818,7 @@ class SettingsDialog(QDialog):
         """Say why, where the user is looking, and put the folder in force back on screen."""
         self._show_directory()
         self._directory_problem.setText(why)
+        self._directory_problem.setVisible(True)
 
     def _remember(self, directory: Path | None) -> None:
         self._on_directory_chosen(directory)
@@ -836,50 +840,14 @@ class SettingsDialog(QDialog):
 
     # --- cookies ------------------------------------------------------------------------
 
-    def _build_naming_section(self) -> QWidget:
-        """What a new paste starts with, and how its file is named (`REQ-023`, `T-195`)."""
-        box = QGroupBox("New downloads", self)
-        box.setObjectName("namingSection")
-        layout = QVBoxLayout(box)
+    def _add_new_download_controls(self, box: QGroupBox, layout: QVBoxLayout) -> None:
+        """How a download's file is named, and what a new paste starts with (`REQ-023`, `T-195`).
 
-        preset_label = QLabel("Preset a newly pasted URL starts with", box)
-        preset_label.setWordWrap(True)
-        layout.addWidget(preset_label)
-
-        self._preset_choice = QComboBox(box)
-        # **The label is the combo's buddy, and on Linux that is the only thing naming it**
-        # (`T200-R7`). `QAccessibleComboBox::text` falls through `Name` to `Value` under
-        # `Q_OS_UNIX` — Qt's own comment says *"on Linux we use relations for this"* — so a combo
-        # box publishes its **selected item** as its accessible name and discards
-        # `setAccessibleName` entirely. Measured: this control announced *"Best video up to 1080p
-        # (MP4)"* as both its name and its value, and deleting its accessible name changed nothing.
-        # `setBuddy` publishes the `Label` relation the platform reads instead, and costs no
-        # layout: the label was already here and already said what the control is for.
-        preset_label.setBuddy(self._preset_choice)
-        self._preset_choice.setObjectName(DEFAULT_PRESET_NAME)
-        self._preset_choice.setAccessibleName("Default preset")
-        for name in self._preset_names:
-            self._preset_choice.addItem(name, name)
-        if self._default_preset:
-            found = self._preset_choice.findData(self._default_preset)
-            if found >= 0:
-                self._preset_choice.setCurrentIndex(found)
-        # **Disabled with the reason beside it, never drawn dead** (`UX-005` §5, `P-13`). A caller
-        # that supplies no names and no writer has nothing to choose between.
-        self._preset_choice.setEnabled(
-            bool(self._preset_names) and self._on_default_preset_chosen is not None
-        )
-        self._preset_choice.currentIndexChanged.connect(self._on_preset_index)
-        layout.addWidget(self._preset_choice)
-
-        self._preset_note = QLabel(box)
-        self._preset_note.setObjectName("defaultPresetNote")
-        self._preset_note.setWordWrap(True)
-        self._preset_note.setText(
-            "" if self._preset_choice.isEnabled() else "No presets are available to choose between."
-        )
-        layout.addWidget(self._preset_note)
-
+        **In the Downloads section, under the folder** (maintainer direction, 2026-09-13): where
+        files go and what they are called are one question, and a separate *New downloads* group
+        split it in two. Naming comes first because it continues the folder's path.
+        """
+        layout.addSpacing(10)
         naming_label = QLabel(NAMING_LABEL, box)
         naming_label.setWordWrap(True)
         layout.addWidget(naming_label)
@@ -940,7 +908,43 @@ class SettingsDialog(QDialog):
         # **Checked as it is typed, written only when it is usable** (`P-23`, `T-195`).
         self._template_field.textChanged.connect(self._on_template_text)
 
-        return box
+        preset_label = QLabel("Preset a newly pasted URL starts with", box)
+        preset_label.setWordWrap(True)
+        layout.addWidget(preset_label)
+
+        self._preset_choice = QComboBox(box)
+        # **The label is the combo's buddy, and on Linux that is the only thing naming it**
+        # (`T200-R7`). `QAccessibleComboBox::text` falls through `Name` to `Value` under
+        # `Q_OS_UNIX` — Qt's own comment says *"on Linux we use relations for this"* — so a combo
+        # box publishes its **selected item** as its accessible name and discards
+        # `setAccessibleName` entirely. Measured: this control announced *"Best video up to 1080p
+        # (MP4)"* as both its name and its value, and deleting its accessible name changed nothing.
+        # `setBuddy` publishes the `Label` relation the platform reads instead, and costs no
+        # layout: the label was already here and already said what the control is for.
+        preset_label.setBuddy(self._preset_choice)
+        self._preset_choice.setObjectName(DEFAULT_PRESET_NAME)
+        self._preset_choice.setAccessibleName("Default preset")
+        for name in self._preset_names:
+            self._preset_choice.addItem(name, name)
+        if self._default_preset:
+            found = self._preset_choice.findData(self._default_preset)
+            if found >= 0:
+                self._preset_choice.setCurrentIndex(found)
+        # **Disabled with the reason beside it, never drawn dead** (`UX-005` §5, `P-13`). A caller
+        # that supplies no names and no writer has nothing to choose between.
+        self._preset_choice.setEnabled(
+            bool(self._preset_names) and self._on_default_preset_chosen is not None
+        )
+        self._preset_choice.currentIndexChanged.connect(self._on_preset_index)
+        layout.addWidget(self._preset_choice)
+
+        self._preset_note = QLabel(box)
+        self._preset_note.setObjectName("defaultPresetNote")
+        self._preset_note.setWordWrap(True)
+        self._preset_note.setText(
+            "" if self._preset_choice.isEnabled() else "No presets are available to choose between."
+        )
+        layout.addWidget(self._preset_note)
 
     def _on_preset_index(self, index: int) -> None:
         if self._on_default_preset_chosen is None or index < 0:

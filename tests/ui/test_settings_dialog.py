@@ -312,10 +312,14 @@ def test_a_folder_that_does_not_exist_is_refused_and_the_field_put_back(
     assert field.text() == str(started), (
         f"the field still shows {field.text()!r}, which is not where downloads will go"
     )
-    problem = control(screen, QLabel, DOWNLOAD_DIRECTORY_PROBLEM_NAME).text()
+    label = control(screen, QLabel, DOWNLOAD_DIRECTORY_PROBLEM_NAME)
+    problem = label.text()
     assert str(missing) in problem and problem, (
         f"the refusal does not name the folder it refused: {problem!r}"
     )
+    # **Hidden while empty, so it has to be shown with a refusal in it** — a message set on a hidden
+    # label is one nobody reads.
+    assert label.isVisibleTo(screen), "the refusal was written into a label that stays hidden"
 
 
 def test_a_file_where_a_folder_belongs_is_refused_in_its_own_words(
