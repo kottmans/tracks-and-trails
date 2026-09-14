@@ -47,7 +47,10 @@ body:
     id: version
     attributes:
       label: Tracks & Trails version
-      description: The output of `tracks-and-trails --version`, or Help → About.
+      description: >-
+        Shown in Help → About. From a source install you can also run
+        `.venv/bin/tracks-and-trails --version` (Linux) or
+        `.venv\Scripts\tracks-and-trails --version` (Windows) in the `tracks-and-trails` folder.
     validations:
       required: true
 
@@ -99,7 +102,9 @@ body:
     attributes:
       label: Relevant log lines
       description: |
-        `tracks-and-trails --help` prints where the log is. **Read the lines before pasting them.**
+        The launcher's `--help` option prints where the log is. From a source install, run
+        `.venv/bin/tracks-and-trails --help` (Linux) or `.venv\Scripts\tracks-and-trails --help`
+        (Windows) in the `tracks-and-trails` folder. **Read the lines before pasting them.**
         The log is redacted, not sanitized: your output paths appear in full, and text inside a
         yt-dlp error message can survive. Never attach a cookie file or the app's database.
       render: text

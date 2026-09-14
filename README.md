@@ -109,7 +109,7 @@ py -3.14 -m venv .venv
 .venv\Scripts\tracks-and-trails
 ```
 
-If the app says it cannot find ffmpeg, set its location in Settings.
+If the app says it cannot find ffmpeg, set its location in **Settings → Preferences…**.
 
 ### Starting it again, updating, and removing it
 
@@ -117,9 +117,18 @@ If the app says it cannot find ffmpeg, set its location in Settings.
 - **Update** from the same folder with `git pull`, then repeat the `pip install .` line.
   yt-dlp can also be updated from inside the app, without updating Tracks & Trails.
 - **Remove it** by deleting the `tracks-and-trails` folder. Your settings, queue and log are kept
-  in your user profile, not in that folder; `tracks-and-trails --help` prints where the log is.
+  in your user profile, not in that folder; `--help` prints where the log is (see below).
 
 ### Command line
+
+The options below go after the launcher from the install steps. The `tracks-and-trails` command
+is inside the `.venv` folder and is not on your `PATH`, so run it from the `tracks-and-trails`
+folder with its path:
+
+```text
+.venv/bin/tracks-and-trails --help            # Linux
+.venv\Scripts\tracks-and-trails --help        # Windows
+```
 
 ```
 usage: tracks-and-trails [--version] [--help] [--log-level=LEVEL] [--spawn-probe]

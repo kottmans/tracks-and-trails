@@ -36,8 +36,10 @@ also fails with yt-dlp on the command line, the bug belongs in the
 **Read a log before you paste it.** The log is redacted, not sanitized. Your output paths appear
 in full. A token in a URL's path, or text quoted inside a yt-dlp error message, can also survive.
 [SECURITY.md](SECURITY.md#what-this-application-handles-that-matters) lists exactly what is and is
-not removed. `tracks-and-trails --help` prints where the log is. Never attach a cookie file or a
-copy of the application's database.
+not removed. The launcher's `--help` option prints where the log is: from a source install, run
+`.venv/bin/tracks-and-trails --help` (Linux) or `.venv\Scripts\tracks-and-trails --help`
+(Windows) in the `tracks-and-trails` folder. Never attach a cookie file or a copy of the
+application's database.
 
 ## Requesting a feature
 
