@@ -146,16 +146,16 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [DOC-008](reviews/DOC-008.md) | DOC-008 | 0 |
 | [T-329](reviews/T-329.md) | T-329 | 0 |
 | [T-318 / T-039](reviews/T-318.md) | T-318, T-039, REL-007 amendment | 0 |
-| [T-322](reviews/T-322.md) | T-322; [authorized T322-R5 correction review](reviews/T-322.md#2026-09-14--authorized-third-pass-on-t322-r5), 4e10935 to 66b674c | 0 |
+| [T-322](reviews/T-322.md) | T-322; [authorized T322-R5 correction review](reviews/T-322.md#2026-09-14--authorized-third-pass-on-t322-r5), 4e10935 to 66b674c; [T322-R6 disposition](reviews/T-322.md#2026-09-14--disposition-of-the-test-scope-correction) through 5d3f37d | 0 |
 | [T-324 / T-319](reviews/T-324.md) | T-324, T-319 | 0 |
 | [T-325](reviews/T-325.md) | T-325, REL-008 | 0 |
 | [T-330](reviews/T-330.md) | T-330 | 0 |
 | [T-331](reviews/T-331.md) | T-331 | 0 |
 | [T-333](reviews/T-333.md) | T-333, OPS-002 amendment | 0 |
 | [T-334](reviews/T-334.md) | T-334, UX-006 amendment | 0 |
-| [T-337 / T-338 / T-335 session changes](reviews/T-337.md) | T-337, T-338, T-335, accompanying T-327 UI fixes and record consolidation; 08251df to 39dab46, corrections through 03c6745 | 0 |
+| [T-337 / T-338 / T-335 session changes](reviews/T-337.md) | T-337, T-338, T-335, accompanying T-327 UI fixes and record consolidation; 08251df to 39dab46, corrections through 03c6745; [September 14 provenance correction](reviews/T-337.md#2026-09-14--correction-of-the-show-in-folder-attribution) | 0 |
 | [T-326 / T-332](reviews/T-326.md) | T-326, T-332, remaining T-327 verification; [T-332 disposition clarification](reviews/T-326.md#2026-09-14--clarification-of-the-existing-t-332-approval) | 0 |
-| [Windows manual session, 2026-09](reviews/windows-manual-session-2026-09.md) | T-327, the maintainer's pre-release Windows session; its findings' tasks T-322, T-332, T-335, T-337, T-339 | 0 |
+| [Windows manual session, 2026-09](reviews/windows-manual-session-2026-09.md) | T-327, the maintainer's pre-release Windows session; [independent record review](reviews/windows-manual-session-2026-09.md#2026-09-14--independent-review-of-the-session-record), 9791c7e to 5d3f37d; accompanying T-322, T-335, T-337 and T-339 records | 0 |
 | [Phase 5 second batch](reviews/phase-5-second-batch.md) | Shared validation and coordination, 2e2507b to 8e67f6f; corrections through ddc8f3d | 0 |
 | <a id="2026-07-26--note-commit-shas-in-this-file-were-remapped"></a>[commit-reference-remap](reviews/commit-reference-remap.md) | T-033 | 1 |
 | <a id="2026-07-29--coord-r7-authorized-final-documentation-re-review"></a>[coordination-2026-07-29](reviews/coordination-2026-07-29.md) | coordination 2026 07 29 | 1 |

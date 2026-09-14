@@ -91,3 +91,86 @@ claim; it is true only from 2026-09-14.
 
 The *known-unverified on Windows* paragraph is rewritten, in the same change, to what this session
 observed, with Narrator named as the one item deferred.
+
+## 2026-09-14 — Independent review of the session record
+
+**Reviewer:** Codex, independent of the implementer and recorder.
+**Tasks:** T-327; accompanying T-322, T-335 and T-337 record changes and T-339 routing.
+**Round:** Initial review of this record and the seven intervening commits.
+**Base:** `9791c7e933003874f06f7549559ba2d4b0ded137`.
+**Head:** `5d3f37df3b8edd7b80dd49a4967e3ff1b2c9370d`.
+**Platforms verified:** Linux checks; direct inspection of the retained Windows screenshot and
+supplied human reports. No new Windows installation or manual execution by this reviewer.
+**Verdict:** **Changes requested** for T327-R1's evidence/completion wording. No new application
+defect is established. The accepted product rulings, including Narrator's deferral, stand.
+
+The dated implementer record above is preserved. This assessment distinguishes its reports from
+the conclusions review can support. Subsequent release-preparation commit `f22b2c7` appeared
+during review and is outside this range; this pass grants it no approval.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding and evidence | Disposition/status |
+|---|---|---|---|---|
+| T327-R1 | Medium | Yes — accuracy of the required manual gate | Item 4 above is marked **Pass** for native dialogs, Show in folder and Open. The selected answer establishes Explorer opening the download folder with the file highlighted; it does not establish automatic foregrounding, and no native-dialog starting-folder observation is supplied. Both are explicitly in T-327's item 4. REQUIREMENTS §3 nevertheless drops shell foreground from the unverified list. Its phrase **a 24-hour download ran** also confuses the reported video's runtime with elapsed download time; neither elapsed time nor completion was reported. | **Open — T-327 correction.** Record the missing foreground and dialog observations if the maintainer actually made them; otherwise retain them as unverified and mark item 4 partial. Describe a download **of a 24-hour rain-sounds video**, with no issues noticed during the reported use and elapsed time/completion unreported. Reconcile REQUIREMENTS §3 and current task/status wording. The reviewer asked for these missing observations; no additional answer was available when this review was recorded. No 24-hour soak or completed-download requirement is added. An unverified remainder needs the existing check or an explicit maintainer disposition before closing the gate. |
+| T327-R2 | Low | No | Item 6's explanation says the removal checks report incomplete if a file is **held or recreated**; the dated T-327 task entry repeats this. The preceding T-322 review already explains that recreation after a file's absence check can escape detection. The unsuccessful attempt to launch during the short uninstall does not establish that every concurrent launch would be detected. | **Open — ordinary T-327 completion sync.** Append a qualification to the dated session/task explanations: incomplete is reported when deletion or a checked absence fails; recreation after that check remains possible and was not exercised. This requests accurate evidence wording, without a new launch guard or reopening the approved implementation. |
+| T327-R3 | Low | No | Current descriptions have not all caught up: REQUIREMENTS §3 still begins by saying no Windows machine is available; TESTING §12 says Windows has automated coverage only, and §§8–9 omit the explicit 0.1.0 Narrator exception. STATUS still says the filed SmartScreen screenshot is awaited. | **Open — ordinary T-327/T-322 completion sync.** Update these current descriptions to the observed scope and existing Narrator deferral, retaining T327-R1's unverified remainder. No separate task or new ruling is needed. |
+
+### Evidence dispositions
+
+- **Selected answers count as human reports.** The theme and Show in folder answers are labeled
+  as selections. The criterion's provenance purpose is met without repeating them in free text.
+  Item 4's gap is its unanswered subchecks, not the use of options. The long-video answer supports
+  the reported real-use observation in item 5, subject to the timing/completion limit above.
+- **The screenshot matches the corrected release transcription.** The reviewer opened the actual
+  531 × 497 PNG: unrecognized-app warning, risk sentence, installer filename, Unknown publisher,
+  Run anyway and Don't run. It is the expanded screen; the initial More info link was not captured.
+  The manually applied `ZoneId=3` and mapped-copy provenance remain explicit. This establishes
+  the warning observed for that artifact in that Sandbox, not every future download or Windows build.
+- **T-335/T-337's final manual criteria are supported.** Their code approvals stand; the selected
+  Queue Again + Rename answer identifies installer
+  `4d4313364540aac867e6dd3b8a44dbfc94d172378471ac4528b29bad3b97f376`. The completed-record moves
+  preserve their earlier bodies and limitations. The false earlier Show in folder attribution
+  is corrected in [the review that made it](T-337.md#2026-09-14--correction-of-the-show-in-folder-attribution).
+- **The uninstall report supplies the missing subjective observation.** The recorder identifies
+  the custom checkbox, keep/remove messages and refusal while the app is open as seen. It does
+  not prove a successful mid-uninstall launch. T322-R6 is
+  [resolved in its own record](T-322.md#2026-09-14--disposition-of-the-test-scope-correction).
+- **Narrator remains deferred to T-339 by the recorded maintainer choice.** No speech quality is
+  inferred from UI Automation. Open's report establishes the expected associated player launched;
+  absent playback remains the maintainer's Sandbox diagnosis, not proof of playback on physical
+  Windows or Windows 11.
+- **The fixed defects remain traceable by commit.** TESTING §14's task threshold takes precedence
+  over retrospective bookkeeping tasks for already-finished fixes. Under its consequence-based
+  severity definitions the TLS failure is **High**, rather than the implementer's Critical: it
+  blocked core downloads while failing closed, with no established data loss or security bypass.
+  This reviewer clarification does not request rewriting the dated assessment or reopening the
+  fixed defect. The listed 403 failure is also High and already fixed.
+
+### Independent checks
+
+| Check | Actual result |
+|---|---|
+| Ruff lint and whole-tree formatting at the submitted head | Passed; 422 files already formatted. |
+| `python -m pytest tests/unit/test_task_placement.py tests/unit/test_windows_packaging.py -q` | **70 passed**, 0.84 s. |
+| Bare `mypy` and `mypy --platform win32` | Both passed; 192 source files each. These supply the checks required for the Python test edit, despite its lack of executable changes. |
+| Test comparison across the range | ASTs identical after removing docstrings and normalizing the renamed test. No executable assertion or body changed. |
+| Captured uninstall evidence | Report body after the header separator is byte-identical. Only explanatory header prose changed; the completion-marker description now names the pattern's exit-code alternative. |
+| T-335/T-337 record moves | Bodies from `**Owner:**` onward match after normalizing only the final installed-build checkbox and its dated annotation. Neither task remains in the active queue. |
+| Source/packaging boundary | No files under `src/` or `packaging/` differ between `9791c7e` and `5d3f37d`. No full application suite or mutation rerun was needed for this range. |
+| GitHub state, authenticated read-only API | Releases, including drafts, and tags endpoints both returned **[]** on 2026-09-14. This establishes current absence, not independent reconstruction of the deleted draft or proof that a tag never existed historically. |
+
+### Readiness
+
+T-327 needs the focused correction in T327-R1. Low findings belong in its ordinary completion
+sync; no new task is requested. T-333's installed-build table observation and existing T333-R1
+remain open. The workflow-built installer, release-candidate checks and first published update
+response retain their existing tasks. No version bump, tag, release publication or push is
+performed by this review. T-335/T-337 completion and T322-R6's disposition do not imply approval
+of the remaining release gates.
+
+Review-document validation passes: `git diff --check`, 163 local file links and the new
+cross-review anchors. All three appended records retain the submitted head's bytes as exact
+prefixes. The historical migration verifier preserves 381 entries in 105 files, totaling
+2,403,546 bytes. Final Ruff lint and formatting also pass (423 files in the working tree after
+the separate `f22b2c7` commit); that check does not extend this review's approval boundary.
