@@ -710,7 +710,7 @@ own words.
 
 **Item 1 is confirmed** on the rebuilt installer: no install-mode question, and the wizard artwork
 sharp at Inno 6.7's real slot sizes. Then, using the installed application in Sandbox, the
-maintainer found **six defects**, none visible to an automated run, and more on 2026-09-13. The first two were confirmed fixed by the maintainer on the rebuilt installer (`4324e21c…`) the same day; the rest await the next build. **Vertical bars** the maintainer saw across the empty queue in dark are not drawn by the application — measured on `STARBASE`, the queue paints one colour, `#0a1712`, everywhere but its text — and are most likely the Sandbox's remote display compressing a near-black area. Each is fixed, pushed and
+maintainer found **six defects**, none visible to an automated run, and more on 2026-09-13. The first two were confirmed fixed by the maintainer on the rebuilt installer (`4324e21c…`) the same day; the rest await the next build. **Open played no picture and no sound** in Windows Media Player inside the Sandbox, on a 1080p H.264/AAC MP4; the same download plays normally on Linux, so the maintainer judged it the Sandbox's limited graphics and audio rather than a defect (item 4's *Open* otherwise launched the right file in the associated player). **Vertical bars** the maintainer saw across the empty queue in dark are not drawn by the application — measured on `STARBASE`, the queue paints one colour, `#0a1712`, everywhere but its text — and are most likely the Sandbox's remote display compressing a near-black area. Each is fixed, pushed and
 tested; the review record will cite them.
 
 | Found | Cause | Commit |
@@ -728,6 +728,7 @@ tested; the review record will cite them.
 | row buttons with no face, no hover and no press; the status chip read as a button | verbs drawn through the list's style, which no button rule matches; the chip outlined like a button (ruled: a filled label) | `3f576e1` |
 | tick boxes a white square in every theme and state | the Windows style's own indicator (ruled: drawn from the theme) | `9511238` |
 | no way back from a cancel | `CANCELLED` had no exit (ruled: *Queue again*, `T-335`) | `e9549fd` |
+| *Show in folder* reported "exit 1" and opened Documents | `/select,` and the path passed as one argv element, which `subprocess` quoted whole; Explorer's exit code read as failure | `7e82d0f` |
 
 Two changes of behaviour came out of the same sitting, each ruled by the maintainer: the yt-dlp
 section shows in-use, bundled and latest side by side (`T-333`), and a started queue stops itself
