@@ -75,7 +75,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 
 from tracks_and_trails.core import logging as app_logging
 from tracks_and_trails.core import output_template
-from tracks_and_trails.core.errors import ErrorKind, is_transient
+from tracks_and_trails.core.errors import ErrorKind, is_retryable, is_transient
 from tracks_and_trails.core.job_state import JobStatus, can_transition, is_terminal
 from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo, Preset
 from tracks_and_trails.core.output_template import OutputPreview
@@ -391,6 +391,26 @@ class _Session:
 
     violations: list[str] = field(default_factory=list)
     finalized: bool = False
+
+
+def _may_run_again(job: Job) -> bool:
+    """Whether `retry` may put `job` back in the queue: failed and retryable, or cancelled.
+
+    **The manager is the boundary, not the row** (`T328-R3`, Critical). Every surface that offers
+    *Retry* already hides it for a failure `core/errors.is_retryable` refuses, and that was taken as
+    enough. It was not: a row's context menu is non-modal, so a menu opened on a network failure
+    stayed open while the automatic retry ran and failed again as `DRM_PROTECTED`, and pressing its
+    *Retry* re-queued the DRM job through this method. `SEC-001` makes DRM a failure that is never
+    retried by any route, so the refusal lives where every route arrives.
+
+    A failed job with no recorded kind is allowed, as it always was: it predates the taxonomy and
+    names nothing `is_retryable` refuses. A cancelled job is *Queue again* (`UX-005` §4).
+    """
+    if job.status is JobStatus.CANCELLED:
+        return True
+    if job.status is not JobStatus.FAILED:
+        return False
+    return job.error_kind is None or is_retryable(job.error_kind)
 
 
 class DownloadManager(QObject):
@@ -2046,7 +2066,7 @@ class DownloadManager(QObject):
         `MAX + 1` separately would collide rather than tie.
         """
         job = self._repository.get(job_id)
-        if job is None or job.status not in (JobStatus.FAILED, JobStatus.CANCELLED):
+        if job is None or not _may_run_again(job):
             return
         if job.status is JobStatus.CANCELLED and self._holds(job_id):
             if not self._shutting_down:
@@ -2055,10 +2075,11 @@ class DownloadManager(QObject):
             return
         self._persist(
             job_id,
+            # **Asked again when the write runs, not only when `retry` was called** (`T328-R3`). A
+            # retry queued behind other writes for this job can find a failure that has changed
+            # since, and the job as it is at the write is the one that must not run again.
             lambda current: (
-                current.with_status(JobStatus.QUEUED)
-                if current.status in (JobStatus.FAILED, JobStatus.CANCELLED)
-                else None
+                current.with_status(JobStatus.QUEUED) if _may_run_again(current) else None
             ),
             # **A cancelled job is read again before it downloads** (maintainer's report,
             # 2026-09-13). It re-enters as `QUEUED`, which in this queue means *not yet read*, and

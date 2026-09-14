@@ -662,6 +662,123 @@ incident it cites).
 
 ## Ready
 
+### T-328 — The first release
+
+**Status:** **In Progress** — **candidate `3c011b8` drafted and reviewed, changes requested** (2026-09-14, [record](reviews/T-328.md)): `T328-R3` (Critical, a stale menu's *Retry* re-queued a DRM failure) is corrected below and needs a new candidate; `T328-R4` (High, the nine `REQUIREMENTS.md` §11 criteria not walked by hand on both platforms) is open. *(Was Proposed:)* **scope 1's release commit made 2026-09-14** (`f22b2c7`, approved for release preparation at `d0cfcf2`; `T328-R1` and `T328-R2` corrected in the commit after it, which is the one to tag, since the draft's body is read from the tagged `CHANGELOG.md`): `__version__ = "0.1.0"`, `CHANGELOG.md` created with the `0.1.0` section the draft release will carry, `SECURITY.md` §Supported versions filled. It waits for the maintainer's `v0.1.0` tag. Filed 2026-09-11 with the Phase 5 plan. **This is the phase exit.**
+**Owner:** Reviewer runs the release review; Maintainer tags and publishes
+**Priority:** High
+**Phase:** Phase 5
+**Depends on:** every task above, `T-039` *(and `T-212`, cancelled 2026-09-13)*
+**Relevant context:** `docs/RELEASE.md`'s release review; `TESTING.md` §8 in full; §14
+(one initial review plus one focused pass, and *"a red canary is not a reason to skip the bump"*);
+`DOC-002` (`CHANGELOG.md` at the first tag); `IMPLEMENTATION_PLAN.md` §Phase 5 exit criteria;
+§Phase 4.5's resequencing note (**no parity claim**)
+**Affected surfaces:** a release review record; `CHANGELOG.md`; `SECURITY.md` §Supported
+versions; the tag `v0.1.0`; the GitHub Release
+**Risk:** Medium — the first release is the one with no previous release to compare against, so
+every gate is being exercised for the first time at once
+
+#### 2026-09-14 — `T328-R3`: a Retry left open in a menu re-queued a DRM failure
+
+**Found by the release review, reproduced through the real window and manager.**
+
+- **How:** a row's context menu is non-modal, so a menu opened on a network failure stayed open while
+  the automatic retry ran and failed again as `DRM_PROTECTED`. Its *Retry* then called
+  `DownloadManager.retry`, which re-queued any FAILED job without asking `is_retryable`, and a
+  download was admitted.
+- **My earlier record was wrong:** the candidate evidence called this *"unreachable from the UI
+  today"* and proposed it for `0.1.1`. I had checked which routes *offer* Retry, not whether an
+  offer could outlive the state it was made for.
+- **Ruling:** Critical under `SEC-001`, and deferral was not approved.
+
+**Correction, two guards:**
+
+1. **The manager is the boundary.** `_may_run_again(job)` allows a FAILED job only when its kind is
+   retryable (or unrecorded, as before), and a CANCELLED job for *Queue again*. **It is asked when the
+   write runs**, on the job as it is then, not only when `retry` is called, so a retry queued behind
+   other writes cannot re-queue a failure that changed meanwhile.
+2. **The view rechecks a run-again verb against the row as it is now.** `QueueView` routes *Retry*,
+   *Start again* or *Queue again* only if the row still offers it, so the old menu's press never
+   reaches composition.
+
+**Tests:**
+
+- `test_manager.py`:
+  - a retry of `DRM_PROTECTED` and of `CANCELLED` failures writes nothing and admits nothing;
+  - a failure that became `DRM_PROTECTED` between `retry` and its write is refused;
+  - a network failure still queues and is admitted (positive control).
+- `test_row_verb_wiring.py`, the review's reproduction as regressions:
+  - the stale menu's *Retry* through the real manager leaves the job FAILED with no admission;
+  - the view does not route it to composition's callback.
+
+**Mutations:**
+
+- removing the write-time check fails the changed-meanwhile test;
+- removing the view's recheck fails the view test;
+- removing both manager checks and the recheck fails all five;
+- **removing only the check at the top of `retry` fails nothing**, because the write-time check still
+  refuses. That one is an early exit, not the guard.
+
+**Other manual retry routes audited:**
+
+- a playlist's *Retry failed* already rechecks each member (`test_a_stale_group_action_never_routes_retry_for_drm`);
+- the detail pane and the startup offer reach the manager, which now refuses;
+- Add URLs' *Retry failed* re-reads staged links, which are not jobs and cannot be committed as a DRM
+  failure, so no download is admitted by it.
+
+**The candidate changes**, so `T-326`'s machine checks and the release run are owed again on the
+new commit; the evidence for `3c011b8` stays as history.
+
+**`T326-R5`** (Low, in the same change):
+`test_a_retry_uses_the_stored_request_not_the_current_defaults` built a changed request it never
+used. Renamed to `test_a_stored_request_reads_back_exactly_as_it_was_queued`, with a docstring
+claiming only persistence and pointing at the composed settings-freeze test.
+
+#### Scope
+
+1. **Freeze the candidate**: the release commit sets `__version__ = "0.1.0"`, creates
+   `CHANGELOG.md` with a `0.1.0` section, fills `SECURITY.md` §Supported versions, and is tagged
+   `v0.1.0`. `T-324` drafts the release.
+2. **The release review**, per `docs/RELEASE.md`: `TESTING.md` §8 item by item, on both
+   platforms, each with its evidence — `T-323`'s gates, `T-325`'s numbers, `T-326`'s runs,
+   `T-318`'s clean-machine files, `T-327`'s session — and **§8 item 6, the `REQUIREMENTS.md` §11
+   acceptance criteria verified by hand and recorded here**, since `T-212` was cancelled
+   2026-09-13. Recorded in a review record
+   indexed by `REVIEWS.md`. Its verdict is the phase's.
+3. **Publish**: the draft becomes public by the maintainer's hand. The README's install section
+   goes live in the same push — and, **by the maintainer's ruling of 2026-09-13**, it says the
+   AppImage runs as it is, and that a menu entry comes from AppImageLauncher or Gear Lever or from
+   the two lines it gives. The `.desktop` inside the bundle points inside the bundle, so it cannot
+   serve as one (`T-321`).
+4. **Reopen `main`**: `__version__` bumps to `0.1.1.dev0`; `IMPLEMENTATION_PLAN.md` marks Phase 5
+   exited and Phase 4.5 as next; `STATUS.md` says there is a release.
+
+**What the release notes must not say**: that this application reaches everything yt-dlp does.
+`REQ-030` is unmet by design until Phase 4.5, and `REQ-031`'s escape hatch is the first thing
+scheduled there. The notes say what *is* covered, and that the rest is coming as an update.
+
+#### Acceptance criteria
+
+- Every §8 item has evidence in the review record, or is marked `N/A` with the reason (item 5,
+  item 10a) — none marked passed on a green CI run alone
+- The published release carries both artifacts, `SHA256SUMS`, and notes that make no parity claim
+- **Once published, *Help → Check for Updates* on a `0.1.0.dev0` build reports `0.1.0` as newer and
+  *Open Download Page* opens that release's page** (`REL-009`, carried from `T-338`'s approval: until
+  a release exists only GitHub's *no release yet* answer has been seen live)
+- `IMPLEMENTATION_PLAN.md` §Phase 5 records the exit with the review's verdict and date
+- `OPS-005`'s rule is applied to the four Windows-only diagnostic tasks reassigned here
+  (`T-074`, `T-092`, `T-068`, `T-056`): each gets an explicit disposition — carried or closed —
+  rather than silently outliving the release they were said to matter for
+  - *Done 2026-09-13, by the maintainer, each taking the recommendation:* `T-074` held as a
+    potential task (Proposed — Phase 5); `T-092`, `T-068` and `T-056` cancelled, each recording
+    what closing gives up, in `COMPLETED_TASKS.md`
+
+#### Out of scope
+
+- Anything Phase 4.5 owns. The release ships without it, on the maintainer's 2026-09-10 ruling
+
+---
+
 ### T-301 — Four UI tests break when the application font grows by one point
 
 **Status:** In Progress — **three of the four repaired 2026-09-10**; the fourth is diagnosed and
@@ -1861,64 +1978,5 @@ does it — and WER full dumps into that folder. WinDbg is installed on `STARBAS
 *Created 2026-09-10, when Phase 4.5 was resequenced to follow the first release and this
 phase became the next one to run. `T-039` also carries `**Phase:** Phase 5` and stays under
 `## Blocked`, because that section is about status rather than phase.*
-
-### T-328 — The first release
-
-**Status:** Proposed — **scope 1's release commit made 2026-09-14** (`f22b2c7`, approved for release preparation at `d0cfcf2`; `T328-R1` and `T328-R2` corrected in the commit after it, which is the one to tag, since the draft's body is read from the tagged `CHANGELOG.md`): `__version__ = "0.1.0"`, `CHANGELOG.md` created with the `0.1.0` section the draft release will carry, `SECURITY.md` §Supported versions filled. It waits for the maintainer's `v0.1.0` tag. Filed 2026-09-11 with the Phase 5 plan. **This is the phase exit.**
-**Owner:** Reviewer runs the release review; Maintainer tags and publishes
-**Priority:** High
-**Phase:** Phase 5
-**Depends on:** every task above, `T-039` *(and `T-212`, cancelled 2026-09-13)*
-**Relevant context:** `docs/RELEASE.md`'s release review; `TESTING.md` §8 in full; §14
-(one initial review plus one focused pass, and *"a red canary is not a reason to skip the bump"*);
-`DOC-002` (`CHANGELOG.md` at the first tag); `IMPLEMENTATION_PLAN.md` §Phase 5 exit criteria;
-§Phase 4.5's resequencing note (**no parity claim**)
-**Affected surfaces:** a release review record; `CHANGELOG.md`; `SECURITY.md` §Supported
-versions; the tag `v0.1.0`; the GitHub Release
-**Risk:** Medium — the first release is the one with no previous release to compare against, so
-every gate is being exercised for the first time at once
-
-#### Scope
-
-1. **Freeze the candidate**: the release commit sets `__version__ = "0.1.0"`, creates
-   `CHANGELOG.md` with a `0.1.0` section, fills `SECURITY.md` §Supported versions, and is tagged
-   `v0.1.0`. `T-324` drafts the release.
-2. **The release review**, per `docs/RELEASE.md`: `TESTING.md` §8 item by item, on both
-   platforms, each with its evidence — `T-323`'s gates, `T-325`'s numbers, `T-326`'s runs,
-   `T-318`'s clean-machine files, `T-327`'s session — and **§8 item 6, the `REQUIREMENTS.md` §11
-   acceptance criteria verified by hand and recorded here**, since `T-212` was cancelled
-   2026-09-13. Recorded in a review record
-   indexed by `REVIEWS.md`. Its verdict is the phase's.
-3. **Publish**: the draft becomes public by the maintainer's hand. The README's install section
-   goes live in the same push — and, **by the maintainer's ruling of 2026-09-13**, it says the
-   AppImage runs as it is, and that a menu entry comes from AppImageLauncher or Gear Lever or from
-   the two lines it gives. The `.desktop` inside the bundle points inside the bundle, so it cannot
-   serve as one (`T-321`).
-4. **Reopen `main`**: `__version__` bumps to `0.1.1.dev0`; `IMPLEMENTATION_PLAN.md` marks Phase 5
-   exited and Phase 4.5 as next; `STATUS.md` says there is a release.
-
-**What the release notes must not say**: that this application reaches everything yt-dlp does.
-`REQ-030` is unmet by design until Phase 4.5, and `REQ-031`'s escape hatch is the first thing
-scheduled there. The notes say what *is* covered, and that the rest is coming as an update.
-
-#### Acceptance criteria
-
-- Every §8 item has evidence in the review record, or is marked `N/A` with the reason (item 5,
-  item 10a) — none marked passed on a green CI run alone
-- The published release carries both artifacts, `SHA256SUMS`, and notes that make no parity claim
-- **Once published, *Help → Check for Updates* on a `0.1.0.dev0` build reports `0.1.0` as newer and
-  *Open Download Page* opens that release's page** (`REL-009`, carried from `T-338`'s approval: until
-  a release exists only GitHub's *no release yet* answer has been seen live)
-- `IMPLEMENTATION_PLAN.md` §Phase 5 records the exit with the review's verdict and date
-- `OPS-005`'s rule is applied to the four Windows-only diagnostic tasks reassigned here
-  (`T-074`, `T-092`, `T-068`, `T-056`): each gets an explicit disposition — carried or closed —
-  rather than silently outliving the release they were said to matter for
-  - *Done 2026-09-13, by the maintainer, each taking the recommendation:* `T-074` held as a
-    potential task (Proposed — Phase 5); `T-092`, `T-068` and `T-056` cancelled, each recording
-    what closing gives up, in `COMPLETED_TASKS.md`
-
-#### Out of scope
-
-- Anything Phase 4.5 owns. The release ships without it, on the maintainer's 2026-09-10 ruling
 
 ## Blocked

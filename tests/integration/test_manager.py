@@ -8105,3 +8105,92 @@ def test_a_naming_preference_saved_before_ux_014_still_previews_its_length(
     )
     assert preview.refusal is None, preview.refusal
     assert Path(preview.path).name.startswith("Clip (8-27)"), preview.path
+
+
+# --- T328-R3: the manager itself refuses to run again a failure that may not be retried --------
+
+
+@pytest.mark.parametrize("kind", [ErrorKind.DRM_PROTECTED, ErrorKind.CANCELLED])
+def test_a_retry_of_a_failure_that_may_not_be_retried_writes_nothing_and_starts_nothing(
+    tmp_path: Path, spin: Callable[..., bool], kind: ErrorKind
+) -> None:
+    """**`T328-R3`, Critical.** Every surface hides *Retry* for these, and a menu opened earlier
+    could still ask. `SEC-001`: DRM is never retried by any route, so the manager refuses too."""
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=tmp_path)
+    failed = repository.get("job-1")
+    assert failed is not None
+    repository.jobs["job-1"] = failed.with_failure(kind, "refused")
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    starts: list[tuple[Any, ...]] = []
+    download._start_when_free = lambda *args: starts.append(args)  # type: ignore[method-assign]
+    try:
+        download.retry("job-1")
+        assert spin(lambda: download.is_idle, timeout=10)
+        after = repository.get("job-1")
+        assert after is not None and after.status is JobStatus.FAILED and after.error_kind is kind
+        assert JobStatus.QUEUED not in repository.statuses("job-1"), "a refused retry was written"
+        assert starts == [], "a refused retry asked for a session"
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_retry_whose_failure_became_unretryable_before_its_write_is_refused(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """The write is asked again when it runs (`T328-R3`): `retry` read a network failure, and by the
+    time its write step ran the job had failed again as `DRM_PROTECTED`."""
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=tmp_path)
+    original = repository.get("job-1")
+    assert original is not None
+    repository.jobs["job-1"] = original.with_failure(ErrorKind.NETWORK, "the transfer stalled")
+    real_get = repository.get
+    reads = [0]
+
+    def get_then_turn_to_drm(job_id: str) -> Job | None:
+        job = real_get(job_id)
+        reads[0] += 1
+        if reads[0] == 1 and job is not None:
+            # The first read is `retry`'s own; everything after it sees the newer failure.
+            repository.jobs[job_id] = replace(job, error_kind=ErrorKind.DRM_PROTECTED)
+        return job
+
+    repository.get = get_then_turn_to_drm  # type: ignore[method-assign]
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    starts: list[tuple[Any, ...]] = []
+    download._start_when_free = lambda *args: starts.append(args)  # type: ignore[method-assign]
+    try:
+        download.retry("job-1")
+        assert spin(lambda: download.is_idle, timeout=10)
+        after = real_get("job-1")
+        assert after is not None and after.status is JobStatus.FAILED
+        assert after.error_kind is ErrorKind.DRM_PROTECTED
+        assert starts == [], "the write step re-queued a failure that had become DRM"
+        assert reads[0] >= 2, "the write step never read the job, so this proved nothing"
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_retry_of_a_retryable_failure_still_queues_and_starts(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """The positive control for the refusal above: a network failure is re-queued and admitted."""
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=tmp_path)
+    failed = repository.get("job-1")
+    assert failed is not None
+    repository.jobs["job-1"] = failed.with_failure(ErrorKind.NETWORK, "the transfer stalled")
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    starts: list[tuple[Any, ...]] = []
+    download._start_when_free = lambda *args: starts.append(args)  # type: ignore[method-assign]
+    try:
+        download.retry("job-1")
+        assert spin(lambda: bool(starts), timeout=10)
+        after = repository.get("job-1")
+        assert after is not None and after.status is JobStatus.QUEUED
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)

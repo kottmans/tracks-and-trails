@@ -854,28 +854,26 @@ def test_updating_a_job_that_is_not_stored_raises(repository: JobRepository) -> 
 # ------------------------------
 
 
-def test_a_retry_uses_the_stored_request_not_the_current_defaults(
+def test_a_stored_request_reads_back_exactly_as_it_was_queued(
     repository: JobRepository,
 ) -> None:
-    """`docs/project/TESTING.md` §7's settings-freeze area, proven by changing defaults
-    between the two.
+    """A job's request comes back from the store as it was written: the persistence half of the
+    settings freeze, and no more than that.
 
-    The request is frozen at job creation so a settings change cannot alter a job already
-    queued. Asserting the stored request merely *round-trips* would not show this — the test has
-    to change what a newly built request would look like, and then confirm the stored one did
-    not follow.
+    *(`T326-R5`: this was named for a retry that "uses the stored request, not the current
+    defaults", and built a changed request it never used, so it could not fail on a broken freeze.
+    The freeze itself is proven by
+    `tests/integration/test_composition.py::test_a_settings_change_mid_flight_does_not_alter_a_running_jobs_request`,
+    which changes real settings under a running job.)*
     """
     original = a_request(format_selector="bestaudio", output_template="%(id)s.%(ext)s")
     job = a_job(request=original)
     repository.add(job)
 
-    changed_defaults = a_request(format_selector="worstvideo", output_template="new-%(id)s.%(ext)s")
-    assert changed_defaults != original, "the test must actually change something"
-
-    retried = repository.get(job.id)
-    assert retried is not None
-    assert retried.request == original
-    assert retried.request.format_selector == "bestaudio"
+    stored = repository.get(job.id)
+    assert stored is not None
+    assert stored.request == original
+    assert stored.request.format_selector == "bestaudio"
 
 
 def test_every_request_field_survives_the_round_trip(repository: JobRepository) -> None:

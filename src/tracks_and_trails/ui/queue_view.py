@@ -139,6 +139,9 @@ from tracks_and_trails.ui.row_verbs import Verb, group_verbs, verbs_for
 from tracks_and_trails.ui.staging import placeholder_hue
 from tracks_and_trails.ui.thumbnails import ThumbnailLoader, ThumbnailStore, cache_generation
 
+#: The verbs that put a job back in the queue, rechecked against the row before routing (`T328-R3`).
+_RUN_AGAIN_VERBS: Final = frozenset({Verb.RETRY, Verb.START_AGAIN, Verb.QUEUE_AGAIN})
+
 #: The columns, in order, with the header each shows. `REQ-014` names five things a user must be
 #: able to see per job; the sixth is which job it is. Transcribed from the requirement rather than
 #: generated from a field list, so a renamed attribute cannot quietly change what is on screen
@@ -1826,6 +1829,12 @@ class QueueView(QWidget):
         # cannot name a group unless a group has it, and both are uuid4.
         if self._model.group_jobs(job_id):
             self._on_group_verb(job_id, verb)
+            return
+        # **A verb pressed from a menu opened earlier is checked against the row as it is now**
+        # (`T328-R3`). A context menu is non-modal, so the job can change underneath it: a *Retry*
+        # offered for a network failure can be pressed after the next attempt failed as
+        # `DRM_PROTECTED`. The manager refuses that retry itself; this keeps the view from asking.
+        if verb in _RUN_AGAIN_VERBS and verb not in self.verbs_of(job_id):
             return
         if verb is Verb.CANCEL:
             self._manager.cancel(job_id)

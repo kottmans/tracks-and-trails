@@ -24,16 +24,14 @@ the first release**. Nothing user-facing may claim parity with yt-dlp until 4.5 
 *Refreshed 2026-09-14. The previous snapshot is recoverable from `39dab46`; its facts live in the
 task and review records it summarised.*
 
-- **`0.1.0` is drafted and its machine checks are done.** `v0.1.0` is at `3c011b8`; release run
-  `34881606168` drafted it with both artifacts and `SHA256SUMS`, after three failed runs whose causes
-  `T-324` records. `T-326`'s checks ran on the downloaded draft bytes: clean machines on both
-  platforms, the network suite on both, the canary at `2026.8.19`, and the maintainer's cancel-and-quit
-  sitting ([evidence](evidence/2026-09-14-T326-release-candidate-0.1.0.md)). `T-322`, `T-324` and
-  `T-326` are in review.
-- **Next:** `T-328`'s release review, then the maintainer publishes the draft and the README install
-  section goes live, then `main` moves to `0.1.1.dev0`.
-- **Proposed for `0.1.1`:** the manager refusing a retry of a non-retryable failure (found enumerating
-  §7; unreachable from the UI today).
+- **`0.1.0`'s release review requested changes** ([record](reviews/T-328.md)). `T-322` and `T-324`
+  are approved. **`T328-R3` (Critical):** a Retry left open in a row menu re-queued a DRM failure;
+  corrected in the manager and the view, which changes the candidate, so the draft at `3c011b8` is not
+  published and a new tag, release run and `T-326` checks are owed. **`T328-R4` (High):** the nine
+  `REQUIREMENTS.md` §11 criteria still need a recorded hand walk on both platforms, on the new
+  candidate.
+- **Next:** the maintainer moves `v0.1.0` to the corrected commit; the release run and `T-326` repeat;
+  the maintainer's §11 sitting on both platforms; then the release review again.
 - **The four Windows-only diagnostic tasks have their dispositions** (`T-328`, maintainer ruling
   2026-09-13): `T-074` is held as a potential task (Proposed — Phase 5), and `T-092`, `T-068` and
   `T-056` are cancelled with what closing gives up recorded. `T-212`'s checklist run was

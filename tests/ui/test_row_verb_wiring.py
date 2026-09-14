@@ -2199,3 +2199,99 @@ def test_the_pointer_overflow_holds_only_what_the_row_dropped(
         )
     finally:
         menu.close()
+
+
+# --- T328-R3: a Retry left open in a menu cannot re-queue a failure that turned into DRM -------
+
+
+def _stale_retry_menu(
+    qapp: QApplication, tmp_path: Path, retry: Callable[[str], None] | None
+) -> tuple[Any, Any, Any, Any, Any]:
+    """Codex's reproduction, kept as the regression: a real window over a queue holding a network
+    failure, its non-modal row menu opened and kept, and the job then failing again as
+    `DRM_PROTECTED` through `QUEUED` and `RUNNING` while the menu stays up."""
+    from tests.ui.test_queue_view import FakeQueue, make_job
+    from tracks_and_trails.core.errors import ErrorKind
+    from tracks_and_trails.ui.row_verbs import Verb
+
+    class Store(FakeQueue):
+        def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None:
+            self.jobs[job.id] = job
+            done(None)
+
+    queue = Store()
+    job = make_job(
+        "stale",
+        tmp_path,
+        status=JobStatus.FAILED,
+        error_kind=ErrorKind.NETWORK,
+        error_message="Temporary network failure",
+    )
+    queue.add(job)
+    manager = DownloadManager(queue)
+    starts: list[tuple[Any, ...]] = []
+    manager._start_when_free = lambda *args: starts.append(args)  # type: ignore[method-assign]
+    window = MainWindow(
+        manager=manager,
+        queue=queue,
+        retry=manager.retry if retry is None else retry,
+        geometry_file=tmp_path / "geometry.toml",
+        cache_root=tmp_path / "cache",
+    )
+    window.show()
+    qapp.processEvents()
+    view = window._queue
+    assert view is not None
+    offered = view.verbs_of(job.id)
+    assert Verb.RETRY in offered, offered
+    menu = window._show_row_menu(job.id, offered, True)
+    assert menu is not None
+    action = next(a for a in menu.actions() if a.objectName() == "rowVerb_retry")
+    for status in (JobStatus.QUEUED, JobStatus.RUNNING):
+        queue.update(replace(job, status=status))
+        manager.job_changed.emit(job.id, status.value)
+        qapp.processEvents()
+    queue.update(replace(job, error_kind=ErrorKind.DRM_PROTECTED, error_message="DRM protected."))
+    manager.job_changed.emit(job.id, JobStatus.FAILED.value)
+    manager.job_failed.emit(job.id, ErrorKind.DRM_PROTECTED, "DRM protected.")
+    qapp.processEvents()
+    assert Verb.RETRY not in view.verbs_of(job.id), "the row still offers Retry for DRM"
+    assert menu.isVisible() and action.isEnabled(), "the menu closed, so this proves nothing"
+    return window, manager, queue, menu, (action, starts)
+
+
+def test_a_stale_menu_retry_cannot_requeue_a_drm_failure_through_the_real_manager(
+    qapp: QApplication, tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """**`T328-R3`, Critical**, reproduced by the release review: this re-queued the DRM job."""
+    window, manager, queue, menu, (action, starts) = _stale_retry_menu(qapp, tmp_path, None)
+    try:
+        action.trigger()
+        qapp.processEvents()
+        assert spin(lambda: manager.is_idle, timeout=10)
+        after = queue.get("stale")
+        assert after is not None and after.status is JobStatus.FAILED
+        assert starts == [], "a DRM failure was admitted to run again"
+    finally:
+        menu.close()
+        window.close()
+        manager.shutdown()
+        qapp.processEvents()
+
+
+def test_a_stale_menu_retry_is_not_routed_by_the_view(qapp: QApplication, tmp_path: Path) -> None:
+    """The view's own recheck, separately from the manager's refusal: the old *Retry* never reaches
+    composition's callback once the row no longer offers it."""
+    routed: list[str] = []
+    window, manager, _queue, menu, (action, _starts) = _stale_retry_menu(
+        qapp, tmp_path, routed.append
+    )
+    try:
+        action.trigger()
+        qapp.processEvents()
+        assert routed == [], "the view routed a Retry the row no longer offers"
+    finally:
+        menu.close()
+        window.close()
+        manager.shutdown()
+        qapp.processEvents()
