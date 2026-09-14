@@ -400,6 +400,68 @@ if ($setup) {
 } else { Say "skipped - no installer" }
 Say '```'
 
+Rule "An uninstall run by hand, with the removal switch and Inno's own box"
+Say "``T322-R5``. ``unins000.exe /REMOVEDATA``, run without ``/ASK`` or a silent flag, shows Inno's"
+Say "confirmation, which says settings and the download queue are kept. It must keep them. The"
+Say "confirmation is answered Yes by keystroke, and the final box closed the same way."
+Say '```'
+if ($setup) {
+    $re = Start-Process -FilePath $setup.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+    if ($re.ExitCode -ne 0 -or -not (Test-Path $installed)) {
+        Say ("reinstall         FAILED, exit " + $re.ExitCode)
+        $failures++
+    } else {
+        $root = Split-Path $installed -Parent
+        $un = (Get-ChildItem -Path $root -Filter "unins*.exe" | Select-Object -First 1).FullName
+        $settingsFile = Join-Path $userData "settings.toml"
+        Set-Content -LiteralPath $settingsFile -Value "[queue]`nconcurrency = 2" -Encoding utf8
+        $handLog = Join-Path $env:TEMP "uninstall-by-hand.log"
+        $hand = Start-Process -FilePath $un -ArgumentList "/REMOVEDATA",("/LOG=" + $handLog) -PassThru
+        $shell = New-Object -ComObject WScript.Shell
+        $answered = $false
+        $finished = $false
+        for ($i = 0; $i -lt 240; $i++) {
+            Start-Sleep -Milliseconds 500
+            $focused = $shell.AppActivate("Uninstall")
+            if (-not $answered) {
+                # Yes on the confirmation. Enter would take its default, which is No.
+                if ($focused) { $shell.SendKeys("y") }
+                if (-not (Test-Path $installed)) { $answered = $true }
+            } elseif ($focused) {
+                # The final "was removed" box.
+                $shell.SendKeys("{ENTER}")
+            }
+            # **Finished means Inno says so**, not that the application's files are gone: the data
+            # step runs after the files, and a check made in between saw nothing either way.
+            if ($answered -and (Test-Path $handLog) -and
+                [bool](Select-String -LiteralPath $handLog -Pattern "Log closed|Uninstall process exited|exit code" -Quiet) -and
+                -not (Test-Path (Join-Path $root "unins000.exe"))) {
+                $finished = $true
+                Start-Sleep -Seconds 3
+                break
+            }
+        }
+        Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "unins*" -or $_.Name -like "_iu*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+        $claimed = (Test-Path $handLog) -and [bool](Select-String -LiteralPath $handLog -SimpleMatch "Settings and download queue removed." -Quiet)
+        $attempted = (Test-Path $handLog) -and [bool](Select-String -LiteralPath $handLog -SimpleMatch "removal incomplete" -Quiet)
+        $settingsKept = Test-Path $settingsFile
+        $databaseKept = Test-Path (Join-Path $userData "library.sqlite3")
+        Say ("by hand           confirmed and uninstalled: " + $answered + "; settings kept: " + $settingsKept + "; queue database kept: " + $databaseKept + "; removal logged: " + ($claimed -or $attempted))
+        foreach ($line in @(Get-Content -LiteralPath $handLog -Tail 6 -ErrorAction SilentlyContinue)) {
+            Say ("  log: " + $line.Trim())
+        }
+        if (-not $answered -or -not $finished) {
+            Say ("                  NOT EXERCISED - confirmed: " + $answered + ", finished: " + $finished + "; nothing is shown either way")
+            $failures++
+        } elseif (-not $settingsKept -or -not $databaseKept -or $claimed -or $attempted) {
+            Say "                  FAILED - the box promised to keep them, and they were removed (T322-R5)"
+            $failures++
+        }
+    }
+} else { Say "skipped - no installer" }
+Say '```'
+
 Rule "Verdict"
 if ($failures -eq 0) {
     Say "**PASS** - the pre-install check found nothing installed, the artifact installed per-user"

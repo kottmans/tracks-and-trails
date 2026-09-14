@@ -468,7 +468,9 @@ def test_the_data_question_is_asked_once_and_only_a_ticked_box_removes_anything(
     """
     code = code_section(INSTALLER.read_text(encoding="utf-8"))
     initialize = body_of(code, "function InitializeUninstall")
-    assert "RemoveData := HasSwitch(RemoveDataSwitch);" in initialize
+    assert "RemoveData := HasSwitch(RemoveDataSwitch) and UninstallSilent;" in initialize, (
+        "T322-R5: an interactive run shows Inno's box promising to keep data, then deletes it"
+    )
     ask = initialize.index("if not HasSwitch(AskSwitch) then\n    Exit;")
     assert ask < initialize.index("AskHowToUninstall(RemoveData)"), (
         "the dialog is shown on a run Windows did not start for it, a silent one included"
@@ -480,6 +482,25 @@ def test_the_data_question_is_asked_once_and_only_a_ticked_box_removes_anything(
     )
     calls = re.findall(r"(?<!function )\bRemoveApplicationData\b(?!:)", code)
     assert len(calls) == 1, "data is removed somewhere nothing asks"
+
+
+def test_the_only_box_that_promises_to_keep_data_is_never_followed_by_deleting_it() -> None:
+    """**`T322-R5`.** `unins000.exe /REMOVEDATA`, run by hand without `/ASK` or a silent flag,
+    showed Inno's confirmation, whose message says settings and the queue are kept, then removed
+    them.
+
+    The removal flag is honoured only on a silent run (no box) or replaced by the tick box on the
+    `/ASK` run, so the one run that shows Inno's box can never remove anything.
+    """
+    text = INSTALLER.read_text(encoding="utf-8")
+    message = next(line for line in text.splitlines() if line.startswith("ConfirmUninstall="))
+    assert "settings, download queue" in message and "kept" in message
+    initialize = body_of(code_section(text), "function InitializeUninstall")
+    assignments = re.findall(r"RemoveData := [^;]*;", initialize)
+    assert assignments == ["RemoveData := HasSwitch(RemoveDataSwitch) and UninstallSilent;"], (
+        f"the removal flag is set some other way on a run Inno's box can follow: {assignments}"
+    )
+    assert "AskHowToUninstall(RemoveData)" in initialize
 
 
 def test_there_is_one_uninstaller_process_and_nothing_to_race() -> None:

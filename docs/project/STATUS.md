@@ -24,17 +24,16 @@ the first release**. Nothing user-facing may claim parity with yt-dlp until 4.5 
 *Refreshed 2026-09-14. The previous snapshot is recoverable from `39dab46`; its facts live in the
 task and review records it summarised.*
 
-- **The session-changes review** ([record](reviews/T-337.md#2026-09-14--initial-review-of-the-session-changes),
-  `08251df` → `39dab46`) requested changes. **Corrected 2026-09-14 and back in review:** `T-337`
-  (naming: `T337-R1`…`R5`), `T-338` (update schedule `T338-R1`; placement `T338-R2` ratified by the
-  maintainer) and `T-322` (uninstaller `T322-R3`, `T322-R4`). `T-335` is approved and waits only on
-  being seen on the installed build. **Completed 2026-09-14:** `T-039` and `T-325`, approved against
-  the maintainer's amendments.
+- **The session-changes reviews** ([record](reviews/T-337.md)) are through. **Completed
+  2026-09-14:** `T-338`, `T-039`, `T-325`, and `T-332` (approved 2026-09-13, synced now). `T-337`
+  and `T-335` are approved and wait only on being seen on the installed build. `T-322` is in its
+  **maintainer-authorized third pass** for `T322-R5` (an uninstaller run by hand with `/REMOVEDATA`
+  showed a box promising to keep data, then removed it).
 - **Waiting on the maintainer**, and not implementable around:
   - `T-327`: Narrator, the SmartScreen screenshot, and the installed-build observations (`T-333`,
     `T-335`, and the corrected uninstaller's running-app and locked-file cases);
   - the first `v*` tag, which `T-324`'s draft run and `T-326`'s candidate items need.
-- **Otherwise open:** `T-332` (awaiting review), `T-322` (review, and a workflow build),
+- **Otherwise open:** `T-322` (`T322-R5`, and a workflow build),
   `T-324`/`T-326` (a tag), `T-328` (the release).
 - **The four Windows-only diagnostic tasks have their dispositions** (`T-328`, maintainer ruling
   2026-09-13): `T-074` is held as a potential task (Proposed — Phase 5), and `T-092`, `T-068` and

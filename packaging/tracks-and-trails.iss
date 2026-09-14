@@ -315,7 +315,11 @@ end;
 function InitializeUninstall: Boolean;
 begin
   Result := True;
-  RemoveData := HasSwitch(RemoveDataSwitch);
+  // **`/REMOVEDATA` counts only where nothing on screen says otherwise** (`T322-R5`, maintainer
+  // ruling 2026-09-14). An interactive run without `/ASK` shows Inno's own box, whose message
+  // promises the settings and queue are kept, so there it keeps them. A silent run shows no box,
+  // and the `/ASK` run replaces the flag with the tick box below.
+  RemoveData := HasSwitch(RemoveDataSwitch) and UninstallSilent;
   Asked := False;
   if not HasSwitch(AskSwitch) then
     Exit;

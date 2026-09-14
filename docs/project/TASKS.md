@@ -14,69 +14,9 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
-### T-338 — The application says when a newer release is out
-
-**Status:** **In Review** — corrected 2026-09-14 for `T338-R1`, with `T338-R2`'s placement ratified by
-the maintainer (below). Ruled 2026-09-13 by the maintainer from `T-327`'s session, recorded as
-`REL-009`, and built the same day.
-**Owner:** Implementer
-**Priority:** High — a release without a checker can never tell its own users about the next one
-**Phase:** Phase 5
-**Relevant context:** `REL-009`; `NFR-007` as amended; `REL-001`, `REL-005`; `OPS-002` (the yt-dlp
-updater this mirrors)
-**Affected surfaces:** `core/app_updates.py` (new), `downloader/app_release.py` (new),
-`downloader/app_update_service.py` (new), `core/settings.py`, `ui/settings_dialog.py`,
-`ui/main_window.py`, `app.py`, `packaging/tracks-and-trails.iss`
-
-#### 2026-09-14 — corrections from the session review
-
-| Finding | Correction | Evidence |
-|---|---|---|
-| `T338-R1` Medium: a startup `singleShot` captured the preference and never re-armed | `DailyUpdateCheck` in `downloader/app_update_service.py`, held by composition for the application's life. When its timer fires it reads the preference and the last answer *then*; a finished check (automatic or asked for) arms the next one a day after the answer, or within `RETRY_AFTER_NO_ANSWER` (an hour) after no answer. Switching off in Preferences cancels what is pending; switching on schedules. It stops when the window closes, and does nothing once the pool is sealed. | Composed window: switched off during the launch delay sends nothing, on disk and on the wire. Schedule tests: a launch inside the day waits for the due time; an application left open checks again a day later; a manual answer moves the automatic check; no answer retries within the hour; a stopped schedule never fires. **Four mutations, four caught** (fire ignoring the preference, no re-arm, opt-out not cancelling, a check that is not due still sent). The first of those survived at first, because the test looked before the pool thread could make the request; it waits now. |
-| `T338-R2` Medium: the status-bar placement was attributed to `REL-009` | The maintainer ratified the status-bar button on 2026-09-14, over a banner and a once-per-version box. `REL-009` has an amendment saying so, and `UX_SPEC` §2.1 no longer calls it the build's choice. | — |
-
-#### What was built
-
-- **Help → Check for Updates...** above About. The answer arrives in a box: a newer version with
-  *Open Download Page*, the latest version, or why the check failed.
-- **The daily check**, scheduled by `app.present` five seconds after the window shows, when
-  Preferences allows it and the last *answered* check is a day old. It opens nothing: a newer
-  release puts *Version X is available* in the status bar, and a failure is silent. A press while
-  it is in flight makes that one request's answer visible instead of starting another.
-- **Preferences → Updates → Check for updates automatically**, on by default, stored as
-  `[updates] check_automatically = false` only when switched off.
-- **The request** (`downloader/app_release.py`): one `GET` to GitHub's latest-release API over
-  https, 15 s timeout, 1 MiB cap, a `User-Agent` naming the application without its version.
-  The page is built from the parsed tag; the response's own URLs are never used.
-- **`updates.toml`** beside the settings records the last answered check; the uninstaller's
-  *Also remove my settings* removes it and its scratch file, which the packaging tests enforce
-  against `update_check_path()`.
-- **The notice is named for screen readers before any release is known.** The accessibility audit
-  walks hidden controls and failed the first build on a nameless button.
-- **Its own pool**, sealed and drained at shutdown like the other two, so a launch check never
-  makes the yt-dlp section's buttons answer "another operation is still running".
-- **No test reaches GitHub**: the root conftest replaces the real opener for every test.
-
-#### Found while building
-
-- **Version digits were not ASCII-only.** `\d` matched fullwidth and Arabic-Indic digits, so a tag
-  like `１.0.0` parsed as a version and would have produced a page address. The pattern is
-  `[0-9]` under `re.ASCII`, and the case is in the tests.
-
-#### Not verified yet
-
-- **On Windows, now verified**: at `f29a542` on `STARBASE`'s desktop (`QT_QPA_PLATFORM=windows`),
-  the Windows accessibility test (Help now publishes *Check for Updates...*), the Windows desktop
-  slice, this task's UI and unit tests and the packaging tests: 131 passed. The installer built from
-  that commit is staged for the maintainer's Sandbox session, sha256 `c46f6f6f…`.
-- **Against GitHub itself**: there is no published release yet, so a real check answers *No version
-  has been released yet*. The parsing is tested against recorded shapes, not a live response.
-
----
-
 ### T-337 — Naming is a setting; a single download is renamed, not templated
 
-**Status:** **In Review** — corrected 2026-09-14 for `T337-R1`…`R5` (below). Ruled 2026-09-13 by the
+**Status:** **In Review** — the implementation is **approved at `4e10935`** (review of `03c6745`, [record](reviews/T-337.md#2026-09-14--focused-correction-re-review-at-03c6745)); one criterion remains, *seen on the Windows installed build*, which rides `T-327`. Corrected 2026-09-14 for `T337-R1`…`R5` (below). Ruled 2026-09-13 by the
 maintainer from `T-327`'s session, recorded as `UX-014`, and built the same day in ten commits
 (`8ec395c` to `60fb124`).
 **Owner:** Implementer
@@ -155,66 +95,6 @@ preference instead of using it to rename each individual file this way."*
   (**mutated**: basing on the setting fails it), unchanged writes nothing, refused name blocks OK,
   clearing a rename. The dialog joins `every_surface`'s audit.
 - [ ] Seen on the Windows installed build
-
----
-
-### T-332 — Bundle yt-dlp 2026.8.19: the pinned baseline cannot download from YouTube
-
-**Status:** **In Review** — every acceptance criterion met 2026-09-13, the canary included. Filed
-2026-09-12 from `T-327`'s session, on the maintainer's direction: *"the bundled version should be
-updated before we make the first tagged release."*
-**Owner:** Implementer
-**Priority:** High — the first release's first YouTube download fails without it
-**Phase:** Phase 5
-**Depends on:** nothing; **blocks** `T-328`
-**Relevant context:** `OPS-002` (*"bumping the baseline is a release-gate step"*); `TESTING.md` §8
-item 10a; `REL-002` (re-evaluated whenever the pin changes); `docs/RELEASE.md` (a bump is at least
-a minor release — moot before `0.1.0`, which has no previous release)
-**Affected surfaces:** `pyproject.toml`; `environment.BASELINE_YTDLP_VERSION`;
-`docs/YTDLP_OPTION_AUDIT.md`; `packaging/licenses/README.md`; the Windows installer
-
-#### What was found
-
-In Windows Sandbox, after `REL-007`'s 2026-09-12 amendment fixed certificate verification, a
-YouTube download in the `Best video up to 1080p (MP4)` preset read the video and then failed with
-`HTTP Error 403: Forbidden`. Reproduced on `STARBASE` against the same video and selector, whole
-file, not a first-bytes test:
-
-| yt-dlp | result |
-|---|---|
-| 2026.07.04, the pin | extraction succeeds, `403` partway into the video stream |
-| 2026.08.19, current | `399+140` downloaded and merged, 104,454,162 bytes |
-
-A first-10 KB test (`"test": True`) **passed on both**, which is why it is not the evidence here.
-The maintainer's Linux install already ran a user-managed 2026.08.19, which is why the same videos
-worked there; updating in the Sandbox's Settings fixed it there too.
-
-#### Done 2026-09-12
-
-- **The suite at 2026.8.19, pin unmoved**: 11 failed, 4,334 passed — **exactly** the eleven
-  `ytdlp-canary.yml` lists in `EXPECTED_STALE`, and nothing else. That is item 10a's question
-  answered locally; the canary workflow has not been dispatched.
-- **The option audit re-run**: `create_parser()` compared between the versions — 292 parser
-  entries in both, none added or removed, no help string changed. Recorded in the audit.
-- **The licence text** is byte-identical between the two wheels.
-- **The pin moved** in `pyproject.toml`, `BASELINE_YTDLP_VERSION` and the freeze-probe test.
-
-#### Acceptance criteria
-
-- [x] The pin, the constant and the audit name 2026.8.19, and the pin-bound tests pass against it
-- [x] CI green on both platforms at the new pin — run `34739041125` at `4320859`, every job
-- [x] The `yt-dlp canary` workflow dispatched at 2026.8.19 (`TESTING` §8 item 10a) — run
-      [`34743729647`](https://github.com/kottmans/tracks-and-trails/actions/runs/34743729647) at
-      `40b1dd8`, **green**: `pip install --upgrade yt-dlp` resolved **2026.8.19**, PyPI's latest and
-      the pin, and the suite passed **4,350 / 42 skipped** with the expected-stale tests deselected.
-      *(A first draft of this line called dispatching it a cost to hosted minutes; the repository is
-      public, and `LINUX_RUNNER` is unset, so it runs on a free hosted runner.)* **`T-326` still needs
-      it at the release candidate's commit.**
-- [x] `REL-002`'s negative build repeated at the new pin, with the result recorded there — still redundant: the archives differ only by `yt_dlp.__main__` and `yt_dlp.__pyinstaller`, 1751 extractors either way
-- [x] The rebuilt Windows installer downloads a YouTube video in a clean Sandbox in the
-      `Best video up to 1080p (MP4)` preset — the case that failed, not the probe's selector.
-      **Done 2026-09-13**: *Big Buck Bunny*, 134,886,020 bytes in 12.6 s from the bundled
-      2026.08.19, in `docs/project/evidence/windows-0.1.0.dev0-sandbox-2026-09-13.md`
 
 ---
 
@@ -663,7 +543,7 @@ The release gate's machine half, run **against the candidate** rather than again
 
 ### T-322 — The Windows installer
 
-**Status:** **In Progress** — `T322-R3` and `T322-R4` corrected 2026-09-14 and back in review (below);
+**Status:** **In Progress** — `T322-R3` and `T322-R4` resolved at `4e10935`; `T322-R5` corrected 2026-09-14 in the maintainer-authorized third pass and back in review (below);
 **compiled on `STARBASE`** 2026-09-12, installed and uninstalled in
 Windows Sandbox by `T-039`'s gates, and polished in the maintainer's session (below). Open: built by
 `T-324`'s workflow, which needs a tag, and `T-317`'s SmartScreen screenshot. *(This said it could not
@@ -672,6 +552,30 @@ be built without Inno Setup; the maintainer installed it.)*
 **Priority:** High
 **Phase:** Phase 5
 **Depends on:** `T-319` (what it installs), `T-320` (the version), `T-317` (whether it is signed)
+
+#### 2026-09-14 (later) — `T322-R5`: the one box that promises to keep data now keeps it
+
+**Found by the focused re-review at `03c6745`** (Medium). `unins000.exe /REMOVEDATA`, run by hand
+with neither `/ASK` nor a silent flag, showed Inno's confirmation, whose message says settings and the
+queue are kept, and then removed them. Windows' own uninstall entry was unaffected. **A third pass
+was authorized by the maintainer** (TESTING §14), who ruled the behaviour: **keep the data, as the box
+says.**
+
+**Correction:** `RemoveData := HasSwitch(RemoveDataSwitch) and UninstallSilent`. The switch counts
+on a silent run, where no box is shown; on the `/ASK` run the tick box replaces it; on any other run
+Inno's box is shown and nothing is removed.
+
+**Tests:** `test_the_only_box_that_promises_to_keep_data_is_never_followed_by_deleting_it` ties the
+confirmation's wording to the only assignment of the flag. Removing `and UninstallSilent` fails it and
+the dialog test.
+
+**Windows, with a positive control**
+([evidence](evidence/windows-0.1.0.dev0-sandbox-2026-09-14-uninstall-by-hand.md)): the Sandbox run now
+runs `/REMOVEDATA` interactively and answers Inno's box Yes by keystroke. The corrected installer
+passes (settings and queue kept, no removal logged); the installer reviewed at `03c6745` fails that
+section alone, with *Settings and download queue removed.* in its log. **The first pair of runs passed
+both**, because the check looked before Inno's final step; it now waits for Inno's `Log closed.`.
+Every earlier check on both runs is unchanged.
 
 #### 2026-09-14 — corrections from the session review: one process, a closed application, honest results
 
@@ -2161,6 +2065,9 @@ scheduled there. The notes say what *is* covered, and that the rest is coming as
 - Every §8 item has evidence in the review record, or is marked `N/A` with the reason (item 5,
   item 10a) — none marked passed on a green CI run alone
 - The published release carries both artifacts, `SHA256SUMS`, and notes that make no parity claim
+- **Once published, *Help → Check for Updates* on a `0.1.0.dev0` build reports `0.1.0` as newer and
+  *Open Download Page* opens that release's page** (`REL-009`, carried from `T-338`'s approval: until
+  a release exists only GitHub's *no release yet* answer has been seen live)
 - `IMPLEMENTATION_PLAN.md` §Phase 5 records the exit with the review's verdict and date
 - `OPS-005`'s rule is applied to the four Windows-only diagnostic tasks reassigned here
   (`T-074`, `T-092`, `T-068`, `T-056`): each gets an explicit disposition — carried or closed —
