@@ -193,11 +193,11 @@ the windowed build to it; this workflow still does not run on push.
 - Publishing. Deliberately
 - Signing (`T-317` decides; if signed, the signing step lives here and the key does not)
 
-## Ready
+---
 
 ### T-327 — The Windows manual verification session
 
-**Status:** **In Progress** — the maintainer's session began 2026-09-12 in Windows Sandbox. Item 1
+**Status:** **In Review** — **the session is recorded** ([record](reviews/windows-manual-session-2026-09.md), 2026-09-14): items 1, 2, 4, 5 and 6 observed by the maintainer, item 3 deferred by ruling (`T-339`), and `REQUIREMENTS.md` §3 rewritten to match. *(Was In Progress:)* the maintainer's session began 2026-09-12 in Windows Sandbox. Item 1
 is under way and **has already found one defect**, below. Filed 2026-09-11 with the Phase 5 plan.
 **Human, and blocking**: `TESTING.md` §8 item 15 says *"CI green is not a substitute"*
 
@@ -351,6 +351,8 @@ maintainer; this session is the manual check the release relies on.)*
   §9 warns against
 
 ---
+
+## Ready
 
 ### T-326 — The release-candidate suite: everything the gate asks a machine for, on both platforms
 

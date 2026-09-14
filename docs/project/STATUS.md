@@ -29,8 +29,8 @@ task and review records it summarised.*
   all resolved (`T322-R5` approved at `9791c7e`), and the maintainer has seen its uninstaller on the
   installed build; it waits on a workflow build and the SmartScreen screenshot.
 - **Waiting on the maintainer**, and not implementable around:
-  - `T-327`: every item is observed or ruled (Narrator deferred as `T-339`); its review record is
-    next. Narrator (item 3) is deferred past
+  - nothing in `T-327`: the session is recorded ([record](reviews/windows-manual-session-2026-09.md)),
+    Narrator deferred as `T-339`, and it is in review; Narrator (item 3) is deferred past
     `0.1.0` by ruling, as `T-339`;
   - the first `v*` tag, which `T-324`'s draft run and `T-326`'s candidate items need.
 - **Otherwise open:** `T-322` (a workflow build), `T-333` (its installed-build

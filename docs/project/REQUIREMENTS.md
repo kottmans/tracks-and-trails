@@ -60,15 +60,23 @@ name/role gap was closed while the tests required only that *some* menu items ex
 non-empty names — a claim that outran its evidence. Scope statements here must not exceed what
 a gate actually fails on.
 
-Still *known-unverified* on Windows, and to be reported as such: whether rendering **looks**
-right, whether Narrator **sounds** coherent *(deferred past `0.1.0` by the maintainer, 2026-09-14: `T-339`)*, whether the installer **feels** normal, shell
-foreground and file-association behavior, and long-running stability. **Installer placement and
-removal are automated** (`T-039`): a scripted clean Windows Sandbox run, once per release candidate
-by the maintainer's 2026-09-13 ruling, that fails on a misplaced file, a leftover installed file or
-a changed user file. *(This said they were not yet covered by automation.)* **Widget tab order is covered** as of
+**Observed on Windows by a person** in the maintainer's pre-release session, 2026-09-12 to 2026-09-14,
+on Windows Sandbox ([record](reviews/windows-manual-session-2026-09.md)): the installer installs
+per-user without an administrator or install-mode question, and the unsigned installer meets
+SmartScreen's *unrecognized app* prompt with *Run anyway*; rendering looked right under both themes;
+*Show in folder* opens Explorer at the download and *Open* launches the associated player; a 24-hour
+download ran with the window in use and no issue was noticed; and the uninstaller asks once, refuses
+while the application is open, and says what it kept or removed. **Still *known-unverified*, and to
+be reported as such: whether Narrator *sounds* coherent** (deferred past `0.1.0` by the maintainer,
+2026-09-14: `T-339`), and file-association behaviour, which `0.1.0` does not register. The session
+used one Windows 10 build in Sandbox; Windows 11 and a physical machine were not part of it.
+**Installer placement and removal are automated** (`T-039`): a scripted clean Windows Sandbox run,
+once per release candidate by the maintainer's 2026-09-13 ruling, that fails on a misplaced file, a
+leftover installed file or a changed user file. *(This paragraph listed rendering, Narrator, the
+installer's feel, shell foreground and long-running stability as known-unverified until this
+session.)* **Widget tab order is covered** as of
 2026-07-28 (`T-040`), on Windows as well as Linux; this said it was "blocked until focusable
-controls exist", which stopped being true when `T-016` supplied them (`COORD-R5`). A single real Windows session discharges the subjective
-residue and blocks the first public release.
+controls exist", which stopped being true when `T-016` supplied them (`COORD-R5`). That session was held before the first public release, as required.
 
 ## 4. Functional requirements
 
