@@ -220,7 +220,7 @@ worked there; updating in the Sandbox's Settings fixed it there too.
 
 ### T-335 — A cancelled download can be queued again
 
-**Status:** **In Review** — the implementation is **approved at `c19b712`** ([record](reviews/T-337.md#2026-09-14--initial-review-of-the-session-changes)); one criterion remains, *seen on the Windows installed build*, which rides `T-327`. Ruled 2026-09-13 by the maintainer from `T-327`'s session (*Queue again*,
+**Status:** **In Review** — the implementation is **approved at `6933cea`** ([record](reviews/T-337.md#2026-09-14--initial-review-of-the-session-changes)); one criterion remains, *seen on the Windows installed build*, which rides `T-327`. Ruled 2026-09-13 by the maintainer from `T-327`'s session (*Queue again*,
 at the back, from scratch — the Implementer's recommendation), recorded as `UX-005` §4's 2026-09-13
 amendment, and built the same day.
 **Owner:** Implementer designs; Maintainer rules

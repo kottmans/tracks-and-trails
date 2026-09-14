@@ -94,7 +94,7 @@ accepts it. Until then it is a proposal in a task, which is the narrowest honest
 
 ### T-039 — Verify Windows installer behavior on the runner
 
-**Status:** **Complete — Approved at `c19b712`** on 2026-09-14 by independent review, within its amended gate and harness scope ([record](reviews/T-318.md#2026-09-14--disposition-of-the-candidate-only-gate-ruling)). The corrected release candidate still gets its one scripted Sandbox run, per the amended criterion below. *(Was In Review:)* all four gates implemented and passing in Windows Sandbox, `T039-R1`
+**Status:** **Complete — Approved at `6933cea`** on 2026-09-14 by independent review, within its amended gate and harness scope ([record](reviews/T-318.md#2026-09-14--disposition-of-the-candidate-only-gate-ruling)). The corrected release candidate still gets its one scripted Sandbox run, per the amended criterion below. *(Was In Review:)* all four gates implemented and passing in Windows Sandbox, `T039-R1`
 resolved, and **`T039-R2` ruled by the maintainer 2026-09-13: per release candidate** (below).
 **Owner:** Implementer
 **Priority:** Medium now, High once Phase 5 starts — it must land before the first public release
@@ -247,7 +247,7 @@ runner or both. The criteria below are amended in place and keep what they said.
 
 ### T-325 — Cold start, measured on the artifact that ships
 
-**Status:** **Complete — Approved at `c19b712`** on 2026-09-14 by independent review, for the amended `0.1.0` scope ([record](reviews/T-325.md#2026-09-14--disposition-of-the-010-startup-exception)). *(Was In Review:)* `T325-R1` corrected, and **`T325-R2` settled by the maintainer's ruling
+**Status:** **Complete — Approved at `6933cea`** on 2026-09-14 by independent review, for the amended `0.1.0` scope ([record](reviews/T-325.md#2026-09-14--disposition-of-the-010-startup-exception)). *(Was In Review:)* `T325-R1` corrected, and **`T325-R2` settled by the maintainer's ruling
 of 2026-09-13**: `0.1.0` ships on the startup numbers already measured, recorded as
 [`REL-008`'s amendment](DECISIONS.md#amended-2026-09-13--0-1-0-ships-on-the-startup-numbers-already-measured)
 with the gaps it accepts — no Linux cold sample, and a Windows cold figure that names no artifact.

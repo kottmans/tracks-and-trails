@@ -6,8 +6,9 @@ inside Windows Sandbox on `STARBASE` and exited 0 on the verdict below. **Retain
 
 **Artifact:** `Tracks-and-Trails-0.1.0.dev0-setup.exe`, sha256
 `791179020c681c681197c57a0fdca566305e6928c2f57629b00a23fd45543507`, compiled on `STARBASE` from a
-release build (`TT_RELEASE_BUILD=1`) of `c19b712` plus the then-uncommitted session-review
-corrections, committed together with this file. A development build, not a release candidate.
+release build (`TT_RELEASE_BUILD=1`) of `39dab46` plus the review records and the then-uncommitted
+corrections, since committed as `6933cea` and `bde090d`. The commits rebased beneath them
+(`6c85a38`…`b6b7e56`) change documentation, assets and a rendering tool, not `src/` or `packaging/`. A development build, not a release candidate.
 
 ---
 
