@@ -29,8 +29,10 @@ task and review records it summarised.*
   release sequence) are in the commit after it, which is the one to tag. **Completed 2026-09-14:**
   `T-327` (the Windows session, Narrator deferred as `T-339`), `T-333`, `T-338`, `T-337`, `T-335`,
   `T-332`, `T-039` and `T-325`.
-- **Waiting on the maintainer:** the `v0.1.0` tag, which starts `T-324`'s draft build and `T-326`'s
-  candidate items; then publication, after `T-328`'s release review.
+- **Waiting on the maintainer:** moving the `v0.1.0` tag. Its first run failed before building
+  (`T-324`: a Python version file the repository never had, and two more defects found reading on);
+  the workflow is corrected and the tag must point at the corrected commit. Then `T-326`'s
+  candidate items, and publication after `T-328`'s release review.
 - **Otherwise open:** `T-322` (a workflow build of the installer), `T-324`/`T-326` (the tag),
   `T-328` (the release).
 - **The four Windows-only diagnostic tasks have their dispositions** (`T-328`, maintainer ruling

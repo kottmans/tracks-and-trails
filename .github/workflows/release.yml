@@ -44,9 +44,12 @@ jobs:
           # commits to look at.
           fetch-depth: 0
 
+      # **`"3.14"`, as `ci.yml` pins it** (`T-324`, found by the first `v0.1.0` run). This read
+      # `python-version-file: .python-version`, a file this repository has never had, so the
+      # first real run stopped here before checking anything.
       - uses: actions/setup-python@v6
         with:
-          python-version-file: .python-version
+          python-version: "3.14"
 
       - name: The tag matches __version__
         # `REL-003` fixes the version in `__init__.py`. `tools/version_tag_check.py` is that rule
@@ -76,6 +79,19 @@ jobs:
     runs-on: ${{ fromJSON(vars.LINUX_RUNNER || '"ubuntu-latest"') }}
     steps:
       - uses: actions/checkout@v6
+
+      # **The gate below runs on the runner, not in the container**, and imports
+      # `tracks_and_trails.core.logging`, which is Python 3.14 source. A hosted Ubuntu runner's own
+      # `python` is older and cannot parse it. Hosted only, for `ci.yml`'s reason: a self-hosted
+      # runner is not provisioned by a build (`OPS-012` §3), so its Python is checked instead.
+      - uses: actions/setup-python@v6
+        if: runner.environment == 'github-hosted'
+        with:
+          python-version: "3.14"
+
+      - name: Check the machine's Python
+        if: runner.environment != 'github-hosted'
+        run: python -c "import sys; assert sys.version_info[:2] == (3, 14), sys.version"
 
       - name: Build in the oldest-glibc container
         # **Not on the runner.** `REL-004` requires building against the oldest glibc the README
@@ -149,6 +165,32 @@ jobs:
           echo "::error::Install it by hand per OPS-012 section 3 -- winget install --id JRSoftware.InnoSetup -e"
           exit 1
 
+      # **A profile and a virtualenv of this job's own, as `ci.yml`'s `frozen` job has them**
+      # (`T-324`, found by reading the workflow after its first run failed). This installed the
+      # project into `STARBASE`'s own Python, which is a build changing the machine (`OPS-012`
+      # §3), and ran the probes against the maintainer's real profile (`T-298`).
+      - name: Give this job its own user profile
+        run: |
+          profile="$RUNNER_TEMP/release-profile-${{ github.run_id }}-${{ github.run_attempt }}"
+          mkdir -p "$profile"/{data,config,cache,windows}
+          {
+            echo "XDG_DATA_HOME=$profile/data"
+            echo "XDG_CONFIG_HOME=$profile/config"
+            echo "XDG_CACHE_HOME=$profile/cache"
+            echo "WIN_PD_OVERRIDE_APPDATA=$profile/windows"
+            echo "WIN_PD_OVERRIDE_LOCAL_APPDATA=$profile/windows"
+          } >> "$GITHUB_ENV"
+          echo "RELEASE_PROFILE=$profile" >> "$GITHUB_ENV"
+          echo "release profile: $profile"
+
+      - name: Check the machine's Python
+        run: python -c "import sys; assert sys.version_info[:2] == (3, 14), sys.version"
+
+      - name: Create the virtualenv
+        run: |
+          python -m venv .venv
+          cygpath -w "$PWD/.venv/Scripts" >> "$GITHUB_PATH"
+
       - name: Install the project and the build extra
         run: |
           python -m pip install --upgrade pip
@@ -205,6 +247,10 @@ jobs:
           path: dist/*-setup.exe
           if-no-files-found: error
 
+      - name: Remove this job's profile
+        if: always()
+        run: rm -rf "$RELEASE_PROFILE" || true
+
   # ---------------------------------------------------------------------------------------------
   draft:
     name: draft the release
@@ -217,9 +263,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # **`"3.14"`, as `ci.yml` pins it** (`T-324`, found by the first `v0.1.0` run). This read
+      # `python-version-file: .python-version`, a file this repository has never had, so the
+      # first real run stopped here before checking anything.
       - uses: actions/setup-python@v6
         with:
-          python-version-file: .python-version
+          python-version: "3.14"
 
       - uses: actions/download-artifact@v6
         with:

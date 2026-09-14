@@ -14,11 +14,41 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+## Ready
+
 ### T-324 — A release workflow that builds, gates and drafts — and never publishes
 
-**Status:** **In Review** — written 2026-09-12. **Its first acceptance criterion needs a tag**, and
-a tag is the one artifact in this project that cannot be quietly corrected, so that one is left to
-the maintainer rather than taken. Filed 2026-09-11 with the Phase 5 plan.
+**Status:** **In Progress** — **the first `v0.1.0` run failed in `verify`** (2026-09-14), before any
+build, and the workflow is corrected (below); it needs the tag moved to the corrected commit. Written
+2026-09-12. **Its first acceptance criterion needs a tag**, and a tag is the one artifact in this
+project that cannot be quietly corrected, so that one is left to the maintainer rather than taken.
+Filed 2026-09-11 with the Phase 5 plan.
+
+#### 2026-09-14 — the first real run, and what it found
+
+**The maintainer pushed `v0.1.0` at `ff95306`. Run `34877044848` failed about fifteen seconds in,**
+in `verify`'s `setup-python`: *"The specified python version file at: .python-version doesn't
+exist."* Nothing was built and no release was drafted (`gh release list` is empty). The file was
+never in the repository; `ci.yml` pins `"3.14"`, and no test read the release workflow's Python.
+
+**Reading the rest of the workflow found two more that would have failed or misbehaved next:**
+
+- `build-linux` runs `artifact_gates.py` on the runner, not in the container, and that script
+  imports `tracks_and_trails.core.logging`, which is Python 3.14 source (`except A, B:`). The job set
+  up no Python, and a hosted Ubuntu runner's own is older.
+- `build-windows` installed the project into `STARBASE`'s own Python, a build changing the machine
+  (`OPS-012` §3), and probed against the real user profile (`T-298`). `ci.yml`'s `frozen` job uses a
+  virtualenv and a job profile; this now does the same, and removes the profile afterwards.
+
+**Tests** (`tests/unit/test_release_workflow.py`): every job that runs Python sets up or checks 3.14
+before its first such step; no step reads a Python version file; the Windows build installs into its
+own virtualenv and profile. **All six fail against the workflow at `ff95306`** and pass against the
+corrected one.
+
+**Not verifiable before a run:** everything GitHub-specific. The corrected workflow has not run, so
+the next tag is still its first full test. **The existing `v0.1.0` tag points at `ff95306`, whose
+workflow file is the broken one**, and a tag's run uses the workflow in the tagged commit, so the tag
+has to be moved to the corrected commit. No release, draft or artifact exists under it.
 
 #### 2026-09-12 — the workflow, and the criterion deliberately not met
 
@@ -147,8 +177,6 @@ the windowed build to it; this workflow still does not run on push.
 - Signing (`T-317` decides; if signed, the signing step lives here and the key does not)
 
 ---
-
-## Ready
 
 ### T-326 — The release-candidate suite: everything the gate asks a machine for, on both platforms
 

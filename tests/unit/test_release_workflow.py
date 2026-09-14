@@ -304,3 +304,60 @@ def test_a_release_build_is_not_cancellable() -> None:
     concurrency = workflow().get("concurrency")
     assert concurrency is not None, "release.yml has no concurrency group"
     assert concurrency.get("cancel-in-progress") is False, concurrency
+
+
+# --- What the first `v0.1.0` run found: jobs that ran Python they never set up ------------------
+
+
+def _runs_python(step: dict[str, Any]) -> bool:
+    return any(
+        line.strip().startswith(("python ", "pyinstaller "))
+        for line in str(step.get("run", "")).splitlines()
+    )
+
+
+def _sets_up_python(step: dict[str, Any]) -> bool:
+    uses = str(step.get("uses", ""))
+    if uses.startswith("actions/setup-python"):
+        return bool(step.get("with", {}).get("python-version") == "3.14")
+    return "sys.version_info[:2] == (3, 14)" in str(step.get("run", ""))
+
+
+@pytest.mark.parametrize("job", ["verify", "build-linux", "build-windows", "draft"])
+def test_every_job_that_runs_python_establishes_3_14_first(job: str) -> None:
+    """**The first `v0.1.0` run stopped in `verify`**, whose `setup-python` named
+    `.python-version`, a file this repository never had. Reading the rest found `build-linux`
+    running `artifact_gates.py`, which imports 3.14 source, with no Python set up at all.
+
+    Each job must set up, or check, Python 3.14 before its first step that runs Python.
+    """
+    job_steps = steps(job)
+    first_python = next(
+        (i for i, step in enumerate(job_steps) if _runs_python(step) and not _sets_up_python(step)),
+        None,
+    )
+    if first_python is None:
+        return
+    assert any(_sets_up_python(step) for step in job_steps[:first_python]), (
+        f"{job} runs Python at step {first_python} without setting up or checking 3.14 first"
+    )
+
+
+def test_no_step_reads_a_python_version_file() -> None:
+    for job in workflow()["jobs"]:
+        for step in steps(job):
+            assert "python-version-file" not in step.get("with", {}), (
+                f"{job} reads a Python version file; ci.yml pins 3.14 and this repository has none"
+            )
+
+
+def test_the_windows_build_installs_into_its_own_virtualenv_and_profile() -> None:
+    """`OPS-012` §3 and `T-298`: the Windows release build installed the project into `STARBASE`'s
+    own Python and probed against the maintainer's real profile. `ci.yml`'s `frozen` job does
+    neither, and this job now does what that one does."""
+    names = [str(step.get("name", "")) for step in steps("build-windows")]
+    install = names.index("Install the project and the build extra")
+    assert "Create the virtualenv" in names[:install], "the project is installed into the machine"
+    assert "Give this job its own user profile" in names[:install], "probes use the real profile"
+    venv = steps("build-windows")[names.index("Create the virtualenv")]
+    assert "GITHUB_PATH" in str(venv.get("run", "")), "the virtualenv is created and not used"
