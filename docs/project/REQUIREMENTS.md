@@ -48,8 +48,10 @@ deployment, no account system.
 A change is not complete if it works on only one primary platform. Where a behavior cannot
 be verified on both, that must be stated as unverified rather than assumed.
 
-**Current verification constraint** (`OPS-004`, narrowing `OPS-003`): there is no Windows
-machine available, so Windows is verified by CI — but the runner provides a real desktop, and
+**Current verification constraint** (`OPS-004`, narrowing `OPS-003`): Windows is verified by CI and
+by a manual pre-release session in Windows Sandbox on `STARBASE` *(this said there was no Windows
+machine available, which stopped being true with `OPS-005`'s `STARBASE` and `T-327`'s session)*.
+The runner provides a real desktop, and
 the `windows desktop` job asserts against it: the application launches through its real entry
 point under the real platform plugin, menus are keyboard reachable, and the UI Automation tree
 matches an explicit name-and-role contract for the window, menu bar, every menu action, and the
@@ -64,8 +66,10 @@ a gate actually fails on.
 on Windows Sandbox ([record](reviews/windows-manual-session-2026-09.md)): the installer installs
 per-user without an administrator or install-mode question, and the unsigned installer meets
 SmartScreen's *unrecognized app* prompt with *Run anyway*; rendering looked right under both themes;
-*Show in folder* opens Explorer at the download and *Open* launches the associated player; a 24-hour
-download ran with the window in use and no issue was noticed; and the uninstaller asks once, refuses
+*Show in folder* opens Explorer in front, at the download, and a native file or folder picker starts
+in a sensible folder; *Open* launches the associated player; a download of a 24-hour video ran with
+the application in use and no issue noticed (how long it ran, and whether it finished, were not
+reported); and the uninstaller asks once, refuses
 while the application is open, and says what it kept or removed. **Still *known-unverified*, and to
 be reported as such: whether Narrator *sounds* coherent** (deferred past `0.1.0` by the maintainer,
 2026-09-14: `T-339`), and file-association behaviour, which `0.1.0` does not register. The session

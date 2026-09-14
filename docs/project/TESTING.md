@@ -305,7 +305,9 @@ All of the following, **on Linux and Windows**, before any tag or distributed bu
     states what that gives up; a later release takes the measurement again.
 15. **Windows manual verification session completed** — the §9 list performed on a real
     Windows desktop and recorded in the canonical review record. Blocking for the first public release;
-    CI green is not a substitute (`OPS-003`).
+    CI green is not a substitute (`OPS-003`). **For `0.1.0`, Narrator's coherence is deferred by the
+    maintainer's ruling of 2026-09-14** (`T-339`) and the release notes say so; the rest of the §9
+    list was performed ([record](reviews/windows-manual-session-2026-09.md)).
 
 ## 9. Manual verification
 
@@ -314,7 +316,8 @@ date and platform:
 
 - Screen-reader announcement *quality* — whether Orca and Narrator say something **coherent**.
   That the accessibility tree exposes a correct name and role for every control is no longer
-  manual on Windows: `T-026`'s UI Automation gate gives that, and it is green
+  manual on Windows: `T-026`'s UI Automation gate gives that, and it is green. *(Narrator's half is
+  deferred past `0.1.0` by ruling: `T-339`.)*
 - Native file dialogs, "reveal in file manager", and "open file" on both desktops — the
   foreground and file-association half. Per `OPS-004` the request, path handling and shell verb
   are automatable, but none of that exists to test yet; revisit when the feature lands
@@ -811,11 +814,14 @@ Tracked honestly; each should become a task or be accepted deliberately.
   `True` or `None` and never `False`, so its absence does not distinguish "not DRM" from "never
   processed" — harmless on every path this application has, and recorded in `T-057` rather than
   papered over.
-- **Windows has automated coverage only** (`OPS-004`, narrowing `OPS-003`). The runner is a
-  real desktop, so the application launch, menu keyboard reachability, and the UI Automation
-  name/role contract are now gated. Still unverified there: whether rendering *looks* right,
-  whether Narrator *sounds* coherent, native dialog foreground and file-association behavior,
-  theming, and installer UX. Discharged by the pre-release session in §8 item 15.
+- **Windows has automated coverage and one recorded manual session** (`OPS-004`, narrowing
+  `OPS-003`; `T-327`). The runner is a real desktop, so the application launch, menu keyboard
+  reachability, and the UI Automation name/role contract are gated. The pre-release session of
+  2026-09-12 to 2026-09-14 ([record](reviews/windows-manual-session-2026-09.md)) observed rendering in
+  both themes, native dialogs and Explorer's foreground, installer UX and a long download, on one
+  Windows 10 build in Sandbox. **Still unverified: whether Narrator *sounds* coherent** (`T-339`),
+  file-association behaviour (none is registered), Windows 11, and a physical machine. *(This said
+  Windows had automated coverage only.)*
 - **Widget tab order is gated on Windows by a recorded manual run, not by CI** (`T-040`,
   `T-060`). Both `T-026` mutation classes were executed on a real Windows desktop on 2026-07-28
   and killed — 6, 6 and 2 failing tests respectively, against a 28-passing baseline — so the

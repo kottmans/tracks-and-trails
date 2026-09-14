@@ -27,7 +27,7 @@ task and review records it summarised.*
 - **The session-changes reviews** ([record](reviews/T-337.md)) are through. **Completed
   2026-09-14:** `T-338`, `T-337`, `T-335`, `T-332`, `T-039` and `T-325`. `T-322`'s review findings are
   all resolved (`T322-R5` approved at `9791c7e`), and the maintainer has seen its uninstaller on the
-  installed build; it waits on a workflow build and the SmartScreen screenshot.
+  installed build, and its SmartScreen screenshot is filed; it waits on a workflow build.
 - **Waiting on the maintainer**, and not implementable around:
   - nothing in `T-327`: the session is recorded ([record](reviews/windows-manual-session-2026-09.md)),
     Narrator deferred as `T-339`, and it is in review; Narrator (item 3) is deferred past

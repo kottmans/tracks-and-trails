@@ -57,7 +57,9 @@ so a *Latest* row either waits for a button press or the requirement is amended.
 - [x] Latest is fetched only on an explicit Check (`NFR-007`)
 - [x] Update is offered only when latest is newer than what runs
 - [x] The wall of text is gone, and what it said is still somewhere true
-- [ ] Seen on the Windows installed build
+- [x] Seen on the Windows installed build *(the maintainer, 2026-09-14, on `4d431336…`: "Yes,
+  looked right", versions shown correctly and *Check* working; `T-327`. `T333-R1`'s disposition is the
+  reviewer's)*
 
 ---
 
@@ -252,7 +254,9 @@ verified:
   uninstaller does not continue while the app is open"*. On launching the application during an
   uninstall: *"I was unable to open the app in the amount of time that it took the uninstaller to
   run."* That is the maintainer's observation of how short the window is, not a guard; the removal's
-  own checks still report *incomplete* if a file is recreated or held.
+  own checks still report *incomplete* if a file is recreated or held. *(`T327-R2`: incomplete is
+  reported when a deletion fails or a checked item is still present at its check; a file recreated
+  after its check is not detected, and that case was not exercised.)*
 - **Queue Again** (`T-335`) and **Rename** with naming from Preferences (`T-337`) on the installed
   build, each task's last unchecked criterion.
 

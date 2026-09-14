@@ -174,3 +174,23 @@ cross-review anchors. All three appended records retain the submitted head's byt
 prefixes. The historical migration verifier preserves 381 entries in 105 files, totaling
 2,403,546 bytes. Final Ruff lint and formatting also pass (423 files in the working tree after
 the separate `f22b2c7` commit); that check does not extend this review's approval boundary.
+
+## 2026-09-14 — Implementer correction for T327-R1…R3
+
+**Recorded by:** Claude, after the maintainer answered the review's questions the same day. The
+dated record at the top is left as it was; this entry supersedes the parts it names.
+**Base:** `9db1594` (the review). Answers chosen from options are marked *(answered)*.
+
+| Finding | Correction |
+|---|---|
+| `T327-R1`, item 4 | **The two missing observations, from the maintainer, on the final installer:** *Show in folder*'s Explorer window *(answered)* "Yes, on top by itself", in front of Tracks & Trails without using the taskbar; and a native file or folder picker *(answered)* "Yes, sensible folder", starting in the current download folder or another sensible place. Item 4 is therefore **Pass** on all three of its parts. The picker was not named: the question offered *Preferences, download folder, Browse* and *choosing a cookies file* as examples. |
+| `T327-R1`, item 5 | **A download of a 24-hour rain-sounds video**, not a 24-hour download. The maintainer reported using the application during it and noticing no issues; how long it ran and whether it finished were not reported, and are not claimed. |
+| `T327-R2`, item 6 | *Incomplete* is reported when a deletion fails or a checked item is still present at its check. **A file recreated after its check is not detected**, and that case was not exercised: the maintainer's failed attempt to launch the application during an uninstall shows the window is short, not that a launch in it would be caught. |
+| `T327-R3` | `REQUIREMENTS.md` §3's opening constraint, `TESTING.md` §8 item 15, §9's Narrator line and §12's Windows gap, and `STATUS.md` are brought to what this session observed, with Narrator's `0.1.0` deferral (`T-339`) stated where the gate is. |
+
+**Also answered, outside the findings:** `T-333`'s table on the installed build, *(answered)* "Yes,
+looked right": the versions showed correctly and *Check* worked. Recorded on `T-333`; its `T333-R1`
+disposition is the reviewer's.
+
+**On severity:** the review reads the TLS failure as High under §14's consequence-based definitions,
+not the recorder's Critical. The table above is left as dated; the reviewer's reading stands.
