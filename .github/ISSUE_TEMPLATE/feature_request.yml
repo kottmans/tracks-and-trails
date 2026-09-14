@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest something Tracks & Trails should do.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+      description: |
+        Describe the task, not only the button you want. There may already be a way to do it,
+        or a better shape for the feature.
+    validations:
+      required: true
+
+  - type: textarea
+    id: today
+    attributes:
+      label: What happens today
+      description: How you do this now, if you can, and what gets in the way.
+
+  - type: textarea
+    id: ytdlp
+    attributes:
+      label: The yt-dlp option, if you know it
+      description: |
+        Many features map to a yt-dlp command-line option. Naming it helps, but it is not
+        required.
+      placeholder: --embed-chapters
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: >-
+            This is not a request to get past DRM, a paywall, a login, a geo-restriction, or
+            rate limiting. Those are out of scope (decision `SEC-001`).
+          required: true

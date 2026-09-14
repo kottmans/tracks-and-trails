@@ -1,0 +1,115 @@
+name: Bug report
+description: Something in Tracks & Trails does not work the way it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this.
+
+        **A security problem does not belong here.** Use the private route in
+        [SECURITY.md](https://github.com/kottmans/tracks-and-trails/blob/main/SECURITY.md#reporting-a-vulnerability).
+
+        **If a site stopped working, update yt-dlp from inside the app first.** If the same URL
+        also fails with yt-dlp on the command line, the fix belongs in
+        [yt-dlp](https://github.com/yt-dlp/yt-dlp/issues).
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, including any error message exactly as the app showed it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: |
+        Starting from opening the app. Name the site, but **remove anything private from a URL**
+        before pasting it: query strings, tokens, and `user:password@` parts.
+      placeholder: |
+        1. Paste a URL from <site>
+        2. Choose the "Audio only (MP3)" preset
+        3. Start the download
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Tracks & Trails version
+      description: The output of `tracks-and-trails --version`, or Help → About.
+    validations:
+      required: true
+
+  - type: input
+    id: ytdlp-version
+    attributes:
+      label: yt-dlp version
+      description: As shown in the app.
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - Windows 11
+        - Windows 10
+    validations:
+      required: true
+
+  - type: input
+    id: os-detail
+    attributes:
+      label: Distribution and version
+      description: For example "Fedora 44" or "Windows 11 24H2".
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you installed it
+      options:
+        - From source (git clone and pip install)
+        - Linux AppImage
+        - Windows installer
+    validations:
+      required: true
+
+  - type: dropdown
+    id: ffmpeg
+    attributes:
+      label: Is ffmpeg available to the app?
+      options:
+        - "Yes"
+        - "No"
+        - Not sure
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Relevant log lines
+      description: |
+        `tracks-and-trails --help` prints where the log is. **Read the lines before pasting them.**
+        The log is redacted, not sanitized: your output paths appear in full, and text inside a
+        yt-dlp error message can survive. Never attach a cookie file or the app's database.
+      render: text
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: >-
+            This is not a request to get past DRM, a paywall, a login, a geo-restriction, or
+            rate limiting. Those are out of scope (decision `SEC-001`).
+          required: true

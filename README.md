@@ -254,8 +254,10 @@ treats as sensitive, and the CI trust boundary.
 
 ## Contributing
 
-Not currently open to outside contributions. If that changes it will be under the MIT License.
-[AGENTS.md](AGENTS.md) documents the rules the project is built under — roles, file ownership,
+Not currently open to outside code contributions; bug reports and feature requests are welcome.
+[CONTRIBUTING](CONTRIBUTING.md) explains why and how to report, and everyone taking part follows
+the [Code of Conduct](CODE_OF_CONDUCT.md). If contributions open, they will be under the MIT
+License. [AGENTS.md](AGENTS.md) documents the rules the project is built under — roles, file ownership,
 scope control, and the validation required before anything is called complete.
 
 ## License

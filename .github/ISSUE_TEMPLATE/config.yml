@@ -1,0 +1,10 @@
+# Blank issues stay enabled: SECURITY.md's fallback asks a reporter with no private route to open
+# a plain issue saying only that they have a report.
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/kottmans/tracks-and-trails/security/advisories/new
+    about: Privately. Never put security details in a public issue. See SECURITY.md.
+  - name: A site's extractor is broken in yt-dlp itself
+    url: https://github.com/yt-dlp/yt-dlp/issues
+    about: If the same URL also fails with yt-dlp on the command line, report it upstream.
