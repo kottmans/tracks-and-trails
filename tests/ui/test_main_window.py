@@ -1879,7 +1879,7 @@ def test_a_refused_name_cannot_be_accepted(qapp: QApplication) -> None:
         dialog.editor.input_field.setText("clips/My clip")
         dialog.editor.name_changed.emit("clips/My clip")
         assert not dialog.ok_button.isEnabled(), "OK stayed available on a refused name"
-        assert "cannot contain" in dialog.editor.message_text()
+        assert "can't contain" in dialog.editor.message_text()
         dialog.editor.input_field.setText("My clip")
         dialog.editor.name_changed.emit("My clip")
         assert dialog.ok_button.isEnabled(), "OK stayed unavailable once the name was usable"

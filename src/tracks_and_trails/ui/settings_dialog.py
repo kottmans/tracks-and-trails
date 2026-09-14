@@ -879,7 +879,9 @@ class SettingsDialog(QDialog):
         self._add_field.setEnabled(writable)
         fields_menu = QMenu(self._add_field)
         for field in OFFERED_FIELDS:
-            entry = fields_menu.addAction(f"{field.label} — {field.describes}")
+            # The field first, then what it is, as two columns: the tab puts the description in
+            # the menu's second column, where the entries line up.
+            entry = fields_menu.addAction(f"{field.label}\t{field.describes}")
             entry.setObjectName(insert_field_name(field.name))
             entry.triggered.connect(partial(self._insert_field, field.label))
         self._add_field.setMenu(fields_menu)

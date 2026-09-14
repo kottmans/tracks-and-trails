@@ -4453,7 +4453,7 @@ def test_a_name_with_a_folder_in_it_is_refused_and_never_reaches_the_request(
         QTest.keyClicks(panel.editor.input_field, typed)
         QApplication.processEvents()
         assert panel.editor.preview_text() == "", f"{typed!r} still showed a path"
-        assert "cannot contain" in panel.editor.message_text(), panel.editor.message_text()
+        assert "can't contain" in panel.editor.message_text(), panel.editor.message_text()
 
     dialog.close_panel(keep=True)
     assert row.file_name is None, "the refused name was written to the row"

@@ -66,28 +66,33 @@ class TemplateField:
 #: one formatter, on both sides, rather than this module inventing a second one. `upload_date` is
 #: formatted by yt-dlp too, from its `YYYYMMDD` into a readable date.
 SUPPORTED_FIELDS: Final[tuple[TemplateField, ...]] = (
-    TemplateField("title", "the item's title, as the site gives it", "{Title}"),
-    TemplateField("uploader", "who published it — NA where the site names nobody", "{Uploader}"),
-    TemplateField("channel", "the channel it is on — NA where the site names none", "{Channel}"),
-    # yt-dlp derives this from `duration` itself, and the raw number renders as `507.1` — which
-    # is why only the formatted spelling is offered.
-    TemplateField("duration_string", "how long it is, as 8-27", "{Duration}"),
+    # **Plain words, no dashes** (maintainer direction, 2026-09-13): these are read in the
+    # *Add a field* menu by people who do not know what a template is.
+    TemplateField("title", "The video's title", "{Title}"),
+    TemplateField("uploader", "Who uploaded it (NA if the site doesn't say)", "{Uploader}"),
+    TemplateField("channel", "The channel it's on (NA if the site doesn't say)", "{Channel}"),
+    # yt-dlp derives this from `duration` itself, and the raw number renders as `507.1`, which
+    # is why only the formatted spelling is offered. A colon cannot be in a file name, so yt-dlp
+    # writes 8:27 as 8-27.
+    TemplateField(
+        "duration_string", "How long it is, like 8-27 for 8 minutes 27 seconds", "{Duration}"
+    ),
     TemplateField(
         "upload_date",
-        "when the site published it, as 2026-09-13 — NA where it says nothing",
+        "The day it was published, like 2026-09-13 (NA if the site doesn't say)",
         "{Upload date}",
         "%(upload_date>%Y-%m-%d)s",
     ),
-    TemplateField("id", "the site's own id for it, as jNQXAC9IVRw", "{ID}"),
-    TemplateField("extractor_key", "which site it came from, as Youtube", "{Site}"),
+    TemplateField("id", "The site's own code for the video, like jNQXAC9IVRw", "{ID}"),
+    TemplateField("extractor_key", "The website it came from, like Youtube", "{Site}"),
     # **Queue-time fields** (`QUEUE_TIME_NAMES`): a playlist entry downloads as its own URL, so
     # yt-dlp never knows these. The add dialog writes them in when it queues each entry.
     TemplateField(
-        "playlist_title", "the playlist's name — nothing for a single video", "{Playlist}"
+        "playlist_title", "The playlist's name (left out for single videos)", "{Playlist}"
     ),
     TemplateField(
         "playlist_index",
-        "its place in the playlist, as 01 — nothing for a single video",
+        "Its number in the playlist, like 01 (left out for single videos)",
         "{Position}",
     ),
     # **Written, never offered** (`UX-014`): every file has one, so nobody chooses it.
@@ -279,7 +284,7 @@ _EXTENSION_SUFFIX: Final = ".%(ext)s"
 
 #: Why a typed name was refused when it names a folder. Folders are the setting's to decide.
 NAME_SEPARATOR_REFUSAL: Final = (
-    "A name cannot contain / or \\ — folders come from how downloads are named in Settings."
+    "A name can't contain / or \\. Folders come from how downloads are named in Settings."
 )
 
 
