@@ -92,6 +92,136 @@ accepts it. Until then it is a proposal in a task, which is the narrowest honest
 - Building anything. This is the decision; Phase 5 owns the packaging work (`T-321`)
 - Windows, which `OPS-001` already settles
 
+### T-337 — Naming is a setting; a single download is renamed, not templated
+
+**Status:** **Complete** — seen on the installed build by the maintainer on 2026-09-14. *(Was In Review:)* the implementation is **approved at `4e10935`** (review of `03c6745`, [record](reviews/T-337.md#2026-09-14--focused-correction-re-review-at-03c6745)); one criterion remains, *seen on the Windows installed build*, which rides `T-327`. Corrected 2026-09-14 for `T337-R1`…`R5` (below). Ruled 2026-09-13 by the
+maintainer from `T-327`'s session, recorded as `UX-014`, and built the same day in ten commits
+(`8ec395c` to `60fb124`).
+**Owner:** Implementer
+**Priority:** High — the per-item template editor is the first naming surface a user meets
+**Phase:** Phase 5
+**Relevant context:** `UX-014`; `REQ-011` as amended; `REQ-023`; `T-112` (the editor this retires),
+`T-195` (the Settings default), `ARC-010` (a template cannot leave the download folder)
+**Affected surfaces:** `core/models.py` and `core/presets.py` (`Preset.output_template`),
+`core/settings.py` (preset loading), `ui/settings_dialog.py`, `ui/add_dialog.py`,
+`ui/preset_manager.py`, `ui/main_window.py` and `ui/queue_view.py` (a queued row's menu)
+
+#### 2026-09-14 — corrections from the session review
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T337-R1` Medium: the durable probe write dropped the four new naming fields | `downloader/manager.py`'s `Probed` handler writes `upload_date`, `media_id`, `channel` and `site` in the same revision as title and uploader, replacing stale values with `None` when a probe reports none. | A real spawned probe reaches `READY` with all four stored; a second test starts from stale values and ends with `None`. Removing the four lines fails both. |
+| `T337-R2` Medium: a second rename used today's setting's folders | `_rename_job` builds a typed name inside the job's **current** template, so its folders stay; accepting the name it already has writes nothing; only clearing the name resolves today's setting, with *Position* padded to the playlist's size (the rows left, or the highest position among them). | Tests: accepting `%(uploader)s/My clip` unchanged writes nothing; `Second name` stays in `%(uploader)s/`; a changed setting does not move a renamed job; a reset entry at position 5 of a 100-entry playlist is `005`. **Three mutations, three caught.** |
+| `T337-R3` Medium: a pre-`UX-014` preference naming `duration_string` was discarded | `duration_string` is supported again, not offered: loading, an unrelated save, preview and the request all keep it. | `%(title)s (%(duration_string)s).%(ext)s` loads with no problem, survives a theme save, and previews `Clip (8-27)`. Removing the field fails all three. |
+| `T337-R4` Medium: queue-time fields were replaced as raw substrings | `resolve_queue_fields` walks the template's own tokens once: `%%` is stepped over, a value is written as finished text, a removed field becomes a private marker only the separator rules see. `named_fields` skips `%%` too, and two raw `in` checks (`add_dialog`'s playlist folder, the Preferences example) use `uses_field`. | `100%(duration)s {Title}` keeps its text; a playlist named `%(duration)s Mix` (and three other field-shaped names) is written once and never resolved again; separator removal beside escaped text still works; readers ignore `%%(…)`. **Two mutations, two caught.** Containment is unchanged: the final guard still decides. |
+| `T337-R5` Low: superseded statements | `REQ-011` says named fields, not named choices; `UX-014`'s closing refusal of playlist fields is marked superseded and item 3 notes the second-rename rule; `STATUS` refreshed. | — |
+
+The maintainer, on the template panel: *"This looks like something that should be in settings as a
+preference instead of using it to rename each individual file this way."*
+
+#### Acceptance criteria
+
+- [x] Settings builds the name from fields (*Title*, *Uploader*, *Duration*, *Upload date*) with no
+      extension shown and an example path, and stores the same `output_template` value as before
+      *(re-ruled 2026-09-13 from named choices)*
+- [x] *Naming and folders…* and the per-item template editor are gone from Add URLs
+- [x] *Rename…* on a single item in Add URLs and on a queue row that has not started takes a plain
+      name, previews its path, writes it literally (a `%` in the name is not a field), and clearing
+      it returns to the setting's name
+- [x] Presets carry no template; a `settings.toml` preset with an `output_template` key still loads
+- [x] Each of the above has a test that fails without it
+
+#### Built so far
+
+- **2026-09-13 — presets and Add URLs.** `Preset.output_template` is gone, and with it
+  `with_output_template`, the preset manager's field and the per-item template panel. A saved preset
+  that still has the key loads and loses only that (**mutated**: refusing the key fails the test).
+  *Rename…* replaces *Naming and folders…* in Add URLs on a probed single item: `RenameEditor`,
+  prefilled from the setting's preview, written by `output_template.renamed_template` — `%` escaped
+  (**mutated**: unescaped fails three tests), the setting's folders kept, a separator refused. The
+  end-to-end test renames to `Renamed: 100% "Live"?` and a real download writes the previewed path.
+- **2026-09-13 — Settings.** *How downloads are named* is a choice of `NAMING_CHOICES` plus
+  *Custom…*, which alone shows the template field and its field list; *Title* stores empty. An
+  example path under it comes from the window's `_preview_template`, the route the refusal already
+  used. Tests: every choice offered and written (**mutated**: *Title* writing its template fails),
+  a stored template reopening on its choice or on *Custom…*, the example following the choice. The
+  *Custom…* container painted the group band `a5cd14f` removed for labels; the container clause is
+  back and the band test now opens *Custom…* before measuring (**mutated**: without the clause it
+  fails).
+- **2026-09-13 — Settings, rebuilt.** The maintainer rejected the choices: one field now holds a
+  readable name (`output_template.readable_to_template` / `template_to_readable`), a button per
+  `OFFERED_FIELDS` entry inserts at the cursor, the extension is never shown (nor in the example),
+  and *Upload date* joins the fields — projected by the adapter, carried on `Job` (migration `0011`,
+  frozen fixture `v11.sql`, schema snapshot). `TemplateEditor` is gone; its preview tests moved to
+  `RenameEditor`. **Mutated**: inserting by replacing the text fails the button test; dropping the
+  extension suffix fails six conversion tests. The label-height and band tests no longer need a
+  *Custom…* state, and the container clause went with the container.
+- **2026-09-13 — more fields.** At the maintainer's choice: *Channel*, *ID* and *Site* (projected
+  from `channel`, `id`, `extractor_key`; carried on `Job`, migration `0012`, frozen `v12.sql`;
+  `capture.py` commits `fixture-id` for `id`, so the fixture policy on ids holds and the committed
+  policy records were updated for the two new entry keys), and *Playlist* and *Position*, resolved
+  by `output_template.resolve_queue_fields` when a playlist is queued and removed with their
+  separator, bracket or empty folder otherwise; a name using *Playlist* replaces the automatic
+  playlist folder. The field buttons became one *Add a field* menu beside the name, to keep the
+  screen within the width and height it is held to. **Mutated**: keeping the automatic folder fails
+  the entry test; not resolving a single item's fields fails its test.
+- **2026-09-13 — the queue.** *Rename…* joins a not-yet-started row's *Just this item* commands and
+  opens `RenameDialog`, the same editor in a window, OK unavailable while the name is refused. The
+  base is the job's own template — so *Uploader / Title* keeps its folder — unless the job was
+  already renamed, when clearing returns to today's setting; written through `retarget`. Tests: the
+  menu entry (and the keyboard route's full order), prefill and literal write, folders kept
+  (**mutated**: basing on the setting fails it), unchanged writes nothing, refused name blocks OK,
+  clearing a rename. The dialog joins `every_surface`'s audit.
+- [x] Seen on the Windows installed build *(the maintainer, 2026-09-14, on `4d431336…`; `T-327`)*
+
+---
+
+### T-335 — A cancelled download can be queued again
+
+**Status:** **Complete** — seen on the installed build by the maintainer on 2026-09-14. *(Was In Review:)* the implementation is **approved at `6933cea`** ([record](reviews/T-337.md#2026-09-14--initial-review-of-the-session-changes)); one criterion remains, *seen on the Windows installed build*, which rides `T-327`. Ruled 2026-09-13 by the maintainer from `T-327`'s session (*Queue again*,
+at the back, from scratch — the Implementer's recommendation), recorded as `UX-005` §4's 2026-09-13
+amendment, and built the same day.
+**Owner:** Implementer designs; Maintainer rules
+**Priority:** Medium
+**Phase:** Phase 5
+**Relevant context:** `UX-005` §4–§5; `REQ-015` (cancel), `REQ-018` and `P2PLAN-R7` (manual retry
+re-enters at the back); `ARCHITECTURE.md` §5's state machine; `UX-008` (a cancel discards the
+partial)
+**Affected surfaces:** `core/job_state.py`, `downloader/manager.py`'s `retry`, `ui/row_verbs.py`,
+`ui/queue_view.py`
+
+The maintainer, in the Sandbox: *"once a video in the queue is cancelled, you should be able to undo
+it."* A cancelled row offered only *Remove*, and the state machine had no way out of `CANCELLED`.
+
+#### Built 2026-09-13
+
+- **`Verb.QUEUE_AGAIN`**, *Queue again*, on cancelled rows before *Remove*; routed through
+  `retry_requested`, the same route as *Retry* and *Start again*.
+- **`CANCELLED → QUEUED`** is the one new edge. `CANCELLED` stays in `TERMINAL`, so `_settled` still
+  drops a late outcome for it and *Clear finished* still clears it; `ARCHITECTURE.md` §5 says so.
+- **`DownloadManager.retry`** accepts a cancelled job and writes it through `requeue_at_end`, at the
+  back. **If the cancelled job's session is still held** — a running job's row says `CANCELLED`
+  when its stream ends, before `_release` has found the process gone — nothing is written until the
+  tick finds it released (`_requeue_when_released`), because `_release` fills free slots before it
+  discards the old attempt's partial, keyed by the same job id. The pending set counts as work for
+  `is_idle`, the tick's keep-alive and the drain rule, and shutdown drops it.
+- **Tests**: a worker that honours the cancel, ends its stream and lingers ignoring `SIGTERM` —
+  *Queue again* pressed while the row says `CANCELLED` and the session is held writes nothing, then
+  `QUEUED` at the back once released (**mutated**: writing immediately fails it); a job cancelled
+  before starting re-queues at once; the verb table and its complement; the routing.
+
+#### Acceptance criteria
+
+- [x] A cancelled row offers *Queue again*, which puts the job at the back of the queue as `QUEUED`
+- [x] No worker outcome can move a cancelled job; only the user's request can
+- [x] Pressed while the cancelled worker is still being stopped, it waits for the release
+- [x] Seen on the Windows installed build *(the maintainer, 2026-09-14, on `4d431336…`; `T-327`)*
+
+**Not done, and not asked for:** a playlist header whose members are all cancelled offers no group
+*Queue again*; each entry offers its own.
+
+---
+
 ### T-338 — The application says when a newer release is out
 
 **Status:** **Complete — Approved at `4e10935`** on 2026-09-14 by independent review of `03c6745` ([record](reviews/T-337.md#2026-09-14--focused-correction-re-review-at-03c6745)); the first real release still has its comparison and download-page link checked under `T-328`. *(Was In Review:)* corrected 2026-09-14 for `T338-R1`, with `T338-R2`'s placement ratified by
