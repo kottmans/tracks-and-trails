@@ -43,6 +43,8 @@ updater this mirrors)
 - **`updates.toml`** beside the settings records the last answered check; the uninstaller's
   *Also remove my settings* removes it and its scratch file, which the packaging tests enforce
   against `update_check_path()`.
+- **The notice is named for screen readers before any release is known.** The accessibility audit
+  walks hidden controls and failed the first build on a nameless button.
 - **Its own pool**, sealed and drained at shutdown like the other two, so a launch check never
   makes the yt-dlp section's buttons answer "another operation is still running".
 - **No test reaches GitHub**: the root conftest replaces the real opener for every test.
@@ -55,8 +57,10 @@ updater this mirrors)
 
 #### Not verified yet
 
-- **On Windows**: the Windows accessibility test's Help menu line now expects *Check for
-  Updates...*, and neither it nor the Windows desktop slice has run on `STARBASE` for this change.
+- **On Windows, now verified**: at `f29a542` on `STARBASE`'s desktop (`QT_QPA_PLATFORM=windows`),
+  the Windows accessibility test (Help now publishes *Check for Updates...*), the Windows desktop
+  slice, this task's UI and unit tests and the packaging tests: 131 passed. The installer built from
+  that commit is staged for the maintainer's Sandbox session, sha256 `c46f6f6f…`.
 - **Against GitHub itself**: there is no published release yet, so a real check answers *No version
   has been released yet*. The parsing is tested against recorded shapes, not a live response.
 
