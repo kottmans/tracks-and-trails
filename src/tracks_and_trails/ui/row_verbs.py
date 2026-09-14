@@ -72,7 +72,7 @@ LABELS: Final[dict[Verb, str]] = {
     # **Named for what it costs**, which is `CANCEL_ALL`'s reasoning applied to the other end of
     # the row: *Retry* on a job that resumes continues, and on one that cannot it starts over.
     Verb.START_AGAIN: "Start again",
-    Verb.QUEUE_AGAIN: "Queue again",
+    Verb.QUEUE_AGAIN: "Queue Again",
     Verb.REMOVE: "Remove",
     Verb.OPEN: "Open",
     Verb.REVEAL: "Show in folder",

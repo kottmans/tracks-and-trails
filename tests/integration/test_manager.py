@@ -5545,14 +5545,16 @@ def test_queue_again_waits_for_the_cancelled_session_to_be_released(
     )
     assert spin(lambda: not worker_processes(existing_children), timeout=CANCEL_BUDGET_SECONDS + 3)
 
-    def queued_again() -> bool:
-        return repository.jobs["job-1"].status is JobStatus.QUEUED
+    def written() -> list[JobStatus]:
+        return [status for job_id, status in repository.writes if job_id == "job-1"]
 
-    assert spin(queued_again, timeout=10), (
+    # **The re-queue, then its read**: a job queued again is probed straight away (it moves on to
+    # `PROBING` at once), so what is asserted is the write sequence rather than a resting status.
+    assert spin(lambda: JobStatus.QUEUED in written(), timeout=10), (
         "the cancelled job was never queued again once its session had been released"
     )
-    written = [status for job_id, status in repository.writes if job_id == "job-1"]
-    assert written[-2:] == [JobStatus.CANCELLED, JobStatus.QUEUED], written
+    after_cancel = written()[written().index(JobStatus.CANCELLED) :]
+    assert after_cancel[:2] == [JobStatus.CANCELLED, JobStatus.QUEUED], after_cancel
     stored = repository.jobs["job-1"]
     assert stored.queue_position is not None and stored.queue_position > 1, (
         f"queued again at position {stored.queue_position}, ahead of job-2 which has never run"
@@ -5564,7 +5566,7 @@ def test_queue_again_waits_for_the_cancelled_session_to_be_released(
 def test_queue_again_on_a_job_cancelled_before_it_started_is_immediate(
     tmp_path: Path, spin: Callable[..., bool]
 ) -> None:
-    """No worker to wait for, so nothing to defer: the row is `QUEUED` when the call returns."""
+    """No worker to wait for, so nothing to defer: the re-queue is written when the call returns."""
     repository = FakeRepository()
     queued(repository, "job-1", "job-2", directory=tmp_path)
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
@@ -5572,9 +5574,44 @@ def test_queue_again_on_a_job_cancelled_before_it_started_is_immediate(
         download.cancel("job-1")
         assert repository.jobs["job-1"].status is JobStatus.CANCELLED
         download.retry("job-1")
+        written = [status for job_id, status in repository.writes if job_id == "job-1"]
+        assert JobStatus.QUEUED in written[written.index(JobStatus.CANCELLED) :], written
         stored = repository.jobs["job-1"]
-        assert stored.status is JobStatus.QUEUED
         assert stored.queue_position is not None and stored.queue_position > 1
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_queue_again_reads_the_job_before_it_downloads_so_it_is_ready_like_its_siblings(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """Maintainer's report, 2026-09-13: a job queued again said *Queued* among *Ready to download*.
+
+    `QUEUED` means *not yet read* in this queue, and admitting it straight to a download skipped the
+    read its playlist siblings had. So it is admitted as a probe, which runs even while the queue is
+    stopped and lands it `READY`; the download waits for the queue to be started.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", directory=tmp_path)
+    download = DownloadManager(
+        repository, concurrency=1, entry_point=child_probe_reporting_then_lingering
+    )
+    try:
+        download.cancel("job-1")
+        cancelled = repository.jobs["job-1"].status
+        assert cancelled is JobStatus.CANCELLED
+        download.retry("job-1")
+
+        def ready() -> bool:
+            return repository.jobs["job-1"].status is JobStatus.READY
+
+        assert spin(ready, timeout=60), (
+            f"a job queued again stayed {repository.jobs['job-1'].status.value}; it was never read"
+        )
+        assert JobStatus.RUNNING not in [s for i, s in repository.writes if i == "job-1"], (
+            "the stopped queue downloaded the job it was only asked to read"
+        )
     finally:
         download.shutdown()
         assert spin(lambda: download.is_idle, timeout=60)

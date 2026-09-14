@@ -2060,7 +2060,17 @@ class DownloadManager(QObject):
                 if current.status in (JobStatus.FAILED, JobStatus.CANCELLED)
                 else None
             ),
-            then=lambda: self._start_when_free(job_id),
+            # **A cancelled job is read again before it downloads** (maintainer's report,
+            # 2026-09-13). It re-enters as `QUEUED`, which in this queue means *not yet read*, and
+            # admitting it straight to a download left it saying *Queued* with no uploader among
+            # siblings saying *Ready to download* — the `T137-R2` shape the add dialog avoids by
+            # admitting unprobed rows as probes. So it is admitted the same way: the probe runs
+            # even while the queue is stopped, lands it `READY`, and `_probe_settled` carries it
+            # into its download when the queue runs. A failed job's retry is unchanged.
+            then=lambda: self._start_when_free(
+                job_id,
+                SessionKind.PROBE if job.status is JobStatus.CANCELLED else SessionKind.DOWNLOAD,
+            ),
             write=self._repository.requeue_at_end,
         )
 
