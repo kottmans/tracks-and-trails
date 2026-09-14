@@ -388,11 +388,12 @@ def windows_layout(monkeypatch: pytest.MonkeyPatch) -> dict[str, PureWindowsPath
 
     import platformdirs.windows as windows
 
-    from tracks_and_trails.core import logging as app_logging
-    from tracks_and_trails.core import paths, settings
-    from tracks_and_trails.downloader import environment
-    from tracks_and_trails.persistence import db
-    from tracks_and_trails.ui import main_window
+    import tracks_and_trails.core.logging as app_logging
+    import tracks_and_trails.core.paths as paths
+    import tracks_and_trails.core.settings as settings
+    import tracks_and_trails.downloader.environment as environment
+    import tracks_and_trails.persistence.db as db
+    import tracks_and_trails.ui.main_window as main_window
 
     monkeypatch.setattr(windows, "os", SimpleNamespace(path=ntpath))
     monkeypatch.setattr(
@@ -431,19 +432,30 @@ def windows_layout(monkeypatch: pytest.MonkeyPatch) -> dict[str, PureWindowsPath
     }
 
 
-def test_the_data_question_is_asked_only_interactively_and_defaults_to_keeping() -> None:
-    """**The maintainer's ruling in `T-327`**: a user should not have to delete settings by hand.
+def test_the_data_question_is_asked_once_and_only_a_ticked_box_removes_anything() -> None:
+    """**The maintainer's rulings in `T-327`**: no deleting settings by hand, and one dialog.
 
-    Two properties carry the risk. `T-039`'s Sandbox run uninstalls with `/VERYSILENT` and requires
-    the data to survive byte for byte, so a silent uninstall must never remove it; and the default
-    button must be No, so an Enter pressed out of habit keeps a queue rather than losing it.
+    Three properties carry the risk. A silent run never shows the dialog, because `T-039`'s Sandbox
+    run uninstalls with `/VERYSILENT` and requires the data to survive byte for byte. Nothing is
+    removed except on the explicit switch, and the switch is only added when the box is ticked. And
+    the box starts unticked, so pressing Enter out of habit keeps the queue.
     """
     code = code_section(INSTALLER.read_text(encoding="utf-8"))
+    initialize = code[code.index("function InitializeUninstall") :]
+    initialize = initialize[: initialize.index("\nend;")]
+    asking = initialize.index("AskHowToUninstall(")
+    assert initialize.index("if UninstallSilent then\n    Exit;") < asking, (
+        "a silent uninstall would stop to ask"
+    )
+    assert "Switches := '/SILENT " in initialize, "the second run would show Inno's box as well"
+    assert re.search(
+        r"if RemoveData then\s+Switches := Switches \+ ' ' \+ RemoveDataSwitch;", initialize
+    ), "the removal switch is added whether or not the box is ticked"
+    assert "RemoveBox.Checked := False;" in code, "the box would start ticked"
     step = code[code.index("procedure CurUninstallStepChanged") :]
-    guard = step[: step.index("RemoveApplicationData;")]
-    assert "not UninstallSilent" in guard, "a silent uninstall would remove the user's data"
-    assert "usPostUninstall" in guard
-    assert "MB_DEFBUTTON2" in guard and "IDYES" in guard, "the default answer would remove data"
+    assert re.search(r"if HasSwitch\(RemoveDataSwitch\) then\s+RemoveApplicationData;", step), (
+        "data is removed without the switch a ticked box adds"
+    )
     calls = re.findall(r"(?<!procedure )\bRemoveApplicationData;", code)
     assert len(calls) == 1, "data is removed somewhere nothing asks"
 

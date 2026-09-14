@@ -123,22 +123,29 @@ Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#StringChange(AppN
 ; survive.
 
 [Messages]
-; Said on the uninstaller's first page, because a user deciding whether to uninstall is entitled
-; to know what survives it. The settings question itself is `[Code]`'s, below.
-ConfirmUninstall=Remove %1?%n%nYour downloaded files are kept, and so is anything you saved in its folder. You will be asked next whether to keep your settings and download queue.
+; Shown only if `[Code]`'s single dialog could not restart the uninstaller, in which case nothing of
+; the user's is removed, so this says so.
+ConfirmUninstall=Remove %1?%n%nYour settings, download queue and downloaded files are kept, and so is anything you saved in its folder.
 
 ; **No file associations and no protocol handler in 0.1.0** (`T-322` scope). `T-104` — handing a
 ; second launch's URL to the running instance — is not built, so an association would open a
 ; message box rather than start a download. A known omission rather than a surprise.
 
 [Code]
-// **Keep or remove the application's own data, asked once, after uninstalling** (`T-322`,
-// the maintainer's ruling in `T-327` on 2026-09-13: a user should not have to find the folder by
-// hand). The default answer is **No**, so a stray Enter keeps everything.
+// **One question, asked once, before anything is removed** (`T-322`, the maintainer's rulings in
+// `T-327` on 2026-09-13: a user should not have to delete settings by hand, and should not be
+// asked twice). Inno's own "Remove this app?" box cannot be switched off from here: its source
+// (`Setup.Uninstall.pas`) shows it whenever the run is not `/SILENT` or `/VERYSILENT`. So an
+// interactive run shows this dialog instead, then starts the uninstaller again with `/SILENT`,
+// which skips Inno's box, and ends itself. `/REMOVEDATA` carries a ticked box to that second run;
+// `/ASKED` tells it the user has already been asked, so it says when it has finished.
 //
-// **A silent uninstall never asks and always keeps** (`UninstallSilent`). `T-039`'s Sandbox run
-// uninstalls with `/VERYSILENT` and fingerprints the data before and after; an unattended removal
-// must not be the one that loses a queue.
+// **Silent runs never ask, and keep the data unless told otherwise.** `T-039`'s Sandbox run
+// uninstalls with `/VERYSILENT` and fingerprints the data before and after, so only an explicit
+// `/REMOVEDATA` removes anything.
+//
+// **If the second run cannot be started**, the uninstall carries on in the usual way: Inno's box,
+// whose message below says the settings are kept, and nothing is removed.
 //
 // **Named, application-owned items only, never the folder wholesale** (`T322-R1`'s rule, carried
 // over from `{app}`). Every path below is one the application itself writes under `platformdirs`
@@ -148,9 +155,23 @@ ConfirmUninstall=Remove %1?%n%nYour downloaded files are kept, and so is anythin
 // Downloads are never here: they go to the folder chosen in Preferences.
 // `tests/unit/test_windows_packaging.py` pins each name against the code that writes it.
 
+const
+  RemoveDataSwitch = '/REMOVEDATA';
+  AskedSwitch = '/ASKED';
+
 function ApplicationDataFolder: String;
 begin
   Result := ExpandConstant('{localappdata}\tracksandtrails');
+end;
+
+function HasSwitch(const Switch: String): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+    if CompareText(ParamStr(I), Switch) = 0 then
+      Result := True;
 end;
 
 procedure RemoveApplicationData;
@@ -169,13 +190,99 @@ begin
   RemoveDir(Folder);
 end;
 
+// The dialog. True when the user chose Uninstall; `RemoveData` is the tick box.
+function AskHowToUninstall(var RemoveData: Boolean): Boolean;
+var
+  Form: TSetupForm;
+  Question: TNewStaticText;
+  RemoveBox: TNewCheckBox;
+  UninstallButton, CancelButton: TNewButton;
+  ButtonWidth: Integer;
+begin
+  Form := CreateCustomForm;
+  try
+    Form.Caption := 'Uninstall {#AppName}';
+    Form.ClientWidth := ScaleX(420);
+    Form.ClientHeight := ScaleY(142);
+
+    Question := TNewStaticText.Create(Form);
+    Question.Parent := Form;
+    Question.ShowAccelChar := False;
+    Question.AutoSize := False;
+    Question.WordWrap := True;
+    Question.Left := ScaleX(16);
+    Question.Top := ScaleY(16);
+    Question.Width := Form.ClientWidth - ScaleX(32);
+    Question.Height := ScaleY(36);
+    Question.Caption := 'Remove {#AppName} from this computer? Your downloaded files are kept.';
+
+    RemoveBox := TNewCheckBox.Create(Form);
+    RemoveBox.Parent := Form;
+    RemoveBox.Left := ScaleX(16);
+    RemoveBox.Top := ScaleY(60);
+    RemoveBox.Width := Form.ClientWidth - ScaleX(32);
+    RemoveBox.Height := ScaleY(20);
+    RemoveBox.Caption := 'Also remove my settings and download queue';
+    RemoveBox.Checked := False;
+
+    ButtonWidth := Form.CalculateButtonWidth(['Uninstall', 'Cancel']);
+
+    CancelButton := TNewButton.Create(Form);
+    CancelButton.Parent := Form;
+    CancelButton.Caption := 'Cancel';
+    CancelButton.ModalResult := mrCancel;
+    CancelButton.Cancel := True;
+    CancelButton.Width := ButtonWidth;
+    CancelButton.Height := ScaleY(23);
+    CancelButton.Left := Form.ClientWidth - ScaleX(16) - ButtonWidth;
+    CancelButton.Top := Form.ClientHeight - ScaleY(16) - CancelButton.Height;
+
+    UninstallButton := TNewButton.Create(Form);
+    UninstallButton.Parent := Form;
+    UninstallButton.Caption := 'Uninstall';
+    UninstallButton.ModalResult := mrOk;
+    UninstallButton.Default := True;
+    UninstallButton.Width := ButtonWidth;
+    UninstallButton.Height := CancelButton.Height;
+    UninstallButton.Left := CancelButton.Left - ScaleX(8) - ButtonWidth;
+    UninstallButton.Top := CancelButton.Top;
+
+    Form.ActiveControl := UninstallButton;
+    Result := Form.ShowModal = mrOk;
+    RemoveData := RemoveBox.Checked;
+  finally
+    Form.Free;
+  end;
+end;
+
+function InitializeUninstall: Boolean;
+var
+  RemoveData: Boolean;
+  Switches: String;
+  ResultCode: Integer;
+begin
+  Result := True;
+  if UninstallSilent then
+    Exit;
+  if not AskHowToUninstall(RemoveData) then
+  begin
+    Result := False;
+    Exit;
+  end;
+  Switches := '/SILENT ' + AskedSwitch;
+  if RemoveData then
+    Switches := Switches + ' ' + RemoveDataSwitch;
+  // Ends this run only once the second one has started; otherwise Inno's own box follows.
+  if Exec(UninstallExeFilename, Switches, '', SW_SHOWNORMAL, ewNoWait, ResultCode) then
+    Result := False;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  if (CurUninstallStep = usPostUninstall) and (not UninstallSilent) and DirExists(ApplicationDataFolder) then
-  begin
-    if MsgBox('Also remove your {#AppName} settings and download queue?' + #13#10#13#10 +
-              'Choose No to keep them for next time. Your downloaded files are kept either way.',
-              mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
-      RemoveApplicationData;
-  end;
+  if CurUninstallStep <> usPostUninstall then
+    Exit;
+  if HasSwitch(RemoveDataSwitch) then
+    RemoveApplicationData;
+  if HasSwitch(AskedSwitch) then
+    MsgBox('{#AppName} was removed from this computer.', mbInformation, MB_OK);
 end;
