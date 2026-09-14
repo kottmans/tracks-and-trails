@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-on-dark-512.png">
+    <img src="src/tracks_and_trails/resources/icons/icon-512.png" width="160" alt="Tracks &amp; Trails logo">
+  </picture>
+</p>
+
 # Tracks & Trails
 
 A desktop GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp) on Linux and Windows.
