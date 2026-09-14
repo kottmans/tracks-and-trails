@@ -25,6 +25,26 @@ path conversion. All are corrected (below); the tag moves to the corrected commi
 project that cannot be quietly corrected, so that one is left to the maintainer rather than taken.
 Filed 2026-09-11 with the Phase 5 plan.
 
+#### 2026-09-14 (third run) — the AppImage gate could not import its own vocabulary
+
+**Run `34880227853`, tag at `095b788`:** `verify` passed, and **the container build passed** (the
+SIGPIPE fix, now executed in CI). **The gate on the runner failed**: `artifact_gates.py` imports
+`tracks_and_trails.core.logging`, which imports `platformdirs`, and the runner's fresh Python has
+none of the project's packages. The local check before this run used the project's virtualenv, which
+is why it passed there; that was the wrong environment to prove the step with. **Reproduced in a bare
+virtualenv**: `ModuleNotFoundError`, and with `platformdirs` alone installed, all four gates pass on
+the `0.1.0` AppImage. The workflow installs it before the gate at `pyproject.toml`'s specifier, and a
+test holds the two together.
+
+**Read ahead:** the probes run the AppImage directly, and an AppImage mounts itself through FUSE,
+which a hosted runner is not guaranteed to allow. The step now sets `APPIMAGE_EXTRACT_AND_RUN=1`,
+which the runtime honours; `--spawn-probe`, `--database-probe` and `--version` pass in that mode on
+the `0.1.0` AppImage. That the runner lacks FUSE is not established; the setting removes the
+dependence either way.
+
+**The run's installer job was still queued** behind CI on `STARBASE` when this was written, and the
+run cannot draft without the AppImage.
+
 #### 2026-09-14 (later still) — the second run's installer: Git Bash rewrote ISCC's switches
 
 **The same run's `installer` job** passed every step before the compile: the `STARBASE` Python

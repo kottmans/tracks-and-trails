@@ -375,3 +375,36 @@ def test_the_installer_compile_stops_git_bash_rewriting_its_switches() -> None:
         assert str(step.get("env", {}).get("MSYS_NO_PATHCONV")) == "1", (
             "Git Bash will rewrite ISCC's /D switches into paths"
         )
+
+
+def test_the_linux_gate_has_the_one_dependency_it_imports_and_at_the_projects_version() -> None:
+    """**`T-324`, the third `v0.1.0` run.** `build-linux` runs `artifact_gates.py` on the runner,
+    whose Python has none of the project's packages. The gate imports `core.logging`, which imports
+    `platformdirs`, and died with `ModuleNotFoundError`. The install must precede the gate and use
+    the same specifier `pyproject.toml` declares, so the two cannot drift apart."""
+    import tomllib
+
+    declared = next(
+        dependency
+        for dependency in tomllib.loads(
+            (REPOSITORY / "pyproject.toml").read_text(encoding="utf-8")
+        )["project"]["dependencies"]
+        if dependency.startswith("platformdirs")
+    )
+    job_steps = steps("build-linux")
+    gate = next(
+        i for i, step in enumerate(job_steps) if "artifact_gates.py" in str(step.get("run", ""))
+    )
+    installs = [str(step.get("run", "")) for step in job_steps[:gate]]
+    assert any(f'pip install "{declared}"' in run for run in installs), (
+        f"nothing installs {declared!r} before the gate imports it"
+    )
+
+
+def test_the_appimage_probes_do_not_depend_on_fuse() -> None:
+    """A hosted runner may not permit FUSE, and an AppImage run normally mounts itself through it.
+    The probes run the artifact directly, so they ask the runtime to extract and run instead."""
+    probes = next(
+        step for step in steps("build-linux") if "--spawn-probe" in str(step.get("run", ""))
+    )
+    assert str(probes.get("env", {}).get("APPIMAGE_EXTRACT_AND_RUN")) == "1"
