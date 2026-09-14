@@ -15,15 +15,16 @@ Video and audio are equally first-class.
 
 Phases 0–3 are complete and signed off: the process model, the persistent queue, concurrency,
 and the format/content depth that separates this from a preset-only wrapper. Phase 4 —
-settings, theming, and accessibility — is in progress. Phase 5 is packaging, and none of it is
-built yet.
+settings, theming, and accessibility — is built, and its exit sign-off is pending. Phase 5 is
+packaging: a Linux AppImage and a Windows installer are built and being tested, but no release
+has been published.
 
 Concretely, that means:
 
 | | |
 |---|---|
-| **You can** | clone it, install it, and download things with it today |
-| **You cannot** | install it from a release — there are no installers or packages yet |
+| **You can** | [install it from source](#installing) and download things with it today |
+| **You cannot** | download a release — the first one has not been published |
 | **Targets** | Linux (Fedora, x86-64) and Windows 10/11 (x86-64), both exercised by CI |
 | **Not supported** | macOS |
 
@@ -45,27 +46,78 @@ actually built, including what is known-broken and what is unexplained.
 - In-app yt-dlp version display and update, so a broken site is fixable without waiting for a release
 - No telemetry, no analytics, no phone-home
 
-## Running it
+## Installing
 
-You need **Python 3.14+**, **git**, and **ffmpeg** (for merging and audio extraction — the
-application runs without it, and tells you what it cannot do).
+**There is no release to download yet.** Until the first one is published, install from source
+as below. It takes a few minutes, most of it downloading Qt. The install brings its own pinned
+copy of yt-dlp, so you do not need yt-dlp installed separately.
+
+You need:
+
+- **Python 3.14 or newer.** Check with `python3 --version`, or `py -3.14 --version` on Windows.
+- **git**
+- **ffmpeg** is optional but recommended. Without it the app still runs, but it cannot merge
+  separate video and audio streams or extract audio, and it tells you so.
+
+### Linux
+
+Install the prerequisites from your package manager:
 
 ```bash
-git clone https://github.com/kottmans/tracks-and-trails
-cd tracks-and-trails
+# Fedora. ffmpeg-free is in Fedora's own repositories; RPM Fusion's ffmpeg package
+# supports more formats.
+sudo dnf install python3 git ffmpeg-free
 
-python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -e .
-
-python -m tracks_and_trails
+# Debian and Ubuntu
+sudo apt install python3 python3-venv git ffmpeg
 ```
 
-That last line opens the application window. The install pulls in PySide6 and a pinned yt-dlp,
-so no separate yt-dlp is needed.
+If your distribution's `python3` is older than 3.14, install a newer Python first.
 
-ffmpeg comes from your package manager — `dnf install ffmpeg` or `apt install ffmpeg` on Linux;
-on Windows, put it on `PATH` or set its location in Settings.
+Then install Tracks & Trails into its own folder and start it:
+
+```bash
+git clone https://github.com/kottmans/tracks-and-trails.git
+cd tracks-and-trails
+python3 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install .
+
+.venv/bin/tracks-and-trails
+```
+
+### Windows 10 and 11
+
+In PowerShell, install the prerequisites with winget, then **open a new PowerShell window** so
+they are on your `PATH`:
+
+```powershell
+winget install --id Python.Python.3.14
+winget install --id Git.Git
+winget install --id Gyan.FFmpeg
+```
+
+Then install Tracks & Trails into its own folder and start it:
+
+```powershell
+git clone https://github.com/kottmans/tracks-and-trails.git
+cd tracks-and-trails
+py -3.14 -m venv .venv
+.venv\Scripts\python -m pip install --upgrade pip
+.venv\Scripts\python -m pip install .
+
+.venv\Scripts\tracks-and-trails
+```
+
+If the app says it cannot find ffmpeg, set its location in Settings.
+
+### Starting it again, updating, and removing it
+
+- **Start it again** by running the last line above from the `tracks-and-trails` folder.
+- **Update** from the same folder with `git pull`, then repeat the `pip install .` line.
+  yt-dlp can also be updated from inside the app, without updating Tracks & Trails.
+- **Remove it** by deleting the `tracks-and-trails` folder. Your settings, queue and log are kept
+  in your user profile, not in that folder; `tracks-and-trails --help` prints where the log is.
 
 ### Command line
 
@@ -89,6 +141,9 @@ output paths. [SECURITY.md](SECURITY.md) has the exact table. `--help` prints th
 path on your machine.
 
 ### Running the tests
+
+The tests need an editable development install instead; [DEVELOPMENT](docs/DEVELOPMENT.md#setup)
+has the full setup.
 
 ```bash
 pip install -e ".[dev]"
@@ -164,7 +219,7 @@ tools/                   probes, screenshot generators, one-off diagnostics
 
 | Reader purpose | Start here |
 |---|---|
-| Understand and run the product | This README, especially [Running it](#running-it) |
+| Understand and run the product | This README, especially [Installing](#installing) |
 | Develop and test | [DEVELOPMENT](docs/DEVELOPMENT.md) and [test policy](docs/project/TESTING.md) |
 | Understand design and rationale | [ARCHITECTURE](docs/project/ARCHITECTURE.md) and [decision index](docs/project/DECISIONS.md#effective-decision-index) |
 | Find active work and blockers | [STATUS](docs/project/STATUS.md) and [TASKS](docs/project/TASKS.md) |
