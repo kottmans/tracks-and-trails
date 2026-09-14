@@ -2998,7 +2998,9 @@ class AddUrlDialog(QDialog):
         folder = sanitize_component(probed.title)
         # **Unless the naming already says where the playlist's name goes** (`UX-014`): a pattern
         # using *Playlist* would otherwise land every entry in `Mix/Mix/…`.
-        names_the_playlist = "%(playlist_title)s" in self._default_output_template
+        names_the_playlist = output_template.uses_field(
+            self._default_output_template, "playlist_title"
+        )
         directory = (
             self._output_directory / folder
             if folder and not names_the_playlist

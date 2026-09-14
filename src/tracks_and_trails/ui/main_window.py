@@ -1021,7 +1021,9 @@ class MainWindow(QMainWindow):
             return None
         # **As a playlist's first entry when the name uses the playlist**, so the example shows
         # what *Playlist* and *Position* write rather than showing them removed (`UX-014`).
-        uses_playlist = "%(playlist_" in template
+        uses_playlist = output_template.uses_field(
+            template, "playlist_title"
+        ) or output_template.uses_field(template, "playlist_index")
         resolved = (
             output_template.resolve_queue_fields(
                 template,
@@ -1112,8 +1114,10 @@ class MainWindow(QMainWindow):
 
         **The job's own naming is the base**, not today's setting: a download queued under
         *Uploader / Title* keeps its uploader folder when renamed, because renaming one file is not
-        a decision about where files go. The exception is a job already renamed, whose template
-        names no pattern — clearing that name returns it to the setting in force now.
+        a decision about where files go. **That holds for every rename after the first too**
+        (`T337-R2`): a renamed job keeps the folders it already has, and accepting the name it
+        already has writes nothing. The one exception is the explicit reset: clearing the name of a
+        job that was renamed returns it to the setting in force now.
 
         Written through `retarget`, the route *Options…* and *Choose specific formats…* take, so a
         download that starts while the window is open is refused there rather than half-renamed.
@@ -1125,12 +1129,15 @@ class MainWindow(QMainWindow):
             return None
         current = job.request.output_template
         typed_before = output_template.renamed_name_of(current)
-        base = (
+        #: What an empty name means. For a job never renamed, its own pattern; for a renamed one,
+        #: today's setting, which is the reset.
+        reset = (
             current
             if typed_before is None
             else output_template.resolve_queue_fields(
                 self._setting_template(),
                 position=None if job.playlist_index is None else job.playlist_index + 1,
+                count=self._playlist_size(job),
                 playlist=job.playlist_title,
                 duration_seconds=job.duration_seconds,
             )
@@ -1149,7 +1156,8 @@ class MainWindow(QMainWindow):
         manager = self._manager
 
         def template_for(name: str) -> str:
-            return output_template.renamed_template(name, within=base) if name else base
+            # A typed name keeps the folders the job has now, not the ones today's setting gives.
+            return output_template.renamed_template(name, within=current) if name else reset
 
         def preview(name: str) -> OutputPreview:
             refusal = output_template.name_refusal(name)
@@ -1167,9 +1175,12 @@ class MainWindow(QMainWindow):
         )
 
         def accepted() -> None:
-            name = dialog.name
-            chosen = "" if name == default_name else name
-            template = template_for(chosen)
+            name = dialog.name.strip()
+            # **Unchanged is not a rename** (`T337-R2`): the prefill accepted as it stands writes
+            # nothing, whether it was a name typed before or the pattern's own.
+            if name == (typed_before if typed_before is not None else default_name):
+                return
+            template = template_for(name)
             if template == current:
                 return
             self._manager_retarget(job_id, replace(job.request, output_template=template))
@@ -1178,6 +1189,20 @@ class MainWindow(QMainWindow):
         # `open`, not `exec`, for `_edit_job_options`' reason.
         dialog.open()
         return dialog
+
+    def _playlist_size(self, job: Job) -> int | None:
+        """How big `job`'s playlist is, so a reset pads *Position* as queueing did.
+
+        The rows still in the queue, or the highest position among them if some were removed: a
+        hundred-entry playlist cut to three still numbers its hundredth entry `100`.
+        """
+        if job.playlist_id is None or self._queue is None:
+            return None
+        group = self._queue.model.group_jobs(job.playlist_id)
+        positions = [
+            other.playlist_index + 1 for other in group if other.playlist_index is not None
+        ]
+        return max([len(group), *positions])
 
     def _setting_template(self) -> str:
         """The naming the Settings preference gives a new download now."""

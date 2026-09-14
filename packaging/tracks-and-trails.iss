@@ -55,6 +55,11 @@ AppPublisher={#AppPublisher}
 AppPublisherURL={#AppUrl}
 AppSupportURL={#AppUrl}/issues
 VersionInfoVersion={#NumericVersion}
+; **Close the application before changing it** (`T322-R3`). `core/app_mutex.py` holds this named
+; mutex while the application runs; the installer and the uninstaller both check it before touching
+; any file and ask the user to close the application. Without it, a ticked *remove my settings*
+; could run against a database the open application still held.
+AppMutex=TracksAndTrails.Running
 
 ; **Per-user, no administrator prompt** (`NFR-004`). The application writes nothing beside itself,
 ; so it needs no elevation — and a per-machine install would add an admin prompt on top of the
@@ -123,8 +128,8 @@ Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#StringChange(AppN
 ; survive.
 
 [Messages]
-; Shown only if `[Code]`'s single dialog could not restart the uninstaller, in which case nothing of
-; the user's is removed, so this says so.
+; Shown only when the uninstaller is run some way other than Windows' own uninstall entry, which
+; `[Code]` points at its single dialog. Nothing of the user's is removed then, so this says so.
 ConfirmUninstall=Remove %1?%n%nYour settings, download queue and downloaded files are kept, and so is anything you saved in its folder.
 
 ; **No file associations and no protocol handler in 0.1.0** (`T-322` scope). `T-104` — handing a
@@ -133,19 +138,29 @@ ConfirmUninstall=Remove %1?%n%nYour settings, download queue and downloaded file
 
 [Code]
 // **One question, asked once, before anything is removed** (`T-322`, the maintainer's rulings in
-// `T-327` on 2026-09-13: a user should not have to delete settings by hand, and should not be
-// asked twice). Inno's own "Remove this app?" box cannot be switched off from here: its source
-// (`Setup.Uninstall.pas`) shows it whenever the run is not `/SILENT` or `/VERYSILENT`. So an
-// interactive run shows this dialog instead, then starts the uninstaller again with `/SILENT`,
-// which skips Inno's box, and ends itself. `/REMOVEDATA` carries a ticked box to that second run;
-// `/ASKED` tells it the user has already been asked, so it says when it has finished.
+// `T-327` on 2026-09-13: a user should not have to delete settings by hand, and should be asked
+// once).
+//
+// **How there comes to be one dialog.** Inno's own "Remove this app?" box cannot be switched off
+// from here: `Setup.Uninstall.pas` shows it on every run that is not `/SILENT` or `/VERYSILENT`.
+// So `CurStepChanged(ssPostInstall)` rewrites the uninstall entry Windows runs from Settings,
+// which Inno has just registered, to `"unins000.exe" /SILENT /ASK`. That run skips Inno's box and
+// shows ours from `InitializeUninstall`. *(The first version restarted the uninstaller from inside
+// an interactive run instead. `T322-R4`: the first run still holds `unins000.dat` exclusively
+// while its callback runs, so the second could fail to open it after the first had already given
+// up. There is now one process and nothing to race.)* The uninstaller run any other way shows
+// Inno's box, with a message saying everything is kept, and keeps everything.
+//
+// **The application is closed first** (`T322-R3`): `AppMutex` in `[Setup]` makes Inno check for the
+// running application after this dialog and before removing anything, and ask the user to close it.
+//
+// **Nothing is claimed that did not happen** (`T322-R3`). Each named item is deleted and then
+// looked for; one still there makes the removal incomplete, which the final message says, with
+// the folder to finish by hand. An item that was never there is not a failure.
 //
 // **Silent runs never ask, and keep the data unless told otherwise.** `T-039`'s Sandbox run
 // uninstalls with `/VERYSILENT` and fingerprints the data before and after, so only an explicit
-// `/REMOVEDATA` removes anything.
-//
-// **If the second run cannot be started**, the uninstall carries on in the usual way: Inno's box,
-// whose message below says the settings are kept, and nothing is removed.
+// `/REMOVEDATA` removes anything without the dialog.
 //
 // **Named, application-owned items only, never the folder wholesale** (`T322-R1`'s rule, carried
 // over from `{app}`). Every path below is one the application itself writes under `platformdirs`
@@ -157,7 +172,11 @@ ConfirmUninstall=Remove %1?%n%nYour settings, download queue and downloaded file
 
 const
   RemoveDataSwitch = '/REMOVEDATA';
-  AskedSwitch = '/ASKED';
+  AskSwitch = '/ASK';
+
+var
+  RemoveData: Boolean;
+  Asked: Boolean;
 
 function ApplicationDataFolder: String;
 begin
@@ -174,26 +193,63 @@ begin
       Result := True;
 end;
 
-procedure RemoveApplicationData;
+// Point Windows' uninstall entry at the single dialog. Only an entry Inno registered is rewritten.
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Key: String;
+begin
+  if CurStep <> ssPostInstall then
+    Exit;
+  Key := ExpandConstant('Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1');
+  if RegKeyExists(HKA, Key) then
+    RegWriteStringValue(HKA, Key, 'UninstallString',
+      '"' + ExpandConstant('{uninstallexe}') + '" /SILENT ' + AskSwitch)
+  else
+    Log('No uninstall entry to point at the dialog: ' + Key);
+end;
+
+// True when `Path` is gone afterwards, whether it was deleted now or never existed.
+function DeleteNamedFile(const Path: String): Boolean;
+begin
+  if FileExists(Path) then
+    DeleteFile(Path);
+  Result := not FileExists(Path);
+  if not Result then
+    Log('Could not delete ' + Path);
+end;
+
+function DeleteNamedFolder(const Path: String): Boolean;
+begin
+  if DirExists(Path) then
+    DelTree(Path, True, True, True);
+  Result := not DirExists(Path);
+  if not Result then
+    Log('Could not delete ' + Path);
+end;
+
+// Every named item, each checked. True only when all of them are gone.
+function RemoveApplicationData: Boolean;
 var
   Folder: String;
 begin
   Folder := ApplicationDataFolder;
-  DeleteFile(Folder + '\settings.toml');
-  DeleteFile(Folder + '\settings.toml.writing');
-  DeleteFile(Folder + '\window.toml');
-  DeleteFile(Folder + '\updates.toml');
-  DeleteFile(Folder + '\updates.toml.writing');
-  DeleteFile(Folder + '\library.sqlite3');
-  DeleteFile(Folder + '\library.sqlite3-wal');
-  DeleteFile(Folder + '\library.sqlite3-shm');
-  DelTree(Folder + '\ytdlp', True, True, True);
-  DelTree(Folder + '\Cache', True, True, True);
+  Result := True;
+  if not DeleteNamedFile(Folder + '\settings.toml') then Result := False;
+  if not DeleteNamedFile(Folder + '\settings.toml.writing') then Result := False;
+  if not DeleteNamedFile(Folder + '\window.toml') then Result := False;
+  if not DeleteNamedFile(Folder + '\updates.toml') then Result := False;
+  if not DeleteNamedFile(Folder + '\updates.toml.writing') then Result := False;
+  if not DeleteNamedFile(Folder + '\library.sqlite3') then Result := False;
+  if not DeleteNamedFile(Folder + '\library.sqlite3-wal') then Result := False;
+  if not DeleteNamedFile(Folder + '\library.sqlite3-shm') then Result := False;
+  if not DeleteNamedFile(Folder + '\library.sqlite3.lock') then Result := False;
+  if not DeleteNamedFolder(Folder + '\ytdlp') then Result := False;
+  if not DeleteNamedFolder(Folder + '\Cache') then Result := False;
   RemoveDir(Folder);
 end;
 
-// The dialog. True when the user chose Uninstall; `RemoveData` is the tick box.
-function AskHowToUninstall(var RemoveData: Boolean): Boolean;
+// The dialog. True when the user chose Uninstall; `Remove` is the tick box.
+function AskHowToUninstall(var Remove: Boolean): Boolean;
 var
   Form: TSetupForm;
   Question: TNewStaticText;
@@ -250,40 +306,52 @@ begin
 
     Form.ActiveControl := UninstallButton;
     Result := Form.ShowModal = mrOk;
-    RemoveData := RemoveBox.Checked;
+    Remove := RemoveBox.Checked;
   finally
     Form.Free;
   end;
 end;
 
 function InitializeUninstall: Boolean;
-var
-  RemoveData: Boolean;
-  Switches: String;
-  ResultCode: Integer;
 begin
   Result := True;
-  if UninstallSilent then
+  RemoveData := HasSwitch(RemoveDataSwitch);
+  Asked := False;
+  if not HasSwitch(AskSwitch) then
     Exit;
   if not AskHowToUninstall(RemoveData) then
   begin
     Result := False;
     Exit;
   end;
-  Switches := '/SILENT ' + AskedSwitch;
-  if RemoveData then
-    Switches := Switches + ' ' + RemoveDataSwitch;
-  // Ends this run only once the second one has started; otherwise Inno's own box follows.
-  if Exec(ExpandConstant('{uninstallexe}'), Switches, '', SW_SHOWNORMAL, ewNoWait, ResultCode) then
-    Result := False;
+  Asked := True;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Removed: Boolean;
 begin
   if CurUninstallStep <> usPostUninstall then
     Exit;
-  if HasSwitch(RemoveDataSwitch) then
-    RemoveApplicationData;
-  if HasSwitch(AskedSwitch) then
-    MsgBox('{#AppName} was removed from this computer.', mbInformation, MB_OK);
+  Removed := False;
+  if RemoveData then
+  begin
+    Removed := RemoveApplicationData;
+    if Removed then
+      Log('Settings and download queue removed.')
+    else
+      Log('Settings and download queue: removal incomplete.');
+  end;
+  if not Asked then
+    Exit;
+  if not RemoveData then
+    MsgBox('{#AppName} was removed from this computer. Your settings and download queue were kept.',
+      mbInformation, MB_OK)
+  else if Removed then
+    MsgBox('{#AppName} was removed from this computer, along with your settings and download queue.',
+      mbInformation, MB_OK)
+  else
+    MsgBox('{#AppName} was removed, but some of your settings could not be deleted.' + #13#10#13#10 +
+      'Close anything that might be using them, then delete this folder:' + #13#10 +
+      ApplicationDataFolder, mbError, MB_OK);
 end;

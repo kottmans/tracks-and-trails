@@ -156,8 +156,8 @@ updates automatically*, on by default. An explicit check always answers in a box
 with *Open Download Page*, *You have the latest version*, or why it could not check. **The daily
 check is quiet**: when it finds a newer release it shows *Version X is available* at the right of
 the status bar, which opens the same box when pressed, and otherwise it shows nothing. *(The
-status-bar placement is the build's choice for a quiet notice; `REL-009` rules that it must not
-interrupt, not where it sits.)*
+placement was the build's choice until the maintainer ratified it on 2026-09-14, over a banner and a
+once-per-version box: `REL-009`'s amendment, `T338-R2`.)*
 
 **The rule the toolbar keeps:** nothing on it acts on a *selection*, and every verb on it names the
 list it empties.

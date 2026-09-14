@@ -6972,6 +6972,11 @@ def child_probing_everything_a_row_draws(
                     uploader="Trail Sounds",
                     duration_seconds=754.0,
                     thumbnail_url="https://example.invalid/entry.jpg",
+                    # `T337-R1`: the naming fields a probe resolves.
+                    upload_date="20260913",
+                    media_id="site-id",
+                    channel="Channel",
+                    site="Youtube",
                 ),
             )
         )
@@ -6981,6 +6986,18 @@ def child_probing_everything_a_row_draws(
         return
     while True:
         time.sleep(0.05)
+
+
+def child_probing_with_no_naming_fields(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """A probe that resolves a title and none of `T-337`'s naming fields."""
+    from tracks_and_trails.core.models import MediaInfo
+
+    queue.put(Probed(job_id=job_id, media=MediaInfo(url=request.url, title="Bare")))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+    queue.close()
+    queue.join_thread()
 
 
 def test_a_probed_entry_carries_everything_the_row_draws(
@@ -7016,6 +7033,13 @@ def test_a_probed_entry_carries_everything_the_row_draws(
         assert stored.duration_seconds == 754.0, (
             "a probed entry stored no duration — the 'rows stay bare' half of T-143's report"
         )
+        # `T337-R1`: naming previews read these, and a probed entry stored all four as `None`.
+        assert (stored.upload_date, stored.media_id, stored.channel, stored.site) == (
+            "20260913",
+            "site-id",
+            "Channel",
+            "Youtube",
+        ), "a probed entry lost the naming fields, so a Rename preview shows NA for them"
         assert stored.bytes_done == 0, "the fields were learned by downloading, not by probing"
         assert repository.statuses("entry-1") == [JobStatus.PROBING, JobStatus.READY], (
             "one write carries every field the probe resolved (T-117); this took more than one"
@@ -8031,3 +8055,53 @@ def test_the_manager_hands_a_worker_the_level_this_process_is_at(
         assert spin(lambda: download.is_idle, timeout=30)
     finally:
         download.shutdown()
+
+
+def test_a_probe_that_reports_no_naming_fields_clears_stale_ones(
+    app: QCoreApplication, tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T337-R1`'s second half: the probe's answer replaces what the row held, `None` included."""
+    repository = FakeRepository()
+    queued(repository, "entry-1", directory=tmp_path)
+    repository.jobs["entry-1"] = replace(
+        repository.jobs["entry-1"],
+        upload_date="19990101",
+        media_id="old-id",
+        channel="Old channel",
+        site="Oldsite",
+    )
+
+    download = DownloadManager(repository, entry_point=child_probing_with_no_naming_fields)
+    try:
+        download.start("entry-1", SessionKind.PROBE)
+        assert spin(lambda: repository.jobs["entry-1"].status is JobStatus.READY, timeout=60)
+        stored = repository.jobs["entry-1"]
+        assert (stored.upload_date, stored.media_id, stored.channel, stored.site) == (
+            None,
+            None,
+            None,
+            None,
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_naming_preference_saved_before_ux_014_still_previews_its_length(
+    app: QCoreApplication, tmp_path: Path
+) -> None:
+    """`T337-R3`: `duration_string` renders from the probed length, as it did before `UX-014`."""
+    from tracks_and_trails.core.models import MediaInfo
+
+    download = DownloadManager(FakeRepository())
+    request = DownloadRequest(
+        url="https://example.invalid/clip",
+        output_directory=str(tmp_path),
+        format_selector="best",
+        output_template="%(title)s (%(duration_string)s).%(ext)s",
+    )
+    preview = download.preview_output_path(
+        request, MediaInfo(url=request.url, title="Clip", duration_seconds=507.0)
+    )
+    assert preview.refusal is None, preview.refusal
+    assert Path(preview.path).name.startswith("Clip (8-27)"), preview.path

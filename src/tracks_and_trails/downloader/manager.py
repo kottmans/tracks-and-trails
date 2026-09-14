@@ -2950,6 +2950,14 @@ class DownloadManager(QObject):
                         thumbnail_url=outcome.media.thumbnail_url,
                         uploader=outcome.media.uploader,
                         duration_seconds=outcome.media.duration_seconds,
+                        # **`T-337`'s naming fields, for the same reason** (`T337-R1`). They
+                        # were added to `add_dialog`'s pasted path and not here, so a playlist
+                        # entry or a recovered row previewed Upload date, ID, Channel and Site as
+                        # `NA`. A probe that reports none replaces a stale value with `None`.
+                        upload_date=outcome.media.upload_date,
+                        media_id=outcome.media.media_id,
+                        channel=outcome.media.channel,
+                        site=outcome.media.site,
                         # **`T-113`.** A job admitted as a probe — a playlist entry, or a row
                         # recovered from a previous run — learns here whether it is live, which is
                         # the one thing `REQ-017` lets a row say about resumability in advance.

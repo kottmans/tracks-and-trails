@@ -306,3 +306,52 @@ def test_duration_is_written_when_known_and_removed_cleanly_when_not() -> None:
     assert output_template.unsupported_refusal(template) is not None, (
         "an unresolved Duration would reach yt-dlp as the raw number of seconds"
     )
+
+
+# --- T337-R4: a field is resolved once, and only where it is really a field ---------------------
+
+
+def test_escaped_field_text_is_not_resolved() -> None:
+    """Readable `100%(duration)s {Title}` is the text `100%(duration)s` then the title."""
+    template = output_template.readable_to_template("100%(duration)s {Title}")
+    assert output_template.resolve_queue_fields(template, duration_seconds=507) == (
+        "100%%(duration)s %(title)s.%(ext)s"
+    )
+    assert output_template.resolve_queue_fields(template) == "100%%(duration)s %(title)s.%(ext)s"
+
+
+@pytest.mark.parametrize(
+    "playlist", ["%(duration)s Mix", "%(playlist_index)s", "%(playlist_title)s", "50% off"]
+)
+def test_written_in_metadata_is_not_resolved_again(playlist: str) -> None:
+    """A playlist's name is finished text once written in, whatever it happens to contain."""
+    template = output_template.readable_to_template("{Playlist}/{Position} {Title} {Duration}")
+    resolved = output_template.resolve_queue_fields(
+        template, position=3, count=12, playlist=playlist, duration_seconds=507
+    )
+    folder = resolved.split("/")[0]
+    assert folder.replace("%%", "%") == playlist
+    assert resolved.endswith("/03 %(title)s 8m27s.%(ext)s"), resolved
+
+
+def test_removal_still_takes_its_separator_beside_escaped_text() -> None:
+    template = output_template.readable_to_template("{Position} - 100% {Title} ({Duration})")
+    assert output_template.resolve_queue_fields(template) == "100%% %(title)s.%(ext)s"
+
+
+def test_readers_do_not_count_escaped_text_as_a_field() -> None:
+    template = "%%(playlist_title)s %%(id)s %(title)s.%(ext)s"
+    assert output_template.named_fields(template) == ("title", "ext")
+    assert not output_template.uses_field(template, "playlist_title")
+    assert output_template.uses_field("%(playlist_title)s/%(title)s.%(ext)s", "playlist_title")
+    assert output_template.unsupported_refusal("%%(no_such_field)s.%(ext)s") is None
+
+
+# --- T337-R3: a preference saved before UX-014 keeps working -----------------------------------
+
+
+def test_the_length_field_offered_before_ux_014_is_still_supported() -> None:
+    legacy = "%(title)s (%(duration_string)s).%(ext)s"
+    assert output_template.settings_refusal(legacy) is None
+    assert output_template.unsupported_refusal(legacy) is None
+    assert "duration_string" not in {field.name for field in output_template.OFFERED_FIELDS}

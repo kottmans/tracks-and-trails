@@ -36,7 +36,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable, Iterator
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from io import StringIO
 from pathlib import Path
 from typing import Any, Final
@@ -68,6 +68,7 @@ from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo, NetworkOptions
 from tracks_and_trails.core.paths import thumbnail_cache_path
 from tracks_and_trails.core.settings import SettingsProblem
+from tracks_and_trails.downloader import app_update_service
 from tracks_and_trails.downloader import ytdlp_adapter as adapter
 from tracks_and_trails.downloader.app_release import AppRelease, AppReleaseError
 from tracks_and_trails.downloader.app_update_service import AppUpdateService
@@ -4192,8 +4193,9 @@ def test_the_daily_check_starts_after_launch_when_it_is_due(
     spin: Callable[..., bool],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`present()` schedules it, quietly, and composition records the answer beside the settings."""
-    monkeypatch.setattr(application, "AUTOMATIC_UPDATE_CHECK_DELAY_MS", 0)
+    """`present()` starts the schedule, quietly, and composition records the answer beside the
+    settings. The next check is then a day away, while the application stays open (`T338-R1`)."""
+    monkeypatch.setattr(app_update_service, "FIRST_CHECK_DELAY", timedelta(0))
     service = _RecordingUpdates()
     composition = composed(app_update_service=service)
     record = composition.settings_path.with_name(UPDATE_CHECK_FILENAME)
@@ -4203,24 +4205,35 @@ def test_the_daily_check_starts_after_launch_when_it_is_due(
     assert spin(lambda: service.asked == [False] and not service.busy)
     assert spin(lambda: read_last_check(record) is not None), "the answer was not recorded"
     assert composition.window.update_box is None
+    pending = composition.update_schedule.pending_in
+    assert pending is not None and pending > timedelta(hours=23), (
+        f"after an answer the next automatic check is {pending} away, not a day"
+    )
 
 
-def test_the_daily_check_waits_a_day_and_respects_the_preference(
+def test_switching_the_check_off_during_the_launch_delay_sends_nothing(
     composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    now = datetime(2026, 9, 13, 12, tzinfo=UTC)
-    composition = composed(app_update_service=_RecordingUpdates())
-    assert application.start_automatic_update_check(composition, now=now, last_checked=lambda: None)
-    assert not application.start_automatic_update_check(
-        composition, now=now, last_checked=lambda: now - timedelta(hours=23)
-    )
-    assert application.start_automatic_update_check(
-        composition, now=now, last_checked=lambda: now - timedelta(hours=24)
-    )
-    switched_off = dataclasses.replace(composition, check_for_updates=False)
-    assert not application.start_automatic_update_check(
-        switched_off, now=now, last_checked=lambda: None
-    )
+    """`T338-R1`'s probe: the real checkbox, switched off during the delay, still sent a check."""
+    monkeypatch.setattr(app_update_service, "FIRST_CHECK_DELAY", timedelta(milliseconds=400))
+    service = _RecordingUpdates()
+    composition = composed(app_update_service=service)
+    application.present(composition)
+    assert composition.update_schedule.pending_in is not None
+
+    screen = composition.window.open_settings()
+    assert screen is not None
+    choice = screen.findChild(QCheckBox, "checkForUpdates")
+    assert choice is not None
+    choice.click()
+    screen.close()
+    assert not core_settings.load(composition.settings_path).settings.check_for_updates
+
+    time.sleep(0.6)
+    assert not spin(lambda: bool(service.asked), timeout=0.5), "a switched-off check was sent"
+    assert composition.update_schedule.pending_in is None
 
 
 def test_a_failed_check_is_not_recorded(

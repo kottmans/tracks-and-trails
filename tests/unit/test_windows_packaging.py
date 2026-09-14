@@ -343,7 +343,11 @@ def test_the_uninstall_message_promises_nothing_the_application_does_not_keep() 
 # --- T-322: the uninstaller's question about the application's own data ------------------------
 
 LOCAL_APPDATA: Final = r"C:\Users\someone\AppData\Local"
-REMOVAL_CALL: Final = re.compile(r"\b(DeleteFile|DelTree|RemoveDir)\(([^,)]*)")
+REMOVAL_CALL: Final = re.compile(
+    r"(?<!function )\b(DeleteNamedFile|DeleteNamedFolder|DeleteFile|DelTree|RemoveDir)\(([^,)]*)"
+)
+#: What `DeleteFile` and `DelTree` may be handed: the helper's own parameter, and only there.
+HELPER_ARGUMENT: Final = "<helper parameter>"
 
 
 def code_section(text: str) -> str:
@@ -353,24 +357,37 @@ def code_section(text: str) -> str:
     return code
 
 
+def body_of(code: str, header: str) -> str:
+    """One routine of `code`, from its header to the `end;` that closes it at column zero."""
+    start = code.index(header)
+    return code[start : code.index("\nend;", start)]
+
+
 def data_removals(code: str) -> list[tuple[str, str]]:
     """Every removal the code makes, as (call, what it names relative to the data folder).
 
-    Only two argument shapes are accepted, `Folder` and `Folder + '\name'`; anything else comes back
-    whole, so a path built some other way fails the check rather than slipping past a parser.
+    Accepted argument shapes: `Folder`, `Folder + '\name'`, and `Path` inside the two helpers, which
+    `test_the_primitive_deletions_happen_only_inside_the_checked_helpers` confines. Anything else
+    comes back whole, so a path built some other way fails rather than slipping past a parser.
     """
     removals: list[tuple[str, str]] = []
     for call, argument in REMOVAL_CALL.findall(code):
-        named = re.fullmatch(r"Folder \+ '\\([^'\\*]+)'", argument.strip())
-        if argument.strip() == "Folder":
+        argument = argument.strip()
+        named = re.fullmatch(r"Folder \+ '\\([^'\\*]+)'", argument)
+        if argument == "Folder":
             removals.append((call, ""))
+        elif argument == "Path" and call in {"DeleteFile", "DelTree"}:
+            removals.append((call, HELPER_ARGUMENT))
         else:
-            removals.append((call, named.group(1) if named else argument.strip()))
+            removals.append((call, named.group(1) if named else argument))
     return removals
 
 
 def is_named_removal(call: str, name: str) -> bool:
-    """A named item in the data folder, or `RemoveDir` of the folder, which needs it empty."""
+    """A named item in the data folder, `RemoveDir` of the folder (which needs it empty), or a
+    helper's primitive deleting the path it was handed."""
+    if name == HELPER_ARGUMENT:
+        return True
     if not name:
         return call == "RemoveDir"
     return re.fullmatch(r"[A-Za-z0-9_.\-]+", name) is not None
@@ -389,6 +406,7 @@ def windows_layout(monkeypatch: pytest.MonkeyPatch) -> dict[str, PureWindowsPath
     import platformdirs.windows as windows
 
     import tracks_and_trails.core.app_updates as app_updates
+    import tracks_and_trails.core.instance_lock as instance_lock
     import tracks_and_trails.core.logging as app_logging
     import tracks_and_trails.core.paths as paths
     import tracks_and_trails.core.settings as settings
@@ -428,6 +446,11 @@ def windows_layout(monkeypatch: pytest.MonkeyPatch) -> dict[str, PureWindowsPath
         "update check record": windows_path(app_updates.update_check_path()),
         "window geometry": windows_path(main_window.geometry_path()),
         "queue database": windows_path(db.database_path()),
+        # `ARC-006`'s lock file, beside the database and named from it (`T322-R3`'s round found it
+        # missing from the list).
+        "instance lock": windows_path(db.database_path()).with_name(
+            instance_lock.lock_path_for(Path("library") / db.DATABASE_FILENAME).name
+        ),
         "user yt-dlp": windows_path(environment.user_ytdlp_directory()),
         "application log": windows_path(app_logging.application_log_path()),
         "a job log": windows_path(app_logging.job_log_path("job")),
@@ -438,29 +461,99 @@ def windows_layout(monkeypatch: pytest.MonkeyPatch) -> dict[str, PureWindowsPath
 def test_the_data_question_is_asked_once_and_only_a_ticked_box_removes_anything() -> None:
     """**The maintainer's rulings in `T-327`**: no deleting settings by hand, and one dialog.
 
-    Three properties carry the risk. A silent run never shows the dialog, because `T-039`'s Sandbox
-    run uninstalls with `/VERYSILENT` and requires the data to survive byte for byte. Nothing is
-    removed except on the explicit switch, and the switch is only added when the box is ticked. And
-    the box starts unticked, so pressing Enter out of habit keeps the queue.
+    The properties that carry the risk. The dialog appears only on the run Windows starts with
+    `/ASK`, so `T-039`'s `/VERYSILENT` run never stops to ask. Nothing is removed unless the box was
+    ticked or `/REMOVEDATA` was given. The box starts unticked. And the removal is called in one
+    place, behind that one flag.
     """
     code = code_section(INSTALLER.read_text(encoding="utf-8"))
-    initialize = code[code.index("function InitializeUninstall") :]
-    initialize = initialize[: initialize.index("\nend;")]
-    asking = initialize.index("AskHowToUninstall(")
-    assert initialize.index("if UninstallSilent then\n    Exit;") < asking, (
-        "a silent uninstall would stop to ask"
+    initialize = body_of(code, "function InitializeUninstall")
+    assert "RemoveData := HasSwitch(RemoveDataSwitch);" in initialize
+    ask = initialize.index("if not HasSwitch(AskSwitch) then\n    Exit;")
+    assert ask < initialize.index("AskHowToUninstall(RemoveData)"), (
+        "the dialog is shown on a run Windows did not start for it, a silent one included"
     )
-    assert "Switches := '/SILENT " in initialize, "the second run would show Inno's box as well"
-    assert re.search(
-        r"if RemoveData then\s+Switches := Switches \+ ' ' \+ RemoveDataSwitch;", initialize
-    ), "the removal switch is added whether or not the box is ticked"
     assert "RemoveBox.Checked := False;" in code, "the box would start ticked"
-    step = code[code.index("procedure CurUninstallStepChanged") :]
-    assert re.search(r"if HasSwitch\(RemoveDataSwitch\) then\s+RemoveApplicationData;", step), (
-        "data is removed without the switch a ticked box adds"
+    step = body_of(code, "procedure CurUninstallStepChanged")
+    assert re.search(r"if RemoveData then\s+begin\s+Removed := RemoveApplicationData;", step), (
+        "data is removed without a ticked box or the explicit switch"
     )
-    calls = re.findall(r"(?<!procedure )\bRemoveApplicationData;", code)
+    calls = re.findall(r"(?<!function )\bRemoveApplicationData\b(?!:)", code)
     assert len(calls) == 1, "data is removed somewhere nothing asks"
+
+
+def test_there_is_one_uninstaller_process_and_nothing_to_race() -> None:
+    """**`T322-R4`.** The previous version restarted the uninstaller from inside a run that still
+    held `unins000.dat` exclusively. Now Windows' own entry starts the one run that asks."""
+    text = INSTALLER.read_text(encoding="utf-8")
+    code = code_section(text)
+    assert "Exec(" not in code and "ShellExec(" not in code, (
+        "the uninstaller starts a process again"
+    )
+    posted = body_of(code, "procedure CurStepChanged")
+    assert "CurStep <> ssPostInstall" in posted, "the entry is rewritten before Inno registers it"
+    assert "if RegKeyExists(HKA, Key) then" in posted, "a missing entry would be created, not left"
+    written = re.sub(r"\s+", " ", posted)
+    assert (
+        "'UninstallString', '\"' + ExpandConstant('{uninstallexe}') + '\" /SILENT ' + AskSwitch)"
+    ) in written, "Windows' uninstall entry does not start the silent run that asks"
+    app_id = re.search(r"^AppId=(.+)$", text, re.M)
+    assert app_id is not None
+    assert r"\Uninstall\{#SetupSetting(" + '"AppId"' + ")}_is1" in posted, (
+        "the entry rewritten is not the one Inno registered for this AppId"
+    )
+
+
+def test_the_uninstaller_waits_for_the_application_to_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**`T322-R3`**: Inno checks `AppMutex` before removing anything; the application holds it."""
+    from tracks_and_trails.core.app_mutex import APP_MUTEX_NAME
+
+    mutex = re.search(r"^AppMutex=(.+)$", INSTALLER.read_text(encoding="utf-8"), re.M)
+    assert mutex is not None, "nothing tells the uninstaller the application is running"
+    assert mutex.group(1).strip() == APP_MUTEX_NAME
+    composition = (REPOSITORY / "src" / "tracks_and_trails" / "app.py").read_text(encoding="utf-8")
+    acquire = composition.index("    instance.acquire()\n")
+    assert composition.index("    hold_running_mutex()\n") > acquire, (
+        "the running application never holds the mutex, or holds it before owning the database"
+    )
+
+
+def test_a_removal_that_did_not_happen_is_never_reported_as_one() -> None:
+    """**`T322-R3`.** Every deletion's result was discarded and the final box always said removed.
+
+    Each helper looks for its item afterwards; every named item feeds the result; the box that
+    says the settings went is reached only when the result is true, and there is one that says
+    which folder to finish by hand.
+    """
+    code = code_section(INSTALLER.read_text(encoding="utf-8"))
+    one_file = body_of(code, "function DeleteNamedFile")
+    assert "Result := not FileExists(Path);" in one_file
+    one_folder = body_of(code, "function DeleteNamedFolder")
+    assert "Result := not DirExists(Path);" in one_folder
+    removal = body_of(code, "function RemoveApplicationData")
+    named = re.findall(r"DeleteNamed(?:File|Folder)\(", removal)
+    checked = re.findall(
+        r"if not DeleteNamed(?:File|Folder)\([^;]*\) then Result := False;", removal
+    )
+    assert named and len(checked) == len(named), "a named deletion's result does not count"
+    step = body_of(code, "procedure CurUninstallStepChanged")
+    success = step.index("along with your settings and download queue")
+    assert step.rindex("else if Removed then", 0, success) > step.rindex(
+        "if not RemoveData", 0, success
+    )
+    assert "could not be deleted" in step and "ApplicationDataFolder" in step
+
+
+def test_the_primitive_deletions_happen_only_inside_the_checked_helpers() -> None:
+    code = code_section(INSTALLER.read_text(encoding="utf-8"))
+    one_file = body_of(code, "function DeleteNamedFile")
+    one_folder = body_of(code, "function DeleteNamedFolder")
+    rest = code.replace(one_file, "").replace(one_folder, "")
+    assert "DeleteFile(" not in rest and "DelTree(" not in rest, (
+        "something deletes without looking to see whether it worked"
+    )
 
 
 def test_the_data_folder_is_the_one_the_application_writes_on_windows(
@@ -479,21 +572,21 @@ def test_the_data_folder_is_the_one_the_application_writes_on_windows(
 
 def test_a_yes_removes_everything_the_application_writes(monkeypatch: pytest.MonkeyPatch) -> None:
     """Each place from `windows_layout` must be removed by a named entry: its first component
-    below the data folder is deleted, or it is inside a directory that is."""
+    below the data folder is deleted, or it is inside a folder that is."""
     code = code_section(INSTALLER.read_text(encoding="utf-8"))
     folder = re.search(r"Result := ExpandConstant\('\{localappdata\}\\([^']+)'\);", code)
     assert folder is not None
     root = PureWindowsPath(LOCAL_APPDATA, folder.group(1))
-    removed = {name: call for call, name in data_removals(code) if name}
+    removed = {name: call for call, name in data_removals(code) if name and name != HELPER_ARGUMENT}
     for what, path in windows_layout(monkeypatch).items():
         first = path.relative_to(root).parts[0]
         assert first in removed, f"a yes leaves the {what} behind ({first})"
         if len(path.relative_to(root).parts) > 1:
-            assert removed[first] == "DelTree", (
+            assert removed[first] == "DeleteNamedFolder", (
                 f"the {what} is inside {first}, which is not deleted"
             )
-    # The database's WAL companions and the settings scratch file are the application's too
-    # (`persistence/db.py` sets WAL; `core/settings.py` writes `settings.toml.writing`).
+    # The database's WAL companions and the scratch files are the application's too
+    # (`persistence/db.py` sets WAL; `core/settings.py` and `core/app_updates.py` write `.writing`).
     database = windows_layout(monkeypatch)["queue database"].name
     for companion in (
         f"{database}-wal",
@@ -518,9 +611,9 @@ def test_a_yes_removes_nothing_it_does_not_name() -> None:
 @pytest.mark.parametrize(
     "shipped",
     [
-        "DelTree(Folder, True, True, True);",
+        "DeleteNamedFolder(Folder);",
         "DelTree(ExpandConstant('{app}'), True, True, True);",
-        "DeleteFile(Folder + '\\*.toml');",
+        "DeleteNamedFile(Folder + '\\*.toml');",
     ],
 )
 def test_the_named_removal_check_refuses_what_it_exists_to_refuse(shipped: str) -> None:

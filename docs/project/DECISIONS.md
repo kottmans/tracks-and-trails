@@ -56,7 +56,7 @@ Current requirements and architecture retain their own canonical authority.
 | [REL-006](#rel-006--a-clean-machine-is-a-disposable-vm-the-maintainer-owns) | A clean machine is a disposable VM the maintainer owns | Accepted | — |
 | [REL-007](#rel-007--the-artifacts-use-the-system-certificate-store-and-bundle-none) | The artifacts use the system certificate store and bundle none | Accepted | [Amended 2026-09-12](#amended-2026-09-12--on-windows-the-operating-system-verifies-not-openssl-reading-its-store) |
 | [REL-008](#rel-008--windows-gets-its-own-startup-number-and-linuxs-stays-where-it-is) | Windows gets its own startup number, and Linux's stays where it is | Accepted | [Amended 2026-09-13](#amended-2026-09-13--0-1-0-ships-on-the-startup-numbers-already-measured) |
-| [REL-009](#rel-009--the-application-says-when-a-newer-release-is-out-and-installs-nothing) | The application says when a newer release is out, and installs nothing | Accepted | — |
+| [REL-009](#rel-009--the-application-says-when-a-newer-release-is-out-and-installs-nothing) | The application says when a newer release is out, and installs nothing | Accepted | [Amended 2026-09-14](#amended-2026-09-14--the-notice-sits-in-the-status-bar-and-the-schedule-lives-as-long-as-the-application) |
 | [REL-002](#rel-002--collect_submodulesyt_dlp-stays-as-insurance-against-a-pin-we-do-not-have-yet) | `collect_submodules("yt_dlp")` stays, as insurance against a pin we do not have yet | Accepted | — |
 | [REL-001](#rel-001--ship-frozen-self-contained-artifacts-no-python-required-on-the-users-machine) | Ship frozen, self-contained artifacts: no Python required on the user's machine | Accepted | — |
 | [OPS-004](#ops-004--windows-ci-runners-provide-a-real-desktop-verify-against-it) | Windows CI runners provide a real desktop; verify against it | Accepted | [OPS-005](#ops-005--starbase-is-the-windows-verification-platform-hosted-only-findings-do-not-gate-the-phase); [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously) |
@@ -1262,6 +1262,18 @@ Four options were put. Recommended and chosen: notify only, in `0.1.0`.
 - A GitHub outage or rate limit costs only a message on an explicit check.
 - **Worth revisiting** once installers are signed: applying an update in place becomes
   reasonable then, and `OPS-002`'s note about automatic updates would apply.
+
+### Amended 2026-09-14 — the notice sits in the status bar, and the schedule lives as long as the application
+
+**The placement, ratified.** Item 2's *quiet notice in the status bar* was the implementer's choice,
+and `T338-R2` found it attributed to this decision. On 2026-09-14 the maintainer chose between the
+status-bar button as built, a banner above the queue, and a box shown once per version, and
+**ratified the status-bar button**. Item 2 now states a ruling rather than a build detail.
+
+**The schedule** (`T338-R1`, a correction rather than a new ruling). *Once a day* means once a day
+while the application stays open as well as at launch: the check is decided when its timer fires,
+from the preference and the last answer at that moment, so switching it off cancels a check still
+waiting and a check that got no answer is tried again within the hour.
 
 ---
 
@@ -6388,14 +6400,18 @@ Naming could be set in **three places**, and the one a user met first was the ha
 3. **A single download is renamed, not templated.** *Rename…* on an item in Add URLs and on a
    queue row that has not started asks for a **name** — prefilled with the name the setting would
    produce, extension left off — and the application writes it as a literal: `%` is escaped and the
-   extension stays yt-dlp's. Clearing it goes back to the setting's name. Not offered on a playlist
+   extension stays yt-dlp's. Clearing it goes back to the setting's name. *(2026-09-14, `T337-R2`:
+   a second rename keeps the folders the download already has; only clearing the name takes
+   today's setting.)* Not offered on a playlist
    row, whose entries are many files (they keep the playlist folder and the setting's pattern).
 4. **Presets no longer carry a template.** The field leaves `Preset` and the preset manager. A
    preset saved earlier with one still loads; the template is ignored and not written back.
 
 **Not offered, and why:** a *Playlist / 01 – Title* choice — playlist fields are refused on purpose
 (`core/output_template.py`), because entries download as separate URLs; playlists already get a
-folder named for the playlist. **Renaming a finished file on disk** — a file operation with its own
+folder named for the playlist. *(Superseded the same day by item 2, `T337-R5`: the maintainer asked
+for *Playlist* and *Position*, which are written in when an entry is queued rather than refused.
+The sentence is kept as the first build's reasoning.)* **Renaming a finished file on disk** — a file operation with its own
 collision and containment rules, left out; *Show in folder* is the route.
 
 ### What is given up, in writing

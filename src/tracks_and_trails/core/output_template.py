@@ -94,6 +94,10 @@ SUPPORTED_FIELDS: Final[tuple[TemplateField, ...]] = (
         "Its number in the playlist, like 01 (left out for single videos)",
         "{Position}",
     ),
+    # **Supported, no longer offered** (`T337-R3`). It was the offered length field until
+    # `UX-014`, so a preference saved before then may name it; `UX-014` keeps such a preference
+    # rather than dropping it. yt-dlp derives it from the projected `duration`, as it always did.
+    TemplateField("duration_string", "How long it is, as yt-dlp writes it"),
     # **Written, never offered** (`UX-014`): every file has one, so nobody chooses it.
     TemplateField("ext", "the file extension"),
 )
@@ -112,9 +116,11 @@ SUPPORTED_NAMES: Final = frozenset(
     field.name for field in SUPPORTED_FIELDS if field.name not in QUEUE_TIME_NAMES
 )
 
-#: Every `%(…)` group in a template. The **name** is whatever sits inside the parentheses; what
-#: follows it is yt-dlp's conversion syntax and is none of this module's business.
-_FIELD_GROUP: Final = re.compile(r"%\(([^)]*)\)")
+#: Every `%(…)` group in a template, **or an escaped percent**. The **name** is whatever sits inside
+#: the parentheses; what follows it is yt-dlp's conversion syntax and is none of this module's
+#: business. `%%` is matched so it is consumed first: `%%(title)s` is the text `%(title)s`, not a
+#: field (`T337-R4`), and a reader that skipped this would refuse or resolve literal text.
+_FIELD_GROUP: Final = re.compile(r"%%|%\(([^)]*)\)")
 
 #: Where a field name ends and yt-dlp's addressing begins.
 #:
@@ -265,25 +271,59 @@ def resolve_queue_fields(
 
     width = max(2, len(str(count if count is not None else position or 0)))
     values = {
-        "%(playlist_index)s": f"{position:0{width}d}" if position is not None else "",
-        "%(playlist_title)s": (sanitize_component(playlist).replace("%", "%%") if playlist else ""),
-        "%(duration)s": format_duration(duration_seconds) if duration_seconds is not None else "",
+        "playlist_index": f"{position:0{width}d}" if position is not None else "",
+        "playlist_title": (sanitize_component(playlist).replace("%", "%%") if playlist else ""),
+        "duration": format_duration(duration_seconds) if duration_seconds is not None else "",
     }
-    resolved = template
-    for code, value in values.items():
-        if value:
-            resolved = resolved.replace(code, value)
-            continue
-        escaped = re.escape(code)
+    # **One pass over the template's own tokens** (`T337-R4`). This replaced raw substrings, so an
+    # escaped `%%(duration)s` the user typed as text was resolved, and a playlist named
+    # `%(duration)s Mix` was resolved again after being written in. Now each real token is replaced
+    # once: a value is written as finished text, and a removed field becomes a marker that only the
+    # separator rules below can see. Neither can be read as a field afterwards.
+    marker = _unused_character(template, *values.values())
+    pieces: list[str] = []
+    position_in_template = 0
+    for match in _QUEUE_TOKEN.finditer(template):
+        pieces.append(template[position_in_template : match.start()])
+        name = match.group(1)
+        if name is None:
+            pieces.append(match.group(0))
+        else:
+            pieces.append(values[name] or marker)
+        position_in_template = match.end()
+    pieces.append(template[position_in_template:])
+    resolved = "".join(pieces)
+    if marker in resolved:
+        gone = re.escape(marker)
         # Brackets that held nothing but this field go with it: `{Title} ({Position})` is `{Title}`.
-        resolved = re.sub(rf"{_SEPARATOR_RUN}[(\[]{escaped}[)\]]", "", resolved)
+        resolved = re.sub(rf"{_SEPARATOR_RUN}[(\[]{gone}[)\]]", "", resolved)
         # At the end of a component, the separator before it goes; anywhere else, the one after.
-        resolved = re.sub(rf"{_SEPARATOR_RUN}{escaped}{_COMPONENT_END}", "", resolved)
-        resolved = re.sub(rf"{escaped}{_SEPARATOR_RUN}", "", resolved)
+        resolved = re.sub(rf"{_SEPARATOR_RUN}{gone}{_COMPONENT_END}", "", resolved)
+        resolved = re.sub(rf"{gone}{_SEPARATOR_RUN}", "", resolved)
     # **A folder left with no name is no folder**: `{Playlist}/{Title}` for a single video is
     # `{Title}`, not `/{Title}` — which would read as the root and be refused as leaving the
     # download folder.
     return re.sub(r"/{2,}", "/", resolved).lstrip("/")
+
+
+#: A queue-time field exactly as `readable_to_template` writes it, or an escaped percent, which is
+#: matched only so it is stepped over.
+_QUEUE_TOKEN: Final = re.compile(r"%%|%\((playlist_index|playlist_title|duration)\)s")
+
+
+def _unused_character(*texts: str) -> str:
+    """A private-use character none of `texts` contains, to mark a removed field."""
+    joined = "".join(texts)
+    for code in range(0xE000, 0xF8FF):
+        candidate = chr(code)
+        if candidate not in joined:
+            return candidate
+    raise ValueError("no unused marker character")  # pragma: no cover
+
+
+def uses_field(template: str, name: str) -> bool:
+    """Whether `template` really names the field `name`, escaped text not counted (`T337-R4`)."""
+    return name in named_fields(template)
 
 
 def settings_refusal(template: str) -> str | None:
@@ -370,8 +410,10 @@ def named_fields(template: str) -> tuple[str, ...]:
     three occurrences would make a template look shorter than it is to whoever is fixing it.
     """
     found: list[str] = []
-    for group in _FIELD_GROUP.findall(template):
-        for alternative in group.split(","):
+    for match in _FIELD_GROUP.finditer(template):
+        if match.group(0) == "%%":
+            continue
+        for alternative in match.group(1).split(","):
             base = _ADDRESSING.split(alternative.strip(), maxsplit=1)[0].strip()
             if base:
                 found.append(base)

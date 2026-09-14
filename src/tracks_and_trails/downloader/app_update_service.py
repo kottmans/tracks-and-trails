@@ -13,10 +13,12 @@ answer is shown rather than kept quiet.
 """
 
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from typing import Final
 
-from PySide6.QtCore import QObject, QRunnable, Signal
+from PySide6.QtCore import QObject, QRunnable, Qt, QTimer, Signal
 
+from tracks_and_trails.core.app_updates import CHECK_INTERVAL, check_is_due
 from tracks_and_trails.downloader.app_release import AppRelease, AppReleaseError, latest_app_release
 from tracks_and_trails.downloader.pools import SealedPool
 
@@ -112,4 +114,108 @@ class AppUpdateService(QObject):
         self.failed.emit(reason, self._finish())
 
 
-__all__ = ["AppRelease", "AppReleaseError", "AppUpdateService", "pool"]
+#: How long after the window appears the first automatic check may start. Late enough that it costs
+#: nothing a user waits for at launch (`NFR-002`, `NFR-010`).
+FIRST_CHECK_DELAY: Final = timedelta(seconds=5)
+
+#: When a check did not answer, how long before trying again while the application stays open.
+#: An hour: soon enough that a laptop that came back online is told the same day, rare enough that
+#: an offline machine does not knock on GitHub's door all afternoon.
+RETRY_AFTER_NO_ANSWER: Final = timedelta(hours=1)
+
+
+class DailyUpdateCheck(QObject):
+    """The automatic check's schedule, for as long as the application runs (`T-338`, `T338-R1`).
+
+    **Decided when it fires, not when it was set.** The first version was one `singleShot` at
+    launch that captured the preference: switching it off during the delay still sent the request,
+    and an application left open never checked again. This owns one timer. When it fires, it asks
+    the preference and the record of the last answer *then*; it checks only when both allow, and
+    it always sets the timer for the next moment a check could be due.
+
+    **An answer from anywhere moves the next check**: a press of *Check for Updates* before the
+    first delay expires is recorded, so the automatic check finds it not due and waits a day from
+    that answer instead of asking again.
+    """
+
+    def __init__(
+        self,
+        service: AppUpdateService,
+        *,
+        enabled: Callable[[], bool],
+        last_checked: Callable[[], datetime | None],
+        now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        parent: QObject | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._service = service
+        self._enabled = enabled
+        self._last_checked = last_checked
+        self._now = now
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.setTimerType(Qt.TimerType.VeryCoarseTimer)
+        self._timer.timeout.connect(self._fire)
+        self._stopped = False
+        service.answered.connect(self._after_a_check)
+        service.failed.connect(self._after_a_check)
+
+    @property
+    def pending_in(self) -> timedelta | None:
+        """How long until the timer fires, or `None` when nothing is scheduled."""
+        if not self._timer.isActive():
+            return None
+        return timedelta(milliseconds=self._timer.remainingTime())
+
+    def start(self) -> None:
+        """Begin: the first chance comes after `FIRST_CHECK_DELAY`."""
+        if self._stopped or not self._enabled():
+            return
+        self._arm(FIRST_CHECK_DELAY)
+
+    def preference_changed(self, enabled: bool) -> None:
+        """Switched off cancels what is pending; switched on schedules the next chance."""
+        if not enabled:
+            self._timer.stop()
+        else:
+            self.start()
+
+    def stop(self) -> None:
+        """For good: the application is going away."""
+        self._stopped = True
+        self._timer.stop()
+
+    def _fire(self) -> None:
+        if self._stopped or pool().sealed or not self._enabled():
+            return
+        now = self._now()
+        previous = self._last_checked()
+        if not check_is_due(previous, now):
+            assert previous is not None
+            self._arm(previous + CHECK_INTERVAL - now)
+            return
+        # The answer, or the failure, re-arms the timer in `_after_a_check`.
+        self._service.check(explicit=False)
+
+    def _after_a_check(self, *_: object) -> None:
+        """Set the next chance after any check ends, automatic or asked for."""
+        if self._stopped or pool().sealed or not self._enabled():
+            return
+        now = self._now()
+        previous = self._last_checked()
+        if previous is not None and not check_is_due(previous, now):
+            self._arm(previous + CHECK_INTERVAL - now)
+        else:
+            self._arm(RETRY_AFTER_NO_ANSWER)
+
+    def _arm(self, wait: timedelta) -> None:
+        self._timer.start(max(0, int(wait.total_seconds() * 1000)))
+
+
+__all__ = [
+    "AppRelease",
+    "AppReleaseError",
+    "AppUpdateService",
+    "DailyUpdateCheck",
+    "pool",
+]

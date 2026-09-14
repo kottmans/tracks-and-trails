@@ -327,6 +327,79 @@ if ($changed.Count -gt 0) {
 }
 Say '```'
 
+Rule "Removing settings while something still holds them"
+Say "``T322-R3`` and ``T322-R4``, unattended. The dialog itself needs a person; what it leads to does"
+Say "not. The installer is put back, and then: the uninstall entry Windows runs must be the one silent"
+Say "run that asks; with the application open, a removal must be refused and remove nothing; with the"
+Say "queue database held open, the removal must say it was incomplete, and still remove the rest."
+Say '```'
+if ($setup) {
+    $re = Start-Process -FilePath $setup.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+    if ($re.ExitCode -ne 0 -or -not (Test-Path $installed)) {
+        Say ("reinstall         FAILED, exit " + $re.ExitCode)
+        $failures++
+    } else {
+        $root = Split-Path $installed -Parent
+        $un = (Get-ChildItem -Path $root -Filter "unins*.exe" | Select-Object -First 1).FullName
+        $entry = Get-ItemProperty -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{8F3C4A21-6D5E-4B7A-9C12-3E8D5A7B1F40}_is1" -ErrorAction SilentlyContinue
+        $command = if ($entry) { [string]$entry.UninstallString } else { "" }
+        Say ("uninstall entry   " + $command)
+        if (-not $command.EndsWith("/SILENT /ASK")) {
+            Say "                  FAILED - Windows would not start the single dialog (T322-R4)"
+            $failures++
+        }
+
+        # (a) The application is running: Inno's AppMutex check must stop the uninstall.
+        $app = Start-Process -FilePath $installed -PassThru
+        for ($i = 0; $i -lt 60; $i++) {
+            Start-Sleep -Milliseconds 500
+            $live = Get-Process -Id $app.Id -ErrorAction SilentlyContinue
+            if (-not $live -or $live.MainWindowHandle -ne 0) { break }
+        }
+        $database = Join-Path $userData "library.sqlite3"
+        $runningLog = Join-Path $env:TEMP "uninstall-while-running.log"
+        $u1 = Start-Process -FilePath $un -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/REMOVEDATA",("/LOG=" + $runningLog) -Wait -PassThru
+        Start-Sleep -Seconds 3
+        $appKept = Test-Path $installed
+        $databaseKept = Test-Path $database
+        Say ("while running     exit " + $u1.ExitCode + "; application " + $(if ($appKept) { "kept" } else { "REMOVED" }) + "; queue database " + $(if ($databaseKept) { "kept" } else { "REMOVED" }))
+        if (-not $appKept -or -not $databaseKept) {
+            Say "                  FAILED - an open application did not stop the removal (T322-R3)"
+            $failures++
+        }
+        Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+
+        # (b) Something holds the queue database: the removal must say it is incomplete.
+        $settingsFile = Join-Path $userData "settings.toml"
+        Set-Content -LiteralPath $settingsFile -Value "[queue]`nconcurrency = 2" -Encoding utf8
+        $held = [System.IO.File]::Open($database, 'Open', 'ReadWrite', 'None')
+        $lockedLog = Join-Path $env:TEMP "uninstall-while-locked.log"
+        try {
+            $u2 = Start-Process -FilePath $un -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/REMOVEDATA",("/LOG=" + $lockedLog) -Wait -PassThru
+            for ($i = 0; $i -lt 60; $i++) {
+                if (-not (Test-Path (Join-Path $root "unins000.exe"))) { break }
+                Start-Sleep -Milliseconds 500
+            }
+        } finally {
+            $held.Close()
+        }
+        $incomplete = [bool](Select-String -LiteralPath $lockedLog -SimpleMatch "removal incomplete" -Quiet)
+        $claimed = [bool](Select-String -LiteralPath $lockedLog -SimpleMatch "Settings and download queue removed." -Quiet)
+        $settingsGone = -not (Test-Path $settingsFile)
+        $databaseKept = Test-Path $database
+        Say ("while locked      exit " + $u2.ExitCode + "; logged incomplete: " + $incomplete + "; logged removed: " + $claimed + "; settings removed: " + $settingsGone + "; locked database still there: " + $databaseKept)
+        if (-not $incomplete -or $claimed -or -not $settingsGone -or -not $databaseKept) {
+            Say "                  FAILED - a removal that could not finish was not reported as incomplete (T322-R3)"
+            $failures++
+        }
+        foreach ($line in @(Select-String -LiteralPath $lockedLog -Pattern "Could not delete|removal incomplete|removed\." -ErrorAction SilentlyContinue | Select-Object -First 4)) {
+            Say ("  log: " + $line.Line.Trim())
+        }
+    }
+} else { Say "skipped - no installer" }
+Say '```'
+
 Rule "Verdict"
 if ($failures -eq 0) {
     Say "**PASS** - the pre-install check found nothing installed, the artifact installed per-user"

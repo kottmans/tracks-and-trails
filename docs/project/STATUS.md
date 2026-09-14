@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-09-13
+**Last updated:** 2026-09-14
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -21,24 +21,21 @@ the first release**. Nothing user-facing may claim parity with yt-dlp until 4.5 
 
 ## Active work
 
-*Refreshed 2026-09-13. The previous snapshot (2026-09-10) is recoverable from `8e67f6f`; its
-facts live in the task and review records it summarised.*
+*Refreshed 2026-09-14. The previous snapshot is recoverable from `39dab46`; its facts live in the
+task and review records it summarised.*
 
-- **The second Phase 5 review is closed** ([batch record](reviews/phase-5-second-batch.md)): every
-  finding the implementer could correct was corrected and verified, including the **Critical**
-  `T322-R1` (the uninstaller deleted its whole directory). **Completed 2026-09-13 and moved to
-  [COMPLETED_TASKS](COMPLETED_TASKS.md):** `T-317`, `T-318`, `T-319`, `T-320`, `T-321`, `T-323`,
-  `T-329`, `T-330`, `T-331`, `T-334`, and the `T-106` decision. Three clauses they left are carried by `T-328`: the README's
-  install section and changelog at the release commit, and how a user without AppImageLauncher gets
-  a working menu entry.
+- **The session-changes review** ([record](reviews/T-337.md#2026-09-14--initial-review-of-the-session-changes),
+  `08251df` → `39dab46`) requested changes. **Corrected 2026-09-14 and back in review:** `T-337`
+  (naming: `T337-R1`…`R5`), `T-338` (update schedule `T338-R1`; placement `T338-R2` ratified by the
+  maintainer) and `T-322` (uninstaller `T322-R3`, `T322-R4`). `T-335` is approved and waits only on
+  being seen on the installed build. **Completed 2026-09-14:** `T-039` and `T-325`, approved against
+  the maintainer's amendments.
 - **Waiting on the maintainer**, and not implementable around:
-  - `T039-R2` — whether candidate-only Sandbox gates replace `T-039`'s per-push CI criterion;
-  - `T-327` items 2–6 — the manual Windows session; `T-333`'s installed-build observation rides it,
-    and `T-322`'s SmartScreen screenshot can be taken in the same sitting;
+  - `T-327`: Narrator, the SmartScreen screenshot, and the installed-build observations (`T-333`,
+    `T-335`, and the corrected uninstaller's running-app and locked-file cases);
   - the first `v*` tag, which `T-324`'s draft run and `T-326`'s candidate items need.
-- **Otherwise open:** `T-332` (baseline bump: every criterion met, awaiting review), `T-322` (the
-  SmartScreen screenshot and a workflow build), `T-039` (on `T039-R2`), `T-324`/`T-326` (a tag),
-  `T-333` (the installed-build observation), `T-328` (the release).
+- **Otherwise open:** `T-332` (awaiting review), `T-322` (review, and a workflow build),
+  `T-324`/`T-326` (a tag), `T-328` (the release).
 - **The four Windows-only diagnostic tasks have their dispositions** (`T-328`, maintainer ruling
   2026-09-13): `T-074` is held as a potential task (Proposed — Phase 5), and `T-092`, `T-068` and
   `T-056` are cancelled with what closing gives up recorded. `T-212`'s checklist run was

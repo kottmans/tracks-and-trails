@@ -60,7 +60,7 @@ if TYPE_CHECKING:
 
     from tracks_and_trails.core.instance_lock import InstanceLock
     from tracks_and_trails.core.job_state import JobStatus
-    from tracks_and_trails.downloader.app_update_service import AppUpdateService
+    from tracks_and_trails.downloader.app_update_service import AppUpdateService, DailyUpdateCheck
     from tracks_and_trails.downloader.environment import FfmpegReport
     from tracks_and_trails.downloader.manager import DownloadManager
     from tracks_and_trails.downloader.pools import SealedPool
@@ -333,45 +333,8 @@ def present(composition: Composition) -> None:
     composition.window.show()
     if composition.settings_problem is not None:
         composition.window.report_settings_problem(composition.settings_problem)
-    start_automatic_update_check(composition)
-
-
-#: How long after the window appears the daily release check starts (`T-338`). Late enough that it
-#: costs nothing a user waits for at launch (`NFR-002`, `NFR-010`); the check itself is off the GUI
-#: thread either way.
-AUTOMATIC_UPDATE_CHECK_DELAY_MS: Final = 5000
-
-
-def start_automatic_update_check(
-    composition: Composition,
-    *,
-    now: datetime | None = None,
-    last_checked: Callable[[], datetime | None] | None = None,
-) -> bool:
-    """Schedule the daily release check when it is on and due. **The answer is whether it was.**
-
-    `last_checked` defaults to reading the record beside the settings file in use; a test hands one
-    in.
-    """
-    from PySide6.QtCore import QTimer
-
-    from tracks_and_trails.core.app_updates import (
-        UPDATE_CHECK_FILENAME,
-        check_is_due,
-        read_last_check,
-    )
-
-    if not composition.check_for_updates:
-        return False
-    record = composition.settings_path.with_name(UPDATE_CHECK_FILENAME)
-    previous = last_checked() if last_checked is not None else read_last_check(record)
-    if not check_is_due(previous, now if now is not None else datetime.now(UTC)):
-        return False
-    service = composition.app_updates
-    QTimer.singleShot(
-        AUTOMATIC_UPDATE_CHECK_DELAY_MS, service, lambda: service.check(explicit=False)
-    )
-    return True
+    # `T338-R1`: the schedule decides when it fires, so starting it is all `present` does.
+    composition.update_schedule.start()
 
 
 def waiting_jobs(repository: JobRepository) -> list[tuple[str, JobStatus]]:
@@ -472,6 +435,8 @@ class Composition:
     #: Whether a newer release exists (`T-338`). Held for `ytdlp`'s reason, and so `present` can
     #: start the automatic check once the window is showing.
     app_updates: AppUpdateService
+    #: When the automatic check runs, for as long as the application does (`T338-R1`).
+    update_schedule: DailyUpdateCheck
     store: PersistentJobStore
     writer: QueueWriter
     connection: sqlite3.Connection
@@ -483,8 +448,6 @@ class Composition:
     #: because `compose()` restyling the `QApplication` would restyle the one every other test in
     #: the session shares — the rule the `theme.apply` note in `run()` states. `run()` applies it.
     theme: str
-    #: Whether the settings file allows the daily check (`T-338`), carried for `theme`'s reason.
-    check_for_updates: bool
     #: The settings problem to report, or `None` (`ARC-008`, `T-308`). **Carried rather than
     #: shown**, for exactly `theme`'s reason one consequence further on: `compose()` opened this as
     #: a window-modal box on a window that `run()` had not shown yet, so the compositor mapped the
@@ -568,10 +531,14 @@ def compose(
     from tracks_and_trails.core import models as core_models
     from tracks_and_trails.core import paths
     from tracks_and_trails.core import settings as app_settings
-    from tracks_and_trails.core.app_updates import UPDATE_CHECK_FILENAME, record_check
+    from tracks_and_trails.core.app_updates import (
+        UPDATE_CHECK_FILENAME,
+        read_last_check,
+        record_check,
+    )
     from tracks_and_trails.core.instance_lock import InstanceLock
     from tracks_and_trails.downloader import worker
-    from tracks_and_trails.downloader.app_update_service import AppUpdateService
+    from tracks_and_trails.downloader.app_update_service import AppUpdateService, DailyUpdateCheck
     from tracks_and_trails.downloader.environment import (
         bundled_ffmpeg,
         find_ffmpeg,
@@ -599,6 +566,12 @@ def compose(
     # rewrite rows belonging to a live instance's in-flight jobs.
     instance = InstanceLock(database_path)
     instance.acquire()
+    # **Tell the Windows uninstaller this is running** (`T322-R3`): it checks for this mutex before
+    # removing anything, and asks the user to close the application first. Only once this process
+    # owns the database, so a refused second launch does not hold it.
+    from tracks_and_trails.core.app_mutex import hold_running_mutex
+
+    hold_running_mutex()
 
     # **The read connection is opened here and the writer opens its own inside its thread**
     # (`ARC-005`). `check_same_thread` stays on, so the two cannot quietly become one.
@@ -1039,10 +1012,16 @@ def compose(
         remember(chosen, "the theme")
 
     def choose_update_checks(enabled: bool) -> None:
-        """Keep the daily release check on or off (`T-338`). Takes effect at the next launch."""
+        """Keep the daily release check on or off (`T-338`), now as well as at the next launch.
+
+        **The schedule hears it at once** (`T338-R1`): switching off cancels a check still waiting
+        to start, and switching on schedules the next one. A request already on its way is not
+        recalled.
+        """
         chosen = app_settings.with_update_checks(held.settings, enabled)
         held.settings = chosen
         remember(chosen, "the update preference")
+        update_schedule.preference_changed(enabled)
 
     def save_preset(preset: Preset) -> str | None:
         """Keep the options editor's answer under a name (`P-4`, `REQ-007`, `T109-R5`).
@@ -1211,6 +1190,13 @@ def compose(
         settings_file if settings_file is not None else app_settings.settings_path()
     ).with_name(UPDATE_CHECK_FILENAME)
     app_updates.answered.connect(lambda *_: record_check(datetime.now(UTC), update_record))
+    # **Connected after the record**, so a finished check has been written down by the time the
+    # schedule reads it to decide when the next one is due.
+    update_schedule = DailyUpdateCheck(
+        app_updates,
+        enabled=lambda: held.settings.check_for_updates,
+        last_checked=lambda: read_last_check(update_record),
+    )
 
     window = MainWindow(
         geometry_file,
@@ -1423,6 +1409,9 @@ def compose(
         # Every real pool; see the import above. `T-338` added the release check's.
         pools=(ytdlp_pool(), thumbnail_pool(), app_update_pool()),
     )
+    # The schedule stops before anything else goes: a timer that fired into a sealed pool would
+    # only re-arm itself.
+    window.closing.connect(update_schedule.stop)
     window.closing.connect(shutdown.begin)
     # **Every quit, not only the one through the window.** Qt aborts the process if a `QThread`
     # is destroyed while running, so a quit that skipped the lifecycle — `QApplication.quit()`
@@ -1439,6 +1428,7 @@ def compose(
         manager=manager,
         ytdlp=ytdlp,
         app_updates=app_updates,
+        update_schedule=update_schedule,
         store=store,
         writer=writer,
         connection=connection,
@@ -1447,7 +1437,6 @@ def compose(
         database_path=database_path,
         settings_path=settings_file if settings_file is not None else app_settings.settings_path(),
         theme=settings.theme,
-        check_for_updates=settings.check_for_updates,
         settings_problem=settings_problem,
         cache_root=cache_root,
         shutdown=shutdown,

@@ -2178,3 +2178,17 @@ def test_an_update_preference_that_is_not_true_or_false_is_reported(
     assert loaded.settings.check_for_updates
     assert loaded.settings.concurrency == 2, "a bad update preference cost an unrelated setting"
     assert loaded.problem is not None and "check_automatically" in loaded.problem.reason
+
+
+def test_a_naming_preference_saved_before_ux_014_survives_load_and_an_unrelated_save(
+    tmp_path: Path,
+) -> None:
+    """`T337-R3`: `duration_string` was the offered length field, and loading dropped it."""
+    target = tmp_path / "settings.toml"
+    legacy = "%(title)s (%(duration_string)s).%(ext)s"
+    target.write_text(f'output_template = "{legacy}"\n', encoding="utf-8")
+    loaded = settings_module.load(target)
+    assert loaded.problem is None, loaded.problem
+    assert loaded.settings.output_template == legacy
+    assert settings_module.save(settings_module.with_theme(loaded.settings, "dark"), target) is None
+    assert settings_module.load(target).settings.output_template == legacy

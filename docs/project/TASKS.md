@@ -16,7 +16,8 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ### T-338 — The application says when a newer release is out
 
-**Status:** **In Review** — ruled 2026-09-13 by the maintainer from `T-327`'s session, recorded as
+**Status:** **In Review** — corrected 2026-09-14 for `T338-R1`, with `T338-R2`'s placement ratified by
+the maintainer (below). Ruled 2026-09-13 by the maintainer from `T-327`'s session, recorded as
 `REL-009`, and built the same day.
 **Owner:** Implementer
 **Priority:** High — a release without a checker can never tell its own users about the next one
@@ -26,6 +27,13 @@ updater this mirrors)
 **Affected surfaces:** `core/app_updates.py` (new), `downloader/app_release.py` (new),
 `downloader/app_update_service.py` (new), `core/settings.py`, `ui/settings_dialog.py`,
 `ui/main_window.py`, `app.py`, `packaging/tracks-and-trails.iss`
+
+#### 2026-09-14 — corrections from the session review
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T338-R1` Medium: a startup `singleShot` captured the preference and never re-armed | `DailyUpdateCheck` in `downloader/app_update_service.py`, held by composition for the application's life. When its timer fires it reads the preference and the last answer *then*; a finished check (automatic or asked for) arms the next one a day after the answer, or within `RETRY_AFTER_NO_ANSWER` (an hour) after no answer. Switching off in Preferences cancels what is pending; switching on schedules. It stops when the window closes, and does nothing once the pool is sealed. | Composed window: switched off during the launch delay sends nothing, on disk and on the wire. Schedule tests: a launch inside the day waits for the due time; an application left open checks again a day later; a manual answer moves the automatic check; no answer retries within the hour; a stopped schedule never fires. **Four mutations, four caught** (fire ignoring the preference, no re-arm, opt-out not cancelling, a check that is not due still sent). The first of those survived at first, because the test looked before the pool thread could make the request; it waits now. |
+| `T338-R2` Medium: the status-bar placement was attributed to `REL-009` | The maintainer ratified the status-bar button on 2026-09-14, over a banner and a once-per-version box. `REL-009` has an amendment saying so, and `UX_SPEC` §2.1 no longer calls it the build's choice. | — |
 
 #### What was built
 
@@ -64,10 +72,13 @@ updater this mirrors)
 - **Against GitHub itself**: there is no published release yet, so a real check answers *No version
   has been released yet*. The parsing is tested against recorded shapes, not a live response.
 
+---
+
 ### T-337 — Naming is a setting; a single download is renamed, not templated
 
-**Status:** **In Review** — ruled 2026-09-13 by the maintainer from `T-327`'s session, recorded as
-`UX-014`, and built the same day in ten commits (`8ec395c` to `60fb124`).
+**Status:** **In Review** — corrected 2026-09-14 for `T337-R1`…`R5` (below). Ruled 2026-09-13 by the
+maintainer from `T-327`'s session, recorded as `UX-014`, and built the same day in ten commits
+(`8ec395c` to `60fb124`).
 **Owner:** Implementer
 **Priority:** High — the per-item template editor is the first naming surface a user meets
 **Phase:** Phase 5
@@ -76,6 +87,16 @@ updater this mirrors)
 **Affected surfaces:** `core/models.py` and `core/presets.py` (`Preset.output_template`),
 `core/settings.py` (preset loading), `ui/settings_dialog.py`, `ui/add_dialog.py`,
 `ui/preset_manager.py`, `ui/main_window.py` and `ui/queue_view.py` (a queued row's menu)
+
+#### 2026-09-14 — corrections from the session review
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T337-R1` Medium: the durable probe write dropped the four new naming fields | `downloader/manager.py`'s `Probed` handler writes `upload_date`, `media_id`, `channel` and `site` in the same revision as title and uploader, replacing stale values with `None` when a probe reports none. | A real spawned probe reaches `READY` with all four stored; a second test starts from stale values and ends with `None`. Removing the four lines fails both. |
+| `T337-R2` Medium: a second rename used today's setting's folders | `_rename_job` builds a typed name inside the job's **current** template, so its folders stay; accepting the name it already has writes nothing; only clearing the name resolves today's setting, with *Position* padded to the playlist's size (the rows left, or the highest position among them). | Tests: accepting `%(uploader)s/My clip` unchanged writes nothing; `Second name` stays in `%(uploader)s/`; a changed setting does not move a renamed job; a reset entry at position 5 of a 100-entry playlist is `005`. **Three mutations, three caught.** |
+| `T337-R3` Medium: a pre-`UX-014` preference naming `duration_string` was discarded | `duration_string` is supported again, not offered: loading, an unrelated save, preview and the request all keep it. | `%(title)s (%(duration_string)s).%(ext)s` loads with no problem, survives a theme save, and previews `Clip (8-27)`. Removing the field fails all three. |
+| `T337-R4` Medium: queue-time fields were replaced as raw substrings | `resolve_queue_fields` walks the template's own tokens once: `%%` is stepped over, a value is written as finished text, a removed field becomes a private marker only the separator rules see. `named_fields` skips `%%` too, and two raw `in` checks (`add_dialog`'s playlist folder, the Preferences example) use `uses_field`. | `100%(duration)s {Title}` keeps its text; a playlist named `%(duration)s Mix` (and three other field-shaped names) is written once and never resolved again; separator removal beside escaped text still works; readers ignore `%%(…)`. **Two mutations, two caught.** Containment is unchanged: the final guard still decides. |
+| `T337-R5` Low: superseded statements | `REQ-011` says named fields, not named choices; `UX-014`'s closing refusal of playlist fields is marked superseded and item 3 notes the second-rename rule; `STATUS` refreshed. | — |
 
 The maintainer, on the template panel: *"This looks like something that should be in settings as a
 preference instead of using it to rename each individual file this way."*
@@ -134,165 +155,6 @@ preference instead of using it to rename each individual file this way."*
   (**mutated**: basing on the setting fails it), unchanged writes nothing, refused name blocks OK,
   clearing a rename. The dialog joins `every_surface`'s audit.
 - [ ] Seen on the Windows installed build
-
----
-
-### T-325 — Cold start, measured on the artifact that ships
-
-**Status:** **In Review** — `T325-R1` corrected, and **`T325-R2` settled by the maintainer's ruling
-of 2026-09-13**: `0.1.0` ships on the startup numbers already measured, recorded as
-[`REL-008`'s amendment](DECISIONS.md#amended-2026-09-13--0-1-0-ships-on-the-startup-numbers-already-measured)
-with the gaps it accepts — no Linux cold sample, and a Windows cold figure that names no artifact.
-*(Was In Progress: neither requirement shown met, pending reboots.)* *(Said `NFR-002` "is met with
-roughly 5× margin" and that every measurement clears `NFR-010` — claims about cold starts made from
-warm and first-touch numbers, and one unidentified build.)* Filed 2026-09-11 with the Phase 5 plan.
-
-#### 2026-09-12 — the numbers, and the one that is over the bound
-
-Full captures in
-[`evidence/2026-09-12-T325-startup-times.md`](evidence/2026-09-12-T325-startup-times.md).
-
-| | cold (after reboot) | first run (fresh build) | warm median | `NFR-002` |
-|---|---|---|---|---|
-| Linux AppImage, reference machine | not taken | 1.077 s | **0.634 s** | within |
-| Windows release build, `STARBASE` | **3.976 s** | **3.780** / **4.656 s** | **1.550 s** | **not met** |
-
-**The cold number is the maintainer's own measurement**, taken seconds after `Restart-Computer`
-and before anything else was launched — the one run neither the implementer nor CI can take, since
-a reboot kills the runner and the session driving it. One run by construction: a second launch is
-no longer cold.
-
-**Instrumented, not timed by hand**, which the scope asks for in terms. `core.startup
-.record_first_paint` writes one wall-clock line when the compositor confirms the surface is on
-screen; `tools/startup_time.py` takes the other half of the clock before spawning. **`showEvent` is
-deliberately not the hook** — it fires before the window exists on screen, and on Wayland the
-widget is never told at all (`T287-R1`), so this rides the exposure watch that finding installed
-rather than inventing a second notion of *visible*.
-
-**The instrument was checked against a positive before it was trusted**: 0.318 s from source. Its
-first run against an artifact reported *no window after 60s*, which was an AppImage built four
-hours before the recorder existed — the harness reporting an absent instrument rather than a fast
-start, which is the behaviour wanted.
-
-**The finding: the first launch of a freshly written Windows artifact does not meet `NFR-002`, and
-it reproduces.** Two independent builds, 3.780 s and 4.656 s, both over 3 s. A second pass over the
-*same* files minutes later has no outlier at all — so this is a first-touch cost, not variance.
-Defender scanning a newly written 155 MB tree and a cold page cache are the candidates and
-**neither was isolated**; naming one would be a guess.
-
-**That is the state a user's machine is in immediately after the installer writes the files**, which
-is why it is reported as the headline rather than as an outlier next to a passing median. Linux
-shows the same shape — 1.077 s against 0.634 s, a comparable ~1.7× — and stays well inside the
-bound.
-
-**Cold, as the scope defines it, was not measured.** *First launch after a reboot* needs a reboot,
-which kills the `STARBASE` runner, and on Linux additionally `drop_caches`, which needs root.
-Neither is the implementer's to do on a machine somebody is using.
-
-**The freeze costs about 1.9×, against the 2–4× the Risk line anticipated** — 0.33 s from source
-against 0.634 s frozen on Linux. Real in direction, immaterial in absolute terms.
-
-**The harness mislabelled that run, and the fix is recorded because the label matters.** It
-printed *"measuring warm launches"* unconditionally — over the cold number the task had been
-waiting for. A tool cannot tell cold from warm; only the caller knows what state the machine is
-in. `tools/startup_time.py` now takes `--cold` and says which it was told, rather than asserting
-the one it cannot know.
-
-#### 2026-09-12 (final) — the ruling, and a correction to this entry
-
-**This entry said `NFR-002` was not met. That overstated it, and the overstatement is the finding.**
-`NFR-002` reads *"under 3 seconds on the reference **Linux** machine"* — it has never covered
-Windows. `TESTING.md` §8 item 14 said *"the reference machine"*, dropping the word, and a Windows
-figure was duly reported against a Linux requirement as a failure. **Linux passes with about five
-times the margin.** The defect was a gate item disagreeing with the requirement it cites, which is
-the class this project keeps finding — and this time in a document rather than in code.
-
-**Ruled by the maintainer 2026-09-12**, recorded as `REL-008`:
-
-| | number | measured | verdict |
-|---|---|---|---|
-| Linux, `NFR-002` (unchanged) | 3 s | 0.634 s warm, 1.077 s first-touch | ~~met~~ **not shown** — no cold sample (`T325-R2`) |
-| Windows, `NFR-010` (new) | **5 s** | **3.976 s cold**, 4.656 s worst first launch | ~~met~~ **not shown** — the cold run names no artifact (`T325-R2`) |
-
-**Five seconds rather than four, from the measurements**: 4 s clears the cold figure by 24 ms,
-which is a coin toss on a busy machine rather than a bound. §8 item 14 now names both platforms and
-is executable — `tools/startup_time.py --cold`.
-
-**One measurement is still missing and is not inferred away**: Linux cold, which needs a reboot of
-the machine doing the work. The margin makes it unlikely to matter; that is an inference, written
-as one.
-
-**The rejected alternatives, for the record** — none of them the implementer's to pick:
-
-| Option | What it costs |
-|---|---|
-| **Amend `NFR-002`** to a warm-start bound, stating the cold figure beside it | It is a change of requirement rather than a reading of one — the requirement says cold |
-| **Raise the number** — 4 s covers every measurement taken, 5 s leaves margin on a slower machine | Honest, and the release gate then passes on a number somebody chose |
-| **Attack the cost** | Mostly not ours: a Defender exclusion is not something an artifact can arrange for itself, and 155 MB is what bundling ffmpeg costs. **A one-file build would make it worse**, not better — it trades startup for extraction |
-
-**§8 item 14 no longer reads as a pass on an untested claim**, which was the one outcome ruled out
-from the start: it names the platform, the artifact and the launch, and points at the tool.
-**Owner:** Implementer measures; Maintainer's machine is the reference
-**Priority:** High — it is a release-gate item with a number in it
-**Phase:** Phase 5
-**Depends on:** `T-319`, `T-321`, `T-322` (an installed Windows build and an AppImage to time)
-**Relevant context:** `NFR-002` (*"cold start to interactive window under 3 seconds on the
-reference Linux machine"*); `TESTING.md` §8 item 14; `T-007`, which measured this **from source**
-on 2026-07-25 and is the only recorded number
-**Affected surfaces:** `docs/project/evidence/`, `docs/project/TESTING.md` §8
-**Risk:** Low to measure; Medium if it fails — a frozen one-dir build pays for import-time
-unpacking that a source checkout does not, and PyInstaller one-dir launches are commonly 2–4×
-slower than the same code from a venv
-
-#### Scope
-
-`T-007`'s measurement predates freezing, `OPS-002`'s yt-dlp bundling, the thumbnail store, the
-theme and the settings dialog. **It is not evidence about the artifact.** Measure again:
-
-- **Cold**: first launch after a reboot (Linux: additionally `echo 3 > drop_caches` before the
-  launch), timed from process start to the main window's first paint — instrumented by an
-  environment-gated timestamp the application already has the shape for (`_freeze_probe`'s
-  `record_app_start`), not by a stopwatch
-- **Warm**: the second launch, recorded as a second number rather than averaged in
-- Five runs each, on the reference Linux machine for the AppImage and on `STARBASE` for the
-  installed Windows build; the median is the number, the five are retained
-
-**If it fails, that is a task, not a re-measure** — `NFR-002` is a requirement, and the honest
-outcomes are *meets*, *does not meet and here is the profile*, or a maintainer amendment of the
-number with the reason.
-
-#### 2026-09-13 — the review's two findings
-
-**`T325-R1`: the cold gate averaged warm launches.** `--cold` still ran five launches and gated
-their median, but only the first launch after a reboot is cold. The reviewer's counterexample —
-`[6, 1, 1, 1, 1]` against a 5-second bound — printed *"cold median 1.000s"* and exited 0. Under
-`--cold` the tool now gates **the first launch alone** and reports the rest as warm, ungated.
-`test_the_cold_gate_judges_the_cold_launch_alone` runs the real CLI with substituted durations over
-four cases, the reviewer's first; the previous tool fails two of them.
-
-**`T325-R2`: the evidence does not support "met", so the claims are withdrawn rather than argued.**
-The verdict column above and this entry's status are corrected in place, with the old wording
-kept. What is owed, and needs the maintainer because each needs a reboot of a machine they use:
-
-- **Linux cold**: reboot the reference Linux machine, then the AppImage by path and digest,
-  `tools/startup_time.py <AppImage> --cold --runs 1`.
-- **Windows cold on the installed artifact**, which `NFR-010` names: install a known installer
-  (record its sha256), reboot `STARBASE`, then
-  `tools/startup_time.py "%LOCALAPPDATA%\Programs\Tracks & Trails\tracks-and-trails.exe" --cold
-  --runs 1 --bound 5`. The 2026-09-12 figure of 3.976 s stays as history; it names no build.
-
-#### Acceptance criteria
-
-- An evidence file per platform with machine, method and the numbers taken — **for `0.1.0`, the
-  retained 2026-09-12 measurements, by the maintainer's second 2026-09-13 ruling** *(first amended
-  that day to one identified cold launch per platform plus the warm median; originally "the ten raw
-  numbers and the two medians")*
-- `TESTING.md` §8 item 14 cites the file, and names *which* build and version were measured
-- A failure produces a task with a profile attached, and this task closes as *measured* either way
-
-#### Out of scope
-
-- Optimising anything. Measure first
 
 ---
 
@@ -358,7 +220,7 @@ worked there; updating in the Sandbox's Settings fixed it there too.
 
 ### T-335 — A cancelled download can be queued again
 
-**Status:** **In Review** — ruled 2026-09-13 by the maintainer from `T-327`'s session (*Queue again*,
+**Status:** **In Review** — the implementation is **approved at `c19b712`** ([record](reviews/T-337.md#2026-09-14--initial-review-of-the-session-changes)); one criterion remains, *seen on the Windows installed build*, which rides `T-327`. Ruled 2026-09-13 by the maintainer from `T-327`'s session (*Queue again*,
 at the back, from scratch — the Implementer's recommendation), recorded as `UX-005` §4's 2026-09-13
 amendment, and built the same day.
 **Owner:** Implementer designs; Maintainer rules
@@ -448,160 +310,6 @@ so a *Latest* row either waits for a button press or the requirement is amended.
 - [ ] Seen on the Windows installed build
 
 ---
-
-### T-039 — Verify Windows installer behavior on the runner
-
-**Status:** **In Review** — all four gates implemented and passing in Windows Sandbox, `T039-R1`
-resolved, and **`T039-R2` ruled by the maintainer 2026-09-13: per release candidate** (below).
-**Owner:** Implementer
-**Priority:** Medium now, High once Phase 5 starts — it must land before the first public release
-**Phase:** Phase 5
-**Depends on:** the Phase 5 installer, `T-026` (establishes the real-plugin Windows job)
-**Relevant context:** `OPS-004`, `REL-001`, `docs/project/TESTING.md` §9, `REQUIREMENTS.md` §3
-**Affected surfaces:** `.github/workflows/ci.yml`, `docs/project/TESTING.md` §9, `REQUIREMENTS.md` §3
-**Risk:** Medium — same failure mode as `T-026`: a shallow check would retire a
-release-blocking manual item without replacing it
-
-#### 2026-09-13 — `T039-R1`: a failure contract, and gates that see what they missed
-
-**The review's four gaps, each closed and each shown failing a real run.**
-
-- **No failure contract.** The script wrote a Markdown verdict nothing read. It now ends with a
-  machine-readable `<!-- VERDICT: PASS|FAIL n -->` line and a failing exit code, and
-  **`tools/windows/sandbox_evidence.sh`** is the consumer: it stages the installer *and*
-  `evidence.ps1`, launches Sandbox, waits for the report, closes it, and **exits non-zero unless the
-  verdict is PASS**. It refuses to start while any Sandbox is open.
-- **Placement checked a few named files.** Every `Dest filename:` in Inno's own install log must now
-  lie under the install root or its Start Menu folder.
-- **User data was counted, not fingerprinted.** Each file's SHA-256 before the uninstall must match
-  after it, and **no user data at all is a failure**, not a warning.
-- **Leftovers were "the install root is empty"**, which `T322-R1` shows is the wrong question: the
-  user's files there must stay. Leftovers are now the installed files the log names; a sentinel
-  placed before installing and a file saved into the directory before uninstalling must both
-  survive byte-for-byte.
-
-**Three negative controls, each an installer compiled from the same tree, each run through the
-runner:**
-
-| Installer mutation | Run's verdict | Runner exit | What it said |
-|---|---|---|---|
-| none (the fix) | **PASS** | 0 | 227 logged destinations, none outside; 226 installed files removed; both user files and all 5 data files unchanged |
-| `filesandordirs` on `{app}` restored | **FAIL 2** | 1 | *pre-existing sentinel DELETED*, *user-saved file DELETED* |
-| a stray `[Files]` entry to Documents, and an uninstall rule deleting the user data files | **FAIL 2** | 1 | *1 WRITTEN OUTSIDE the install root*, *4 removed or changed by the uninstaller … library.sqlite3* |
-
-The earlier no-op-uninstaller mutation, above, covers leftovers. **`T039-R2` is not answered here**:
-whether these per-candidate Sandbox runs replace the criterion's per-push `windows-latest` job is the
-maintainer's to rule.
-
-#### 2026-09-12 — the four gates, and why they do not run on `windows-latest`
-
-**All four pass**, in `packaging/windows-sandbox/evidence.ps1`, against
-`Tracks-and-Trails-0.1.0.dev0-setup.exe`. Evidence:
-[`windows-0.1.0.dev0.md`](evidence/windows-0.1.0.dev0.md).
-
-| Gate | Result |
-|---|---|
-| 1 · silent install, success exit, no prompt | **exit 0 in 18.6 s**, per-user, no elevation |
-| 2 · file and shortcut placement | 225 files, `_internal\licenses\`, `_internal\ffmpeg.exe`, Start Menu shortcut; **desktop icon absent**, as the opt-in default asks |
-| 3 · the installed application launches | window in **~2 s**, titled *Tracks & Trails*, **no orphans** after close |
-| 4 · uninstall and removal | **exit 0**, install root removed, shortcut removed, **user data preserved** |
-
-**Gate 4 makes the distinction the criteria ask for rather than tolerating a leftover.** Five
-files under `%LOCALAPPDATA%\tracksandtrails` before the uninstall and five after: `DAT-001` says
-settings and the job database survive by intent, so the check asserts they are **still there**,
-and separately that the install root is **empty**. A single "nothing left behind" test would have
-failed the requirement it was meant to protect.
-
-**Each is a gate, proved by mutation** (`T031-R2`, and the acceptance criterion's own words).
-Replacing the uninstaller with a no-op that exits 0:
-
-```
-install root      225 FILE(S) LEFT: tracks-and-trails.exe, unins000.dat, ...
-start menu        SHORTCUT LEFT BEHIND
-**FAIL** - 2 check(s) did not pass.
-```
-
-**The scope says *"assert, on `windows-latest`"* and this does not. That is deliberate.** When
-this task was written, CI's Windows leg was a hosted runner — *"a CI runner is a genuinely clean
-machine, which is what makes this worth automating at all"*. `OPS-010` has since routed Windows to
-`STARBASE`, the maintainer's own desktop. Installing and uninstalling an application there on
-every run would (a) not be clean-machine evidence, since the machine already has Python, a
-toolchain and a developer's yt-dlp, and (b) make the machine's state a function of whoever pushed
-— which is the concern `OPS-012` §3 exists for.
-
-**Windows Sandbox is clean on every launch and discarded on close**, which is the property the
-hosted runner used to supply, and `REL-006` already chose it for `T-318`. So these gates ride
-`T-318`'s harness rather than a second one — which is also what the scope asked for in spirit:
-*"reusing `T-026`'s harness rather than a second one"*.
-
-**What that gives up, stated rather than implied:** these do not run on every push. They run when
-the Sandbox evidence is taken, which is per release candidate. A regression in the installer
-between candidates would not be caught the day it landed. Restoring per-push coverage would mean
-un-routing Windows CI from `STARBASE`, which `OPS-010` decided against for reasons that have not
-changed.
-
-**Its gates are independent of signature** (`T-317`'s fourth criterion, recorded here where the
-gates will be written). `REL-005` ships `0.1.0` unsigned and names a certificate as the `1.0`
-condition — so these checks must hold in **both** states. A silent install must succeed whether or
-not the installer is signed, and **no assertion here may pass only because a signed binary skipped
-a prompt**: that is a test measuring SmartScreen rather than the installer, and it would go red
-the day signing arrives, which is the one day nobody would suspect the test.
-
-#### Scope
-
-Split out of `T-026` when `OPS-004` was accepted on 2026-07-26. `OPS-004` reclassified four
-things as automatable on the Windows runner; three of them `T-026` does now, but installer
-verification cannot be written before an installer exists, and `T-026` had to stay completable
-because it is what closes Phase 0's last exit criterion.
-
-A CI runner is a genuinely clean machine, which is what makes this worth automating at all:
-installing onto a box that has never held the application is exactly the case a developer
-machine cannot reproduce.
-
-Assert, on `windows-latest`:
-
-1. **Silent install** completes with a success exit code and no interactive prompt.
-2. **File and shortcut placement** — the installed tree, the Start Menu entry, and any
-   registered association land where the installer claims.
-3. **The installed application launches** under the real `windows` platform plugin, reusing
-   `T-026`'s harness rather than a second one.
-4. **Uninstall and removal** — the uninstaller exits clean and leaves nothing behind except
-   what is deliberately preserved (user settings and the job database, per `DAT-001`).
-
-#### 2026-09-13 — `T039-R2` ruled: per release candidate
-
-**Asked with three options, the maintainer chose the recommendation**: keep the scripted Sandbox run
-as the gate, once per release candidate, rather than a per-push job on a hosted `windows-latest`
-runner or both. The criteria below are amended in place and keep what they said. `REQUIREMENTS.md`
-§3 now says installer placement and removal are automated, on that cadence.
-
-#### Acceptance criteria
-
-- **Amended 2026-09-13 by the maintainer's ruling on `T039-R2`:** the gates run **once per
-  release candidate** in a clean Windows Sandbox through `tools/windows/sandbox_evidence.sh`,
-  whose non-zero exit is the failure — not on every push on `windows-latest`. Stated as given up:
-  an installer regression is caught when a candidate is taken, not the day it lands.
-- Each of the four is a **gate**, stated as a mutation that turns the run red: a missing
-  shortcut, a file placed outside the install root, a non-zero silent-install exit code, and a
-  leftover installed file after uninstall each fail it. Screenshots, if any, stay retained evidence
-  and fail nothing on their own (`T031-R2`, `P0-R7`)
-- Uninstall leaving user data behind is asserted as **intended** behavior, not tolerated as a
-  leftover — the test distinguishes the two
-- `docs/project/TESTING.md` §9's manual list drops installer placement and removal, and
-  `REQUIREMENTS.md` §3 narrows to match — **only once this job is landed and green**
-- ~~The added CI time is recorded against `T-006`'s budget~~ — **none added**: by the 2026-09-13
-  ruling these run per candidate, outside CI
-
-#### Out of scope
-
-- Whether the installer *feels* normal — `OPS-004`'s subjective residue, still human, still
-  blocks first release
-- Upgrade-over-existing-install and downgrade paths — real, but a separate task once the
-  versioning story exists
-- Any non-Windows packaging
-
----
-
 
 ### T-324 — A release workflow that builds, gates and drafts — and never publishes
 
@@ -955,7 +663,8 @@ The release gate's machine half, run **against the candidate** rather than again
 
 ### T-322 — The Windows installer
 
-**Status:** **In Progress** — **compiled on `STARBASE`** 2026-09-12, installed and uninstalled in
+**Status:** **In Progress** — `T322-R3` and `T322-R4` corrected 2026-09-14 and back in review (below);
+**compiled on `STARBASE`** 2026-09-12, installed and uninstalled in
 Windows Sandbox by `T-039`'s gates, and polished in the maintainer's session (below). Open: built by
 `T-324`'s workflow, which needs a tag, and `T-317`'s SmartScreen screenshot. *(This said it could not
 be built without Inno Setup; the maintainer installed it.)*
@@ -963,6 +672,34 @@ be built without Inno Setup; the maintainer installed it.)*
 **Priority:** High
 **Phase:** Phase 5
 **Depends on:** `T-319` (what it installs), `T-320` (the version), `T-317` (whether it is signed)
+
+#### 2026-09-14 — corrections from the session review: one process, a closed application, honest results
+
+| Finding | Correction |
+|---|---|
+| `T322-R4` Medium: the restarted uninstaller could lose a race for `unins000.dat`, which the first run holds exclusively | **No restart.** `CurStepChanged(ssPostInstall)` rewrites the uninstall entry Inno has just registered (`Setup.Install.pas` writes it inside `PerformInstall`, before `ssPostInstall`) to `"unins000.exe" /SILENT /ASK`, only if the key exists. Windows' own entry starts one silent run, which skips Inno's box and shows the dialog from `InitializeUninstall`. The uninstaller run any other way shows Inno's box and keeps everything. |
+| `T322-R3` High: removal results were discarded, nothing closed the application, and the last box always said *removed* | **`AppMutex=TracksAndTrails.Running`**, which `core/app_mutex.py` creates once the application owns its database; Inno checks it after the dialog and before removing anything, and asks for the application to be closed. **Each named item is deleted by a helper that looks for it afterwards**; any still present makes the removal incomplete; an item never there is not a failure. The final box says *kept*, *removed along with your settings*, or *some of your settings could not be deleted* with the folder to finish by hand. Both outcomes go to the uninstall log. `library.sqlite3.lock`, `ARC-006`'s lock file, was missing from the list and is added. |
+
+**Tests** (`tests/unit/test_windows_packaging.py`, `tests/unit/test_app_mutex.py`): no `Exec` in
+`[Code]`; the entry rewrite targets this AppId's key, only if present, with `/SILENT /ASK`; the
+dialog only on `/ASK`; removal only behind the ticked box or `/REMOVEDATA`; `AppMutex` equals the
+application's name and composition holds it after the instance lock; every named deletion feeds the
+result; the success box only when the result is true; primitive deletions only inside the two
+checking helpers; every path the application writes, the lock file now included, removed by name.
+On Windows, another process can open the mutex while the application holds it, and a name nobody
+holds is not found. **Thirteen mutations, thirteen caught.**
+
+**Verified in Windows Sandbox** (`docs/project/evidence/windows-0.1.0.dev0-sandbox-2026-09-14.md`,
+verdict PASS), by three checks added to `T-039`'s run after a reinstall: Windows' uninstall entry
+reads `"…\unins000.exe" /SILENT /ASK`; with the application open, `/REMOVEDATA` exits 1 and the
+application and queue database are both kept; with `library.sqlite3` held open, the log says
+*Could not delete … library.sqlite3* and *removal incomplete*, never *removed*, while
+`settings.toml` is removed and the held database stays. The existing silent-uninstall preservation
+checks pass on the same run. The same session ran the Windows tests with the desktop slice on
+`STARBASE`: 271 passed, 1 skipped (the Linux-only half of `test_app_mutex.py`).
+
+**Not verified yet:** the dialog itself, the *close the application* prompt a person sees, and the
+three final messages. They need a person at an installed build: `T-327`'s session.
 
 #### 2026-09-13 (later) — the uninstaller asks whether to keep settings
 

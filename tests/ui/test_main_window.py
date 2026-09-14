@@ -1910,6 +1910,61 @@ def test_clearing_a_rename_returns_to_the_setting_in_force(qapp: QApplication) -
     assert record.written[-1][1].output_template == "%(uploader)s - %(title)s.%(ext)s"
 
 
+def test_renaming_a_renamed_download_again_keeps_its_folders(qapp: QApplication) -> None:
+    """`T337-R2`: every rename after the first kept today's setting's folders instead of its own.
+
+    Queued as `%(uploader)s/My clip`, with today's setting plain *Title*: accepting the prefill
+    unchanged wrote `My clip.%(ext)s`, and typing a new name dropped the folder too.
+    """
+    request = replace(_job("a", 0).request, output_template="%(uploader)s/My clip.%(ext)s")
+    window = _window_over([_job_with(request)], default_output_template=lambda: "%(title)s.%(ext)s")
+    record = _intercept(window)
+
+    _renamed(window, None)
+    assert record.written == [], "accepting a renamed download's own name rewrote it"
+
+    _renamed(window, "Second name")
+    assert record.written[-1][1].output_template == "%(uploader)s/Second name.%(ext)s", (
+        "a second rename dropped the folders the download already had"
+    )
+
+
+def test_renaming_after_the_setting_changed_keeps_the_jobs_folders(qapp: QApplication) -> None:
+    """A changed Settings pattern decides new downloads, not where a queued one is renamed to."""
+    request = replace(_job("a", 0).request, output_template="%(uploader)s/%(title)s.%(ext)s")
+    window = _window_over(
+        [_job_with(request)], default_output_template=lambda: "%(channel)s/%(title)s.%(ext)s"
+    )
+    record = _intercept(window)
+
+    _renamed(window, "My clip")
+
+    assert record.written[-1][1].output_template == "%(uploader)s/My clip.%(ext)s"
+
+
+def test_resetting_a_playlist_entry_pads_its_position_as_queueing_did(qapp: QApplication) -> None:
+    """The explicit reset resolves today's setting, with *Position* padded to the playlist."""
+    entries = [
+        replace(
+            _job_with(
+                replace(_job(job_id, 0).request, output_template="Typed name.%(ext)s"), job_id
+            ),
+            playlist_id="mix",
+            playlist_index=index,
+            playlist_title="Mix",
+        )
+        for job_id, index in (("a", 4), ("b", 0), ("c", 99))
+    ]
+    window = _window_over(
+        entries, default_output_template=lambda: "%(playlist_index)s - %(title)s.%(ext)s"
+    )
+    record = _intercept(window)
+
+    _renamed(window, "")
+
+    assert record.written[-1][1].output_template == "005 - %(title)s.%(ext)s"
+
+
 def test_a_re_read_that_finds_no_formats_says_so_and_opens_nothing(qapp: QApplication) -> None:
     """`T315-R4`: one of the two endings no committed test exercised.
 
