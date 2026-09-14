@@ -199,11 +199,10 @@ var
   UninstallButton, CancelButton: TNewButton;
   ButtonWidth: Integer;
 begin
-  Form := CreateCustomForm;
+  // Four arguments: Inno Setup 6.7.3 on `STARBASE` refuses the older no-argument form.
+  Form := CreateCustomForm(ScaleX(420), ScaleY(142), False, False);
   try
     Form.Caption := 'Uninstall {#AppName}';
-    Form.ClientWidth := ScaleX(420);
-    Form.ClientHeight := ScaleY(142);
 
     Question := TNewStaticText.Create(Form);
     Question.Parent := Form;
@@ -273,7 +272,7 @@ begin
   if RemoveData then
     Switches := Switches + ' ' + RemoveDataSwitch;
   // Ends this run only once the second one has started; otherwise Inno's own box follows.
-  if Exec(UninstallExeFilename, Switches, '', SW_SHOWNORMAL, ewNoWait, ResultCode) then
+  if Exec(ExpandConstant('{uninstallexe}'), Switches, '', SW_SHOWNORMAL, ewNoWait, ResultCode) then
     Result := False;
 end;
 
