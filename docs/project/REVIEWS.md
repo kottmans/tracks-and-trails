@@ -146,7 +146,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [DOC-008](reviews/DOC-008.md) | DOC-008 | 0 |
 | [T-329](reviews/T-329.md) | T-329 | 0 |
 | [T-318 / T-039](reviews/T-318.md) | T-318, T-039, REL-007 amendment | 0 |
-| [T-322](reviews/T-322.md) | T-322; [authorized T322-R5 correction review](reviews/T-322.md#2026-09-14--authorized-third-pass-on-t322-r5), 4e10935 to 66b674c; [T322-R6 disposition](reviews/T-322.md#2026-09-14--disposition-of-the-test-scope-correction) through 5d3f37d | 0 |
+| [T-322](reviews/T-322.md) | T-322; [workflow-built installer approval](reviews/T-322.md#2026-09-14--workflow-built-installer-completion-review) through 00c422c | 0 |
 | [T-324 / T-319](reviews/T-324.md) | T-324, T-319; [workflow completion approval](reviews/T-324.md#2026-09-14--workflow-corrections-and-the-first-completed-draft) through 00c422c | 0 |
 | [T-325](reviews/T-325.md) | T-325, REL-008 | 0 |
 | [T-330](reviews/T-330.md) | T-330 | 0 |
