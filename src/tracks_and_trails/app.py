@@ -521,7 +521,11 @@ def compose(
     from tracks_and_trails.core import settings as app_settings
     from tracks_and_trails.core.instance_lock import InstanceLock
     from tracks_and_trails.downloader import worker
-    from tracks_and_trails.downloader.environment import find_ffmpeg, user_ytdlp_directory
+    from tracks_and_trails.downloader.environment import (
+        bundled_ffmpeg,
+        find_ffmpeg,
+        user_ytdlp_directory,
+    )
     from tracks_and_trails.downloader.manager import DownloadManager
     from tracks_and_trails.downloader.ytdlp_service import YtdlpService
     from tracks_and_trails.persistence import db
@@ -1181,6 +1185,7 @@ def compose(
         on_network_chosen=choose_network,
         ffmpeg_location=settings.ffmpeg_location,
         ffmpeg_summary=ffmpeg.summary(),
+        ffmpeg_bundled=bundled_ffmpeg() is not None,
         on_ffmpeg_location_chosen=choose_ffmpeg_location,
         on_run_changed=choose_run,
         on_remove_requested=remove_job,

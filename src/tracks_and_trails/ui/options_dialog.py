@@ -164,7 +164,7 @@ FFMPEG_FEATURE_CONTROLS: Final[dict[FfmpegFeature, tuple[str, ...]]] = {
 #: wrong and not what would fix it, and this screen is where they are looking when they find out.
 NO_FFMPEG_REASON: Final = (
     "ffmpeg was not found, so these options cannot be applied. Install ffmpeg, or set its "
-    "location in Settings."
+    "location in Preferences."
 )
 
 #: What `P-4`'s control reads. The ellipsis is the platform's promise that it will ask something.

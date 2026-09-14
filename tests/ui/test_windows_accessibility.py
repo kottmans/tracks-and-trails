@@ -369,7 +369,7 @@ def test_no_interactive_control_reaches_the_tree_without_a_name(tree: Tree) -> N
     # label — the text follows the state, and a freshly built window has never run.
     [
         ("&File", ["Add URLs...", "Start", "Clear finished", "Quit"]),
-        ("&Settings", ["Settings..."]),
+        ("&Settings", ["Preferences..."]),
         ("&Help", ["About"]),
     ],
 )

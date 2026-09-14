@@ -1045,7 +1045,7 @@ class SettingsProblem:
             f"Some of your settings could not be used as written, so they have been adjusted. "
             f"The rest of the file is unchanged.\n\n"
             f"{self.path}\n{self.reason}\n\n"
-            "Change them in Settings to stop this message. Saving settings will overwrite "
+            "Change them in Preferences to stop this message. Saving settings will overwrite "
             "this file."
         )
 

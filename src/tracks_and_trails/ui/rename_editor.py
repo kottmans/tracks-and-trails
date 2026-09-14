@@ -44,7 +44,7 @@ CLEAR_NAME_LABEL: Final = "Clear the file name"
 
 #: Said once under the field: what empty means, and that the extension is not the user's to type.
 NAME_HINT: Final = (
-    "Leave it empty to use how downloads are named in Settings. The extension is added for you."
+    "Leave it empty to use how downloads are named in Preferences. The extension is added for you."
 )
 
 

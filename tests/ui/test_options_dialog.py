@@ -754,7 +754,7 @@ def test_the_screen_says_why_and_names_what_would_fix_it(
     # Through the module's own label sweep, as every other reason assertion here does, rather
     # than by an object name invented for this test.
     assert NO_FFMPEG_REASON in _labels(dialog)
-    assert "Settings" in NO_FFMPEG_REASON, (
+    assert "Preferences" in NO_FFMPEG_REASON, (
         "the reason does not point at the override this task builds, so a user with ffmpeg "
         "installed somewhere unusual is told to install it again"
     )

@@ -101,6 +101,9 @@ def test_menu_bar_exposes_quit_about_and_settings(window: MainWindow) -> None:
 
     names = {action.objectName() for action in window.findChildren(QAction)}
     assert {"actionQuit", "actionAbout", "actionSettings"} <= names
+    # **Preferences, under Settings** (maintainer direction, 2026-09-13).
+    opener = next(a for a in window.findChildren(QAction) if a.objectName() == "actionSettings")
+    assert opener.text() == "&Preferences..."
 
 
 def file_menu(window: MainWindow) -> tuple[list[str], list[QAction], list[QAction]]:

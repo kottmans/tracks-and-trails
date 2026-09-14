@@ -2057,7 +2057,7 @@ def test_a_file_that_was_read_does_not_claim_it_could_not_be(tmp_path: Path) -> 
     assert "defaults are in use" not in summary, (
         "a clamped value is not a default; the headline must not assert which (T309-R1)"
     )
-    assert "Change them in Settings" in summary, "the message must name the way out"
+    assert "Change them in Preferences" in summary, "the message must name the way out"
 
 
 @pytest.mark.parametrize(

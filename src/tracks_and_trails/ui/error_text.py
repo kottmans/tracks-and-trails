@@ -102,13 +102,13 @@ _PRESENTATIONS: Final[dict[ErrorKind, ErrorPresentation]] = {
         headline="The site did not give up the media",
         # `C-002`: site support *is* yt-dlp's site support, so the update action `REQ-025` builds
         # is the honest first move rather than a platitude about trying later.
-        next_step="The site may have changed. Updating yt-dlp in Settings often fixes this.",
+        next_step="The site may have changed. Updating yt-dlp in Preferences often fixes this.",
     ),
     ErrorKind.AUTH_REQUIRED: ErrorPresentation(
         headline="This needs an account that is signed in",
         # Names the setting that exists, and stops short of promising it will work: cookies reach
         # what the account can already reach, which is what the cookies section itself says.
-        next_step="Set a cookies file in Settings for an account that can already see it.",
+        next_step="Set a cookies file in Preferences for an account that can already see it.",
     ),
     ErrorKind.GEO_RESTRICTED: ErrorPresentation(
         headline="The site refused this from your location",
@@ -139,7 +139,7 @@ _PRESENTATIONS: Final[dict[ErrorKind, ErrorPresentation]] = {
     ),
     ErrorKind.FFMPEG_MISSING: ErrorPresentation(
         headline="This download needed ffmpeg, which was not found",
-        next_step="Install ffmpeg, or point Settings at it, then retry.",
+        next_step="Install ffmpeg, or point Preferences at it, then retry.",
     ),
     ErrorKind.FFMPEG_ERROR: ErrorPresentation(
         headline="ffmpeg was found but could not finish the job",

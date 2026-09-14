@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialogButtonBox,
+    QGroupBox,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -1821,3 +1822,35 @@ def test_a_newer_ytdlp_reads_as_recovery_rather_than_a_setting(
     finally:
         qapp.setStyleSheet(was_sheet)
         qapp.setPalette(was_palette)
+
+
+@pytest.mark.parametrize(
+    ("bundled", "location", "shown"),
+    [(False, None, True), (True, None, False), (True, Path("/opt/ffmpeg/bin/ffmpeg"), True)],
+)
+def test_the_ffmpeg_section_is_shown_only_when_there_is_something_to_choose(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+    bundled: bool,
+    location: Path | None,
+    shown: bool,
+) -> None:
+    """Maintainer direction, 2026-09-13: a build that ships ffmpeg does not ask about it.
+
+    **Shown again with an override in force**, because this section is the only way to clear one,
+    and an unusable override beats the bundled copy (`find_ffmpeg`'s order).
+    """
+    screen, _ = screens(ffmpeg_bundled=bundled, ffmpeg_location=location)
+
+    present = screen.findChild(QGroupBox, "ffmpegSection") is not None
+    assert present is shown, (
+        f"bundled={bundled}, override={location}: the ffmpeg section is "
+        f"{'shown' if present else 'hidden'}"
+    )
+
+
+def test_the_screen_is_called_preferences(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """Maintainer direction: *Settings → Preferences*, not *Settings → Settings*."""
+    screen, _ = screens()
+    assert screen.windowTitle() == "Preferences"

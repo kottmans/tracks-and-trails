@@ -537,6 +537,7 @@ class MainWindow(QMainWindow):
         on_network_chosen: Callable[[NetworkOptions], None] | None = None,
         ffmpeg_location: Path | None = None,
         ffmpeg_summary: str = "",
+        ffmpeg_bundled: bool = False,
         on_ffmpeg_location_chosen: Callable[[Path | None], None] | None = None,
         preset_names: Callable[[], Sequence[str]] | None = None,
         #: **The stored template, not the resolved one**, and the difference is the point
@@ -587,6 +588,8 @@ class MainWindow(QMainWindow):
         self._on_network_chosen = on_network_chosen
         self._ffmpeg_location = ffmpeg_location
         self._ffmpeg_summary = ffmpeg_summary
+        #: Whether this build carries its own ffmpeg, which hides Preferences' ffmpeg section.
+        self._ffmpeg_bundled = ffmpeg_bundled
         self._on_ffmpeg_location_chosen = on_ffmpeg_location_chosen
         #: Asked afresh each time the screen opens, for `presets`' reason in the add dialog: a
         #: preset created or made default in the manager has to be the one this screen shows next
@@ -1514,7 +1517,7 @@ class MainWindow(QMainWindow):
         **This used to be `_build_concurrency_control`**, which built the bar as a side effect of
         building a spin box (`T-234`). `ARC-007` had put a concurrency control in the window
         *"until Phase 4's settings dialog replaces it"*; `T-146` built that dialog, and `UX-013`
-        completed the sentence — the limit is set in `Settings → Settings…` and nowhere else. The
+        completed the sentence — the limit is set in `Settings → Preferences…` and nowhere else. The
         bar outlived the control it was built for, so it is named for what it is.
         """
         bar = QToolBar("Queue", self)
@@ -1920,7 +1923,7 @@ class MainWindow(QMainWindow):
             self._on_concurrency_changed(value)
 
     def _build_menus(self) -> None:
-        """File → Add URLs…, File → Quit, Settings → Settings…, and Help → About.
+        """File → Add URLs…, File → Quit, Settings → Preferences…, and Help → About.
 
         Every action gets an explicit status tip and object name. Visible text is usually
         announced anyway, but `NFR-005` requires screen-reader labels on all controls, and
@@ -1978,7 +1981,9 @@ class MainWindow(QMainWindow):
         # in `tests/ui/test_windows_accessibility.py` is written against this menu bar by hand and
         # is the gate that caught the last one, on the Windows job alone.
         settings_menu = menu_bar.addMenu("&Settings")
-        settings_action = QAction("&Settings...", self)
+        # **"Preferences…", not "Settings…" under a menu called Settings** (maintainer direction,
+        # 2026-09-13): the same word twice read as a menu that opens itself.
+        settings_action = QAction("&Preferences...", self)
         settings_action.setMenuRole(QAction.MenuRole.NoRole)
         settings_action.setObjectName("actionSettings")
         settings_action.setStatusTip("Where downloads go, the theme, and how many run at once")
@@ -2062,6 +2067,7 @@ class MainWindow(QMainWindow):
             on_network_chosen=None if self._on_network_chosen is None else self._network_chosen,
             ffmpeg_location=self._ffmpeg_location,
             ffmpeg_summary=self._ffmpeg_summary,
+            ffmpeg_bundled=self._ffmpeg_bundled,
             on_ffmpeg_location_chosen=self._on_ffmpeg_location_chosen,
             on_concurrency_chosen=self._concurrency_chosen,
             # **Read when the screen opens, not cached at startup** (`T-195`). *Set as default* in

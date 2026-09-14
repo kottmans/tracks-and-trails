@@ -301,7 +301,7 @@ _EXTENSION_SUFFIX: Final = ".%(ext)s"
 
 #: Why a typed name was refused when it names a folder. Folders are the setting's to decide.
 NAME_SEPARATOR_REFUSAL: Final = (
-    "A name can't contain / or \\. Folders come from how downloads are named in Settings."
+    "A name can't contain / or \\. Folders come from how downloads are named in Preferences."
 )
 
 

@@ -443,6 +443,7 @@ class SettingsDialog(QDialog):
         on_network_chosen: Callable[[NetworkOptions], None] | None = None,
         ffmpeg_location: Path | None = None,
         ffmpeg_summary: str = "",
+        ffmpeg_bundled: bool = False,
         on_ffmpeg_location_chosen: Callable[[Path | None], None] | None = None,
         choose_file: Callable[[Path | None], Path | None] | None = None,
         preset_names: Sequence[str] = (),
@@ -519,7 +520,7 @@ class SettingsDialog(QDialog):
         self._ytdlp_busy = False
 
         self.setObjectName("settingsDialog")
-        self.setWindowTitle("Settings")
+        self.setWindowTitle("Preferences")
 
         # **The sections scroll; `Close` does not** (`T-242`). Eight settings ask for 1407 pixels
         # of height, and a 1080p display has about a thousand to give — so without this the whole
@@ -536,7 +537,13 @@ class SettingsDialog(QDialog):
         inner.addWidget(self._build_downloads_section())
         inner.addWidget(self._build_cookies_section())
         inner.addWidget(self._build_network_section())
-        inner.addWidget(self._build_ffmpeg_section())
+        # **Not shown where there is nothing to choose** (maintainer direction, 2026-09-13). A
+        # build that ships its own ffmpeg (`OPS-001`: the Windows installer) finds it without help,
+        # so the section only asked a user to think about something already done. Shown again the
+        # moment it has a job: a build without one, or an override someone already set, which this
+        # screen is the only way to clear.
+        if not (ffmpeg_bundled and ffmpeg_location is None):
+            inner.addWidget(self._build_ffmpeg_section())
         inner.addWidget(self._build_appearance_section())
         inner.addWidget(self._build_queue_section())
         inner.addWidget(self._build_ytdlp_section())

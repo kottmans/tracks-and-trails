@@ -376,7 +376,7 @@ section cannot go stale: `tests/ui/test_settings_records.py` compares them again
 around them is free prose — the gate reads the markers and nothing else, so rewriting a sentence
 cannot break it and cannot fool it either. `T-227`.)*
 
-`REQ-023` names eight settings. **Settings → Settings… holds all eight** — three from `T-146`, the
+`REQ-023` names eight settings. **Settings → Preferences… holds all eight** — three from `T-146`, the
 ffmpeg location from `T-199`, the cookie source from `T-197`, the default preset and output
 template from `T-195`, and the network options from `T-196`, which was the last. The screen's own
 *"still to come"* sentence is therefore empty and its label is not built; adding a ninth setting to

@@ -101,7 +101,7 @@ control**; and `Clear finished`. **Three verbs and nothing else.**
 
 *(The `Concurrent downloads` control stood here too, which `ARC-007` put in the window "until
 Phase 4's settings dialog replaces it". That dialog exists — `T-146` — so `UX-013` completed the
-sentence: the limit is set in `Settings → Settings…` and nowhere else. `T-234` builds the removal.
+sentence: the limit is set in `Settings → Preferences…` and nowhere else. `T-234` builds the removal.
 The clause is worth keeping as history because it is the shape of every stopgap: the condition for
 undoing it was written down, met, and then went unnoticed for a phase.)*
 
