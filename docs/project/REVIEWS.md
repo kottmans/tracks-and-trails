@@ -2,7 +2,7 @@
 
 **Purpose:** Navigation to canonical task and shared-scope review records.
 **Owner:** Reviewer; Coordinator / Integrator owns shared routing during a wave.
-**Last updated:** 2026-09-14
+**Last updated:** 2026-09-15
 **Update when:** A review record is introduced or its navigation changes.
 
 ## Current navigation
@@ -159,6 +159,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-328](reviews/T-328.md) | T-328; [focused release review](reviews/T-328.md#2026-09-14--focused-release-review-of-candidate-93c7357), 2fb9c16 to 4f7c7a5, candidate 93c7357: changes requested; T328-R3 Critical and T328-R4 High remain open | 0 |
 | [T-340](reviews/T-340.md) | T-340; [Diagnostics implementation review](reviews/T-340.md#2026-09-14--diagnostics-implementation-review): implementation approved; task blocked on manual observation | 0 |
 | [T-341](reviews/T-341.md) | T-341; [Fedora certificate discovery](reviews/T-341.md#2026-09-14--fedora-certificate-discovery-review): approved at 93c7357 within stated boundary; T341-R1 Low | 0 |
+| [T-342](reviews/T-342.md) | T-342, accompanying T-343 filing; dialog fitting at a988847, checked through ea49516; real Windows 125% observation pending | 0 |
 | [Phase 5 second batch](reviews/phase-5-second-batch.md) | Shared validation and coordination, 2e2507b to 8e67f6f; corrections through ddc8f3d | 0 |
 | <a id="2026-07-26--note-commit-shas-in-this-file-were-remapped"></a>[commit-reference-remap](reviews/commit-reference-remap.md) | T-033 | 1 |
 | <a id="2026-07-29--coord-r7-authorized-final-documentation-re-review"></a>[coordination-2026-07-29](reviews/coordination-2026-07-29.md) | coordination 2026 07 29 | 1 |
