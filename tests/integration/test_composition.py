@@ -2756,6 +2756,40 @@ def test_present_shows_the_window_before_it_reports(
     QApplication.processEvents()
 
 
+def test_the_running_application_keeps_its_dialogs_on_screen(
+    composed: Callable[..., application.Composition], spin: Callable[..., bool]
+) -> None:
+    """`present()` installs `ui/screen_fit.py`'s rule for the window it shows.
+
+    Reported from a Windows laptop at 125%: *Add URLs* and *Preferences* opened with their title
+    bars above the screen. A dialog of the window's, placed above the screen and taller than it,
+    is shown and must end inside the working area.
+    """
+    from PySide6.QtWidgets import QDialog, QVBoxLayout
+
+    from tracks_and_trails.ui.screen_fit import DialogsOnScreen
+
+    composition = composed()
+    application.present(composition)
+    assert composition.window.findChild(DialogsOnScreen) is not None
+
+    dialog = QDialog(composition.window)
+    QVBoxLayout(dialog)
+    available = dialog.screen().availableGeometry()
+    dialog.setGeometry(40, -400, 400, available.height() + 500)
+    try:
+        dialog.show()
+
+        def inside() -> bool:
+            frame = dialog.frameGeometry()
+            return available.contains(frame.topLeft()) and available.contains(frame.bottomRight())
+
+        assert spin(inside, timeout=2), f"the dialog stayed at {dialog.frameGeometry()}"
+    finally:
+        dialog.close()
+        dialog.deleteLater()
+
+
 def _report_as_run_does(composition: application.Composition) -> None:
     """Show the carried settings problem the way `run()` does, after the window exists.
 

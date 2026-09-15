@@ -183,6 +183,7 @@ from tracks_and_trails.ui.row_delegate import (
     RowDelegate,
     minimum_row_width,
 )
+from tracks_and_trails.ui.screen_fit import bounded_to_screen
 from tracks_and_trails.ui.staging import (
     DUPLICATE_TEXT,
     Row,
@@ -1559,6 +1560,24 @@ class AddUrlDialog(QDialog):
         self._connect_manager()
         self._set_tab_order()
         self._refresh()
+        # **A size of its own before it is shown**, which is the bounded hint below. Left to Qt, a
+        # window never resized opens at its hint capped to two thirds of the screen and grows to
+        # the full layout height after Qt has placed it. Measured on Windows with a list asking for
+        # more than the screen: without this line the dialog grew to 1364 pixels on a 900-high
+        # screen even with the hint bounded and `ui/screen_fit.py`'s rule installed; with it, the
+        # dialog ended inside the working area.
+        self.resize(self.sizeHint())
+
+    # Qt's override name, hence the camelCase.
+    def sizeHint(self) -> QSize:
+        """What the layout asks for, **no larger than the screen's working area**.
+
+        **The hint itself is bounded, not only the first size**, for `FormatDialog.sizeHint`'s
+        reason (`ui/screen_fit.py`). Measured on Windows: this dialog ended at its hint, 788 pixels
+        tall, and a `resize` to less was reported as *Unable to set geometry*. On a laptop screen
+        that hint is taller than the working area, so the dialog ran off the screen.
+        """
+        return bounded_to_screen(self, super().sizeHint())
 
     # --- construction -------------------------------------------------------------------
 

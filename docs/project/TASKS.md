@@ -14,6 +14,72 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-342 — Add URLs and Preferences opened with their title bars above a laptop's screen
+
+**Status:** **In Review** — reported 2026-09-15 by the maintainer from a friend's Windows laptop
+(1920x1200 at 125%, the maintainer's figures): *Add URLs* and *Preferences* opened with the title bar
+above the top of the screen, so the window could not be moved and no URL could be typed. Moves the
+`0.1.0` candidate.
+**Owner:** Implementer
+**Priority:** High — the first screen a user needs could not be used on an ordinary laptop
+**Phase:** Phase 5 (blocks `T-328`)
+**Relevant context:** `T-242` and `T222-R1` (height bounds for *Preferences* and *Options*);
+`T-310` (`FormatDialog.sizeHint` bounded by the screen); `NFR-005`
+**Affected surfaces:** new `ui/screen_fit.py`; `ui/add_dialog.py`; `app.present`
+
+#### What was found, measured on `STARBASE` (Windows 10, 1600x900)
+
+- **Qt does not keep a dialog's frame on the screen.** With `QT_SCALE_FACTOR=1.25` (a 1280x720
+  logical screen) *Add URLs* was placed with its frame at y = -241.
+- **Add URLs grew after it was shown**, at a true 100% as well: opened at 600 pixels (Qt's cap of two
+  thirds of the screen for a window never resized), centred for that, then grown to 788, its layout's
+  height. With its list asking for 16 rows it grew to 1364 on the 900-high screen.
+- **Nothing bounded where any dialog lands**; *Preferences* and *Options* bounded only their height.
+
+#### What changed
+
+- `ui/screen_fit.py`: `DialogsOnScreen`, installed by `app.present` and owned by the main window,
+  fits every top-level `QDialog` when it is shown, once more after the event loop turns, and on each
+  resize while visible: a maximum size of the working area less the frame, then a move so the whole
+  frame, title bar first, is inside. A fit that changed something looks again, at most four times per
+  showing. `fitted_geometry` is the pure rule.
+- `AddUrlDialog.sizeHint` is bounded to the working area less 48 pixels (`bounded_to_screen`), and the
+  dialog is given that size before it is shown.
+
+#### Measured on `STARBASE`, 100%, *Add URLs* asking for 16 rows
+
+| Build | Frame | Inside the screen |
+|---|---|---|
+| Unchanged | 1395 tall from y = 110 | no |
+| Rule only | 1395 tall from y = 0 | no |
+| Bounded hint and rule, no size before showing | 1395 tall | no |
+| All three | 900 tall from y = 0 | **yes** |
+
+At the real row count *Add URLs* and *Preferences* fit the 900-high screen in every build. **With
+`QT_SCALE_FACTOR` at 1.25, 1.5 and 2.0 the results did not agree with a true 100% screen**: Windows
+refused geometries (*Unable to set geometry*) and *Add URLs* stayed partly outside at 1.25 and 1.5
+with the change. That emulation is not a real scaled display, so it is recorded rather than trusted
+either way.
+
+#### Acceptance criteria
+
+- [x] `fitted_geometry`: above the top, too tall, past each other edge, already inside (unchanged),
+  and a working area shorter than the frame (the top wins) (`tests/ui/test_screen_fit.py`)
+- [x] Installed rule, offscreen: a dialog shown above and taller than the screen ends inside; one
+  that grows after showing is fitted again; the rule leaves with its owner; installing twice installs
+  one
+- [x] `present()` installs it and a dialog of the real window is fitted
+  (`tests/integration/test_composition.py`)
+- [x] *Add URLs* with 40 wanted rows: its hint and its size are within the working area less 48, and it
+  has a size of its own before showing
+- [x] Mutations, each failing those tests: no top clamp (4); no shrink (1); no refit on resize (1); no
+  fit on show (2); the hint unbounded (1); not installed by `present` (1); owned by the application
+  (4); no size before showing (1)
+- [ ] **Seen on a real Windows display at 125%**: *Add URLs* and *Preferences* open with the title
+  bar on screen and can be moved (the friend's laptop, or a Windows machine set to 125%)
+
+---
+
 ### T-341 — The AppImage could not download anything on Fedora
 
 **Status:** **In Review** — found 2026-09-14 on the maintainer's Fedora 44 machine while preparing

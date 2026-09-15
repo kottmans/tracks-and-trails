@@ -330,6 +330,11 @@ def present(composition: Composition) -> None:
     function. Deleting *that* is not caught by any test, and closing it needs `run()` itself to
     become callable.
     """
+    # Before the window is shown, so its first dialog is already covered: every dialog opens
+    # inside the screen's working area, title bar included (`ui/screen_fit.py`).
+    from tracks_and_trails.ui.screen_fit import keep_dialogs_on_screen
+
+    keep_dialogs_on_screen(composition.app, composition.window)
     composition.window.show()
     if composition.settings_problem is not None:
         composition.window.report_settings_problem(composition.settings_problem)
