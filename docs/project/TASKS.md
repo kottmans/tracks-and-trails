@@ -2049,6 +2049,46 @@ account for rather than one.
 
 ---
 
+### T-343 — The taskbar's Close window does nothing while a dialog is open
+
+**Status:** Proposed — **left as it is for `0.1.0` by the maintainer on 2026-09-15**, chosen from three
+options (leave it and file a task; close the dialogs then quit, on Windows only; make *Add URLs* and
+*Preferences* non-modal). Not release-blocking.
+**Owner:** Maintainer decides; Implementer builds
+**Priority:** Low — the standard behaviour of a modal dialog on Windows, reported as surprising
+**Phase:** Phase 5 (after `0.1.0`)
+**Relevant context:** `T-308` (window-modal dialogs and their parent); `C-003` (parity)
+
+#### What was found
+
+Reported by the maintainer: with a dialog other than the queue open, right-clicking the taskbar
+button and choosing *Close window* does not close the application. **Reproduced on `STARBASE` at
+`8d70e01`** by posting the taskbar's messages to the main window:
+
+| Open dialog | `WM_CLOSE` | `WM_SYSCOMMAND` / `SC_CLOSE` | Main window enabled |
+|---|---|---|---|
+| none | closes | closes | yes |
+| *Add URLs* | ignored | ignored | **no** |
+| *Preferences* | ignored | ignored | **no** |
+
+Both dialogs open with `open()`, which is window-modal, and Windows disables the owner of a modal
+dialog, so its close is not acted on. Qt also drops a close event for a window a modal dialog blocks,
+so the same holds for a window manager's close on Linux (not measured).
+
+#### Scope
+
+Decide whether closing the application from outside should win over an open dialog, and on which
+platforms. The two alternatives put on 2026-09-15 are the starting point: a Windows message filter
+that closes the dialogs first (Windows only, and it discards pasted URLs not yet added), or
+non-modal *Add URLs* and *Preferences* on both platforms.
+
+#### Acceptance criteria
+
+- [ ] A recorded decision
+- [ ] If built, the table above measured again with the chosen behaviour, on each platform it covers
+
+---
+
 ### T-339 — Hear Narrator read the Windows application
 
 **Status:** Proposed — **deferred past `0.1.0` by the maintainer on 2026-09-14** (`T-327` item 3). Not
