@@ -166,7 +166,38 @@ def test_progress_rejects_non_integer_quantities(field_name: str) -> None:
 @pytest.mark.parametrize("field_name", ["downloaded_bytes", "total_bytes", "eta_seconds"])
 def test_progress_rejects_negative_quantities(field_name: str) -> None:
     with pytest.raises(ValueError, match="negative"):
-        Progress(job_id="j", stage=Stage.MERGING, **{field_name: -1})
+        Progress(job_id="j", stage=Stage.MERGING, **{field_name: -1})  # type: ignore[arg-type]
+
+
+def test_progress_carries_a_step_and_its_fraction() -> None:
+    """`T-344`: which post-processing step is running, and how far it has got."""
+    message = Progress(job_id="j", stage=Stage.POST_PROCESSING, step="ExtractAudio")
+    assert message.step == "ExtractAudio"
+    assert message.step_fraction is None
+    halfway = Progress(job_id="j", stage=Stage.POST_PROCESSING, step="Merger", step_fraction=0.5)
+    assert halfway.step_fraction == 0.5
+
+
+@pytest.mark.parametrize("bad", ["", 3, b"Merger"])
+def test_progress_rejects_a_step_that_is_not_a_name(bad: object) -> None:
+    with pytest.raises(TypeError):
+        Progress(job_id="j", stage=Stage.POST_PROCESSING, step=bad)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("bad", "error"),
+    [(-0.1, ValueError), (1.01, ValueError), (True, TypeError), ("0.5", TypeError)],
+)
+def test_progress_rejects_a_step_fraction_outside_zero_to_one(
+    bad: object, error: type[Exception]
+) -> None:
+    with pytest.raises(error):
+        Progress(
+            job_id="j",
+            stage=Stage.POST_PROCESSING,
+            step="Merger",
+            step_fraction=bad,  # type: ignore[arg-type]
+        )
 
 
 #: Fields that legitimately accept a mapping and normalise it to an immutable form.

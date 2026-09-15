@@ -1084,6 +1084,52 @@ def test_audio_postprocessing_does_not_overwrite_an_existing_final_path(
         assert spin(lambda: composition.shutdown.finished, timeout=120)
 
 
+def test_an_audio_conversion_reports_its_step_and_how_far_it_has_got(
+    qapp: QApplication,
+    tmp_path: Path,
+    spin: Callable[..., bool],
+    hls_media_url: Callable[[], str],
+) -> None:
+    """`T-344`, end to end: a real MP3 download reports its conversion by name, with ffmpeg's
+    position, through the worker, the protocol and the manager.
+
+    Reported by the maintainer: a long conversion showed nothing that moved. ffmpeg writes a final
+    progress block when it ends, so even a short clip reports a position.
+    """
+
+    composition = application.compose(
+        qapp,
+        database=tmp_path / "queue.db",
+        output_directory=tmp_path / "downloads",
+        geometry_file=tmp_path / "window.toml",
+    )
+    steps: list[Progress] = []
+    composition.manager.progress.connect(
+        lambda message: steps.append(message) if message.step is not None else None
+    )
+    composition.manager.start_queue()
+    try:
+        job_id = queue_one(composition, hls_media_url(), preset="Audio only (MP3)")
+        assert spin(
+            lambda: (
+                (stored := composition.store.get(job_id)) is not None
+                and stored.status is JobStatus.COMPLETED
+            ),
+            timeout=180,
+        ), f"the MP3 download never completed — {why(composition, job_id)}"
+        # The last messages can land after the ending is written; give them a moment.
+        spin(lambda: any(m.step_fraction is not None for m in steps), timeout=5)
+
+        converting = [m for m in steps if m.step == "ExtractAudio"]
+        assert converting, f"the conversion was never reported by name: {[m.step for m in steps]}"
+        positions = [m.step_fraction for m in converting if m.step_fraction is not None]
+        assert positions, "ffmpeg's position never reached the manager"
+        assert positions[-1] == pytest.approx(1.0, abs=0.1)
+    finally:
+        composition.shutdown.begin()
+        assert spin(lambda: composition.shutdown.finished, timeout=120)
+
+
 def test_original_audio_preview_matches_the_real_postprocessor_output(
     qapp: QApplication,
     tmp_path: Path,

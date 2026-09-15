@@ -24,8 +24,10 @@ listed explicitly rather than quietly absent, so a reader can tell "not applicab
 "forgotten".
 """
 
+import contextlib
+import importlib
 import logging
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Final
 
@@ -1061,3 +1063,126 @@ def render_output_template(template: str, values: Mapping[str, Any]) -> str:
     `epoch`), and a caller's projection is not this function's to grow.
     """
     return str(_preview_renderer().prepare_filename(dict(values), outtmpl=template))
+
+
+# --- ffmpeg's position while a post-processing step runs (`T-344`) -----------------------------
+
+#: What yt-dlp's `FFmpegPostProcessor.real_run_ffmpeg` puts on every command it runs for a step,
+#: and its other ffmpeg calls (`-version`, `ffprobe`) do not. It is how a step's run is told apart,
+#: so those others are left exactly as yt-dlp made them.
+_STEP_LOGLEVEL: Final = "repeat+info"
+
+#: Where the progress lines go and how they are asked for. `-progress pipe:1` writes `key=value`
+#: lines to standard output, which yt-dlp's call discards; `-nostats` keeps the older, unparseable
+#: status line out of the standard error yt-dlp does read, for its error message.
+_PROGRESS_ARGUMENTS: Final = ("-progress", "pipe:1", "-nostats")
+
+#: The keys ffmpeg reports its position in. **Both are microseconds**: `out_time_ms` is misnamed in
+#: ffmpeg itself, and newer builds add `out_time_us` beside it.
+_POSITION_KEYS: Final = ("out_time_us", "out_time_ms")
+
+
+def is_step_command(command: object) -> bool:
+    """Whether `command` is ffmpeg run by yt-dlp for a post-processing step."""
+    return isinstance(command, list | tuple) and _STEP_LOGLEVEL in command
+
+
+def with_progress_arguments(command: Sequence[str]) -> list[str]:
+    """`command` with ffmpeg asked to report its position, straight after the executable."""
+    return [command[0], *_PROGRESS_ARGUMENTS, *command[1:]]
+
+
+def position_in(line: str) -> float | None:
+    """The position, in seconds, one ffmpeg progress line reports, or `None` if it reports none."""
+    key, _, value = line.strip().partition("=")
+    if key in _POSITION_KEYS and value.isdigit():
+        return int(value) / 1_000_000
+    return None
+
+
+def run_reporting_position(
+    popen: Any,
+    command: Sequence[str],
+    options: dict[str, Any],
+    on_position: Callable[[float], None],
+) -> tuple[str, str, int]:
+    """Run a step's ffmpeg the way `yt_dlp.utils.Popen.run` would, reporting its position.
+
+    **Returns what `Popen.run` returns** — standard output, standard error, the exit code — so
+    `real_run_ffmpeg` carries on unchanged: it reads the exit code and standard error, and makes
+    its error message from the last line of the latter.
+
+    Standard error is drained on its own thread while standard output is read here, because
+    ffmpeg writes both and a full pipe on either would stop it. **If `on_position` raises** — the
+    worker's cancellation check does — ffmpeg is killed before the exception goes on, so a
+    cancelled conversion leaves no ffmpeg behind.
+    """
+    import subprocess
+    import threading
+
+    arguments = dict(options)
+    arguments.pop("timeout", None)
+    arguments["stdout"] = subprocess.PIPE
+    arguments["stderr"] = subprocess.PIPE
+    arguments.setdefault("text", True)
+    errors: list[str] = []
+    output: list[str] = []
+    with popen(with_progress_arguments(command), **arguments) as process:
+        drain = threading.Thread(
+            target=lambda: errors.append(process.stderr.read()), daemon=True, name="ffmpeg-stderr"
+        )
+        drain.start()
+        try:
+            for line in process.stdout:
+                output.append(line)
+                position = position_in(line)
+                if position is not None:
+                    on_position(position)
+            process.wait()
+        except BaseException:
+            process.kill()
+            process.wait()
+            raise
+        finally:
+            drain.join()
+    return "".join(output), "".join(errors), int(process.returncode)
+
+
+@contextlib.contextmanager
+def ffmpeg_progress(ytdlp: Any, on_position: Callable[[float], None]) -> Iterator[bool]:
+    """Report ffmpeg's position during yt-dlp's post-processing steps, for as long as this lasts.
+
+    **yt-dlp says only *started* and *finished* for a step** (`T-344`): `real_run_ffmpeg` runs
+    ffmpeg through `Popen.run`, which returns when ffmpeg has finished, so a long conversion was
+    minutes of nothing. This replaces the `Popen` that yt-dlp's `postprocessor.ffmpeg` module looks
+    up, for step commands only (`is_step_command`), with one that asks ffmpeg for `-progress` and
+    passes each position to `on_position`.
+
+    **Yields whether it could.** A yt-dlp whose module no longer has a `Popen` with `run` is left
+    alone and the row falls back to a moving bar; the canary is what says so when it happens.
+    Restored on exit, and it is only ever installed inside a worker process, one session each.
+    """
+    try:
+        module = importlib.import_module(f"{ytdlp.__name__}.postprocessor.ffmpeg")
+    except ImportError:
+        yield False
+        return
+    original: Any = getattr(module, "Popen", None)
+    if original is None or not callable(getattr(original, "run", None)):
+        yield False
+        return
+
+    class _ReportingPopen(original):  # type: ignore[misc]
+        @classmethod
+        def run(cls, *args: Any, **kwargs: Any) -> Any:
+            command: Any = args[0] if args else kwargs.get("args")
+            if not is_step_command(command) or len(args) > 1:
+                return original.run(*args, **kwargs)
+            kwargs.pop("args", None)
+            return run_reporting_position(original, command, kwargs, on_position)
+
+    setattr(module, "Popen", _ReportingPopen)  # noqa: B010 (the module's type does not name it)
+    try:
+        yield True
+    finally:
+        setattr(module, "Popen", original)  # noqa: B010

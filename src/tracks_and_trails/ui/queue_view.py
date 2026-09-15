@@ -61,6 +61,7 @@ no position sorts last on its id, which is what the scheduler does with one.
 **Reordering is `T-081`**, and it will change `queue_position` rather than this sort.
 """
 
+import time
 from collections import Counter
 from collections.abc import Callable
 from contextlib import suppress
@@ -114,6 +115,7 @@ from tracks_and_trails.ui.job_detail import (
 )
 from tracks_and_trails.ui.row_delegate import (
     ACTION_ROLE,
+    BUSY_ROLE,
     DEPTH_ROLE,
     DETAIL_ROLE,
     EXPANDED_ROLE,
@@ -193,6 +195,38 @@ CHIP_TEXT: Final[dict[JobStatus, str]] = {
     JobStatus.FAILED: "Failed",
     JobStatus.CANCELLED: "Cancelled",
 }
+
+#: **What a post-processing step is called on the row** (`T-344`), by the name yt-dlp's hook
+#: reports for it (`PostProcessor.pp_key`, which drops a leading *FFmpeg*: `FFmpegExtractAudioPP`
+#: reports `ExtractAudio`). Plain words, because *ExtractAudio* means little to the person waiting
+#: for it. A step not listed here is shown as its stage (`STAGE_TEXT`), which is what the row said
+#: before this existed.
+STEP_TEXT: Final[dict[str, str]] = {
+    "ExtractAudio": "Converting to audio",
+    "Merger": "Joining video and audio",
+    "VideoConvertor": "Converting the video",
+    "VideoRemuxer": "Changing the file type",
+    "EmbedSubtitle": "Adding subtitles",
+    "SubtitlesConvertor": "Converting subtitles",
+    "Metadata": "Adding details to the file",
+    "EmbedThumbnail": "Adding the thumbnail",
+    "ThumbnailsConvertor": "Converting the thumbnail",
+    "FixupM3u8": "Repairing the file",
+    "FixupM4a": "Repairing the file",
+    "FixupStretched": "Repairing the file",
+    "FixupDuplicateMoov": "Repairing the file",
+    "FixupTimestamp": "Repairing the file",
+    "FixupDuration": "Repairing the file",
+    "CopyStream": "Copying the streams",
+    "Concat": "Joining the parts",
+    "SplitChapters": "Splitting into chapters",
+    "SponsorBlock": "Finding sponsor segments",
+    "ModifyChapters": "Removing segments",
+    "MoveFiles": "Moving the file into place",
+}
+
+#: How often a busy row is redrawn, in milliseconds (`T-344`): its moving bar and the time so far.
+BUSY_TICK_MS: Final = 100
 
 #: The word each painted segment state is announced by (`T-202`, `NFR-005`).
 #:
@@ -315,7 +349,7 @@ class _Row:
     between them itself.
     """
 
-    __slots__ = ("displayed", "job", "totals")
+    __slots__ = ("displayed", "job", "step_since", "totals")
 
     def __init__(self, job: Job) -> None:
         self.job = job
@@ -323,6 +357,9 @@ class _Row:
         self.displayed: Progress | None = None
         #: The byte pair the cells were last written from. Meaningful only with `displayed`.
         self.totals: tuple[int | None, int | None] = (None, None)
+        #: When the post-processing step now drawn was first drawn, on the monotonic clock
+        #: (`T-344`). What *the time so far* is counted from.
+        self.step_since: float | None = None
 
     @property
     def is_terminal(self) -> bool:
@@ -351,6 +388,7 @@ class _Row:
         """
         self.displayed = None
         self.totals = (None, None)
+        self.step_since = None
 
     def ending_totals(self) -> tuple[int | None, int | None]:
         """This row's size, through the shared rule rather than a second opinion (`T-059`)."""
@@ -468,6 +506,12 @@ class QueueModel(QAbstractTableModel):
         self._repaint = QTimer(self)
         self._repaint.setInterval(repaint_interval_ms)
         self._repaint.timeout.connect(self._draw_pending)
+        #: Redraws the rows that are processing, for as long as any is (`T-344`). No message
+        #: arrives while a step without a position runs, and a row that is only redrawn on a
+        #: message would hold its moving bar still and its time so far at zero.
+        self._busy = QTimer(self)
+        self._busy.setInterval(BUSY_TICK_MS)
+        self._busy.timeout.connect(self._tick_busy)
 
         self._manager.progress.connect(self._on_progress)
         self._manager.job_changed.connect(self._on_job_changed)
@@ -700,6 +744,8 @@ class QueueModel(QAbstractTableModel):
             return row.job.thumbnail_url
         if role == PROGRESS_ROLE:
             return self._fraction(row)
+        if role == BUSY_ROLE:
+            return row.job.status is JobStatus.POST_PROCESSING and self._fraction(row) is None
         if role == JOB_ID_ROLE:
             return row.job.id
         if role == PRESET_CHOICES_ROLE:
@@ -1092,7 +1138,7 @@ class QueueModel(QAbstractTableModel):
         Rounded from `_fraction`, so the chip and the bar under it are one number seen twice rather
         than two numbers that can disagree.
         """
-        if row.job.status is JobStatus.RUNNING:
+        if row.job.status in (JobStatus.RUNNING, JobStatus.POST_PROCESSING):
             fraction = self._fraction(row)
             if fraction is not None:
                 return f"{round(fraction * 100)}%"
@@ -1125,10 +1171,33 @@ class QueueModel(QAbstractTableModel):
             # draw — and the delegate draws no bar for it. The chip keeps the state in words, so
             # `T-202` gains no colour-only signal and loses none.
             return None
+        if row.job.status is JobStatus.POST_PROCESSING:
+            # **The step's progress, not the download's** (`T-344`). The bytes are all in by now, so
+            # a fraction of them is a full bar that stays full for as long as a conversion runs,
+            # which is what made a long conversion look stuck. `None` without a position: the
+            # delegate then draws the moving bar (`BUSY_ROLE`).
+            live = self._live_step(row)
+            return None if live is None else live.step_fraction
         done, total = self._totals(row)
         if not total or done is None:
             return None
         return min(max(done / total, 0.0), 1.0)
+
+    def _live_step(self, row: _Row) -> Progress | None:
+        """The drawn message, if it describes a post-processing step still running (`T-344`)."""
+        message = row.displayed
+        if message is None or message.step is None:
+            return None
+        if message.stage not in _STAGES_STILL_LIVE_IN.get(row.job.status, frozenset()):
+            return None
+        return message
+
+    def _step_text(self, row: _Row, message: Progress) -> str:
+        """The step in words and how long it has run: `Converting to audio · 1:05` (`T-344`)."""
+        name = STEP_TEXT.get(message.step or "", STAGE_TEXT.get(message.stage, ""))
+        if row.step_since is None:
+            return name
+        return f"{name} · {_duration_text(time.monotonic() - row.step_since)}"
 
     # --- what each cell says -----------------------------------------------------------------
 
@@ -1146,6 +1215,9 @@ class QueueModel(QAbstractTableModel):
         if column == PROGRESS_COLUMN:
             if job.status is JobStatus.COMPLETED:
                 return "100%"
+            if job.status is JobStatus.POST_PROCESSING:
+                step = self._fraction(row)
+                return INDETERMINATE_TEXT if step is None else f"{round(step * 100)}%"
             if row.is_terminal or not total:
                 # A stopped job has no percentage worth stating, and an unknown total is not zero
                 # percent. The accessible text carries the distinction in words.
@@ -1348,6 +1420,9 @@ class QueueModel(QAbstractTableModel):
             return STATUS_TEXT[row.job.status]
         if row.displayed.stage not in _STAGES_STILL_LIVE_IN.get(row.job.status, frozenset()):
             return STATUS_TEXT[row.job.status]
+        live = self._live_step(row)
+        if live is not None:
+            return self._step_text(row, live)
         return STAGE_TEXT.get(row.displayed.stage, STATUS_TEXT[row.job.status])
 
     def _totals(self, row: _Row) -> tuple[int | None, int | None]:
@@ -1369,6 +1444,13 @@ class QueueModel(QAbstractTableModel):
         """
         if column != PROGRESS_COLUMN:
             return f"{COLUMN_HEADERS[column]}: {self._text(row, column)}"
+        if row.job.status is JobStatus.POST_PROCESSING:
+            # `NFR-005`: what the moving bar or the step's bar means, in words (`T-344`).
+            live = self._live_step(row)
+            name = self._status_text(row)
+            if live is None or live.step_fraction is None:
+                return f"{name}; progress of this step cannot be measured"
+            return f"{name}; {round(live.step_fraction * 100)} percent of this step done"
         done, total = self._totals(row)
         return describe_bar(done, total, finished=row.job.status is JobStatus.COMPLETED)
 
@@ -1451,6 +1533,8 @@ class QueueModel(QAbstractTableModel):
             self._pending.pop(job_id, None)
         if row.job.status is JobStatus.QUEUED:
             row.retire_live_state()
+        if row.job.status is JobStatus.POST_PROCESSING:
+            self._busy.start()
         self._emit_row_changed(index)
 
     def _on_gate_changed(self, _running: bool) -> None:
@@ -1492,8 +1576,14 @@ class QueueModel(QAbstractTableModel):
             if index is None:
                 continue
             row = self._rows[index]
+            previous = row.displayed
+            if message.step is not None and (previous is None or previous.step != message.step):
+                row.step_since = time.monotonic()
             row.displayed = message
-            row.totals = (message.downloaded_bytes, message.total_bytes)
+            # **A step's message carries no bytes** (`T-344`), and the size the download reached
+            # is still the size. Only a message that counts bytes rewrites them.
+            if message.step is None or message.downloaded_bytes is not None:
+                row.totals = (message.downloaded_bytes, message.total_bytes)
             touched.append(index)
         if touched:
             # One span rather than one signal per row: the view repaints the intersection of the
@@ -1502,6 +1592,20 @@ class QueueModel(QAbstractTableModel):
                 self.index(min(touched), 0),
                 self.index(max(touched), len(COLUMN_HEADERS) - 1),
             )
+
+    def _tick_busy(self) -> None:
+        """Redraw every row that is processing, and stop once none is (`T-344`)."""
+        busy = [
+            index
+            for index, row in enumerate(self._rows)
+            if row.job.status is JobStatus.POST_PROCESSING
+        ]
+        if not busy:
+            self._busy.stop()
+            return
+        self.dataChanged.emit(
+            self.index(min(busy), 0), self.index(max(busy), len(COLUMN_HEADERS) - 1)
+        )
 
     def _emit_row_changed(self, index: int) -> None:
         self.dataChanged.emit(self.index(index, 0), self.index(index, len(COLUMN_HEADERS) - 1))
@@ -1526,6 +1630,7 @@ class QueueModel(QAbstractTableModel):
             with suppress(RuntimeError):
                 signal.disconnect(slot)
         self._repaint.stop()
+        self._busy.stop()
 
 
 #: Members worth cancelling. A terminal member is already where cancelling would put it.

@@ -40,6 +40,7 @@ observe them (`REQ-015`, `ARCHITECTURE.md` §3):
   killed, so without this a `SIGKILL`ed application would leave a download running forever.
 """
 
+import contextlib
 import hashlib
 import importlib
 import logging
@@ -49,6 +50,7 @@ import platform
 import shutil
 import sys
 import threading
+import time
 import traceback
 from collections.abc import Iterator, Mapping
 from contextlib import suppress
@@ -120,6 +122,9 @@ class MessageSink(Protocol):
 
     def put(self, item: Any, /) -> None: ...
 
+
+#: The least time between two step positions sent to the parent, in seconds (`T-344`).
+STEP_PROGRESS_INTERVAL: Final = 0.25
 
 #: yt-dlp's own stage names, mapped onto `REQ-014`'s. Anything unrecognised keeps the previous
 #: stage rather than inventing one, because a wrong stage is worse than a stale stage.
@@ -383,6 +388,11 @@ class _Reporter:
         #: counted, and the count reaches the parent in the outcome's context. Swallowing
         #: silently would make missing progress updates unexplainable.
         self.hook_failures: list[str] = []
+        #: The post-processing step running now, its media length, and when its position was last
+        #: sent (`T-344`). The length is what ffmpeg's position is a fraction of.
+        self._step: str | None = None
+        self._step_seconds: float | None = None
+        self._step_sent_at: float | None = None
 
     def send(self, message: Any) -> None:
         self._queue.put(message)
@@ -437,9 +447,43 @@ class _Reporter:
         try:
             name = str(status.get("postprocessor") or "")
             self._stage = _POSTPROCESSOR_STAGES.get(name, Stage.POST_PROCESSING)
-            self.send(Progress(job_id=self._job_id, stage=self._stage))
+            if status.get("status") == "started":
+                # **Which step, and how long the media is** (`T-344`). yt-dlp says only *started*
+                # and *finished* for a step; the length is what `ffmpeg_position` divides by.
+                info = status.get("info_dict") or {}
+                self._step = name or None
+                self._step_seconds = _float_or_none(info.get("duration"))
+                self._step_sent_at = None
+            self.send(Progress(job_id=self._job_id, stage=self._stage, step=self._step))
         except Exception as error:
             self._record_hook_failure("postprocessor", error)
+
+    def ffmpeg_position(self, seconds: float) -> None:
+        """ffmpeg's position in the file it is writing, from `ytdlp_adapter.ffmpeg_progress`.
+
+        **A fraction only against a known length** (`T-344`): `None` otherwise, and the view then
+        shows a moving bar and the time so far instead of a number it would have to invent.
+
+        Sent at most every `STEP_PROGRESS_INTERVAL` seconds, because ffmpeg reports about twice a
+        second per output and the result queue is shared with everything else this session says.
+        **Cancellation is checked here too**, outside the guard as in the other hooks, so a
+        conversion that runs for minutes stops when asked rather than when it ends.
+        """
+        self._abort_if_cancelled()
+        try:
+            now = time.monotonic()
+            if self._step_sent_at is not None and now - self._step_sent_at < STEP_PROGRESS_INTERVAL:
+                return
+            self._step_sent_at = now
+            length = self._step_seconds
+            share = min(max(seconds / length, 0.0), 1.0) if length else None
+            self.send(
+                Progress(
+                    job_id=self._job_id, stage=self._stage, step=self._step, step_fraction=share
+                )
+            )
+        except Exception as error:
+            self._record_hook_failure("ffmpeg", error)
 
     def _record_hook_failure(self, hook: str, error: Exception) -> None:
         """Keep at most a few, so a hook failing on every chunk cannot flood the outcome."""
@@ -1723,7 +1767,15 @@ def _extract(
         # for the job — a failure during the probe is the case a user most needs the log for.
         logger=YtdlpLog(ytdlp_logger()),
     )
-    with resolved.module.YoutubeDL(options) as ydl:
+    # **ffmpeg's position reported while a step runs** (`T-344`). yt-dlp runs ffmpeg and says
+    # nothing until it ends, which on a long video is minutes of a row that looks stuck. A probe
+    # runs no step, so it is left as it was.
+    positions = (
+        contextlib.nullcontext(False)
+        if probe_only
+        else adapter.ffmpeg_progress(resolved.module, reporter.ffmpeg_position)
+    )
+    with positions, resolved.module.YoutubeDL(options) as ydl:
         info = ydl.extract_info(request.url, download=not probe_only)
     return dict(info or {})
 

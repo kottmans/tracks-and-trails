@@ -175,11 +175,28 @@ class Progress(_Message):
     total_bytes: int | None = None
     speed_bytes_per_second: float | None = None
     eta_seconds: int | None = None
+    #: **The post-processing step running now** (`T-344`), in yt-dlp's own name for it
+    #: (`ExtractAudio`, `Merger`), or `None` outside one. The user is told the step in
+    #: words by the view; the name travels unchanged so the view, not the worker, decides them.
+    step: str | None = None
+    #: How far that step has got, 0 to 1, when ffmpeg reported its position against a known
+    #: length (`T-344`). `None` when nothing honest can be said, for the reason `fraction` gives.
+    step_fraction: float | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
         if not isinstance(self.stage, Stage):
             raise TypeError(f"Progress.stage must be a Stage, not {type(self.stage).__name__}")
+        name: object = self.step
+        if name is not None and (not isinstance(name, str) or not name):
+            raise TypeError("Progress.step must be a non-empty str or None")
+        share: object = self.step_fraction
+        if share is not None:
+            if isinstance(share, bool) or not isinstance(share, int | float):
+                kind = type(share).__name__
+                raise TypeError(f"Progress.step_fraction must be a number, not {kind}")
+            if not 0.0 <= share <= 1.0:
+                raise ValueError("Progress.step_fraction must be between 0 and 1")
         for name in ("downloaded_bytes", "total_bytes", "eta_seconds"):
             _require_optional_count("Progress", name, getattr(self, name))
         # `T011-R2`, second round: this field was the one the first correction missed. It

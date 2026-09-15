@@ -30,6 +30,7 @@ colour never carries meaning alone, applied to the one graphical element here. I
 a painted rectangle is not a widget and costs nothing per row.
 """
 
+import time
 from collections.abc import Sequence
 from enum import StrEnum
 from typing import Any, Final, cast
@@ -151,6 +152,16 @@ MEDIA_KIND_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 23
 #: Completion as a fraction from 0 to 1, or `None` when there is nothing honest to draw. `None` is
 #: not zero: an unknown total is not "0%", which is a confident lie `Job.progress` already refuses.
 PROGRESS_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 6
+
+#: `True` while the row is working on something with no measurable progress (`T-344`): a
+#: post-processing step ffmpeg gave no position for. The delegate draws a moving bar for it, so a
+#: step that runs for minutes is not a row that looks stuck. The words are the model's, in
+#: `STATE_ROLE`, which names the step and how long it has run.
+BUSY_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 27
+
+#: How long the moving bar takes to cross once, in seconds, and how much of the bar it covers.
+BUSY_PERIOD: Final = 1.6
+BUSY_SHARE: Final = 0.25
 
 #: The third line: what this row will be downloaded as, **spelled out** (`T118-R8`, `REQ-009`).
 #:
@@ -2063,7 +2074,8 @@ class RowDelegate(QStyledItemDelegate):
         # honest one to answer, which is the finding row 9b records.
         segments = _segments(index)
         fraction = _fraction(index)
-        if not segments and fraction is None:
+        busy = index.data(BUSY_ROLE) is True
+        if not segments and fraction is None and not busy:
             return
         # **The bar goes under the selector rather than instead of it** (`T126-R2`). This used to
         # return outright when a selector was present, on the reading that no model answers both
@@ -2108,6 +2120,25 @@ class RowDelegate(QStyledItemDelegate):
             done = QRect(bar)
             done.setWidth(int(bar.width() * min(max(fraction, 0.0), 1.0)))
             painter.fillRect(done, muted)
+        elif busy:
+            self._paint_busy(painter, bar, muted, time.monotonic())
+
+    @staticmethod
+    def _paint_busy(painter: QPainter, bar: QRect, colour: QColor, now: float) -> None:
+        """A block crossing the track, for work that has no position to show (`T-344`).
+
+        Placed by the clock rather than by a counter, so every busy row moves together and a
+        repaint at any moment draws the right place. The model repaints busy rows on a timer.
+        """
+        track = QColor(colour)
+        track.setAlpha(60)
+        painter.fillRect(bar, track)
+        width = max(int(bar.width() * BUSY_SHARE), 1)
+        phase = (now % BUSY_PERIOD) / BUSY_PERIOD
+        left = bar.left() - width + int(phase * (bar.width() + width))
+        block = QRect(left, bar.top(), width, bar.height()).intersected(bar)
+        if not block.isEmpty():
+            painter.fillRect(block, colour)
 
     # --- the one editor -------------------------------------------------------------------
 

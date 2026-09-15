@@ -14,6 +14,75 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-344 — Show progress while a download is being processed
+
+**Status:** **In Review** — asked for by the maintainer on 2026-09-15: a long video took a long time
+to process after downloading, and nothing showed the application was still working. The maintainer
+chose *both, where possible* (a real percentage where ffmpeg can report one, otherwise the step's
+name, a moving bar and the time so far) and chose to ship it **in `0.1.0`**, from the options put.
+Moves the candidate.
+**Owner:** Implementer
+**Priority:** High for `0.1.0` by that choice
+**Phase:** Phase 5 (blocks `T-328`)
+**Relevant context:** `REQ-011` (indeterminate progress), `REQ-014` (stages), `NFR-005`, `T-216`
+(a finished bar is furniture)
+**Affected surfaces:** `downloader/protocol.py`, `downloader/worker.py`, `downloader/ytdlp_adapter.py`,
+`ui/queue_view.py`, `ui/row_delegate.py`
+
+#### What was wrong
+
+While a job was post-processing the row showed the download's bar, which is full once the bytes are
+in; the chip read *Processing*, and nothing moved. yt-dlp's post-processor hook reports only
+*started* and *finished*, and `real_run_ffmpeg` runs ffmpeg through `Popen.run`, which returns when
+ffmpeg ends.
+
+#### What changed
+
+- **`Progress` gains `step`** (yt-dlp's hook name for the step) **and `step_fraction`** (0 to 1).
+- **The worker** records the step and the media's length when a step starts, and turns ffmpeg's
+  position into a fraction of that length, sent at most every 0.25 s. It checks for cancellation
+  there too, so a long conversion stops when asked. Downloads only; a probe runs no step.
+- **`ytdlp_adapter.ffmpeg_progress`** replaces the `Popen` that yt-dlp's `postprocessor.ffmpeg` looks
+  up, for step commands only (those carrying `-loglevel repeat+info`). It adds `-progress pipe:1
+  -nostats`, reads the position lines, drains standard error on its own thread, returns what
+  `Popen.run` returns, and kills ffmpeg if the callback raises. If yt-dlp no longer has that module
+  or `Popen`, nothing is installed and the row falls back to the moving bar.
+- **The row, while processing:** the step in plain words with the time so far (*Converting to audio
+  · 1:05*), the step's own percentage on the chip and the bar when known, and otherwise a moving
+  bar (`BUSY_ROLE`) redrawn by a timer that stops when nothing is processing. The size keeps the
+  downloaded total, and the screen-reader text names the step and its percentage or says it cannot
+  be measured.
+- **Words are keyed by the names yt-dlp's hook reports** (`pp_key`, which drops *FFmpeg*). The first
+  version used class names and would have named nothing; the end-to-end test found it.
+
+#### Acceptance criteria
+
+- [x] Protocol: `step` and `step_fraction` carried and validated (`tests/unit/test_protocol.py`)
+- [x] Adapter: step commands recognised, arguments inserted after the executable, positions read from
+  both microsecond keys, the returned shape kept, ffmpeg killed when the callback raises, a yt-dlp
+  without the module left alone, and a real `FFmpegExtractAudioPP` conversion reporting positions to
+  the end of the file with yt-dlp's `Popen` restored (`tests/unit/test_ffmpeg_progress.py`)
+- [x] Worker: a started step announced by name; the position as a fraction, bounded and throttled;
+  no fraction without a length; cancellation at the next position; the hook around downloads and
+  never probes (`tests/unit/test_step_progress.py`)
+- [x] Row: the step's percentage and not the download's; the moving bar, name and time without a
+  position; the time restarting per step; a step without words shown as its stage; the timer
+  stopping; the moving bar drawn, moving, and routed through the real delegate; and every step yt-dlp
+  can report either has words or is one of six stated quick steps (`tests/ui/test_processing_progress.py`)
+- [x] End to end, a real MP3 download through the composed application reports `ExtractAudio` with a
+  position reaching 1.0 (`tests/integration/test_end_to_end.py`). **Also run on `STARBASE`**
+  (Windows, ffmpeg 8.1.2): the new and changed test files and this test, 166 passed
+- [x] Mutations, each failing those tests: hook never installed (1); no kill on raise (1); every
+  command treated as a step (2); only `out_time_us` read (2); no cancellation check (1); no throttle
+  (1); zero without a length (3); the download's fraction while processing (3); never busy (2); no
+  timer from the status change (2); a step erasing the size (1); the time not restarted per step
+  (2); no step words (3); the delegate never painting the moving bar (1). A second timer start on
+  each drawn step **survived** and was removed as redundant
+- [ ] Seen by a person: a long conversion on the installed build shows the step, its progress or the
+  moving bar, and the time so far
+
+---
+
 ### T-342 — Add URLs and Preferences opened with their title bars above a laptop's screen
 
 **Status:** **In Review** — reported 2026-09-15 by the maintainer from a friend's Windows laptop
