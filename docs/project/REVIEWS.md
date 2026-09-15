@@ -161,6 +161,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-341](reviews/T-341.md) | T-341; [Fedora certificate discovery](reviews/T-341.md#2026-09-14--fedora-certificate-discovery-review): approved at 93c7357 within stated boundary; T341-R1 Low | 0 |
 | [T-342](reviews/T-342.md) | T-342, accompanying T-343 filing; dialog fitting at a988847, checked through ea49516; real Windows 125% observation pending | 0 |
 | [T-344](reviews/T-344.md) | T-344; processing progress at 55dcf05, checked through ea49516; installed-build observation pending | 0 |
+| [T-345](reviews/T-345.md) | T-345; startup offer and chip wording at 81d7bdd, checked through ea49516; implementation approved, draft acceptance separate | 0 |
 | [Phase 5 second batch](reviews/phase-5-second-batch.md) | Shared validation and coordination, 2e2507b to 8e67f6f; corrections through ddc8f3d | 0 |
 | <a id="2026-07-26--note-commit-shas-in-this-file-were-remapped"></a>[commit-reference-remap](reviews/commit-reference-remap.md) | T-033 | 1 |
 | <a id="2026-07-29--coord-r7-authorized-final-documentation-re-review"></a>[coordination-2026-07-29](reviews/coordination-2026-07-29.md) | coordination 2026 07 29 | 1 |
