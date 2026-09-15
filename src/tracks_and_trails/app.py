@@ -286,7 +286,7 @@ def run(argv: Sequence[str]) -> int:
         from PySide6.QtWidgets import QMessageBox
 
         logging.getLogger("tracksandtrails.app").error("refusing to start: %s", refusal)
-        QMessageBox.critical(None, APP_NAME, str(refusal))
+        _refuse_to_start(QMessageBox.Icon.Critical, str(refusal))
         # Distinct from 3, so a script can tell "another copy is running" from "your library is
         # newer than this build" — they need different actions.
         return 4
@@ -298,7 +298,7 @@ def run(argv: Sequence[str]) -> int:
         from PySide6.QtWidgets import QMessageBox
 
         logging.getLogger("tracksandtrails.app").warning("refusing to start: %s", refusal)
-        QMessageBox.information(None, APP_NAME, str(refusal))
+        _refuse_to_start(QMessageBox.Icon.Information, str(refusal))
         # Refusing in favour of the running instance is the outcome `A-004` asks for, not a crash.
         # Non-zero so a script can tell it apart from a normal run that the user closed.
         return 3
@@ -311,6 +311,23 @@ def run(argv: Sequence[str]) -> int:
 
     present(composition)
     return app.exec()
+
+
+def _refuse_to_start(icon: Any, sentence: str) -> None:
+    """Say why the application will not start, **as plain text** (`T346-R1`), and wait for OK.
+
+    Not `QMessageBox.critical` or `information`: those guess whether text is markup, and both
+    refusals name the database's path, which on Linux may hold `<` and `>`.
+    """
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QMessageBox
+
+    from tracks_and_trails.ui.main_window import APP_NAME
+
+    box = QMessageBox(icon, APP_NAME, "")
+    box.setTextFormat(Qt.TextFormat.PlainText)
+    box.setText(sentence)
+    box.exec()
 
 
 def present(composition: Composition) -> None:

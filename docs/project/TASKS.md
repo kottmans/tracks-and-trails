@@ -58,6 +58,24 @@ screen. The sentence also held an em dash.
 - [ ] Seen by the maintainer: *Show in folder* on a deleted file shows the box, and Remove from queue
   removes the row
 
+#### 2026-09-15 — `T346-R1`: the boxes read a path as markup
+
+**Found by review** (Medium, blocking): both notice boxes used `QMessageBox`'s default text mode, so
+a download folder named `<style>downloads`, a valid Linux name, cut the sentence and what a screen
+reader heard at the folder. The tests asserted `box.text()`, which still returns the original string.
+
+**Corrected, and the property rather than the two instances:** every box that shows a path is set to
+plain text: the window's missing-file box, the plain fallback box, the settings-problem box, and the
+two startup refusals in `app.py`, which used `QMessageBox.critical` and `information` and now go
+through `_refuse_to_start`. The About box keeps rich text on purpose and shows no outside text; the
+other boxes show counts only.
+
+**Tests** (`tests/ui/test_plain_text_notices.py`) read the label's **accessible text**, and a positive
+control proves that reading loses the folder in the default mode. Removing each plain-text setting
+fails its test. The settings-problem box is **not** eaten in the default mode today (Qt guesses
+markup from the first line, which there is fixed text), so its test asserts the format directly; a
+rendering assertion alone survived that mutation.
+
 ---
 
 ### T-345 — The retry offer opened under the window, and the chip did not say what its percentage was of

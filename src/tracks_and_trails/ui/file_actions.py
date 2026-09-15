@@ -227,6 +227,8 @@ class FileActions(QObject):
         box.setObjectName("fileRefusalDialog")
         box.setIcon(QMessageBox.Icon.Information)
         box.setWindowTitle(FILE_NOT_FOUND_TITLE if refusal.missing else COULD_NOT_OPEN_TITLE)
+        # Plain text: the sentence holds a path, which may look like markup (`T346-R1`).
+        box.setTextFormat(Qt.TextFormat.PlainText)
         box.setText(refusal.reason)
         box.setStandardButtons(QMessageBox.StandardButton.Ok)
         box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)

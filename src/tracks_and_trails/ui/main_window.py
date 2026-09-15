@@ -1478,6 +1478,10 @@ class MainWindow(QMainWindow):
         box.setObjectName("fileRefusalDialog")
         box.setIcon(QMessageBox.Icon.Information)
         box.setWindowTitle(FILE_NOT_FOUND_TITLE if refusal.missing else COULD_NOT_OPEN_TITLE)
+        # **Plain text, stated** (`T346-R1`). The sentence holds a path, and a folder named
+        # `<style>downloads` is a valid Linux name: in Qt's default mode it was read as markup and
+        # the label, and what a screen reader heard, stopped before the folder.
+        box.setTextFormat(Qt.TextFormat.PlainText)
         box.setText(refusal.reason)
         ok = box.addButton(QMessageBox.StandardButton.Ok)
         box.setDefaultButton(ok)
@@ -2535,6 +2539,8 @@ class MainWindow(QMainWindow):
         box.setObjectName("settingsProblemDialog")
         box.setWindowTitle(APP_NAME)
         box.setIcon(QMessageBox.Icon.Warning)
+        # Plain text for `T346-R1`'s reason: the summary names the settings file's path.
+        box.setTextFormat(Qt.TextFormat.PlainText)
         box.setText(problem.summary)
         # Selectable so the path and the parser's line and column can be copied out. A diagnostic
         # nobody can quote is one that reaches a bug report as "it said something about settings".
