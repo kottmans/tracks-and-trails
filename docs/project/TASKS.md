@@ -14,6 +14,49 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-345 — The retry offer opened under the window, and the chip did not say what its percentage was of
+
+**Status:** **In Review** — both reported by the maintainer on 2026-09-15 while trying `55dcf05` from
+source. Moves the candidate.
+**Owner:** Implementer
+**Priority:** High — the first made the application look unresponsive at start
+**Phase:** Phase 5 (blocks `T-328`)
+**Relevant context:** `T-308` (the same defect for the settings warning); `T-082` (the offer);
+`UX-005` §4 and its 2026-09-15 amendment; `T-344`
+
+#### What was wrong
+
+1. **The offer to retry interrupted downloads opened under the window.** After killing the
+   application during a conversion, the next start recovered the job as failed and `compose()`
+   opened the window-modal offer before `run()` showed the window, so it was stacked beneath the
+   window it blocked. `T-308` had moved the settings warning to `present()` for exactly this, and
+   the offer beside it was not moved.
+2. **The chip read only the percentage** (*86%*), and the stage on the second line is cut off on a
+   narrow window, so nothing said whether that was the download or the conversion.
+
+#### What changed
+
+- `Composition.interrupted` carries the recovered ids; `present()` offers them after `show()` and
+  after the settings problem. The offer's text loses an em dash (plain UI copy).
+- The chip reads *what, then how far*: `STEP_CHIP_TEXT` by step, `STAGE_CHIP_TEXT` by stage
+  (*Downloading 62%*, *Converting 86%*, *Joining 40%*), or the word alone for a step without a
+  percentage.
+
+#### Acceptance criteria
+
+- [x] `compose()` opens no offer and carries the ids; `present()` opens it with the window already
+  visible (`tests/integration/test_composition.py`); the phase-exit startup script shows the window
+  before offering
+- [x] The chip for a download, a join with a percentage, a named step without one, and an unnamed step;
+  every step with words has a chip word (`tests/ui/test_processing_progress.py`,
+  `tests/ui/test_queue_view.py`)
+- [x] Mutations, each failing those tests: the percentage alone (4); the stage word ignored (1); the
+  step word ignored (3); the offer never made (1); nothing carried from `compose()` (1)
+- [ ] Seen by the maintainer: after killing the application mid-download, the offer is in front at
+  the next start; the chip names what it is doing
+
+---
+
 ### T-344 — Show progress while a download is being processed
 
 **Status:** **In Review** — asked for by the maintainer on 2026-09-15: a long video took a long time

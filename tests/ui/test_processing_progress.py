@@ -24,7 +24,6 @@ from tracks_and_trails.downloader.protocol import Progress, Stage
 from tracks_and_trails.ui import row_delegate as row_delegate_module
 from tracks_and_trails.ui.job_detail import format_bytes
 from tracks_and_trails.ui.queue_view import (
-    CHIP_TEXT,
     INDETERMINATE_TEXT,
     PROGRESS_COLUMN,
     SIZE_COLUMN,
@@ -89,7 +88,9 @@ def test_a_step_with_a_position_shows_its_own_percentage_not_the_downloads(
 
     assert _data(view, PROGRESS_ROLE) == pytest.approx(0.42)
     assert _data(view, BUSY_ROLE) is False
-    assert _data(view, STATE_CHIP_ROLE) == "42%"
+    assert _data(view, STATE_CHIP_ROLE) == "Converting 42%", (
+        "the chip does not say what the percentage is of (T-345)"
+    )
     assert view.model.text_at("job-1", PROGRESS_COLUMN) == "42%"
     status = view.model.text_at("job-1", STATUS_COLUMN)
     assert status is not None and status.startswith("Converting to audio")
@@ -126,7 +127,7 @@ def test_a_step_without_a_position_is_a_moving_bar_with_its_name_and_time_so_far
 
     assert _data(view, PROGRESS_ROLE) is None, "the finished download's full bar is still drawn"
     assert _data(view, BUSY_ROLE) is True
-    assert _data(view, STATE_CHIP_ROLE) == CHIP_TEXT[JobStatus.POST_PROCESSING]
+    assert _data(view, STATE_CHIP_ROLE) == "Converting"
     assert view.model.text_at("job-1", PROGRESS_COLUMN) == INDETERMINATE_TEXT
     assert view.model.text_at("job-1", STATUS_COLUMN) == "Converting the video · 0:00"
 
@@ -310,3 +311,55 @@ def test_every_step_yt_dlp_can_report_has_words_or_is_named_as_quiet() -> None:
     assert not set(STEP_TEXT) - reported, (
         f"words for steps yt-dlp does not report: {sorted(set(STEP_TEXT) - reported)}"
     )
+
+
+def test_every_step_with_words_has_a_word_for_the_chip() -> None:
+    """`T-345`: the chip names what is happening beside its percentage, for every named step."""
+    from tracks_and_trails.ui.queue_view import STEP_CHIP_TEXT, STEP_TEXT
+
+    assert set(STEP_CHIP_TEXT) == set(STEP_TEXT)
+
+
+@pytest.mark.parametrize(
+    ("status", "message", "chip"),
+    [
+        (
+            JobStatus.RUNNING,
+            Progress(
+                job_id="job-1",
+                stage=Stage.DOWNLOADING_AUDIO,
+                downloaded_bytes=500,
+                total_bytes=1000,
+            ),
+            "Downloading 50%",
+        ),
+        (
+            JobStatus.POST_PROCESSING,
+            Progress(job_id="job-1", stage=Stage.MERGING, step="Merger", step_fraction=0.4),
+            "Joining 40%",
+        ),
+        (
+            JobStatus.POST_PROCESSING,
+            Progress(job_id="job-1", stage=Stage.POST_PROCESSING, step="SomeFutureStep"),
+            "Processing",
+        ),
+    ],
+    ids=["downloading", "joining", "unnamed-step"],
+)
+def test_the_chip_says_what_the_percentage_is_of(
+    queue: FakeQueue,  # noqa: F811
+    managers: Callable[..., DownloadManager],  # noqa: F811
+    views: Callable[..., QueueView],  # noqa: F811
+    tmp_path: Path,
+    status: JobStatus,
+    message: Progress,
+    chip: str,
+) -> None:
+    """Reported by the maintainer (`T-345`): a chip reading `86%` did not say whether that was the
+    download or the conversion, and the words on the second line are cut off on a narrow window."""
+    queue.add(make_job("job-1", tmp_path, status=status))
+    view = views(jobs=queue, manager=managers(), repaint_interval_ms=10_000)
+    view.model._on_progress(message)
+    view.model._draw_pending()
+
+    assert _data(view, STATE_CHIP_ROLE) == chip

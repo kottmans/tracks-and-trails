@@ -499,7 +499,7 @@ def test_a_row_opened_onto_a_finished_job_renders_its_ending(
 @pytest.mark.parametrize(
     ("status", "expected_chip"),
     [
-        (JobStatus.RUNNING, "62%"),
+        (JobStatus.RUNNING, "Downloading 62%"),
         (JobStatus.COMPLETED, "Done"),
         (JobStatus.FAILED, "Failed"),
         (JobStatus.QUEUED, "Queued"),
@@ -513,7 +513,10 @@ def test_the_state_chip_reads_progress_only_while_a_job_is_actually_running(
     status: JobStatus,
     expected_chip: str,
 ) -> None:
-    """`T130-R3`: `UX-005`'s chip vocabulary is `Done`, `Queued`, `62%`, `Failed`.
+    """`T130-R3`: `UX-005`'s chip vocabulary is `Done`, `Queued`, `Downloading 62%`, `Failed`.
+
+    *(The running chip was `62%` until the maintainer asked on 2026-09-15 for what the row is doing
+    beside the percentage, `T-345`; it is recorded under `UX-005` §4.)*
 
     **Every row here carries the same bytes**, and that is the whole design of the case. The chip
     used to be derived from the fraction alone, and `_fraction` answers exactly 1.0 for a completed

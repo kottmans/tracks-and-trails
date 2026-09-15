@@ -338,6 +338,10 @@ def present(composition: Composition) -> None:
     composition.window.show()
     if composition.settings_problem is not None:
         composition.window.report_settings_problem(composition.settings_problem)
+    # After the settings problem, so a user with both sees the one they cannot act on first and the
+    # one they can act on second (`T-345`, which moved this here from `compose()`).
+    if composition.interrupted:
+        composition.window.offer_to_retry_interrupted(composition.interrupted)
     # `T338-R1`: the schedule decides when it fires, so starting it is all `present` does.
     composition.update_schedule.start()
 
@@ -460,6 +464,12 @@ class Composition:
     #: nobody could see blocking a window nobody could use — reported from a real launch on
     #: 2026-09-09. `run()` shows it, after the window.
     settings_problem: settings_module.SettingsProblem | None
+    #: Jobs an unclean exit left in flight, recovered to a retryable failure and **offered by
+    #: `present()`, after the window is shown** (`T-345`). Opened here, the offer was `T-308`'s
+    #: defect again: a window-modal box on a window not yet shown, which the compositor stacked
+    #: under the window it then blocked. Reported by the maintainer on 2026-09-15 after killing the
+    #: application during a conversion: the application looked unresponsive at the next start.
+    interrupted: tuple[str, ...]
     #: The cache root this database's instance owns alone (`T-180`). Held for `database_path`'s
     #: reason — the partition is a claim about the assembled graph, and a root nothing can reach
     #: is a root nothing can check (`T180-R2`).
@@ -1340,13 +1350,11 @@ def compose(
         # **Logged here and shown by `run()`** (`T-308`). Opening it here put a window-modal box
         # on an unmapped parent; the log entry is what a bug report needs and does not care when
         # the window appears.
-    # After the settings problem, so a user with both sees the one they cannot act on first and the
-    # one they can act on second — an offer buried under a warning gets dismissed with it.
     if recovered:
+        # **Logged here and offered by `present()`** (`T-345`), for the settings problem's reason.
         logging.getLogger("tracksandtrails.app").info(
             "recovered %d interrupted job(s) on startup", len(recovered)
         )
-        window.offer_to_retry_interrupted(recovered)
 
     # **The queue a previous run left behind starts running** (`T-115`). Without this, `admit` on
     # the add dialog would cover only jobs added in this session, and a user who closed the
@@ -1443,6 +1451,7 @@ def compose(
         settings_path=settings_file if settings_file is not None else app_settings.settings_path(),
         theme=settings.theme,
         settings_problem=settings_problem,
+        interrupted=tuple(recovered),
         cache_root=cache_root,
         shutdown=shutdown,
         instance=instance,

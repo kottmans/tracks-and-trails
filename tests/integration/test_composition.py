@@ -35,7 +35,7 @@ import sys
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from datetime import timedelta
 from io import StringIO
 from pathlib import Path
@@ -2195,6 +2195,7 @@ def test_interrupted_jobs_are_recovered_and_offered_by_the_composed_application(
     tmp_path: Path,
     qapp: QApplication,
     composed: Callable[..., application.Composition],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`T-082` end to end: **the seam, which is where an offer gets lost.**
 
@@ -2224,6 +2225,26 @@ def test_interrupted_jobs_are_recovered_and_offered_by_the_composed_application(
     seeded._connection.close()
 
     composition = composed(database=database)
+    assert composition.interrupted, "compose() recovered nothing to offer"
+    assert composition.window.findChild(QMessageBox, "interruptedJobsDialog") is None, (
+        "compose() opened the offer before the window was shown, which is T-345 (T-308 again)"
+    )
+
+    # `present()` is the production route: the window first, then the offer (`T-345`).
+    shown_when_offered: list[bool] = []
+    original = type(composition.window).offer_to_retry_interrupted
+
+    def recording(window: MainWindow, job_ids: Sequence[str]) -> object:
+        shown_when_offered.append(window.isVisible())
+        return original(window, job_ids)
+
+    monkeypatch.setattr(type(composition.window), "offer_to_retry_interrupted", recording)
+    application.present(composition)
+    QApplication.processEvents()
+    assert shown_when_offered == [True], (
+        "the offer was opened while the window was hidden, so it is stacked under the window it "
+        "blocks and the application looks unresponsive"
+    )
 
     dialog = composition.window.findChild(QMessageBox, "interruptedJobsDialog")
     assert dialog is not None, (

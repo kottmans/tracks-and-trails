@@ -225,6 +225,42 @@ STEP_TEXT: Final[dict[str, str]] = {
     "MoveFiles": "Moving the file into place",
 }
 
+#: **The chip's word for what a working row is doing, beside its percentage** (`T-345`). Reported
+#: by the maintainer: a chip reading only *86%* did not say whether that was the download or the
+#: conversion, and the full words on the second line are cut off on a narrow window. Short, so the
+#: chip stays short; `STEP_TEXT` keeps the full words on the second line.
+STEP_CHIP_TEXT: Final[dict[str, str]] = {
+    "ExtractAudio": "Converting",
+    "Merger": "Joining",
+    "VideoConvertor": "Converting",
+    "VideoRemuxer": "Repackaging",
+    "EmbedSubtitle": "Adding subtitles",
+    "SubtitlesConvertor": "Converting",
+    "Metadata": "Adding details",
+    "EmbedThumbnail": "Adding thumbnail",
+    "ThumbnailsConvertor": "Converting",
+    "FixupM3u8": "Repairing",
+    "FixupM4a": "Repairing",
+    "FixupStretched": "Repairing",
+    "FixupDuplicateMoov": "Repairing",
+    "FixupTimestamp": "Repairing",
+    "FixupDuration": "Repairing",
+    "CopyStream": "Copying",
+    "Concat": "Joining",
+    "SplitChapters": "Splitting",
+    "SponsorBlock": "Checking",
+    "ModifyChapters": "Cutting",
+    "MoveFiles": "Moving",
+}
+
+#: The chip's word for a stage when no step has been named (`T-345`).
+STAGE_CHIP_TEXT: Final[dict[Stage, str]] = {
+    Stage.DOWNLOADING_VIDEO: "Downloading",
+    Stage.DOWNLOADING_AUDIO: "Downloading",
+    Stage.MERGING: "Joining",
+    Stage.POST_PROCESSING: "Processing",
+}
+
 #: How often a busy row is redrawn, in milliseconds (`T-344`): its moving bar and the time so far.
 BUSY_TICK_MS: Final = 100
 
@@ -1139,9 +1175,13 @@ class QueueModel(QAbstractTableModel):
         than two numbers that can disagree.
         """
         if row.job.status in (JobStatus.RUNNING, JobStatus.POST_PROCESSING):
+            # **What it is doing, then how far** (`T-345`): `Converting 86%`, `Downloading 62%`.
             fraction = self._fraction(row)
+            doing = self._doing(row)
             if fraction is not None:
-                return f"{round(fraction * 100)}%"
+                return f"{doing} {round(fraction * 100)}%"
+            if row.job.status is JobStatus.POST_PROCESSING:
+                return doing
         if not self._manager.is_running and row.job.status in HELD_STATUSES:
             # **A waiting row says what it is waiting for** (`UX-006` item 3, `T181-R1`). Read from
             # the manager rather than stored, so there is one answer to "is the queue running" and
@@ -1182,6 +1222,20 @@ class QueueModel(QAbstractTableModel):
         if not total or done is None:
             return None
         return min(max(done / total, 0.0), 1.0)
+
+    def _doing(self, row: _Row) -> str:
+        """The chip's one word for what a working row is doing (`T-345`)."""
+        live = self._live_step(row)
+        if live is not None and live.step is not None:
+            return STEP_CHIP_TEXT.get(live.step, STAGE_CHIP_TEXT[Stage.POST_PROCESSING])
+        message = row.displayed
+        if message is not None and message.stage in _STAGES_STILL_LIVE_IN.get(
+            row.job.status, frozenset()
+        ):
+            return STAGE_CHIP_TEXT.get(message.stage, STAGE_CHIP_TEXT[Stage.POST_PROCESSING])
+        if row.job.status is JobStatus.POST_PROCESSING:
+            return STAGE_CHIP_TEXT[Stage.POST_PROCESSING]
+        return STAGE_CHIP_TEXT[Stage.DOWNLOADING_VIDEO]
 
     def _live_step(self, row: _Row) -> Progress | None:
         """The drawn message, if it describes a post-processing step still running (`T-344`)."""

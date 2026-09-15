@@ -4346,6 +4346,14 @@ without anyone checking the window against the mock.
      maintainer, same session). Outlined in the muted ink, *Cancelled* was the same shape as the
      row's buttons and read as one that did nothing. A chip is a soft fill with no border; a verb is
      outlined, and answers the pointer and the press.
+   - **Amended 2026-09-15: a working row's chip says what it is doing beside its percentage**
+     (`T-345`, asked for by the maintainer). The chip read *86%* alone, and on a narrow window the
+     stage on the second line was cut off, so the maintainer could not tell a download from a
+     conversion: *"I think there should be a tag next to the percentage telling the user what its
+     doing."* It now reads *Downloading 62%*, *Converting 86%*, *Joining 40%*, or the word alone
+     while a step has no percentage. One short word, so the chip stays short; the full words and the
+     time so far stay on the second line. The wording is the Implementer's, for the maintainer to
+     change.
    - **Amended 2026-09-14: the `⋯` also carries *Diagnostics…*** (`T-340`, the §2 amendment above).
      `T-135` had the `⋯` hold only the verbs a narrow row dropped; this one entry is never drawn on
      the row, so it is always in the `⋯` when the job has logged something.

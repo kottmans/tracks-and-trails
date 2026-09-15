@@ -2454,8 +2454,8 @@ class MainWindow(QMainWindow):
         )
         box.setInformativeText(
             "Nothing has been restarted. Anything already downloaded is still on disk, and these "
-            "downloads are waiting in the queue either way — you can retry them individually at "
-            "any time."
+            "downloads are waiting in the queue either way. You can retry them one at a time "
+            "whenever you like."
         )
         retry_all = box.addButton("&Retry all", QMessageBox.ButtonRole.AcceptRole)
         later = box.addButton("&Not now", QMessageBox.ButtonRole.RejectRole)

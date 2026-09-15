@@ -214,6 +214,10 @@ composition = application.compose(
 )
 # Read after compose() returns: recovery runs inside it, before anything can read the queue.
 rows = {job.id: job.status.value for job in JobRepository(db.connect(database)).all_jobs()}
+# **Shown the way `run()` shows it** (`T-345`): `present()` shows the window, then offers.
+composition.window.show()
+if composition.interrupted:
+    composition.window.offer_to_retry_interrupted(composition.interrupted)
 offered = composition.window.findChild(QMessageBox, "interruptedJobsDialog") is not None
 print(json.dumps({"rows": rows, "offered": offered}), flush=True)
 # **Shut down through the real lifecycle before exiting.** Calling sys.exit() with the writer
