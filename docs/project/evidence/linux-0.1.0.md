@@ -2,10 +2,10 @@
 ## Machine
 
 ```
-date          2026-09-14 23:30:37Z
+date          2026-09-15 21:19:06Z
 artifact      Tracks_and_Trails-0.1.0-x86_64.AppImage
-size          68286968 bytes
-sha256        ad859def982df6075433ffc2b56c683f9905f3cc53a399cb0516224a0034330a
+size          68311544 bytes
+sha256        37a3a7b0c4c7aef82e80edb13404fbe0a95ebc2d8535e321169c370224656992
 kernel        Linux 7.1.13-200.fc44.x86_64 x86_64  (the host's, if this is a container)
 distribution  Ubuntu 24.04.4 LTS
 glibc         ldd (Ubuntu GLIBC 2.39-0ubuntu8.8) 2.39
@@ -110,7 +110,7 @@ exit 0
 url             https://archive.org/download/BigBuckBunny_124/Content/big_buck_bunny_720p_surround.mp4
 format          bv*+ba/b
 yt-dlp          2026.08.19 from bundled baseline
-downloaded      big_buck_bunny_720p_surround.mp4, 61878609 bytes in 6.3s
+downloaded      big_buck_bunny_720p_surround.mp4, 61878609 bytes in 6.2s
 download        ok
 
 exit 0

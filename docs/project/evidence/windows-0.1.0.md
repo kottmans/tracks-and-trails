@@ -7,13 +7,13 @@ the artifact itself.
 ## Machine
 
 ```
-date      2026-09-14 23:31:52Z
+date      2026-09-15 21:21:52Z
 windows   Microsoft Windows 10 Enterprise
 build     19041
 host      Windows Sandbox on STARBASE
 artifact  Tracks-and-Trails-0.1.0-setup.exe
-size      93475363 bytes
-sha256    14ed5542a7013f5135f0b569d1449aad8f26afea21ff4e443d7f1e33f82c3fb2
+size      93482037 bytes
+sha256    12dab2d3ae168bab9539ffb75fb886ef406f47fe38711df68004c727fc4111f7
 ```
 
 ## Pre-install check
@@ -47,9 +47,9 @@ finding, not a detail.
 whole directory recursively; a sentinel placed there *before* installing has to survive the
 uninstall byte-for-byte, which an empty default directory could never test.
 ```
-sentinel      4615dc50a1dad62f... in the install directory
+sentinel      17fc43da5f02e03d... in the install directory
 exit code     0
-elapsed       19.6s
+elapsed       23.7s
 installed to  C:\Users\WDAGUtilityAccount\AppData\Local\Programs\Tracks & Trails
 ```
 
@@ -90,14 +90,14 @@ probe exit            0
 url             https://www.youtube.com/watch?v=jNQXAC9IVRw
 format          bv*+ba/b
 yt-dlp          2026.08.19 from bundled baseline
-downloaded      Me at the zoo.webm, 474478 bytes in 5.6s
+downloaded      Me at the zoo.webm, 474478 bytes in 5.7s
 download        ok
 
 preset probe exit     0
 url             https://www.youtube.com/watch?v=aqz-KE-bpKQ
 format          bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]
 yt-dlp          2026.08.19 from bundled baseline
-downloaded      Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film.mp4, 134886020 bytes in 14.2s
+downloaded      Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film.mp4, 134886020 bytes in 13.5s
 download        ok
 ```
 
@@ -130,8 +130,8 @@ queue database held open, the removal must say it was incomplete, and still remo
 uninstall entry   "C:\Users\WDAGUtilityAccount\AppData\Local\Programs\Tracks & Trails\unins000.exe" /SILENT /ASK
 while running     exit 1; application kept; queue database kept
 while locked      exit 0; logged incomplete: True; logged removed: False; settings removed: True; locked database still there: True
-  log: 2026-09-14 18:33:27.318   Could not delete C:\Users\WDAGUtilityAccount\AppData\Local\tracksandtrails\library.sqlite3
-  log: 2026-09-14 18:33:27.318   Settings and download queue: removal incomplete.
+  log: 2026-09-15 16:23:26.358   Could not delete C:\Users\WDAGUtilityAccount\AppData\Local\tracksandtrails\library.sqlite3
+  log: 2026-09-15 16:23:26.358   Settings and download queue: removal incomplete.
 ```
 
 ## An uninstall run by hand, with the removal switch and Inno's own box
@@ -141,12 +141,12 @@ confirmation, which says settings and the download queue are kept. It must keep 
 confirmation is answered Yes by keystroke, and the final box closed the same way.
 ```
 by hand           confirmed and uninstalled: True; settings kept: True; queue database kept: True; removal logged: False
-  log: 2026-09-14 18:33:44.849   Removed all? Yes
-  log: 2026-09-14 18:33:44.849   Need to restart Windows? No
-  log: 2026-09-14 18:33:44.895   Message box (OK):
+  log: 2026-09-15 16:23:43.876   Removed all? Yes
+  log: 2026-09-15 16:23:43.876   Need to restart Windows? No
+  log: 2026-09-15 16:23:43.905   Message box (OK):
   log: Tracks & Trails was successfully removed from your computer.
-  log: 2026-09-14 18:33:45.099   User chose OK.
-  log: 2026-09-14 18:33:45.099   Log closed.
+  log: 2026-09-15 16:23:44.156   User chose OK.
+  log: 2026-09-15 16:23:44.156   Log closed.
 ```
 
 ## Verdict
