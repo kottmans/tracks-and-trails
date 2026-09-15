@@ -1,16 +1,26 @@
 # Release-candidate suite for `0.1.0` (`T-326`)
 
-**Candidate:** tag `v0.1.0` → commit `3c011b818fed387b06944b1ec7831a18d71ab699`, the fourth commit the
-tag named. The first three release runs failed before drafting, and each failure is recorded in
-`T-324`. No release existed under any of them.
+**Candidate:** tag `v0.1.0` → commit `93c7357d22fcdf9066e28161c3d6380896caa9c3`, the seventh commit
+the tag has named.
 
-**Draft release** from run [`34881606168`](https://github.com/kottmans/tracks-and-trails/actions/runs/34881606168)
+**Earlier candidates, none published:**
+
+| Tag at | What happened |
+|---|---|
+| `ff95306`, `412e93b`, `095b788` | Release runs failed before drafting (`T-324`) |
+| `3c011b8` | Drafted, and this suite passed on it. The release review requested changes: `T328-R3` (Critical, a stale menu's *Retry* re-queued a DRM failure) and `T328-R4` (the §11 walk). Corrected in `246dcdf` |
+| `246dcdf` | Drafted. While preparing the §11 sheet, `T-340` found that no part of the application opened a job's log (§11 criterion 6, `REQ-019`). Corrected in `3f41813` |
+| `3f41813` | Drafted. The Ubuntu clean machine, both network suites, the Sandbox and the canary passed. Then `T-341`: **the AppImage could not download on Fedora** (its Debian-built OpenSSL found no certificates there). Corrected in `93c7357` |
+
+Each earlier draft was deleted before the tag moved. Everything below was taken on `93c7357`'s draft.
+
+**Draft release** from run [`34908379562`](https://github.com/kottmans/tracks-and-trails/actions/runs/34908379562)
 (`draft: true`, not a pre-release), with these three assets:
 
 | Asset | Size | SHA-256 |
 |---|---:|---|
-| `Tracks-and-Trails-0.1.0-setup.exe` | 93,470,565 | `aafc574cacdab3493b1b67ffe271efed5065d8d399b9020e65e5b834b86082f7` |
-| `Tracks_and_Trails-0.1.0-x86_64.AppImage` | 68,286,968 | `566c24a19f43a3b7d99b1624a8c6856a9f2e7c9cae9de8973f883b785b7a4965` |
+| `Tracks-and-Trails-0.1.0-setup.exe` | 93,475,363 | `14ed5542a7013f5135f0b569d1449aad8f26afea21ff4e443d7f1e33f82c3fb2` |
+| `Tracks_and_Trails-0.1.0-x86_64.AppImage` | 68,286,968 | `ad859def982df6075433ffc2b56c683f9905f3cc53a399cb0516224a0034330a` |
 | `SHA256SUMS` | 206 | — |
 
 `gh release download v0.1.0` then `sha256sum -c SHA256SUMS` gives **OK** for both artifacts. Every
@@ -24,34 +34,35 @@ owning tasks.
 
 | §8 item | Platform | Satisfied by | Result |
 |---|---|---|---|
-| 1–2: static gates and the full default suite | Linux and Windows | `ci.yml` run [`34880640426`](https://github.com/kottmans/tracks-and-trails/actions/runs/34880640426) on `main` at `3c011b8`, attempt 2 (the first attempt was cancelled while queued, to let the release build use `STARBASE`) | **success**: `linux`, `windows desktop`, `frozen linux`, `frozen windows`, `STARBASE coverage`; `Linux orphans` skipped by its own condition |
-| 3: `pytest -m network` | Linux | Local run at `3c011b8` ([output](2026-09-14-T326-network-linux-0.1.0.txt)) | **2 passed, 2 skipped** (the two Windows-only UI files) |
-| 3: `pytest -m network` | Windows | `STARBASE`, logged-on session, checkout at `3c011b8` ([output](2026-09-14-T326-network-windows-0.1.0.txt)) | **2 passed** |
-| 4: every §7 mandatory test | both, in the default suite | enumerated below | **present for all 11 areas**, two recorded weaknesses |
+| 1–2: static gates and the full default suite | Linux and Windows | `ci.yml` run [`34905128347`](https://github.com/kottmans/tracks-and-trails/actions/runs/34905128347) on `main` at `93c7357` | **success**: `linux`, `windows desktop`, `frozen linux`, `frozen windows`, `STARBASE coverage`; `Linux orphans` skipped by its own condition. The tag's duplicate run `34908379537` was cancelled to free `STARBASE` for the release build |
+| 3: `pytest -m network` | Linux | Local run at `93c7357` ([output](2026-09-14-T326-network-linux-0.1.0.txt)) | **2 passed, 2 skipped** (the two Windows-only UI files) |
+| 3: `pytest -m network` | Windows | `STARBASE`, logged-on session, checkout at `93c7357` ([output](2026-09-14-T326-network-windows-0.1.0.txt)) | **2 passed** |
+| 4: every §7 mandatory test | both, in the default suite | enumerated below | **present for all 11 areas**; the DRM weakness found at `3c011b8` is corrected |
 | 5: previous release's database migrates | — | — | **N/A**: `0.1.0` is the first release. The obligation for `0.2` is in `docs/RELEASE.md` §*The release commit itself*: the `0.1.0` database is `tests/fixtures/schema_versions/v12.sql` |
-| 8: frozen smoke, launch and no recursive launch | Linux and Windows | run `34881606168`: `AppImage` *The probes, on the release build* and `installer` *The probes, on the release build* | **success** |
-| 8: a real download from the release build | Linux | Clean-machine transfer, [`linux-0.1.0.md`](linux-0.1.0.md): `--download-probe` on the draft AppImage in `ubuntu:24.04` | **PASS**: 61,878,609 bytes in 6.5 s with the bundled yt-dlp `2026.08.19` |
-| 8: a real download from the release build | Windows | Clean-machine transfer, [`windows-0.1.0.md`](windows-0.1.0.md): the draft installer in Windows Sandbox | **PASS**: two downloads, the second the 1080p MP4 preset (134,886,020 bytes in 12.6 s) |
-| 8: cancel one download while another runs, and a normal exit | Linux and Windows | **A sitting**, by the maintainer, on the draft AppImage and the draft installer, 2026-09-14 | **Pass**: *(answered)* the other download kept going and finished; File → Quit closed cleanly; nothing was left running |
-| 10: in-app yt-dlp update from the release artifact | Linux and Windows | run `34881606168`, both jobs' probes include `--ytdlp-update-probe`. The Linux clean machine repeats it: [`linux-0.1.0.md`](linux-0.1.0.md) *In-app update path* | **success**; clean machine **OK** |
-| 10a: canary at the bumped baseline | Linux | `ytdlp-canary.yml` run [`34885909896`](https://github.com/kottmans/tracks-and-trails/actions/runs/34885909896), dispatched on `main` at `3c011b8` | **success**: installed `yt_dlp-2026.8.19`; **4,595 passed, 43 skipped, 14 deselected** (the canary's expected-stale list) |
+| 8: frozen smoke, launch and no recursive launch | Linux and Windows | run `34908379562`: `AppImage` and `installer` *The probes, on the release build* | **success** |
+| 8: a real download from the release build | Linux | [`linux-0.1.0.md`](linux-0.1.0.md) (`ubuntu:24.04`) and [`linux-fedora-0.1.0.md`](linux-fedora-0.1.0.md) (`fedora:44`); and `--download-probe` run directly on the maintainer's Fedora 44 host with `SSL_CERT_FILE` and `SSL_CERT_DIR` unset | **PASS** on both clean machines, 61,878,609 bytes each; the host download **OK**, 61,878,609 bytes in 6.3 s. The `3f41813` draft **failed** that host download and the Fedora clean machine (`T-341`) |
+| 8: a real download from the release build | Windows | [`windows-0.1.0.md`](windows-0.1.0.md): the draft installer in Windows Sandbox | **PASS**: two downloads, the second the 1080p MP4 preset (134,886,020 bytes in 14.2 s) |
+| 8: cancel one download while another runs, and a normal exit | Linux and Windows | **A sitting**, by the maintainer, on the `3c011b8` drafts, 2026-09-14 | *(answered on an earlier candidate)* the other download kept going and finished; File → Quit closed cleanly; nothing was left running. **Not repeated on `93c7357`; the §11 walk (`T328-R4`) covers cancellation again.** Which Linux machine that sitting used is asked and not yet answered: the `3c011b8` AppImage could not download on Fedora |
+| 10: in-app yt-dlp update from the release artifact | Linux and Windows | run `34908379562`, both jobs' probes include `--ytdlp-update-probe`; both Linux clean machines repeat it | **success**; clean machines **OK** |
+| 10a: canary at the bumped baseline | Linux | `ytdlp-canary.yml` run [`34908424424`](https://github.com/kottmans/tracks-and-trails/actions/runs/34908424424), dispatched on `main` at `93c7357` | **success**: installed `yt_dlp-2026.8.19`; **4,617 passed, 43 skipped, 14 deselected** (the canary's expected-stale list) |
 
 **Clean-machine runs** (`§8` item 7, owned by `T-318` and `T-039`, recorded here because item 8's
 download is their transfer):
 
-- **Linux**, [`linux-0.1.0.md`](linux-0.1.0.md), verdict **PASS**:
+- **Linux, `ubuntu:24.04`**, [`linux-0.1.0.md`](linux-0.1.0.md), and **Linux, `fedora:44`**,
+  [`linux-fedora-0.1.0.md`](linux-fedora-0.1.0.md), both verdict **PASS**:
   - the pre-install check found no Python, toolchain, Qt or ffmpeg;
   - version, process model, bundled yt-dlp, database, in-app update and a real download all passed;
   - the application stayed up for 20 s offscreen.
 
-  **The first attempt reported FAIL 7**, every probe exiting 126 *Permission denied*: a release
-  asset downloads without its executable bit, and the harness runs it from a read-only mount. The
-  rerun followed the step the release notes give users (`chmod +x`); the file's SHA-256 was re-checked
-  first. That is a property of downloading, not a defect of the artifact.
+  The asset was made executable first (`chmod +x`), the step the release notes give users; a
+  release asset downloads without its executable bit, which made the first `3c011b8` attempt fail.
+  **The Fedora run is new with `T-341`**, and its control is recorded there: the `3f41813` draft
+  fails it and a build with the correction passes.
 - **Windows**, [`windows-0.1.0.md`](windows-0.1.0.md), verdict **PASS**:
   - installed silently, per-user, without elevation, into a directory already holding a sentinel;
   - placement checked against the installer's own log;
-  - a window appeared after about 2.5 s;
+  - a window appeared after about 2 s;
   - two real downloads over TLS;
   - uninstall removed all installed files and kept the user data and user-owned files byte-identical;
   - the uninstall entry reads `/SILENT /ASK`;
@@ -63,7 +74,7 @@ download is their transfer):
 
 ---
 
-## Item 4: the §7 mandatory tests at `3c011b8`
+## Item 4: the §7 mandatory tests (enumerated at `3c011b8`, still present at `93c7357`)
 
 Enumerated from `pytest --collect-only` over `tests/`, with each body read. This supersedes the
 2026-09-12 list as the basis for the next release's diff. Its tests all still exist, but some prove a
@@ -86,23 +97,20 @@ kill, not about a killed worker becoming `WORKER_CRASH`. All run in the default 
 | Settings freeze | `tests/integration/test_composition.py::test_a_settings_change_mid_flight_does_not_alter_a_running_jobs_request` |
 | Widget destruction | enforced by the autouse fixture `_no_orphaned_views` in `tests/ui/conftest.py`, using `tests/qt_lifecycle.py`; proven to fail by `tests/ui/test_suite_isolation.py::test_a_test_that_leaves_a_collectable_widget_is_the_test_that_fails`, `::test_collecting_the_cycle_inside_the_test_does_not_hide_it` and `::test_the_exemption_marker_cannot_be_claimed_by_a_sibling` |
 
-**Two weaknesses the enumeration found, recorded rather than fixed**, because a fix changes the
-tagged commit and every run above:
+**Two weaknesses the enumeration found at `3c011b8`, and what became of them:**
 
-1. **DRM's *no bypass path* is enforced at the UI, not in the manager.**
-   - `DownloadManager.retry` re-queues any FAILED job without asking `is_retryable`.
-   - **No route in the application reaches it for a DRM failure today:**
-     - a failed row's *Retry* is removed when the failure is not retryable (`row_verbs.verbs_for`);
-     - a playlist's *Retry failed* is offered only for retryable members (`group_verbs`);
-     - the detail pane's button is absent (`job_detail.can_retry`);
-     - the startup offer covers only interrupted jobs, which are retryable.
-   - The property holds for the product as shipped. The defence in depth the §7 wording implies is
-     missing below the UI. **Proposed for `0.1.1`**: the manager refuses a non-retryable failure,
-     with a test.
-2. **Settings freeze has one proving test.**
-   `tests/unit/test_persistence.py::test_a_retry_uses_the_stored_request_not_the_current_defaults`
-   claims the area but never uses its changed defaults, so it would pass with the freeze broken.
-   The composed test above does prove the property.
+1. **DRM's *no bypass path* was enforced at the UI, not in the manager.** This record first
+   called it unreachable, and that was wrong: the release review reproduced a stale menu's *Retry*
+   re-queueing a `DRM_PROTECTED` job (`T328-R3`, Critical). **Corrected in `246dcdf`**:
+   `DownloadManager.retry` refuses a failure that is not retryable, at call time and again at write
+   time, and the queue view rechecks a run-again verb against the row. Held by
+   `tests/integration/test_manager.py::test_a_retry_of_a_failure_that_may_not_be_retried_writes_nothing_and_starts_nothing`,
+   `::test_a_retry_whose_failure_became_unretryable_before_its_write_is_refused`, and the stale-menu
+   tests in `tests/ui/test_row_verb_wiring.py`.
+2. **Settings freeze had one proving test**, and a second that claimed the area without using its
+   changed defaults. That test is renamed to the round trip it proves
+   (`test_a_stored_request_reads_back_exactly_as_it_was_queued`, `T326-R5`); the composed test
+   above is the proof.
 
 Minor, from the same reading:
 
@@ -113,6 +121,5 @@ Minor, from the same reading:
 - migrations assert *data intact* for the `jobs` table, the only table that survives.
 
 **Not covered by this file:** §8 items 6, 7, 9, 11, 12, 13, 14 and 15 as release-gate judgements. Items 9
-and 11–13 ran as `artifact_gates.py` in run `34881606168` on both artifacts (and again on the
-AppImage's extracted payload locally before the run), item 14 is `REL-008`'s `0.1.0` exception, and
+and 11–13 ran as `artifact_gates.py` in run `34908379562` on both artifacts, item 14 is `REL-008`'s `0.1.0` exception, and
 item 15 is `T-327`'s approved session. `T-328` records them.

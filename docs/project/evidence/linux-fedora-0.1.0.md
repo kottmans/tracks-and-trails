@@ -2,13 +2,13 @@
 ## Machine
 
 ```
-date          2026-09-14 23:30:37Z
+date          2026-09-14 23:31:21Z
 artifact      Tracks_and_Trails-0.1.0-x86_64.AppImage
 size          68286968 bytes
 sha256        ad859def982df6075433ffc2b56c683f9905f3cc53a399cb0516224a0034330a
 kernel        Linux 7.1.13-200.fc44.x86_64 x86_64  (the host's, if this is a container)
-distribution  Ubuntu 24.04.4 LTS
-glibc         ldd (Ubuntu GLIBC 2.39-0ubuntu8.8) 2.39
+distribution  Fedora Linux 44 (Container Image)
+glibc         ldd (GNU libc) 2.43
 ```
 
 ## Pre-install check
@@ -57,8 +57,8 @@ exit 0
 
 ```
 frozen           True
-parent pid       2723
-child pid        2725
+parent pid       59
+child pid        61
 child frozen     True
 message          worker-alive
 child exitcode   0
@@ -110,7 +110,7 @@ exit 0
 url             https://archive.org/download/BigBuckBunny_124/Content/big_buck_bunny_720p_surround.mp4
 format          bv*+ba/b
 yt-dlp          2026.08.19 from bundled baseline
-downloaded      big_buck_bunny_720p_surround.mp4, 61878609 bytes in 6.3s
+downloaded      big_buck_bunny_720p_surround.mp4, 61878609 bytes in 6.7s
 download        ok
 
 exit 0

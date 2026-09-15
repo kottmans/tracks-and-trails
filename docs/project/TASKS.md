@@ -52,7 +52,7 @@ naming Fedora's bundle both downloaded. The clean machine is `ubuntu:24.04`, whi
   override (61,878,609 bytes)
 - [x] `IMAGE=registry.fedoraproject.org/fedora:44 tools/clean_machine_linux.sh`: the `3f41813`
   draft **FAIL** (the download, `CERTIFICATE_VERIFY_FAILED`); the corrected local build **PASS**
-- [ ] The same Fedora run on the release workflow's draft artifact (`T-326`)
+- [x] The same Fedora run on the release workflow's draft artifact: `93c7357`'s draft **PASS**, and its `--download-probe` on the Fedora 44 host with no override downloads (`evidence/linux-fedora-0.1.0.md`, `T-326`)
 
 ---
 
