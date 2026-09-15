@@ -393,6 +393,15 @@ class _Session:
     finalized: bool = False
 
 
+def _automatic_retry_of(current: Job, *, planned_for: ErrorKind | None) -> Job | None:
+    """The write an automatic retry makes, or `None` if the job no longer has its failure."""
+    if current.status is not JobStatus.FAILED or planned_for is None:
+        return None
+    if current.error_kind is not planned_for:
+        return None
+    return current.with_status(JobStatus.QUEUED).with_another_attempt()
+
+
 def _may_run_again(job: Job) -> bool:
     """Whether `retry` may put `job` back in the queue: failed and retryable, or cancelled.
 
@@ -614,6 +623,11 @@ class DownloadManager(QObject):
         #: (`T-083`). Held on the tick rather than on a timer per job, for the reason every other
         #: deadline in this class is: one place where the lifetime rules are applied.
         self._retry_at: dict[str, float] = {}
+        #: **The failure each automatic retry was planned for** (`T328-R3`). The tick re-queues a
+        #: job only while it still carries that failure. A deadline planned for a `NETWORK` failure
+        #: once outlived a manual retry whose attempt failed `DRM_PROTECTED`, and the tick, which
+        #: asked only whether the job was `FAILED`, ran the DRM job again on its own.
+        self._retry_for: dict[str, ErrorKind] = {}
         #: Cancelled jobs the user asked to queue again while their session was still being taken
         #: apart (ruled by the maintainer 2026-09-13, `UX-005` §4). **The write waits, not only the
         #: start.** A running job's row says `CANCELLED` once its stream ends, but the session is
@@ -932,7 +946,7 @@ class DownloadManager(QObject):
         and on remove.)*
         """
         self._discard_waiting(job_id)
-        self._retry_at.pop(job_id, None)
+        self._drop_planned_retry(job_id)
 
         session = self._sessions.get(job_id)
         if session is not None:
@@ -1339,7 +1353,7 @@ class DownloadManager(QObject):
         if job_id not in self._staged:
             return
         self._discard_waiting(job_id)
-        self._retry_at.pop(job_id, None)
+        self._drop_planned_retry(job_id)
         if job_id in self._sessions or job_id in self._reserved:
             # **The record outlives the cancel.** Cooperative first, escalating on the manager's
             # own timer; the staged job stays readable until its session is released, because the
@@ -1688,6 +1702,9 @@ class DownloadManager(QObject):
                 job_id=job_id, kind=kind, process=process, queue=queue, cancel=cancel, pump=pump
             )
             self._sessions[job_id] = session
+            # **Every attempt supersedes a retry planned before it** (`T328-R3`), whichever route
+            # started it. Its own failure, if it has one, plans afresh.
+            self._drop_planned_retry(job_id)
             self._open_job_log(session)
             self._connect(session)
 
@@ -2020,6 +2037,11 @@ class DownloadManager(QObject):
 
         self._persist(job_id, revise, then=then, otherwise=otherwise)
 
+    def _drop_planned_retry(self, job_id: str) -> None:
+        """Forget a job's automatic retry: an attempt superseded it, or the job left (`T328-R3`)."""
+        self._retry_at.pop(job_id, None)
+        self._retry_for.pop(job_id, None)
+
     def retry(self, job_id: str) -> None:
         """Re-queue a failed **or cancelled** job and start it as soon as the pool can take it.
 
@@ -2065,6 +2087,10 @@ class DownloadManager(QObject):
         here and passed in: `queue_position` carries a `UNIQUE` index, and two callers computing
         `MAX + 1` separately would collide rather than tie.
         """
+        # **A person's retry supersedes the timer's** (`T328-R3`). Whatever this attempt ends in
+        # decides whether another is planned; a deadline left from the failure before it would run
+        # the job again whatever that outcome was, `DRM_PROTECTED` included.
+        self._drop_planned_retry(job_id)
         job = self._repository.get(job_id)
         if job is None or not _may_run_again(job):
             return
@@ -2365,6 +2391,7 @@ class DownloadManager(QObject):
         # A retry this manager decided on but has not started never will be (`T-083`), and
         # holding `idle` open for one would stop the application quitting.
         self._retry_at.clear()
+        self._retry_for.clear()
         # A queue-again waiting on a session to be released, likewise.
         self._requeue_when_released.clear()
         # Reserved starts as well as running sessions (`T016-R3`). A start whose transition is
@@ -3073,6 +3100,7 @@ class DownloadManager(QObject):
         if job is None or job.attempts >= AUTOMATIC_RETRY_LIMIT:
             return
         self._retry_at[job_id] = time.monotonic() + RETRY_BACKOFF_SECONDS[job.attempts]
+        self._retry_for[job_id] = kind
         # **The operation is remembered with the deadline** (`T083-R1`). `_retry_at` used to
         # hold only `job_id -> when`, so the tick had nothing to say *what* to restart and
         # `start`'s default turned every retried probe into a download.
@@ -3086,13 +3114,14 @@ class DownloadManager(QObject):
             return
         for job_id in [job_id for job_id, due in self._retry_at.items() if now >= due]:
             del self._retry_at[job_id]
+            planned_for = self._retry_for.pop(job_id, None)
             self._persist(
                 job_id,
-                lambda current: (
-                    current.with_status(JobStatus.QUEUED).with_another_attempt()
-                    if current.status is JobStatus.FAILED
-                    else None
-                ),
+                # **The failure is asked about when the write runs** (`T328-R3`): still `FAILED`,
+                # and still with the kind this retry was planned for, which passed the automatic
+                # policy when it was scheduled. Any other failure has had an attempt since, and its
+                # own outcome decided whether to plan a retry of its own.
+                partial(_automatic_retry_of, planned_for=planned_for),
                 # `partial` rather than a lambda with a default argument: the latter is a
                 # late-binding workaround mypy cannot type, and this loop rebinds `job_id`.
                 # The kind is the one that failed (`T083-R1`), read back rather than defaulted.

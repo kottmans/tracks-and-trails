@@ -33,6 +33,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
+from tracks_and_trails.core.errors import ErrorKind, is_retryable
+
 
 class Duplicate(StrEnum):
     """Why a staged row is a repeat of something (`REQ-022`, `T-114`).
@@ -162,11 +164,28 @@ class Row:
     duplicate: Duplicate | None = None
     #: The extractor's own words, character for character (`NFR-006`). `None` unless `FAILED`.
     message: str | None = None
+    #: What kind of failure the reading reported, or `None` for a failure with no kind (a start
+    #: that was refused) and for every row that has not failed. **Kept because it decides whether
+    #: the line may be read again** (`T328-R3`): the message alone cannot say.
+    error_kind: ErrorKind | None = None
 
     @property
     def in_flight(self) -> bool:
         """Something is running for this row and its answer is still wanted."""
         return self.state in IN_FLIGHT
+
+    @property
+    def may_read_again(self) -> bool:
+        """This row failed in a way a person may retry (`SEC-001`, `T328-R3`).
+
+        **`is_retryable` is the authority**, as it is for a queue row: `DRM_PROTECTED` is
+        permanent and never retried, and reading a DRM item again under a new staged job is that
+        retry under another name. A failure with no kind was not the item's answer (a refused
+        start, a job that left the queue), so it may be read again.
+        """
+        if self.state is not RowState.FAILED:
+            return False
+        return self.error_kind is None or is_retryable(self.error_kind)
 
     @property
     def committable(self) -> bool:
@@ -305,6 +324,10 @@ class Staging:
     def failed(self) -> tuple[Row, ...]:
         """The rows that would not resolve. They stay on screen and are never committed."""
         return tuple(row for row in self.visible if row.state is RowState.FAILED)
+
+    def readable_again(self) -> tuple[Row, ...]:
+        """The failed rows a retry may read again (`Row.may_read_again`)."""
+        return tuple(row for row in self.visible if row.may_read_again)
 
     def in_flight(self) -> tuple[Row, ...]:
         """The rows something is running for."""

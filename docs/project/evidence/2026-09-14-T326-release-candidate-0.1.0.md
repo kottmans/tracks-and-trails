@@ -12,7 +12,8 @@ the tag has named.
 | `246dcdf` | Drafted. While preparing the §11 sheet, `T-340` found that no part of the application opened a job's log (§11 criterion 6, `REQ-019`). Corrected in `3f41813` |
 | `3f41813` | Drafted. The Ubuntu clean machine, both network suites, the Sandbox and the canary passed. Then `T-341`: **the AppImage could not download on Fedora** (its Debian-built OpenSSL found no certificates there). Corrected in `93c7357` |
 
-Each earlier draft was deleted before the tag moved. Everything below was taken on `93c7357`'s draft.
+Each earlier draft was deleted before the tag moved. Every machine check below was taken on `93c7357`'s
+draft; **the one human sitting (item 8's cancellation) was on `3c011b8`**, and its row says so.
 
 **Draft release** from run [`34908379562`](https://github.com/kottmans/tracks-and-trails/actions/runs/34908379562)
 (`draft: true`, not a pre-release), with these three assets:
@@ -37,12 +38,12 @@ owning tasks.
 | 1–2: static gates and the full default suite | Linux and Windows | `ci.yml` run [`34905128347`](https://github.com/kottmans/tracks-and-trails/actions/runs/34905128347) on `main` at `93c7357` | **success**: `linux`, `windows desktop`, `frozen linux`, `frozen windows`, `STARBASE coverage`; `Linux orphans` skipped by its own condition. The tag's duplicate run `34908379537` was cancelled to free `STARBASE` for the release build |
 | 3: `pytest -m network` | Linux | Local run at `93c7357` ([output](2026-09-14-T326-network-linux-0.1.0.txt)) | **2 passed, 2 skipped** (the two Windows-only UI files) |
 | 3: `pytest -m network` | Windows | `STARBASE`, logged-on session, checkout at `93c7357` ([output](2026-09-14-T326-network-windows-0.1.0.txt)) | **2 passed** |
-| 4: every §7 mandatory test | both, in the default suite | enumerated below | **present for all 11 areas**; the DRM weakness found at `3c011b8` is corrected |
+| 4: every §7 mandatory test | both, in the default suite | enumerated below | **Fail on DRM at `93c7357`** (the focused review): tests for all 11 areas are present, but two DRM retry paths were still open; corrected after this candidate, see below |
 | 5: previous release's database migrates | — | — | **N/A**: `0.1.0` is the first release. The obligation for `0.2` is in `docs/RELEASE.md` §*The release commit itself*: the `0.1.0` database is `tests/fixtures/schema_versions/v12.sql` |
 | 8: frozen smoke, launch and no recursive launch | Linux and Windows | run `34908379562`: `AppImage` and `installer` *The probes, on the release build* | **success** |
 | 8: a real download from the release build | Linux | [`linux-0.1.0.md`](linux-0.1.0.md) (`ubuntu:24.04`) and [`linux-fedora-0.1.0.md`](linux-fedora-0.1.0.md) (`fedora:44`); and `--download-probe` run directly on the maintainer's Fedora 44 host with `SSL_CERT_FILE` and `SSL_CERT_DIR` unset | **PASS** on both clean machines, 61,878,609 bytes each; the host download **OK**, 61,878,609 bytes in 6.3 s. The `3f41813` draft **failed** that host download and the Fedora clean machine (`T-341`) |
 | 8: a real download from the release build | Windows | [`windows-0.1.0.md`](windows-0.1.0.md): the draft installer in Windows Sandbox | **PASS**: two downloads, the second the 1080p MP4 preset (134,886,020 bytes in 14.2 s) |
-| 8: cancel one download while another runs, and a normal exit | Linux and Windows | **A sitting**, by the maintainer, on the `3c011b8` drafts, 2026-09-14 | *(answered on an earlier candidate)* the other download kept going and finished; File → Quit closed cleanly; nothing was left running. **Not repeated on `93c7357`; the §11 walk (`T328-R4`) covers cancellation again.** Which Linux machine that sitting used is asked and not yet answered: the `3c011b8` AppImage could not download on Fedora |
+| 8: cancel one download while another runs, and a normal exit | Linux and Windows | **A sitting**, by the maintainer, on the `3c011b8` drafts, 2026-09-14; Linux on the maintainer's machine **spock** (named by the maintainer when asked, during the review) | *(answered on an earlier candidate)* the other download kept going and finished; File → Quit closed cleanly; nothing was left running. **Not a result for `93c7357`**: cancellation, the other download completing, and a normal quit are owed again on the candidate being approved (`T328-R4`). Spock's distribution and trust store were not recorded |
 | 10: in-app yt-dlp update from the release artifact | Linux and Windows | run `34908379562`, both jobs' probes include `--ytdlp-update-probe`; both Linux clean machines repeat it | **success**; clean machines **OK** |
 | 10a: canary at the bumped baseline | Linux | `ytdlp-canary.yml` run [`34908424424`](https://github.com/kottmans/tracks-and-trails/actions/runs/34908424424), dispatched on `main` at `93c7357` | **success**: installed `yt_dlp-2026.8.19`; **4,617 passed, 43 skipped, 14 deselected** (the canary's expected-stale list) |
 
@@ -101,12 +102,19 @@ kill, not about a killed worker becoming `WORKER_CRASH`. All run in the default 
 
 1. **DRM's *no bypass path* was enforced at the UI, not in the manager.** This record first
    called it unreachable, and that was wrong: the release review reproduced a stale menu's *Retry*
-   re-queueing a `DRM_PROTECTED` job (`T328-R3`, Critical). **Corrected in `246dcdf`**:
-   `DownloadManager.retry` refuses a failure that is not retryable, at call time and again at write
-   time, and the queue view rechecks a run-again verb against the row. Held by
-   `tests/integration/test_manager.py::test_a_retry_of_a_failure_that_may_not_be_retried_writes_nothing_and_starts_nothing`,
-   `::test_a_retry_whose_failure_became_unretryable_before_its_write_is_refused`, and the stale-menu
-   tests in `tests/ui/test_row_verb_wiring.py`.
+   re-queueing a `DRM_PROTECTED` job (`T328-R3`, Critical). **Corrected in `246dcdf` for the queue
+   path**: `DownloadManager.retry` refuses a failure that is not retryable, at call time and again
+   at write time, and the queue view rechecks a run-again verb against the row.
+
+   **Two further paths were open at `93c7357`**, found by the focused review with real workers, so
+   this candidate **does not meet the DRM area**:
+   - an automatic retry planned for a `NETWORK` failure outlived a manual retry that failed
+     `DRM_PROTECTED`, and ran the job again unasked;
+   - Add URLs' *Read this URL again* and *Retry the ones that failed* read a DRM line again under
+     a new staged job.
+
+   Both are corrected after `93c7357` (`T-328`'s second-pass entry), so the candidate moves again
+   and this suite is owed on the next one.
 2. **Settings freeze had one proving test**, and a second that claimed the area without using its
    changed defaults. That test is renamed to the round trip it proves
    (`test_a_stored_request_reads_back_exactly_as_it_was_queued`, `T326-R5`); the composed test

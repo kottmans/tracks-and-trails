@@ -34,8 +34,9 @@ naming Fedora's bundle both downloaded. The clean machine is `ubuntu:24.04`, whi
 
 #### What changed
 
-- `verify_with_the_operating_system` on Linux: when OpenSSL's built-in location holds nothing and
-  the user set neither variable, `SSL_CERT_FILE` names the first bundle in `LINUX_CA_BUNDLES` that
+- `verify_with_the_operating_system` on Linux: when neither of OpenSSL's built-in locations exists
+  (an empty directory counting as absent; existence, not validity, `T341-R1`) and the user set
+  neither variable, `SSL_CERT_FILE` names the first bundle in `LINUX_CA_BUNDLES` that
   exists. Workers inherit it and also make the call themselves.
 - The clean-machine harness installs its three packages with `dnf` on a Fedora image, and
   `docs/RELEASE.md` asks for that second run per candidate.
@@ -53,55 +54,6 @@ naming Fedora's bundle both downloaded. The clean machine is `ubuntu:24.04`, whi
 - [x] `IMAGE=registry.fedoraproject.org/fedora:44 tools/clean_machine_linux.sh`: the `3f41813`
   draft **FAIL** (the download, `CERTIFICATE_VERIFY_FAILED`); the corrected local build **PASS**
 - [x] The same Fedora run on the release workflow's draft artifact: `93c7357`'s draft **PASS**, and its `--download-probe` on the Fedora 44 host with no override downloads (`evidence/linux-fedora-0.1.0.md`, `T-326`)
-
----
-
-### T-340 — A failed download's log could not be opened from anywhere in the application
-
-**Status:** **In Review** — found 2026-09-14 while preparing `T-328`'s §11 acceptance sheet; the
-maintainer chose to fix it in `0.1.0`, which moves the candidate again.
-**Owner:** Implementer
-**Priority:** High — `REQ-019` is an MVP requirement and §11 criterion 6 names a copyable log
-**Phase:** Phase 5 (blocks `T-328`)
-**Relevant context:** `REQ-019`; `REQUIREMENTS.md` §11 criterion 6; `UX-005` §2 and §4 and their
-2026-09-14 amendments; `T-084` (the log view); `T-135` (what the `⋯` holds)
-**Affected surfaces:** `ui/log_view.py`, `ui/main_window.py`, `ui/add_dialog.py`
-
-#### What was wrong
-
-`LogView` (`T-084`) was built only by `ui/job_detail.py`, and `UX-005` §2 removed the detail pane
-from the window. `queue_view.py` already said so (*"nothing in the product constructs that
-widget"*), and no decision moved `REQ-019` elsewhere. Every log-view test passed against a widget
-no user could reach. The candidate evidence for `3c011b8` and `246dcdf` did not notice.
-
-#### What changed
-
-- **`DiagnosticsDialog`** in `ui/log_view.py`: the existing `LogView` in a non-modal window titled
-  *Diagnostics for* the job's title or URL, with Close. Escape closes it. Copy still copies the
-  whole file (`T084-R2`).
-- **The queue row's menus** offer *Diagnostics…* below the verbs, on the `⋯` and on the keyboard and
-  right-click route.
-- **A failed line in the Add dialog** offers it below *Read this URL again*. An unsupported URL
-  fails there and never becomes a queue row, so this is the entry §11 criterion 6 is walked through.
-- **Offered only when the job has logged something** (`has_job_log`). The manager creates a job's
-  log file as its session opens, so a check for the file alone would offer it on every job that ever
-  ran.
-
-#### Acceptance criteria
-
-- [x] A queue row whose job logged something offers *Diagnostics…* on the `⋯`, including when
-  nothing was dropped, and on the context route; the window shows the file and Copy copies all of it
-  (`tests/ui/test_row_verb_wiring.py`)
-- [x] No entry for a job with no log file or an empty one (same file)
-- [x] A failed Add dialog line, logged through the worker's real route and the parent's per-job
-  handler, offers it and the window shows the extractor's message; a silent failure and a line that
-  read offer nothing (`tests/ui/test_add_dialog.py`)
-- [x] The window is non-modal, titled for its job, focused on the text, and closes from Escape and
-  from Close (`tests/ui/test_log_view.py`)
-- [x] Mutations, each run against the new tests: no queue entry (2 fail); the `⋯` still returning
-  nothing when no verb was dropped (1); file existence instead of size (2); no Add dialog entry
-  (1); the Add dialog entry without the log check (1); a modal window (1)
-- [ ] Seen by a person on both platforms, as part of the §11 criterion 6 walk (`T-328`)
 
 ---
 
@@ -824,6 +776,49 @@ new commit; the evidence for `3c011b8` stays as history.
 `test_a_retry_uses_the_stored_request_not_the_current_defaults` built a changed request it never
 used. Renamed to `test_a_stored_request_reads_back_exactly_as_it_was_queued`, with a docstring
 claiming only persistence and pointing at the composed settings-freeze test.
+
+#### 2026-09-14 — `T328-R3`, second pass: two more ways DRM was run again
+
+**Found by the focused review of `93c7357`, both reproduced with real workers.** The audit above
+was incomplete, and its last bullet was wrong: *not a job* is true of a staged link, but `SEC-001`
+says DRM is never retried, and reading it again under a new staged job is that retry.
+
+1. **An automatic retry outlived the attempt that superseded it.** A `NETWORK` failure planned a
+   retry; a manual retry before it was due failed `DRM_PROTECTED`; the tick, which asked only
+   whether the job was `FAILED`, ran it a third time unasked and spent an automatic attempt.
+   **Corrected in the manager:** a manual retry, and every session that starts, drops the job's
+   plan (`_drop_planned_retry`); and each plan records the failure it was made for
+   (`_retry_for`), which the write step requires the job still to carry (`_automatic_retry_of`).
+2. **Add URLs read a DRM line again**, from the line's *Read this URL again* and from *Retry the
+   ones that failed*. **Corrected in the dialog:** a failed line keeps its `ErrorKind`
+   (`Row.error_kind`), and `Row.may_read_again` asks `is_retryable`. The entry is offered only
+   then, is asked again when chosen, the bulk button reads only those lines and is enabled only
+   when there are some.
+
+**Tests:**
+
+- `test_manager.py`, real workers: `NETWORK`, manual retry, then each of `DRM_PROTECTED`,
+  `UNSUPPORTED_URL`, `AUTH_REQUIRED`, `EXTRACTOR_ERROR` and `DISK`, with the tick driven past the
+  old deadline. Workers run are counted from a file each writes; no automatic attempt is spent,
+  and the manager is idle.
+- `test_manager.py`: a plan for `NETWORK`, and one for a transient read, whose stored failure turns
+  `DRM_PROTECTED` when the write step reads it, starts nothing; unchanged, both still re-queue and
+  start (positive controls).
+- `test_add_dialog.py`, real workers: a DRM line offers no entry, the button is disabled, and both
+  routes called anyway read nothing; a menu opened for a retryable failure and pressed after the
+  line failed as DRM reads nothing; a mixed batch's button reads the retryable line again under a
+  new job and leaves the DRM line alone.
+
+**Mutations,** each against those tests:
+
+- dropping neither plan (the manual-retry call and the session-start call both removed): all five
+  real-worker tests fail. **Either call alone survives**, because the other still retires the plan;
+- no failure-kind check in the tick's write: 2 fail;
+- the entry offered on any failure: 1; the entry not asked when chosen: 2; the bulk button reading
+  every failed line: 2; the button enabled for any failure: 1; the kind not recorded: 3.
+
+**Still true of the queue path:** the first pass's corrections stand, and the review confirmed them.
+**No DRM service was contacted**; every DRM failure here is reported by a test worker.
 
 #### Scope
 
@@ -2071,3 +2066,52 @@ phase became the next one to run. `T-039` also carries `**Phase:** Phase 5` and 
 `## Blocked`, because that section is about status rather than phase.*
 
 ## Blocked
+
+### T-340 — A failed download's log could not be opened from anywhere in the application
+
+**Status:** **Blocked** — on its last criterion, a person seeing it on both platforms (`T328-R4`'s
+walk). The implementation was approved by review on 2026-09-14
+([record](reviews/T-340.md#2026-09-14--diagnostics-implementation-review)). Found 2026-09-14 while
+preparing `T-328`'s §11 acceptance sheet; the maintainer chose to fix it in `0.1.0`.
+**Owner:** Implementer
+**Priority:** High — `REQ-019` is an MVP requirement and §11 criterion 6 names a copyable log
+**Phase:** Phase 5 (blocks `T-328`)
+**Relevant context:** `REQ-019`; `REQUIREMENTS.md` §11 criterion 6; `UX-005` §2 and §4 and their
+2026-09-14 amendments; `T-084` (the log view); `T-135` (what the `⋯` holds)
+**Affected surfaces:** `ui/log_view.py`, `ui/main_window.py`, `ui/add_dialog.py`
+
+#### What was wrong
+
+`LogView` (`T-084`) was built only by `ui/job_detail.py`, and `UX-005` §2 removed the detail pane
+from the window. `queue_view.py` already said so (*"nothing in the product constructs that
+widget"*), and no decision moved `REQ-019` elsewhere. Every log-view test passed against a widget
+no user could reach. The candidate evidence for `3c011b8` and `246dcdf` did not notice.
+
+#### What changed
+
+- **`DiagnosticsDialog`** in `ui/log_view.py`: the existing `LogView` in a non-modal window titled
+  *Diagnostics for* the job's title or URL, with Close. Escape closes it. Copy still copies the
+  whole file (`T084-R2`).
+- **The queue row's menus** offer *Diagnostics…* below the verbs, on the `⋯` and on the keyboard and
+  right-click route.
+- **A failed line in the Add dialog** offers it below *Read this URL again*. An unsupported URL
+  fails there and never becomes a queue row, so this is the entry §11 criterion 6 is walked through.
+- **Offered only when the job has logged something** (`has_job_log`). The manager creates a job's
+  log file as its session opens, so a check for the file alone would offer it on every job that ever
+  ran.
+
+#### Acceptance criteria
+
+- [x] A queue row whose job logged something offers *Diagnostics…* on the `⋯`, including when
+  nothing was dropped, and on the context route; the window shows the file and Copy copies all of it
+  (`tests/ui/test_row_verb_wiring.py`)
+- [x] No entry for a job with no log file or an empty one (same file)
+- [x] A failed Add dialog line, logged through the worker's real route and the parent's per-job
+  handler, offers it and the window shows the extractor's message; a silent failure and a line that
+  read offer nothing (`tests/ui/test_add_dialog.py`)
+- [x] The window is non-modal, titled for its job, focused on the text, and closes from Escape and
+  from Close (`tests/ui/test_log_view.py`)
+- [x] Mutations, each run against the new tests: no queue entry (2 fail); the `⋯` still returning
+  nothing when no verb was dropped (1); file existence instead of size (2); no Add dialog entry
+  (1); the Add dialog entry without the log check (1); a modal window (1)
+- [ ] Seen by a person on both platforms, as part of the §11 criterion 6 walk (`T-328`)

@@ -2580,16 +2580,23 @@ class AddUrlDialog(QDialog):
         staged afresh; there is no durable row to withdraw, because a staging probe never was one
         (`T118-R1`).
         """
-        failed = self._staging.failed()
+        # **Only the ones that may be read again** (`T328-R3`, `SEC-001`), asked when pressed. A
+        # `DRM_PROTECTED` line stays failed with its message; a mixed batch retries the rest.
+        failed = self._staging.readable_again()
         if not failed:
             return
         for row in failed:
-            if row.job_id is not None:
-                self._manager.unstage(row.job_id)
-            row.job_id = None
-            row.message = None
-            row.state = RowState.PENDING
+            self._forget_failure(row)
         self.resolve()
+
+    def _forget_failure(self, row: Row) -> None:
+        """Put a failed row back to be read again, under a new staged job."""
+        if row.job_id is not None:
+            self._manager.unstage(row.job_id)
+        row.job_id = None
+        row.message = None
+        row.error_kind = None
+        row.state = RowState.PENDING
 
     def remove_row(self, row: Row) -> None:
         """Take one line out of the batch without editing the box.
@@ -2673,10 +2680,11 @@ class AddUrlDialog(QDialog):
                 menu.addAction(rename)
             menu.addSeparator()
 
-        if row.state is RowState.FAILED:
+        if row.may_read_again:
             retry = QAction("Read this URL again", menu)
             retry.triggered.connect(lambda: self._retry_row(row))
             menu.addAction(retry)
+        if row.state is RowState.FAILED:
             # `T-340`, `REQ-019`, `§11` criterion 6: an unsupported URL fails **here**, while it is
             # being read, and never reaches the queue, so this line is where its log is reached.
             # Only when reading it logged something; a start that was refused has no log at all.
@@ -2732,13 +2740,11 @@ class AddUrlDialog(QDialog):
         menu.popup(self._list.viewport().mapToGlobal(anchor))
 
     def _retry_row(self, row: Row) -> None:
-        if row.state is not RowState.FAILED:
+        # Asked when the entry is chosen, not only when the menu was built: a menu stays open while
+        # the row's reading can still fail again (`T328-R3`).
+        if not row.may_read_again:
             return
-        if row.job_id is not None:
-            self._manager.unstage(row.job_id)
-        row.job_id = None
-        row.message = None
-        row.state = RowState.PENDING
+        self._forget_failure(row)
         self.resolve()
 
     def _row_at(self, index: int) -> Row | None:
@@ -2791,6 +2797,7 @@ class AddUrlDialog(QDialog):
         label = kind.value if isinstance(kind, ErrorKind) else str(kind)
         row.state = RowState.FAILED
         row.message = f"{label}: {message}"
+        row.error_kind = kind if isinstance(kind, ErrorKind) else None
         self._refresh()
 
     def _on_job_changed(self, job_id: str, status: str) -> None:
@@ -3295,7 +3302,7 @@ class AddUrlDialog(QDialog):
         # commit for rows that were already being written.
         ready = bool(self._staging.committable())
         self._add_button.setEnabled(ready and not self._saving)
-        self._retry_button.setEnabled(bool(self._staging.failed()) and not self._saving)
+        self._retry_button.setEnabled(bool(self._staging.readable_again()) and not self._saving)
 
         # `T-076`: a bitrate applies only to a preset that converts audio. Disabled rather than
         # hidden, so the chain a keyboard walks does not change and the layout does not move.

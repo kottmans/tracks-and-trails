@@ -24,10 +24,11 @@ candidates failed on Fedora** with `CERTIFICATE_VERIFY_FAILED`, while the `ubunt
 machine, which has that path, downloaded. Measured on Fedora 44: the draft AppImage's download
 probe failed as it was, and passed with `SSL_CERT_FILE` naming Fedora's bundle.
 
-So when the built-in location holds nothing, `SSL_CERT_FILE` is set to the first bundle in
-`LINUX_CA_BUNDLES` that exists. It is still **the machine's own store**, as `REL-007` decided, and
-a user-added root the distribution installed is in it. Nothing is changed when the built-in
-location works (a distribution's own Python, or Debian and Ubuntu), when the user already set
+So when neither built-in location exists (an empty directory counting as absent), `SSL_CERT_FILE`
+is set to the first bundle in `LINUX_CA_BUNDLES` that exists. It is still **the machine's own
+store**, as `REL-007` decided, and a user-added root the distribution installed is in it. Nothing is
+changed when a built-in location exists (a distribution's own Python, or Debian and Ubuntu), when
+the user already set
 `SSL_CERT_FILE` or `SSL_CERT_DIR`, or when no bundle exists: `REL-007`'s bare container stays a
 machine with no store.
 
@@ -86,10 +87,10 @@ def verify_with_the_operating_system(
 def _find_the_system_bundle(
     environ: MutableMapping[str, str], paths: ssl.DefaultVerifyPaths, bundles: Sequence[str]
 ) -> bool:
-    """Point OpenSSL at the distribution's bundle if its built-in location holds nothing."""
+    """Point OpenSSL at the distribution's bundle if it has no built-in location to read."""
     if "SSL_CERT_FILE" in environ or "SSL_CERT_DIR" in environ:
         return False
-    if _holds_certificates(paths):
+    if _has_a_default_location(paths):
         return False
     found = next((bundle for bundle in bundles if Path(bundle).is_file()), None)
     if found is None:
@@ -98,8 +99,15 @@ def _find_the_system_bundle(
     return True
 
 
-def _holds_certificates(paths: ssl.DefaultVerifyPaths) -> bool:
-    """Whether OpenSSL's compiled-in file or directory has anything in it."""
+def _has_a_default_location(paths: ssl.DefaultVerifyPaths) -> bool:
+    """Whether OpenSSL's compiled-in file exists or its directory has any entry (`T341-R1`).
+
+    **Existence, not validity.** An empty file or a directory holding only a README counts, and
+    the machine is left as it is. That is the conservative boundary: this recovers a location that
+    is missing, and does not second-guess one that is there, malformed or not. Counting what a
+    fresh context loads would not do instead, because OpenSSL reads a hashed directory only when a
+    verification needs it.
+    """
     if paths.cafile and Path(paths.cafile).is_file():
         return True
     if paths.capath and Path(paths.capath).is_dir():

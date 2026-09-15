@@ -360,6 +360,26 @@ def child_probing_a_markup_title(
     queue.put(WorkerFinished(job_id=job_id, exit_code=0))
 
 
+def child_failing_by_url_and_counting(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """Fail `DRM_PROTECTED` for a URL containing `drm`, `UNSUPPORTED_URL` otherwise (`T328-R3`).
+
+    Every run appends its URL to `runs.txt` in the output directory, so a test counts **reads that
+    actually ran in a worker**. `UNSUPPORTED_URL` because a person may retry it and no timer does,
+    so nothing but the dialog can start another read.
+    """
+    from pathlib import Path
+
+    target = Path(request.output_directory)
+    target.mkdir(parents=True, exist_ok=True)
+    with (target / "runs.txt").open("a", encoding="utf-8") as record:
+        record.write(request.url + "\n")
+    failure = ErrorKind.DRM_PROTECTED if "drm" in request.url else ErrorKind.UNSUPPORTED_URL
+    queue.put(Failed(job_id=job_id, kind=failure, message=f"Derived {failure.value}"))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=1))
+
+
 def child_failing_as_recorded(
     kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
 ) -> None:
@@ -1196,6 +1216,117 @@ def test_a_line_with_nothing_logged_or_nothing_wrong_offers_no_diagnostics(
 
     texts = [action.text() for action in dialog.row_menu(dialog.rows[0]).actions()]
     assert DIAGNOSTICS_TEXT not in texts, f"offered diagnostics with nothing to show: {texts}"
+
+
+DRM_URL: Final = "https://derived.invalid/drm"
+OTHER_URL: Final = "https://derived.invalid/other"
+
+
+def _reads(dialog_tmp: Path) -> list[str]:
+    runs = dialog_tmp / "downloads" / "runs.txt"
+    return runs.read_text(encoding="utf-8").splitlines() if runs.exists() else []
+
+
+def _failed_batch(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    *urls: str,
+) -> tuple[AddUrlDialog, DownloadManager]:
+    manager = managers(entry_point=child_failing_by_url_and_counting)
+    dialog = dialogs(manager)
+    type_urls(dialog, "\n".join(urls))
+    dialog.resolve()
+    assert spin(
+        lambda: (
+            len(dialog.rows) == len(urls)
+            and all(state is RowState.FAILED for state in states(dialog))
+            and manager.is_idle
+        )
+    ), f"the batch did not fail and settle: {states(dialog)}"
+    return dialog, manager
+
+
+def test_a_drm_line_offers_no_read_again_and_neither_route_reads_it(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """`SEC-001`: `DRM_PROTECTED` is never retried, **including as a fresh read** (`T328-R3`).
+
+    The review's reproduction, with real workers: a DRM line's *Read this URL again* and the bulk
+    button each started another probe under a new staged job. Now neither is offered, and calling
+    either route anyway (a stale menu, a stale button) reads nothing and keeps the line as it was.
+    """
+    dialog, manager = _failed_batch(dialogs, managers, spin, DRM_URL)
+    row = dialog.rows[0]
+    original = row.job_id
+    assert row.error_kind is ErrorKind.DRM_PROTECTED
+    assert _reads(tmp_path) == [DRM_URL]
+
+    texts = [action.text() for action in dialog.row_menu(row).actions()]
+    assert "Read this URL again" not in texts, f"a DRM line offered to be read again: {texts}"
+    assert not button(dialog, "retryFailedButton").isEnabled()
+
+    dialog._retry_row(row)
+    dialog.retry_failed()
+    spin(lambda: False, timeout=1.5)
+
+    assert _reads(tmp_path) == [DRM_URL], "a DRM line was read again"
+    assert row.job_id == original and row.state is RowState.FAILED
+    assert row.message is not None and "drm_protected" in row.message
+    assert manager.is_idle
+
+
+def test_a_menu_left_open_while_the_line_fails_as_drm_reads_nothing(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """The entry is asked when chosen (`T328-R3`): offered for a retryable failure, pressed after
+    the manager reported the same job failing as `DRM_PROTECTED`."""
+    dialog, _manager = _failed_batch(dialogs, managers, spin, OTHER_URL)
+    row = dialog.rows[0]
+    assert row.job_id is not None
+    menu = dialog.row_menu(row)
+    entry = next(action for action in menu.actions() if action.text() == "Read this URL again")
+
+    dialog._on_job_failed(row.job_id, ErrorKind.DRM_PROTECTED, "Derived drm_protected")
+    entry.trigger()
+    spin(lambda: False, timeout=1.5)
+
+    assert _reads(tmp_path) == [OTHER_URL], "a stale entry read a DRM line again"
+    assert row.state is RowState.FAILED
+
+
+def test_a_mixed_batch_retries_only_the_lines_that_may_be_read_again(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """The bulk button in a batch holding both (`T328-R3`), and **the positive control**: the
+    retryable line is still read again, by a real worker, under a new job; the DRM line is not."""
+    dialog, manager = _failed_batch(dialogs, managers, spin, DRM_URL, OTHER_URL)
+    drm, other = dialog.rows
+    drm_job, other_job = drm.job_id, other.job_id
+    assert button(dialog, "retryFailedButton").isEnabled()
+
+    button(dialog, "retryFailedButton").click()
+    assert spin(
+        lambda: (
+            _reads(tmp_path).count(OTHER_URL) == 2
+            and other.state is RowState.FAILED
+            and manager.is_idle
+        )
+    ), f"the retryable line was not read again: {_reads(tmp_path)}"
+    spin(lambda: False, timeout=1.0)
+
+    assert _reads(tmp_path).count(DRM_URL) == 1, "the bulk retry read the DRM line again"
+    assert drm.job_id == drm_job and drm.state is RowState.FAILED
+    assert other.job_id not in (None, other_job)
 
 
 def test_add_refuses_when_nothing_has_resolved(

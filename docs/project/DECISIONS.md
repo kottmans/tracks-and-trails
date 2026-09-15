@@ -1177,11 +1177,14 @@ bundled OpenSSL reads the machine's store; on Debian and Ubuntu it does, and the
 clean machine is why nothing saw it. It also affected the `3c011b8` and `246dcdf` candidates.
 Measured: the draft failed as it was, and downloaded with `SSL_CERT_FILE` naming Fedora's bundle.
 
-**Correction.** At startup, and in each worker, when OpenSSL's built-in location holds no
-certificates and the user has set neither `SSL_CERT_FILE` nor `SSL_CERT_DIR`, `SSL_CERT_FILE` is set
-to the first distribution bundle that exists, in the order Go's `crypto/x509` reads them
-(`downloader/tls.py`, `LINUX_CA_BUNDLES`). A machine whose built-in location works is untouched, and
-so is a machine with no bundle anywhere, which stays this decision's *"no CA store"* case.
+**Correction.** At startup, and in each worker, when neither of OpenSSL's built-in locations exists
+(an empty directory counting as absent) and the user has set neither `SSL_CERT_FILE` nor
+`SSL_CERT_DIR`, `SSL_CERT_FILE` is set to the first distribution bundle that exists, in the order Go's
+`crypto/x509` reads them (`downloader/tls.py`, `LINUX_CA_BUNDLES`). A machine with a built-in
+location is untouched, and so is a machine with no bundle anywhere, which stays this decision's
+*"no CA store"* case. **The check is existence, not validity** (`T341-R1`): an empty file or a
+directory holding only a README counts as a location and is left alone. This recovers a missing
+location; it does not promise recovery from a malformed or unreadable one.
 
 **Consequences.**
 

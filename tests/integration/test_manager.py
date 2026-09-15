@@ -8194,3 +8194,189 @@ def test_a_retry_of_a_retryable_failure_still_queues_and_starts(
     finally:
         download.shutdown()
         assert spin(lambda: download.is_idle, timeout=60)
+
+
+# --- `T328-R3`, second pass: a retry planned for one failure must not run after another ----------
+
+
+def child_failing_network_first_then_the_kind_its_job_id_names(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """Fail `NETWORK` on the first run and the kind in the job id on every later run.
+
+    Each run appends what it reported to a file in the job's output directory, so a test counts
+    **worker processes that actually ran**, not callbacks that were asked to start one.
+    """
+    from pathlib import Path
+
+    from tracks_and_trails.core.errors import ErrorKind
+    from tracks_and_trails.downloader.protocol import Failed
+
+    runs = Path(request.output_directory) / f"runs-{job_id}.txt"
+    failure = ErrorKind[job_id.rsplit("-", 1)[1]] if runs.exists() else ErrorKind.NETWORK
+    with runs.open("a", encoding="utf-8") as record:
+        record.write(failure.value + "\n")
+    queue.put(Failed(job_id=job_id, kind=failure, message=f"failed as {failure.value}"))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=1))
+
+
+@pytest.mark.parametrize(
+    "later",
+    ["DRM_PROTECTED", "UNSUPPORTED_URL", "AUTH_REQUIRED", "EXTRACTOR_ERROR", "DISK"],
+)
+def test_a_manual_retry_retires_the_automatic_retry_planned_before_it(
+    tmp_path: Path, spin: Callable[..., bool], monkeypatch: pytest.MonkeyPatch, later: str
+) -> None:
+    """**The review's reproduction, with real workers** (`T328-R3`, `SEC-001`).
+
+    A `NETWORK` failure plans an automatic retry. The user retries by hand before it is due, and
+    that attempt fails as something no timer may repeat. The old plan must be gone: before this,
+    the tick consumed it against the new failure and a third worker ran a `DRM_PROTECTED` job
+    unasked.
+
+    The backoff is long so the plan cannot fire on its own during the test, and the tick is then
+    driven past it directly, which is what an hour's wait would do. `later` covers every kind the
+    automatic policy refuses, not only DRM.
+    """
+    monkeypatch.setattr(
+        manager_module, "RETRY_BACKOFF_SECONDS", (600.0,) * manager_module.AUTOMATIC_RETRY_LIMIT
+    )
+    repository = FakeRepository()
+    job_id = f"job-{later}"
+    repository.add(make_job(job_id, "https://example.invalid/clip", tmp_path))
+    runs = tmp_path / f"runs-{job_id}.txt"
+    download = DownloadManager(
+        repository, entry_point=child_failing_network_first_then_the_kind_its_job_id_names
+    )
+    download.start_queue()
+    try:
+        download.start(job_id)
+        assert spin(
+            lambda: (
+                job_row(repository, job_id).error_kind is ErrorKind.NETWORK
+                and not download._sessions
+            ),
+            timeout=60,
+        )
+        assert job_id in download._retry_at, (
+            "the NETWORK failure planned no retry, so there is nothing for this test to retire"
+        )
+
+        download.retry(job_id)
+        wanted = ErrorKind[later]
+        assert spin(
+            lambda: job_row(repository, job_id).error_kind is wanted and download.is_idle,
+            timeout=60,
+        ), "the manual attempt did not settle as its failure, or something is still planned"
+
+        download._perform_due_retries(time.monotonic() + 3600)
+        spin(lambda: False, timeout=1.5)
+
+        assert runs.read_text(encoding="utf-8").splitlines() == ["network", wanted.value], (
+            f"a retry planned for the NETWORK failure ran again after {later}"
+        )
+        job = job_row(repository, job_id)
+        assert job.status is JobStatus.FAILED
+        assert job.attempts == 0, "an automatic attempt was spent on a failure no timer may retry"
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+@pytest.mark.parametrize(
+    ("planned", "session_kind", "transient"),
+    [
+        (ErrorKind.NETWORK, SessionKind.DOWNLOAD, False),
+        (ErrorKind.EXTRACTOR_ERROR, SessionKind.PROBE, True),
+    ],
+    ids=["network", "transient-read"],
+)
+def test_the_tick_refuses_a_plan_whose_failure_has_changed_by_its_write(
+    tmp_path: Path,
+    spin: Callable[..., bool],
+    monkeypatch: pytest.MonkeyPatch,
+    planned: ErrorKind,
+    session_kind: SessionKind,
+    transient: bool,
+) -> None:
+    """The write is asked when it runs, whatever route left the plan behind (`T328-R3`).
+
+    The stored failure turns `DRM_PROTECTED` **after** the tick has decided and before its write
+    step reads the job, the deferred-write shape. Nothing may be queued or started, and no
+    automatic attempt is spent. Both automatic policies are covered: a network failure and a read
+    that failed transiently.
+    """
+    quick_backoff(monkeypatch)
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=tmp_path)
+    original = repository.get("job-1")
+    assert original is not None
+    repository.jobs["job-1"] = original.with_failure(planned, "the first failure")
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    starts: list[tuple[Any, ...]] = []
+    download._start_when_free = lambda *args: starts.append(args)  # type: ignore[method-assign]
+    download._schedule_automatic_retry("job-1", planned, session_kind, transient=transient)
+    assert "job-1" in download._retry_at, "no plan was made, so this proves nothing"
+
+    real_get = repository.get
+    reads = [0]
+
+    def get_then_turn_to_drm(job_id: str) -> Job | None:
+        job = real_get(job_id)
+        reads[0] += 1
+        if job is not None:
+            repository.jobs[job_id] = replace(job, error_kind=ErrorKind.DRM_PROTECTED)
+            job = repository.jobs[job_id]
+        return job
+
+    repository.get = get_then_turn_to_drm  # type: ignore[method-assign]
+    try:
+        download._perform_due_retries(time.monotonic() + 3600)
+        assert spin(lambda: download.is_idle, timeout=10)
+        after = real_get("job-1")
+        assert after is not None and after.status is JobStatus.FAILED
+        assert after.attempts == 0
+        assert starts == [], f"a plan made for {planned.value} started a DRM_PROTECTED job"
+        assert reads[0] >= 1, "the write step never read the job, so this proved nothing"
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+@pytest.mark.parametrize(
+    ("planned", "session_kind", "transient"),
+    [
+        (ErrorKind.NETWORK, SessionKind.DOWNLOAD, False),
+        (ErrorKind.EXTRACTOR_ERROR, SessionKind.PROBE, True),
+    ],
+    ids=["network", "transient-read"],
+)
+def test_the_tick_still_retries_a_failure_that_has_not_changed(
+    tmp_path: Path,
+    spin: Callable[..., bool],
+    monkeypatch: pytest.MonkeyPatch,
+    planned: ErrorKind,
+    session_kind: SessionKind,
+    transient: bool,
+) -> None:
+    """The positive control for the refusal above: the same plan, the failure unchanged."""
+    quick_backoff(monkeypatch)
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=tmp_path)
+    original = repository.get("job-1")
+    assert original is not None
+    repository.jobs["job-1"] = original.with_failure(planned, "the first failure")
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    starts: list[tuple[Any, ...]] = []
+    download._start_when_free = lambda *args: starts.append(args)  # type: ignore[method-assign]
+    download._schedule_automatic_retry("job-1", planned, session_kind, transient=transient)
+    try:
+        download._perform_due_retries(time.monotonic() + 3600)
+        assert spin(lambda: bool(starts), timeout=10)
+        after = repository.get("job-1")
+        assert after is not None and after.status is JobStatus.QUEUED
+        assert after.attempts == 1
+        assert starts == [("job-1", session_kind)]
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)

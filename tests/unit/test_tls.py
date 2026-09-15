@@ -108,10 +108,13 @@ def test_an_empty_certificate_directory_is_no_store(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("built_in", ["file", "directory"])
-def test_a_built_in_store_that_holds_certificates_is_left_alone(
-    tmp_path: Path, built_in: str
-) -> None:
-    """Debian, Ubuntu, and any distribution's own Python: OpenSSL already finds its store."""
+def test_an_existing_default_location_is_left_alone(tmp_path: Path, built_in: str) -> None:
+    """Debian, Ubuntu, and any distribution's own Python: a default location exists.
+
+    **Existence is what is checked, not the certificates in it** (`T341-R1`); the entries here are
+    not certificates, and the machine is still left as it is. The real-certificate test below is
+    the proof that a pointed-at bundle loads.
+    """
     certs = tmp_path / "certs"
     certs.mkdir()
     (certs / "002c0b4f.0").write_text("x", encoding="utf-8")
