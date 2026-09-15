@@ -154,24 +154,47 @@ def test_a_dialog_that_grows_after_it_is_shown_is_fitted_again(
         dialog.deleteLater()
 
 
-def test_the_rule_leaves_with_its_owner(qapp: QApplication, spin: Callable[..., bool]) -> None:
-    """Owned by the main window, so a shared application does not keep it after that window."""
+def test_the_rule_leaves_with_its_owner(qapp: QApplication) -> None:
+    """Owned by the main window, so a shared application does not keep it after that window.
+
+    **Asserted on this rule's own object**, not by showing a dialog and watching it stay put: other
+    windows alive in the same process keep rules of their own, and the `yt-dlp` canary, which runs
+    the whole suite in one process, found the behavioural version failing for that reason. Qt drops
+    a destroyed object from the application's filters, so a destroyed rule is a removed one.
+    """
+    import shiboken6
+
     owner = QWidget()
-    keep_dialogs_on_screen(qapp, owner)
-    assert owner.findChild(DialogsOnScreen) is not None
+    keeper = keep_dialogs_on_screen(qapp, owner)
+    assert shiboken6.isValid(keeper)
     owner.deleteLater()
     QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
+    assert not shiboken6.isValid(keeper), "the rule outlived the window that owned it"
+
+
+def test_two_rules_on_one_dialog_do_not_spend_each_others_passes(
+    qapp: QApplication, spin: Callable[..., bool]
+) -> None:
+    """The canary's failure, reproduced on purpose: a second window's rule is installed too, and a
+    dialog that grows after showing is still fitted."""
+    owners = [QWidget(), QWidget()]
+    for owner in owners:
+        keep_dialogs_on_screen(qapp, owner)
     dialog = _tall_dialog()
     try:
-        dialog.setGeometry(40, -400, 300, 200)
+        dialog.setGeometry(40, 40, 400, 300)
         dialog.show()
-        spin(lambda: False, timeout=0.3)
-        # The offscreen platform shifts a window by its own two pixels; still far above the top.
-        assert dialog.geometry().y() < 0, "a rule whose owner was destroyed still moved it"
+        assert spin(lambda: dialog.isVisible())
+        spin(lambda: False, timeout=0.2)
+        dialog.resize(400, dialog.screen().availableGeometry().height() * 2)
+        assert spin(lambda: _inside_its_screen(dialog), timeout=2), dialog.frameGeometry()
     finally:
         dialog.close()
         dialog.deleteLater()
+        for owner in owners:
+            owner.deleteLater()
+        QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def test_installing_twice_for_one_owner_installs_one_rule(qapp: QApplication) -> None:

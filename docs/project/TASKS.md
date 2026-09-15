@@ -254,6 +254,20 @@ either way.
 - [ ] **Seen on a real Windows display at 125%**: *Add URLs* and *Preferences* open with the title
   bar on screen and can be moved (the friend's laptop, or a Windows machine set to 125%)
 
+#### 2026-09-15 — the `yt-dlp` canary failed two of these tests
+
+The canary runs the suite in **one process**, and there two tests failed at `48cf076`: a dialog that
+grew after showing was not fitted again, and the rule appeared to outlive its owner. **Reproduced
+locally** by running `test_composition.py` then `test_screen_fit.py` in one process. A composition
+window left alive by an earlier test kept its rule installed, and **both rules counted fits on one
+dynamic property**, so a dialog's budget of `MAX_PASSES` was spent twice as fast. In the application
+there is one window and one rule, so the shared counter did not show there; it was still wrong.
+
+Corrected: each rule keeps its own count (a property named for that rule). The ownership test now
+asserts the rule object is destroyed with its owner, instead of watching a dialog that other live
+rules may still move. A new test installs two rules and grows a dialog after showing; with a shared
+counter it fails. The two files together in one process: 97 passed.
+
 ---
 
 ### T-341 — The AppImage could not download anything on Fedora

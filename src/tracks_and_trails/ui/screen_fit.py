@@ -133,12 +133,20 @@ def fit_on_screen(window: QWidget) -> bool:
 #: How many fits one showing of a dialog may make before this stops asking (see `DialogsOnScreen`).
 MAX_PASSES: Final = 4
 
-#: The dynamic property counting a dialog's fits since it was last shown.
+#: The start of the dynamic property counting a dialog's fits since it was last shown.
 _PASSES: Final = "tracksAndTrailsFitPasses"
 
 
 class DialogsOnScreen(QObject):
     """Fits each top-level dialog to its screen as it is shown. See the module docstring."""
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        #: **This rule's own count, not a count shared with every rule** (found by the `yt-dlp`
+        #: canary, which runs the suite in one process). A window left alive by an earlier test kept
+        #: its rule installed, both rules counted on one property, and a dialog's budget was spent
+        #: twice as fast, so a dialog that grew after showing was never fitted again.
+        self._passes = f"{_PASSES}{id(self)}"
 
     # Qt's override name, hence the camelCase.
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
@@ -146,7 +154,7 @@ class DialogsOnScreen(QObject):
             return False
         kind = event.type()
         if kind is QEvent.Type.Show:
-            watched.setProperty(_PASSES, 0)
+            watched.setProperty(self._passes, 0)
             self._fit(watched)
             # Again once the native frame has its real size.
             QTimer.singleShot(0, watched, lambda: self._fit(watched))
@@ -167,10 +175,10 @@ class DialogsOnScreen(QObject):
         is followed by one more after the event loop turns, up to `MAX_PASSES` per showing, which
         bounds a window manager that never agrees.
         """
-        passes = int(dialog.property(_PASSES) or 0)
+        passes = int(dialog.property(self._passes) or 0)
         if passes >= MAX_PASSES:
             return
-        dialog.setProperty(_PASSES, passes + 1)
+        dialog.setProperty(self._passes, passes + 1)
         if fit_on_screen(dialog):
             QTimer.singleShot(0, dialog, lambda: self._fit(dialog))
 
