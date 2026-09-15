@@ -218,7 +218,7 @@ def test_containment_is_checked_before_existence(tmp_path: Path, downloads: Path
     }
 
     assert all("outside the download folder" in reason for reason in reasons)
-    assert not any("no longer there" in reason for reason in reasons), (
+    assert not any("is no longer in" in reason for reason in reasons), (
         "the refusal distinguishes an existing file from a missing one outside the folder, which "
         "makes this a probe for whether any path on the machine exists"
     )
@@ -235,7 +235,8 @@ def test_a_file_that_has_been_moved_says_so(downloads: Path) -> None:
     refusal = reveal_file(gone, within=downloads, run=spawner)
 
     assert refusal is not None
-    assert "no longer there" in refusal.reason
+    assert "is no longer in" in refusal.reason
+    assert refusal.missing
     assert "moved" in refusal.reason
     assert spawner.calls == []
 

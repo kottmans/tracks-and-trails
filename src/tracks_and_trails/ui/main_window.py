@@ -62,7 +62,12 @@ from tracks_and_trails.downloader.app_update_service import AppRelease, AppUpdat
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.ytdlp_service import YtdlpService
 from tracks_and_trails.ui.add_dialog import AddUrlDialog, JobSink
-from tracks_and_trails.ui.file_actions import MESSAGE_TIMEOUT_MS, FileActions
+from tracks_and_trails.ui.file_actions import (
+    COULD_NOT_OPEN_TITLE,
+    FILE_NOT_FOUND_TITLE,
+    MESSAGE_TIMEOUT_MS,
+    FileActions,
+)
 from tracks_and_trails.ui.format_dialog import FormatDialog
 from tracks_and_trails.ui.job_detail import JobReader
 from tracks_and_trails.ui.keyboard import route_is_elsewhere
@@ -75,6 +80,7 @@ from tracks_and_trails.ui.log_view import (
 from tracks_and_trails.ui.options_dialog import OptionsDialog, PresetSink
 from tracks_and_trails.ui.queue_view import QueueReader, QueueView, build_queue_view
 from tracks_and_trails.ui.rename_editor import RenameDialog
+from tracks_and_trails.ui.reveal import Refusal
 from tracks_and_trails.ui.row_delegate import CHOOSE_FORMATS_TEXT, OPTIONS_TEXT, RENAME_TEXT
 from tracks_and_trails.ui.row_verbs import LABELS, Verb
 from tracks_and_trails.ui.settings_dialog import SettingsDialog
@@ -294,6 +300,9 @@ def group_removal_question(count: int) -> str:
 
 #: Used when no geometry has been stored yet, and when what was stored is unusable.
 DEFAULT_SIZE: Final = QSize(960, 640)
+
+#: The button a missing file's box offers beside OK (`T-346`).
+REMOVE_MISSING_TEXT: Final = "&Remove from queue"
 
 #: Qt's geometry accessors are C++ `int`. Anything outside this range raises or triggers a
 #: shiboken overflow warning before Qt ever sees it (`T027-R1`).
@@ -1452,9 +1461,34 @@ class MainWindow(QMainWindow):
                 # the rows that have a file — plus everything else the row's state permits.
                 # Leaving both connected popped two menus on one right-click or Menu key.
                 context_menu=False,
+                show_refusal=self._show_file_refusal,
                 parent=self,
             )
         )
+
+    def _show_file_refusal(self, refusal: Refusal) -> QMessageBox:
+        """Say why nothing opened, in a box the user closes (`T-346`, ruled by the maintainer).
+
+        **A missing file offers *Remove from queue*** as well as OK: the row points at nothing, and
+        removing it is the one thing to do about that from here. It goes through `_remove_job`,
+        the route the row's own *Remove* takes. The job is the one selected when the box opened,
+        read now, because `FileActions` acted on that selection a moment ago.
+        """
+        box = QMessageBox(self)
+        box.setObjectName("fileRefusalDialog")
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle(FILE_NOT_FOUND_TITLE if refusal.missing else COULD_NOT_OPEN_TITLE)
+        box.setText(refusal.reason)
+        ok = box.addButton(QMessageBox.StandardButton.Ok)
+        box.setDefaultButton(ok)
+        job_id = None if self._queue is None else self._queue.selected_job_id()
+        if refusal.missing and job_id is not None and self._on_remove_requested is not None:
+            remove = box.addButton(REMOVE_MISSING_TEXT, QMessageBox.ButtonRole.DestructiveRole)
+            remove.setObjectName("removeMissingButton")
+            remove.clicked.connect(partial(self._remove_job, job_id))
+        box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        box.open()
+        return box
 
     def report_transiently(self, message: str) -> None:
         """Say something in the status bar. Public, so composition can report too (`T-125`).

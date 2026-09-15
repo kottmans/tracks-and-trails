@@ -101,6 +101,9 @@ class Refusal:
     """
 
     reason: str
+    #: **The file is no longer where it was recorded** (`T-346`). The one refusal a user can act on
+    #: from the queue, by removing the row, so the window offers that and the others it does not.
+    missing: bool = False
 
 
 def _refuse_unless_usable(path: Path, within: Path) -> Refusal | None:
@@ -116,8 +119,9 @@ def _refuse_unless_usable(path: Path, within: Path) -> Refusal | None:
         )
     if not path.exists():
         return Refusal(
-            f"{path} is no longer there. It may have been moved, renamed or deleted — nothing in "
-            "Tracks & Trails removes your files, so the record is kept either way."
+            f"{path.name} is no longer in {path.parent}. It may have been moved, renamed or "
+            "deleted.",
+            missing=True,
         )
     return None
 

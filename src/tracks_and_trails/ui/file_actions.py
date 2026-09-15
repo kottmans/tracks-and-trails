@@ -28,29 +28,22 @@ is deliberately *not* part of the enabled state: it would mean a `stat` per sele
 the file can vanish between the check and the click regardless. The honest design is to offer it and
 report what happened — which `reveal.Refusal` already carries a sentence for.
 
-## Nothing here is modal, and a refusal is said twice
+## A refusal is a message box the user closes (`T-346`)
 
-A refusal goes to the status bar. A file that has been moved is the *ordinary* case (`UX-001`:
-remove never deletes a file), and a modal dialog for an ordinary case teaches the user to dismiss
-dialogs without reading them. That reasoning survived `T-158` unchanged.
+A refusal goes to the status bar, and **to a message box**. It was a tooltip at the row (`T-158`,
+which found the status bar alone was not read), and that did not work either: on KDE the tooltip was
+hidden the moment the menu that triggered it closed, so it showed for a fraction of a second, and as
+one long line it ran off the screen. The maintainer chose the box on 2026-09-15, over keeping the
+status bar alone.
 
-**What `T-158` found is that the status bar alone was not read** — the maintainer pressed *Open* on
-a moved file, watched the row, and reported that nothing happened at all. The chain worked and a
-test proved it end to end; the message simply arrived several hundred pixels from where they were
-looking, in a bar already carrying a permanent ffmpeg line. **The defect was distance, not
-silence**, so the fix is a second delivery rather than a louder one:
+The earlier reasoning against a modal box, that a moved file is the ordinary case and a dialog for
+it teaches dismissing dialogs, is outweighed by what happened: a notice nobody could read. The box
+follows a click the user just made, so it answers that click rather than interrupting anything.
+The window's box also offers **Remove from queue** for a missing file, which is the one thing a
+user can do about it from here.
 
-- **At the row**, as a transient tooltip anchored to the acted-on row's own rectangle. It follows
-  the row for pointer, keyboard and overflow-menu activation alike, because all three come through
-  `_act` and the rect is read from the view's current index rather than from the mouse.
-- **In the status bar**, unchanged. It is the record for a user who looked away, and a tooltip that
-  has already faded leaves nothing behind.
-- **Announced** (`NFR-005`), through `QAccessibleAnnouncementEvent`. A tooltip is not dependably
-  read aloud, and this criterion is not satisfied by hoping one is — nothing here may be carried by
-  position or motion alone.
-
-**One sentence, three deliveries.** `Refusal.reason` is written once in `reveal.py` and never
-rephrased here; a second wording would be a second thing to keep true.
+**One sentence.** `Refusal.reason` is written once in `reveal.py`, and the box and the status bar
+show it unchanged.
 """
 
 from __future__ import annotations
@@ -61,26 +54,26 @@ from pathlib import Path
 from typing import Protocol
 
 from PySide6.QtCore import QObject, QPoint, Qt
-from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QAction
-from PySide6.QtWidgets import QAbstractItemView, QMenu, QToolTip
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import QAbstractItemView, QMenu, QMessageBox
 
 from tracks_and_trails.ui.reveal import Refusal, Spawner, Starter, open_file, reveal_file
 
 
-class TipShower(Protocol):
-    """Shows a transient message at a global position (`T-158`).
+class RefusalShower(Protocol):
+    """Tells the user why nothing opened (`T-346`). The window supplies one; see `FileActions`."""
 
-    `QToolTip.showText`'s shape, narrowed to the two arguments this uses, so a test can record
-    **where** a refusal was put and not only what it said.
-    """
-
-    def __call__(self, position: QPoint, text: str, /) -> None: ...
+    def __call__(self, refusal: Refusal, /) -> object: ...
 
 
 #: What the two actions are called. "Show in folder" rather than "Reveal": *reveal* is macOS's word
 #: for it, and this application does not run there (`REQUIREMENTS.md` §7).
 OPEN_TEXT = "&Open file"
 REVEAL_TEXT = "Show in &folder"
+
+#: The titles of the box that says why nothing opened (`T-346`).
+FILE_NOT_FOUND_TITLE = "File not found"
+COULD_NOT_OPEN_TITLE = "Could not open the file"
 
 #: How long a refusal stays in the status bar. Long enough to read a sentence, short enough that it
 #: does not become permanent furniture.
@@ -112,7 +105,7 @@ class FileActions(QObject):
         report: Callable[[str], None],
         run: Spawner | None = None,
         start: Starter | None = None,
-        show_tip: TipShower | None = None,
+        show_refusal: RefusalShower | None = None,
         platform: str = sys.platform,
         context_menu: bool = True,
         parent: QObject | None = None,
@@ -130,12 +123,12 @@ class FileActions(QObject):
         #: the Windows CI job would call the real `os.startfile` and launch a media player on a
         #: build agent — the same hazard `run` exists to prevent, on the branch that has no argv.
         self._start = start
-        #: Where a row-anchored refusal goes (`T-158`). Injected for the same reason `run` and
-        #: `start` are: without it a test can read `QToolTip.text()` but not the **position**,
-        #: and position is the entire claim this seam exists to support — a cursor-anchored
-        #: implementation says the right sentence in the wrong place and survives every
-        #: text-only assertion.
-        self._show_tip: TipShower = show_tip if show_tip is not None else QToolTip.showText
+        #: **How a refusal is shown** (`T-346`): a message box the user closes. The window passes
+        #: its own, which offers *Remove from queue* for a missing file; without one, a plain box.
+        #: **Not a bound method as the default**, which would be a reference cycle through this
+        #: object, and the suite's widget-lifetime check finds the table then reachable only through
+        #: that cycle (`T-289`'s hazard). `None` means the plain box, chosen when a refusal happens.
+        self._show_refusal = show_refusal
         #: Pinned by tests so the **Windows** route is exercised from Linux, for the reason
         #: `ui/reveal.py`'s module docstring gives. Without it, dropping the `start` seam below is
         #: invisible on any POSIX machine — a mutation doing exactly that survived until this
@@ -222,47 +215,23 @@ class FileActions(QObject):
         refusal = launch(Path(path), self._output_directory())
         if refusal is not None:
             self._report(refusal.reason)
-            self._say_at_the_row(refusal.reason)
+            if self._show_refusal is not None:
+                self._show_refusal(refusal)
+            else:
+                self._show_plain_box(refusal)
         return refusal
 
-    def _say_at_the_row(self, sentence: str) -> None:
-        """Put `sentence` where the user is looking, and where a screen reader will find it.
-
-        See the module docstring for why this exists beside the status-bar report rather than
-        instead of it (`T-158`).
-
-        **Anchored to the row, not to the cursor.** `QToolTip.showText` defaults to following the
-        pointer, which is wrong for the keyboard and overflow-menu routes — they arrive here with
-        no meaningful mouse position, and a message at the last place the mouse happened to rest
-        is worse than one in the status bar. The rect comes from the view's current index, so all
-        three routes put it in the same place: against the row that was acted on.
-
-        Degrades rather than guesses. An invalid index — no current row, which the keyboard route
-        can reach — leaves the tooltip out and the status bar and the announcement doing the work.
-        """
-        QAccessible.updateAccessibility(QAccessibleAnnouncementEvent(self._table, sentence))
-        anchor = self.row_anchor()
-        if anchor is None:
-            return
-        self._show_tip(anchor, sentence)
-
-    def row_anchor(self) -> QPoint | None:
-        """Where a row-anchored message belongs, in global coordinates, or `None`.
-
-        The left edge of the acted-on row, vertically centred: beside the text the user just
-        clicked rather than over it. `None` when there is no current row — which the keyboard
-        route can reach — leaving the status bar and the announcement to carry it.
-
-        Public so a test can assert the anchor **tracks the row**, which is the property that
-        separates this from `QToolTip`'s default of following the pointer.
-        """
-        index = self._table.currentIndex()
-        if not index.isValid():
-            return None
-        rect = self._table.visualRect(index)
-        if not rect.isValid():
-            return None
-        return self._table.viewport().mapToGlobal(QPoint(rect.left(), rect.center().y()))
+    def _show_plain_box(self, refusal: Refusal) -> QMessageBox:
+        """A message box saying why nothing opened, for a host that supplied no `show_refusal`."""
+        box = QMessageBox(self._table.window())
+        box.setObjectName("fileRefusalDialog")
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle(FILE_NOT_FOUND_TITLE if refusal.missing else COULD_NOT_OPEN_TITLE)
+        box.setText(refusal.reason)
+        box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        box.open()
+        return box
 
     def _selection_changed(self, *_: object) -> None:
         """Offer the actions only for a row that has a path (see the module docstring)."""

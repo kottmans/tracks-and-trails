@@ -14,6 +14,52 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-346 — The notice that a file is missing showed for a fraction of a second
+
+**Status:** **In Review** — reported by the maintainer on 2026-09-15 while trying the build from
+source: *Show in folder* on a deleted file showed a notice *"for a fraction of a second so you
+can't see it at all."* The maintainer chose a message box with *Remove from queue*, from three
+options (that; the same box with OK only; the status bar alone). Moves the candidate.
+**Owner:** Implementer
+**Priority:** High — a refusal nobody can read is `NFR-006`'s silent failure
+**Phase:** Phase 5 (blocks `T-328`)
+**Relevant context:** `T-158` (the tooltip, added because the status bar alone was not read);
+`T-086`, `REQ-021`, `SEC-001`; `UX-001` (removing never deletes a file)
+
+#### What was wrong
+
+`FileActions` reported a refusal in the status bar and as a tooltip anchored to the row. On KDE the
+tooltip was hidden as soon as the menu that triggered it closed, and as one long line it ran off the
+screen. The sentence also held an em dash.
+
+#### What changed
+
+- `Refusal.missing` marks a file that is no longer where it was recorded, and the sentence is now
+  *"clip.mp3 is no longer in /home/…/Downloads. It may have been moved, renamed or deleted."*
+- `FileActions` hands each refusal to a `show_refusal` notice, keeping the status-bar record; without
+  one it opens a plain box. The tooltip and its separate announcement are gone (a message box is read
+  by screen readers itself).
+- The window's notice is a box titled *File not found* (or *Could not open the file* for any other
+  refusal) with OK, and for a missing file **Remove from queue**, through `_remove_job`.
+
+#### Acceptance criteria
+
+- [x] A refusal is handed to the notice unchanged and kept in the status bar; with no notice a plain
+  box says why (`tests/ui/test_file_actions.py`); a missing file is marked (`tests/ui/test_reveal.py`)
+- [x] Through the real window: a missing file's box has the title, the sentence, and a Remove from
+  queue button that removes that job; a file outside the folder gets OK only
+  (`tests/ui/test_row_verb_wiring.py`)
+- [x] Mutations, each failing those tests: the refusal never shown (4, and 1 error); missing not marked
+  (4, and 1 error); Remove not wired (1); Remove on any refusal (1); the window's notice not installed
+  (1)
+- [x] **Found while building it:** storing the fallback as a bound method made a reference cycle
+  through `FileActions`, and the suite's widget-lifetime check caught a `QueueView` reachable only
+  through it; the notice is now chosen when a refusal happens
+- [ ] Seen by the maintainer: *Show in folder* on a deleted file shows the box, and Remove from queue
+  removes the row
+
+---
+
 ### T-345 — The retry offer opened under the window, and the chip did not say what its percentage was of
 
 **Status:** **In Review** — both reported by the maintainer on 2026-09-15 while trying `55dcf05` from
@@ -2158,6 +2204,43 @@ account for rather than one.
   its trigger found, not its symptom hidden. The one time this project reached for a retry the
   reviewer's instruction was explicit — *do not retry or xfail*
 - `T-056`, which is a different intermittent on a different platform and is `OPS-005`-downgraded
+
+---
+
+### T-347 — Show in folder leaves an already-open Dolphin window minimized on KDE Wayland
+
+**Status:** Proposed — **left for after `0.1.0` by the maintainer on 2026-09-15**, from two options
+(leave it and file a task; try to fix it now). Not release-blocking.
+**Owner:** Implementer
+**Priority:** Low — the file is selected in the window the user already has
+**Phase:** Phase 5 (after `0.1.0`)
+**Relevant context:** `T-086`, `ui/reveal.py` (`FileManager1.ShowItems` over `dbus-send`)
+
+#### What was found
+
+Tried by the maintainer on KDE Plasma (Wayland), Fedora 44, with a test window running the exact
+call the application makes:
+
+| Dolphin before the click | Result |
+|---|---|
+| closed | opens in front with the file selected |
+| open on another folder, or minimized | comes to the front |
+| **open on the download folder** | selects the file, **stays minimized on the taskbar** |
+
+`ShowItems` is sent with an empty startup id. On Wayland, raising an existing window needs an
+xdg-activation token from the application the user clicked in, and Qt gives Python no public way to
+request one.
+
+#### Scope
+
+Find a dependable way to pass an activation token (for example through the desktop portal's
+`OpenDirectory` with an `activation_token`, or a Wayland activation request), and measure the three
+cases above again.
+
+#### Acceptance criteria
+
+- [ ] The download folder already open: Dolphin comes to the front with the file selected
+- [ ] The other two cases unchanged
 
 ---
 

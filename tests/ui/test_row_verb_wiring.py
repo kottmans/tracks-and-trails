@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QMenu,
     QMessageBox,
+    QPushButton,
     QStyleOptionViewItem,
     QToolBar,
     QToolButton,
@@ -44,6 +45,7 @@ from tracks_and_trails.core.logging import job_log_path
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui import theme
+from tracks_and_trails.ui.file_actions import COULD_NOT_OPEN_TITLE, FILE_NOT_FOUND_TITLE
 from tracks_and_trails.ui.format_text import FORMAT_PREFIX
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT
 from tracks_and_trails.ui.log_view import DIAGNOSTICS_TEXT, DiagnosticsDialog
@@ -194,6 +196,73 @@ def test_a_rows_move_hands_over_the_whole_new_order(qapp: QApplication, tmp_path
     assert orders == [["job-2", "job-1", "job-3"]], (
         f"the row's ↑ produced {orders}, which is not job-2 moved one place up"
     )
+
+
+def _refusal_box(window: MainWindow) -> QMessageBox:
+    boxes = [
+        box for box in window.findChildren(QMessageBox) if box.objectName() == "fileRefusalDialog"
+    ]
+    assert len(boxes) == 1, f"expected one refusal box, found {len(boxes)}"
+    return boxes[0]
+
+
+def test_a_missing_file_opens_a_box_that_can_remove_the_row(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`T-346`, ruled by the maintainer: the notice was a tooltip KDE hid in a fraction of a second.
+
+    Now a box the user closes, titled *File not found*, saying where the file was expected, with
+    **Remove from queue** routed through the row's own removal.
+    """
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    removed: list[str] = []
+    job = replace(_job("job-1", 0, JobStatus.COMPLETED), output_path=str(downloads / "gone.mp3"))
+    window = _window_over(
+        [job], tmp_path, output_directory=downloads, on_remove_requested=removed.append
+    )
+    view = window.queue_view
+    assert view is not None
+    try:
+        view.trigger_verb("job-1", Verb.REVEAL)
+        box = _refusal_box(window)
+        assert box.windowTitle() == FILE_NOT_FOUND_TITLE
+        assert (
+            box.text()
+            == f"gone.mp3 is no longer in {downloads}. It may have been moved, renamed or deleted."
+        )
+        remove = box.findChild(QPushButton, "removeMissingButton")
+        assert remove is not None, "a missing file offered no way to remove its row"
+        remove.click()
+        assert removed == ["job-1"]
+    finally:
+        for each in window.findChildren(QMessageBox):
+            each.close()
+
+
+def test_a_refusal_that_is_not_a_missing_file_offers_only_ok(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """Only a missing file can be dealt with by removing the row; a file outside the download
+    folder is still there, and removing its row is not the answer to that."""
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    outside = tmp_path / "elsewhere.mp3"
+    outside.write_bytes(b"")
+    job = replace(_job("job-1", 0, JobStatus.COMPLETED), output_path=str(outside))
+    window = _window_over(
+        [job], tmp_path, output_directory=downloads, on_remove_requested=lambda _id: None
+    )
+    view = window.queue_view
+    assert view is not None
+    try:
+        view.trigger_verb("job-1", Verb.REVEAL)
+        box = _refusal_box(window)
+        assert box.windowTitle() == COULD_NOT_OPEN_TITLE
+        assert box.findChild(QPushButton, "removeMissingButton") is None
+    finally:
+        for each in window.findChildren(QMessageBox):
+            each.close()
 
 
 def test_a_rows_file_verb_goes_through_file_actions(qapp: QApplication, tmp_path: Path) -> None:
