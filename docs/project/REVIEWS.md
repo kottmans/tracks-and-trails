@@ -2,7 +2,7 @@
 
 **Purpose:** Navigation to canonical task and shared-scope review records.
 **Owner:** Reviewer; Coordinator / Integrator owns shared routing during a wave.
-**Last updated:** 2026-09-16
+**Last updated:** 2026-09-17
 **Update when:** A review record is introduced or its navigation changes.
 
 ## Current navigation
@@ -154,9 +154,9 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-333](reviews/T-333.md) | T-333, OPS-002 amendment; [installed-build disposition](reviews/T-333.md#2026-09-14--installed-build-observation-review) through 07082ac | 0 |
 | [T-334](reviews/T-334.md) | T-334, UX-006 amendment | 0 |
 | [T-337 / T-338 / T-335 session changes](reviews/T-337.md) | T-337, T-338, T-335, accompanying T-327 UI fixes and record consolidation; 08251df to 39dab46, corrections through 03c6745; [September 14 provenance correction](reviews/T-337.md#2026-09-14--correction-of-the-show-in-folder-attribution) | 0 |
-| [T-326 / T-332](reviews/T-326.md) | T-326, T-332; [published artifact attribution](reviews/T-326.md#2026-09-16--published-artifact-attribution), metadata checked at 1aa85e9 against 5b1bf97 evidence; published under maintainer waiver, no retroactive gate approval | 0 |
+| [T-326 / T-332](reviews/T-326.md) | T-326, T-332; [published candidate machine evidence](reviews/T-326.md#2026-09-17--published-candidate-machine-evidence), inspected at 13e36d4 for released 5b1bf97; machine results verified within recorded scope, human acceptance waived/unperformed | 0 |
 | [Windows manual session, 2026-09](reviews/windows-manual-session-2026-09.md) | T-327, the maintainer's pre-release Windows session; [independent record review](reviews/windows-manual-session-2026-09.md#2026-09-14--independent-review-of-the-session-record), 9791c7e to 5d3f37d; [correction re-review](reviews/windows-manual-session-2026-09.md#2026-09-14--focused-review-of-the-session-record-corrections) through 07082ac; accompanying T-322, T-333, T-335, T-337 and T-339 records | 0 |
-| [T-328](reviews/T-328.md) | T-328; [published README and release notes](reviews/T-328.md#2026-09-16--published-readme-and-release-notes), checked at 1aa85e9 against 0.1.0; page changes requested, T328-R5; acceptance waived for publication, T328-R4 still Open | 0 |
+| [T-328](reviews/T-328.md) | T-328; [page corrections and task-completion review](reviews/T-328.md#2026-09-17--page-corrections-and-task-completion-review), 9ad6913 to 13e36d4; pages Approved, R5–R8 Resolved; task Blocked on older-build update/page observation, R9; R4 remains waived for publication | 0 |
 | [T-340](reviews/T-340.md) | T-340; [Diagnostics implementation review](reviews/T-340.md#2026-09-14--diagnostics-implementation-review): implementation approved; task blocked on manual observation | 0 |
 | [T-341](reviews/T-341.md) | T-341; [default-location wording correction](reviews/T-341.md#2026-09-15--default-location-wording-correction), checked through ea49516; approved within the existing discovery boundary | 0 |
 | [T-342](reviews/T-342.md) | T-342, accompanying T-343 filing; dialog fitting at a988847, checked through ea49516; real Windows 125% observation pending | 0 |
