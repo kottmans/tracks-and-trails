@@ -37,9 +37,13 @@ application it composed and the window it is showing.
 
 ## The mutation campaign
 
-Seventeen mutations, each a defect the module's own words claim to prevent. **Control first**: the
-unmutated pair of suites passes (113 tests), so a broken instrument could not read as a clean
-sweep. **All seventeen were caught.**
+Eighteen mutations, each a defect the module's own words claim to prevent. **Control first**: the
+unmutated pair of suites passes (116 tests), so a broken instrument could not read as a clean
+sweep. **All eighteen were caught.**
+
+*(The first run of this campaign said the opposite and was wrong: the two suites were named by a
+path that does not exist, so `pytest` collected nothing, exited non-zero, and every mutation read
+as caught. The harness now runs the control first and refuses a run that collects nothing.)*
 
 | Mutation | Caught by |
 |---|---|
@@ -56,7 +60,8 @@ sweep. **All seventeen were caught.**
 | Qt's own type for the event name is not recognised | 2 |
 | The name as plain bytes is not recognised | 2 |
 | Anything at all counts as a Windows message | the run dies the same way |
-| The filter is installed on every platform | 1 |
+| The filter is installed on every platform | 3 |
+| The platform it reads by default is not the running one | 1 |
 | A second installation adds a second filter | 2 |
 | The filter is not a child of the window | 3 |
 | Composition never installs it | 1 |
@@ -89,6 +94,28 @@ exist. **They post the message Windows itself would post** and assert on what ha
    the test below could pass on a machine where the defect never existed.
 2. `test_the_taskbar_close_closes_the_dialog_and_the_application` — with the filter installed, the
    same message closes the dialog and the window.
+
+### First attempt, `270ce3a`: the job went red before the suite ran
+
+Run [`35264831884`](https://github.com/kottmans/tracks-and-trails/actions/runs/35264831884), the
+`windows desktop` job: **failed at *Types under the Windows platform***, so the desktop suite never
+started and no measurement came back.
+
+**What failed, and why it could not have passed:** `close_from_the_taskbar` branched on
+`sys.platform` inline. `mypy` narrows that, so *one* of the two runs always read a branch as dead
+code — `mypy src` on Linux called the Windows branch unreachable, and `mypy --platform win32`
+called `return None` unreachable. Writing it as the positive branch satisfied the Linux run, which
+is the one this machine can see, and that is exactly the check `--platform win32` exists to add.
+
+**The fix is the pattern `ui/reveal.py` already documents**: the platform is a parameter with
+`sys.platform` as its default. Both branches then typecheck under both runs, **and the off-Windows
+answer is asserted by the ordinary suite on any machine** rather than by a `skipif`. A test pins
+the default to `sys.platform`, because the parameter's whole production behaviour is that default.
+
+*(Recorded rather than quietly amended: the pushed commit's job is red in the history, and this is
+what it was.)*
+
+### The measurement
 
 **Not yet run at the time of writing.** The result goes here, with the run id, once the job has
 been through it, and `T-343`'s acceptance criterion is that table rather than this sentence.

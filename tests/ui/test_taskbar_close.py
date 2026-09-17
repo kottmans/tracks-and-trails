@@ -12,6 +12,7 @@ Qt's own filter chain — is in `tests/ui/test_windows_desktop.py` and only runs
 
 from __future__ import annotations
 
+import inspect
 import sys
 from collections.abc import Callable, Iterator
 
@@ -309,41 +310,53 @@ def test_the_close_reaches_the_windows_own_close_event(qapp: QApplication) -> No
 # --- installation ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="the Windows half is the installation itself")
-def test_nothing_is_installed_off_windows(qapp: QApplication, window: QWidget) -> None:
+#: Platforms that are not Windows, named rather than inferred, so this file asserts the off-Windows
+#: answer on Windows too. `reveal.py`'s reason for taking the platform as a parameter at all.
+NOT_WINDOWS = ("linux", "darwin", "freebsd13")
+
+
+@pytest.mark.parametrize("platform", NOT_WINDOWS)
+def test_nothing_is_installed_off_windows(
+    qapp: QApplication, window: QWidget, platform: str
+) -> None:
     """The gesture is Windows-only by the ruling, and a native filter is called for every event.
 
     On xcb that is every mouse move, so the cost is only paid where the behaviour exists.
     """
-    assert close_from_the_taskbar(qapp, window) is None
+    assert close_from_the_taskbar(qapp, window, platform) is None
     assert window.findChild(TaskbarClose, FILTER_NAME) is None
 
 
+def test_the_platform_it_reads_by_default_is_the_running_one() -> None:
+    """The parameter exists to be injected; its default is what production depends on.
+
+    A default of anything else would install nothing on Windows, or install everywhere, and every
+    other test here passes the platform explicitly and would not notice.
+    """
+    default = inspect.signature(close_from_the_taskbar).parameters["platform"].default
+
+    assert default == sys.platform
+
+
 def test_it_is_installed_once_however_often_composition_asks(
-    qapp: QApplication, window: QWidget, monkeypatch: pytest.MonkeyPatch
+    qapp: QApplication, window: QWidget
 ) -> None:
     """Composition asks once, but `present` is called by tests as well as by `run`."""
-    monkeypatch.setattr(sys, "platform", "win32")
-
-    first = close_from_the_taskbar(qapp, window)
-    second = close_from_the_taskbar(qapp, window)
+    first = close_from_the_taskbar(qapp, window, "win32")
+    second = close_from_the_taskbar(qapp, window, "win32")
 
     assert first is not None
     assert second is first, "a second installation added a second filter"
     assert window.findChild(TaskbarClose, FILTER_NAME) is first
 
 
-def test_the_filter_belongs_to_the_window_it_serves(
-    qapp: QApplication, window: QWidget, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_filter_belongs_to_the_window_it_serves(qapp: QApplication, window: QWidget) -> None:
     """Qt removes a native event filter when it is destroyed, and this is what destroys it.
 
     A filter that outlived its window would be called for every message of every window after
     it, holding a pointer into freed memory.
     """
-    monkeypatch.setattr(sys, "platform", "win32")
-
-    closer = close_from_the_taskbar(qapp, window)
+    closer = close_from_the_taskbar(qapp, window, "win32")
 
     assert closer is not None
     assert closer.parent() is window

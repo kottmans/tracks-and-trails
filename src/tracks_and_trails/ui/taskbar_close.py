@@ -223,10 +223,18 @@ def read_message(address: int) -> NativeMessage:
     )
 
 
-def close_from_the_taskbar(app: QApplication, owner: QWidget) -> TaskbarClose | None:
+def close_from_the_taskbar(
+    app: QApplication, owner: QWidget, platform: str = sys.platform
+) -> TaskbarClose | None:
     """Install `TaskbarClose` for as long as `owner` lives, once per owner. Windows only.
 
     Returns `None` off Windows, where nothing is installed and the gesture does not exist.
+
+    **`platform` is a parameter for `reveal.py`'s reason**, and it is load-bearing here twice: the
+    ordinary suite asserts both answers on any machine, and `mypy --platform win32` typechecks
+    both branches instead of declaring one of them dead. Read inline, `sys.platform` made whichever
+    branch the checker had narrowed away an *unreachable statement* error — on Linux for one form
+    of the test and on Windows for the other, so neither spelling passed both runs.
 
     **It is a child of `owner`, and that is what removes it.** Qt documents
     `~QAbstractNativeEventFilter` as *"Destroys the native event filter. This automatically removes
@@ -235,12 +243,11 @@ def close_from_the_taskbar(app: QApplication, owner: QWidget) -> TaskbarClose | 
     Nothing is connected to `destroyed` for that: a callable holding this filter, held in turn by
     the window, is the Python reference cycle around a widget that `T-289` is about.
     """
-    if sys.platform == "win32":
-        return installed_on(app, owner)
-    # Off Windows the gesture does not exist, and a filter called for every xcb event would cost
-    # something for nothing. Written as the positive branch because that is the form the type
-    # checker reads as platform-conditional rather than as dead code.
-    return None
+    if platform != "win32":
+        # The gesture does not exist elsewhere, and a filter called for every xcb event would cost
+        # something for nothing.
+        return None
+    return installed_on(app, owner)
 
 
 def installed_on(app: QApplication, owner: QWidget) -> TaskbarClose:
