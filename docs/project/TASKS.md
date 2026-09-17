@@ -963,7 +963,12 @@ incident it cites).
 
 ### T-328 — The first release
 
-**Status:** **In Progress** — **candidate `3c011b8` drafted and reviewed, changes requested** (2026-09-14, [record](reviews/T-328.md)): `T328-R3` (Critical, a stale menu's *Retry* re-queued a DRM failure) is corrected below and needs a new candidate; `T328-R4` (High, the nine `REQUIREMENTS.md` §11 criteria not walked by hand on both platforms) is open. **`T-340` and `T-341` (2026-09-14) move the candidate again**: §11 criterion 6's copyable log could not be opened from the application, and the maintainer chose to fix it in `0.1.0`; and the AppImage could not download on Fedora. *(Was Proposed:)* **scope 1's release commit made 2026-09-14** (`f22b2c7`, approved for release preparation at `d0cfcf2`; `T328-R1` and `T328-R2` corrected in the commit after it, which is the one to tag, since the draft's body is read from the tagged `CHANGELOG.md`): `__version__ = "0.1.0"`, `CHANGELOG.md` created with the `0.1.0` section the draft release will carry, `SECURITY.md` §Supported versions filled. It waits for the maintainer's `v0.1.0` tag. Filed 2026-09-11 with the Phase 5 plan. **This is the phase exit.**
+**Status:** **In Review** — **`0.1.0` is published** (2026-09-16, tag `v0.1.0` at `5b1bf97`), with
+`TESTING.md` §8 item 6 waived by the maintainer; `main` is `0.1.1.dev0`. The dated entries below hold
+the candidates, the corrections each one bought, the ruling that published without the §11 walk, and
+the review's findings on the published pages (`T328-R5` to `R8`, corrected in `4b54cfe`). **What is
+left is the reviewer's**: the release review's own verdict on this outcome. *(Was Proposed:)* filed
+2026-09-11 with the Phase 5 plan. **This is the phase exit.**
 **Owner:** Reviewer runs the release review; Maintainer tags and publishes
 **Priority:** High
 **Phase:** Phase 5
@@ -1116,6 +1121,13 @@ make; this entry is the record of it.
   **Start**, in the shipped labels.
 
 The release notes were regenerated from `CHANGELOG.md` and republished.
+
+#### 2026-09-17 — the published build's update check
+
+**The maintainer ran it** on the released Linux AppImage: *"the update check works."* `0.1.0` is the
+newest release, so what it had to say is that the application is up to date. **Their words are the
+record**; the exact sentence on screen was not reported, and no screenshot was kept. This is the
+task's last scope item, the first check made against a real published release rather than a fixture.
 
 #### Scope
 
