@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-09-16
+**Last updated:** 2026-09-17
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -10,7 +10,10 @@
 **`0.1.0` is published** (2026-09-16), from tag `v0.1.0` at `5b1bf97`: the Linux AppImage and the
 Windows installer, with `SHA256SUMS`, on the
 [release page](https://github.com/kottmans/tracks-and-trails/releases/tag/v0.1.0). `main` is now
-`0.1.1.dev0`. Tracks & Trails also still runs from source on Linux and Windows. Phases 0–3 have exited. **Phase 4's exit
+`0.1.1.dev0`. Tracks & Trails also still runs from source on Linux and Windows.
+
+**Phases 0–3 and Phase 5 have exited**; Phase 5's exit is recorded criterion by criterion, one of
+them unmet by ruling ([table](IMPLEMENTATION_PLAN.md#phase-5-exit-2026-09-17)). **Phase 4's exit
 review was last Blocked only on `T329-R2`'s Windows mutation evidence, which the 2026-09-13 review
 resolved**; its sign-off is the reviewer's to record ([record](reviews/phase-4-exit.md)).
 [README](../../README.md) describes available features; the
@@ -22,29 +25,20 @@ the first release**. Nothing user-facing may claim parity with yt-dlp until 4.5 
 
 ## Active work
 
-*Refreshed 2026-09-14. The previous snapshot is recoverable from `39dab46`; its facts live in the
+*Refreshed 2026-09-17. The previous snapshot is recoverable from `f67efec`; its facts live in the
 task and review records it summarised.*
 
-- **`0.1.0` went out without `TESTING.md` §8 item 6**, by the maintainer's ruling on 2026-09-16:
-  nobody walked `REQUIREMENTS.md` §11's nine criteria on the artifacts, on either platform, and the
-  release review had not granted approval. `T-328`'s dated entry records the ruling and what the
-  machine checks did cover; **`T328-R4` stays open, waived for this release**.
+- **Phase 5 has exited** ([the criterion table](IMPLEMENTATION_PLAN.md#phase-5-exit-2026-09-17)),
+  with `T-328` approved with follow-ups and `0.1.0` published. **One exit criterion is unmet by
+  ruling:** `REQUIREMENTS.md` §11's acceptance criteria were never walked on the artifacts, on
+  either platform; the maintainer waived that on 2026-09-16 and `T328-R4` stays open.
 - **Every machine check passed on the published bytes** ([evidence](evidence/2026-09-14-T326-release-candidate-0.1.0.md)):
   CI, both network suites, the Ubuntu and Fedora clean machines, a download on the maintainer's
-  Fedora host, Windows Sandbox, and the canary.
-- **Next:** Phase 4.5 (option coverage), which by the same ruling also carries anything the walk
-  would have found, plus `T-343` (the taskbar close), `T-347` (Dolphin on KDE Wayland) and `T-339`
-  (Narrator). `T-328`'s last scope item is done, both branches (`T328-R9`): on 2026-09-17 the maintainer ran the
-  released build's check (up to date) and a `0.1.0.dev0` build, which found `0.1.0` and opened its
-  release page from the notice. What is left on `T-328` is the reviewer's verdict.
-- **The four Windows-only diagnostic tasks have their dispositions** (`T-328`, maintainer ruling
-  2026-09-13): `T-074` is held as a potential task (Proposed — Phase 5), and `T-092`, `T-068` and
-  `T-056` are cancelled with what closing gives up recorded. `T-212`'s checklist run was
-  cancelled by the maintainer on 2026-09-13; §8 item 6 moved to `T-328`'s release review.
-- **No automatic orphan detection runs on either platform**, since 2026-09-08. `T-302` owns
-  designing detection that survives hosted runners; `tools/orphan_scan.py` runs by hand meanwhile.
-- **Four UI tests fail one point above the default font** (`T-301`). Contained test debt; reproduce
-  with `tools/bigger_font_plugin.py`.
+  Fedora host, Windows Sandbox, and the canary. `T-326` waits on the reviewer's verdict for that
+  replacement-candidate evidence.
+- **Phase 4.5 (option coverage) is next**, and carries the waived walk's residue: `T-340`, `T-342`
+  and `T-344`'s human observations, `T-339` (Narrator), `T-343` (the taskbar close), `T-347`
+  (Dolphin on KDE Wayland) and `T-348` (updating from inside the application).
 
 ## Verification
 

@@ -993,6 +993,28 @@ them outlive the release.
 - All MVP acceptance criteria (`REQUIREMENTS.md` §11) pass on both platforms
 - Release review completed and recorded
 
+### Phase 5 exit, 2026-09-17
+
+**`0.1.0` is published** (tag `v0.1.0` at `5b1bf97`), `T-328` is approved with follow-ups
+([record](reviews/T-328.md)), and `main` is `0.1.1.dev0`. Criterion by criterion:
+
+| Exit criterion | State |
+|---|---|
+| A clean Windows machine with no Python installs and runs it | **Met.** Windows Sandbox on the published installer ([`windows-0.1.0.md`](evidence/windows-0.1.0.md)) |
+| A clean Linux machine installs and runs it | **Met**, twice: `ubuntu:24.04` and `fedora:44` ([`linux-0.1.0.md`](evidence/linux-0.1.0.md), [`linux-fedora-0.1.0.md`](evidence/linux-fedora-0.1.0.md)) |
+| Installer behaviour verified on the runner (`T-039`, `OPS-004`) | **Met** — silent install, placement, launch, uninstall and removal, on the published installer |
+| The Windows manual verification session (§8 item 15) | **Met for what it covers** (`T-327`, approved). **Narrator was deferred** by the maintainer on 2026-09-14 (`T-339`) |
+| Qt dynamically linked in every artifact (`NFR-009`) | **Met** — `artifact_gates.py` on both published artifacts, release run `35021277805` |
+| The full suite and the release gate pass on both platforms | **Met** — CI `35021004959` at `5b1bf97`; canary `35021322867` |
+| Cold start under 3 s on the reference machine (`NFR-002`) | **Met on Linux; Windows takes `REL-008`'s exception** for `0.1.0`, which gives Windows its own number rather than `NFR-002`'s |
+| **All MVP acceptance criteria (`REQUIREMENTS.md` §11) pass on both platforms** | **NOT MET, and the release went out anyway.** The maintainer waived the walk on 2026-09-16 (`T-328`'s dated entry): nobody walked the nine criteria on the artifacts, on either platform. `T328-R4` stays open. What it would have found is assigned to Phase 4.5 |
+| Release review completed and recorded | **Met** ([`reviews/T-328.md`](reviews/T-328.md)) |
+
+**So the phase exits with one criterion unmet by ruling rather than by evidence.** That is recorded
+here rather than folded into the others, because a later reader counting exits would otherwise read
+this one as complete. Phase 4.5 carries the walk's residue, `T-339` (Narrator), `T-340`, `T-342` and
+`T-344`'s human observations, `T-343`, `T-347` and `T-348`.
+
 ---
 
 ## Deferred beyond Phase 5

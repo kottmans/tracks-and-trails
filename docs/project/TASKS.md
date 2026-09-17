@@ -14,759 +14,6 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
-### T-328 — The first release
-
-**Status:** **In Review** — **`0.1.0` is published** (2026-09-16, tag `v0.1.0` at `5b1bf97`), with
-`TESTING.md` §8 item 6 waived by the maintainer; `main` is `0.1.1.dev0`. The dated entries below hold
-the candidates, the corrections each one bought, the ruling that published without the §11 walk, and
-the review's findings on the published pages (`T328-R5` to `R8`, corrected in `4b54cfe`). **What is
-left is the reviewer's**: the release review's own verdict on this outcome. *(Was Proposed:)* filed
-2026-09-11 with the Phase 5 plan. **This is the phase exit.**
-**Owner:** Reviewer runs the release review; Maintainer tags and publishes
-**Priority:** High
-**Phase:** Phase 5
-**Depends on:** every task above, `T-039` *(and `T-212`, cancelled 2026-09-13)*
-**Relevant context:** `docs/RELEASE.md`'s release review; `TESTING.md` §8 in full; §14
-(one initial review plus one focused pass, and *"a red canary is not a reason to skip the bump"*);
-`DOC-002` (`CHANGELOG.md` at the first tag); `IMPLEMENTATION_PLAN.md` §Phase 5 exit criteria;
-§Phase 4.5's resequencing note (**no parity claim**)
-**Affected surfaces:** a release review record; `CHANGELOG.md`; `SECURITY.md` §Supported
-versions; the tag `v0.1.0`; the GitHub Release
-**Risk:** Medium — the first release is the one with no previous release to compare against, so
-every gate is being exercised for the first time at once
-
-#### 2026-09-14 — `T328-R3`: a Retry left open in a menu re-queued a DRM failure
-
-**Found by the release review, reproduced through the real window and manager.**
-
-- **How:** a row's context menu is non-modal, so a menu opened on a network failure stayed open while
-  the automatic retry ran and failed again as `DRM_PROTECTED`. Its *Retry* then called
-  `DownloadManager.retry`, which re-queued any FAILED job without asking `is_retryable`, and a
-  download was admitted.
-- **My earlier record was wrong:** the candidate evidence called this *"unreachable from the UI
-  today"* and proposed it for `0.1.1`. I had checked which routes *offer* Retry, not whether an
-  offer could outlive the state it was made for.
-- **Ruling:** Critical under `SEC-001`, and deferral was not approved.
-
-**Correction, two guards:**
-
-1. **The manager is the boundary.** `_may_run_again(job)` allows a FAILED job only when its kind is
-   retryable (or unrecorded, as before), and a CANCELLED job for *Queue again*. **It is asked when the
-   write runs**, on the job as it is then, not only when `retry` is called, so a retry queued behind
-   other writes cannot re-queue a failure that changed meanwhile.
-2. **The view rechecks a run-again verb against the row as it is now.** `QueueView` routes *Retry*,
-   *Start again* or *Queue again* only if the row still offers it, so the old menu's press never
-   reaches composition.
-
-**Tests:**
-
-- `test_manager.py`:
-  - a retry of `DRM_PROTECTED` and of `CANCELLED` failures writes nothing and admits nothing;
-  - a failure that became `DRM_PROTECTED` between `retry` and its write is refused;
-  - a network failure still queues and is admitted (positive control).
-- `test_row_verb_wiring.py`, the review's reproduction as regressions:
-  - the stale menu's *Retry* through the real manager leaves the job FAILED with no admission;
-  - the view does not route it to composition's callback.
-
-**Mutations:**
-
-- removing the write-time check fails the changed-meanwhile test;
-- removing the view's recheck fails the view test;
-- removing both manager checks and the recheck fails all five;
-- **removing only the check at the top of `retry` fails nothing**, because the write-time check still
-  refuses. That one is an early exit, not the guard.
-
-**Other manual retry routes audited:**
-
-- a playlist's *Retry failed* already rechecks each member (`test_a_stale_group_action_never_routes_retry_for_drm`);
-- the detail pane and the startup offer reach the manager, which now refuses;
-- Add URLs' *Retry failed* re-reads staged links, which are not jobs and cannot be committed as a DRM
-  failure, so no download is admitted by it.
-
-**The candidate changes**, so `T-326`'s machine checks and the release run are owed again on the
-new commit; the evidence for `3c011b8` stays as history.
-
-**`T326-R5`** (Low, in the same change):
-`test_a_retry_uses_the_stored_request_not_the_current_defaults` built a changed request it never
-used. Renamed to `test_a_stored_request_reads_back_exactly_as_it_was_queued`, with a docstring
-claiming only persistence and pointing at the composed settings-freeze test.
-
-#### 2026-09-14 — `T328-R3`, second pass: two more ways DRM was run again
-
-**Found by the focused review of `93c7357`, both reproduced with real workers.** The audit above
-was incomplete, and its last bullet was wrong: *not a job* is true of a staged link, but `SEC-001`
-says DRM is never retried, and reading it again under a new staged job is that retry.
-
-1. **An automatic retry outlived the attempt that superseded it.** A `NETWORK` failure planned a
-   retry; a manual retry before it was due failed `DRM_PROTECTED`; the tick, which asked only
-   whether the job was `FAILED`, ran it a third time unasked and spent an automatic attempt.
-   **Corrected in the manager:** a manual retry, and every session that starts, drops the job's
-   plan (`_drop_planned_retry`); and each plan records the failure it was made for
-   (`_retry_for`), which the write step requires the job still to carry (`_automatic_retry_of`).
-2. **Add URLs read a DRM line again**, from the line's *Read this URL again* and from *Retry the
-   ones that failed*. **Corrected in the dialog:** a failed line keeps its `ErrorKind`
-   (`Row.error_kind`), and `Row.may_read_again` asks `is_retryable`. The entry is offered only
-   then, is asked again when chosen, the bulk button reads only those lines and is enabled only
-   when there are some.
-
-**Tests:**
-
-- `test_manager.py`, real workers: `NETWORK`, manual retry, then each of `DRM_PROTECTED`,
-  `UNSUPPORTED_URL`, `AUTH_REQUIRED`, `EXTRACTOR_ERROR` and `DISK`, with the tick driven past the
-  old deadline. Workers run are counted from a file each writes; no automatic attempt is spent,
-  and the manager is idle.
-- `test_manager.py`: a plan for `NETWORK`, and one for a transient read, whose stored failure turns
-  `DRM_PROTECTED` when the write step reads it, starts nothing; unchanged, both still re-queue and
-  start (positive controls).
-- `test_add_dialog.py`, real workers: a DRM line offers no entry, the button is disabled, and both
-  routes called anyway read nothing; a menu opened for a retryable failure and pressed after the
-  line failed as DRM reads nothing; a mixed batch's button reads the retryable line again under a
-  new job and leaves the DRM line alone.
-
-**Mutations,** each against those tests:
-
-- dropping neither plan (the manual-retry call and the session-start call both removed): all five
-  real-worker tests fail. **Either call alone survives**, because the other still retires the plan;
-- no failure-kind check in the tick's write: 2 fail;
-- the entry offered on any failure: 1; the entry not asked when chosen: 2; the bulk button reading
-  every failed line: 2; the button enabled for any failure: 1; the kind not recorded: 3.
-
-**Still true of the queue path:** the first pass's corrections stand, and the review confirmed them.
-**No DRM service was contacted**; every DRM failure here is reported by a test worker.
-
-#### 2026-09-16 — the maintainer published without the §11 walk
-
-**Ruled by the maintainer**, asked to do the acceptance walk on the `5b1bf97` draft: *"lets go ahead
-and release it as is, there are several hundred people already using it and i know it works. Any
-remaining issues we'll fix as part of phase 4.5."*
-
-So `0.1.0` is published with `TESTING.md` §8 **item 6 not performed**: nobody walked
-`REQUIREMENTS.md` §11's nine criteria on the release artifacts, on either platform. The same goes
-for the sheet's later checks (processing progress, the chip, the retry offer, the missing-file box,
-and the Windows 125% dialogs), and for item 8's cancellation sitting, whose only record is the
-maintainer's answers on the `3c011b8` drafts. **`T328-R4` stays open** and is not satisfied by this;
-it is waived for this release.
-
-**What did cover the artifacts:** every machine check in `T-326`'s evidence, on the published bytes.
-**What the reviewer said:** the release review had not granted release approval, which it says
-awaits that evidence and the walk. The maintainer released on their own judgement, which is theirs to
-make; this entry is the record of it.
-
-**Owed to Phase 4.5**, by the same ruling: anything the walk would have found, plus `T-343`
-(the taskbar close), `T-347` (Dolphin's window on KDE Wayland), and `T-339` (Narrator).
-
-#### 2026-09-16 — `T328-R5` to `R8`: what the published pages told a new user
-
-**Found by review of the published README and release notes.**
-
-- **`T328-R5` (Medium, blocking):** the README told installed Windows users to run
-  `tracks-and-trails.exe --help`, and promised it prints the log's path. The release build is
-  windowed (`packaging/tracks-and-trails.spec`, `console=not RELEASE_BUILD`), so it prints nothing
-  there. The section now says the options print only from the Linux AppImage or a source install,
-  points at the profile table for the log, and at **Help → About** for the version.
-- **`T328-R6`:** neither page named the two known desktop limitations. Both now carry them, with
-  what to do: close the dialog before closing from the Windows taskbar (`T-343`), and click Dolphin
-  in the taskbar when *Show in folder* leaves it minimized (`T-347`).
-- **`T328-R7`:** the source instructions clone `main`, which is `0.1.1.dev0`. They now say so and
-  point at the downloads for `0.1.0`.
-- **`T328-R8`:** the README had no first-download sequence, and *"one-click downloads"* did not say
-  the queue starts stopped (`UX-006`). *Your first download* now walks + Add URLs, Add to queue and
-  **Start**, in the shipped labels.
-
-The release notes were regenerated from `CHANGELOG.md` and republished.
-
-#### 2026-09-17 — the update route the criterion names, on an older build
-
-**`T328-R9`** found the first report covered the wrong branch: the released `0.1.0` has nothing
-newer to find, so it exercised *up to date*, while the criterion asks for `0.1.0.dev0` discovering
-`0.1.0` and **Open Download Page** opening it.
-
-**Run on the build the criterion names.** A worktree at `5d3f37d`, the commit before the release
-commit, reports `0.1.0.dev0`; it was run from the shared virtualenv with `PYTHONPATH` at that
-worktree's `src`, so the application under it is that build. `is_newer("0.1.0", "0.1.0.dev0")` is
-`True`, checked first.
-
-**The maintainer's report, both halves:** *"yes, there is a notification about a newer version being
-available"*, and, asked whether **Open Download Page** opens the release page, *"it does."*
-
-**Their words are the record.** No screenshot was kept and the sentences on screen were not
-transcribed, so what is established is the route — an older build finds the published release and
-its button opens that release's page — not the exact wording. The check reached GitHub's real API
-and the real release.
-
-#### 2026-09-17 — the released build's own check (`0.1.0`, the other branch)
-
-**The maintainer ran it** on the released Linux AppImage: *"the update check works."* `0.1.0` is the
-newest release, so what it had to say is that the application is up to date. `T328-R9` is why this
-is recorded as one branch of the criterion rather than as the whole of it. **Their words are the
-record**; the exact sentence on screen was not reported, and no screenshot was kept. This is the
-task's last scope item's other half: the released build asking about the release it is.
-
-#### Scope
-
-1. **Freeze the candidate**: the release commit sets `__version__ = "0.1.0"`, creates
-   `CHANGELOG.md` with a `0.1.0` section, fills `SECURITY.md` §Supported versions, and is tagged
-   `v0.1.0`. `T-324` drafts the release.
-2. **The release review**, per `docs/RELEASE.md`: `TESTING.md` §8 item by item, on both
-   platforms, each with its evidence — `T-323`'s gates, `T-325`'s numbers, `T-326`'s runs,
-   `T-318`'s clean-machine files, `T-327`'s session — and **§8 item 6, the `REQUIREMENTS.md` §11
-   acceptance criteria verified by hand and recorded here**, since `T-212` was cancelled
-   2026-09-13. Recorded in a review record
-   indexed by `REVIEWS.md`. Its verdict is the phase's.
-3. **Publish**: the draft becomes public by the maintainer's hand. The README's install section
-   goes live in the same push — and, **by the maintainer's ruling of 2026-09-13**, it says the
-   AppImage runs as it is, and that a menu entry comes from AppImageLauncher or Gear Lever or from
-   the two lines it gives. The `.desktop` inside the bundle points inside the bundle, so it cannot
-   serve as one (`T-321`).
-4. **Reopen `main`**: `__version__` bumps to `0.1.1.dev0`; `IMPLEMENTATION_PLAN.md` marks Phase 5
-   exited and Phase 4.5 as next; `STATUS.md` says there is a release.
-
-**What the release notes must not say**: that this application reaches everything yt-dlp does.
-`REQ-030` is unmet by design until Phase 4.5, and `REQ-031`'s escape hatch is the first thing
-scheduled there. The notes say what *is* covered, and that the rest is coming as an update.
-
-#### Acceptance criteria
-
-- Every §8 item has evidence in the review record, or is marked `N/A` with the reason (item 5,
-  item 10a) — none marked passed on a green CI run alone
-- The published release carries both artifacts, `SHA256SUMS`, and notes that make no parity claim
-- **Once published, *Help → Check for Updates* on a `0.1.0.dev0` build reports `0.1.0` as newer and
-  *Open Download Page* opens that release's page** (`REL-009`, carried from `T-338`'s approval: until
-  a release exists only GitHub's *no release yet* answer has been seen live)
-- `IMPLEMENTATION_PLAN.md` §Phase 5 records the exit with the review's verdict and date
-- `OPS-005`'s rule is applied to the four Windows-only diagnostic tasks reassigned here
-  (`T-074`, `T-092`, `T-068`, `T-056`): each gets an explicit disposition — carried or closed —
-  rather than silently outliving the release they were said to matter for
-  - *Done 2026-09-13, by the maintainer, each taking the recommendation:* `T-074` held as a
-    potential task (Proposed — Phase 5); `T-092`, `T-068` and `T-056` cancelled, each recording
-    what closing gives up, in `COMPLETED_TASKS.md`
-
-#### Out of scope
-
-- Anything Phase 4.5 owns. The release ships without it, on the maintainer's 2026-09-10 ruling
-
----
-
-### T-346 — The notice that a file is missing showed for a fraction of a second
-
-**Status:** **In Review** — reported by the maintainer on 2026-09-15 while trying the build from
-source: *Show in folder* on a deleted file showed a notice *"for a fraction of a second so you
-can't see it at all."* The maintainer chose a message box with *Remove from queue*, from three
-options (that; the same box with OK only; the status bar alone). Moves the candidate.
-**Owner:** Implementer
-**Priority:** High — a refusal nobody can read is `NFR-006`'s silent failure
-**Phase:** Phase 5 (blocks `T-328`)
-**Relevant context:** `T-158` (the tooltip, added because the status bar alone was not read);
-`T-086`, `REQ-021`, `SEC-001`; `UX-001` (removing never deletes a file)
-
-#### What was wrong
-
-`FileActions` reported a refusal in the status bar and as a tooltip anchored to the row. On KDE the
-tooltip was hidden as soon as the menu that triggered it closed, and as one long line it ran off the
-screen. The sentence also held an em dash.
-
-#### What changed
-
-- `Refusal.missing` marks a file that is no longer where it was recorded, and the sentence is now
-  *"clip.mp3 is no longer in /home/…/Downloads. It may have been moved, renamed or deleted."*
-- `FileActions` hands each refusal to a `show_refusal` notice, keeping the status-bar record; without
-  one it opens a plain box. The tooltip and its separate announcement are gone (a message box is read
-  by screen readers itself).
-- The window's notice is a box titled *File not found* (or *Could not open the file* for any other
-  refusal) with OK, and for a missing file **Remove from queue**, through `_remove_job`.
-
-#### Acceptance criteria
-
-- [x] A refusal is handed to the notice unchanged and kept in the status bar; with no notice a plain
-  box says why (`tests/ui/test_file_actions.py`); a missing file is marked (`tests/ui/test_reveal.py`)
-- [x] Through the real window: a missing file's box has the title, the sentence, and a Remove from
-  queue button that removes that job; a file outside the folder gets OK only
-  (`tests/ui/test_row_verb_wiring.py`)
-- [x] Mutations, each failing those tests: the refusal never shown (4, and 1 error); missing not marked
-  (4, and 1 error); Remove not wired (1); Remove on any refusal (1); the window's notice not installed
-  (1)
-- [x] **Found while building it:** storing the fallback as a bound method made a reference cycle
-  through `FileActions`, and the suite's widget-lifetime check caught a `QueueView` reachable only
-  through it; the notice is now chosen when a refusal happens
-- [ ] Seen by the maintainer: *Show in folder* on a deleted file shows the box, and Remove from queue
-  removes the row
-
-#### 2026-09-15 — `T346-R1`: the boxes read a path as markup
-
-**Found by review** (Medium, blocking): both notice boxes used `QMessageBox`'s default text mode, so
-a download folder named `<style>downloads`, a valid Linux name, cut the sentence and what a screen
-reader heard at the folder. The tests asserted `box.text()`, which still returns the original string.
-
-**Corrected, and the property rather than the two instances:** every box that shows a path is set to
-plain text: the window's missing-file box, the plain fallback box, the settings-problem box, and the
-two startup refusals in `app.py`, which used `QMessageBox.critical` and `information` and now go
-through `_refuse_to_start`. The About box keeps rich text on purpose and shows no outside text; the
-other boxes show counts only.
-
-**Tests** (`tests/ui/test_plain_text_notices.py`) read the label's **accessible text**, and a positive
-control proves that reading loses the folder in the default mode. Removing each plain-text setting
-fails its test. The settings-problem box is **not** eaten in the default mode today (Qt guesses
-markup from the first line, which there is fixed text), so its test asserts the format directly; a
-rendering assertion alone survived that mutation.
-
----
-
-### T-345 — The retry offer opened under the window, and the chip did not say what its percentage was of
-
-**Status:** **In Review** — both reported by the maintainer on 2026-09-15 while trying `55dcf05` from
-source. Moves the candidate.
-**Owner:** Implementer
-**Priority:** High — the first made the application look unresponsive at start
-**Phase:** Phase 5 (blocks `T-328`)
-**Relevant context:** `T-308` (the same defect for the settings warning); `T-082` (the offer);
-`UX-005` §4 and its 2026-09-15 amendment; `T-344`
-
-#### What was wrong
-
-1. **The offer to retry interrupted downloads opened under the window.** After killing the
-   application during a conversion, the next start recovered the job as failed and `compose()`
-   opened the window-modal offer before `run()` showed the window, so it was stacked beneath the
-   window it blocked. `T-308` had moved the settings warning to `present()` for exactly this, and
-   the offer beside it was not moved.
-2. **The chip read only the percentage** (*86%*), and the stage on the second line is cut off on a
-   narrow window, so nothing said whether that was the download or the conversion.
-
-#### What changed
-
-- `Composition.interrupted` carries the recovered ids; `present()` offers them after `show()` and
-  after the settings problem. The offer's text loses an em dash (plain UI copy).
-- The chip reads *what, then how far*: `STEP_CHIP_TEXT` by step, `STAGE_CHIP_TEXT` by stage
-  (*Downloading 62%*, *Converting 86%*, *Joining 40%*), or the word alone for a step without a
-  percentage.
-
-#### Acceptance criteria
-
-- [x] `compose()` opens no offer and carries the ids; `present()` opens it with the window already
-  visible (`tests/integration/test_composition.py`); the phase-exit startup script shows the window
-  before offering
-- [x] The chip for a download, a join with a percentage, a named step without one, and an unnamed step;
-  every step with words has a chip word (`tests/ui/test_processing_progress.py`,
-  `tests/ui/test_queue_view.py`)
-- [x] Mutations, each failing those tests: the percentage alone (4); the stage word ignored (1); the
-  step word ignored (3); the offer never made (1); nothing carried from `compose()` (1)
-- [ ] Seen by the maintainer: after killing the application mid-download, the offer is in front at
-  the next start; the chip names what it is doing
-
----
-
-### T-344 — Show progress while a download is being processed
-
-**Status:** **In Review** — asked for by the maintainer on 2026-09-15: a long video took a long time
-to process after downloading, and nothing showed the application was still working. The maintainer
-chose *both, where possible* (a real percentage where ffmpeg can report one, otherwise the step's
-name, a moving bar and the time so far) and chose to ship it **in `0.1.0`**, from the options put.
-Moves the candidate.
-**Owner:** Implementer
-**Priority:** High for `0.1.0` by that choice
-**Phase:** Phase 5 (blocks `T-328`)
-**Relevant context:** `REQ-011` (indeterminate progress), `REQ-014` (stages), `NFR-005`, `T-216`
-(a finished bar is furniture)
-**Affected surfaces:** `downloader/protocol.py`, `downloader/worker.py`, `downloader/ytdlp_adapter.py`,
-`ui/queue_view.py`, `ui/row_delegate.py`
-
-#### What was wrong
-
-While a job was post-processing the row showed the download's bar, which is full once the bytes are
-in; the chip read *Processing*, and nothing moved. yt-dlp's post-processor hook reports only
-*started* and *finished*, and `real_run_ffmpeg` runs ffmpeg through `Popen.run`, which returns when
-ffmpeg ends.
-
-#### What changed
-
-- **`Progress` gains `step`** (yt-dlp's hook name for the step) **and `step_fraction`** (0 to 1).
-- **The worker** records the step and the media's length when a step starts, and turns ffmpeg's
-  position into a fraction of that length, sent at most every 0.25 s. It checks for cancellation
-  there too, so a long conversion stops when asked. Downloads only; a probe runs no step.
-- **`ytdlp_adapter.ffmpeg_progress`** replaces the `Popen` that yt-dlp's `postprocessor.ffmpeg` looks
-  up, for step commands only (those carrying `-loglevel repeat+info`). It adds `-progress pipe:1
-  -nostats`, reads the position lines, drains standard error on its own thread, returns what
-  `Popen.run` returns, and kills ffmpeg if the callback raises. If yt-dlp no longer has that module
-  or `Popen`, nothing is installed and the row falls back to the moving bar.
-- **The row, while processing:** the step in plain words with the time so far (*Converting to audio
-  · 1:05*), the step's own percentage on the chip and the bar when known, and otherwise a moving
-  bar (`BUSY_ROLE`) redrawn by a timer that stops when nothing is processing. The size keeps the
-  downloaded total, and the screen-reader text names the step and its percentage or says it cannot
-  be measured.
-- **Words are keyed by the names yt-dlp's hook reports** (`pp_key`, which drops *FFmpeg*). The first
-  version used class names and would have named nothing; the end-to-end test found it.
-
-#### Acceptance criteria
-
-- [x] Protocol: `step` and `step_fraction` carried and validated (`tests/unit/test_protocol.py`)
-- [x] Adapter: step commands recognised, arguments inserted after the executable, positions read from
-  both microsecond keys, the returned shape kept, ffmpeg killed when the callback raises, a yt-dlp
-  without the module left alone, and a real `FFmpegExtractAudioPP` conversion reporting positions to
-  the end of the file with yt-dlp's `Popen` restored (`tests/unit/test_ffmpeg_progress.py`)
-- [x] Worker: a started step announced by name; the position as a fraction, bounded and throttled;
-  no fraction without a length; cancellation at the next position; the hook around downloads and
-  never probes (`tests/unit/test_step_progress.py`)
-- [x] Row: the step's percentage and not the download's; the moving bar, name and time without a
-  position; the time restarting per step; a step without words shown as its stage; the timer
-  stopping; the moving bar drawn, moving, and routed through the real delegate; and every step yt-dlp
-  can report either has words or is one of six stated quick steps (`tests/ui/test_processing_progress.py`)
-- [x] End to end, a real MP3 download through the composed application reports `ExtractAudio` with a
-  position reaching 1.0 (`tests/integration/test_end_to_end.py`). **Also run on `STARBASE`**
-  (Windows, ffmpeg 8.1.2): the new and changed test files and this test, 166 passed
-- [x] Mutations, each failing those tests: hook never installed (1); no kill on raise (1); every
-  command treated as a step (2); only `out_time_us` read (2); no cancellation check (1); no throttle
-  (1); zero without a length (3); the download's fraction while processing (3); never busy (2); no
-  timer from the status change (2); a step erasing the size (1); the time not restarted per step
-  (2); no step words (3); the delegate never painting the moving bar (1). A second timer start on
-  each drawn step **survived** and was removed as redundant
-- [ ] Seen by a person: a long conversion on the installed build shows the step, its progress or the
-  moving bar, and the time so far
-
----
-
-### T-342 — Add URLs and Preferences opened with their title bars above a laptop's screen
-
-**Status:** **In Review** — reported 2026-09-15 by the maintainer from a friend's Windows laptop
-(1920x1200 at 125%, the maintainer's figures): *Add URLs* and *Preferences* opened with the title bar
-above the top of the screen, so the window could not be moved and no URL could be typed. Moves the
-`0.1.0` candidate.
-**Owner:** Implementer
-**Priority:** High — the first screen a user needs could not be used on an ordinary laptop
-**Phase:** Phase 5 (blocks `T-328`)
-**Relevant context:** `T-242` and `T222-R1` (height bounds for *Preferences* and *Options*);
-`T-310` (`FormatDialog.sizeHint` bounded by the screen); `NFR-005`
-**Affected surfaces:** new `ui/screen_fit.py`; `ui/add_dialog.py`; `app.present`
-
-#### What was found, measured on `STARBASE` (Windows 10, 1600x900)
-
-- **Qt does not keep a dialog's frame on the screen.** With `QT_SCALE_FACTOR=1.25` (a 1280x720
-  logical screen) *Add URLs* was placed with its frame at y = -241.
-- **Add URLs grew after it was shown**, at a true 100% as well: opened at 600 pixels (Qt's cap of two
-  thirds of the screen for a window never resized), centred for that, then grown to 788, its layout's
-  height. With its list asking for 16 rows it grew to 1364 on the 900-high screen.
-- **Nothing bounded where any dialog lands**; *Preferences* and *Options* bounded only their height.
-
-#### What changed
-
-- `ui/screen_fit.py`: `DialogsOnScreen`, installed by `app.present` and owned by the main window,
-  fits every top-level `QDialog` when it is shown, once more after the event loop turns, and on each
-  resize while visible: a maximum size of the working area less the frame, then a move so the whole
-  frame, title bar first, is inside. A fit that changed something looks again, at most four times per
-  showing. `fitted_geometry` is the pure rule.
-- `AddUrlDialog.sizeHint` is bounded to the working area less 48 pixels (`bounded_to_screen`), and the
-  dialog is given that size before it is shown.
-
-#### Measured on `STARBASE`, 100%, *Add URLs* asking for 16 rows
-
-| Build | Frame | Inside the screen |
-|---|---|---|
-| Unchanged | 1395 tall from y = 110 | no |
-| Rule only | 1395 tall from y = 0 | no |
-| Bounded hint and rule, no size before showing | 1395 tall | no |
-| All three | 900 tall from y = 0 | **yes** |
-
-At the real row count *Add URLs* and *Preferences* fit the 900-high screen in every build. **With
-`QT_SCALE_FACTOR` at 1.25, 1.5 and 2.0 the results did not agree with a true 100% screen**: Windows
-refused geometries (*Unable to set geometry*) and *Add URLs* stayed partly outside at 1.25 and 1.5
-with the change. That emulation is not a real scaled display, so it is recorded rather than trusted
-either way.
-
-#### Acceptance criteria
-
-- [x] `fitted_geometry`: above the top, too tall, past each other edge, already inside (unchanged),
-  and a working area shorter than the frame (the top wins) (`tests/ui/test_screen_fit.py`)
-- [x] Installed rule, offscreen: a dialog shown above and taller than the screen ends inside; one
-  that grows after showing is fitted again; the rule leaves with its owner; installing twice installs
-  one
-- [x] `present()` installs it and a dialog of the real window is fitted
-  (`tests/integration/test_composition.py`)
-- [x] *Add URLs* with 40 wanted rows: its hint and its size are within the working area less 48, and it
-  has a size of its own before showing
-- [x] Mutations, each failing those tests: no top clamp (4); no shrink (1); no refit on resize (1); no
-  fit on show (2); the hint unbounded (1); not installed by `present` (1); owned by the application
-  (4); no size before showing (1)
-- [ ] **Seen on a real Windows display at 125%**: *Add URLs* and *Preferences* open with the title
-  bar on screen and can be moved (the friend's laptop, or a Windows machine set to 125%)
-
-#### 2026-09-15 — the `yt-dlp` canary failed two of these tests
-
-The canary runs the suite in **one process**, and there two tests failed at `48cf076`: a dialog that
-grew after showing was not fitted again, and the rule appeared to outlive its owner. **Reproduced
-locally** by running `test_composition.py` then `test_screen_fit.py` in one process. A composition
-window left alive by an earlier test kept its rule installed, and **both rules counted fits on one
-dynamic property**, so a dialog's budget of `MAX_PASSES` was spent twice as fast. In the application
-there is one window and one rule, so the shared counter did not show there; it was still wrong.
-
-Corrected: each rule keeps its own count (a property named for that rule). The ownership test now
-asserts the rule object is destroyed with its owner, instead of watching a dialog that other live
-rules may still move. A new test installs two rules and grows a dialog after showing; with a shared
-counter it fails. The two files together in one process: 97 passed.
-
----
-
-### T-341 — The AppImage could not download anything on Fedora
-
-**Status:** **In Review** — found 2026-09-14 on the maintainer's Fedora 44 machine while preparing
-`T-328`'s acceptance sheet. Release-blocking; it moves the candidate again.
-**Owner:** Implementer
-**Priority:** Critical — the Linux artifact's core function failed on a major distribution
-**Phase:** Phase 5 (blocks `T-328`)
-**Relevant context:** `REL-007` and its 2026-09-14 correction; `REL-004`; `T-318`'s clean machine
-**Affected surfaces:** `downloader/tls.py`; `tools/clean_machine_linux.sh`,
-`tools/clean_machine_evidence.sh`; `docs/RELEASE.md`; `TESTING.md` §8 item 7
-
-#### What was wrong
-
-The AppImage's bundled OpenSSL (from the Debian 12 build image) looks for certificates only in
-`/usr/lib/ssl`, which Fedora does not have. The draft for `3f41813` failed `--download-probe` on
-the host with `CERTIFICATE_VERIFY_FAILED`, and so did the `246dcdf` draft; with `SSL_CERT_FILE`
-naming Fedora's bundle both downloaded. The clean machine is `ubuntu:24.04`, which has the path.
-
-#### What changed
-
-- `verify_with_the_operating_system` on Linux: when neither of OpenSSL's built-in locations exists
-  (an empty directory counting as absent; existence, not validity, `T341-R1`) and the user set
-  neither variable, `SSL_CERT_FILE` names the first bundle in `LINUX_CA_BUNDLES` that
-  exists. Workers inherit it and also make the call themselves.
-- The clean-machine harness installs its three packages with `dnf` on a Fedora image, and
-  `docs/RELEASE.md` asks for that second run per candidate.
-
-#### Acceptance criteria
-
-- [x] Unit tests: pointed at the first existing bundle; an empty directory counts as no store; a
-  working built-in file or directory, a user's variable, and no bundle anywhere leave it unchanged;
-  a real OpenSSL context loads exactly the bundle named in-process (`tests/unit/test_tls.py`)
-- [x] Mutations, each failing those tests: no write (3 fail); ignoring the built-in store (2);
-  ignoring the user's variables (2); an empty directory counted as a store (1); the last bundle
-  chosen instead of the first existing (2)
-- [x] A local container build with the correction downloads on the Fedora 44 host with no
-  override (61,878,609 bytes)
-- [x] `IMAGE=registry.fedoraproject.org/fedora:44 tools/clean_machine_linux.sh`: the `3f41813`
-  draft **FAIL** (the download, `CERTIFICATE_VERIFY_FAILED`); the corrected local build **PASS**
-- [x] The same Fedora run on the release workflow's draft artifact: `93c7357`'s draft **PASS**, and its `--download-probe` on the Fedora 44 host with no override downloads (`evidence/linux-fedora-0.1.0.md`, `T-326`)
-
----
-
-### T-324 — A release workflow that builds, gates and drafts — and never publishes
-
-**Status:** **In Review** — **the fourth `v0.1.0` run drafted the release** (run `34881606168`, tag at `3c011b8`, `draft: true`, two artifacts and `SHA256SUMS`), which is the first acceptance criterion. *(Was In Progress:)* **the first two `v0.1.0` runs failed** (2026-09-14): `verify` on a missing
-Python version file, then the AppImage build on a SIGPIPE and the installer compile on Git Bash's
-path conversion. All are corrected (below); the tag moves to the corrected commit again. Written
-2026-09-12. **Its first acceptance criterion needs a tag**, and a tag is the one artifact in this
-project that cannot be quietly corrected, so that one is left to the maintainer rather than taken.
-Filed 2026-09-11 with the Phase 5 plan.
-
-#### 2026-09-14 (third run) — the AppImage gate could not import its own vocabulary
-
-**Run `34880227853`, tag at `095b788`:** `verify` passed, and **the container build passed** (the
-SIGPIPE fix, now executed in CI). **The gate on the runner failed**: `artifact_gates.py` imports
-`tracks_and_trails.core.logging`, which imports `platformdirs`, and the runner's fresh Python has
-none of the project's packages. The local check before this run used the project's virtualenv, which
-is why it passed there; that was the wrong environment to prove the step with. **Reproduced in a bare
-virtualenv**: `ModuleNotFoundError`, and with `platformdirs` alone installed, all four gates pass on
-the `0.1.0` AppImage. The workflow installs it before the gate at `pyproject.toml`'s specifier, and a
-test holds the two together.
-
-**Read ahead:** the probes run the AppImage directly, and an AppImage mounts itself through FUSE,
-which a hosted runner is not guaranteed to allow. The step now sets `APPIMAGE_EXTRACT_AND_RUN=1`,
-which the runtime honours; `--spawn-probe`, `--database-probe` and `--version` pass in that mode on
-the `0.1.0` AppImage. That the runner lacks FUSE is not established; the setting removes the
-dependence either way.
-
-**The run's installer job was still queued** behind CI on `STARBASE` when this was written, and the
-run cannot draft without the AppImage.
-
-#### 2026-09-14 (later still) — the second run's installer: Git Bash rewrote ISCC's switches
-
-**The same run's `installer` job** passed every step before the compile: the `STARBASE` Python
-check, its own virtualenv and profile (the first run's reading-on fix, now executed), the ffmpeg
-fetch, the windowed build, `artifact_gates.py` and the probes. **It failed at *Compile the
-installer***: *"You may not specify more than one script filename."* The job's shell is Git Bash,
-which converts an argument beginning with `/` into a Windows path when it starts a native program,
-so `/DAppVersion=0.1.0` reached ISCC as a file name. Every earlier compile ran from `cmd`.
-
-**Reproduced on `STARBASE` through Git Bash both ways**: without `MSYS_NO_PATHCONV` the same message
-and exit 1; with `MSYS_NO_PATHCONV=1` a `Tracks-and-Trails-0.1.0-setup.exe`. (A first check with
-`printf` showed nothing, because a Bash builtin is never converted; it was discarded.) The step now
-sets it, and `test_the_installer_compile_stops_git_bash_rewriting_its_switches` fails on the
-workflow without it.
-
-**The AppImage fix, run before the next tag:** the container build from the corrected tree completed
-locally (`Tracks_and_Trails-0.1.0-x86_64.AppImage`, 68 MB), and the workflow's next two steps passed
-on it: `artifact_gates.py` over the extracted payload (4 of 4) and all four probes; `--version` prints
-`0.1.0`. Still unexercised in a real run: the upload, the draft job and `gh release create`.
-
-#### 2026-09-14 (later) — the second run: the AppImage build died of SIGPIPE
-
-**Run `34877484226`, tag moved to `412e93b`:** `verify` passed, which is the first run's fix
-working. **`AppImage` failed in *Build in the oldest-glibc container*, exit 141**, straight after
-printing *ldd (Debian GLIBC 2.36-9+deb12u14) 2.36*. `packaging/build_appimage.sh` runs under
-`set -euo pipefail` and began with `ldd --version | head -1`. `head` exits after one line, `ldd` is
-killed writing the rest, and `pipefail` fails the script. It depends on timing, which is how
-`T-321`'s builds passed.
-
-**Fixed everywhere it occurs:** `sed -n 1p` for the glibc line, `find … -print -quit` for the
-platform-plugin search in the same script, and the same two patterns in
-`tools/clean_machine_evidence.sh` (where it would have turned a match into *"(nothing)"*).
-Measured: under `pipefail`, `seq 1 200000 | head -1` exits 141 and `| sed -n 1p` exits 0.
-
-**Test** (`tests/unit/test_build_scripts.py`): no `pipefail` script under `packaging/` or `tools/`
-ends a pipeline in `head`, with the failing line as a positive control. It fails on the two scripts
-as they were.
-
-#### 2026-09-14 — the first real run, and what it found
-
-**The maintainer pushed `v0.1.0` at `ff95306`. Run `34877044848` failed about fifteen seconds in,**
-in `verify`'s `setup-python`: *"The specified python version file at: .python-version doesn't
-exist."* Nothing was built and no release was drafted (`gh release list` is empty). The file was
-never in the repository; `ci.yml` pins `"3.14"`, and no test read the release workflow's Python.
-
-**Reading the rest of the workflow found two more that would have failed or misbehaved next:**
-
-- `build-linux` runs `artifact_gates.py` on the runner, not in the container, and that script
-  imports `tracks_and_trails.core.logging`, which is Python 3.14 source (`except A, B:`). The job set
-  up no Python, and a hosted Ubuntu runner's own is older.
-- `build-windows` installed the project into `STARBASE`'s own Python, a build changing the machine
-  (`OPS-012` §3), and probed against the real user profile (`T-298`). `ci.yml`'s `frozen` job uses a
-  virtualenv and a job profile; this now does the same, and removes the profile afterwards.
-
-**Tests** (`tests/unit/test_release_workflow.py`): every job that runs Python sets up or checks 3.14
-before its first such step; no step reads a Python version file; the Windows build installs into its
-own virtualenv and profile. **All six fail against the workflow at `ff95306`** and pass against the
-corrected one.
-
-**Not verifiable before a run:** everything GitHub-specific. The corrected workflow has not run, so
-the next tag is still its first full test. **The existing `v0.1.0` tag points at `ff95306`, whose
-workflow file is the broken one**, and a tag's run uses the workflow in the tagged commit, so the tag
-has to be moved to the corrected commit. No release, draft or artifact exists under it.
-
-#### 2026-09-12 — the workflow, and the criterion deliberately not met
-
-`.github/workflows/release.yml`, four jobs: `verify` → (`build-linux`, `build-windows`) → `draft`.
-
-**`push: tags` and nothing else.** No `workflow_dispatch`, because a release has exactly one
-legitimate trigger and a dispatchable one invites a draft built from an untagged tree. No
-`pull_request` ever — `SECURITY.md` §CI trust boundary makes the trigger set the control that
-keeps a fork's code off the maintainer's machines, and `tests/unit/test_workflow_triggers.py`
-already scans this file for it.
-
-**The permission widens by exactly one scope, for one job.** `contents: read` at the top level as
-`SECURITY.md` requires; `contents: write` re-declared on `draft` alone. A build job with write
-access could replace a release and has no reason to be able to.
-
-**It drafts, and the drafting is asserted three ways** — the flag is passed, the result is read
-back with `gh release view --json isDraft`, and a test forbids every publishing verb anywhere in
-the file. One of those alone would be easy to lose in an edit.
-
-**Nothing is built before the tag is verified.** `verify` runs alone and checks three things: the
-tag equals `__version__` (`tools/version_tag_check.py`), the commit is an ancestor of
-`origin/main`, and **the changelog has a section for the version**. The last is checked *there*
-rather than at the end, because discovering it after two builds wastes the builds — and because a
-draft with an empty body is worse than a stop, since somebody then publishes it.
-
-**`tools/changelog_section.py` is a function with a CLI**, which is `T240-R1`'s rule: a decision
-buried in `sed` is a decision nobody reviews. **Its tests found two defects in it immediately** —
-the first version matched up to the `]` and left `- 2026-09-12` as the first line of the release
-body, and it required a separator before a pre-release suffix so `0.1.0rc1` was not a version at
-all. Rewritten as a small parse: a body runs from the end of its heading *line* to the next
-version heading, so the date stays out and a `### Added` inside stays in. 14 cases, including that
-`0.1.10` does not satisfy a request for `0.1.0` and that a missing section is told apart from an
-empty one.
-
-**The release builds are gated and probed, not merely built.** `ci.yml`'s `frozen` job proves the
-*smoke* build; the release build differs in the three places that matter — windowed on Windows,
-ffmpeg bundled, built in the oldest-glibc container on Linux. So all four probes and all four
-`T-323` gates run again against what actually ships, and the Windows probe step sets
-`TT_PROBE_REPORT`, because `console=False` leaves a windowed build with no `stdout` and reading
-the console would read nothing and pass.
-
-**`OPS-012` §3 held in the one place it is tempting to break.** The Windows job **checks for Inno
-Setup and fails**, naming the rule, rather than installing it. The pinned ffmpeg fetch *is* a
-step here — and that is consistent rather than an exception: §3 is about a *build* changing the
-machine, and `packaging/tracks-and-trails.spec` still refuses to fetch anything. A named,
-reviewable step in a workflow a human reads is the opposite of a side effect.
-
-**`cancel-in-progress: false`**, deliberately. A half-built draft is the one artifact nobody can
-tell apart from a finished one — and `cancel-in-progress` has already destroyed a Windows evidence
-run twice in this project, most recently on 2026-09-12.
-
-**21 tests.** What is *not* done is the first acceptance criterion: *"a tag on a test branch
-produces a draft release with two artifacts and a checksums file"*. Pushing a tag is an outward
-act `REL-003` governs and `docs/RELEASE.md`'s own review prompt forbids without instruction, and
-the Windows half needs `STARBASE`. **That is left to the maintainer**, and until it is run this
-workflow is reviewed rather than proven.
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 5
-**Depends on:** `T-319`, `T-321`, `T-322`, `T-323`, `T-320`
-**Relevant context:** `.github/workflows/ci.yml`'s `frozen` job (builds both artifacts every push
-and uploads **evidence only**, 30-day retention — nothing today produces a downloadable release);
-`OPS-009`/`OPS-010`/`OPS-012` (where each platform builds); `SECURITY.md` §CI trust boundary
-(read-only default token, no secrets); `docs/RELEASE.md`'s release review (*"do not tag, commit, push,
-or publish unless explicitly instructed"*); `NFR-007`
-**Affected surfaces:** `.github/workflows/release.yml` (new), `docs/RELEASE.md`
-**Risk:** Medium — a workflow with permission to create releases is the one place the CI trust
-boundary widens, and it must widen by exactly one scope
-
-#### Scope
-
-Triggered by a `v*` tag. On the same runners `ci.yml` uses — Windows on `STARBASE`, Linux on the
-oldest-glibc container `T-321` names — it:
-
-1. Asserts the tag matches `__version__` (`T-320`'s rule) and the commit is on `main`
-2. Builds `T-319`'s windowed artifact and `T-322`'s installer; builds `T-321`'s AppImage
-3. Runs every frozen probe and every `T-323` gate against the **release** builds
-4. Writes `SHA256SUMS` for both artifacts
-5. Creates a **draft** GitHub Release with the artifacts, the checksums, and the `CHANGELOG.md`
-   section for the version as its body
-
-**It stops at draft, always.** Publishing is a human click after `T-328`'s review, which is the
-release prompt's own rule and the only place a release can be inspected before it is public. The
-workflow's token gets `contents: write` for that one job and nothing else keeps it (`SECURITY.md`).
-
-#### 2026-09-13 — the review's two findings
-
-**`T324-R1`: the installer would never have been uploaded.** The upload step looked in
-`packaging/Output/*.exe`, Inno's default — but `tracks-and-trails.iss` sets `OutputDir=..\dist`,
-and `T-322`'s own compile transcript names `dist\Tracks-and-Trails-0.1.0.dev0-setup.exe`. A real
-tag would have built both platforms, failed `if-no-files-found: error`, and drafted nothing. The
-path is `dist/*-setup.exe` now, and
-`test_the_installer_is_uploaded_from_where_the_script_writes_it` resolves the script's `OutputDir`
-and `OutputBaseFilename` the way ISCC does and matches a representative compiled name against the
-upload glob. **Mutation:** restoring `packaging/Output/*.exe` fails it.
-
-**`T324-R2`: the ffmpeg probe was missing from the Windows release build**, though it exists for a
-release-only defect. The loop is replaced by `packaging/windowed_checks.py probes`, which runs all
-five probes — spawn, yt-dlp, database, update, **ffmpeg** — each with its own report file and its
-console discarded, and fails any whose report lacks its success line. The same script is what
-`ci.yml`'s `frozen windows` job now runs for `T-319`. **Missing and unusable helper failures** are
-measured in `T-319`'s 2026-09-13 section: with `ffmpeg.exe` and `ffprobe.exe` deleted the probe
-exits 1 naming `OPS-001`.
-
-**Criterion 1's wording is corrected**, as the review asked: it said *"a tag on a test branch"*,
-and `verify` deliberately refuses a commit that is not on `main`. The criterion now says what the
-workflow can do. **`ci.yml`'s `frozen` job is no longer unchanged**: `T-319`'s own criterion adds
-the windowed build to it; this workflow still does not run on push.
-
-#### Acceptance criteria
-
-- A `v*` tag **on a commit on `main`** produces a draft release with two artifacts and a checksums
-  file, and `gh release view` shows `draft: true` *(said "a tag on a test branch", which `verify`'s
-  main-ancestry check refuses by design)*
-- A tag whose version disagrees with `__version__` fails at step 1 with the disagreement named
-- The `permissions:` block grants `contents: write` to the release job only; the workflow file is
-  reviewed against `SECURITY.md` §CI trust boundary and the review recorded
-- `docs/RELEASE.md` describes the tag → draft → review → publish sequence, and the rollback of
-  each step
-- This workflow does not run on push. *(Also said the `frozen` job in `ci.yml` stays unchanged in
-  scope; `T-319`'s criterion adds the windowed release build to its Windows leg.)*
-
-#### Out of scope
-
-- Publishing. Deliberately
-- Signing (`T-317` decides; if signed, the signing step lives here and the key does not)
-
----
-
 ### T-326 — The release-candidate suite: everything the gate asks a machine for, on both platforms
 
 **Status:** **In Review** — **run against the `0.1.0` candidate on 2026-09-14** ([evidence](evidence/2026-09-14-T326-release-candidate-0.1.0.md)): items 1–5, 8, 10 and 10a each with their artifact on both platforms where the item asks, the network suite retained for both, and the `0.2` migration-fixture obligation in `docs/RELEASE.md`. *(Was In Progress:)* the items that do not need a release candidate were run 2026-09-12;
@@ -882,313 +129,6 @@ The release gate's machine half, run **against the candidate** rather than again
 
 - Items 6, 7, 11–15: `T-328`'s release review, `T-318`, `T-323`, `T-325`, `T-327` respectively
   *(item 6 was `T-212`'s until its cancellation on 2026-09-13)*
-
----
-
-### T-322 — The Windows installer
-
-**Status:** **In Review** — **built by `T-324`'s workflow for `0.1.0`** (run `34881606168`, `aafc574c…`) and passing the Sandbox gate on that exact installer ([`windows-0.1.0.md`](evidence/windows-0.1.0.md)), which was the last open criterion. *(Was In Progress:)* `T322-R3`…`R5` resolved, `R5` approved at `9791c7e`, and **the maintainer saw the uninstaller's dialog, messages and running-application refusal on the installed build on 2026-09-14** (`T-327`). Open: a workflow build. **The SmartScreen screenshot is filed** (2026-09-14, `T-327`);
-**compiled on `STARBASE`** 2026-09-12, installed and uninstalled in
-Windows Sandbox by `T-039`'s gates, and polished in the maintainer's session (below). Open: built by
-`T-324`'s workflow, which needs a tag, and `T-317`'s SmartScreen screenshot. *(This said it could not
-be built without Inno Setup; the maintainer installed it.)*
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 5
-**Depends on:** `T-319` (what it installs), `T-320` (the version), `T-317` (whether it is signed)
-
-#### 2026-09-14 (later) — `T322-R5`: the one box that promises to keep data now keeps it
-
-**Found by the focused re-review at `03c6745`** (Medium). `unins000.exe /REMOVEDATA`, run by hand
-with neither `/ASK` nor a silent flag, showed Inno's confirmation, whose message says settings and the
-queue are kept, and then removed them. Windows' own uninstall entry was unaffected. **A third pass
-was authorized by the maintainer** (TESTING §14), who ruled the behaviour: **keep the data, as the box
-says.**
-
-**Correction:** `RemoveData := HasSwitch(RemoveDataSwitch) and UninstallSilent`. The switch counts
-on a silent run, where no box is shown; on the `/ASK` run the tick box replaces it; on any other run
-Inno's box is shown and nothing is removed.
-
-**Tests:** `test_a_run_by_hand_without_ask_or_a_silent_flag_keeps_what_inno_s_box_promises` ties the
-confirmation's wording to the only assignment of the flag. Removing `and UninstallSilent` fails it and
-the dialog test.
-
-**Windows, with a positive control**
-([evidence](evidence/windows-0.1.0.dev0-sandbox-2026-09-14-uninstall-by-hand.md)): the Sandbox run now
-runs `/REMOVEDATA` interactively and answers Inno's box Yes by keystroke. The corrected installer
-passes (settings and queue kept, no removal logged); the installer reviewed at `03c6745` fails that
-section alone, with *Settings and download queue removed.* in its log. **The first pair of runs passed
-both**, because the check looked before Inno's final step; it now waits for the uninstall log to close (a `Log closed.` line, or an exit-code line) with `unins000.exe` gone. *(`T322-R6`: the test named here was renamed to what it proves, `test_a_run_by_hand_without_ask_or_a_silent_flag_keeps_what_inno_s_box_promises`; a hand-run `/ASK` without a silent flag still asks first and can remove.)*
-Every earlier check on both runs is unchanged.
-
-#### 2026-09-14 — corrections from the session review: one process, a closed application, honest results
-
-| Finding | Correction |
-|---|---|
-| `T322-R4` Medium: the restarted uninstaller could lose a race for `unins000.dat`, which the first run holds exclusively | **No restart.** `CurStepChanged(ssPostInstall)` rewrites the uninstall entry Inno has just registered (`Setup.Install.pas` writes it inside `PerformInstall`, before `ssPostInstall`) to `"unins000.exe" /SILENT /ASK`, only if the key exists. Windows' own entry starts one silent run, which skips Inno's box and shows the dialog from `InitializeUninstall`. The uninstaller run any other way shows Inno's box and keeps everything. |
-| `T322-R3` High: removal results were discarded, nothing closed the application, and the last box always said *removed* | **`AppMutex=TracksAndTrails.Running`**, which `core/app_mutex.py` creates once the application owns its database; Inno checks it after the dialog and before removing anything, and asks for the application to be closed. **Each named item is deleted by a helper that looks for it afterwards**; any still present makes the removal incomplete; an item never there is not a failure. The final box says *kept*, *removed along with your settings*, or *some of your settings could not be deleted* with the folder to finish by hand. Both outcomes go to the uninstall log. `library.sqlite3.lock`, `ARC-006`'s lock file, was missing from the list and is added. |
-
-**Tests** (`tests/unit/test_windows_packaging.py`, `tests/unit/test_app_mutex.py`): no `Exec` in
-`[Code]`; the entry rewrite targets this AppId's key, only if present, with `/SILENT /ASK`; the
-dialog only on `/ASK`; removal only behind the ticked box or `/REMOVEDATA`; `AppMutex` equals the
-application's name and composition holds it after the instance lock; every named deletion feeds the
-result; the success box only when the result is true; primitive deletions only inside the two
-checking helpers; every path the application writes, the lock file now included, removed by name.
-On Windows, another process can open the mutex while the application holds it, and a name nobody
-holds is not found. **Thirteen mutations, thirteen caught.**
-
-**Verified in Windows Sandbox** (`docs/project/evidence/windows-0.1.0.dev0-sandbox-2026-09-14.md`,
-verdict PASS), by three checks added to `T-039`'s run after a reinstall: Windows' uninstall entry
-reads `"…\unins000.exe" /SILENT /ASK`; with the application open, `/REMOVEDATA` exits 1 and the
-application and queue database are both kept; with `library.sqlite3` held open, the log says
-*Could not delete … library.sqlite3* and *removal incomplete*, never *removed*, while
-`settings.toml` is removed and the held database stays. The existing silent-uninstall preservation
-checks pass on the same run. The same session ran the Windows tests with the desktop slice on
-`STARBASE`: 271 passed, 1 skipped (the Linux-only half of `test_app_mutex.py`).
-
-**Not verified yet:** the dialog itself, the *close the application* prompt a person sees, and the
-three final messages. They need a person at an installed build: `T-327`'s session.
-
-#### 2026-09-13 (later) — the uninstaller asks whether to keep settings
-
-**The maintainer's rulings in `T-327`:** a user should not have to delete settings by hand, and
-should be asked once. An interactive uninstall shows one dialog, *Remove Tracks & Trails from this
-computer? Your downloaded files are kept.*, with an **unticked** box *Also remove my settings and
-download queue* and Uninstall and Cancel buttons. *(The first version asked afterwards, as a
-second box after Inno's own confirmation; the maintainer found the two contradictory.)*
-
-**Inno's own confirmation cannot be switched off from `[Code]`.** Its source (`Setup.Uninstall.pas`)
-shows it on every run that is not `/SILENT` or `/VERYSILENT`. So the dialog runs in
-`InitializeUninstall`, restarts the uninstaller with `/SILENT /ASKED`, plus `/REMOVEDATA` when the
-box is ticked, and ends the first run. The second run skips Inno's box and, because it was asked,
-says when it has finished. If the restart fails, Inno's box follows with a message saying
-everything is kept, and nothing is removed.
-
-**A silent uninstall never asks and removes nothing without `/REMOVEDATA`**, which is what
-`T-039`'s Sandbox run relies on: it uninstalls with `/VERYSILENT` and fingerprints the data either
-side.
-
-**Named items only, never the folder wholesale**, which is `T322-R1`'s rule carried from `{app}`
-to `%LOCALAPPDATA%\tracksandtrails`: `settings.toml` and its `.writing` scratch, `window.toml`,
-`library.sqlite3` with its WAL companions, `ytdlp\` and `Cache\`, then `RemoveDir`, which fails
-while anything else is in the folder. A video someone chose to save there survives.
-
-**Pinned against the code that writes each path.** The tests swap each module's `platformdirs`
-import for the Windows implementation and require every place the application writes to sit under
-the folder the script names and be removed by a named entry. Ten mutations, ten caught on the
-first version: the silent guard dropped, Yes as the default, `Cache\` or `window.toml` or the WAL file left out, `Cache\`
-deleted as a file, the whole folder `DelTree`d, a wildcard, the folder misnamed, and
-`settings_path` moved to the roaming profile. Five more on the single dialog: a silent run that
-asks, the removal switch added whether or not the box is ticked, the box starting ticked, removal
-without the switch, and a second run that is not silent.
-
-#### 2026-09-13 — `T322-R1`, Critical: the uninstaller deleted its whole directory
-
-**The reviewer was right, and the Sandbox shows it.** `[UninstallDelete]` held
-`Type: filesandordirs; Name: "{app}"` under a comment saying *only what the installer created* —
-and `filesandordirs` is recursive deletion of **everything** there, including a user's own files
-and anything that was in the directory before this installed into it. Inno's own documentation
-warns against exactly that, and every automated run installed into an empty directory, so none
-could see it.
-
-**Removed, not narrowed.** Inno removes every file its log installed and the directory once it is
-empty; the application writes nothing beside itself (`NFR-004`), so there is nothing else of ours
-to name. `test_the_uninstaller_deletes_nothing_wholesale_under_the_install_directory` refuses a
-recursive or wildcard entry under `{app}`, with the shipped line as its positive control. The
-uninstall prompt also stopped promising a *download history*, which the application no longer
-keeps (`T-186`).
-
-**Verified in Windows Sandbox with both installers built from the same tree**, by `T-039`'s
-reworked run, which installs into a directory already holding a sentinel file and plants a
-user-saved file inside it before uninstalling:
-
-| Installer | Sentinel | User-saved file | Verdict |
-|---|---|---|---|
-| fixed, sha256 `5c5c3ec3…` | kept, unchanged | kept, unchanged | **PASS** |
-| the old rule restored, `91bd51cb…` | **DELETED** | **DELETED** | **FAIL 2** |
-
-The passing report is `docs/project/evidence/windows-0.1.0.dev0-sandbox-2026-09-13.md`.
-
-#### 2026-09-12 — the script, with every default the scope named
-
-`packaging/tracks-and-trails.iss`. **Per-user with no administrator prompt**, because the
-application writes nothing beside itself (`NFR-004`) and a per-machine install would add an admin
-prompt on top of the SmartScreen warning `REL-005` already accepts — two warnings before the first
-launch. Start Menu shortcut always, desktop shortcut **opt-in and unchecked**. The whole one-dir
-tree including `licenses\`. `SignTool` is present but commented, so adding a certificate is an
-edit to a line that exists rather than a new one.
-
-**The uninstaller says what survives it** on its own final page: settings, download history and
-downloaded files stay (`DAT-001`). `T-039` asserts the two halves separately — leftovers under the
-install root are a failure, leftovers under the user directories are the intent.
-
-**The version is passed in** (`/DAppVersion=`) and the script **refuses to compile without it**,
-so it cannot acquire a second opinion about the version `REL-003` fixes in `__init__.py`.
-
-**Nothing here is verified.** An Inno Setup script is not executable on Linux, so this is authored
-rather than tested: the structure and directives are checked, and **silent install, placement,
-launch, uninstall and removal are all `T-039`'s, on a machine that has Inno Setup**. Installing it
-is a deliberate manual act on `STARBASE` per `OPS-012` §3.
-
-#### 2026-09-12 (later) — the half a Windows machine would not have caught either
-
-**Compiling it still needs Inno Setup, and that bound stands.** What does not need it is the other
-half: **every declaration in this script repeats something declared elsewhere, and nothing fails
-when a copy drifts.** The installer would compile, install, and leave a Start Menu shortcut
-pointing at a filename the spec stopped producing — a defect a successful compile cannot see. Same
-class as `test_appdir_metadata.py` for the Linux AppDir, and it is in
-`tests/unit/test_windows_packaging.py` beside `T-319`'s.
-
-What is now pinned, each against its other declaration or its requirement:
-
-| Claim | Checked against |
-|---|---|
-| `AppExe` is the executable the build produces | the PyInstaller spec's own `name=` |
-| the script refuses to compile without `/DAppVersion=` **and defines no default** | `REL-003`, which fixes the version in `__init__.py` |
-| no administrator prompt, per-user location | `NFR-004`; a second warning on top of `REL-005`'s SmartScreen click-through is how an install gets abandoned |
-| Start Menu shortcut always, desktop icon **unchecked** | the scope's named defaults |
-| the whole one-dir tree, `recursesubdirs` included | `LIC-001` — `licenses\` has to reach the user, and `_internal\` has to reach them at all |
-| `SignTool` present but **commented** | `REL-005` ships `0.1.0` unsigned, so enabling it is an edit to a line that exists |
-
-**Four mutations, four caught**: a pre-ticked desktop shortcut, `PrivilegesRequired=admin`, an
-`AppVersion` default that would give the installer a second opinion about the version, and
-dropping `recursesubdirs` so only the executable ships.
-
-#### 2026-09-12 — no install-mode question, found by the manual session
-
-**The installer asked "Install for me only / Install for all users" before anything else.** Found
-in the maintainer's first interactive install (`T-327` item 1). Every automated run — `T-039`'s
-gates included — uses `/VERYSILENT`, which skips every dialog, so **no gate could have seen it**.
-
-`PrivilegesRequiredOverridesAllowed=dialog` caused it, directly beneath a comment arguing for
-fewer prompts before first launch; *"for all users"* is also an admin prompt. **Maintainer ruling:
-no dialog, but keep the escape hatch** — now `commandline`, so a double-click installs per-user
-without asking, and an administrator can still pass `/ALLUSERS`. A test asserts the value; setting
-it back to `dialog` fails it. **`/ALLUSERS` itself is not exercised** — it needs elevation, and
-nothing here runs elevated.
-
-#### 2026-09-12 — no "pin to taskbar" option, by ruling
-
-**Maintainer ruling, 2026-09-12: the installer does not pin to the taskbar**; the user pins it
-themselves. Recorded so the checkbox is not proposed again.
-
-**Windows does not let installers pin apps, deliberately.** Microsoft withdrew the pin action in
-Windows 10 because installers abused it, and on Windows 11 the taskbar belongs to the user. The
-only supported route (`TaskbarManager.RequestPinCurrentAppAsync`) asks the user to confirm and is
-limited to apps with package identity (MSIX), which this is not. The remaining routes work around
-that restriction and break between Windows builds. For an **unsigned** installer (`REL-005`),
-reaching into the taskbar's private settings is also the kind of behaviour that makes antivirus
-suspicious, on the screen where a stranger is deciding whether to trust the download.
-
-**What the installer does instead** is what a well-behaved one is allowed to do: a Start Menu entry
-always, a desktop icon if ticked, and *Launch* on the last page — from which pinning is one
-right-click. A last-page hint about pinning was offered and not chosen. **Reopening condition:** the
-application ships as an MSIX package, which would make the supported in-app prompt available.
-
-#### 2026-09-12 (later) — compiled, and the first compile found two defects
-
-**The maintainer installed Inno Setup 6.7.3 on `STARBASE`** — the deliberate manual act `OPS-012`
-§3 requires, and which this task declined to do for itself. It then compiled:
-
-```
-Successful compile (85.516 sec).
-C:\dev\tracks-and-trails\dist\Tracks-and-Trails-0.1.0.dev0-setup.exe
-91,776,949 bytes
-sha256 7528e12f3547a8b904b9247de745c24502e4d881c2e5a5b9ab9fb9552b56514b
-FileVersion     0.1.0.0
-ProductVersion  0.1.0.dev0
-CompanyName     Sean Kottman
-FileDescription Tracks & Trails Setup
-```
-
-**1. `VersionInfoVersion` will not take a PEP 440 version.** `AppVersion` comes straight from
-`__init__.py` via `REL-003`, which between releases is `0.1.0.dev0` — and Inno rejects it
-outright: *"Value of [Setup] section directive VersionInfoVersion is invalid"*, compile aborted at
-line 32. The file's own numeric resource has to be numeric.
-
-**Derived in the script rather than passed in**, so there is still exactly one version input: a
-second `/D` define would be a second opinion about the version, which is what `REL-003` and this
-script's `#error` exist to prevent. `.dev0` becomes a fourth numeric component, and the compiled
-installer shows the result — `FileVersion 0.1.0.0` beside `ProductVersion 0.1.0.dev0`, the
-numeric resource numeric and the human-readable one true. A suffix the mapping cannot handle
-**fails the compile** rather than being guessed at.
-
-**2. `ISCC.exe` is not where the release workflow looked.** `winget install
-JRSoftware.InnoSetup` installs **per-user**, at `%LOCALAPPDATA%\Programs\Inno Setup 6\` — not
-`C:\Program Files (x86)\`. `release.yml` checked only the latter and would have reported Inno
-Setup missing on a machine that had it. It now searches three locations plus `PATH` and **exports
-what it found**, so the compile step uses a located path rather than guessing again.
-
-**That is the same defect class as `T-319`'s ffmpeg destination**, one task apart: a location
-asserted from a comment instead of from a build. Both were found by running the thing.
-
-**One of the new tests caught me in a third instance of it.** A test forbade the string
-`winget install` anywhere in the workflow, to enforce `OPS-012` §3 — and then failed when the
-error message started telling the human how to install Inno Setup. Naming a remedy is not
-performing it; the test now looks at whether a line is *executed* rather than whether a string
-appears, and the workflow's message is split so each line carries its own `echo`.
-
-**Still not verified, and it is `T-039`'s by scope:** silent install, placement, launch,
-uninstall and what survives it. Those need the installer *run*, and running it on `STARBASE`
-would neither be clean-machine evidence nor leave the machine as it was — `T-318`'s Windows
-Sandbox evidence is where that belongs.
-**Relevant context:** `REL-001` (*"PyInstaller one-dir build + Inno Setup installer"*); `OPS-004`
-(silent install, placement, uninstall are automatable — `T-039` does that; whether it *feels*
-normal stays human); `DAT-001` (user data survives an uninstall); `NFR-004` (nothing written
-beside the installed application); `OPS-012` §3 (a self-hosted runner must not provision itself)
-**Affected surfaces:** `packaging/tracks-and-trails.iss` (new), `.github/workflows/`,
-`docs/RELEASE.md`
-**Risk:** Medium — an installer is the first thing a user judges, and every default it picks is a
-decision
-
-#### Scope
-
-An Inno Setup script producing `Tracks-and-Trails-X.Y.Z-setup.exe`. **The defaults, proposed and
-each one reversible by ruling:**
-
-- **Per-user install, no administrator prompt.** The application writes nothing beside itself
-  (`NFR-004`), so it needs no elevation; a per-machine install would need an admin prompt on top
-  of whatever `T-317` decided about SmartScreen, which is two warnings before the first launch.
-- **Start Menu shortcut always; desktop shortcut opt-in**, unchecked by default.
-- **Silent install** honours `/VERYSILENT /NORESTART` — `T-039` asserts this.
-- **Uninstall removes the files the installer installed, and its shortcuts, and leaves user data,
-  settings, the job database and anything the user put in the install directory in place**, and
-  says so on the uninstaller's final page — `DAT-001`, `T322-R1`. `T-039` asserts the halves
-  separately: an installed file left behind is a failure; user-owned files — under the user
-  directories *or* inside the install directory — surviving byte-for-byte is the intended
-  behaviour. *(Said "leftovers under the install root are a failure", which demanded an empty
-  directory and so the recursive deletion `T322-R1` removed; `T322-R2`.)*
-- **No file associations and no protocol handler** in `0.1.0`. `T-104` (a second launch handing
-  its URL to the running instance) is not built, so an association would open a message box
-  rather than a download. Recorded here so it is a known omission rather than a surprise.
-- **Licence texts installed** alongside the application — `LIC-001`'s artifact obligation, gated
-  by `T-323`.
-
-**Inno Setup on `STARBASE`** is a prerequisite, installed by hand once and recorded — a self-hosted
-runner must not provision itself as a side effect of a build (`OPS-012` §3, and the `setup-python`
-incident it cites).
-
-#### Acceptance criteria
-
-- The installer is built by `T-324`'s workflow from `T-319`'s windowed artifact, and its version
-  string matches `__version__`
-- A silent install on a clean machine (`T-318`) completes, the Start Menu entry launches the
-  application under the real platform plugin, and an uninstall removes every installed file while
-  leaving user data **and user-owned files in the install directory** unchanged *(said "leaves
-  nothing under the install root"; `T322-R2`)*
-- `T-039` is unblocked and its four gates are green on the runner
-- The installer's own strings name the application, version and publisher; nothing in them names
-  a developer path (`T-323`'s scan covers the tree; this covers the installer)
-- If `T-317` chose unsigned: the SmartScreen prompt is screenshot once on the clean machine and
-  filed as evidence, so the README's description of it is of the real thing *(done 2026-09-14:
-  [screenshot](evidence/2026-09-14-T327-smartscreen-more-info.png); `docs/RELEASE.md` corrected to
-  its words, which the README install section takes from under `T-328`)*
-
-#### Out of scope
-
-- Upgrade-over-existing and downgrade paths — real, and their own task once `T-320`'s policy
-  exists to say what a downgrade even means
-- Auto-update
 
 ---
 
@@ -2522,9 +1462,162 @@ phase became the next one to run. `T-039` also carries `**Phase:** Phase 5` and 
 
 ## Blocked
 
+### T-344 — Show progress while a download is being processed
+
+**Status:** **Blocked** — the implementation is approved ([record](reviews/T-344.md)); its last criterion is a person watching a long conversion on the installed build, which the waived walk would have covered (`T-328`, 2026-09-16). Phase 4.5. *(Was In Review:)* asked for by the maintainer on 2026-09-15: a long video took a long time
+to process after downloading, and nothing showed the application was still working. The maintainer
+chose *both, where possible* (a real percentage where ffmpeg can report one, otherwise the step's
+name, a moving bar and the time so far) and chose to ship it **in `0.1.0`**, from the options put.
+Moves the candidate.
+**Owner:** Implementer
+**Priority:** High for `0.1.0` by that choice
+**Phase:** Phase 5 (blocks `T-328`)
+**Relevant context:** `REQ-011` (indeterminate progress), `REQ-014` (stages), `NFR-005`, `T-216`
+(a finished bar is furniture)
+**Affected surfaces:** `downloader/protocol.py`, `downloader/worker.py`, `downloader/ytdlp_adapter.py`,
+`ui/queue_view.py`, `ui/row_delegate.py`
+
+#### What was wrong
+
+While a job was post-processing the row showed the download's bar, which is full once the bytes are
+in; the chip read *Processing*, and nothing moved. yt-dlp's post-processor hook reports only
+*started* and *finished*, and `real_run_ffmpeg` runs ffmpeg through `Popen.run`, which returns when
+ffmpeg ends.
+
+#### What changed
+
+- **`Progress` gains `step`** (yt-dlp's hook name for the step) **and `step_fraction`** (0 to 1).
+- **The worker** records the step and the media's length when a step starts, and turns ffmpeg's
+  position into a fraction of that length, sent at most every 0.25 s. It checks for cancellation
+  there too, so a long conversion stops when asked. Downloads only; a probe runs no step.
+- **`ytdlp_adapter.ffmpeg_progress`** replaces the `Popen` that yt-dlp's `postprocessor.ffmpeg` looks
+  up, for step commands only (those carrying `-loglevel repeat+info`). It adds `-progress pipe:1
+  -nostats`, reads the position lines, drains standard error on its own thread, returns what
+  `Popen.run` returns, and kills ffmpeg if the callback raises. If yt-dlp no longer has that module
+  or `Popen`, nothing is installed and the row falls back to the moving bar.
+- **The row, while processing:** the step in plain words with the time so far (*Converting to audio
+  · 1:05*), the step's own percentage on the chip and the bar when known, and otherwise a moving
+  bar (`BUSY_ROLE`) redrawn by a timer that stops when nothing is processing. The size keeps the
+  downloaded total, and the screen-reader text names the step and its percentage or says it cannot
+  be measured.
+- **Words are keyed by the names yt-dlp's hook reports** (`pp_key`, which drops *FFmpeg*). The first
+  version used class names and would have named nothing; the end-to-end test found it.
+
+#### Acceptance criteria
+
+- [x] Protocol: `step` and `step_fraction` carried and validated (`tests/unit/test_protocol.py`)
+- [x] Adapter: step commands recognised, arguments inserted after the executable, positions read from
+  both microsecond keys, the returned shape kept, ffmpeg killed when the callback raises, a yt-dlp
+  without the module left alone, and a real `FFmpegExtractAudioPP` conversion reporting positions to
+  the end of the file with yt-dlp's `Popen` restored (`tests/unit/test_ffmpeg_progress.py`)
+- [x] Worker: a started step announced by name; the position as a fraction, bounded and throttled;
+  no fraction without a length; cancellation at the next position; the hook around downloads and
+  never probes (`tests/unit/test_step_progress.py`)
+- [x] Row: the step's percentage and not the download's; the moving bar, name and time without a
+  position; the time restarting per step; a step without words shown as its stage; the timer
+  stopping; the moving bar drawn, moving, and routed through the real delegate; and every step yt-dlp
+  can report either has words or is one of six stated quick steps (`tests/ui/test_processing_progress.py`)
+- [x] End to end, a real MP3 download through the composed application reports `ExtractAudio` with a
+  position reaching 1.0 (`tests/integration/test_end_to_end.py`). **Also run on `STARBASE`**
+  (Windows, ffmpeg 8.1.2): the new and changed test files and this test, 166 passed
+- [x] Mutations, each failing those tests: hook never installed (1); no kill on raise (1); every
+  command treated as a step (2); only `out_time_us` read (2); no cancellation check (1); no throttle
+  (1); zero without a length (3); the download's fraction while processing (3); never busy (2); no
+  timer from the status change (2); a step erasing the size (1); the time not restarted per step
+  (2); no step words (3); the delegate never painting the moving bar (1). A second timer start on
+  each drawn step **survived** and was removed as redundant
+- [ ] Seen by a person: a long conversion on the installed build shows the step, its progress or the
+  moving bar, and the time so far
+
+---
+
+---
+
+### T-342 — Add URLs and Preferences opened with their title bars above a laptop's screen
+
+**Status:** **Blocked** — the implementation is approved ([record](reviews/T-342.md)); its last criterion is a real Windows display at 125%, which the waived walk would have covered (`T-328`, 2026-09-16). Phase 4.5. *(Was In Review:)* reported 2026-09-15 by the maintainer from a friend's Windows laptop
+(1920x1200 at 125%, the maintainer's figures): *Add URLs* and *Preferences* opened with the title bar
+above the top of the screen, so the window could not be moved and no URL could be typed. Moves the
+`0.1.0` candidate.
+**Owner:** Implementer
+**Priority:** High — the first screen a user needs could not be used on an ordinary laptop
+**Phase:** Phase 5 (blocks `T-328`)
+**Relevant context:** `T-242` and `T222-R1` (height bounds for *Preferences* and *Options*);
+`T-310` (`FormatDialog.sizeHint` bounded by the screen); `NFR-005`
+**Affected surfaces:** new `ui/screen_fit.py`; `ui/add_dialog.py`; `app.present`
+
+#### What was found, measured on `STARBASE` (Windows 10, 1600x900)
+
+- **Qt does not keep a dialog's frame on the screen.** With `QT_SCALE_FACTOR=1.25` (a 1280x720
+  logical screen) *Add URLs* was placed with its frame at y = -241.
+- **Add URLs grew after it was shown**, at a true 100% as well: opened at 600 pixels (Qt's cap of two
+  thirds of the screen for a window never resized), centred for that, then grown to 788, its layout's
+  height. With its list asking for 16 rows it grew to 1364 on the 900-high screen.
+- **Nothing bounded where any dialog lands**; *Preferences* and *Options* bounded only their height.
+
+#### What changed
+
+- `ui/screen_fit.py`: `DialogsOnScreen`, installed by `app.present` and owned by the main window,
+  fits every top-level `QDialog` when it is shown, once more after the event loop turns, and on each
+  resize while visible: a maximum size of the working area less the frame, then a move so the whole
+  frame, title bar first, is inside. A fit that changed something looks again, at most four times per
+  showing. `fitted_geometry` is the pure rule.
+- `AddUrlDialog.sizeHint` is bounded to the working area less 48 pixels (`bounded_to_screen`), and the
+  dialog is given that size before it is shown.
+
+#### Measured on `STARBASE`, 100%, *Add URLs* asking for 16 rows
+
+| Build | Frame | Inside the screen |
+|---|---|---|
+| Unchanged | 1395 tall from y = 110 | no |
+| Rule only | 1395 tall from y = 0 | no |
+| Bounded hint and rule, no size before showing | 1395 tall | no |
+| All three | 900 tall from y = 0 | **yes** |
+
+At the real row count *Add URLs* and *Preferences* fit the 900-high screen in every build. **With
+`QT_SCALE_FACTOR` at 1.25, 1.5 and 2.0 the results did not agree with a true 100% screen**: Windows
+refused geometries (*Unable to set geometry*) and *Add URLs* stayed partly outside at 1.25 and 1.5
+with the change. That emulation is not a real scaled display, so it is recorded rather than trusted
+either way.
+
+#### Acceptance criteria
+
+- [x] `fitted_geometry`: above the top, too tall, past each other edge, already inside (unchanged),
+  and a working area shorter than the frame (the top wins) (`tests/ui/test_screen_fit.py`)
+- [x] Installed rule, offscreen: a dialog shown above and taller than the screen ends inside; one
+  that grows after showing is fitted again; the rule leaves with its owner; installing twice installs
+  one
+- [x] `present()` installs it and a dialog of the real window is fitted
+  (`tests/integration/test_composition.py`)
+- [x] *Add URLs* with 40 wanted rows: its hint and its size are within the working area less 48, and it
+  has a size of its own before showing
+- [x] Mutations, each failing those tests: no top clamp (4); no shrink (1); no refit on resize (1); no
+  fit on show (2); the hint unbounded (1); not installed by `present` (1); owned by the application
+  (4); no size before showing (1)
+- [ ] **Seen on a real Windows display at 125%**: *Add URLs* and *Preferences* open with the title
+  bar on screen and can be moved (the friend's laptop, or a Windows machine set to 125%)
+
+#### 2026-09-15 — the `yt-dlp` canary failed two of these tests
+
+The canary runs the suite in **one process**, and there two tests failed at `48cf076`: a dialog that
+grew after showing was not fitted again, and the rule appeared to outlive its owner. **Reproduced
+locally** by running `test_composition.py` then `test_screen_fit.py` in one process. A composition
+window left alive by an earlier test kept its rule installed, and **both rules counted fits on one
+dynamic property**, so a dialog's budget of `MAX_PASSES` was spent twice as fast. In the application
+there is one window and one rule, so the shared counter did not show there; it was still wrong.
+
+Corrected: each rule keeps its own count (a property named for that rule). The ownership test now
+asserts the rule object is destroyed with its owner, instead of watching a dialog that other live
+rules may still move. A new test installs two rules and grows a dialog after showing; with a shared
+counter it fails. The two files together in one process: 97 passed.
+
+---
+
+---
+
 ### T-340 — A failed download's log could not be opened from anywhere in the application
 
-**Status:** **Blocked** — on its last criterion, a person seeing it on both platforms (`T328-R4`'s
+**Status:** **Blocked** — the implementation is approved ([record](reviews/T-340.md)); its last criterion is a person seeing *Diagnostics…* on both platforms, which the §11 walk would have covered. The maintainer waived that walk on 2026-09-16 and assigned what it would have found to Phase 4.5 (`T-328`). *(Was Blocked:)* on its last criterion, a person seeing it on both platforms (`T328-R4`'s
 walk). The implementation was approved by review on 2026-09-14
 ([record](reviews/T-340.md#2026-09-14--diagnostics-implementation-review)). Found 2026-09-14 while
 preparing `T-328`'s §11 acceptance sheet; the maintainer chose to fix it in `0.1.0`.
@@ -2570,3 +1663,6 @@ no user could reach. The candidate evidence for `3c011b8` and `246dcdf` did not 
   nothing when no verb was dropped (1); file existence instead of size (2); no Add dialog entry
   (1); the Add dialog entry without the log check (1); a modal window (1)
 - [ ] Seen by a person on both platforms, as part of the §11 criterion 6 walk (`T-328`)
+
+---
+
