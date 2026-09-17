@@ -178,6 +178,34 @@ def test_stacked_dialogs_are_all_closed(window: QWidget) -> None:
     assert not window.isVisible()
 
 
+def test_another_windows_dialog_underneath_ours_is_left_alone(
+    window: QWidget, shown: Callable[[], QWidget]
+) -> None:
+    """`T343-R1`: ownership is asked again for each dialog the loop reaches, not once.
+
+    The review's own probe. An unrelated window's dialog is opened **first** and the target's
+    **second**, so the owned one is on top of the application's modal stack and the unrelated one
+    is directly beneath it. Closing the owned dialog uncovers the other, and the loop used to close
+    that too — the initial check had already passed, and it was never asked again.
+
+    Nothing in the shipped application opens a second modal owner today, so this is the bound
+    rather than a user path: what it fixes is a rule that would close a dialog it does not own the
+    moment one exists.
+    """
+    other = shown()
+    theirs = _modal_dialog(other)
+    ours = _modal_dialog(window)
+    assert QApplication.activeModalWidget() is ours, "the owned dialog must be the one on top"
+
+    handled = TaskbarClose(window).consider(_close_of(window))
+
+    assert handled
+    assert not ours.isVisible(), "the dialog that blocked this window is still up"
+    assert theirs.isVisible(), "a dialog belonging to another window was closed as well"
+    assert not window.isVisible(), "this window closed once its own dialog was gone"
+    assert other.isVisible(), "the other window was closed too"
+
+
 def test_a_close_with_no_dialog_open_is_left_to_qt(window: QWidget) -> None:
     """Qt already closes an unblocked window, and `closeEvent` is where the shutdown starts.
 
@@ -383,13 +411,16 @@ class _RecordsTheFilters:
 
 
 def test_the_filter_is_taken_out_when_its_window_is_destroyed(qapp: QApplication) -> None:
-    """Qt's documented auto-removal does not hold, and the `windows desktop` job is how we know.
+    """Qt's documented auto-removal is not enough, and the `windows desktop` job is how we know.
 
-    `~QAbstractNativeEventFilter` is documented as removing the filter from the application. After
-    a run where the filter's window was destroyed, the dispatcher went on calling it and **every
-    later `QWidget.show()` in that process raised** `NotImplementedError: pure virtual method
-    'QAbstractNativeEventFilter.nativeEventFilter' not implemented` — Qt calling a filter whose
-    Python half had gone. Fifteen tests died of it.
+    `~QAbstractNativeEventFilter` is documented as removing the filter from the application, and
+    this module relied on that alone. After a run where the filter's window was destroyed, Qt
+    dispatched into it anyway and **every later `QWidget.show()` in that process raised**
+    `NotImplementedError: pure virtual method 'QAbstractNativeEventFilter.nativeEventFilter' not
+    implemented` — a filter whose Python half had gone. Fifteen tests died of it.
+
+    **That is dispatch, not a statement about the destructor**: whether the C++ half ever ran is
+    not established, which is the reviewer's correction to how this was first written.
 
     So removal is explicit, and this is what says so. The host is a stand-in because Qt offers no
     way to ask what native event filters are installed.

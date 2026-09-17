@@ -36,20 +36,27 @@ task and review records it summarised.*
   either platform; the maintainer waived that on 2026-09-16 and `T328-R4` stays open.
 - **Every machine check passed on the published bytes** ([evidence](evidence/2026-09-14-T326-release-candidate-0.1.0.md)):
   CI, both network suites, the Ubuntu and Fedora clean machines, a download on the maintainer's
-  Fedora host, Windows Sandbox, and the canary. `T-326` waits on the reviewer's verdict for that
-  replacement-candidate evidence.
+  Fedora host, Windows Sandbox, and the canary. **`T-326` is Complete**, approved 2026-09-17 on
+  that replacement-candidate evidence ([record](reviews/T-326.md#2026-09-17--replacement-candidate-evidence-verdict)).
+  The approval states the `§11` walk as still waived and unperformed rather than resolving it.
 - **Phase 4.5 (option coverage) is next, and its order was ruled on 2026-09-17**
   ([the stages](IMPLEMENTATION_PLAN.md#order-2026-09-17)): a **`0.1.1` patch** (`T-343`, `T-347`,
   released by `T-349`), then the **escape hatch `T-184` alone**, carrying `T-048`, then the **nine
   typed-field tasks** `T-247`…`T-255`, then the `0.1.0` debt and **`0.2.0`**.
-- **`T-343` is In Review**, built and **measured on the real Windows desktop** (run
+- **`T-343` is Complete**, approved 2026-09-17 ([record](reviews/T-343.md)) and **measured on the
+  real Windows desktop** (run
   [`35276130787`](https://github.com/kottmans/tracks-and-trails/actions/runs/35276130787), 46
-  passed): both forms of the taskbar's close now close the dialog and then the application, and the
-  defect is asserted in the same run ([evidence](evidence/2026-09-17-T343-taskbar-close.md)). It
-  took six `windows desktop` runs, and **four defects they found were invisible to every gate on
-  this machine** — the worst would have shipped a Windows build whose every message went through a
+  passed): both forms of the taskbar's close now close the dialog and then the application, with
+  the defect asserted in the same run ([evidence](evidence/2026-09-17-T343-taskbar-close.md)).
+  `T343-R1`, the Low finding, was closed in ordinary completion: ownership is asked again for each
+  dialog the close loop reaches, with the review's two-owner probe kept as a test. It took six
+  `windows desktop` runs, and **four defects they found were invisible to every gate on this
+  machine** — the worst would have shipped a Windows build whose every message went through a
   raising Python function.
-- **`T-347` is next** (Dolphin's window on KDE Wayland), then `T-349` releases `0.1.1`.
+- **`T-347` is next** (Dolphin's window on KDE Wayland), then `T-349` releases `0.1.1`. **`T-347`
+  ends in a sitting at the maintainer's desk**: its three cases are KDE Plasma Wayland with
+  Dolphin, which no runner here has — CI is headless, `STARBASE` is Windows, and this machine's
+  suite is offscreen.
 - **One acceptance walk closes the phase.** `TESTING.md` §8 item 6 is not run for `0.1.1` either,
   by the maintainer's ruling: it happens once on the finished `0.2.0` build and closes `T328-R4`
   and the last criterion of `T-340`, `T-342` and `T-344`. `T-339` (Narrator) sits in the same

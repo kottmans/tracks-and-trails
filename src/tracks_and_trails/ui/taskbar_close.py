@@ -154,7 +154,7 @@ class TaskbarClose(QObject, QAbstractNativeEventFilter):
             # A modal window this window does not own. Nothing in the application makes one, and
             # closing somebody else's dialog on a taskbar gesture is not this rule's to do.
             return False
-        if not self._close_the_dialogs():
+        if not self._close_the_dialogs(owner):
             # A dialog refused to close, so the application stays. The gesture was still acted on,
             # which is why this is handled rather than passed on.
             return True
@@ -177,11 +177,23 @@ class TaskbarClose(QObject, QAbstractNativeEventFilter):
         owner = self.parent()
         return owner if isinstance(owner, QWidget) else None
 
-    def _close_the_dialogs(self) -> bool:
-        """Close what blocks the window, innermost first. False if one of them refused."""
+    def _close_the_dialogs(self, owner: QWidget) -> bool:
+        """Close what blocks `owner`, innermost first. False if one of them refused.
+
+        **Ownership is asked again on every pass** (`T343-R1`). `activeModalWidget` is the
+        application's modal stack, not this window's, and closing the dialog on top uncovers
+        whatever is beneath it. A two-owner probe in review opened an unrelated window's dialog
+        first and the target's second; the loop closed the owned one and then carried straight on
+        into the unrelated one. Checking once before the loop is checking the wrong thing: the
+        answer changes with every close.
+
+        **A dialog that is not ours ends the loop as a success.** Everything this window owned is
+        shut, which is what the gesture asked for; whether the window can then close is Qt's to
+        decide, and a foreign application-modal dialog blocking it is Qt behaving correctly.
+        """
         for _ in range(MOST_DIALOGS):
             blocking = QApplication.activeModalWidget()
-            if blocking is None:
+            if blocking is None or not owned_by(owner, blocking):
                 return True
             if not blocking.close():
                 return False
@@ -286,7 +298,7 @@ def close_from_the_taskbar(
     of the test and on Windows for the other, so neither spelling passed both runs.
 
     **The filter is taken out again when `owner` is destroyed, explicitly.** See `installed_on`:
-    relying on Qt to do it was measured and does not hold.
+    leaving it to Qt alone was measured and is not enough.
     """
     if platform != "win32":
         # The gesture does not exist elsewhere, and a filter called for every xcb event would cost
@@ -315,14 +327,19 @@ def installed_on(app: FilterHost, owner: QWidget) -> TaskbarClose:
 
     **Removed again when `owner` is destroyed, and that is not belt and braces.** Qt documents
     `~QAbstractNativeEventFilter` as *"Destroys the native event filter. This automatically removes
-    it from the application"*, and this module relied on it. **Measured on the `windows desktop`
-    job, it did not hold**: after the filter's window was destroyed, the dispatcher still called
-    the filter, and every later `QWidget.show()` in that process raised
+    it from the application"*, and this module relied on that alone. **What the `windows desktop`
+    job measured is that it is not enough:** after the filter's window was destroyed, Qt dispatched
+    into the filter anyway, and every later `QWidget.show()` in that process raised
 
         NotImplementedError: pure virtual method
         'QAbstractNativeEventFilter.nativeEventFilter' not implemented
 
-    — Qt calling a filter whose Python half had gone. Fifteen tests in that job died of it.
+    — a filter whose Python half had gone. Fifteen tests in that job died of it.
+
+    **That says dispatch happened; it does not say the C++ destructor never ran.** An earlier
+    wording here claimed Qt's contract "did not hold", which is wider than what was seen: the
+    reviewer's correction on 2026-09-17, and it stands. Which half failed is not established, and
+    explicit removal is the fix either way, because it is what stops the dispatch.
 
     **The connection holds the filter, not the window**, which is what keeps `T-289`'s rule: a
     bound method of `app` plus the filter, owned by the window's own signal. Nothing here

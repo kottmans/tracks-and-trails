@@ -274,6 +274,48 @@ themselves.** Window modality is what disables the owner, and both shipped dialo
 `open()`, which is window-modal — asserted in the test. A person using the built application is
 what closes the remaining gap, and the end-of-phase walk is where that happens.
 
+## `T343-R1`, closed in ordinary completion
+
+**Approved 2026-09-17** ([record](reviews/T-343.md)) with one Low, non-blocking finding, and it is
+a real one that this file's own tests did not reach.
+
+**What the review's probe did:** opened an unrelated window's modal dialog **first**, then the
+target window's. `consider()` on the target closed the owned dialog — and then carried straight on
+into the unrelated one. `activeModalWidget` is the application's modal stack, not one window's, so
+closing the dialog on top uncovers whatever is beneath it; the ownership check sat *before* the
+loop, where it answered a question whose answer changes with every close.
+
+**Fixed by asking again on every pass.** A dialog that is not this window's ends the loop as a
+success: everything the window owned is shut, which is what the gesture asked for, and whether the
+window can then close is Qt's to decide. The probe is now a test, and the stacked-owned-dialog case
+is kept beside it. The mutation that restores the single check fails it.
+
+**The reviewer's own words on the bound**, and worth keeping: no second independent modal owner
+exists in the shipped application's normal routes, so this is robustness rather than a demonstrated
+user-path regression.
+
+**Mutation**: 23 mutations, all caught, against a control of 123 passed — the new one being
+*"ownership is checked once rather than for each dialog the loop reaches"*, which is `T343-R1`'s
+defect put back. The stacked-owned-dialog case is kept beside the two-owner probe, as the review
+asked.
+
+*(Process note: that campaign was started before this file's last edits and it restores the module
+from a copy taken at its start, so two edits had to be made again afterwards. A mutation run owns
+the file it mutates; nothing else may touch it while one is going.)*
+
+## The Qt judgement, corrected by the reviewer
+
+I wrote that Qt's documented destructor contract "did not hold". The reviewer's correction:
+
+> the documentation establishes a destructor contract. The Windows failure establishes dispatch
+> into an unusable Python filter; it does not establish that the C++ destructor ran.
+
+That is right, and the difference matters. What was measured is that **Qt dispatched into a filter
+whose Python half was gone**; whether `~QAbstractNativeEventFilter` ever ran is not something the
+failure says. Explicit removal on owner destruction is the right fix either way — it is what stops
+the dispatch — but the claim about Qt's contract was wider than the evidence, and the module's
+words have been narrowed to what was seen.
+
 ## What this cost, and what it bought
 
 Six `windows desktop` runs. The behaviour was right from the third; the three after it were the
