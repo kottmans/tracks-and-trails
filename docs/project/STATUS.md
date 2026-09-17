@@ -42,8 +42,14 @@ task and review records it summarised.*
   ([the stages](IMPLEMENTATION_PLAN.md#order-2026-09-17)): a **`0.1.1` patch** (`T-343`, `T-347`,
   released by `T-349`), then the **escape hatch `T-184` alone**, carrying `T-048`, then the **nine
   typed-field tasks** `T-247`…`T-255`, then the `0.1.0` debt and **`0.2.0`**.
-- **The task to pick up is `T-343`** — the Windows taskbar's *Close window* while a dialog is open,
-  in the Windows-only shape the maintainer ruled the same day. `T-347` follows it.
+- **`T-343` is In Review**, built and **measured on the real Windows desktop** (run
+  [`35276130787`](https://github.com/kottmans/tracks-and-trails/actions/runs/35276130787), 46
+  passed): both forms of the taskbar's close now close the dialog and then the application, and the
+  defect is asserted in the same run ([evidence](evidence/2026-09-17-T343-taskbar-close.md)). It
+  took six `windows desktop` runs, and **four defects they found were invisible to every gate on
+  this machine** — the worst would have shipped a Windows build whose every message went through a
+  raising Python function.
+- **`T-347` is next** (Dolphin's window on KDE Wayland), then `T-349` releases `0.1.1`.
 - **One acceptance walk closes the phase.** `TESTING.md` §8 item 6 is not run for `0.1.1` either,
   by the maintainer's ruling: it happens once on the finished `0.2.0` build and closes `T328-R4`
   and the last criterion of `T-340`, `T-342` and `T-344`. `T-339` (Narrator) sits in the same

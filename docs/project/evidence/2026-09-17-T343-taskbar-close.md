@@ -247,7 +247,45 @@ filter was taken out. The mutation that drops the connection is caught.
 *(The judgement to correct: a fetched documentation line is evidence about what Qt **says**, not
 about what it does. It was treated as the second.)*
 
-### The measurement
+### The measurement, `2c3cd77` — the table the task asked for
 
-**Still owed**: a `windows desktop` job that reaches the end green, with both messages. It goes
-here with its run id, and `T-343`'s acceptance criterion is that rather than any sentence here.
+Run [`35276130787`](https://github.com/kottmans/tracks-and-trails/actions/runs/35276130787), the
+`windows desktop` job on `STARBASE`: **46 passed**, whole run green. The job took 22.6 min of its
+40-minute bound.
+
+| Open dialog | `WM_CLOSE` | `WM_SYSCOMMAND` / `SC_CLOSE` | Main window enabled |
+|---|---|---|---|
+| none | closes (unchanged — Qt's own path, the filter passes it on) | closes | yes |
+| one, window-modal | **closes the dialog, then the application** | **closes the dialog, then the application** | **no**, and it no longer matters |
+
+Both halves are asserted in the same run, on the same machine, one immediately before the other:
+
+| Test | Result |
+|---|---|
+| `test_windows_disables_the_window_a_dialog_blocks_and_drops_its_close[WM_CLOSE]` | PASSED — Windows disables the owner and the close is dropped, **with nothing installed** |
+| `…[SC_CLOSE]` | PASSED |
+| `test_the_taskbar_close_closes_the_dialog_and_the_application[WM_CLOSE]` | **PASSED** |
+| `…[SC_CLOSE]` | **PASSED** |
+| `test_the_message_layout_matches_the_one_windows_defines` | PASSED — `Message` matches `wintypes.MSG` field for field |
+| `test_the_application_launches_on_a_real_windows_desktop` | PASSED — the real startup path, filter installed |
+
+**The dialog in the measurement is a window-modal `QDialog`, not *Add URLs* or *Preferences*
+themselves.** Window modality is what disables the owner, and both shipped dialogs open with
+`open()`, which is window-modal — asserted in the test. A person using the built application is
+what closes the remaining gap, and the end-of-phase walk is where that happens.
+
+## What this cost, and what it bought
+
+Six `windows desktop` runs. The behaviour was right from the third; the three after it were the
+surrounding claims being made true. Every one of the four defects was **invisible to every gate on
+the development machine**:
+
+| Found by the runner | Would have shipped as |
+|---|---|
+| `wintypes.MSG.from_address` on a `VoidPtr` | a filter that raised on every Windows message the application received |
+| A Python reference from the filter to its window | `T-289`'s forbidden shape, in new code |
+| `deleteLater()` + `processEvents()` not deleting | a test leaving a widget for the collector |
+| Qt not removing a destroyed filter, despite its own documentation | a dangling filter in the dispatcher after any main-window destruction |
+
+The first of those is the one that matters for `0.1.1`: it would have shipped a Windows build whose
+every message went through a raising Python function.
