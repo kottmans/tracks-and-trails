@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import shiboken6
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QColor, QGuiApplication
 from PySide6.QtTest import QTest
@@ -530,28 +531,19 @@ def without_quitting_on_the_last_window(qapp: QApplication) -> Iterator[None]:
     qapp.setQuitOnLastWindowClosed(was)
 
 
-#: Where the two cycle verdicts below are written, so the answer survives as an artifact.
-CYCLE_REPORT = Path("reports/taskbar-close-cycle.txt")
+def _dispose_of(qapp: QApplication, window: MainWindow) -> None:
+    """Destroy `window` here, on the GUI thread, which is what the `T-289` guard asks for.
 
+    **`deleteLater()` with `processEvents()` is not enough**, and that was measured: Qt delivers a
+    deferred deletion only from an event loop, so the window survived and the guard failed at
+    teardown all the same. `settle_deferred_deletions` is the project's own answer —
+    `gc.collect()` and then `sendPostedEvents(None, DeferredDelete)`.
 
-def _record_the_collector_verdict(qapp: QApplication, stage: str) -> list[str]:
-    """What the `T-289` boundary guard would say right now, written down and returned.
-
-    **This is the only place the question can be asked.** All four variants were probed on the
-    development machine — filter installed, window closed, both, neither — and the offscreen
-    plugin reports nothing for any of them. The real plugin reported `MainWindow(mainWindow)` on
-    the first run that closed a window, so the verdict is recorded here per stage rather than
-    reasoned about from Linux.
-
-    Asking also **clears** what the collector had parked, which is deliberate: the run that found
-    this left the shared application carrying it and three later tests failed that pass on the
-    baseline (`1febed3`: 41 passed).
+    **Only this file needs it**, because only this file closes a `MainWindow`: every other test
+    here leaves its window open, and an open window is still referenced by its fixture.
     """
-    verdict = qt_lifecycle.widgets_the_collector_would_destroy(qapp)
-    CYCLE_REPORT.parent.mkdir(parents=True, exist_ok=True)
-    with CYCLE_REPORT.open("a", encoding="utf-8") as report:
-        report.write(f"{stage}: {verdict}\n")
-    return verdict
+    window.deleteLater()
+    qt_lifecycle.settle_deferred_deletions(qapp)
 
 
 def test_the_message_layout_matches_the_one_windows_defines() -> None:
@@ -616,15 +608,18 @@ def test_the_taskbar_close_closes_the_dialog_and_the_application(
     """With the filter installed, the same message the shell sends closes the application.
 
     **This test disposes of its window**, which no other test in this file has to: they never
-    close one. Closing a `MainWindow` under the real plugin left it owned by Python and reachable
-    only through a cycle — the guard's own words — and the run that first did it took three later
-    tests down with it. What produced that state is recorded per stage in `CYCLE_REPORT`; the
-    assertion here is that nothing is left once the window is disposed of on the GUI thread, which
-    is what the guard's message asks for.
+    close one. A closed `MainWindow` under the real plugin was left owned by Python and reachable
+    only through a cycle — the `T-289` guard's own words — and the first run that closed one took
+    three later tests down with it, all green on the baseline (`1febed3`, 41 passed).
+
+    **The state is invisible from inside the test**, which was measured rather than assumed: the
+    guard's verdict was recorded after installing the filter, after the close, and after
+    `deleteLater()`, and came back empty all three times. It has to: the fixture still holds the
+    window, so nothing is garbage until pytest drops that reference at teardown. Disposal is
+    therefore the whole answer, and `shiboken6.isValid` is what says it happened.
     """
     closer = taskbar_close.close_from_the_taskbar(qapp, shown_window)
     assert closer is not None, "nothing was installed on Windows, where the gesture exists"
-    _record_the_collector_verdict(qapp, f"{message:#06x} after installing the filter")
     dialog = QDialog(shown_window)
     dialog.open()
     QApplication.processEvents()
@@ -633,11 +628,11 @@ def test_the_taskbar_close_closes_the_dialog_and_the_application(
 
     assert not dialog.isVisible(), "the dialog that blocked the window is still up"
     assert not shown_window.isVisible(), "the application was asked to close and did not"
-    _record_the_collector_verdict(qapp, f"{message:#06x} after the window closed")
-    shown_window.deleteLater()
-    QApplication.processEvents()
-    left = _record_the_collector_verdict(qapp, f"{message:#06x} after disposing of the window")
-    assert left == [], f"disposing of the window left {left} to the collector"
+    _dispose_of(qapp, shown_window)
+    assert not shiboken6.isValid(shown_window), (
+        "the window was not destroyed here, so the collector inherits it and the T-289 guard "
+        "fails at teardown"
+    )
 
 
 # --- widget focus order under the real plugin (`T-040`, `T026-R3`, `NFR-005`) ----------------
