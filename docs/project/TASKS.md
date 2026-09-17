@@ -1676,6 +1676,55 @@ ends badly — the shape `2026-08-27-T212-ytdlp-update-double-free.md` recorded.
 
 ## Proposed — Phase 4.5
 
+### T-348 — Update the application from inside it, rather than by downloading the file
+
+**Status:** Proposed — **asked for by the maintainer on 2026-09-17**, trying the `0.1.0.dev0` build
+that reports a newer release: *"is the only way to update the program to download the new file?"*
+Told that it is, by `REL-009`, they answered *"that should definitely be a phase 4.5 task."*
+**Owner:** Maintainer decides the shape; Implementer builds
+**Priority:** Medium — every user of `0.1.0` updates by hand today
+**Phase:** Phase 4.5
+**Relevant context:** `REL-009` (notify only, and its *worth revisiting* clause), `REL-005`
+(the unsigned installer), `OPS-002`'s note on automatic updates, `T-338` (the checker this builds
+on), `NFR-007` (what the application may talk to)
+
+#### What exists now
+
+`Help → Check for Updates…` and the daily check say a newer release is out and open its page
+(`T-338`). **Nothing is downloaded or run** — item 3 of `REL-009` — so the user fetches the new
+AppImage or installer themselves and replaces what they have. Settings and the queue live in the
+user profile, so they survive either way.
+
+#### Why `REL-009` left it open, and what has to be answered
+
+Its own words: *"worth revisiting once installers are signed: applying an update in place becomes
+reasonable then."* The two platforms do not update the same way, and each raises its own question:
+
+- **Windows.** An applied update runs the installer, which is unsigned (`REL-005`), so SmartScreen
+  is raised again on every update, and the download needs its own integrity check. Signing is named
+  as the `1.0` condition, so this may be a decision about ordering rather than about mechanism.
+- **Linux.** An AppImage updates through its own mechanism (zsync, as `AppImageUpdate` and Gear
+  Lever use), which needs the release to publish the matching file. Replacing a running AppImage
+  is not the same operation as replacing an installed tree.
+- **Both.** What is verified before anything is run (`SHA256SUMS` is published; a signature is not),
+  what the user is asked, and what happens to a download in flight.
+
+#### Scope
+
+Put the options to the maintainer with their costs, then build what is chosen. At least: check and
+notify as now (the status quo); fetch the file and hand it over, verified, leaving the user to run
+it; and apply the update in place, per platform. Whatever is chosen amends `REL-009`.
+
+#### Acceptance criteria
+
+- [ ] A recorded decision, amending `REL-009`
+- [ ] If built: the update is verified against what the release publishes before anything runs, on
+  both platforms, with the failure path shown to the user
+- [ ] If built: a clean-machine run on each platform, updating a real earlier release to a newer one
+- [ ] `REQ-030`'s wording and the README's update section match what the application does
+
+---
+
 ### T-184 — The escape hatch: additional yt-dlp options, parsed and bounded
 
 **Status:** Proposed — filed 2026-08-07 with the phase. **Unblocked 2026-08-21**: `SEC-005` ruled
