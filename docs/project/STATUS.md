@@ -22,6 +22,8 @@ exit criteria.
 
 **Order, by maintainer ruling 2026-09-10:** Phase 5 first, **Phase 4.5 (option coverage) after
 the first release**. Nothing user-facing may claim parity with yt-dlp until 4.5 lands (`REQ-030`).
+**Its own order was ruled 2026-09-17** and is in the
+[implementation plan](IMPLEMENTATION_PLAN.md#order-2026-09-17); the phase ends with `0.2.0`.
 
 ## Active work
 
@@ -36,9 +38,16 @@ task and review records it summarised.*
   CI, both network suites, the Ubuntu and Fedora clean machines, a download on the maintainer's
   Fedora host, Windows Sandbox, and the canary. `T-326` waits on the reviewer's verdict for that
   replacement-candidate evidence.
-- **Phase 4.5 (option coverage) is next**, and carries the waived walk's residue: `T-340`, `T-342`
-  and `T-344`'s human observations, `T-339` (Narrator), `T-343` (the taskbar close), `T-347`
-  (Dolphin on KDE Wayland) and `T-348` (updating from inside the application).
+- **Phase 4.5 (option coverage) is next, and its order was ruled on 2026-09-17**
+  ([the stages](IMPLEMENTATION_PLAN.md#order-2026-09-17)): a **`0.1.1` patch** (`T-343`, `T-347`,
+  released by `T-349`), then the **escape hatch `T-184` alone**, carrying `T-048`, then the **nine
+  typed-field tasks** `T-247`…`T-255`, then the `0.1.0` debt and **`0.2.0`**.
+- **The task to pick up is `T-343`** — the Windows taskbar's *Close window* while a dialog is open,
+  in the Windows-only shape the maintainer ruled the same day. `T-347` follows it.
+- **One acceptance walk closes the phase.** `TESTING.md` §8 item 6 is not run for `0.1.1` either,
+  by the maintainer's ruling: it happens once on the finished `0.2.0` build and closes `T328-R4`
+  and the last criterion of `T-340`, `T-342` and `T-344`. `T-339` (Narrator) sits in the same
+  sitting, and `T-348` gets a ruling in this phase rather than a build.
 
 ## Verification
 

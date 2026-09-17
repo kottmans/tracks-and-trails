@@ -2,7 +2,7 @@
 
 **Purpose:** Unfinished work: review, ready, proposed and blocked tasks.
 **Owner:** Planner (priorities); Implementer (task/status); Reviewer (review disposition)
-**Last updated:** 2026-09-08
+**Last updated:** 2026-09-17
 **Update when:** Work starts, changes scope/status, closes or reopens.
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
@@ -445,49 +445,6 @@ channel and hands over; it does not attempt to become a server.
 
 ---
 
-### T-048 — Verify the first real data migration when one is written
-
-**Status:** Proposed — **not schedulable yet.** No migration transforms data.
-*(Premise re-checked 2026-08-06 after `T169-R5`. Still true, and narrower than it was: `0009`
-**destroys** data rather than transforming it. That is a different problem with a different answer
-— it needs a test proving the rows are gone, which it has, not an allowance for values that
-legitimately changed, which is what this task is for. What did move is the strict per-column rule
-below: it now covers `jobs` only, because `history` no longer exists to compare.)*
-**Owner:** Implementer, when the first data migration is authored
-**Priority:** Medium at that point; nothing to do before
-**Phase:** unassigned
-**Depends on:** the first migration that changes stored values
-**Relevant context:** `T014-R4`; `docs/project/TESTING.md` §7 (Migrations)
-**Affected surfaces:** `tests/unit/test_persistence.py`
-
-#### Scope
-
-`T-014`'s migration test asserts strict per-column equality **for the tables in
-`_MIGRATED_TABLES`**, which since 2026-08-06 means `jobs` alone. That is correct while every
-migration either leaves a table's values alone or removes the table outright, and any unasked-for
-change is loss. It will be **wrong** the day a migration legitimately transforms values.
-
-**A destructive migration is not the case this task covers**, and `0009` is the reason to say so:
-it removes rows on an explicit ruling and proves it with its own regression. This task is about the
-opposite situation — values that change and are still correct — where equality has no way to tell a
-good transformation from a corrupt one.
-
-A `TRANSFORMED_BY_MIGRATION` allowance was written and then removed: `T014-R4` established that
-an allowance can conceal a corrupt-but-readable migration, and an empty allowance protects
-nothing while adding a mechanism nobody has exercised. Designing it against a real migration
-beats designing it against an imagined one.
-
-#### Acceptance criteria
-
-- The first data migration ships with a test asserting the transformed values are **correct**,
-  not merely different — a readable row holding wrong data is the failure mode `T014-R4` named
-- Untransformed columns stay under strict equality
-- The v1 fixture remains untouched; a new version freezes its own
-
-#### Out of scope
-
-- Any change to `T-014`'s current strict comparison, which is right until then
-
 ## Proposed — Phase 3
 
 ### T-190 — `docs/UX_SPEC.md` §6 still says its screen is unspecified
@@ -636,52 +593,141 @@ ends badly — the shape `2026-08-27-T212-ytdlp-update-double-free.md` recorded.
 
 ## Proposed — Phase 4.5
 
-### T-348 — Update the application from inside it, rather than by downloading the file
+### T-343 — The taskbar's Close window does nothing while a dialog is open
 
-**Status:** Proposed — **asked for by the maintainer on 2026-09-17**, trying the `0.1.0.dev0` build
-that reports a newer release: *"is the only way to update the program to download the new file?"*
-Told that it is, by `REL-009`, they answered *"that should definitely be a phase 4.5 task."*
-**Owner:** Maintainer decides the shape; Implementer builds
-**Priority:** Medium — every user of `0.1.0` updates by hand today
-**Phase:** Phase 4.5
-**Relevant context:** `REL-009` (notify only, and its *worth revisiting* clause), `REL-005`
-(the unsigned installer), `OPS-002`'s note on automatic updates, `T-338` (the checker this builds
-on), `NFR-007` (what the application may talk to)
+**Status:** Proposed — **left as it is for `0.1.0` by the maintainer on 2026-09-15**, chosen from three
+options (leave it and file a task; close the dialogs then quit, on Windows only; make *Add URLs* and
+*Preferences* non-modal). Not release-blocking. **Its shape was ruled on 2026-09-17** — the
+Windows-only handling, below — and it is **the first task of Phase 4.5**, shipping in `0.1.1` with
+`T-347`.
+**Owner:** Maintainer decides; Implementer builds
+**Priority:** Low — the standard behaviour of a modal dialog on Windows, reported as surprising
+**Phase:** Phase 4.5 — stage 1, the `0.1.1` patch
+**Relevant context:** `T-308` (window-modal dialogs and their parent); `C-003` (parity)
 
-#### What exists now
+#### What was found
 
-`Help → Check for Updates…` and the daily check say a newer release is out and open its page
-(`T-338`). **Nothing is downloaded or run** — item 3 of `REL-009` — so the user fetches the new
-AppImage or installer themselves and replaces what they have. Settings and the queue live in the
-user profile, so they survive either way.
+Reported by the maintainer: with a dialog other than the queue open, right-clicking the taskbar
+button and choosing *Close window* does not close the application. **Reproduced on `STARBASE` at
+`8d70e01`** by posting the taskbar's messages to the main window:
 
-#### Why `REL-009` left it open, and what has to be answered
+| Open dialog | `WM_CLOSE` | `WM_SYSCOMMAND` / `SC_CLOSE` | Main window enabled |
+|---|---|---|---|
+| none | closes | closes | yes |
+| *Add URLs* | ignored | ignored | **no** |
+| *Preferences* | ignored | ignored | **no** |
 
-Its own words: *"worth revisiting once installers are signed: applying an update in place becomes
-reasonable then."* The two platforms do not update the same way, and each raises its own question:
+Both dialogs open with `open()`, which is window-modal, and Windows disables the owner of a modal
+dialog, so its close is not acted on. Qt also drops a close event for a window a modal dialog blocks,
+so the same holds for a window manager's close on Linux (not measured).
 
-- **Windows.** An applied update runs the installer, which is unsigned (`REL-005`), so SmartScreen
-  is raised again on every update, and the download needs its own integrity check. Signing is named
-  as the `1.0` condition, so this may be a decision about ordering rather than about mechanism.
-- **Linux.** An AppImage updates through its own mechanism (zsync, as `AppImageUpdate` and Gear
-  Lever use), which needs the release to publish the matching file. Replacing a running AppImage
-  is not the same operation as replacing an installed tree.
-- **Both.** What is verified before anything is run (`SHA256SUMS` is published; a signature is not),
-  what the user is asked, and what happens to a download in flight.
+#### The shape, ruled 2026-09-17
+
+Put to the maintainer with the Phase 4.5 plan, as a choice between the same two alternatives.
+**Ruled: the Windows-only handling.** A Windows message filter closes the open dialog and then the
+application; *Add URLs* and *Preferences* stay window-modal on both platforms. The reason offered
+with the recommendation, and accepted: non-modal dialogs change how the whole application behaves,
+which would need its own `UX` ruling and its own tests, while the report was about one gesture on
+one platform.
+
+**What the shape leaves to the implementer:** what happens to URLs pasted into *Add URLs* but not
+yet added. Discarding them is what *Cancel* already does; anything else needs a reason and a test.
 
 #### Scope
 
-Put the options to the maintainer with their costs, then build what is chosen. At least: check and
-notify as now (the status quo); fetch the file and hand it over, verified, leaving the user to run
-it; and apply the update in place, per platform. Whatever is chosen amends `REL-009`.
+Build the Windows-only handling, then measure the table above again with it. Linux is out of scope
+by the ruling: Qt drops a close event for a window a modal dialog blocks there too, and that was
+never measured, so no behaviour is claimed for it.
 
 #### Acceptance criteria
 
-- [ ] A recorded decision, amending `REL-009`
-- [ ] If built: the update is verified against what the release publishes before anything runs, on
-  both platforms, with the failure path shown to the user
-- [ ] If built: a clean-machine run on each platform, updating a real earlier release to a newer one
-- [ ] `REQ-030`'s wording and the README's update section match what the application does
+- [x] A recorded decision — 2026-09-17, above
+- [ ] The table above measured again with the chosen behaviour, on Windows
+- [ ] What happens to unadded URLs is decided, stated here, and covered by a test
+
+---
+
+### T-347 — Show in folder leaves an already-open Dolphin window minimized on KDE Wayland
+
+**Status:** Proposed — **left for after `0.1.0` by the maintainer on 2026-09-15**, from two options
+(leave it and file a task; try to fix it now). Not release-blocking. **Scheduled 2026-09-17** into
+the `0.1.1` patch, second after `T-343`.
+**Owner:** Implementer
+**Priority:** Low — the file is selected in the window the user already has
+**Phase:** Phase 4.5 — stage 1, the `0.1.1` patch
+**Relevant context:** `T-086`, `ui/reveal.py` (`FileManager1.ShowItems` over `dbus-send`)
+
+#### What was found
+
+Tried by the maintainer on KDE Plasma (Wayland), Fedora 44, with a test window running the exact
+call the application makes:
+
+| Dolphin before the click | Result |
+|---|---|
+| closed | opens in front with the file selected |
+| open on another folder, or minimized | comes to the front |
+| **open on the download folder** | selects the file, **stays minimized on the taskbar** |
+
+`ShowItems` is sent with an empty startup id. On Wayland, raising an existing window needs an
+xdg-activation token from the application the user clicked in, and Qt gives Python no public way to
+request one.
+
+#### Scope
+
+Find a dependable way to pass an activation token (for example through the desktop portal's
+`OpenDirectory` with an `activation_token`, or a Wayland activation request), and measure the three
+cases above again.
+
+#### Acceptance criteria
+
+- [ ] The download folder already open: Dolphin comes to the front with the file selected
+- [ ] The other two cases unchanged
+
+---
+
+### T-349 — The `0.1.1` patch release
+
+**Status:** Proposed — **ruled by the maintainer on 2026-09-17** with the Phase 4.5 order: the two
+`0.1.0` defects left open go out as a patch before the phase's own work starts
+([the order](IMPLEMENTATION_PLAN.md#order-2026-09-17)).
+**Owner:** Implementer prepares; Maintainer tags and publishes
+**Priority:** Medium — it carries two Low-priority fixes, and it is the first update `0.1.0`'s users
+are told about by the checker they already have
+**Phase:** Phase 4.5 — stage 1
+**Depends on:** `T-343`, `T-347`
+**Relevant context:** `docs/RELEASE.md` (the five steps, and *patch releases carry fixes only*);
+`TESTING.md` §8 (the release gate); `REL-003` (SemVer); `REL-009` (the checker that tells users)
+
+#### Scope
+
+`0.1.1` from `main`, carrying `T-343` and `T-347` and nothing from stages 2 to 4. It is the second
+run of the release process while it is still fresh, and three things happen for the first time:
+
+- **`TESTING.md` §8 item 5 gets its first real use.** The migration check has never had a previous
+  release's database to open; `0.1.0` is the first there is one for. `tests/fixtures/schema_versions/`
+  holds the per-version fixtures the suite already uses, `v12.sql` being the newest.
+- **The update checker reaches real users.** Everyone on `0.1.0` is told, by `T-338`'s check, that
+  a newer release exists, and updates by hand (`REL-009` item 3).
+- **The release notes are written for people who already have the application**, rather than for
+  someone meeting it.
+
+#### The `§11` walk, ruled 2026-09-17
+
+**This release ships without `TESTING.md` §8 item 6**, and that is the maintainer's ruling rather
+than an omission: *"go with your recommendations, except for the acceptance walk. We'll do that at
+the end of 4.5 when everything is finished."* One walk, on the finished phase, closes `T328-R4`,
+`T-340`, `T-342`, `T-344` and Phase 4.5's own criterion together.
+
+**`0.1.0` was the first release to ship without it** (2026-09-16) and this is the second. Nothing
+user-facing says otherwise, and nothing here claims the criteria were checked.
+
+#### Acceptance criteria
+
+- [ ] `T-343` and `T-347` complete and approved
+- [ ] `TESTING.md` §8 run on both platforms, **item 6 excepted by the ruling above**, with item 5
+  carried out against `0.1.0`'s database rather than a fabricated one
+- [ ] The five steps of `RELEASE.md` followed, evidence recorded as `0.1.0`'s was
+- [ ] `main` back to a `.devN` version afterwards
 
 ---
 
@@ -746,6 +792,11 @@ frozen at job-creation time), `ARC-002` (it crosses a process boundary and must 
 `core/models.DownloadRequest`, `downloader/ytdlp_adapter.build_options`
 **Affected surfaces:** `core/models.py`, `core/presets.py`, `downloader/ytdlp_adapter.py`,
 `persistence/` (the request gains a field, so a migration), the preset/options UI, and their tests
+**Carries:** **`T-048`** — that migration is expected to be the project's first that *transforms*
+stored values rather than leaving them alone or removing a table, which is the condition `T-048` has
+waited on since Phase 2. **By the 2026-09-17 order it is done inside this task's review**, not filed
+onward as a later task. If the field turns out to need no data transformation, say so there and
+`T-048` keeps waiting
 **Risk:** **High.** It is a new route to two boundaries whose breach is Critical-band: writing
 outside the chosen directory, and a secret in a log
 
@@ -837,6 +888,54 @@ review rounds exist to enforce:
   row without the field loads; every control is keyboard-reachable and screen-reader-labelled
   (`NFR-005`); `ruff`, both mypy platforms and the touched suites are clean
 - **Risk:** Medium for all nine — breadth rather than depth, and `NFR-008`'s churn lands on each
+
+### T-048 — Verify the first real data migration when one is written
+
+**Status:** Proposed — **not schedulable yet.** No migration transforms data.
+*(Premise re-checked 2026-08-06 after `T169-R5`. Still true, and narrower than it was: `0009`
+**destroys** data rather than transforming it. That is a different problem with a different answer
+— it needs a test proving the rows are gone, which it has, not an allowance for values that
+legitimately changed, which is what this task is for. What did move is the strict per-column rule
+below: it now covers `jobs` only, because `history` no longer exists to compare.)*
+**Owner:** Implementer, when the first data migration is authored
+**Priority:** Medium at that point; nothing to do before
+**Phase:** Phase 4.5 — inside `T-184`'s review
+**Scheduled:** 2026-09-17 — `T-184` adds a field to `DownloadRequest`, so its migration is expected
+to be the first that transforms stored values. The maintainer's order does this task **in that
+review** rather than after it ([the order](IMPLEMENTATION_PLAN.md#order-2026-09-17)). The premise
+still has to hold: a migration that only adds a column with a default transforms nothing, and then
+this task waits again
+**Depends on:** the first migration that changes stored values
+**Relevant context:** `T014-R4`; `docs/project/TESTING.md` §7 (Migrations)
+**Affected surfaces:** `tests/unit/test_persistence.py`
+
+#### Scope
+
+`T-014`'s migration test asserts strict per-column equality **for the tables in
+`_MIGRATED_TABLES`**, which since 2026-08-06 means `jobs` alone. That is correct while every
+migration either leaves a table's values alone or removes the table outright, and any unasked-for
+change is loss. It will be **wrong** the day a migration legitimately transforms values.
+
+**A destructive migration is not the case this task covers**, and `0009` is the reason to say so:
+it removes rows on an explicit ruling and proves it with its own regression. This task is about the
+opposite situation — values that change and are still correct — where equality has no way to tell a
+good transformation from a corrupt one.
+
+A `TRANSFORMED_BY_MIGRATION` allowance was written and then removed: `T014-R4` established that
+an allowance can conceal a corrupt-but-readable migration, and an empty allowance protects
+nothing while adding a mechanism nobody has exercised. Designing it against a real migration
+beats designing it against an imagined one.
+
+#### Acceptance criteria
+
+- The first data migration ships with a test asserting the transformed values are **correct**,
+  not merely different — a readable row holding wrong data is the failure mode `T014-R4` named
+- Untransformed columns stay under strict equality
+- The v1 fixture remains untouched; a new version freezes its own
+
+#### Out of scope
+
+- Any change to `T-014`'s current strict comparison, which is right until then
 
 ### T-247 — Video selection: which items, how big, how old
 
@@ -932,6 +1031,98 @@ is **excluded** — `SEC-003` declined a configurable endpoint — and this task
 as the string the user typed; an unknown extractor key is refused **with the reason** rather than
 accepted and ignored, which is `T012-R5`'s defect exactly; values are redacted under `DAT-004` like
 any other text this application supplies, because an extractor argument can carry a token.
+
+### T-339 — Hear Narrator read the Windows application
+
+**Status:** Proposed — **deferred past `0.1.0` by the maintainer on 2026-09-14** (`T-327` item 3). Not
+release-blocking for `0.1.0`; its release notes say Narrator's speech was not checked by a person.
+**Scheduled 2026-09-17** into Phase 4.5's last stage, beside the acceptance walk: both need a
+person at a Windows desktop, and the walk is one sitting at the end of the phase.
+**Owner:** Maintainer performs; Implementer records
+**Priority:** Medium — an accessibility claim `NFR-005` makes and a person has not heard
+**Phase:** Phase 4.5 — stage 4, with the end-of-phase walk
+**Relevant context:** `T-327` item 3, as scoped there; `NFR-005`; `IMPLEMENTATION_PLAN.md` §Phase 4's
+screen-reader amendment (coherence *"belongs to the pre-release session"*);
+`tests/ui/test_windows_accessibility.py`, which gates names and roles but cannot judge speech
+
+#### Scope
+
+With Narrator on, on an installed build: open Add URLs, stage a URL, open its format table, choose a
+format, add it, start the queue, and open Preferences. Is what Narrator says *coherent*: does each
+control announce what it is and what it does, in an order that makes sense?
+
+#### Acceptance criteria
+
+- [ ] The walk above done by a person, described in their words in a dated record
+- [ ] Anything incoherent filed as its own task, with its severity under `TESTING.md` §14
+- [ ] `REQUIREMENTS.md` §3's *known-unverified* line about Narrator rewritten to what was heard
+
+---
+
+### T-348 — Update the application from inside it, rather than by downloading the file
+
+**Status:** Proposed — **asked for by the maintainer on 2026-09-17**, trying the `0.1.0.dev0` build
+that reports a newer release: *"is the only way to update the program to download the new file?"*
+Told that it is, by `REL-009`, they answered *"that should definitely be a phase 4.5 task."*
+**Sequenced 2026-09-17: ruled in this phase, built in a later one** — see below. The shape itself is
+**still owed**, so `REL-009` stands unamended and the application keeps notifying only.
+**Owner:** Maintainer decides the shape; Implementer builds
+**Priority:** Medium — every user of `0.1.0` updates by hand today
+**Phase:** Phase 4.5 — stage 4, the ruling only
+**Relevant context:** `REL-009` (notify only, and its *worth revisiting* clause), `REL-005`
+(the unsigned installer), `OPS-002`'s note on automatic updates, `T-338` (the checker this builds
+on), `NFR-007` (what the application may talk to)
+
+#### What exists now
+
+`Help → Check for Updates…` and the daily check say a newer release is out and open its page
+(`T-338`). **Nothing is downloaded or run** — item 3 of `REL-009` — so the user fetches the new
+AppImage or installer themselves and replaces what they have. Settings and the queue live in the
+user profile, so they survive either way.
+
+#### Why `REL-009` left it open, and what has to be answered
+
+Its own words: *"worth revisiting once installers are signed: applying an update in place becomes
+reasonable then."* The two platforms do not update the same way, and each raises its own question:
+
+- **Windows.** An applied update runs the installer, which is unsigned (`REL-005`), so SmartScreen
+  is raised again on every update, and the download needs its own integrity check. Signing is named
+  as the `1.0` condition, so this may be a decision about ordering rather than about mechanism.
+- **Linux.** An AppImage updates through its own mechanism (zsync, as `AppImageUpdate` and Gear
+  Lever use), which needs the release to publish the matching file. Replacing a running AppImage
+  is not the same operation as replacing an installed tree.
+- **Both.** What is verified before anything is run (`SHA256SUMS` is published; a signature is not),
+  what the user is asked, and what happens to a download in flight.
+
+#### Sequencing, ruled 2026-09-17
+
+The Phase 4.5 plan put three shapes to the maintainer — status quo, fetch and hand over, apply in
+place — with the recommendation to **rule now and build later**, because in-place updating waits on
+signing and signing is a `1.0` condition (`REL-005`, and `REL-009`'s own *worth revisiting* clause).
+The maintainer took that recommendation.
+
+**What that settles:** nothing is built for updating in Phase 4.5, and `REL-009` is not amended by
+this phase. **What it leaves open:** which shape, which is the maintainer's to rule whenever they
+choose, and at the latest with the signing decision. "Fetch and hand over" remains the one shape
+that is buildable before signing, if they want something visible sooner; it still raises SmartScreen
+on Windows, because that is the installer's signature rather than the download's.
+
+#### Scope
+
+Put the options to the maintainer with their costs, then build what is chosen. At least: check and
+notify as now (the status quo); fetch the file and hand it over, verified, leaving the user to run
+it; and apply the update in place, per platform. Whatever is chosen amends `REL-009`.
+
+#### Acceptance criteria
+
+- [ ] A recorded decision, amending `REL-009` — **still owed**; 2026-09-17 ruled only when it is
+  taken and built, not what it says
+- [ ] If built: the update is verified against what the release publishes before anything runs, on
+  both platforms, with the failure path shown to the user
+- [ ] If built: a clean-machine run on each platform, updating a real earlier release to a newer one
+- [ ] `REQ-030`'s wording and the README's update section match what the application does
+
+---
 
 ## Proposed — Phase 5
 
@@ -1301,108 +1492,6 @@ account for rather than one.
 
 ---
 
-### T-347 — Show in folder leaves an already-open Dolphin window minimized on KDE Wayland
-
-**Status:** Proposed — **left for after `0.1.0` by the maintainer on 2026-09-15**, from two options
-(leave it and file a task; try to fix it now). Not release-blocking.
-**Owner:** Implementer
-**Priority:** Low — the file is selected in the window the user already has
-**Phase:** Phase 5 (after `0.1.0`)
-**Relevant context:** `T-086`, `ui/reveal.py` (`FileManager1.ShowItems` over `dbus-send`)
-
-#### What was found
-
-Tried by the maintainer on KDE Plasma (Wayland), Fedora 44, with a test window running the exact
-call the application makes:
-
-| Dolphin before the click | Result |
-|---|---|
-| closed | opens in front with the file selected |
-| open on another folder, or minimized | comes to the front |
-| **open on the download folder** | selects the file, **stays minimized on the taskbar** |
-
-`ShowItems` is sent with an empty startup id. On Wayland, raising an existing window needs an
-xdg-activation token from the application the user clicked in, and Qt gives Python no public way to
-request one.
-
-#### Scope
-
-Find a dependable way to pass an activation token (for example through the desktop portal's
-`OpenDirectory` with an `activation_token`, or a Wayland activation request), and measure the three
-cases above again.
-
-#### Acceptance criteria
-
-- [ ] The download folder already open: Dolphin comes to the front with the file selected
-- [ ] The other two cases unchanged
-
----
-
-### T-343 — The taskbar's Close window does nothing while a dialog is open
-
-**Status:** Proposed — **left as it is for `0.1.0` by the maintainer on 2026-09-15**, chosen from three
-options (leave it and file a task; close the dialogs then quit, on Windows only; make *Add URLs* and
-*Preferences* non-modal). Not release-blocking.
-**Owner:** Maintainer decides; Implementer builds
-**Priority:** Low — the standard behaviour of a modal dialog on Windows, reported as surprising
-**Phase:** Phase 5 (after `0.1.0`)
-**Relevant context:** `T-308` (window-modal dialogs and their parent); `C-003` (parity)
-
-#### What was found
-
-Reported by the maintainer: with a dialog other than the queue open, right-clicking the taskbar
-button and choosing *Close window* does not close the application. **Reproduced on `STARBASE` at
-`8d70e01`** by posting the taskbar's messages to the main window:
-
-| Open dialog | `WM_CLOSE` | `WM_SYSCOMMAND` / `SC_CLOSE` | Main window enabled |
-|---|---|---|---|
-| none | closes | closes | yes |
-| *Add URLs* | ignored | ignored | **no** |
-| *Preferences* | ignored | ignored | **no** |
-
-Both dialogs open with `open()`, which is window-modal, and Windows disables the owner of a modal
-dialog, so its close is not acted on. Qt also drops a close event for a window a modal dialog blocks,
-so the same holds for a window manager's close on Linux (not measured).
-
-#### Scope
-
-Decide whether closing the application from outside should win over an open dialog, and on which
-platforms. The two alternatives put on 2026-09-15 are the starting point: a Windows message filter
-that closes the dialogs first (Windows only, and it discards pasted URLs not yet added), or
-non-modal *Add URLs* and *Preferences* on both platforms.
-
-#### Acceptance criteria
-
-- [ ] A recorded decision
-- [ ] If built, the table above measured again with the chosen behaviour, on each platform it covers
-
----
-
-### T-339 — Hear Narrator read the Windows application
-
-**Status:** Proposed — **deferred past `0.1.0` by the maintainer on 2026-09-14** (`T-327` item 3). Not
-release-blocking for `0.1.0`; its release notes say Narrator's speech was not checked by a person.
-**Owner:** Maintainer performs; Implementer records
-**Priority:** Medium — an accessibility claim `NFR-005` makes and a person has not heard
-**Phase:** Phase 5 (after `0.1.0`)
-**Relevant context:** `T-327` item 3, as scoped there; `NFR-005`; `IMPLEMENTATION_PLAN.md` §Phase 4's
-screen-reader amendment (coherence *"belongs to the pre-release session"*);
-`tests/ui/test_windows_accessibility.py`, which gates names and roles but cannot judge speech
-
-#### Scope
-
-With Narrator on, on an installed build: open Add URLs, stage a URL, open its format table, choose a
-format, add it, start the queue, and open Preferences. Is what Narrator says *coherent*: does each
-control announce what it is and what it does, in an order that makes sense?
-
-#### Acceptance criteria
-
-- [ ] The walk above done by a person, described in their words in a dated record
-- [ ] Anything incoherent filed as its own task, with its severity under `TESTING.md` §14
-- [ ] `REQUIREMENTS.md` §3's *known-unverified* line about Narrator rewritten to what was heard
-
----
-
 ### T-336 — The installed app crashed once with heap corruption opening *Naming and folders…*
 
 **Status:** **Proposed — a potential task, not open work** (maintainer, 2026-09-13). Seen once, in
@@ -1471,7 +1560,9 @@ name, a moving bar and the time so far) and chose to ship it **in `0.1.0`**, fro
 Moves the candidate.
 **Owner:** Implementer
 **Priority:** High for `0.1.0` by that choice
-**Phase:** Phase 5 (blocks `T-328`)
+**Phase:** Phase 4.5 — stage 4, closed by the end-of-phase acceptance walk
+**Scheduled:** 2026-09-17 — the maintainer ruled **one** acceptance walk, on the finished Phase 4.5
+build, rather than a sitting of its own for each of these ([the order](IMPLEMENTATION_PLAN.md#order-2026-09-17))
 **Relevant context:** `REQ-011` (indeterminate progress), `REQ-014` (stages), `NFR-005`, `T-216`
 (a finished bar is furniture)
 **Affected surfaces:** `downloader/protocol.py`, `downloader/worker.py`, `downloader/ytdlp_adapter.py`,
@@ -1541,7 +1632,9 @@ above the top of the screen, so the window could not be moved and no URL could b
 `0.1.0` candidate.
 **Owner:** Implementer
 **Priority:** High — the first screen a user needs could not be used on an ordinary laptop
-**Phase:** Phase 5 (blocks `T-328`)
+**Phase:** Phase 4.5 — stage 4, closed by the end-of-phase acceptance walk
+**Scheduled:** 2026-09-17 — the maintainer ruled **one** acceptance walk, on the finished Phase 4.5
+build, rather than a sitting of its own for each of these ([the order](IMPLEMENTATION_PLAN.md#order-2026-09-17))
 **Relevant context:** `T-242` and `T222-R1` (height bounds for *Preferences* and *Options*);
 `T-310` (`FormatDialog.sizeHint` bounded by the screen); `NFR-005`
 **Affected surfaces:** new `ui/screen_fit.py`; `ui/add_dialog.py`; `app.present`
@@ -1623,7 +1716,9 @@ walk). The implementation was approved by review on 2026-09-14
 preparing `T-328`'s §11 acceptance sheet; the maintainer chose to fix it in `0.1.0`.
 **Owner:** Implementer
 **Priority:** High — `REQ-019` is an MVP requirement and §11 criterion 6 names a copyable log
-**Phase:** Phase 5 (blocks `T-328`)
+**Phase:** Phase 4.5 — stage 4, closed by the end-of-phase acceptance walk
+**Scheduled:** 2026-09-17 — the maintainer ruled **one** acceptance walk, on the finished Phase 4.5
+build, rather than a sitting of its own for each of these ([the order](IMPLEMENTATION_PLAN.md#order-2026-09-17))
 **Relevant context:** `REQ-019`; `REQUIREMENTS.md` §11 criterion 6; `UX-005` §2 and §4 and their
 2026-09-14 amendments; `T-084` (the log view); `T-135` (what the `⋯` holds)
 **Affected surfaces:** `ui/log_view.py`, `ui/main_window.py`, `ui/add_dialog.py`

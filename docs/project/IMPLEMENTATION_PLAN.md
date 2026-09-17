@@ -855,12 +855,54 @@ with their help suppressed. Classified:
 |---|---|
 | **65** get a typed control | **21 already have one**; the other **44** are nine tasks, `T-247`…`T-255` |
 | **95** are escape-hatch only | `T-184` |
-| **89** are refused | the application owns them (`app:sets`, `app:plumbing`, `app:policy`, `app:contained`), or `SEC-003`/`SEC-004` forbid them |
-| **1** is unclassified | `--legacy-server-connect`, a transport-security downgrade the audit first missed (`T183-R3`). The original fifteen were ruled **forbidden** by `SEC-004`; this one is `T-256`'s, and **`T-184` is blocked until it is ruled** |
+| **92** are refused | the application owns them (`app:sets`, `app:plumbing`, `app:policy`, `app:contained`), or `SEC-003`/`SEC-004`/`SEC-005` forbid them |
+| **0** are unclassified | ~~`--legacy-server-connect`, a transport-security downgrade the audit first missed (`T183-R3`)~~ — **ruled forbidden by `SEC-005` on 2026-08-21**, which unblocked `T-184` |
+
+*(**The last two rows read 89 and 1 until 2026-09-17.** `SEC-005` moved that option into the refused
+class on 2026-08-21, and so did `T-256`'s two `SEC-003` corrections; this table was not updated with
+them. `docs/YTDLP_OPTION_AUDIT.md` and `T-184`'s own entry carried 92 throughout, and 92 is the
+figure the refusal list is built from.)*
 
 **This phase is nine typed-field tasks, the hatch, and one ruling** — not "the rest of yt-dlp".
 `REQ-030` excludes the options that *are* the command line, and the audit found those to be 36 of
-the 89 refused.
+the 92 refused — its `app:plumbing` class, unchanged by the three later rulings.
+
+### Order, 2026-09-17
+
+**Ruled by the maintainer**, on a plan put to them that day. Six questions were asked with a
+recommendation each. Five were taken as recommended; the sixth was changed:
+
+> *"go with your recommendations, except for the acceptance walk. We'll do that at the end of 4.5
+> when everything is finished."*
+
+| Ruled | What it means | Recorded in |
+|---|---|---|
+| The phase's release is **`0.2.0`** | Every task here adds a feature, which `REL-003`'s SemVer makes a minor release, and it carries the first data migration | here |
+| **A `0.1.1` patch goes out first**, carrying `T-343` and `T-347` and nothing else | The release process runs a second time while it is fresh, `0.1.0`'s users are told by the checker they already have, and the `0.2.0` review stays about this phase's own work | `T-349` |
+| **`T-343` is Windows-only handling** | A Windows message filter closes the open dialog and then the application. *Add URLs* and *Preferences* stay window-modal on both platforms | `T-343` |
+| **`T-348` is ruled in this phase and built in a later one** | In-place updating waits on signing, a `1.0` condition. `REL-009` is not amended here, and the application keeps notifying only | `T-348` |
+| **One acceptance walk, at the end of the phase** | `0.1.1` ships without `TESTING.md` §8 item 6, as `0.1.0` did. The walk happens once, on the finished `0.2.0` build | `T-349`, and the exit criteria below |
+| **Stage 3 keeps the tabled order** | `T-247` first, `T-255` last | the table below |
+
+#### The stages
+
+Serial, one task at a time, which is what one development machine allows (`AGENTS.md` §9: one
+worker per machine, and only the maintainer opens a wave). The nine typed-field tasks are
+independent of each other and of the hatch, so stage 3 is where a second Linux machine would pay.
+
+| Stage | Tasks, in order | Why here |
+|---|---|---|
+| **1 — the `0.1.1` patch** | `T-343`, `T-347`, then `T-349` | Patch-sized, no option surface touched. `RELEASE.md`: patch releases carry fixes only |
+| **2 — the escape hatch, alone** | `T-184`, carrying `T-048` | It is what makes `REQ-030` true before any typed field exists: the 95 hatch-only options and the 44 not yet typed all become reachable the day it lands. It runs alone because it is the phase's one High-risk task, a new route to two Critical-band boundaries (`T-034`'s containment, `DAT-003`/`DAT-004`'s redaction). Its migration is expected to be the first that transforms stored values, which is the condition `T-048` has waited on since Phase 2 |
+| **3 — the typed fields** | `T-247`, `T-249`, `T-251`, `T-250`, `T-248`, `T-252`, `T-253`, `T-254`, `T-255` | Ordered by what users ask for first, then by shared machinery, then by risk to existing boundaries. `T-247`'s `-I` grammar is the first parse-and-refuse-at-edit-time control and the later tasks reuse it; `T-249` needs `DAT-003`'s redaction question answered before `--write-info-json` ships; `T-248` wants `STARBASE` free, because `--windows-filenames` has to be asserted on both platforms; `T-255` is last by the audit's own ranking |
+| **4 — the `0.1.0` debt and the exit** | `T-339`, `T-348`'s ruling, the walk that closes `T-340`, `T-342`, `T-344` and `T328-R4`, then the `0.2.0` release | What the waived `§11` walk would have found is carried here by the 2026-09-16 ruling. Two of these need a person at a Windows desktop, so they are one sitting |
+
+Two things hold across the whole of stage 3. **`NFR-008`'s churn**: every task adds keys to
+`build_options`, the weekly canary is what catches a yt-dlp change to any of them, and the audit's
+drift test fails if the pin moves without a re-run. **`NFR-005`**: every new control is a keyboard
+stop with a screen-reader name, which the accessibility gate covers automatically — but a dialog
+that grows by 44 controls is a layout question as well, which `T-342`'s screen-fit rule bounds and
+the end-of-phase walk is the place to look at.
 
 ### Deliverables
 
@@ -893,6 +935,10 @@ the 89 refused.
   more controls than any other, and Phase 4's accessibility pass precedes it rather than covering it
 - The `REQ-030` claim is **stated in the README with its exclusions**, so the parity promise a user
   reads matches the one the application keeps
+- **`REQUIREMENTS.md` §11's acceptance criteria walked on the `0.2.0` artifacts, on both platforms,
+  and recorded** — added 2026-09-17 by the ruling above. It is `TESTING.md` §8 item 6, waived for
+  `0.1.0` and `0.1.1`, and it closes `T328-R4` and the last criterion of `T-340`, `T-342` and
+  `T-344` in the same sitting
 - Reviewed and signed off
 
 ---
@@ -1014,6 +1060,10 @@ them outlive the release.
 here rather than folded into the others, because a later reader counting exits would otherwise read
 this one as complete. Phase 4.5 carries the walk's residue, `T-339` (Narrator), `T-340`, `T-342` and
 `T-344`'s human observations, `T-343`, `T-347` and `T-348`.
+
+*(**2026-09-17:** those tasks are now placed in that phase's stages, and the walk itself is one of
+its exit criteria — [the order](#order-2026-09-17). It happens once, on the finished `0.2.0` build,
+which means `0.1.1` ships without it too.)*
 
 ---
 
