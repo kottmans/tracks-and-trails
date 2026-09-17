@@ -16,22 +16,10 @@ simple, and the full format table, output templates, and post-processors when yo
 
 ## Status
 
-**Working application, run from source. Not yet released.**
-
-Phases 0–3 are complete and signed off: the process model, the persistent queue, concurrency,
-and the format/content depth that separates this from a preset-only wrapper. Phase 4 —
-settings, theming, and accessibility — is built, and its exit sign-off is pending. Phase 5 is
-packaging: a Linux AppImage and a Windows installer are built and being tested, but no release
-has been published.
-
-Concretely, that means:
-
-| | |
-|---|---|
-| **You can** | [install it from source](#installing) and download things with it today |
-| **You cannot** | download a release — the first one has not been published |
-| **Targets** | Linux (Fedora, x86-64) and Windows 10/11 (x86-64), both exercised by CI |
-| **Not supported** | macOS |
+**0.1.0 is available for Linux and Windows.** Download it from the
+[release page](https://github.com/kottmans/tracks-and-trails/releases/tag/v0.1.0).
+This first release provides the features below; it does not yet expose every yt-dlp option.
+Windows Narrator's spoken output has not been checked by a person. macOS is not supported.
 
 [docs/project/STATUS.md](docs/project/STATUS.md) is the only document authoritative for what is
 actually built, including what is known-broken and what is unexplained.
@@ -55,9 +43,56 @@ actually built, including what is known-broken and what is unexplained.
 
 ## Installing
 
-**There is no release to download yet.** Until the first one is published, install from source
-as below. It takes a few minutes, most of it downloading Qt. The install brings its own pinned
-copy of yt-dlp, so you do not need yt-dlp installed separately.
+Download the files for your platform from the
+[0.1.0 release page](https://github.com/kottmans/tracks-and-trails/releases/tag/v0.1.0).
+The packaged application includes Python and yt-dlp; you do not need to install either.
+`SHA256SUMS` on that page lists the artifact checksums.
+
+### Windows 10 and 11 (x86-64)
+
+Run **`Tracks-and-Trails-0.1.0-setup.exe`**. The default install needs no administrator prompt
+and installs for your user in `%LOCALAPPDATA%\Programs\Tracks & Trails`. ffmpeg is included.
+
+The installer is unsigned, so Windows may show **Windows protected your PC**:
+
+> Microsoft Defender SmartScreen prevented an unrecognized app from starting. Running this app
+> might put your PC at risk.
+
+If this appears for the installer you downloaded from this project's release page, choose
+**More info**, check the app name is `Tracks-and-Trails-0.1.0-setup.exe` and the publisher is
+**Unknown publisher**, then choose **Run anyway**. Each new unsigned build establishes its own
+reputation. Signing is planned before 1.0.
+
+### Linux (x86-64)
+
+Download **`Tracks_and_Trails-0.1.0-x86_64.AppImage`**. In its folder, run:
+
+```bash
+chmod +x Tracks_and_Trails-0.1.0-x86_64.AppImage
+./Tracks_and_Trails-0.1.0-x86_64.AppImage
+```
+
+The AppImage runs directly. It needs **glibc 2.36 or newer**, such as Debian 12 or Ubuntu 24.04
+LTS and newer; Ubuntu 22.04 is too old. Install **ffmpeg** from your distribution to merge video
+and audio streams or extract audio. Without ffmpeg, the application still opens and explains
+which operations need it.
+
+Both platforms need a working **system certificate store** (`ca-certificates` on Debian and
+Ubuntu). The application uses the system store, including certificates your organisation adds.
+
+For a menu entry, use **AppImageLauncher** or **Gear Lever**, or run these two commands from the
+folder containing the downloaded AppImage. They keep a copy at a stable path and create a launcher
+for that copy:
+
+```bash
+install -Dm755 Tracks_and_Trails-0.1.0-x86_64.AppImage "$HOME/.local/bin/tracks-and-trails.AppImage"
+mkdir -p "$HOME/.local/share/applications" && printf '[Desktop Entry]\nType=Application\nName=Tracks & Trails\nExec="%s"\nIcon=video-x-generic\nTerminal=false\nCategories=AudioVideo;\n' "$HOME/.local/bin/tracks-and-trails.AppImage" > "$HOME/.local/share/applications/io.github.kottmans.TracksAndTrails.desktop"
+```
+
+### Installing from source
+
+The source install brings its own pinned copy of yt-dlp. It needs a separate Python installation
+and takes a few minutes, mostly to download Qt.
 
 You need:
 
@@ -66,7 +101,7 @@ You need:
 - **ffmpeg** is optional but recommended. Without it the app still runs, but it cannot merge
   separate video and audio streams or extract audio, and it tells you so.
 
-### Linux
+#### Linux
 
 Install the prerequisites from your package manager:
 
@@ -93,7 +128,7 @@ python3 -m venv .venv
 .venv/bin/tracks-and-trails
 ```
 
-### Windows 10 and 11
+#### Windows 10 and 11
 
 In PowerShell, install the prerequisites with winget, then **open a new PowerShell window** so
 they are on your `PATH`:
@@ -118,7 +153,7 @@ py -3.14 -m venv .venv
 
 If the app says it cannot find ffmpeg, set its location in **Settings → Preferences…**.
 
-### Starting it again, updating, and removing it
+#### Starting the source install again, updating, and removing it
 
 - **Start it again** by running the last line above from the `tracks-and-trails` folder.
 - **Update** from the same folder with `git pull`, then repeat the `pip install .` line.
@@ -203,8 +238,8 @@ the choices below and their amendments.
   attempts to scrub such prose failed. [SECURITY.md](SECURITY.md) states both boundaries in full. See [DAT-003 and its amendments](docs/project/DECISIONS.md#effective-decision-index)
   for the storage/logging boundary and retained diagnostic risk.
 - **No pull-request trigger exists in any workflow, and a test enforces it** (`T-262`, `T-264`).
-  Every runner is self-hosted, so a fork's pull request would be arbitrary code execution on a
-  personal machine.
+  Windows desktop jobs use a self-hosted runner, so a fork's pull request could execute
+  arbitrary code on a personal machine.
 
 ## What this is not
 

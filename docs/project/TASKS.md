@@ -1076,6 +1076,27 @@ says DRM is never retried, and reading it again under a new staged job is that r
 **Still true of the queue path:** the first pass's corrections stand, and the review confirmed them.
 **No DRM service was contacted**; every DRM failure here is reported by a test worker.
 
+#### 2026-09-16 — the maintainer published without the §11 walk
+
+**Ruled by the maintainer**, asked to do the acceptance walk on the `5b1bf97` draft: *"lets go ahead
+and release it as is, there are several hundred people already using it and i know it works. Any
+remaining issues we'll fix as part of phase 4.5."*
+
+So `0.1.0` is published with `TESTING.md` §8 **item 6 not performed**: nobody walked
+`REQUIREMENTS.md` §11's nine criteria on the release artifacts, on either platform. The same goes
+for the sheet's later checks (processing progress, the chip, the retry offer, the missing-file box,
+and the Windows 125% dialogs), and for item 8's cancellation sitting, whose only record is the
+maintainer's answers on the `3c011b8` drafts. **`T328-R4` stays open** and is not satisfied by this;
+it is waived for this release.
+
+**What did cover the artifacts:** every machine check in `T-326`'s evidence, on the published bytes.
+**What the reviewer said:** the release review had not granted release approval, which it says
+awaits that evidence and the walk. The maintainer released on their own judgement, which is theirs to
+make; this entry is the record of it.
+
+**Owed to Phase 4.5**, by the same ruling: anything the walk would have found, plus `T-343`
+(the taskbar close), `T-347` (Dolphin's window on KDE Wayland), and `T-339` (Narrator).
+
 #### Scope
 
 1. **Freeze the candidate**: the release commit sets `__version__ = "0.1.0"`, creates
