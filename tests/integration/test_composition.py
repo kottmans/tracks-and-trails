@@ -2811,6 +2811,32 @@ def test_the_running_application_keeps_its_dialogs_on_screen(
         dialog.deleteLater()
 
 
+def test_the_running_application_can_be_closed_from_the_taskbar(
+    composed: Callable[..., application.Composition], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`present()` asks for `ui/taskbar_close.py`'s rule for the window it shows (`T-343`).
+
+    **A recorder rather than the filter itself**, because the rule installs on Windows only: the
+    ruling was Windows-only handling, and a native event filter is called for every native event,
+    so nothing is installed on this platform to find. What this asserts is the wiring — that
+    `present` asks, for the application it composed and the window it is showing. The filter's own
+    behaviour is `tests/ui/test_taskbar_close.py`, and the real message path is the Windows job's.
+    """
+    from tracks_and_trails.ui import taskbar_close
+
+    asked: list[tuple[object, object]] = []
+    monkeypatch.setattr(
+        taskbar_close,
+        "close_from_the_taskbar",
+        lambda app, owner: asked.append((app, owner)),
+    )
+
+    composition = composed()
+    application.present(composition)
+
+    assert asked == [(composition.app, composition.window)]
+
+
 def _report_as_run_does(composition: application.Composition) -> None:
     """Show the carried settings problem the way `run()` does, after the window exists.
 

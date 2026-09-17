@@ -24,7 +24,7 @@ import os
 import subprocess
 import sys
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -37,6 +37,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDialog,
     QListView,
     QMenu,
     QStyle,
@@ -50,6 +51,7 @@ from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import SessionKind
+from tracks_and_trails.ui import taskbar_close
 from tracks_and_trails.ui import theme as ui_theme
 from tracks_and_trails.ui.add_dialog import AddUrlDialog
 from tracks_and_trails.ui.job_detail import build_progress_view
@@ -478,6 +480,105 @@ def test_escape_does_not_close_the_main_window(shown_window: MainWindow) -> None
     QTest.keyClick(shown_window, Qt.Key.Key_Escape)
     QApplication.processEvents()
     assert shown_window.isVisible(), "Escape closed the main window"
+
+
+# --- the taskbar's *Close window*, through a dialog (`T-343`) ---------------------------------
+#
+# The maintainer reported that with *Add URLs* or *Preferences* open, the taskbar button's *Close
+# window* does nothing. This is the measurement that report asked for, and the only place it can
+# be taken: the message is a real Windows message, posted to a real `HWND`, and what ignored it
+# was Qt's refusal to deliver a close to a window a modal dialog blocks.
+#
+# The decision the filter makes is tested offscreen in `tests/ui/test_taskbar_close.py`. What is
+# here is the half that needs Windows: that the message arrives at all, that the owner is disabled
+# while the dialog is up, and that the gesture now closes the application.
+
+#: The two forms *Close window* arrives as, depending on the shell. Both were measured as ignored.
+TASKBAR_CLOSE_MESSAGES = (
+    pytest.param(taskbar_close.WM_CLOSE, 0, id="WM_CLOSE"),
+    pytest.param(taskbar_close.WM_SYSCOMMAND, taskbar_close.SYSTEM_CLOSE, id="SC_CLOSE"),
+)
+
+
+def _post_to_the_window(window: QWidget, message: int, parameter: int) -> None:
+    """Post a message to the window's own handle, the way the shell does, and let Qt pump it."""
+    user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+    handle = window.windowHandle()
+    assert handle is not None
+    assert user32.PostMessageW(int(handle.winId()), message, parameter, 0), (
+        f"Windows refused to post {message:#06x} to the window"
+    )
+    for _ in range(5):
+        QApplication.processEvents()
+
+
+def _window_is_enabled(window: QWidget) -> bool:
+    """What Windows itself thinks, not what Qt's `isEnabled` reports about the widget."""
+    user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+    handle = window.windowHandle()
+    assert handle is not None
+    return bool(user32.IsWindowEnabled(int(handle.winId())))
+
+
+@pytest.fixture
+def without_quitting_on_the_last_window(qapp: QApplication) -> Iterator[None]:
+    """Closing the only window would ask the application to quit, mid-session."""
+    was = qapp.quitOnLastWindowClosed()
+    qapp.setQuitOnLastWindowClosed(False)
+    yield
+    qapp.setQuitOnLastWindowClosed(was)
+
+
+@pytest.mark.parametrize(("message", "parameter"), TASKBAR_CLOSE_MESSAGES)
+def test_windows_disables_the_window_a_dialog_blocks_and_drops_its_close(
+    shown_window: MainWindow,
+    without_quitting_on_the_last_window: None,
+    message: int,
+    parameter: int,
+) -> None:
+    """The report, measured — and the positive this file needs before asserting the fix.
+
+    Nothing is installed here, so this is the behaviour as shipped in `0.1.0`: the message is
+    posted and accepted by Windows, the owner is disabled because the dialog is window-modal, and
+    the window stays open.
+    """
+    dialog = QDialog(shown_window)
+    dialog.open()
+    QApplication.processEvents()
+    assert dialog.isModal(), "the dialog is not modal, so it blocks nothing and proves nothing"
+    assert not _window_is_enabled(shown_window), (
+        "Windows did not disable the dialog's owner, so this is not the reported situation"
+    )
+
+    _post_to_the_window(shown_window, message, parameter)
+
+    assert shown_window.isVisible(), (
+        "the defect is gone without the filter, so the fix below proves nothing"
+    )
+    assert dialog.isVisible()
+    dialog.close()
+    QApplication.processEvents()
+
+
+@pytest.mark.parametrize(("message", "parameter"), TASKBAR_CLOSE_MESSAGES)
+def test_the_taskbar_close_closes_the_dialog_and_the_application(
+    qapp: QApplication,
+    shown_window: MainWindow,
+    without_quitting_on_the_last_window: None,
+    message: int,
+    parameter: int,
+) -> None:
+    """With the filter installed, the same message the shell sends closes the application."""
+    closer = taskbar_close.close_from_the_taskbar(qapp, shown_window)
+    assert closer is not None, "nothing was installed on Windows, where the gesture exists"
+    dialog = QDialog(shown_window)
+    dialog.open()
+    QApplication.processEvents()
+
+    _post_to_the_window(shown_window, message, parameter)
+
+    assert not dialog.isVisible(), "the dialog that blocked the window is still up"
+    assert not shown_window.isVisible(), "the application was asked to close and did not"
 
 
 # --- widget focus order under the real plugin (`T-040`, `T026-R3`, `NFR-005`) ----------------

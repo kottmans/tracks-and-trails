@@ -350,8 +350,12 @@ def present(composition: Composition) -> None:
     # Before the window is shown, so its first dialog is already covered: every dialog opens
     # inside the screen's working area, title bar included (`ui/screen_fit.py`).
     from tracks_and_trails.ui.screen_fit import keep_dialogs_on_screen
+    from tracks_and_trails.ui.taskbar_close import close_from_the_taskbar
 
     keep_dialogs_on_screen(composition.app, composition.window)
+    # Windows only, and nothing is installed elsewhere: the taskbar's *Close window* is ignored
+    # while a modal dialog is open, because Windows disables the dialog's owner (`T-343`).
+    close_from_the_taskbar(composition.app, composition.window)
     composition.window.show()
     if composition.settings_problem is not None:
         composition.window.report_settings_problem(composition.settings_problem)

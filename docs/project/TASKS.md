@@ -134,6 +134,66 @@ The release gate's machine half, run **against the candidate** rather than again
 
 ## Ready
 
+### T-343 — The taskbar's Close window does nothing while a dialog is open
+
+**Status:** **In Progress** — built on 2026-09-17, **waiting on the Windows measurement** the
+acceptance criteria name. The shape was ruled the same day (the Windows-only handling, below), and
+this is **the first task of Phase 4.5**, shipping in `0.1.1` with `T-347`. *(Was Proposed:)* left as
+it is for `0.1.0` by the maintainer on 2026-09-15, chosen from three options (leave it and file a
+task; close the dialogs then quit, on Windows only; make *Add URLs* and *Preferences* non-modal).
+Not release-blocking.
+**Owner:** Maintainer decides; Implementer builds
+**Priority:** Low — the standard behaviour of a modal dialog on Windows, reported as surprising
+**Phase:** Phase 4.5 — stage 1, the `0.1.1` patch
+**Relevant context:** `T-308` (window-modal dialogs and their parent); `C-003` (parity)
+**Affected surfaces:** `ui/taskbar_close.py` (new), `app.py`'s `present`, `tests/ui/test_taskbar_close.py`,
+`tests/ui/test_windows_desktop.py`, `tests/integration/test_composition.py`
+**Evidence:** [`2026-09-17-T343-taskbar-close.md`](evidence/2026-09-17-T343-taskbar-close.md) — the
+offscreen suite, the mutation campaign, and the two things measured rather than assumed. **The
+Windows table is the part still owed**, and it is what the second criterion below asks for`
+
+#### What was found
+
+Reported by the maintainer: with a dialog other than the queue open, right-clicking the taskbar
+button and choosing *Close window* does not close the application. **Reproduced on `STARBASE` at
+`8d70e01`** by posting the taskbar's messages to the main window:
+
+| Open dialog | `WM_CLOSE` | `WM_SYSCOMMAND` / `SC_CLOSE` | Main window enabled |
+|---|---|---|---|
+| none | closes | closes | yes |
+| *Add URLs* | ignored | ignored | **no** |
+| *Preferences* | ignored | ignored | **no** |
+
+Both dialogs open with `open()`, which is window-modal, and Windows disables the owner of a modal
+dialog, so its close is not acted on. Qt also drops a close event for a window a modal dialog blocks,
+so the same holds for a window manager's close on Linux (not measured).
+
+#### The shape, ruled 2026-09-17
+
+Put to the maintainer with the Phase 4.5 plan, as a choice between the same two alternatives.
+**Ruled: the Windows-only handling.** A Windows message filter closes the open dialog and then the
+application; *Add URLs* and *Preferences* stay window-modal on both platforms. The reason offered
+with the recommendation, and accepted: non-modal dialogs change how the whole application behaves,
+which would need its own `UX` ruling and its own tests, while the report was about one gesture on
+one platform.
+
+**What the shape leaves to the implementer:** what happens to URLs pasted into *Add URLs* but not
+yet added. Discarding them is what *Cancel* already does; anything else needs a reason and a test.
+
+#### Scope
+
+Build the Windows-only handling, then measure the table above again with it. Linux is out of scope
+by the ruling: Qt drops a close event for a window a modal dialog blocks there too, and that was
+never measured, so no behaviour is claimed for it.
+
+#### Acceptance criteria
+
+- [x] A recorded decision — 2026-09-17, above
+- [ ] The table above measured again with the chosen behaviour, on Windows
+- [ ] What happens to unadded URLs is decided, stated here, and covered by a test
+
+---
+
 ### T-301 — Four UI tests break when the application font grows by one point
 
 **Status:** In Progress — **three of the four repaired 2026-09-10**; the fourth is diagnosed and
@@ -592,60 +652,6 @@ ends badly — the shape `2026-08-27-T212-ytdlp-update-double-free.md` recorded.
 - `T-268`'s seven preserved specimens, which remain its own.
 
 ## Proposed — Phase 4.5
-
-### T-343 — The taskbar's Close window does nothing while a dialog is open
-
-**Status:** Proposed — **left as it is for `0.1.0` by the maintainer on 2026-09-15**, chosen from three
-options (leave it and file a task; close the dialogs then quit, on Windows only; make *Add URLs* and
-*Preferences* non-modal). Not release-blocking. **Its shape was ruled on 2026-09-17** — the
-Windows-only handling, below — and it is **the first task of Phase 4.5**, shipping in `0.1.1` with
-`T-347`.
-**Owner:** Maintainer decides; Implementer builds
-**Priority:** Low — the standard behaviour of a modal dialog on Windows, reported as surprising
-**Phase:** Phase 4.5 — stage 1, the `0.1.1` patch
-**Relevant context:** `T-308` (window-modal dialogs and their parent); `C-003` (parity)
-
-#### What was found
-
-Reported by the maintainer: with a dialog other than the queue open, right-clicking the taskbar
-button and choosing *Close window* does not close the application. **Reproduced on `STARBASE` at
-`8d70e01`** by posting the taskbar's messages to the main window:
-
-| Open dialog | `WM_CLOSE` | `WM_SYSCOMMAND` / `SC_CLOSE` | Main window enabled |
-|---|---|---|---|
-| none | closes | closes | yes |
-| *Add URLs* | ignored | ignored | **no** |
-| *Preferences* | ignored | ignored | **no** |
-
-Both dialogs open with `open()`, which is window-modal, and Windows disables the owner of a modal
-dialog, so its close is not acted on. Qt also drops a close event for a window a modal dialog blocks,
-so the same holds for a window manager's close on Linux (not measured).
-
-#### The shape, ruled 2026-09-17
-
-Put to the maintainer with the Phase 4.5 plan, as a choice between the same two alternatives.
-**Ruled: the Windows-only handling.** A Windows message filter closes the open dialog and then the
-application; *Add URLs* and *Preferences* stay window-modal on both platforms. The reason offered
-with the recommendation, and accepted: non-modal dialogs change how the whole application behaves,
-which would need its own `UX` ruling and its own tests, while the report was about one gesture on
-one platform.
-
-**What the shape leaves to the implementer:** what happens to URLs pasted into *Add URLs* but not
-yet added. Discarding them is what *Cancel* already does; anything else needs a reason and a test.
-
-#### Scope
-
-Build the Windows-only handling, then measure the table above again with it. Linux is out of scope
-by the ruling: Qt drops a close event for a window a modal dialog blocks there too, and that was
-never measured, so no behaviour is claimed for it.
-
-#### Acceptance criteria
-
-- [x] A recorded decision — 2026-09-17, above
-- [ ] The table above measured again with the chosen behaviour, on Windows
-- [ ] What happens to unadded URLs is decided, stated here, and covered by a test
-
----
 
 ### T-347 — Show in folder leaves an already-open Dolphin window minimized on KDE Wayland
 
