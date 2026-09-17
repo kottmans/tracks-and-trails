@@ -175,12 +175,32 @@ make; this entry is the record of it.
 
 The release notes were regenerated from `CHANGELOG.md` and republished.
 
-#### 2026-09-17 — the published build's update check
+#### 2026-09-17 — the update route the criterion names, on an older build
+
+**`T328-R9`** found the first report covered the wrong branch: the released `0.1.0` has nothing
+newer to find, so it exercised *up to date*, while the criterion asks for `0.1.0.dev0` discovering
+`0.1.0` and **Open Download Page** opening it.
+
+**Run on the build the criterion names.** A worktree at `5d3f37d`, the commit before the release
+commit, reports `0.1.0.dev0`; it was run from the shared virtualenv with `PYTHONPATH` at that
+worktree's `src`, so the application under it is that build. `is_newer("0.1.0", "0.1.0.dev0")` is
+`True`, checked first.
+
+**The maintainer's report, both halves:** *"yes, there is a notification about a newer version being
+available"*, and, asked whether **Open Download Page** opens the release page, *"it does."*
+
+**Their words are the record.** No screenshot was kept and the sentences on screen were not
+transcribed, so what is established is the route — an older build finds the published release and
+its button opens that release's page — not the exact wording. The check reached GitHub's real API
+and the real release.
+
+#### 2026-09-17 — the released build's own check (`0.1.0`, the other branch)
 
 **The maintainer ran it** on the released Linux AppImage: *"the update check works."* `0.1.0` is the
-newest release, so what it had to say is that the application is up to date. **Their words are the
+newest release, so what it had to say is that the application is up to date. `T328-R9` is why this
+is recorded as one branch of the criterion rather than as the whole of it. **Their words are the
 record**; the exact sentence on screen was not reported, and no screenshot was kept. This is the
-task's last scope item, the first check made against a real published release rather than a fixture.
+task's last scope item's other half: the released build asking about the release it is.
 
 #### Scope
 

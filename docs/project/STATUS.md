@@ -34,8 +34,9 @@ task and review records it summarised.*
   Fedora host, Windows Sandbox, and the canary.
 - **Next:** Phase 4.5 (option coverage), which by the same ruling also carries anything the walk
   would have found, plus `T-343` (the taskbar close), `T-347` (Dolphin on KDE Wayland) and `T-339`
-  (Narrator). `T-328`'s last scope item is done: the maintainer ran the published build's update check on
-  2026-09-17 and reported it works. What is left on `T-328` is the reviewer's verdict.
+  (Narrator). `T-328`'s last scope item is done, both branches (`T328-R9`): on 2026-09-17 the maintainer ran the
+  released build's check (up to date) and a `0.1.0.dev0` build, which found `0.1.0` and opened its
+  release page from the notice. What is left on `T-328` is the reviewer's verdict.
 - **The four Windows-only diagnostic tasks have their dispositions** (`T-328`, maintainer ruling
   2026-09-13): `T-074` is held as a potential task (Proposed — Phase 5), and `T-092`, `T-068` and
   `T-056` are cancelled with what closing gives up recorded. `T-212`'s checklist run was
