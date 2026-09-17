@@ -12,16 +12,20 @@ Qt's own filter chain — is in `tests/ui/test_windows_desktop.py` and only runs
 
 from __future__ import annotations
 
+import ctypes
 import inspect
 import sys
 from collections.abc import Callable, Iterator
+from typing import Any
 
 import pytest
 import shiboken6
 from PySide6.QtCore import QByteArray, Qt
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QApplication, QDialog, QWidget
+from shiboken6 import Shiboken
 
+from tracks_and_trails.ui import taskbar_close
 from tracks_and_trails.ui.taskbar_close import (
     FILTER_NAME,
     SYSTEM_CLOSE,
@@ -33,7 +37,11 @@ from tracks_and_trails.ui.taskbar_close import (
     asks_to_close,
     close_from_the_taskbar,
     installed_on,
+    read_message,
 )
+
+#: What PySide6 hands a native event filter for the message, measured under `xcb` on this machine.
+VoidPtr = Shiboken.VoidPtr
 
 #: `SC_MINIMIZE`. A system command that is not a close, so the mask cannot be a blanket pass.
 SYSTEM_MINIMIZE = 0xF020
@@ -371,6 +379,102 @@ def test_a_message_that_is_not_a_windows_message_is_not_read(window: QWidget) ->
     closer = TaskbarClose(window)
 
     assert closer.nativeEventFilter(b"xcb_generic_event_t", 0) == (False, 0)
+
+
+# --- the pointer Qt hands over, and reading the MSG out of it ---------------------------------
+#
+# **This is the half that was missing, and the Windows job is what said so.** Everything above
+# drives `consider` with values, and all of it passed while the entry point was broken for every
+# message: `read_message` was handed `shiboken6.Shiboken.VoidPtr` and called
+# `wintypes.MSG.from_address` on it, which raises. The taskbar's close did nothing, and the launch
+# test on the real desktop failed as well.
+#
+# The pointer's Python type is not Windows-specific — it is what PySide6 passes a native event
+# filter on any platform, measured here under `xcb` — so the entry point is testable on this
+# machine, and now is.
+
+
+def _pointer_to(window: int, identifier: int, parameter: int) -> tuple[Any, Any]:
+    """A `MSG` in memory and the `VoidPtr` Qt would hand over for it.
+
+    The structure is returned with the pointer **because it owns the memory**: dropping it frees
+    what the pointer addresses, and reading that back is the bug this file is here to catch rather
+    than to commit.
+    """
+    raw = taskbar_close.Message(window=window, identifier=identifier, parameter=parameter)
+    return raw, VoidPtr(ctypes.addressof(raw))
+
+
+def test_the_pointer_qt_passes_is_read_as_a_message() -> None:
+    """`VoidPtr`, not `int` — PySide6's own stub says `int` and its filter passes the other."""
+    raw, pointer = _pointer_to(window=0x1234, identifier=WM_CLOSE, parameter=0)
+
+    message = read_message(pointer)
+
+    assert (message.window, message.identifier, message.parameter) == (0x1234, WM_CLOSE, 0)
+    del raw
+
+
+def test_a_plain_address_is_read_as_a_message() -> None:
+    """The spelling the stub promises, in case a later PySide6 passes it."""
+    raw, _ = _pointer_to(window=7, identifier=WM_SYSCOMMAND, parameter=SYSTEM_CLOSE)
+
+    message = read_message(ctypes.addressof(raw))
+
+    assert message.window == 7
+    assert (message.identifier, message.parameter) == (WM_SYSCOMMAND, SYSTEM_CLOSE)
+
+
+def test_the_filter_acts_on_the_pointer_qt_would_hand_it(window: QWidget) -> None:
+    """The entry point, end to end, with both of the things Qt really passes.
+
+    A `QByteArray` for the name and a `VoidPtr` for the message: this is the test that fails when
+    either is read wrongly, and the one this file did not have when the `windows desktop` job ran.
+    """
+    dialog = _modal_dialog(window)
+    closer = TaskbarClose(window)
+    raw, pointer = _pointer_to(window=_window_id(window), identifier=WM_CLOSE, parameter=0)
+
+    handled = closer.nativeEventFilter(QByteArray(b"windows_generic_MSG"), pointer)
+
+    assert handled == (True, 0)
+    assert not dialog.isVisible()
+    assert not window.isVisible()
+    del raw
+
+
+def test_the_filter_leaves_an_ordinary_message_to_qt(window: QWidget) -> None:
+    """Every Windows message reaches this, so the common path must be the untouched one."""
+    _modal_dialog(window)
+    closer = TaskbarClose(window)
+    raw, pointer = _pointer_to(window=_window_id(window), identifier=WM_MOUSEMOVE, parameter=0)
+
+    handled = closer.nativeEventFilter(QByteArray(b"windows_generic_MSG"), pointer)
+
+    assert handled == (False, 0)
+    assert window.isVisible()
+    del raw
+
+
+def test_the_filter_holds_no_reference_to_its_window(qapp: QApplication, window: QWidget) -> None:
+    """`T-289`'s boundary: nothing here may hold a widget. The filter reaches its window by parent.
+
+    The filter is a **child** of the window, so an attribute pointing back at it closes a loop
+    through Qt's ownership — the shape this project forbids, and the one the module had when the
+    `windows desktop` job died in the collector guard at teardown.
+
+    **This asks the filter directly, and that is deliberate.** The obvious test — build the state,
+    then call `qt_lifecycle.widgets_the_collector_would_destroy` — was written first and **passed
+    with the reference put back**, twice over, in the mutation campaign. Whatever the guard sees on
+    Windows, it does not see this on Linux, so a test built on it would have been decoration.
+    """
+    closer = installed_on(qapp, window)
+    closer.window()  # any lazily-held reference would be taken here
+
+    held = [name for name, value in vars(closer).items() if isinstance(value, QWidget)]
+
+    assert held == [], f"the filter holds its window in {held}"
+    assert closer.window() is window, "and it must still be able to reach it"
 
 
 # --- which native events are Windows messages ------------------------------------------------

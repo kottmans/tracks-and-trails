@@ -115,7 +115,67 @@ the default to `sys.platform`, because the parameter's whole production behaviou
 *(Recorded rather than quietly amended: the pushed commit's job is red in the history, and this is
 what it was.)*
 
+### Second attempt, `36cdd69`: the defect is confirmed, and the fix was broken
+
+Run [`35267703210`](https://github.com/kottmans/tracks-and-trails/actions/runs/35267703210), the
+`windows desktop` job. The suite ran this time:
+
+| Test | Result |
+|---|---|
+| `test_windows_disables_the_window_a_dialog_blocks_and_drops_its_close[WM_CLOSE]` | **PASSED** |
+| `test_windows_disables_the_window_a_dialog_blocks_and_drops_its_close[SC_CLOSE]` | **PASSED** |
+| `test_the_taskbar_close_closes_the_dialog_and_the_application[WM_CLOSE]` | **FAILED**, then the process crashed |
+| `test_the_taskbar_close_closes_the_dialog_and_the_application[SC_CLOSE]` | never ran |
+| `test_the_application_launches_on_a_real_windows_desktop` | **FAILED** |
+
+**The report is confirmed on the runner.** With nothing installed, Windows reports the dialog's
+owner disabled and drops both forms of the close. That is the positive this file needed, and it is
+now a test rather than a one-off reproduction.
+
+**The fix did not work, and the run crashed.** `pytest` never printed its summary — exit code 139,
+*Windows fatal exception: access violation* — so the assertion texts are lost. What the crash
+trace does say is where it happened: `Garbage-collecting`, inside
+`qt_lifecycle.widgets_the_collector_would_destroy`, from the `T-289` boundary guard in
+`tests/ui/conftest.py`. Two defects, both then measured rather than guessed at:
+
+**1. The pointer Qt passes is a `VoidPtr`, not an `int`.** PySide6's own stub types
+`nativeEventFilter`'s `message` as `int`; a probe under the `xcb` plugin **on this machine** shows
+what a filter is really handed:
+
+```
+event_type type: ['QByteArray']
+event_type value: ["b'xcb_generic_event_t'"]
+message type: ['VoidPtr']
+message repr: ['shiboken6.Shiboken.VoidPtr(0x55fd908b1e3…']
+```
+
+`wintypes.MSG.from_address(<VoidPtr>)` raises `TypeError`, and `a_windows_message` is true for
+**every** Windows message, so the filter raised on every message the application received. That is
+both failures: the taskbar's close did nothing, and the application's own launch test failed.
+`int()` gives the address for either spelling.
+
+**2. The filter held a Python reference to its window.** `self._owner = owner`, on a `QObject`
+whose parent *is* that window, closes a loop through Qt's own ownership — the shape `T-289`
+forbids. The crash was inside the guard that looks for that shape, at that test's teardown. The
+filter now reaches its window through `self.parent()`.
+
+**The causation is not claimed.** The reference was forbidden and is gone; whether it was what
+crashed the process is answered by the next Windows run, not by this file.
+
+**Neither defect was visible from this machine before, and one of them still is not.**
+
+- **The pointer is now covered offscreen.** Its Python type is not Windows-specific, so
+  `nativeEventFilter` is driven end to end with a `QByteArray` name and a real `VoidPtr` over a
+  `MSG` built in memory. `Message` is written out in the module so that is possible at all, and a
+  Windows-only test pins its field offsets against `ctypes.wintypes.MSG`.
+- **The reference is checked directly, because the collector guard does not see it here.** The
+  first version of that test built the state and asked
+  `qt_lifecycle.widgets_the_collector_would_destroy` — and **passed with the reference put back**,
+  under both mutations that restore it. A test built on it would have been decoration. What is
+  asserted instead is the rule the module states: the filter's own attributes hold no `QWidget`,
+  and it can still reach its window.
+
 ### The measurement
 
-**Not yet run at the time of writing.** The result goes here, with the run id, once the job has
-been through it, and `T-343`'s acceptance criterion is that table rather than this sentence.
+**Still owed**: the fix half of the table above, on a job that gets to the end. It goes here with
+its run id, and `T-343`'s acceptance criterion is that rather than any sentence here.

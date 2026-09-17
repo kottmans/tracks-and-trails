@@ -529,6 +529,26 @@ def without_quitting_on_the_last_window(qapp: QApplication) -> Iterator[None]:
     qapp.setQuitOnLastWindowClosed(was)
 
 
+def test_the_message_layout_matches_the_one_windows_defines() -> None:
+    """`taskbar_close.Message` is written out so the reader is testable off Windows.
+
+    Here it is pinned against `ctypes.wintypes.MSG`, which is Windows' own definition: same
+    offsets for the three fields that are read, and the same sizes. A layout that drifts would
+    read the wrong bytes and decide on them silently.
+    """
+    from ctypes import wintypes
+
+    ours = taskbar_close.Message
+    theirs = wintypes.MSG
+
+    for mine, windows in (("window", "hWnd"), ("identifier", "message"), ("parameter", "wParam")):
+        assert getattr(ours, mine).offset == getattr(theirs, windows).offset, (
+            f"{mine} sits at {getattr(ours, mine).offset}, Windows puts {windows} at "
+            f"{getattr(theirs, windows).offset}"
+        )
+        assert getattr(ours, mine).size == getattr(theirs, windows).size
+
+
 @pytest.mark.parametrize(("message", "parameter"), TASKBAR_CLOSE_MESSAGES)
 def test_windows_disables_the_window_a_dialog_blocks_and_drops_its_close(
     shown_window: MainWindow,

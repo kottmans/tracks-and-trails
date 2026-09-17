@@ -43,15 +43,17 @@ on xcb that is every mouse move, so the cost is only paid where the gesture exis
 
 from __future__ import annotations
 
+import ctypes
 import sys
 from dataclasses import dataclass
-from typing import Final
+from typing import Any, Final
 
 from PySide6.QtCore import QAbstractNativeEventFilter, QByteArray, QObject
 from PySide6.QtGui import QWindow
 from PySide6.QtWidgets import QApplication, QWidget
 
 __all__ = [
+    "Message",
     "NativeMessage",
     "TaskbarClose",
     "a_windows_message",
@@ -60,6 +62,7 @@ __all__ = [
     "installed_on",
     "owned_by",
     "read_message",
+    "shows_in",
 ]
 
 #: The name the filter is found by, so it is installed once however often composition asks.
@@ -118,11 +121,10 @@ class TaskbarClose(QObject, QAbstractNativeEventFilter):
     def __init__(self, owner: QWidget) -> None:
         QObject.__init__(self, owner)
         QAbstractNativeEventFilter.__init__(self)
-        self._owner = owner
 
     # Qt's override name, hence the camelCase: this is not a project naming choice. Qt calls it
     # positionally, so the parameters take the project's own spelling.
-    def nativeEventFilter(self, event_type: object, message: int) -> object:
+    def nativeEventFilter(self, event_type: object, message: Any) -> object:
         """Read the `MSG` Qt is about to handle, and act only on a close for this window.
 
         **Returns a pair**, which is what PySide6 wants of this: whether the message was handled,
@@ -140,12 +142,13 @@ class TaskbarClose(QObject, QAbstractNativeEventFilter):
         needs: the window has a close of its own (`main_window.closeEvent` saves the geometry and
         starts the shutdown), and this has no business repeating it.
         """
-        if not asks_to_close(message) or not self._is_this_window(message.window):
+        owner = self.window()
+        if owner is None or not asks_to_close(message) or not shows_in(owner, message.window):
             return False
         blocking = QApplication.activeModalWidget()
         if blocking is None:
             return False
-        if not owned_by(self._owner, blocking):
+        if not owned_by(owner, blocking):
             # A modal window this window does not own. Nothing in the application makes one, and
             # closing somebody else's dialog on a taskbar gesture is not this rule's to do.
             return False
@@ -153,18 +156,24 @@ class TaskbarClose(QObject, QAbstractNativeEventFilter):
             # A dialog refused to close, so the application stays. The gesture was still acted on,
             # which is why this is handled rather than passed on.
             return True
-        self._owner.close()
+        owner.close()
         return True
 
-    def _is_this_window(self, window: int) -> bool:
-        """Whether `window` is the native window `owner` is showing in.
+    def window(self) -> QWidget | None:
+        """The window this serves, reached through Qt's parent pointer.
 
-        **`windowHandle()` is typed non-optional and is not**: it returns `None` until the widget
-        has been shown, which is why the annotation is written out here — the same guard, and the
-        same reason, as `main_window._watch_the_native_window`.
+        **Nothing here holds a widget**, and that is not a style preference: the filter is a child
+        of the window, so an attribute pointing back at it closes a loop through Qt's own
+        ownership. That is the shape `T-289` forbids, because a widget the collector frees is
+        destroyed off Qt's terms.
+
+        **This module did hold one**, and the `windows desktop` job died at that test's teardown —
+        *Windows fatal exception: access violation*, inside `Garbage-collecting`, in the guard that
+        looks for exactly this shape. Whether the reference was the cause is not proven here; what
+        is certain is that it was forbidden, and it is gone.
         """
-        handle: QWindow | None = self._owner.windowHandle()
-        return handle is not None and int(handle.winId()) == window
+        owner = self.parent()
+        return owner if isinstance(owner, QWidget) else None
 
     def _close_the_dialogs(self) -> bool:
         """Close what blocks the window, innermost first. False if one of them refused."""
@@ -191,6 +200,17 @@ def a_windows_message(event_type: object) -> bool:
     return False
 
 
+def shows_in(widget: QWidget, window: int) -> bool:
+    """Whether `window` is the native window `widget` is showing in.
+
+    **`windowHandle()` is typed non-optional and is not**: it returns `None` until the widget has
+    been shown, which is why the annotation is written out — the same guard, and the same reason,
+    as `main_window._watch_the_native_window`.
+    """
+    handle: QWindow | None = widget.windowHandle()
+    return handle is not None and int(handle.winId()) == window
+
+
 def owned_by(owner: QWidget, widget: QWidget) -> bool:
     """Whether `widget` hangs off `owner`, however many dialogs deep.
 
@@ -207,19 +227,46 @@ def owned_by(owner: QWidget, widget: QWidget) -> bool:
     return False
 
 
-def read_message(address: int) -> NativeMessage:
-    """The `MSG` at `address`, as the three fields the decision uses.
+class Message(ctypes.Structure):
+    """The head of Windows' `MSG`, as far as the last field this reads.
 
-    **Windows only** — `ctypes.wintypes.MSG` exists nowhere else, and `nativeEventFilter` reaches
-    this only for a Windows message.
+    `HWND hwnd; UINT message; WPARAM wParam;` — a pointer, a 32-bit unsigned, and a pointer-sized
+    unsigned, which is what `c_void_p`, `c_uint` and `c_size_t` are on both of Windows' word
+    sizes. `ctypes` inserts the padding Windows does. The tail (`lParam`, `time`, `pt`) is not
+    declared because nothing here reads it, and `from_address` reads only what is declared.
+
+    **Written out rather than taken from `ctypes.wintypes`**, which exists on Windows alone: with
+    the layout here, `read_message` is exercised by the ordinary suite on any machine. A
+    Windows-only test asserts this against `wintypes.MSG` field by field, so Windows' own
+    definition is what pins it where that can be asked.
     """
-    from ctypes import wintypes
 
-    message = wintypes.MSG.from_address(address)
+    _fields_ = (
+        ("window", ctypes.c_void_p),
+        ("identifier", ctypes.c_uint),
+        ("parameter", ctypes.c_size_t),
+    )
+
+
+def read_message(message: Any) -> NativeMessage:
+    """The `MSG` Qt is pointing at, as the three fields the decision uses.
+
+    **`message` is a `shiboken6.Shiboken.VoidPtr`, not the `int` PySide6's own stub promises.**
+    Measured on this machine under the `xcb` plugin, where a filter is handed
+    `shiboken6.Shiboken.VoidPtr(0x55fd908b1e3…)` for every native event; `int()` gives the address
+    for either spelling.
+
+    **Getting this wrong was invisible off Windows.** The first version called
+    `wintypes.MSG.from_address(message)`, which raised `TypeError` for **every** Windows message
+    the application received — so the taskbar's close did nothing, and the launch test on the real
+    desktop failed too. `Any` is deliberate: this parameter is a pointer whose Python type Qt's
+    own stubs state wrongly, and narrowing it here would encode that mistake.
+    """
+    raw = Message.from_address(int(message))
     return NativeMessage(
-        window=int(message.hWnd or 0),
-        identifier=int(message.message),
-        parameter=int(message.wParam),
+        window=int(raw.window or 0),
+        identifier=int(raw.identifier),
+        parameter=int(raw.parameter),
     )
 
 
