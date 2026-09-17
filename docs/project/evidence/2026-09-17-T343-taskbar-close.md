@@ -175,7 +175,79 @@ crashed the process is answered by the next Windows run, not by this file.
   asserted instead is the rule the module states: the filter's own attributes hold no `QWidget`,
   and it can still reach its window.
 
+### Third attempt, `a43911e`: the fix works, and the test's own housekeeping does not
+
+Run [`35272010029`](https://github.com/kottmans/tracks-and-trails/actions/runs/35272010029):
+
+| Test | Result |
+|---|---|
+| `test_the_application_launches_on_a_real_windows_desktop` | **PASSED** — it had failed, and the `VoidPtr` defect is why: the filter raised on every message the application received |
+| `test_windows_disables_the_window_a_dialog_blocks_and_drops_its_close[WM_CLOSE]` | **PASSED** |
+| `…[SC_CLOSE]` | **PASSED** |
+| `test_the_taskbar_close_closes_the_dialog_and_the_application[WM_CLOSE]` | **PASSED** — the gesture now closes the dialog and the application |
+| its teardown, and `[SC_CLOSE]` | **ERROR** — the `T-289` guard, and three later tests with it |
+
+**So the behaviour is measured and correct**, and what remained was this test's own housekeeping.
+It is the first test in the file to close a `MainWindow`; the guard reported it *"owned by Python
+and reachable only through a cycle"* at teardown, and the three tests that failed after it are
+green on the baseline ([`1febed3`](https://github.com/kottmans/tracks-and-trails/actions/runs/35243791375): 41 passed).
+
+### Fourth attempt, `95cb49f`: `deleteLater()` does not delete
+
+The test disposed of its window with `deleteLater()` and `processEvents()`, recorded the guard's
+verdict at three stages, and failed **in the same way**. Both halves of that are findings:
+
+- **Qt delivers a deferred deletion only from an event loop.** `processEvents()` does not, so the
+  window survived the call. `qt_lifecycle.settle_deferred_deletions` is the project's own answer —
+  `gc.collect()`, then `sendPostedEvents(None, DeferredDelete)` — and it is what the test uses now,
+  with `shiboken6.isValid` asserted afterwards so the disposal is claimed only when it happened.
+- **The state cannot be seen from inside the test.** The recorded verdicts were empty after
+  installing the filter, after the close, and after `deleteLater()`:
+
+  ```
+  0x0010 after installing the filter: []
+  0x0010 after the window closed: []
+  0x0010 after disposing of the window: []
+  ```
+
+  Necessarily so: the fixture still holds the window during the test, so nothing is garbage until
+  pytest drops that reference at teardown. **The recording was therefore removed rather than
+  kept** — it answers a question it cannot reach — and with it the question of whether the filter
+  contributes to the cycle: nothing distinguishes it here, and the state belongs to a closed
+  `MainWindow` under the real plugin, not to this module.
+
+### Fifth attempt, `59ab5af`: Qt does not remove the filter, whatever the documentation says
+
+Run [`35274004885`](https://github.com/kottmans/tracks-and-trails/actions/runs/35274004885). The
+disposal worked — `[WM_CLOSE]` **passed with a clean teardown** — and then every remaining test in
+the file errored on setup, fifteen of them, all with the same message:
+
+```
+NotImplementedError: pure virtual method
+'QAbstractNativeEventFilter.nativeEventFilter' not implemented
+```
+
+raised from `window.show()` in the `shown_window` fixture. **Qt was still calling the filter after
+its window had been destroyed**, and the Python half of it had gone with the window.
+
+**That contradicts the documentation this module was built on.** `~QAbstractNativeEventFilter` is
+documented as *"Destroys the native event filter. This automatically removes it from the
+application"*, which was fetched, quoted and relied on. Whatever it does for a C++ filter, it did
+not take this one out of the dispatcher.
+
+**So removal is now explicit**: `owner.destroyed` is connected to `app.removeNativeEventFilter`,
+and `destroyed` is emitted at the start of `~QObject` — before children are deleted — so the filter
+is still alive to be taken out. **The connection holds the filter, not the window**, so `T-289`'s
+rule still holds: nothing in this module references a widget.
+
+**It is testable here**, because Qt offers no way to ask what filters are installed: the test
+installs through a stand-in host that records both calls, destroys the window, and asserts the
+filter was taken out. The mutation that drops the connection is caught.
+
+*(The judgement to correct: a fetched documentation line is evidence about what Qt **says**, not
+about what it does. It was treated as the second.)*
+
 ### The measurement
 
-**Still owed**: the fix half of the table above, on a job that gets to the end. It goes here with
-its run id, and `T-343`'s acceptance criterion is that rather than any sentence here.
+**Still owed**: a `windows desktop` job that reaches the end green, with both messages. It goes
+here with its run id, and `T-343`'s acceptance criterion is that rather than any sentence here.

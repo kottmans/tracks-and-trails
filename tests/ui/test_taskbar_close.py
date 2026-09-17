@@ -16,7 +16,7 @@ import ctypes
 import inspect
 import sys
 from collections.abc import Callable, Iterator
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import shiboken6
@@ -25,6 +25,7 @@ from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QApplication, QDialog, QWidget
 from shiboken6 import Shiboken
 
+from tests import qt_lifecycle
 from tracks_and_trails.ui import taskbar_close
 from tracks_and_trails.ui.taskbar_close import (
     FILTER_NAME,
@@ -359,15 +360,53 @@ def test_it_is_installed_once_however_often_composition_asks(
 
 
 def test_the_filter_belongs_to_the_window_it_serves(qapp: QApplication, window: QWidget) -> None:
-    """Qt removes a native event filter when it is destroyed, and this is what destroys it.
-
-    A filter that outlived its window would be called for every message of every window after
-    it, holding a pointer into freed memory.
-    """
+    """The window is what owns it, so its lifetime is the window's and not the application's."""
     closer = close_from_the_taskbar(qapp, window, "win32")
 
     assert closer is not None
     assert closer.parent() is window
+
+
+class _RecordsTheFilters:
+    """A stand-in for the application, because Qt will not say what filters are installed."""
+
+    def __init__(self) -> None:
+        self.installed: list[object] = []
+        self.removed: list[object] = []
+
+    # Qt's names, hence the camelCase: this is not a project naming choice.
+    def installNativeEventFilter(self, event_filter: object, /) -> None:  # noqa: N802 - Qt's name
+        self.installed.append(event_filter)
+
+    def removeNativeEventFilter(self, event_filter: object, /) -> None:  # noqa: N802 - Qt's name
+        self.removed.append(event_filter)
+
+
+def test_the_filter_is_taken_out_when_its_window_is_destroyed(qapp: QApplication) -> None:
+    """Qt's documented auto-removal does not hold, and the `windows desktop` job is how we know.
+
+    `~QAbstractNativeEventFilter` is documented as removing the filter from the application. After
+    a run where the filter's window was destroyed, the dispatcher went on calling it and **every
+    later `QWidget.show()` in that process raised** `NotImplementedError: pure virtual method
+    'QAbstractNativeEventFilter.nativeEventFilter' not implemented` — Qt calling a filter whose
+    Python half had gone. Fifteen tests died of it.
+
+    So removal is explicit, and this is what says so. The host is a stand-in because Qt offers no
+    way to ask what native event filters are installed.
+    """
+    host = _RecordsTheFilters()
+    window = QWidget()
+    window.show()
+    QApplication.processEvents()
+    closer = installed_on(cast("Any", host), window)
+
+    assert host.installed == [closer]
+    assert host.removed == [], "it was taken out before the window went anywhere"
+
+    window.deleteLater()
+    qt_lifecycle.settle_deferred_deletions(qapp)
+
+    assert host.removed == [closer], "the window was destroyed and the filter is still installed"
 
 
 def test_a_message_that_is_not_a_windows_message_is_not_read(window: QWidget) -> None:

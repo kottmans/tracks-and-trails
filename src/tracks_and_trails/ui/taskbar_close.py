@@ -46,13 +46,15 @@ from __future__ import annotations
 import ctypes
 import sys
 from dataclasses import dataclass
-from typing import Any, Final
+from functools import partial
+from typing import Any, Final, Protocol
 
 from PySide6.QtCore import QAbstractNativeEventFilter, QByteArray, QObject
 from PySide6.QtGui import QWindow
 from PySide6.QtWidgets import QApplication, QWidget
 
 __all__ = [
+    "FilterHost",
     "Message",
     "NativeMessage",
     "TaskbarClose",
@@ -283,12 +285,8 @@ def close_from_the_taskbar(
     branch the checker had narrowed away an *unreachable statement* error — on Linux for one form
     of the test and on Windows for the other, so neither spelling passed both runs.
 
-    **It is a child of `owner`, and that is what removes it.** Qt documents
-    `~QAbstractNativeEventFilter` as *"Destroys the native event filter. This automatically removes
-    it from the application"*, so the filter installed here stops being called when the window it
-    serves is destroyed, and a test session's shared `QApplication` is not left carrying it.
-    Nothing is connected to `destroyed` for that: a callable holding this filter, held in turn by
-    the window, is the Python reference cycle around a widget that `T-289` is about.
+    **The filter is taken out again when `owner` is destroyed, explicitly.** See `installed_on`:
+    relying on Qt to do it was measured and does not hold.
     """
     if platform != "win32":
         # The gesture does not exist elsewhere, and a filter called for every xcb event would cost
@@ -297,12 +295,45 @@ def close_from_the_taskbar(
     return installed_on(app, owner)
 
 
-def installed_on(app: QApplication, owner: QWidget) -> TaskbarClose:
-    """Install the filter, whatever the platform. `close_from_the_taskbar` decides whether to."""
+class FilterHost(Protocol):
+    """What installing needs of the application: somewhere to put a native event filter.
+
+    A protocol rather than `QApplication` so a test can watch the two calls. Qt offers no way to
+    ask what native event filters are installed, so watching the host is the only way to assert
+    that one was taken out again.
+    """
+
+    # Qt's names, hence the camelCase: this is not a project naming choice. The parameter is
+    # positional-only, so its name is Qt's business rather than a caller's.
+    def installNativeEventFilter(self, event_filter: QAbstractNativeEventFilter, /) -> None: ...
+
+    def removeNativeEventFilter(self, event_filter: QAbstractNativeEventFilter, /) -> None: ...
+
+
+def installed_on(app: FilterHost, owner: QWidget) -> TaskbarClose:
+    """Install the filter, whatever the platform. `close_from_the_taskbar` decides whether to.
+
+    **Removed again when `owner` is destroyed, and that is not belt and braces.** Qt documents
+    `~QAbstractNativeEventFilter` as *"Destroys the native event filter. This automatically removes
+    it from the application"*, and this module relied on it. **Measured on the `windows desktop`
+    job, it did not hold**: after the filter's window was destroyed, the dispatcher still called
+    the filter, and every later `QWidget.show()` in that process raised
+
+        NotImplementedError: pure virtual method
+        'QAbstractNativeEventFilter.nativeEventFilter' not implemented
+
+    — Qt calling a filter whose Python half had gone. Fifteen tests in that job died of it.
+
+    **The connection holds the filter, not the window**, which is what keeps `T-289`'s rule: a
+    bound method of `app` plus the filter, owned by the window's own signal. Nothing here
+    references a widget, so there is no cycle around one. `destroyed` is emitted at the start of
+    `~QObject`, before children are deleted, so the filter is still alive to be taken out.
+    """
     existing = owner.findChild(TaskbarClose, FILTER_NAME)
     if existing is not None:
         return existing
     closer = TaskbarClose(owner)
     closer.setObjectName(FILTER_NAME)
     app.installNativeEventFilter(closer)
+    owner.destroyed.connect(partial(app.removeNativeEventFilter, closer))
     return closer
