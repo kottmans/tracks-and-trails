@@ -46,6 +46,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tests import qt_lifecycle
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
@@ -529,6 +530,30 @@ def without_quitting_on_the_last_window(qapp: QApplication) -> Iterator[None]:
     qapp.setQuitOnLastWindowClosed(was)
 
 
+#: Where the two cycle verdicts below are written, so the answer survives as an artifact.
+CYCLE_REPORT = Path("reports/taskbar-close-cycle.txt")
+
+
+def _record_the_collector_verdict(qapp: QApplication, stage: str) -> list[str]:
+    """What the `T-289` boundary guard would say right now, written down and returned.
+
+    **This is the only place the question can be asked.** All four variants were probed on the
+    development machine — filter installed, window closed, both, neither — and the offscreen
+    plugin reports nothing for any of them. The real plugin reported `MainWindow(mainWindow)` on
+    the first run that closed a window, so the verdict is recorded here per stage rather than
+    reasoned about from Linux.
+
+    Asking also **clears** what the collector had parked, which is deliberate: the run that found
+    this left the shared application carrying it and three later tests failed that pass on the
+    baseline (`1febed3`: 41 passed).
+    """
+    verdict = qt_lifecycle.widgets_the_collector_would_destroy(qapp)
+    CYCLE_REPORT.parent.mkdir(parents=True, exist_ok=True)
+    with CYCLE_REPORT.open("a", encoding="utf-8") as report:
+        report.write(f"{stage}: {verdict}\n")
+    return verdict
+
+
 def test_the_message_layout_matches_the_one_windows_defines() -> None:
     """`taskbar_close.Message` is written out so the reader is testable off Windows.
 
@@ -588,9 +613,18 @@ def test_the_taskbar_close_closes_the_dialog_and_the_application(
     message: int,
     parameter: int,
 ) -> None:
-    """With the filter installed, the same message the shell sends closes the application."""
+    """With the filter installed, the same message the shell sends closes the application.
+
+    **This test disposes of its window**, which no other test in this file has to: they never
+    close one. Closing a `MainWindow` under the real plugin left it owned by Python and reachable
+    only through a cycle — the guard's own words — and the run that first did it took three later
+    tests down with it. What produced that state is recorded per stage in `CYCLE_REPORT`; the
+    assertion here is that nothing is left once the window is disposed of on the GUI thread, which
+    is what the guard's message asks for.
+    """
     closer = taskbar_close.close_from_the_taskbar(qapp, shown_window)
     assert closer is not None, "nothing was installed on Windows, where the gesture exists"
+    _record_the_collector_verdict(qapp, f"{message:#06x} after installing the filter")
     dialog = QDialog(shown_window)
     dialog.open()
     QApplication.processEvents()
@@ -599,6 +633,11 @@ def test_the_taskbar_close_closes_the_dialog_and_the_application(
 
     assert not dialog.isVisible(), "the dialog that blocked the window is still up"
     assert not shown_window.isVisible(), "the application was asked to close and did not"
+    _record_the_collector_verdict(qapp, f"{message:#06x} after the window closed")
+    shown_window.deleteLater()
+    QApplication.processEvents()
+    left = _record_the_collector_verdict(qapp, f"{message:#06x} after disposing of the window")
+    assert left == [], f"disposing of the window left {left} to the collector"
 
 
 # --- widget focus order under the real plugin (`T-040`, `T026-R3`, `NFR-005`) ----------------
