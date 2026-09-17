@@ -2,14 +2,15 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-09-14
+**Last updated:** 2026-09-16
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
 
-Tracks & Trails runs from source on Linux and Windows, and **Phase 5 (distribution) is under way**:
-a Linux AppImage and a Windows release build with an Inno Setup installer are built and evidenced
-on clean machines, but **there is no tagged release**. Phases 0–3 have exited. **Phase 4's exit
+**`0.1.0` is published** (2026-09-16), from tag `v0.1.0` at `5b1bf97`: the Linux AppImage and the
+Windows installer, with `SHA256SUMS`, on the
+[release page](https://github.com/kottmans/tracks-and-trails/releases/tag/v0.1.0). `main` is now
+`0.1.1.dev0`. Tracks & Trails also still runs from source on Linux and Windows. Phases 0–3 have exited. **Phase 4's exit
 review was last Blocked only on `T329-R2`'s Windows mutation evidence, which the 2026-09-13 review
 resolved**; its sign-off is the reviewer's to record ([record](reviews/phase-4-exit.md)).
 [README](../../README.md) describes available features; the
@@ -24,14 +25,16 @@ the first release**. Nothing user-facing may claim parity with yt-dlp until 4.5 
 *Refreshed 2026-09-14. The previous snapshot is recoverable from `39dab46`; its facts live in the
 task and review records it summarised.*
 
-- **`0.1.0`'s release review requested changes** ([record](reviews/T-328.md)). `T-322` and `T-324`
-  are approved. **`T328-R3` (Critical):** a Retry left open in a row menu re-queued a DRM failure;
-  corrected in the manager and the view, which changes the candidate, so the draft at `3c011b8` is not
-  published and a new tag, release run and `T-326` checks are owed. **`T328-R4` (High):** the nine
-  `REQUIREMENTS.md` §11 criteria still need a recorded hand walk on both platforms, on the new
-  candidate.
-- **Next:** the maintainer moves `v0.1.0` to the corrected commit; the release run and `T-326` repeat;
-  the maintainer's §11 sitting on both platforms; then the release review again.
+- **`0.1.0` went out without `TESTING.md` §8 item 6**, by the maintainer's ruling on 2026-09-16:
+  nobody walked `REQUIREMENTS.md` §11's nine criteria on the artifacts, on either platform, and the
+  release review had not granted approval. `T-328`'s dated entry records the ruling and what the
+  machine checks did cover; **`T328-R4` stays open, waived for this release**.
+- **Every machine check passed on the published bytes** ([evidence](evidence/2026-09-14-T326-release-candidate-0.1.0.md)):
+  CI, both network suites, the Ubuntu and Fedora clean machines, a download on the maintainer's
+  Fedora host, Windows Sandbox, and the canary.
+- **Next:** Phase 4.5 (option coverage), which by the same ruling also carries anything the walk
+  would have found, plus `T-343` (the taskbar close), `T-347` (Dolphin on KDE Wayland) and `T-339`
+  (Narrator). `T-328`'s own remaining step is the first published-update check.
 - **The four Windows-only diagnostic tasks have their dispositions** (`T-328`, maintainer ruling
   2026-09-13): `T-074` is held as a potential task (Proposed — Phase 5), and `T-092`, `T-068` and
   `T-056` are cancelled with what closing gives up recorded. `T-212`'s checklist run was
