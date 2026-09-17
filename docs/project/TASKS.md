@@ -1097,6 +1097,26 @@ make; this entry is the record of it.
 **Owed to Phase 4.5**, by the same ruling: anything the walk would have found, plus `T-343`
 (the taskbar close), `T-347` (Dolphin's window on KDE Wayland), and `T-339` (Narrator).
 
+#### 2026-09-16 — `T328-R5` to `R8`: what the published pages told a new user
+
+**Found by review of the published README and release notes.**
+
+- **`T328-R5` (Medium, blocking):** the README told installed Windows users to run
+  `tracks-and-trails.exe --help`, and promised it prints the log's path. The release build is
+  windowed (`packaging/tracks-and-trails.spec`, `console=not RELEASE_BUILD`), so it prints nothing
+  there. The section now says the options print only from the Linux AppImage or a source install,
+  points at the profile table for the log, and at **Help → About** for the version.
+- **`T328-R6`:** neither page named the two known desktop limitations. Both now carry them, with
+  what to do: close the dialog before closing from the Windows taskbar (`T-343`), and click Dolphin
+  in the taskbar when *Show in folder* leaves it minimized (`T-347`).
+- **`T328-R7`:** the source instructions clone `main`, which is `0.1.1.dev0`. They now say so and
+  point at the downloads for `0.1.0`.
+- **`T328-R8`:** the README had no first-download sequence, and *"one-click downloads"* did not say
+  the queue starts stopped (`UX-006`). *Your first download* now walks + Add URLs, Add to queue and
+  **Start**, in the shipped labels.
+
+The release notes were regenerated from `CHANGELOG.md` and republished.
+
 #### Scope
 
 1. **Freeze the candidate**: the release commit sets `__version__ = "0.1.0"`, creates

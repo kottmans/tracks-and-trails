@@ -60,6 +60,15 @@ The first release: a desktop app for downloading video and audio with
 - Uninstalling on Windows asks whether to keep your settings and download queue. Downloaded files
   are always kept.
 
+### Known limitations
+
+- **Windows: closing from the taskbar does nothing while a dialog is open.** With *Add URLs* or
+  *Preferences* open, Windows disables the main window and ignores *Close window* on the taskbar
+  button. Close the dialog first.
+- **KDE on Wayland: *Show in folder* may not raise Dolphin.** If your download folder is already
+  open in a Dolphin window, the file is selected there but the window is not brought forward. Click
+  Dolphin in the taskbar.
+
 ### Not in this release
 
 - **Not every yt-dlp option is available in the app yet.** This release covers the options above;

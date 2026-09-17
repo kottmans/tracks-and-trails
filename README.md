@@ -44,6 +44,18 @@ actually built, including what is known-broken and what is unexplained.
   Check for Updates. It asks GitHub for the latest release number and sends nothing about you
 - No telemetry, no analytics
 
+## Your first download
+
+1. Press **+ Add URLs**, paste one or more links, and wait a moment while each one is read.
+2. Choose a preset, or open a line's ⋮ menu for *Choose specific formats…*. The download folder is
+   in **Settings → Preferences…**.
+3. Press **Add to queue**.
+4. **The queue starts stopped.** Press **Start** in the main window to begin downloading; it then
+   reads **Stop**, and the line below the toolbar says which it is.
+
+A finished row offers *Open* and *Show in folder*. A failed one keeps the reason on the row, and
+*Diagnostics…* on its ⋮ menu shows that download's own yt-dlp output.
+
 ## Installing
 
 Download the files for your platform from the
@@ -109,10 +121,23 @@ mkdir -p "$HOME/.local/share/applications" && printf '[Desktop Entry]\nType=Appl
 | Queue database | `~/.local/share/tracksandtrails` | `%LOCALAPPDATA%\tracksandtrails` |
 | Log and thumbnails | `~/.cache/tracksandtrails` | `%LOCALAPPDATA%\tracksandtrails\Cache` |
 
+### Known limitations on the desktop
+
+- **Windows: closing from the taskbar does nothing while a dialog is open.** With *Add URLs* or
+  *Preferences* open, Windows disables the main window, so *Close window* on the taskbar button is
+  ignored. Close the dialog first, then close the application.
+- **KDE on Wayland: *Show in folder* may not raise Dolphin.** If the download folder is already
+  open in a Dolphin window, the file is selected in that window but the window stays where it is.
+  Click Dolphin in the taskbar to bring it forward.
+
+Both are recorded as work for the next release (`T-343`, `T-347`).
+
 ### Installing from source
 
-The source install brings its own pinned copy of yt-dlp. It needs a separate Python installation
-and takes a few minutes, mostly to download Qt.
+**These commands install development `main`, not the release.** That is the branch the next
+version is built on, so it carries changes no release has yet; for `0.1.0`, use the downloads
+above. The source install brings its own pinned copy of yt-dlp. It needs a separate Python
+installation and takes a few minutes, mostly to download Qt.
 
 You need:
 
@@ -183,9 +208,13 @@ If the app says it cannot find ffmpeg, set its location in **Settings → Prefer
 
 ### Command line
 
-The installed application takes the same options as the source install. Run the AppImage or the
-installed `tracks-and-trails.exe` with `--help`; from a source install the command is inside the
-`.venv` folder and is not on your `PATH`, so give its path:
+These options print their answer, so they need somewhere to print it: the **Linux AppImage**, or a
+**source install** on either platform. **The installed Windows application is windowed and writes
+nothing to a console**, so `--help` and `--version` show nothing there; its log is in the table
+above, and **Help → About** gives its version.
+
+From a source install the command is inside the `.venv` folder and is not on your `PATH`, so give
+its path:
 
 ```text
 ./Tracks_and_Trails-0.1.0-x86_64.AppImage --help    # Linux, the release build
