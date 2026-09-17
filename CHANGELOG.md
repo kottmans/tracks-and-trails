@@ -41,6 +41,11 @@ The first release: a desktop app for downloading video and audio with
   streams.
 - A download queue that keeps going: set how many run at once, cancel, retry, reorder, and queue a
   cancelled download again. It survives closing the app, and survives the app being killed.
+- Progress while a file is being processed after it downloads: the step by name, such as
+  *Converting to audio*, with its percentage where ffmpeg can report one and the time so far where
+  it cannot.
+- Each download's own yt-dlp output, from *Diagnostics…* on its row or on a line that would not
+  read, with a button that copies the whole log for a bug report.
 - Playlists as one row per item, with unavailable items reported instead of skipped silently.
 - Audio extraction, remuxing, embedded thumbnails, metadata, chapters and subtitles.
 - File names built from fields (title, uploader, upload date, duration and more) in Preferences, and

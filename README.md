@@ -30,6 +30,9 @@ actually built, including what is known-broken and what is unexplained.
 - Presets for the common cases, with the effective yt-dlp format selector always visible
 - Full sortable format table — pick exact video and audio streams to merge
 - Persistent download queue with configurable concurrency, live progress, and cancel/retry
+- Progress while a file is processed afterwards: the step by name, with a percentage where ffmpeg
+  reports one and the time so far where it does not
+- Each download's own yt-dlp output, copyable for a bug report, from *Diagnostics…* on its row
 - Queue survives restart and survives an unclean kill — proven by killing a real process,
   not by closing a connection politely
 - Playlist handling, with per-entry rows and unavailable entries reported rather than hidden
@@ -88,6 +91,23 @@ for that copy:
 install -Dm755 Tracks_and_Trails-0.1.0-x86_64.AppImage "$HOME/.local/bin/tracks-and-trails.AppImage"
 mkdir -p "$HOME/.local/share/applications" && printf '[Desktop Entry]\nType=Application\nName=Tracks & Trails\nExec="%s"\nIcon=video-x-generic\nTerminal=false\nCategories=AudioVideo;\n' "$HOME/.local/bin/tracks-and-trails.AppImage" > "$HOME/.local/share/applications/io.github.kottmans.TracksAndTrails.desktop"
 ```
+
+### Updating and removing the installed app
+
+- **Update** by downloading the newer release and running it over the old one: the Windows
+  installer replaces the previous install, and the AppImage is one file you replace. The app tells
+  you when a newer release is out, once a day and from **Help → Check for Updates**.
+- **Remove it on Windows** from *Settings → Apps → Installed apps*, or the Start menu entry. It
+  asks whether to keep your settings and download queue; your downloaded files are always kept.
+- **Remove it on Linux** by deleting the AppImage, and the two files above if you made a menu
+  entry.
+- **Your settings, queue and log live in your user profile**, not with the application:
+
+| | Linux | Windows |
+|---|---|---|
+| Settings | `~/.config/tracksandtrails` | `%LOCALAPPDATA%\tracksandtrails` |
+| Queue database | `~/.local/share/tracksandtrails` | `%LOCALAPPDATA%\tracksandtrails` |
+| Log and thumbnails | `~/.cache/tracksandtrails` | `%LOCALAPPDATA%\tracksandtrails\Cache` |
 
 ### Installing from source
 
@@ -163,13 +183,14 @@ If the app says it cannot find ffmpeg, set its location in **Settings → Prefer
 
 ### Command line
 
-The options below go after the launcher from the install steps. The `tracks-and-trails` command
-is inside the `.venv` folder and is not on your `PATH`, so run it from the `tracks-and-trails`
-folder with its path:
+The installed application takes the same options as the source install. Run the AppImage or the
+installed `tracks-and-trails.exe` with `--help`; from a source install the command is inside the
+`.venv` folder and is not on your `PATH`, so give its path:
 
 ```text
-.venv/bin/tracks-and-trails --help            # Linux
-.venv\Scripts\tracks-and-trails --help        # Windows
+./Tracks_and_Trails-0.1.0-x86_64.AppImage --help    # Linux, the release build
+.venv/bin/tracks-and-trails --help                  # Linux, from source
+.venv\Scripts\tracks-and-trails --help              # Windows, from source
 ```
 
 ```
@@ -183,6 +204,12 @@ usage: tracks-and-trails [--version] [--help] [--log-level=LEVEL] [--spawn-probe
                  DEBUG, INFO, WARNING, ERROR, CRITICAL (default INFO).
   --spawn-probe  self-test the process model and exit
   --ytdlp-probe  self-test the bundled yt-dlp and exit
+  --ytdlp-update-probe
+                 self-test the in-app update path and exit
+  --ffmpeg-probe self-test the bundled ffmpeg and exit
+  --download-probe[=URL]
+                 download one real file and exit. Reaches the network, so it
+                 is release evidence rather than part of the test suite
 ```
 
 The log is redacted at every level, and `--log-level=DEBUG` does not turn on yt-dlp's own
@@ -262,7 +289,7 @@ src/tracks_and_trails/   the application
 tests/                   unit · ui · integration · network (opt-in)
 docs/project/            requirements, design, work state and review evidence
 docs/                    developer and operator documentation
-packaging/               PyInstaller spec and the frozen smoke test
+packaging/               PyInstaller spec, the AppImage and installer builds, artifact gates
 tools/                   probes, screenshot generators, one-off diagnostics
 ```
 
