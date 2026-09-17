@@ -1665,4 +1665,3 @@ no user could reach. The candidate evidence for `3c011b8` and `246dcdf` did not 
 - [ ] Seen by a person on both platforms, as part of the §11 criterion 6 walk (`T-328`)
 
 ---
-
