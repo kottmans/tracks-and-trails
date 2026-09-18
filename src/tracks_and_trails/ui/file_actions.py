@@ -53,11 +53,18 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
-from PySide6.QtCore import QObject, QPoint, Qt
+from PySide6.QtCore import QObject, QPoint, QRunnable, Qt, QThreadPool
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QAbstractItemView, QMenu, QMessageBox
 
-from tracks_and_trails.ui.reveal import Refusal, Spawner, Starter, open_file, reveal_file
+from tracks_and_trails.ui.reveal import (
+    Refusal,
+    Spawner,
+    Starter,
+    open_file,
+    raise_the_file_manager,
+    reveal_file,
+)
 
 
 class RefusalShower(Protocol):
@@ -197,14 +204,45 @@ class FileActions(QObject):
         )
 
     def reveal_selected(self, *_: object) -> Refusal | None:
-        """Show the selected row's file in the file manager.
+        """Show the selected row's file in the file manager, then bring that window forward.
 
         **Takes no `start`**, and that asymmetry is the point of `T086-R1`: Reveal is `explorer
         /select,` on Windows and a D-Bus call on Linux, both of which are commands. Open is an
         associated-application API on Windows. One seam each rather than one seam pretending to
         cover both.
         """
-        return self._act(lambda path, within: reveal_file(path, within=within, run=self._run))
+        refusal = self._act(lambda path, within: reveal_file(path, within=within, run=self._run))
+        if refusal is None:
+            path = self._selected_path()
+            if path:
+                self._raise_later(Path(path))
+        return refusal
+
+    def _raise_later(self, path: Path) -> None:
+        """Ask the file manager's window to come forward, **off the GUI thread** (`T347-R4`).
+
+        `T-347`'s discovery is a handful of blocking D-Bus round trips: who is on the bus, which
+        instance shows this file, which window belongs to it. On this thread a stalled Dolphin
+        would freeze the application for as long as it took to answer, which `NFR-001` does not
+        allow — and the reveal itself has already succeeded by the time this runs, so nothing the
+        user asked for is waiting on it.
+
+        **Nothing comes back.** There is no outcome to report: a window that did not come forward
+        is exactly the behaviour the application had before `T-347`, and a message box about it
+        would be worse than the thing it describes.
+
+        **It holds no widget** (`T-289`): the runnable closes over the path, the injected spawner
+        and the platform string, and not over `self`.
+        """
+        run, platform = self._run, self._platform
+
+        class _Raise(QRunnable):
+            def run(self) -> None:
+                raise_the_file_manager(path, run=run, platform=platform)
+
+        runnable = _Raise()
+        runnable.setAutoDelete(True)
+        QThreadPool.globalInstance().start(runnable)
 
     def _act(self, launch: Callable[[Path, Path], Refusal | None]) -> Refusal | None:
         path = self._selected_path()

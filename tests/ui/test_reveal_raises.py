@@ -21,15 +21,22 @@ from typing import Any
 import pytest
 
 from tracks_and_trails.ui.reveal import (
+    ACTIVATE_ACTION,
     DBUS_TOOL,
     DOLPHIN_CLASS,
     activate_command,
     answered_true,
+    candidate_uuids,
     instance_showing,
     pid_of,
     raise_the_file_manager,
     window_of,
 )
+
+#: Every call in these tests supplies this, so a machine without `dbus-send` — every Windows
+#: runner — answers the same as one with it (`T347-R5`). Asking the running machine made the same
+#: test assert one thing on Linux and another on Windows, and the Windows job failed on it.
+INSTALLED = lambda: True  # noqa: E731 - a seam, and a def here would read as a helper
 
 #: What `dbus-send --print-reply=literal` prints for the bus's name list, trimmed to the shape the
 #: reader cares about: two Dolphin instances and something that is not one.
@@ -37,11 +44,22 @@ NAMES = """
 org.freedesktop.DBus org.kde.KWin org.kde.dolphin-4242 org.kde.dolphin-777 org.kde.plasmashell
 """
 
-#: A `WindowsRunner` match list, as the tool prints it.
+#: A `WindowsRunner` match list, as the tool prints it. **Both records are activations**: the
+#: leading integer is the action KWin will perform, and `0` is the only one this application asks
+#: for.
 MATCHES = """
 array [ struct { 0_{aaaaaaaa-0000-0000-0000-000000000001} downloads — Dolphin org.kde.dolphin
-int32 100 double 0.8 array [ ] } struct { 1_{bbbbbbbb-0000-0000-0000-000000000002} other — Dolphin
+int32 100 double 0.8 array [ ] } struct { 0_{bbbbbbbb-0000-0000-0000-000000000002} other — Dolphin
 org.kde.dolphin int32 30 double 0.7 array [ ] } ]
+"""
+
+#: The reviewer's counterexample (`T347-R3`): a window whose **caption** carries an id shaped like
+#: a close action, ahead of the genuine activation record for the target.
+MATCHES_WITH_A_CLOSE_IN_A_CAPTION = """
+array [ struct { 0_{cccccccc-0000-0000-0000-000000000003}
+1_{bbbbbbbb-0000-0000-0000-000000000002} — Dolphin org.kde.dolphin int32 100 double 0.8 array [ ] }
+struct { 0_{bbbbbbbb-0000-0000-0000-000000000002} other — Dolphin org.kde.dolphin int32 30
+double 0.7 array [ ] } ]
 """
 
 
@@ -89,12 +107,48 @@ def folder(tmp_path: Path) -> Path:
 
 
 def test_the_activation_asks_kwin_to_run_the_match() -> None:
-    argv = activate_command("0_{aaaa}")
+    argv = activate_command("aaaa")
 
     assert argv[0] == DBUS_TOOL
     assert "--dest=org.kde.KWin" in argv
     assert "org.kde.krunner1.Run" in argv
     assert "string:0_{aaaa}" in argv
+
+
+def test_the_action_is_built_here_and_never_taken_from_kwin() -> None:
+    """`T347-R3`: the leading integer in a match id is an **instruction**, not a name.
+
+    KWin's runner defines `ActivateAction` first and `CloseAction` second, and `Run` reads that
+    integer out of the id it is given. This module used to pass a captured id straight through,
+    so text that merely looked like an id — in a window caption — could have asked KWin to close a
+    window. The action is this application's constant now, and only the uuid comes from KWin.
+    """
+    argv = activate_command("1_{bbbb}")
+
+    assert f"string:{ACTIVATE_ACTION}_{{1_{{bbbb}}}}" in argv, (
+        f"a uuid that itself looks like a close action still produced an activation, argv: {argv}"
+    )
+    assert not any(argument.startswith("string:1_") for argument in argv)
+
+
+def test_a_close_action_in_a_caption_is_not_a_candidate() -> None:
+    """The reviewer's counterexample, as a test: captions are not where ids live."""
+    uuids = candidate_uuids(MATCHES_WITH_A_CLOSE_IN_A_CAPTION)
+
+    assert uuids == [
+        "cccccccc-0000-0000-0000-000000000003",
+        "bbbbbbbb-0000-0000-0000-000000000002",
+    ], f"an id inside a caption was read as a match: {uuids}"
+
+
+def test_only_activation_records_are_candidates() -> None:
+    """A record whose own action is not activation is not a window this application may act on."""
+    closing = """
+    array [ struct { 1_{dddddddd-0000-0000-0000-000000000004} downloads — Dolphin org.kde.dolphin
+    int32 100 double 0.8 array [ ] } ]
+    """
+
+    assert candidate_uuids(closing) == []
 
 
 @pytest.mark.parametrize(
@@ -127,17 +181,64 @@ def test_the_process_id_comes_from_the_bus_name() -> None:
 # --- finding the right window ------------------------------------------------------------------
 
 
-def test_the_instance_with_the_folder_open_is_the_one_chosen(folder: Path) -> None:
-    desktop = FakeDesktop({"ListNames": NAMES, "isUrlOpen": "   boolean true"})
+class OnePerInstance:
+    """A `Spawner` answering `isItemVisibleInAnyView` per Dolphin instance, and the rest by key.
 
-    assert instance_showing(folder, lambda argv: desktop(argv).stdout) == "org.kde.dolphin-4242"
+    Per instance because that is the question `T347-R1` turns on: several instances can be asked,
+    and the answer that matters is **how many** say yes.
+    """
+
+    def __init__(self, visible_to: dict[str, bool], answers: dict[str, str] | None = None) -> None:
+        self.visible_to = visible_to
+        self.answers = answers or {}
+        self.asked: list[list[str]] = []
+
+    def __call__(self, args: list[str], /, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        self.asked.append(list(args))
+        reply = ""
+        if any("ListNames" in argument for argument in args):
+            reply = NAMES
+        elif any("isItemVisibleInAnyView" in argument for argument in args):
+            name = next(a.removeprefix("--dest=") for a in args if a.startswith("--dest="))
+            reply = "   boolean true" if self.visible_to.get(name) else "   boolean false"
+        else:
+            for key, value in self.answers.items():
+                if any(key in argument for argument in args):
+                    reply = value
+                    break
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout=reply, stderr="")
+
+    def method_calls(self, fragment: str) -> list[list[str]]:
+        return [argv for argv in self.asked if any(fragment in argument for argument in argv)]
 
 
-def test_no_instance_showing_the_folder_is_no_answer(folder: Path) -> None:
+def test_the_one_instance_showing_the_file_is_the_one_chosen(folder: Path) -> None:
+    """The question is the **file**, because that is what the reveal selected (`T347-R1`)."""
+    desktop = OnePerInstance({"org.kde.dolphin-4242": True})
+
+    found = instance_showing(folder / "clip.mp4", lambda argv: desktop(argv).stdout)
+
+    assert found == "org.kde.dolphin-4242"
+
+
+def test_two_instances_showing_the_file_decline_rather_than_guess(folder: Path) -> None:
+    """`T347-R1`: several instances can show one file, and the reveal went to exactly one.
+
+    Dolphin picks its recipient by walking from the active window and testing item visibility, not
+    by any order this application can reproduce from outside. Raising the first would bring forward
+    a window that may be showing an entirely different current tab, so an ambiguous answer raises
+    nothing at all.
+    """
+    desktop = OnePerInstance({"org.kde.dolphin-4242": True, "org.kde.dolphin-777": True})
+
+    assert instance_showing(folder / "clip.mp4", lambda argv: desktop(argv).stdout) is None
+
+
+def test_no_instance_showing_the_file_is_no_answer(folder: Path) -> None:
     """The common case: the reveal has just opened a window, which is already in front."""
-    desktop = FakeDesktop({"ListNames": NAMES, "isUrlOpen": "   boolean false"})
+    desktop = OnePerInstance({})
 
-    assert instance_showing(folder, lambda argv: desktop(argv).stdout) is None
+    assert instance_showing(folder / "clip.mp4", lambda argv: desktop(argv).stdout) is None
 
 
 def test_the_window_is_found_by_process_id_not_by_title() -> None:
@@ -156,7 +257,7 @@ def test_the_window_is_found_by_process_id_not_by_title() -> None:
 
     found = window_of(777, lambda argv: desktop(argv).stdout)
 
-    assert found == "1_{bbbbbbbb-0000-0000-0000-000000000002}"
+    assert found == "bbbbbbbb-0000-0000-0000-000000000002"
 
 
 def test_a_window_of_another_application_is_not_taken() -> None:
@@ -176,17 +277,21 @@ def test_a_window_of_another_application_is_not_taken() -> None:
 
 
 def test_the_window_showing_the_folder_is_activated(folder: Path) -> None:
-    desktop = FakeDesktop(
+    desktop = OnePerInstance(
+        {"org.kde.dolphin-4242": True},
         {
-            "ListNames": NAMES,
-            "isUrlOpen": "   boolean true",
             "org.kde.krunner1.Match": MATCHES,
             "aaaaaaaa": window_info(4242),
             "bbbbbbbb": window_info(777),
-        }
+        },
     )
 
-    assert raise_the_file_manager(folder / "clip.mp4", run=desktop, platform="linux") is True
+    assert (
+        raise_the_file_manager(
+            folder / "clip.mp4", run=desktop, platform="linux", available=INSTALLED
+        )
+        is True
+    )
     runs = desktop.method_calls("org.kde.krunner1.Run")
     assert len(runs) == 1
     assert "string:0_{aaaaaaaa-0000-0000-0000-000000000001}" in runs[0]
@@ -196,7 +301,12 @@ def test_nothing_is_asked_on_windows(folder: Path) -> None:
     """Windows reveals through Explorer, which raises its own window."""
     desktop = FakeDesktop({})
 
-    assert raise_the_file_manager(folder / "clip.mp4", run=desktop, platform="win32") is False
+    assert (
+        raise_the_file_manager(
+            folder / "clip.mp4", run=desktop, platform="win32", available=INSTALLED
+        )
+        is False
+    )
     assert desktop.asked == []
 
 
@@ -204,23 +314,32 @@ def test_a_desktop_that_answers_nothing_changes_nothing(folder: Path) -> None:
     """No KWin, no Dolphin, no D-Bus at all: the reveal stands as it did."""
     desktop = FakeDesktop({})
 
-    assert raise_the_file_manager(folder / "clip.mp4", run=desktop, platform="linux") is False
+    assert (
+        raise_the_file_manager(
+            folder / "clip.mp4", run=desktop, platform="linux", available=INSTALLED
+        )
+        is False
+    )
     assert desktop.method_calls("org.kde.krunner1.Run") == []
 
 
 def test_no_window_carrying_that_pid_is_left_alone(folder: Path) -> None:
-    """KWin is there and the folder is open, but no window matches. Nothing is activated."""
-    desktop = FakeDesktop(
+    """KWin is there and one instance shows the file, but no window matches. Nothing happens."""
+    desktop = OnePerInstance(
+        {"org.kde.dolphin-4242": True},
         {
-            "ListNames": NAMES,
-            "isUrlOpen": "   boolean true",
             "org.kde.krunner1.Match": MATCHES,
             "aaaaaaaa": window_info(9999),
             "bbbbbbbb": window_info(9999),
-        }
+        },
     )
 
-    assert raise_the_file_manager(folder / "clip.mp4", run=desktop, platform="linux") is False
+    assert (
+        raise_the_file_manager(
+            folder / "clip.mp4", run=desktop, platform="linux", available=INSTALLED
+        )
+        is False
+    )
     assert desktop.method_calls("org.kde.krunner1.Run") == []
 
 
@@ -230,4 +349,9 @@ def test_a_desktop_that_raises_is_not_an_error_the_user_sees(folder: Path) -> No
     def explode(args: list[str], /, **kwargs: Any) -> Any:
         raise OSError("no session bus")
 
-    assert raise_the_file_manager(folder / "clip.mp4", run=explode, platform="linux") is False
+    assert (
+        raise_the_file_manager(
+            folder / "clip.mp4", run=explode, platform="linux", available=INSTALLED
+        )
+        is False
+    )

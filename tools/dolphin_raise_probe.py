@@ -34,8 +34,12 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any
+
+from tracks_and_trails.ui.reveal import raise_the_file_manager, reveal_file
 
 DOLPHIN_PREFIX = "org.kde.dolphin-"
 #: KWin's own window identity, read through `getWindowInfo` rather than guessed from a match string.
@@ -131,35 +135,57 @@ def show(label: str, taken: dict[str, dict[str, Any]]) -> None:
         print(f"      {name}: {fields}")
 
 
-def precondition(case: str, before: dict[str, dict[str, Any]]) -> str:
+def precondition(case: str, target: str | None, before: dict[str, dict[str, Any]]) -> str:
     """Whether the case this run claims to be measuring is the case it set up.
 
-    `T347-R2` asked the record to substantiate its cases, and the first version of this probe could
-    not: it reported *"open on another folder"* for a window whose own instrument said it had the
-    target folder open. A case whose precondition is not established measures nothing, and says so
-    here rather than in a table someone reads later.
-    """
-    showing = [name for name, fields in before.items() if fields["shows the folder"]]
-    active = [name for name, fields in before.items() if fields["active"]]
-    minimized = [name for name, fields in before.items() if fields["minimized"] == "true"]
+    **It asks about `target`, the window this probe opened for the case**, not about whatever the
+    session happens to hold (`T347-R2`). Asking the room rather than the subject let case 4 accept a
+    *different* window being minimized, and let case 3 accept a target that was minimized — so the
+    two cases the whole task turns on were not distinguishable from this record.
 
+    A case whose precondition is not established measures nothing, and says so here rather than in
+    a table somebody reads later.
+    """
     if case.startswith("1"):
         if before:
-            return f"NOT established: {list(before)} is still open"
-        return "established: no Dolphin window"
+            return f"NOT established: {sorted(before)} is still open"
+        return "established: no Dolphin window at all"
+
+    if target is None:
+        return "NOT established: this probe opened no window for the case"
+    if target not in before:
+        return f"NOT established: {target} is gone"
+    state = before[target]
+
     if case.startswith("2"):
+        showing = [name for name, fields in before.items() if fields["shows the folder"]]
         if showing:
-            return f"NOT established: {showing} already has the folder open"
-        return "established: a window is open and none of them shows the folder"
+            return f"NOT established: {showing} already shows the folder"
+        return f"established: {target} is open and no window shows the folder"
+
+    if not state["shows the folder"]:
+        return f"NOT established: {target} does not show the folder"
+    if state["active"]:
+        return f"NOT established: {target} is already active, so nothing has to be raised"
+
     if case.startswith("3"):
-        if not showing:
-            return "NOT established: no window shows the folder"
-        if active:
-            return f"NOT established: {active} is already active, so nothing has to be raised"
-        return "established: a window shows the folder and is behind ours"
-    if not minimized:
-        return "NOT established: no window is minimized"
-    return "established: a window shows the folder and is minimized"
+        if state["minimized"] == "true":
+            return f"NOT established: {target} is minimized, which is case 4 and not this one"
+        return f"established: {target} shows the folder, is behind ours and is not minimized"
+
+    if state["minimized"] != "true":
+        return f"NOT established: {target} is not minimized, which is case 3 and not this one"
+    return f"established: {target} shows the folder and is minimized"
+
+
+def pid_of(name: str) -> int:
+    """The process id a Dolphin bus name ends with."""
+    return int(name.rsplit("-", 1)[-1])
+
+
+def minimized_now(name: str, folder: Path, target: Path) -> bool:
+    """Whether KWin reports `name`'s window minimized, asked until it agrees."""
+    return state(name, folder, target)["minimized"] == "true"
 
 
 def show_items(target: Path) -> None:
@@ -216,20 +242,30 @@ def steal_focus() -> subprocess.Popen[bytes]:
 
 #: KWin's scripting API is the only way this probe can minimize a window: nothing on Dolphin's own
 #: interface does it, and a Wayland client cannot minimize somebody else's window.
+#: Minimizes **only the listed process ids**, so a window the operator owns is never touched
+#: (`T347-R2`). The first version minimized every Dolphin window while its own message said
+#: otherwise.
 MINIMIZE_SCRIPT = """
-const windows = workspace.windowList();
-for (const w of windows) {
-    if (w.resourceClass === "org.kde.dolphin" && !w.minimized) {
+const wanted = [%s];
+for (const w of workspace.windowList()) {
+    if (wanted.includes(w.pid) && !w.minimized) {
         w.minimized = true;
     }
 }
 """
 
 
-def minimize_dolphins() -> str:
-    """Minimize every Dolphin window through KWin scripting, and say whether it took."""
-    script = Path(tempfile.mkdtemp(prefix="t347-minimize-")) / "minimize.js"
-    script.write_text(MINIMIZE_SCRIPT, encoding="utf-8")
+def minimize(pids: list[int], settled: Callable[[], bool]) -> str:
+    """Minimize the windows of `pids`, and **wait until KWin says it happened** before unloading.
+
+    **The wait is the whole point** (`T347-R2`). Unloading the script immediately after `run`
+    reported success while leaving every window un-minimized: the script is torn down before KWin
+    applies it. `settled` is asked until it agrees, so the case that follows is measuring the state
+    it says it is.
+    """
+    folder = Path(tempfile.mkdtemp(prefix="t347-minimize-"))
+    script = folder / "minimize.js"
+    script.write_text(MINIMIZE_SCRIPT % ", ".join(str(pid) for pid in pids), encoding="utf-8")
     loaded = dbus(
         "--dest=org.kde.KWin",
         "/Scripting",
@@ -241,14 +277,27 @@ def minimize_dolphins() -> str:
         return f"could not load the script: {loaded.splitlines()[0][:60]}"
     number = loaded.strip().split()[-1]
     ran = dbus("--dest=org.kde.KWin", f"/Scripting/Script{number}", "org.kde.kwin.Script.run")
+    if "Error" in ran:
+        return f"run failed: {ran.splitlines()[0][:60]}"
+
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if settled():
+            dbus(
+                "--dest=org.kde.KWin",
+                "/Scripting",
+                "org.kde.kwin.Scripting.unloadScript",
+                "string:t347minimize",
+            )
+            return "minimized, and KWin agrees"
+        time.sleep(0.5)
     dbus(
         "--dest=org.kde.KWin",
         "/Scripting",
         "org.kde.kwin.Scripting.unloadScript",
         "string:t347minimize",
     )
-    time.sleep(2)
-    return "minimized" if "Error" not in ran else f"run failed: {ran.splitlines()[0][:60]}"
+    return "NOT minimized: KWin never reported it"
 
 
 #: The Dolphin processes this probe started, so it never closes a window the operator owns.
@@ -261,8 +310,8 @@ STARTED: list[subprocess.Popen[bytes]] = []
 PRE_EXISTING: set[str] = set()
 
 
-def open_dolphin_on(folder: Path) -> None:
-    """A Dolphin window showing `folder`, in a **clean profile**, for a case that needs one open.
+def open_dolphin_on(folder: Path) -> str | None:
+    """A Dolphin window showing `folder` in a **clean profile**, named so a case can ask about it.
 
     **`XDG_CONFIG_HOME` is redirected per run**, and that is load-bearing rather than tidy:
     Dolphin restores its previous tabs, so a window opened "somewhere else" still had the target
@@ -271,13 +320,16 @@ def open_dolphin_on(folder: Path) -> None:
     it is false.
     """
     environment = dict(os.environ, XDG_CONFIG_HOME=tempfile.mkdtemp(prefix="t347-profile-"))
-    STARTED.append(
-        subprocess.Popen(  # noqa: S603 - `shell` stays False
-            ["dolphin", "--new-window", str(folder)],  # noqa: S607 - the session's own Dolphin
-            env=environment,
-        )
+    started = subprocess.Popen(  # noqa: S603 - `shell` stays False
+        ["dolphin", "--new-window", str(folder)],  # noqa: S607 - the session's own Dolphin
+        env=environment,
     )
+    STARTED.append(started)
     time.sleep(5)
+    for name in instances():
+        if pid_of(name) == started.pid:
+            return name
+    return None
 
 
 def quit_dolphins() -> None:
@@ -292,7 +344,16 @@ def quit_dolphins() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--folder", type=Path, required=True, help="a folder holding one file")
-    parser.add_argument("--raise-route", choices=("none", "windowsrunner"), default="none")
+    parser.add_argument(
+        "--raise-route",
+        choices=("none", "windowsrunner", "production"),
+        default="none",
+        help=(
+            "none: ShowItems alone, the behaviour before T-347. windowsrunner: this tool's own "
+            "activation. production: the application's own reveal_file and raise_the_file_manager, "
+            "which is the only route that measures what ships"
+        ),
+    )
     arguments = parser.parse_args()
 
     PRE_EXISTING.update(instances())
@@ -316,7 +377,7 @@ def main() -> int:
     elsewhere = Path(tempfile.mkdtemp(prefix="t347-elsewhere-"))
     thief: subprocess.Popen[bytes] | None = None
     try:
-        for case, where, minimize in (
+        for case, where, minimize_it in (
             ("1. nothing open", None, False),
             ("2. open on another folder", elsewhere, False),
             ("3. open on the target folder", folder, False),
@@ -324,23 +385,35 @@ def main() -> int:
         ):
             print(f"  == {case} ==")
             quit_dolphins()
+            opened = None
             if where is not None:
-                open_dolphin_on(where)
-            if minimize:
-                print(f"    {minimize_dolphins()}")
+                opened = open_dolphin_on(where)
+            if minimize_it and opened is not None:
+                # `opened` is bound here rather than captured, so the closure cannot read a later
+                # iteration's window (`B023`).
+                its_name = opened
+                settled = partial(minimized_now, its_name, folder, target)
+                print(f"    {minimize([pid_of(its_name)], settled)}")
             if thief is not None:
                 thief.terminate()
             thief = steal_focus()
             time.sleep(3)
             before = survey(folder, target)
             show("before", before)
-            print(f"    precondition: {precondition(case, before)}")
+            print(f"    precondition: {precondition(case, opened, before)}")
 
-            show_items(target)
-            time.sleep(4)
-            if arguments.raise_route == "windowsrunner":
-                print(f"    route: {raise_through_windowsrunner(folder)}")
+            if arguments.raise_route == "production":
+                # **The application's own functions**, which is the only way this tool measures
+                # what ships rather than its own copy of the idea (`T347-R2`).
+                print(f"    reveal_file -> {reveal_file(target, within=folder, platform='linux')}")
                 time.sleep(3)
+                print(f"    raise_the_file_manager -> {raise_the_file_manager(target)}")
+            else:
+                show_items(target)
+                time.sleep(4)
+                if arguments.raise_route == "windowsrunner":
+                    print(f"    route: {raise_through_windowsrunner(folder)}")
+            time.sleep(3)
             show("after", survey(folder, target))
             print()
     finally:

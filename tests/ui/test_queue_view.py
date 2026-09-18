@@ -4298,6 +4298,60 @@ def test_a_cancelled_row_says_why_when_yt_dlp_stopped_it(
     assert "--break-on-existing" in detail, f"a row yt-dlp stopped does not say why: {detail!r}"
 
 
+@pytest.mark.parametrize(
+    ("reason", "spoken"),
+    [
+        pytest.param(
+            "Encountered a video that is already in the archive, stopping due to "
+            "--break-on-existing",
+            True,
+            id="yt-dlp stopped it",
+        ),
+        pytest.param(CANCELLED_BY_THE_APPLICATION, False, id="the user cancelled it"),
+        pytest.param("", False, id="no reason at all"),
+        pytest.param("stopped early\nbecause the archive already had it", True, id="two lines"),
+    ],
+)
+def test_a_screen_reader_hears_the_same_cancellation_reason_the_row_shows(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+    reason: str,
+    spoken: bool,
+) -> None:
+    """`T184-R4`: a fact added for the eye has to reach the ear (`NFR-005`).
+
+    The drawn line gained the reason a cancellation this application did not cause; the spoken row
+    still described failures only, so a screen-reader user was told the job was cancelled and never
+    why. **The same rule, from the same function**, so the two cannot drift: a multiline reason is
+    joined into one line for both, and the application's own sentence is silent in both.
+    """
+    queue.add(
+        make_job(
+            "job-1",
+            tmp_path,
+            status=JobStatus.CANCELLED,
+            error_kind=ErrorKind.CANCELLED,
+            error_message=reason,
+        )
+    )
+    view = views(jobs=queue, manager=managers())
+
+    index = view.model.index(0, JOB_COLUMN)
+    drawn = view.model.data(index, DETAIL_ROLE)
+    heard = view.model.data(index, int(Qt.ItemDataRole.AccessibleTextRole))
+
+    expected = " ".join(reason.splitlines()) if spoken else ""
+    if spoken:
+        assert expected in drawn, f"the row does not show it: {drawn!r}"
+        assert expected in heard, f"the row shows what it does not say: {heard!r}"
+    else:
+        assert expected == "" or expected not in heard, (
+            f"a cancellation nobody needs explained was spoken: {heard!r}"
+        )
+
+
 def test_a_row_the_user_cancelled_does_not_repeat_the_sentence(
     queue: FakeQueue,
     views: Callable[..., QueueView],

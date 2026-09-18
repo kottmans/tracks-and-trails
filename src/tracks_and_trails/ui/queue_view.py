@@ -1196,6 +1196,17 @@ class QueueModel(QAbstractTableModel):
             action = self._failure_action(row)
             if action:
                 spoken.append(action)
+        elif row.job.status is JobStatus.CANCELLED:
+            # **The same rule as the drawn line, not a second one** (`T184-R4`). The row gained a
+            # reason for a cancellation this application did not cause, and this composition still
+            # only spoke failures — so the eye was told why a job stopped and the ear was not,
+            # which is the split `NFR-005` exists to close and `T017-R2` already records once.
+            #
+            # `_cancellation_detail` is called rather than reimplemented, so the two lines cannot
+            # come to disagree about which sentence is ours.
+            reason = self._cancellation_detail(row)
+            if reason:
+                spoken.append(reason)
         return ". ".join(spoken)
 
     def _chip(self, row: _Row) -> str:

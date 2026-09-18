@@ -182,16 +182,17 @@ def reveal_file(
     run: Spawner | None = None,
     platform: str = sys.platform,
 ) -> Refusal | None:
-    """Show `path` in the file manager, selected. `None` means it was launched."""
+    """Show `path` in the file manager, selected. `None` means it was launched.
+
+    **Bringing an already-open window forward is not done here** (`T347-R4`). It is a sequence of
+    blocking D-Bus round trips, this runs on the GUI thread, and `NFR-001` does not allow a stalled
+    file manager to freeze the application. `raise_the_file_manager` is that half, and
+    `ui/file_actions.py` runs it on a worker once this has returned.
+    """
     refusal = _refuse_unless_usable(path, within)
     if refusal is not None:
         return refusal
-    launched = _spawn(reveal_command(path, platform), run)
-    if launched is None:
-        # `T-347`, and it is deliberately after the reveal rather than instead of it: `ShowItems`
-        # is what selects the file, and this only decides whether the window it reused is in front.
-        raise_the_file_manager(path, run=run, platform=platform)
-    return launched
+    return _spawn(reveal_command(path, platform), run)
 
 
 # --- bringing an already-open window forward (`T-347`) -----------------------------------------
@@ -221,8 +222,18 @@ DOLPHIN_CLASS: Final = "org.kde.dolphin"
 #: The query only has to *generate* candidates; the pid picks among them, so this can be broad.
 WINDOW_QUERY: Final = "dolphin"
 
-#: `0_{uuid}`, as `WindowsRunner` spells a match, with KWin's window uuid inside it.
-_MATCH_ID = re.compile(r"\b(\d+_\{[0-9a-f-]+\})")
+#: Where one match record begins in `dbus-send --print-reply=literal` output. The **first** member
+#: of each record is its id, which is the only place an id may be read from.
+_RECORD = "struct {"
+
+#: `<action>_{uuid}`, as `WindowsRunner` spells a match id, anchored to the start of a record so a
+#: window **caption** cannot supply one (`T347-R3`).
+_MATCH_ID = re.compile(r"^\s*(\d+)_\{([0-9a-f-]+)\}")
+
+#: KWin's runner defines its actions in order, `ActivateAction` first and `CloseAction` second, and
+#: `Run` reads the integer out of the id it is given. **So an id is not a name, it is an
+#: instruction**, and the only one this application ever issues is activation.
+ACTIVATE_ACTION: Final = 0
 
 #: `dict entry( key variant value )`, as `dbus-send --print-reply=literal` prints a property map.
 _PROPERTY = re.compile(r"dict entry\(\s*(\S+)\s+variant\s+(.*?)\s*\)", re.S)
@@ -240,11 +251,17 @@ def list_names_command() -> list[str]:
     ]
 
 
-def url_open_command(name: str, folder: Path) -> list[str]:
-    """The argv that asks one Dolphin instance whether it has `folder` open.
+def item_visible_command(name: str, path: Path) -> list[str]:
+    """The argv that asks one Dolphin instance whether **this file** is shown in one of its views.
 
-    **It answers for the instance, not for the window**: a folder open in any tab counts, which is
-    what makes it the right question here — the reveal reuses that instance whichever tab is on top.
+    **The file, not its folder** (`T347-R1`). Asking `isUrlOpen(folder)` says only that some tab
+    has the folder open, which several instances can answer yes to at once, and the reveal went to
+    exactly one of them. Dolphin's own `ShowItems` picks its recipient by walking from the active
+    window and testing item visibility — not by taking the first instance in any order — so the
+    nearest question this application can ask is the one Dolphin itself uses.
+
+    It is still not proof of which instance received the call, which is why an ambiguous answer
+    declines rather than guesses.
     """
     return [
         DBUS_TOOL,
@@ -252,8 +269,8 @@ def url_open_command(name: str, folder: Path) -> list[str]:
         "--print-reply=literal",
         f"--dest={name}",
         "/dolphin/Dolphin_1",
-        "org.kde.dolphin.MainWindow.isUrlOpen",
-        f"string:{folder.as_uri()}",
+        "org.kde.dolphin.MainWindow.isItemVisibleInAnyView",
+        f"string:{path.as_uri()}",
     ]
 
 
@@ -283,8 +300,16 @@ def window_info_command(uuid: str) -> list[str]:
     ]
 
 
-def activate_command(match_id: str) -> list[str]:
-    """The argv that asks KWin to bring one window forward."""
+def activate_command(uuid: str) -> list[str]:
+    """The argv that asks KWin to bring the window `uuid` forward.
+
+    **It takes the window, and builds the instruction itself** (`T347-R3`). It used to take the
+    matched id and pass it to `Run` unchanged, and that id carries the *action*: KWin's runner
+    reads the integer out of it, `0` activates and **`1` closes**. A window caption containing
+    `1_{…}` was enough to turn this into a request to close a window, because the id was read by
+    scanning the whole reply rather than the first member of a record. Nothing captured is passed
+    through now: the action is this module's constant and only the uuid comes from KWin.
+    """
     return [
         DBUS_TOOL,
         "--session",
@@ -292,7 +317,7 @@ def activate_command(match_id: str) -> list[str]:
         "--dest=org.kde.KWin",
         "/WindowsRunner",
         "org.kde.krunner1.Run",
-        f"string:{match_id}",
+        f"string:{ACTIVATE_ACTION}_{{{uuid}}}",
         "string:",
     ]
 
@@ -302,13 +327,26 @@ def answered_true(text: str) -> bool:
     return "error" not in text.lower() and "true" in text.lower()
 
 
-def instance_showing(folder: Path, ask: Callable[[list[str]], str]) -> str | None:
-    """The Dolphin bus name that already has `folder` open, or `None` if no instance does."""
+def instance_showing(path: Path, ask: Callable[[list[str]], str]) -> str | None:
+    """The one Dolphin instance showing `path`, or `None` when that is not exactly one.
+
+    **Ambiguity declines rather than guesses** (`T347-R1`). This took the first instance in sorted
+    order that had the *folder* open, which answers a question nobody asked: several instances can
+    have a folder open at once, the reveal went to one of them, and Dolphin chooses that one by
+    walking from the active window and testing item visibility. Raising the lexically first instead
+    can bring forward a window showing an entirely different current tab.
+
+    So the question is the item, and the answer has to be unique. Two instances showing the file is
+    a situation this application cannot resolve from outside, and leaving the window where it is
+    beats raising the wrong one.
+    """
     names = ask(list_names_command())
-    for name in sorted(n for n in names.split() if n.startswith(DOLPHIN_PREFIX)):
-        if answered_true(ask(url_open_command(name, folder))):
-            return name
-    return None
+    showing = [
+        name
+        for name in sorted(n for n in names.split() if n.startswith(DOLPHIN_PREFIX))
+        if answered_true(ask(item_visible_command(name, path)))
+    ]
+    return showing[0] if len(showing) == 1 else None
 
 
 def pid_of(name: str) -> int | None:
@@ -317,32 +355,71 @@ def pid_of(name: str) -> int | None:
     return int(tail) if tail.isdigit() else None
 
 
+def candidate_uuids(reply: str) -> list[str]:
+    """The window uuids in a `Match` reply, read as **record members** rather than as text.
+
+    Each record begins `struct {` and its first member is the id; this reads that member and
+    nothing else, so an id-shaped string inside a window caption or a property is not a candidate
+    (`T347-R3`). Only activation ids are returned, because the action is the part of an id that
+    tells KWin what to do and this application issues exactly one.
+    """
+    found = []
+    for record in reply.split(_RECORD)[1:]:
+        match = _MATCH_ID.match(record)
+        if match is None:
+            continue
+        action, uuid = int(match.group(1)), match.group(2)
+        if action == ACTIVATE_ACTION:
+            found.append(uuid)
+    return found
+
+
 def window_of(pid: int, ask: Callable[[list[str]], str]) -> str | None:
-    """KWin's match id for the window belonging to `pid`, by identity rather than by title text."""
-    matches: list[str] = _MATCH_ID.findall(ask(window_match_command()))
-    for match_id in matches:
-        uuid = match_id.split("_", 1)[1]
+    """The uuid of the window belonging to `pid`, by identity rather than by title text."""
+    for uuid in candidate_uuids(ask(window_match_command())):
         pairs: list[tuple[str, str]] = _PROPERTY.findall(ask(window_info_command(uuid)))
         properties = dict(pairs)
         if properties.get("resourceClass", "").strip() != DOLPHIN_CLASS:
             continue
         if properties.get("pid", "").strip().split()[-1:] == [str(pid)]:
-            return match_id
+            return uuid
     return None
 
 
+#: How long one D-Bus question may take before this gives up on the whole idea.
+#:
+#: **Not `LAUNCH_TIMEOUT_SECONDS`** (`T347-R4`). Ten seconds is the right patience for *launching*
+#: a file manager, which a user is waiting for; it is the wrong patience for asking whether a
+#: window exists, which a user did not ask for at all. A stalled Dolphin answering five questions
+#: at ten seconds each is most of a minute of an application that has already done its job.
+ASK_TIMEOUT_SECONDS: Final = 1.0
+
+
 def raise_the_file_manager(
-    path: Path, *, run: Spawner | None = None, platform: str = sys.platform
+    path: Path,
+    *,
+    run: Spawner | None = None,
+    platform: str = sys.platform,
+    available: Callable[[], bool] | None = None,
 ) -> bool:
-    """Bring the window already showing `path`'s folder forward. `True` if KWin was asked to.
+    """Bring the window already showing `path` forward. `True` if KWin was asked to.
+
+    **Never call this on the GUI thread.** It is a short sequence of blocking round trips, and
+    `NFR-001` is why `ui/file_actions.py` runs it on a worker (`T347-R4`).
 
     **Every step may simply not apply**, and none of them is an error worth telling anyone about:
-    the platform is not Linux, `dbus-send` is absent, no Dolphin instance has the folder open (the
-    common case, where the reveal has just opened a window that is already in front), KWin is not
-    the compositor, or no window carries that pid. Each answers `False` and leaves the behaviour
-    exactly as it was.
+    the platform is not Linux, `dbus-send` is absent, no single Dolphin instance shows the file
+    (the common case, where the reveal has just opened a window that is already in front, and the
+    ambiguous case, which declines), KWin is not the compositor, or no window carries that pid.
+    Each answers `False` and leaves the behaviour exactly as it was.
+
+    **`available` is a seam for the same reason `platform` is** (`T347-R5`): the tests drive this
+    with a fake desktop, and asking the *running* machine whether `dbus-send` exists made them
+    assert one thing on Linux and another on Windows. The Windows job failed on exactly that.
+    `None` means ask this machine, which is what production wants.
     """
-    if platform == "win32" or not dbus_available():
+    tool_present = available if available is not None else dbus_available
+    if platform == "win32" or not tool_present():
         return False
 
     def ask(command: list[str]) -> str:
@@ -359,13 +436,13 @@ def raise_the_file_manager(
                 check=False,
                 capture_output=True,
                 text=True,
-                timeout=LAUNCH_TIMEOUT_SECONDS,
+                timeout=ASK_TIMEOUT_SECONDS,
             )
         except OSError, subprocess.SubprocessError:
             return ""
         return str(getattr(completed, "stdout", "") or "")
 
-    name = instance_showing(path.parent, ask)
+    name = instance_showing(path, ask)
     if name is None:
         return False
     pid = pid_of(name)

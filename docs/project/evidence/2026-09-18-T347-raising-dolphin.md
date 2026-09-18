@@ -140,6 +140,74 @@ path that declines, with the `Spawner` seam answering the D-Bus questions. Five 
 caught, including "the first match wins" and "an error reply is read as a yes" — the second needed
 an error message quoting a folder named `true`, because without one the guard could not fail.
 
+## The review's six findings, and what each changed
+
+`T347-R1` to `R5` and `T184-R4`, 2026-09-18. Three were High and one of them was a hazard rather
+than a defect.
+
+**`T347-R3`, the wrong action.** `Match` ids were read by scanning the **whole** reply, and the
+matched id was handed to `Run` unchanged. KWin's runner reads the action out of that id:
+`0` activates, **`1` closes**. A window whose *caption* contained `1_{uuid}` was therefore enough to
+turn *Show in folder* into a request to close a window. Ids are read as record members now, only
+activation records are candidates, and **the action is this module's own constant** — nothing
+captured is passed through. The test for it uses the reviewer's counterexample, and the mutation
+that restores the old whole-reply scan fails it.
+
+*(My first mutation of that rule was **inert** and reported "caught" for the wrong reason: within a
+record the genuine id always comes first, so per-record scanning finds it either way. The mutation
+that means something is the exact pre-correction implementation.)*
+
+**`T347-R4`, the GUI thread.** Every question was a blocking `subprocess.run` from a Qt slot, with
+the **launch** timeout of ten seconds each. A stalled Dolphin could freeze the application for the
+length of the whole sequence, which `NFR-001` does not allow. `reveal_file` no longer raises
+anything; `ui/file_actions.py` runs the raise on a `QThreadPool` worker that holds no widget, and
+discovery uses a **one second** per-question timeout, because a question nobody asked for does not
+deserve a launch's patience.
+
+**`T347-R1`, ambiguity.** `isUrlOpen(folder)` was the wrong question: several instances can have a
+folder open, and the reveal went to exactly one of them. Dolphin picks its recipient by walking from
+the active window and testing item visibility. The question is now
+`isItemVisibleInAnyView(file)` — the nearest thing this application can ask — and **more than one
+answer declines** rather than raising a window that may be showing a different tab.
+
+**`T347-R5`, the Windows job.** The tests asked the *running machine* whether `dbus-send` exists, so
+the same test asserted one thing on Linux and another on Windows, and the Windows job failed. The
+availability is a seam now, like `platform`.
+
+**`T184-R4`, the ear.** The drawn row gained a cancellation reason and the **spoken** row did not,
+so a screen-reader user was told a job was cancelled and never why. The accessible text calls the
+same `_cancellation_detail`, tested across foreign, default, empty and multiline reasons through
+the real model roles.
+
+## The four cases through the shipped functions
+
+`T347-R2` asked for the production route to have a retained, runnable invocation. It does:
+
+    PYTHONPATH=tools python -m dolphin_raise_probe --folder <…> --raise-route production
+
+which calls `reveal_file` and `raise_the_file_manager` themselves. The full output is
+[`2026-09-18-T347-production-route.txt`](2026-09-18-T347-production-route.txt); in summary:
+
+| Case | Precondition | After the application's own call |
+|---|---|---|
+| 1. nothing open | established: no Dolphin window at all | a new window, **active** |
+| 2. a window open elsewhere | established: it shows no folder | a new window, active; the first untouched |
+| 3. shows the folder, behind ours | established: behind **and not minimized** | **`active: False → True`** |
+| 4. shows the folder, minimized | `minimized, and KWin agrees` | **`minimized: true → false`, `active: True`** |
+
+**Three corrections to the probe itself**, all from `T347-R2`:
+
+- **Preconditions ask about the window the probe opened**, not about the room. Asking the room let
+  case 4 accept an unrelated minimized window and case 3 accept a minimized target — so the two
+  cases this task turns on were not distinguishable from the record.
+- **Minimization is scoped to the probe's own process ids** and **waits until KWin reports it**
+  before unloading the script. It minimized every Dolphin window while its own message said
+  otherwise, and it unloaded before waiting — which is the ordering the previous evidence claimed
+  was already corrected and was not.
+- A loop variable named `minimize` shadowed the function `minimize`, so case 4 called a boolean and
+  the run died there. The first attempt sent stderr to `/dev/null`, which is why it took a second
+  run to say so.
+
 ## What the instruments cannot say
 
 Stated because `T347-R2` asked for the claim to be narrowed to what is observable:

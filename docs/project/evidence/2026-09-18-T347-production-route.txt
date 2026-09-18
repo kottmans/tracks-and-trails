@@ -1,0 +1,42 @@
+folder: /tmp/claude-1000/-mnt-storage-software-projects-tracks-and-trails/96fe6b5d-0b34-499b-b845-bc11049b231a/scratchpad/t347/downloads
+target: clip.mp4
+route after ShowItems: production
+
+  == 1. nothing open ==
+    before
+      (no Dolphin window)
+    precondition: established: no Dolphin window at all
+    reveal_file -> None
+    raise_the_file_manager -> True
+    after
+      org.kde.dolphin-1373818: {'pid': 1373818, 'active': True, 'shows the folder': True, 'item visible': True, 'minimized': 'false'}
+
+  == 2. open on another folder ==
+    before
+      org.kde.dolphin-1373862: {'pid': 1373862, 'active': False, 'shows the folder': False, 'item visible': False, 'minimized': 'false'}
+    precondition: established: org.kde.dolphin-1373862 is open and no window shows the folder
+    reveal_file -> None
+    raise_the_file_manager -> True
+    after
+      org.kde.dolphin-1373862: {'pid': 1373862, 'active': False, 'shows the folder': False, 'item visible': False, 'minimized': 'false'}
+      org.kde.dolphin-1373907: {'pid': 1373907, 'active': True, 'shows the folder': True, 'item visible': True, 'minimized': 'false'}
+
+  == 3. open on the target folder ==
+    before
+      org.kde.dolphin-1373959: {'pid': 1373959, 'active': False, 'shows the folder': True, 'item visible': True, 'minimized': 'false'}
+    precondition: established: org.kde.dolphin-1373959 shows the folder, is behind ours and is not minimized
+    reveal_file -> None
+    raise_the_file_manager -> True
+    after
+      org.kde.dolphin-1373959: {'pid': 1373959, 'active': True, 'shows the folder': True, 'item visible': True, 'minimized': 'false'}
+
+  == 4. open on the target folder, minimized ==
+    minimized, and KWin agrees
+    before
+      org.kde.dolphin-1374022: {'pid': 1374022, 'active': False, 'shows the folder': True, 'item visible': True, 'minimized': 'true'}
+    precondition: established: org.kde.dolphin-1374022 shows the folder and is minimized
+    reveal_file -> None
+    raise_the_file_manager -> True
+    after
+      org.kde.dolphin-1374022: {'pid': 1374022, 'active': True, 'shows the folder': True, 'item visible': True, 'minimized': 'false'}
+
