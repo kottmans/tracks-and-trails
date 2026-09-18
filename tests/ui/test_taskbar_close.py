@@ -301,7 +301,16 @@ def test_a_dialog_that_refuses_to_close_keeps_the_application_open(window: QWidg
 
 
 def test_a_dialog_that_deletes_itself_on_close_is_gone(window: QWidget) -> None:
-    """*Diagnostics…* carries `WA_DeleteOnClose`, so this close has to behave like any other."""
+    """*Diagnostics…* carries `WA_DeleteOnClose`, so this close has to behave like any other.
+
+    **The claim is about this window's dialogs, not about the application** (`T343-R2`). This
+    asserted `QApplication.activeModalWidget() is None`, which is a statement about every window in
+    the process — and it only held because the loop it was written against **closed dialogs it did
+    not own**. Correcting that left the assertion true only when no other test had left a modal
+    dialog up, and in the full unit and UI partition one has: the run fails here on a leaked
+    `SettingsDialog`. So the test was resting on the defect, and the assertion is now the one the
+    behaviour actually makes.
+    """
     dialog = _modal_dialog(window)
     dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
 
@@ -309,7 +318,10 @@ def test_a_dialog_that_deletes_itself_on_close_is_gone(window: QWidget) -> None:
     QApplication.processEvents()
 
     assert not shiboken6.isValid(dialog), "the dialog was hidden rather than closed"
-    assert QApplication.activeModalWidget() is None, "something is still blocking the window"
+    assert not window.isVisible(), "the window stayed up with its dialog gone"
+    assert [child for child in window.findChildren(QDialog) if child.isVisible()] == [], (
+        "this window still has a dialog of its own up"
+    )
 
 
 class _RecordsItsClose(QWidget):

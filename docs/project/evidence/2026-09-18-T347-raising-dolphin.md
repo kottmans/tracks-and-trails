@@ -43,7 +43,7 @@ already there, and the window stays behind.
 | `dolphin --select`, a second process | **no** | yes | none, and no effect |
 | `xdg-open` the folder | **no** | no | none, and no effect |
 | `dolphin --new-window --select` | n/a — **the new window is active** | yes | a second window every time |
-| **`KWin.WindowsRunner.Run`** | **yes**, false → true | yes, `ShowItems` does the selecting | KDE only, and it finds the window by matching text |
+| **`KWin.WindowsRunner.Run`** | **yes**, false → true, and it un-minimizes | yes, `ShowItems` does the selecting | KDE only. Candidates come from matching text; **identity comes from `pid`** |
 
 **`Dolphin.activateWindow` takes an activation token** (`activateWindow(s activationToken)`), and an
 empty one does nothing: measured, `isActiveWindow` stayed false. That is the underlying rule rather
@@ -67,9 +67,69 @@ query 'dolphin'   → the same window, relevance 0.7
 query 'clip'      → nothing
 ```
 
-Each match carries the **application id** (`org.kde.dolphin`) beside the title, so a caller can
-filter on the application and not only on words in a title. That matters for the proposal: matching
-on title text alone would pick the wrong window the moment two windows read alike.
+**That third member is `iconName`, not an application id** (`T347-R1`, correcting this file).
+`Match` returns `a(sssuda{sv})` — `(id, text, iconName, categoryRelevance, relevance, properties)` —
+and KWin fills it from `window->icon().name()`. It reads `org.kde.dolphin` because KDE names icons
+after desktop ids; an icon can be shared or changed, and filtering on it would not tell two Dolphin
+windows apart at all.
+
+**Identity comes from `getWindowInfo`.** The match id embeds KWin's window uuid, and
+`org.kde.KWin.getWindowInfo(uuid)` answers `pid`, `resourceClass`, `desktopFile` and `minimized`.
+Dolphin's bus name **is** `org.kde.dolphin-<pid>`, so the instance that answered `isUrlOpen` ties to
+exactly one KWin window. The text query only generates candidates; `pid` picks among them.
+
+## The four cases, with a retained probe (`T347-R2`)
+
+`tools/dolphin_raise_probe.py` performs them and prints before and after for **every** Dolphin
+window. Re-runnable:
+
+    PYTHONPATH=tools python -m dolphin_raise_probe --folder <a folder holding one file>
+    PYTHONPATH=tools python -m dolphin_raise_probe --folder <…> --raise-route windowsrunner
+
+**Each case states whether its precondition held**, which is the half the first record lacked. That
+check immediately caught two cases that were not what they claimed:
+
+- *"Open on another folder"* was not: **Dolphin restores its previous tabs**, so a window opened
+  elsewhere still had the target folder open and `isUrlOpen` answered **true** before the reveal.
+  The probe now starts Dolphin with a per-run `XDG_CONFIG_HOME`, and measured both ways: with the
+  operator's profile the answer is true, with a fresh one it is false.
+- *"Nothing open"* was not, because windows `ShowItems` itself spawns were left behind between
+  cases. The probe now closes every window **this run caused** and nothing that was open before it.
+
+| Case | Precondition | `ShowItems` today | With `WindowsRunner` |
+|---|---|---|---|
+| 1. nothing open | established | a **new** window, active, item visible | unchanged |
+| 2. a window open elsewhere | established | a **new** window, active; the existing one untouched | unchanged |
+| 3. a window shows the folder, behind ours | established | **nothing changes** — not raised | **active: true** |
+| 4. a window shows the folder, minimized | established | **nothing changes** — stays minimized | **active: true, minimized: false** |
+
+**The report's own table needed correcting, and this is how.** It grouped *"open on another folder,
+or minimized"* as the case that works. Measured, the dividing line is not behind-versus-minimized:
+it is **whether a window already shows that folder**. When none does, `ShowItems` opens a new window
+and that window is in front (cases 1 and 2). When one does, it is reused and left exactly where it
+was, whether behind (3) or minimized (4). That matches what the maintainer said afterwards —
+*"It only stays collapsed on the taskbar if the downloads folder is already open"* — and not what
+the first table said.
+
+**The minimized case is measured rather than narrowed away.** Nothing on Dolphin's interface
+minimizes a window and a Wayland client cannot minimize somebody else's, so the probe uses KWin
+scripting. Unloading the script immediately after `run` left every window un-minimized while
+reporting success; it now settles first.
+
+## What the instruments cannot say
+
+Stated because `T347-R2` asked for the claim to be narrowed to what is observable:
+
+| Instrument | Answers | Does **not** answer |
+|---|---|---|
+| `isActiveWindow` | whether that window is active | whether a non-active window is behind another or minimized |
+| `getWindowInfo(uuid)` | `minimized`, and the `pid` that identifies the window | — |
+| `isUrlOpen(folder)` | whether **the instance** has that folder open, in any tab or view | what the window is currently showing |
+| `isItemVisibleInAnyView(file)` | whether the item is shown in a view | whether it is **selected** |
+
+**So "with the file selected" is not machine-observable here.** The probe establishes that the
+window came to the front showing the item; that it is highlighted is left to the person doing the
+end-of-phase walk, and neither the task entry nor this file claims otherwise.
 
 ## What this leaves for the maintainer
 

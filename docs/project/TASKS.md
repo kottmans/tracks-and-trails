@@ -510,8 +510,21 @@ to be driven there, so this stopped being guesswork. The instrument is Dolphin's
 `isActiveWindow` and `isUrlOpen` over D-Bus, so the question is answered in text rather than by
 someone looking at a screen.
 
-**The report reproduces exactly**: with a window already showing the folder, `ShowItems` selects the
-item and the window stays behind.
+**The report reproduces, and the table above it needed correcting.** Measured over four cases with
+`tools/dolphin_raise_probe.py`, each stating whether its precondition held:
+
+| Case | `ShowItems` today | With the proposed route |
+|---|---|---|
+| nothing open | a **new** window, active, item visible | unchanged |
+| a window open elsewhere | a **new** window, active; the existing one untouched | unchanged |
+| a window shows the folder, behind | **not raised** | **raised** |
+| a window shows the folder, minimized | **stays minimized** | **raised and restored** |
+
+**The dividing line is not "behind or minimized", it is whether a window already shows that
+folder.** The original table grouped *"open on another folder, or minimized"* as the working case;
+minimized is **not** a working case when that window is the one showing the folder. This matches
+what the maintainer said afterwards — *"It only stays collapsed on the taskbar if the downloads
+folder is already open"* — rather than what the table said.
 
 | Route | Raises it | Selects the file | Cost |
 |---|---|---|---|
@@ -532,27 +545,61 @@ user focus can hand activation to another, and PySide6 exposes no way to obtain 
 | Option | What the user sees | What it costs |
 |---|---|---|
 | **A. Leave it** | The file is selected in the window they already have; they click Dolphin in the taskbar. What `0.1.0`'s README already documents | Nothing new. The report stays true |
-| **B. Raise it through `WindowsRunner`** (recommended) | The window comes to the front with the file selected, which is the criterion | KDE and KWin only, and the window is found by matching the folder name against window titles. Each match carries its application id, so the filter can require `org.kde.dolphin` as well, but it is still matching text. No effect on other desktops, so it degrades to A |
+| **B. Raise it through `WindowsRunner`** (recommended) | The window comes to the front with the file selected, which is the criterion | KDE and KWin only. Candidates come from matching text, and **identity comes from `pid`** (below), so the right window is chosen rather than a similarly titled one. No effect on other desktops, so it degrades to A |
 | **C. Always open a new window** | A new window in front, file selected, on any desktop running Dolphin | A second window every time the user reveals a file, and the one they already had is left behind. Window clutter as the price of the raise |
 
 **Recommended: B**, narrowed — try it only when a Dolphin window already shows that folder (which
-`isUrlOpen` answers), require the match's application id to be `org.kde.dolphin`, and fall back
-silently to today's behaviour when anything is missing. It buys the criterion without changing what
-any other desktop does. **C is the honest alternative** if matching on title text is unacceptable at
-any price.
+`isUrlOpen` answers), and fall back silently to today's behaviour when anything is missing.
+
+**The identity half of that recommendation was wrong and is corrected** (`T347-R1`). This entry said
+*"each match carries its application id"*. It does not: `WindowsRunner.Match` returns
+`a(sssuda{sv})` — `(id, text, iconName, categoryRelevance, relevance, properties)` — and KWin fills
+the third member from the window's **icon**. It reads `org.kde.dolphin` because KDE names icons
+after desktop ids, and an icon can be shared or changed. **It is not identity, and filtering on it
+would not tell two Dolphin windows apart at all.**
+
+**What is identity**, measured the same day: the match id embeds KWin's window uuid, and
+`org.kde.KWin.getWindowInfo(uuid)` answers `pid`, `resourceClass`, `desktopFile` — and `minimized`.
+Dolphin's bus name **is** `org.kde.dolphin-<pid>`, so the instance that answers
+`isUrlOpen(folder) == true` can be tied to exactly one KWin window by `pid`. The text query only
+generates candidates; `pid` picks among them. That is an exact link rather than a resemblance, and
+it is what `tools/dolphin_raise_probe.py` uses.
+
+**C is the honest alternative** if reaching into KWin at all is unacceptable.
+
+#### What the instruments can and cannot say
+
+`T347-R2` asked for this to be stated rather than implied, and one of its two points narrows a
+claim this entry made:
+
+| Instrument | Answers | Does **not** answer |
+|---|---|---|
+| `isActiveWindow` | whether that window is the active one | whether a non-active window is behind another or minimized |
+| `getWindowInfo(uuid).minimized` | exactly that, and the `pid` that identifies the window | — |
+| `isUrlOpen(folder)` | whether the window shows the folder | anything about the file |
+| `isItemVisibleInAnyView(file)` | whether the item is **shown in a view** | whether it is **selected**. Nothing on Dolphin's interface reports selection |
+
+**So the criterion's *"with the file selected"* half is not machine-observable here.** What a probe
+can establish is that the window came to the front showing the item; that it is *highlighted* is
+left to the person doing the end-of-phase walk, and this entry no longer implies otherwise.
 
 #### Scope
 
-Build the ruled shape, then measure the three cases again with the instrument above.
+Build the ruled shape, then measure the cases again with `tools/dolphin_raise_probe.py`.
 
 #### Acceptance criteria
 
-- [x] The three cases measured again on KDE Plasma Wayland, and every route tried recorded with
-  what it costs — 2026-09-18
+- [x] Every route that could raise the window tried and recorded with what it costs — 2026-09-18
+- [x] The four cases measured with a **retained, runnable** probe
+  (`tools/dolphin_raise_probe.py`), which is `T347-R2`'s ask: nothing open, open elsewhere, open on
+  the folder, and open on the folder **minimized** — the last through KWin scripting, because
+  nothing else here can minimize a window
 - [ ] A recorded ruling on the shape, from the table above
-- [ ] If built: the download folder already open, Dolphin comes to the front with the file selected
-- [ ] If built: the other two cases unchanged, and a desktop without `WindowsRunner` behaves as it
-  does today
+- [ ] If built: the download folder already open, Dolphin comes to the front showing the item, on
+  the same probe
+- [ ] If built: the other cases unchanged, and a desktop without `WindowsRunner` behaves as it does
+  today
+- [ ] The *selected* half, by a person, at the end-of-phase walk — it is not machine-observable
 
 ---
 
@@ -727,19 +774,31 @@ one — is the spelling that *does* show up as a change. So the hatch is **two-s
 - **Refusal decides per option the user named**, from the parser's own action and the value that
   action produces. `--geo-bypass` is refused because its action turns the bypass on;
   `--no-geo-bypass` is not, because its action turns it off. Neither decision can come from a diff.
-- **Merging uses the diff**, because that is what the user actually changed, and it is the same
-  dictionary the typed-field route builds — which is how the *"same intent, same dictionary"*
-  criterion becomes assertable.
+- **Merging is per named option as well** (`T184-R1`, which corrected this entry). It first said
+  *"merging uses the diff"*, and a diff **loses an explicit value that equals the command line's
+  default**: `--fragment-retries 10` produces the same dictionary as typing nothing, so the diff is
+  empty, the key stays absent, and yt-dlp's fragment downloader reads
+  `self.params.get('fragment_retries')` — no default — into `RetryManager`, whose first line is
+  `self.retries = _retries or 0`. **The user asks for ten and gets none.** Re-measured here: the
+  defaults carry `fragment_retries` 10, an explicit 10 yields `{}` as the diff, and `RetryManager`
+  turns the absent value into zero. So the merge carries **every destination the named options
+  touch**, at the value `parse_options` produced, whether or not it differs from the default. The
+  diff stays useful as the way to *find* those destinations, not as the thing that is merged.
 
-**Two more things the derivation settles**, both of which would otherwise have been guessed:
+**The two isolation claims this entry made were too strong**, and `T184-R3` corrected both.
+Re-measured here rather than taken on the finding's word:
 
-- **`parse_options` raises `OptParseError`, it does not exit.** Measured on an unknown option and on
-  a bad value. So a malformed field can fail at edit time with the parser's own message, and the
-  GUI is never at risk of `sys.exit` from `optparse`.
-- **Config files are ignored when an argv is passed.** `parseOpts(overrideArguments, ignore_config_files='if_override')`
-  means the user's `~/.config/yt-dlp/config` cannot inject options through this field. That is
-  security-relevant and gets its own test, because the default depends on an argument the hatch
-  happens to pass.
+| As written | What it actually does |
+|---|---|
+| *"`parse_options` raises `OptParseError`, it does not exit"* | True of an unknown option and a bad value. **`--help` and `--version` raise `SystemExit`** — which this task's own derivation tool had already printed under *cannot be parsed alone*, while the entry said the opposite |
+| *"config files are ignored when an argv is passed"* | Only **automatic discovery** is suppressed. An **explicit** `--config-locations FILE` is still loaded: a config holding `--fragment-retries 37`, supplied that way, came back as 37 |
+
+**So a refusal that runs after `parse_options` is too late**, for two separate reasons: the process
+can already have exited, and a file the user named can already have been read. The hatch therefore
+refuses the exiting and config-loading options **on the raw tokens, before parsing**, and the parse
+runs behind a `SystemExit` guard as well. `--config-locations`, `--ignore-config` and the help and
+version options are all refused classes in the audit already; what changes is *when* that refusal
+has to happen.
 
 #### Finding 7's five measured, 2026-09-18, and the two options that do break the reservation
 
@@ -786,13 +845,37 @@ answers `ErrorKind.CANCELLED` for it, carrying yt-dlp's own sentence — which n
 is because `ExistingVideoReached` descends from yt-dlp's `DownloadCancelled`, which the adapter maps
 deliberately. The same holds for `RejectedVideoReached`.
 
-**So the criterion's condition is met, with one wrinkle worth a ruling.** The row reads *cancelled*
-rather than *failed*, which is honest — yt-dlp stopped on purpose — but a user who typed the option
-in a preset three days ago sees a cancellation they did not press. The message is the only thing
-connecting the two, and the application does show it. **Recommendation: keep both hatch-reachable
-and leave the state as `CANCELLED`**, because inventing a new state for an option nobody has asked
-for yet is worse than a message that explains itself. `--download-archive` is permitted as a
-user-named file by `SEC-003`, so the combination is reachable by design rather than by accident.
+**The criterion's condition is NOT met, and this entry claimed it was** (`T184-R2`). It said *"the
+message is the only thing connecting the two, and the application does show it"*. **It does not.**
+`QueueModel._detail` routes only `FAILED` rows to `_failure_detail` (`ui/queue_view.py:992`), and
+that method's own comment states it: *"`CANCELLED` is not routed here, because it is not a
+failure"*. The reviewer's probe put the real `ExistingVideoReached` message on a cancelled row and
+got `''`; the same row switched to `FAILED` showed the message. **The adapter keeps the reason and
+the queue drops it**, so a user would see a row that says *Cancelled* and nothing else, for an
+option they typed into a preset days earlier.
+
+**So this is a decision, not a recommendation to keep things as they are.** Either:
+
+**"A cancelled row that has a message" is every cancelled row**, which this entry's first attempt at
+a fix missed (the reviewer's second pass). `DownloadManager._cancelled` stores
+`message or "Cancelled at your request."`, so a user's own cancel already carries a non-empty
+message, and showing *any* non-empty message would put that sentence under every row the user
+cancelled — noise, on the common path, to explain the rare one.
+
+**The origin is known where the record is made, and is then flattened.** The worker's outcome
+reaches `_cancelled` as `reason` when yt-dlp stopped the job (`manager.py:2936-2941`), and as `None`
+when the user did. So the distinction exists at the moment of writing and is lost in the stored
+string.
+
+| Option | What it means |
+|---|---|
+| **A. Show a cancelled row's message only when it is not the application's own sentence** (recommended) | The default sentence becomes one constant instead of the two literals that exist today (`manager.py:3255` and `ui/job_detail.py:140` both spell it out), and the queue compares against **that constant**, not against extractor prose — which is the distinction `classify` warns about. A user's cancel looks exactly as it does now; a cancel yt-dlp explains gains its sentence |
+| B. Record the origin as its own field | Exact rather than compared, and it costs a model change and a migration for a difference nobody can see |
+| C. Refuse `--break-on-existing` and `--break-per-input` | The effect cannot happen, so nothing needs showing. Costs two options a user may legitimately want with `--download-archive`, which `SEC-003` permits |
+
+**Not in evidence either way:** the recorded `_match_entry` probe shows the library raising, not the
+complete path through this worker to a row. That measurement is still owed before either option is
+built.
 
 #### Scope
 
@@ -986,7 +1069,14 @@ subtitles" are different answers.
 
 ### T-252 — Download tuning and the retry policy the settings screen shows
 
-**Status:** Proposed — filed 2026-08-16 by `T-183`
+**Status:** Proposed — filed 2026-08-16 by `T-183`. **Measured 2026-09-18, while correcting
+`T184-R1`: fragment retries are zero today, not yt-dlp's ten.** `build_options` deliberately sets
+`--retries` and not `--fragment-retries` (its own comment, from the maintainer's 2026-08-13 ruling),
+and the consequence was not measured at the time: `downloader/fragment.py` reads
+`self.params.get('fragment_retries')` with **no default** into `RetryManager`, whose first line is
+`self.retries = _retries or 0`. So an absent key is **no retries at all** on every fragmented
+format, which is most of YouTube. That is this task's to decide rather than a defect to fix
+quietly — the policy it presents has to start from what the application really does now.
 **Options (7):** `-N/--concurrent-fragments`, `--fragment-retries`, `--extractor-retries`,
 `--socket-timeout`, `--download-sections`, `--live-from-start`, `--no-live-from-start`
 **Specific criteria:** **the three retry knobs this task owns are presented as one policy**, not
@@ -1113,10 +1203,18 @@ that fetches can verify before anything runs, which is the step users skip.
 check from something a user is told to do into something the application does. It does **not** wait
 on signing, which C does. Signing improves B and C equally, so choosing B now costs nothing later.
 
-**Two rules B inherits from `REL-009` item 5**, which is why they are written here rather than
-discovered in review: the asset name is **built from the parsed version**, never taken from the
-response, so the response cannot choose what gets downloaded; and the checksum is compared before
-the file is offered, never after.
+**Two rules B would add, and they are proposed rather than inherited** (`T348-R1`). This entry said
+they came from `REL-009` item 5; that item governs the construction of the **release-page URL**
+only, and item 3 currently forbids downloading or running anything at all. So both belong to the
+amendment B would make, not to what is already authorised:
+
+- The asset name is **built from the parsed version**, never taken from the response — an extension
+  of item 5's reasoning to a second URL, in the same spirit and by the same argument.
+- The checksum is compared **before the file is offered**, never after. A new rule, and the reason
+  B is worth building: it is the step a user skips.
+
+**Until such an amendment is ruled, `REL-009` stands as written: notify only, nothing downloaded or
+run.**
 
 #### Sequencing, ruled 2026-09-17
 
