@@ -706,6 +706,41 @@ ruling, one line at a time.
 stated reasons rather than a generic "not permitted" — a user who types `--exec` is told it runs
 code, not that it is unknown.
 
+#### Stage A, second half: the hatch cannot decide from a diff alone
+
+`tools/ytdlp_option_keys.py` (new) runs every option the parser carries through `parse_options` and
+diffs the option dictionary against the defaults, which is what "the value `parse_options`
+produces" means in code. Re-run it when the pin moves. At 2026.08.19, of **292** parser options:
+
+| | |
+|---|---|
+| **175** change at least one key | the effect the hatch would merge |
+| **72** change **nothing** | their value is already the default |
+| **45** cannot be parsed alone | the value has to mean something (`--xff`, `--color`, `--compat-options`) or the option exits (`-h`, `--version`) |
+| **27** change more than one key | `-O/--print` sets four, `--force-overwrites` also clears `continuedl`, `--id` rewrites `outtmpl` |
+
+**`--geo-bypass` is in the 72, and that decides the design.** The behaviour `SEC-003` forbids is
+**on by default**, so the option that names it changes no key at all: a hatch that decided from the
+diff would be blind to the exact option Finding 4 is about, while `--no-geo-bypass` — the safe
+one — is the spelling that *does* show up as a change. So the hatch is **two-sided**:
+
+- **Refusal decides per option the user named**, from the parser's own action and the value that
+  action produces. `--geo-bypass` is refused because its action turns the bypass on;
+  `--no-geo-bypass` is not, because its action turns it off. Neither decision can come from a diff.
+- **Merging uses the diff**, because that is what the user actually changed, and it is the same
+  dictionary the typed-field route builds — which is how the *"same intent, same dictionary"*
+  criterion becomes assertable.
+
+**Two more things the derivation settles**, both of which would otherwise have been guessed:
+
+- **`parse_options` raises `OptParseError`, it does not exit.** Measured on an unknown option and on
+  a bad value. So a malformed field can fail at edit time with the parser's own message, and the
+  GUI is never at risk of `sys.exit` from `optparse`.
+- **Config files are ignored when an argv is passed.** `parseOpts(overrideArguments, ignore_config_files='if_override')`
+  means the user's `~/.config/yt-dlp/config` cannot inject options through this field. That is
+  security-relevant and gets its own test, because the default depends on an argument the hatch
+  happens to pass.
+
 #### Scope
 
 An *Additional yt-dlp options* field, per preset and overridable per job, taking command-line
