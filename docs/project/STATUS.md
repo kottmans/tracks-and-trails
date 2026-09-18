@@ -53,18 +53,25 @@ task and review records it summarised.*
   `windows desktop` runs, and **four defects they found were invisible to every gate on this
   machine** — the worst would have shipped a Windows build whose every message went through a
   raising Python function.
-- **`T-347` is measured and waiting on a ruling** (2026-09-18,
+- **Four rulings taken 2026-09-18**, all as recommended: `T-347` raises through KWin, narrowed to
+  the case that needs it; `T-184`'s refusal list is **default-deny**; a cancelled row shows its
+  reason when that reason is not the application's own sentence (`UX-005` amended); and `T-348` is
+  **fetch, verify, hand over** (`REL-009` amended, built in a later phase). Nothing in the phase is
+  waiting on a decision now.
+- **`T-347` was measured before it was ruled** (2026-09-18,
   [evidence](evidence/2026-09-18-T347-raising-dolphin.md)). Every route that could raise an
   already-open Dolphin was tried on the desktop the report came from; `ShowItems` leaves the window
   behind, and **only `KWin.WindowsRunner.Run` raises it**. The correct fix is unavailable from this
   toolkit: `Dolphin.activateWindow` needs an activation token and PySide6 exposes no way to get one.
-  Three shapes are costed in the entry, the narrow `WindowsRunner` one recommended.
+  Four cases are measured with a retained probe, `tools/dolphin_raise_probe.py`, and the ruled shape
+  raises the window when it is behind **and** when it is minimized while leaving the two
+  already-working cases untouched.
 - **`T-184` has started, measurements first.** The parser surface the audit does not reach is pinned
   at 36 suppressed options; `tools/ytdlp_option_keys.py` derives what each option changes and found
   that **`--geo-bypass` changes nothing**, so the hatch cannot decide from a diff alone. Finding 7's
   five are measured harmless against `T-046`'s reservation, and `-w/--no-overwrites` is measured
   leaving a 0-byte "successful" download, which is the audit's refusal reason as behaviour.
-  **Open ruling: the refusal list's polarity**, default-deny recommended.
+  The polarity is **ruled default-deny**, so the parser can be built.
 - **`T-348`'s shape is recommended** (2026-09-18): fetch, verify against the published
   `SHA256SUMS`, hand over. The release publishes no `.zsync`, so delta updating would need a release
   change, and in-place updating waits on signing.

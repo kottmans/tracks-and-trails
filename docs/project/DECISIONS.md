@@ -1337,6 +1337,34 @@ while the application stays open as well as at launch: the check is decided when
 from the preference and the last answer at that moment, so switching it off cancels a check still
 waiting and a check that got no answer is tried again within the hour.
 
+### Amended 2026-09-18 — the shape of updating is ruled: fetch, verify, hand over
+
+**Status:** **Accepted** — maintainer ruling of 2026-09-18, on `T-348`'s costed options.
+
+**What is ruled.** When a newer release is out, the application may **download the asset for its own
+platform, verify it against the published `SHA256SUMS`, and hand the file to the user** — shown in
+its folder, with what to do next. It still runs nothing and installs nothing.
+
+**Item 3 is amended to that extent and no further.** *"Nothing is downloaded or run"* becomes
+*nothing is **run***: the download and its verification are now permitted, applying the update is
+not. In-place updating stays where this entry's own clause left it, waiting on signing (`REL-005`),
+and is not ruled here.
+
+**Two rules the ruling carries**, and they are this amendment's rather than item 5's — which governs
+the release-page URL alone (`T348-R1`):
+
+1. The asset name is **built from the parsed version**, never taken from the response, so a response
+   cannot choose what gets downloaded. Item 5's reasoning, extended to a second URL.
+2. The checksum is compared **before the file is offered**, never after. This is the step users
+   skip, and doing it for them is the reason the option was chosen.
+
+**Known and accepted:** Windows raises SmartScreen when the user runs the installer, because
+`REL-005` leaves it unsigned. That is true of every shape that ends with the user running it, and
+signing improves this one and in-place updating equally.
+
+**Built later.** The 2026-09-17 sequencing ruling stands: `T-348` is ruled in Phase 4.5 and built in
+a later phase. Until it is built the application behaves as item 3 originally said.
+
 ---
 
 ## REL-002 — `collect_submodules("yt_dlp")` stays, as insurance against a pin we do not have yet
@@ -4089,6 +4117,32 @@ behind a document would leave known-broken behaviour on `main` for longer.
 ---
 
 ## UX-005 — The main window: two tabs, no detail pane, and the verbs on the row
+
+### Amended 2026-09-18 — a cancelled row says why, when the reason is not the application's own
+
+**Status:** **Accepted** — maintainer ruling of 2026-09-18, raised by `T184-R2`.
+
+**The problem.** A job can be cancelled by the user, or stopped by yt-dlp — `--break-on-existing`
+ends the current job, and the adapter classifies that as `CANCELLED` carrying yt-dlp's own sentence.
+`QueueModel._detail` routes only `FAILED` rows to `_failure_detail`, so **the reason was kept and
+never shown**: the row read *Cancelled* and nothing else.
+
+**Why the obvious fix was wrong.** Showing every non-empty cancellation message would show
+*"Cancelled at your request."* under **every** row the user cancelled, because
+`DownloadManager._cancelled` stores that sentence as its default. The common path would gain noise
+to explain the rare one.
+
+**What is ruled.** A cancelled row shows its message **only when that message is not the
+application's own sentence**, which becomes a single shared constant rather than the two literals
+that exist today (`downloader/manager.py` and `ui/job_detail.py` each spell it out). A user's own
+cancellation looks exactly as it does now.
+
+**The comparison is against a constant this application wrote**, which is what separates it from the
+substring matching `core/errors.classify` refuses: that warns against reading *extractor prose*, and
+this reads a sentence the project owns and can change in one place.
+
+**Not ruled:** recording the origin as a field on the job. It is exact rather than compared, and it
+was declined as a model change and a migration for a difference nobody can see.
 
 ### Amended 2026-08-14 — a failed row is one line taller, when it has something to suggest
 

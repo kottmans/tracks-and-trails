@@ -548,6 +548,19 @@ user focus can hand activation to another, and PySide6 exposes no way to obtain 
 | **B. Raise it through `WindowsRunner`** (recommended) | The window comes to the front with the file selected, which is the criterion | KDE and KWin only. Candidates come from matching text, and **identity comes from `pid`** (below), so the right window is chosen rather than a similarly titled one. No effect on other desktops, so it degrades to A |
 | **C. Always open a new window** | A new window in front, file selected, on any desktop running Dolphin | A second window every time the user reveals a file, and the one they already had is left behind. Window clutter as the price of the raise |
 
+#### Ruled 2026-09-18: B, the narrow `WindowsRunner` raise
+
+**The maintainer chose B** from the costed options, as recommended. What that settles:
+
+- The raise is tried **only when a Dolphin instance already has that folder open**, which is the
+  only case that needs it — measured, the other two open a new window that is already in front.
+- The window is found by **`pid`**, not by title text and not by the icon name: `isUrlOpen` names the
+  instance, `getWindowInfo` names the window, and the bus name carries the pid that joins them.
+- Anything missing — no KWin, no `WindowsRunner`, no match — **falls back silently to today's
+  behaviour**. No other desktop changes, and nothing fails loudly for a convenience.
+
+*(The recommendation as first written is kept below, because the maintainer ruled on it.)*
+
 **Recommended: B**, narrowed — try it only when a Dolphin window already shows that folder (which
 `isUrlOpen` answers), and fall back silently to today's behaviour when anything is missing.
 
@@ -594,7 +607,7 @@ Build the ruled shape, then measure the cases again with `tools/dolphin_raise_pr
   (`tools/dolphin_raise_probe.py`), which is `T347-R2`'s ask: nothing open, open elsewhere, open on
   the folder, and open on the folder **minimized** — the last through KWin scripting, because
   nothing else here can minimize a window
-- [ ] A recorded ruling on the shape, from the table above
+- [x] A recorded ruling on the shape, from the table above — 2026-09-18, B
 - [ ] If built: the download folder already open, Dolphin comes to the front showing the item, on
   the same probe
 - [ ] If built: the other cases unchanged, and a desktop without `WindowsRunner` behaves as it does
@@ -734,7 +747,10 @@ Two derivations, both now tests in `tests/unit/test_option_audit.py`, both mutat
   deprecated aliases (`--all-subs`, `--playlist-start`, `--user-agent`, `--referer`, `--min-views`)
   and command-line plumbing (the `--get-*` family, `--print-json`, `--list-formats-*`).
 
-**The question this settles is the refusal list's polarity**, and it is the maintainer's:
+**Ruled 2026-09-18: default-deny**, as recommended. The hatch accepts an option only when the
+destination `parse_options` produces is in the permitted set, and refuses everything else with its
+reason — the 34 unruled suppressed spellings included, each of which can be permitted later by a
+ruling of its own. The options as they were costed:
 
 | | |
 |---|---|
@@ -867,9 +883,13 @@ reaches `_cancelled` as `reason` when yt-dlp stopped the job (`manager.py:2936-2
 when the user did. So the distinction exists at the moment of writing and is lost in the stored
 string.
 
+**Ruled 2026-09-18: A**, recorded as an amendment to `UX-005`, which owns what a row shows. The
+sentence becomes one shared constant and a cancelled row shows its message only when it differs from
+that, so a user's own cancellation is unchanged. The options as they were costed:
+
 | Option | What it means |
 |---|---|
-| **A. Show a cancelled row's message only when it is not the application's own sentence** (recommended) | The default sentence becomes one constant instead of the two literals that exist today (`manager.py:3255` and `ui/job_detail.py:140` both spell it out), and the queue compares against **that constant**, not against extractor prose — which is the distinction `classify` warns about. A user's cancel looks exactly as it does now; a cancel yt-dlp explains gains its sentence |
+| **A. Show a cancelled row's message only when it is not the application's own sentence** (ruled) | The default sentence becomes one constant instead of the two literals that exist today (`manager.py:3255` and `ui/job_detail.py:140` both spell it out), and the queue compares against **that constant**, not against extractor prose — which is the distinction `classify` warns about. A user's cancel looks exactly as it does now; a cancel yt-dlp explains gains its sentence |
 | B. Record the origin as its own field | Exact rather than compared, and it costs a model change and a migration for a difference nobody can see |
 | C. Refuse `--break-on-existing` and `--break-per-input` | The effect cannot happen, so nothing needs showing. Costs two options a user may legitimately want with `--download-archive`, which `SEC-003` permits |
 
@@ -1199,6 +1219,10 @@ that fetches can verify before anything runs, which is the step users skip.
 | **B. Fetch, verify, hand over** (recommended) | Presses one control; the application downloads the asset for its platform, checks it against `SHA256SUMS`, and shows it in the folder with what to do next | A download surface with progress and cancel, somewhere to put the file, and the verification. **Windows still raises SmartScreen** when they run it, because `REL-005` leaves the installer unsigned. Linux still needs the file made executable and moved |
 | **C. Apply in place** | Presses a control and the application updates itself | The riskiest, and `REL-009`'s own clause ties it to signing. Windows must exit for the installer to replace its files, and an unsigned installer raises SmartScreen on **every** update; Linux replaces the running AppImage. Needs its own clean-machine evidence per platform, which is a release-gate-sized job |
 
+**Ruled 2026-09-18: B**, as recommended, and recorded as an amendment to `REL-009` — which now
+permits the download and its verification, and still forbids running anything. The build stays in a
+later phase by the 2026-09-17 sequencing ruling.
+
 **Recommended: B.** It removes exactly the friction that was reported, and it moves the integrity
 check from something a user is told to do into something the application does. It does **not** wait
 on signing, which C does. Signing improves B and C equally, so choosing B now costs nothing later.
@@ -1237,8 +1261,8 @@ it; and apply the update in place, per platform. Whatever is chosen amends `REL-
 
 #### Acceptance criteria
 
-- [ ] A recorded decision, amending `REL-009` — **still owed**; 2026-09-17 ruled only when it is
-  taken and built, not what it says
+- [x] A recorded decision, amending `REL-009` — 2026-09-18: fetch, verify, hand over. The build is
+  still a later phase's by the 2026-09-17 sequencing ruling
 - [ ] If built: the update is verified against what the release publishes before anything runs, on
   both platforms, with the failure path shown to the user
 - [ ] If built: a clean-machine run on each platform, updating a real earlier release to a newer one
