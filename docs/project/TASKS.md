@@ -1088,6 +1088,36 @@ reasonable then."* The two platforms do not update the same way, and each raises
 - **Both.** What is verified before anything is run (`SHA256SUMS` is published; a signature is not),
   what the user is asked, and what happens to a download in flight.
 
+#### The shape, recommended 2026-09-18, still the maintainer's to rule
+
+**What the release actually publishes**, read from `v0.1.0` rather than assumed, because every
+option below depends on it:
+
+| Asset | Size |
+|---|---|
+| `SHA256SUMS` | 206 bytes |
+| `Tracks-and-Trails-0.1.0-setup.exe` | 93,482,037 |
+| `Tracks_and_Trails-0.1.0-x86_64.AppImage` | 68,311,544 |
+
+**There is no `.zsync` file**, so the delta updating `AppImageUpdate` and Gear Lever do is not
+available without changing what the release publishes. **`SHA256SUMS` is published**, so any option
+that fetches can verify before anything runs, which is the step users skip.
+
+| Option | What the user does | What it costs |
+|---|---|---|
+| **A. Status quo** | Reads the notice, opens the page, downloads, replaces the file themselves | Nothing to build. It is the friction the maintainer noticed: *"is the only way to update the program to download the new file?"* |
+| **B. Fetch, verify, hand over** (recommended) | Presses one control; the application downloads the asset for its platform, checks it against `SHA256SUMS`, and shows it in the folder with what to do next | A download surface with progress and cancel, somewhere to put the file, and the verification. **Windows still raises SmartScreen** when they run it, because `REL-005` leaves the installer unsigned. Linux still needs the file made executable and moved |
+| **C. Apply in place** | Presses a control and the application updates itself | The riskiest, and `REL-009`'s own clause ties it to signing. Windows must exit for the installer to replace its files, and an unsigned installer raises SmartScreen on **every** update; Linux replaces the running AppImage. Needs its own clean-machine evidence per platform, which is a release-gate-sized job |
+
+**Recommended: B.** It removes exactly the friction that was reported, and it moves the integrity
+check from something a user is told to do into something the application does. It does **not** wait
+on signing, which C does. Signing improves B and C equally, so choosing B now costs nothing later.
+
+**Two rules B inherits from `REL-009` item 5**, which is why they are written here rather than
+discovered in review: the asset name is **built from the parsed version**, never taken from the
+response, so the response cannot choose what gets downloaded; and the checksum is compared before
+the file is offered, never after.
+
 #### Sequencing, ruled 2026-09-17
 
 The Phase 4.5 plan put three shapes to the maintainer — status quo, fetch and hand over, apply in
