@@ -161,7 +161,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-340](reviews/T-340.md) | T-340; [Diagnostics implementation review](reviews/T-340.md#2026-09-14--diagnostics-implementation-review): implementation approved; task blocked on manual observation | 0 |
 | [T-341](reviews/T-341.md) | T-341; [default-location wording correction](reviews/T-341.md#2026-09-15--default-location-wording-correction), checked through ea49516; approved within the existing discovery boundary | 0 |
 | [T-342](reviews/T-342.md) | T-342, accompanying T-343 filing; dialog fitting at a988847, checked through ea49516; real Windows 125% observation pending | 0 |
-| [T-343](reviews/T-343.md) | T-343; [ownership correction and gate verification](reviews/T-343.md#2026-09-18--ownership-correction-and-current-head-verification), e0528b6 checked through 531f4b8; T343-R1 resolved, Changes requested on T343-R2's failing modal-state assertion | 0 |
+| [T-343](reviews/T-343.md) | T-343; [modal-state assertion correction verified](reviews/T-343.md#2026-09-18--modal-state-assertion-correction-verified), e10ef01 checked through 24a5450 | 0 |
 | [T-344](reviews/T-344.md) | T-344; processing progress at 55dcf05, checked through ea49516; installed-build observation pending | 0 |
 | [T-345](reviews/T-345.md) | T-345; startup offer and chip wording at 81d7bdd, checked through ea49516; implementation approved, draft acceptance separate | 0 |
 | [T-346](reviews/T-346.md) | T-346, accompanying T-347 filing; [plain-text correction review](reviews/T-346.md#2026-09-15--focused-plain-text-correction-review), b900047 to 48cf076; implementation approved, T346-R1 resolved | 0 |
