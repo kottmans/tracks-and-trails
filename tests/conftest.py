@@ -155,6 +155,7 @@ class _PoolModule(Protocol):
 _POOL_SINGLETON_MODULES = (
     "tracks_and_trails.downloader.app_update_service",
     "tracks_and_trails.downloader.ytdlp_service",
+    "tracks_and_trails.ui.file_actions",
     "tracks_and_trails.ui.thumbnails",
 )
 

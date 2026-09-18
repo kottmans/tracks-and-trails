@@ -27,7 +27,7 @@ from PySide6.QtCore import QObject, QRunnable, Signal
 from tracks_and_trails import app as application
 from tracks_and_trails.app import OrderlyShutdown, compose
 from tracks_and_trails.downloader import app_update_service, ytdlp_service, ytdlp_update
-from tracks_and_trails.ui import thumbnails
+from tracks_and_trails.ui import file_actions, thumbnails
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QApplication
@@ -167,6 +167,7 @@ def _shutdown(pools: tuple[SealedPool, ...]) -> tuple[OrderlyShutdown, _App, _Ma
     [
         pytest.param(ytdlp_service.pool, id="the yt-dlp pool"),
         pytest.param(thumbnails.pool, id="the thumbnail pool"),
+        pytest.param(file_actions.reveal_pool, id="the reveal pool"),
     ],
 )
 def test_quit_waits_for_each_real_pool(
@@ -193,6 +194,55 @@ def test_quit_waits_for_each_real_pool(
     release.set()
     assert _pump(qapp, lambda: app.quits == 1), "the barrier never completed after the task ended"
     assert shutdown.finished
+
+
+def test_a_reveal_leaves_its_raise_on_the_pool_the_shutdown_waits_for(
+    qapp: QApplication, release: threading.Event, tmp_path: Path
+) -> None:
+    """The reviewer's probe as a test (`T347-R4`, second pass).
+
+    `T-347`'s raise moved off the GUI thread onto `QThreadPool.globalInstance()`, which no barrier
+    waits for: a probe reached `finished` and called `quit` with a reveal worker still running,
+    which is `T289-R21`'s configuration exactly — a pool thread live while the widget tree is
+    destroyed on the GUI thread.
+
+    **It drives the production path**, from the action the user triggers, because the defect was in
+    which pool that path chose. The pool is occupied first, so the raise is still outstanding when
+    shutdown begins; a raise scheduled anywhere else would leave the count where it was and the
+    barrier would have nothing to wait for.
+    """
+    from tests.ui.test_file_actions import Attached, an_entry
+
+    downloads = tmp_path / "Downloads"
+    downloads.mkdir()
+    clip = downloads / "clip.mp4"
+    clip.write_bytes(b"x")
+
+    pool = file_actions.reveal_pool()
+    blocker = _Blocking(release)
+    assert pool.start(blocker)
+    assert blocker.started.wait(timeout=10), "the pool never ran the task"
+    occupied = pool.outstanding
+
+    host = Attached(
+        entries=[an_entry(output_path=str(clip))], downloads=downloads, platform="linux"
+    )
+    host.select_row(0)
+    assert host.actions.reveal_selected() is None, host.reported
+
+    assert pool.outstanding == occupied + 1, (
+        "the raise was not scheduled on the pool the shutdown waits for"
+    )
+
+    shutdown, app, _manager, writer = _shutdown((pool,))
+    shutdown.begin()
+    writer.wait_for_close()  # the database side is finished; the raise is not
+
+    assert app.quits == 0, "quit was called with a reveal worker still on the pool"
+    assert not shutdown.finished
+
+    release.set()
+    assert _pump(qapp, lambda: app.quits == 1), "the barrier never completed after the raise ended"
 
 
 def test_the_pools_are_sealed_the_moment_shutdown_begins(qapp: QApplication) -> None:
@@ -708,8 +758,11 @@ def test_composition_hands_the_shutdown_every_real_pool(qapp: QApplication, tmp_
     )
     try:
         wired = composition.shutdown._pools
-        # `T-338` added the release check's pool.
-        assert len(wired) == 3, "composition did not hand over three pools"
+        # `T-338` added the release check's pool, `T347-R4` the file-manager raise's. That one was
+        # first written against `QThreadPool.globalInstance()`, which no shutdown step waits for:
+        # a reviewer's probe reached `finished` and called `quit` with a reveal worker still
+        # running, which is this task's own crash configuration.
+        assert len(wired) == 4, "composition did not hand over four pools"
         assert any(pool is app_update_service.pool() for pool in wired), (
             "the release check's pool is not waited for"
         )
@@ -718,6 +771,9 @@ def test_composition_hands_the_shutdown_every_real_pool(qapp: QApplication, tmp_
         )
         assert any(pool is thumbnails.pool() for pool in wired), (
             "the thumbnail pool is not waited for"
+        )
+        assert any(pool is file_actions.reveal_pool() for pool in wired), (
+            "the file-manager raise's pool is not waited for"
         )
     finally:
         composition.window.close()

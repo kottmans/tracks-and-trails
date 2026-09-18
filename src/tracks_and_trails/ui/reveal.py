@@ -222,8 +222,12 @@ DOLPHIN_CLASS: Final = "org.kde.dolphin"
 #: The query only has to *generate* candidates; the pid picks among them, so this can be broad.
 WINDOW_QUERY: Final = "dolphin"
 
-#: Where one match record begins in `dbus-send --print-reply=literal` output. The **first** member
-#: of each record is its id, which is the only place an id may be read from.
+#: Where one match record *appears* to begin in `dbus-send --print-reply=literal` output.
+#:
+#: **A heuristic, and the second pass of `T347-R3` is right to say so.** The literal printer emits
+#: strings bare, with no quoting, so a window caption containing `struct {` opens a record here as
+#: surely as a real one does. Nothing that reads this format by splitting it can be exact; what
+#: makes that harmless is stated on `candidate_uuids`, and it is not this line.
 _RECORD = "struct {"
 
 #: `<action>_{uuid}`, as `WindowsRunner` spells a match id, anchored to the start of a record so a
@@ -327,6 +331,15 @@ def answered_true(text: str) -> bool:
     return "error" not in text.lower() and "true" in text.lower()
 
 
+def answered_false(text: str) -> bool:
+    """Whether a reply is a boolean **false**, as opposed to no usable answer at all.
+
+    The difference matters exactly once, in `instance_showing`: a silent instance is not one that
+    said no, and counting it as one turned "one yes and one unknown" into a unique answer.
+    """
+    return "error" not in text.lower() and "false" in text.lower()
+
+
 def instance_showing(path: Path, ask: Callable[[list[str]], str]) -> str | None:
     """The one Dolphin instance showing `path`, or `None` when that is not exactly one.
 
@@ -341,11 +354,17 @@ def instance_showing(path: Path, ask: Callable[[list[str]], str]) -> str | None:
     beats raising the wrong one.
     """
     names = ask(list_names_command())
-    showing = [
-        name
-        for name in sorted(n for n in names.split() if n.startswith(DOLPHIN_PREFIX))
-        if answered_true(ask(item_visible_command(name, path)))
-    ]
+    showing = []
+    for name in sorted(n for n in names.split() if n.startswith(DOLPHIN_PREFIX)):
+        reply = ask(item_visible_command(name, path))
+        if answered_true(reply):
+            showing.append(name)
+        elif not answered_false(reply):
+            # **An instance that did not answer is not an instance that said no.** A timeout, an
+            # error, or a reply this cannot read leaves uniqueness unestablished — and "one yes
+            # and one unknown" was being treated as one yes, which is the ambiguity this whole
+            # function exists to refuse.
+            return None
     return showing[0] if len(showing) == 1 else None
 
 
@@ -356,12 +375,21 @@ def pid_of(name: str) -> int | None:
 
 
 def candidate_uuids(reply: str) -> list[str]:
-    """The window uuids in a `Match` reply, read as **record members** rather than as text.
+    """The window uuids in a `Match` reply, read from where each record **appears** to begin.
 
-    Each record begins `struct {` and its first member is the id; this reads that member and
-    nothing else, so an id-shaped string inside a window caption or a property is not a candidate
-    (`T347-R3`). Only activation ids are returned, because the action is the part of an id that
-    tells KWin what to do and this application issues exactly one.
+    **These are candidates, and the name is the whole claim** (`T347-R3`, second pass). This used
+    to say ids were read as record members, which overstates what splitting untyped text can do: a
+    caption carrying `struct {` opens a record that is not one, and an id-shaped string right after
+    it is returned here. Reading the first member of each apparent record is still worth doing —
+    it is what defeats the reviewer's original counterexample, where the forged id sat *after* the
+    genuine one — but it is a narrowing, not a guarantee.
+
+    **What makes a forged candidate harmless is downstream, and is a guarantee.** Only activation
+    ids are kept, so a record asking for a close is dropped; `activate_command` builds the action
+    from this module's own constant, so nothing captured is passed to KWin as an instruction; and
+    `window_of` returns nothing until **KWin itself** says the uuid is a window whose
+    `resourceClass` is Dolphin and whose `pid` is the instance that answered. A caption can put a
+    uuid on this list. It cannot make KWin agree that it belongs to the process we asked about.
     """
     found = []
     for record in reply.split(_RECORD)[1:]:

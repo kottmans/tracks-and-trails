@@ -63,6 +63,17 @@ double 0.7 array [ ] } ]
 """
 
 
+#: A caption that forges a **record boundary** (`T347-R3`, second pass). `--print-reply=literal`
+#: emits strings unquoted, so the text `struct {` inside a caption opens an apparent record and the
+#: id after it reaches the candidate list. The genuine window for the pid follows it.
+MATCHES_WITH_A_FORGED_RECORD = """
+array [ struct { 0_{cccccccc-0000-0000-0000-000000000003} a folder called struct {
+0_{eeeeeeee-0000-0000-0000-000000000005} — Dolphin org.kde.dolphin int32 100 double 0.8 array [ ] }
+struct { 0_{bbbbbbbb-0000-0000-0000-000000000002} other — Dolphin org.kde.dolphin int32 30
+double 0.7 array [ ] } ]
+"""
+
+
 def window_info(pid: int, resource_class: str = DOLPHIN_CLASS) -> str:
     return (
         "array [ dict entry( resourceClass variant "
@@ -141,6 +152,48 @@ def test_a_close_action_in_a_caption_is_not_a_candidate() -> None:
     ], f"an id inside a caption was read as a match: {uuids}"
 
 
+def test_a_forged_record_reaches_the_candidate_list_and_dies_at_kwin() -> None:
+    """What the parser does **not** promise, and what does (`T347-R3`, second pass).
+
+    The reviewer's correction: splitting on the literal `struct {` is a heuristic, so this test
+    asserts the uncomfortable half first — the forged id really is a candidate — and then that it
+    gets no further. `window_of` activates nothing until KWin itself says the uuid is a Dolphin
+    window belonging to the pid that answered, and a caption cannot make KWin say that.
+    """
+    forged = "eeeeeeee-0000-0000-0000-000000000005"
+
+    assert forged in candidate_uuids(MATCHES_WITH_A_FORGED_RECORD), (
+        "the caption no longer reaches the candidate list, so the rest of this proves nothing"
+    )
+
+    desktop = FakeDesktop(
+        {
+            "org.kde.krunner1.Match": MATCHES_WITH_A_FORGED_RECORD,
+            "cccccccc": window_info(999),
+            "eeeeeeee": "Error org.freedesktop.DBus.Error.InvalidArgs: no such window",
+            "bbbbbbbb": window_info(777),
+        }
+    )
+
+    assert window_of(777, lambda argv: desktop(argv).stdout) == (
+        "bbbbbbbb-0000-0000-0000-000000000002"
+    ), "a forged candidate displaced the window KWin actually confirmed"
+
+
+def test_a_forged_record_is_not_a_window_when_none_answers_for_the_process() -> None:
+    """And when no genuine window matches, the forged one does not stand in for it."""
+    desktop = FakeDesktop(
+        {
+            "org.kde.krunner1.Match": MATCHES_WITH_A_FORGED_RECORD,
+            "cccccccc": window_info(999),
+            "eeeeeeee": "Error org.freedesktop.DBus.Error.InvalidArgs: no such window",
+            "bbbbbbbb": window_info(999),
+        }
+    )
+
+    assert window_of(777, lambda argv: desktop(argv).stdout) is None
+
+
 def test_only_activation_records_are_candidates() -> None:
     """A record whose own action is not activation is not a window this application may act on."""
     closing = """
@@ -188,7 +241,9 @@ class OnePerInstance:
     and the answer that matters is **how many** say yes.
     """
 
-    def __init__(self, visible_to: dict[str, bool], answers: dict[str, str] | None = None) -> None:
+    def __init__(
+        self, visible_to: dict[str, bool | str], answers: dict[str, str] | None = None
+    ) -> None:
         self.visible_to = visible_to
         self.answers = answers or {}
         self.asked: list[list[str]] = []
@@ -200,7 +255,10 @@ class OnePerInstance:
             reply = NAMES
         elif any("isItemVisibleInAnyView" in argument for argument in args):
             name = next(a.removeprefix("--dest=") for a in args if a.startswith("--dest="))
-            reply = "   boolean true" if self.visible_to.get(name) else "   boolean false"
+            # A bool is that instance's yes or no; a **string** is its literal reply, which is how
+            # a test says "this one did not answer" — the case `T347-R1`'s second pass is about.
+            answer = self.visible_to.get(name, False)
+            reply = answer if isinstance(answer, str) else f"   boolean {answer}".lower()
         else:
             for key, value in self.answers.items():
                 if any(key in argument for argument in args):
@@ -232,6 +290,29 @@ def test_two_instances_showing_the_file_decline_rather_than_guess(folder: Path) 
     desktop = OnePerInstance({"org.kde.dolphin-4242": True, "org.kde.dolphin-777": True})
 
     assert instance_showing(folder / "clip.mp4", lambda argv: desktop(argv).stdout) is None
+
+
+@pytest.mark.parametrize(
+    ("reply", "what"),
+    [
+        ("", "a question that timed out"),
+        ("Error org.freedesktop.DBus.Error.NoReply: did not receive a reply", "an error"),
+    ],
+)
+def test_an_instance_that_does_not_answer_leaves_uniqueness_unestablished(
+    folder: Path, reply: str, what: str
+) -> None:
+    """`T347-R1`, second pass: one yes and one unknown is not one yes.
+
+    Every instance that could not answer is an instance that might also be showing the file, and
+    this cannot tell which of them the reveal went to. Counting silence as a no let a single
+    positive look unique, which is exactly the guess the whole function refuses to make.
+    """
+    desktop = OnePerInstance({"org.kde.dolphin-4242": True, "org.kde.dolphin-777": reply})
+
+    found = instance_showing(folder / "clip.mp4", lambda argv: desktop(argv).stdout)
+
+    assert found is None, f"{what} counted as a no, and one positive was taken as unique: {found}"
 
 
 def test_no_instance_showing_the_file_is_no_answer(folder: Path) -> None:

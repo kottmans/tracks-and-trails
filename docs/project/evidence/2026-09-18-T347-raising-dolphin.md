@@ -148,10 +148,17 @@ than a defect.
 **`T347-R3`, the wrong action.** `Match` ids were read by scanning the **whole** reply, and the
 matched id was handed to `Run` unchanged. KWin's runner reads the action out of that id:
 `0` activates, **`1` closes**. A window whose *caption* contained `1_{uuid}` was therefore enough to
-turn *Show in folder* into a request to close a window. Ids are read as record members now, only
-activation records are candidates, and **the action is this module's own constant** — nothing
-captured is passed through. The test for it uses the reviewer's counterexample, and the mutation
-that restores the old whole-reply scan fails it.
+turn *Show in folder* into a request to close a window. Ids are read from where each record
+appears to begin, only activation records are candidates, and **the action is this module's own
+constant** — nothing captured is passed through. The test for it uses the reviewer's
+counterexample, and the mutation that restores the old whole-reply scan fails it.
+
+*(The reviewer's second pass corrected the claim I wrote here. Splitting on the literal `struct {`
+is a **heuristic**: the printer emits strings unquoted, so a caption containing that text opens a
+record that is not one, and "read as record members" promised more than a split can deliver. What
+is a guarantee sits downstream and is now measured: the action is ours, and `window_of` activates
+nothing until KWin itself confirms the uuid is a Dolphin window belonging to the pid that
+answered. A forged candidate reaches the list and dies there.)*
 
 *(My first mutation of that rule was **inert** and reported "caught" for the wrong reason: within a
 record the genuine id always comes first, so per-record scanning finds it either way. The mutation

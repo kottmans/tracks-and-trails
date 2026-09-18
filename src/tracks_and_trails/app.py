@@ -1432,6 +1432,7 @@ def compose(
     # import `PySide6`. The first version of this put them at the top (`T289-R21`).
     from tracks_and_trails.downloader.app_update_service import pool as app_update_pool
     from tracks_and_trails.downloader.ytdlp_service import pool as ytdlp_pool
+    from tracks_and_trails.ui.file_actions import reveal_pool
     from tracks_and_trails.ui.thumbnails import pool as thumbnail_pool
 
     shutdown = OrderlyShutdown(
@@ -1440,8 +1441,10 @@ def compose(
         writer,
         connection,
         instance,
-        # Every real pool; see the import above. `T-338` added the release check's.
-        pools=(ytdlp_pool(), thumbnail_pool(), app_update_pool()),
+        # Every real pool; see the imports above. `T-338` added the release check's,
+        # and `T347-R4` the reveal raise's — it ran on the global pool, which no
+        # shutdown step waits for.
+        pools=(ytdlp_pool(), thumbnail_pool(), app_update_pool(), reveal_pool()),
     )
     # The schedule stops before anything else goes: a timer that fired into a sealed pool would
     # only re-arm itself.

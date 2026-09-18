@@ -51,12 +51,13 @@ from __future__ import annotations
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Protocol
+from typing import Final, Protocol
 
-from PySide6.QtCore import QObject, QPoint, QRunnable, Qt, QThreadPool
+from PySide6.QtCore import QObject, QPoint, QRunnable, Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QAbstractItemView, QMenu, QMessageBox
 
+from tracks_and_trails.downloader.pools import SealedPool
 from tracks_and_trails.ui.reveal import (
     Refusal,
     Spawner,
@@ -85,6 +86,29 @@ COULD_NOT_OPEN_TITLE = "Could not open the file"
 #: How long a refusal stays in the status bar. Long enough to read a sentence, short enough that it
 #: does not become permanent furniture.
 MESSAGE_TIMEOUT_MS = 10_000
+
+
+#: One thread: the raise is a short sequence of questions and a user cannot ask for two reveals at
+#: once fast enough to need more.
+_RAISE_THREADS: Final = 1
+
+#: **Shared, module-level and behind a shutdown gate** (`T347-R4`, the same reasoning as
+#: `ui/thumbnails.py`'s). A pool owned by a widget is destroyed on the GUI thread and
+#: `~QThreadPool` waits for its runnables there, which is the freeze this work exists to avoid.
+#:
+#: **Spelled `_SHARED_POOL` like the other three, and that is not cosmetic**: the root
+#: `conftest.py` fixture that stops one test's pool reaching the next finds these singletons by
+#: that name. A module with a differently named global is silently not isolated, and this one's
+#: first test failed only because another test in the same file had sealed it first.
+_SHARED_POOL: SealedPool | None = None
+
+
+def reveal_pool() -> SealedPool:
+    """The pool the file-manager raise runs on, created once and known to `OrderlyShutdown`."""
+    global _SHARED_POOL
+    if _SHARED_POOL is None:
+        _SHARED_POOL = SealedPool(_RAISE_THREADS)
+    return _SHARED_POOL
 
 
 class FileActions(QObject):
@@ -227,9 +251,17 @@ class FileActions(QObject):
         allow — and the reveal itself has already succeeded by the time this runs, so nothing the
         user asked for is waiting on it.
 
+        **On this application's own sealed pool, not `QThreadPool.globalInstance()`.** The global
+        pool is behind no shutdown gate: a reviewer's probe reached `OrderlyShutdown.finished` and
+        called `quit` with a reveal worker still running, which is `T289-R21`'s configuration
+        exactly — a pool thread live while the widget tree is being destroyed on the GUI thread.
+        `reveal_pool()` is registered with the shutdown sequence, so sealing refuses new work and
+        the process waits for what is already running.
+
         **Nothing comes back.** There is no outcome to report: a window that did not come forward
         is exactly the behaviour the application had before `T-347`, and a message box about it
-        would be worse than the thing it describes.
+        would be worse than the thing it describes. A seal is the same non-event — the application
+        is closing, and the file manager's stacking order stops mattering.
 
         **It holds no widget** (`T-289`): the runnable closes over the path, the injected spawner
         and the platform string, and not over `self`.
@@ -242,7 +274,7 @@ class FileActions(QObject):
 
         runnable = _Raise()
         runnable.setAutoDelete(True)
-        QThreadPool.globalInstance().start(runnable)
+        reveal_pool().start(runnable)
 
     def _act(self, launch: Callable[[Path, Path], Refusal | None]) -> Refusal | None:
         path = self._selected_path()
