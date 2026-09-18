@@ -517,10 +517,13 @@ cases above again.
 
 **Status:** Proposed — **ruled by the maintainer on 2026-09-17** with the Phase 4.5 order: the two
 `0.1.0` defects left open go out as a patch before the phase's own work starts
-([the order](IMPLEMENTATION_PLAN.md#order-2026-09-17)).
+([the order](IMPLEMENTATION_PLAN.md#order-2026-09-17)). **Amended the same evening**: the patch
+**no longer gates** the phase's work, *"even if it means skipping the interrim release"*. It is not
+cancelled and its preparation continues, so a tag stays one act away; whether it goes out at all is
+a later call.
 **Owner:** Implementer prepares; Maintainer tags and publishes
 **Priority:** Medium — it carries two Low-priority fixes, and it is the first update `0.1.0`'s users
-are told about by the checker they already have
+are told about by the checker they already have. **Not a blocker on `T-184`** since the amendment
 **Phase:** Phase 4.5 — stage 1
 **Depends on:** `T-343`, `T-347`
 **Relevant context:** `docs/RELEASE.md` (the five steps, and *patch releases carry fixes only*);

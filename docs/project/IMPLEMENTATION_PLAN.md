@@ -884,6 +884,21 @@ recommendation each. Five were taken as recommended; the sixth was changed:
 | **One acceptance walk, at the end of the phase** | `0.1.1` ships without `TESTING.md` §8 item 6, as `0.1.0` did. The walk happens once, on the finished `0.2.0` build | `T-349`, and the exit criteria below |
 | **Stage 3 keeps the tabled order** | `T-247` first, `T-255` last | the table below |
 
+#### Amended the same evening: the patch no longer gates the phase's work
+
+Asked what could be done unattended *"to get as much done as possible"*, the maintainer chose every
+scope offered and added:
+
+> *"even if it means skipping the interrim release"*
+
+**So `0.1.1` stops being a gate.** `T-184` may start before the patch ships, and where the two
+compete the patch gives way. Two things this does **not** mean, stated because the distinction is
+the whole ruling: `T-349` is **not cancelled** — it stays filed and its preparation continues, so a
+tag is one act away whenever it is wanted — and the walk ruling above is untouched.
+
+**It also relaxes *serial, one task at a time* across stages 1 and 2**, and only there. Within a
+stage the order below still holds, and every task still takes its review before the next starts.
+
 #### The stages
 
 Serial, one task at a time, which is what one development machine allows (`AGENTS.md` §9: one

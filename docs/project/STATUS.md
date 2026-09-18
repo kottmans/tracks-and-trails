@@ -53,10 +53,14 @@ task and review records it summarised.*
   `windows desktop` runs, and **four defects they found were invisible to every gate on this
   machine** — the worst would have shipped a Windows build whose every message went through a
   raising Python function.
-- **`T-347` is next** (Dolphin's window on KDE Wayland), then `T-349` releases `0.1.1`. **`T-347`
-  ends in a sitting at the maintainer's desk**: its three cases are KDE Plasma Wayland with
-  Dolphin, which no runner here has — CI is headless, `STARBASE` is Windows, and this machine's
-  suite is offscreen.
+- **`T-347` is next** (Dolphin's window on KDE Wayland), then `T-349` releases `0.1.1`. Its three
+  cases are KDE Plasma Wayland with Dolphin, which no runner has — CI is headless, `STARBASE` is
+  Windows, this machine's suite is offscreen — but **the development machine is that desktop**, and
+  on 2026-09-17 the maintainer allowed the verification to be driven there.
+- **The `0.1.1` patch no longer gates the phase's work** (maintainer, 2026-09-17 evening: *"even if
+  it means skipping the interrim release"*). `T-184` may start before it ships; `T-349` stays filed
+  and prepared rather than cancelled
+  ([the amendment](IMPLEMENTATION_PLAN.md#amended-the-same-evening-the-patch-no-longer-gates-the-phases-work)).
 - **One acceptance walk closes the phase.** `TESTING.md` §8 item 6 is not run for `0.1.1` either,
   by the maintainer's ruling: it happens once on the finished `0.2.0` build and closes `T328-R4`
   and the last criterion of `T-340`, `T-342` and `T-344`. `T-339` (Narrator) sits in the same
