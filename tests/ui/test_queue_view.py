@@ -33,7 +33,7 @@ from tests.ui.test_row_delegate import (
     FakeLoader,
     occupy_pool,
 )
-from tracks_and_trails.core.errors import ErrorKind
+from tracks_and_trails.core.errors import CANCELLED_BY_THE_APPLICATION, ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.core.paths import cache_root_for, thumbnail_cache_path
@@ -4263,6 +4263,71 @@ def test_a_row_that_moved_no_bytes_states_no_progress(
     # **The column keeps it**, so the count moved rather than went — `T-216`'s trade, and the
     # screen-reader path reads the columns.
     assert view.model.text_at("job-1", SIZE_COLUMN) == "0 B of Unknown"
+
+
+def test_a_cancelled_row_says_why_when_yt_dlp_stopped_it(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """`UX-005`, amended 2026-09-18, from `T184-R2`.
+
+    A job can be stopped by yt-dlp rather than by the user: `--break-on-existing` ends the current
+    item when it is already in the download archive, and the adapter classifies that as `CANCELLED`
+    carrying yt-dlp's own sentence. **The reason was kept in `error_message` and shown nowhere** —
+    the row read *Cancelled* and the user had no way to connect it to an option they had typed into
+    a preset days before.
+    """
+    queue.add(
+        make_job(
+            "job-1",
+            tmp_path,
+            status=JobStatus.CANCELLED,
+            error_kind=ErrorKind.CANCELLED,
+            error_message=(
+                "Encountered a video that is already in the archive, stopping due to "
+                "--break-on-existing"
+            ),
+        )
+    )
+    view = views(jobs=queue, manager=managers())
+
+    detail = view.model.data(view.model.index(0, JOB_COLUMN), DETAIL_ROLE)
+
+    assert "--break-on-existing" in detail, f"a row yt-dlp stopped does not say why: {detail!r}"
+
+
+def test_a_row_the_user_cancelled_does_not_repeat_the_sentence(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """The half that made the obvious fix wrong, and the reason the comparison exists.
+
+    **Every** cancelled row carries a message: `DownloadManager._cancelled` stores
+    `CANCELLED_BY_THE_APPLICATION` when the worker offered no reason of its own. Showing any
+    non-empty message would put that sentence under every row the user cancelled — noise on the
+    common path to explain the rare one — so a row whose reason is the application's own says
+    nothing extra, exactly as it did before.
+    """
+    queue.add(
+        make_job(
+            "job-1",
+            tmp_path,
+            status=JobStatus.CANCELLED,
+            error_kind=ErrorKind.CANCELLED,
+            error_message=CANCELLED_BY_THE_APPLICATION,
+        )
+    )
+    view = views(jobs=queue, manager=managers())
+
+    detail = view.model.data(view.model.index(0, JOB_COLUMN), DETAIL_ROLE)
+
+    assert CANCELLED_BY_THE_APPLICATION not in detail, (
+        f"the application's own sentence was drawn under a row the user cancelled: {detail!r}"
+    )
 
 
 def test_a_cancelled_row_that_did_download_something_keeps_its_size(

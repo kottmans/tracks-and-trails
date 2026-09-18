@@ -94,7 +94,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from tracks_and_trails.core.errors import ErrorKind, is_retryable
+from tracks_and_trails.core.errors import (
+    CANCELLED_BY_THE_APPLICATION,
+    ErrorKind,
+    is_retryable,
+)
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import Job
 from tracks_and_trails.downloader.manager import AUTOMATIC_RETRY_LIMIT, DownloadManager
@@ -137,7 +141,11 @@ UNKNOWN_TEXT: Final = "Unknown"
 
 #: How a cancelled job describes itself when its worker said nothing. Separate from the failure
 #: text because `CANCELLED` is not a failure (`ARCHITECTURE.md` §7).
-CANCELLED_TEXT: Final = "Cancelled at your request."
+#:
+#: **The string itself lives in `core.errors` now** (`T184-R2`): the manager stores it and the queue
+#: compares against it, so a second copy here is a second thing to keep in step. The name stays
+#: because this module's readers know it.
+CANCELLED_TEXT: Final = CANCELLED_BY_THE_APPLICATION
 
 #: Labels rendering text this application did not author, forced to `PlainText` (`T016-R6`).
 #: An extractor message of `<b>gone</b>` is a message, not markup.

@@ -82,6 +82,21 @@ _AUTO_RETRYABLE: Final = frozenset({ErrorKind.NETWORK})
 #: guessing from the message.
 TRANSIENT_CONTEXT_KEY: Final = "transient"
 
+#: What a cancellation says when **this application** stopped the job: the user pressed Cancel, or
+#: shutdown did. `DownloadManager._cancelled` stores it when the worker offered no reason of its
+#: own.
+#:
+#: **One constant because two places compare against it** (`T184-R2`, ruled into `UX-005` on
+#: 2026-09-18). A job can also be cancelled by yt-dlp — `--break-on-existing` ends the current job —
+#: and that reason is worth showing on the row, while this one is not: it would put the same
+#: sentence under every row the user cancelled. The queue shows a cancelled row's message only when
+#: it differs from this, so the sentence has to be **one** string rather than a literal in the
+#: manager and another in the UI, which is what it was.
+#:
+#: This is a comparison against text the project owns, which is the distinction `classify` draws
+#: when it refuses to match on extractor prose.
+CANCELLED_BY_THE_APPLICATION: Final = "Cancelled at your request."
+
 
 def is_transient(context: tuple[tuple[str, str], ...]) -> bool:
     """Whether a failure's context says it may succeed if tried again."""

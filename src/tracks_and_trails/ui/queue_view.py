@@ -88,7 +88,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from tracks_and_trails.core.errors import is_retryable
+from tracks_and_trails.core.errors import CANCELLED_BY_THE_APPLICATION, is_retryable
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import Job
 from tracks_and_trails.core.presets import BUILT_IN_PRESETS, format_choice_of
@@ -994,6 +994,18 @@ class QueueModel(QAbstractTableModel):
             # ruled in from the maintainer's UI review 2026-08-09). See `_failure_detail`.
             return self._failure_detail(row)
 
+        if row.job.status is JobStatus.CANCELLED:
+            # **A cancelled row says why, when the reason is not ours** (`UX-005`, amended
+            # 2026-09-18; raised by `T184-R2`). See `_cancellation_detail`.
+            #
+            # **Only when there is one**, and that is what the empty answer means. A cancellation
+            # this application recorded falls through to the line below, which is what keeps
+            # `T-241`'s rule: a row that moved 12 MB before it was cancelled still says so, because
+            # those bytes are on disk and `REQ-017` resumes from them.
+            reason = self._cancellation_detail(row)
+            if reason:
+                return reason
+
         # **A row that is not working and has moved no bytes states nothing about them**
         # (`T-241`). `— · 0 B of Unknown` is a percentage that does not exist beside a size that
         # does not exist, and it is what every freshly pasted row carried until a worker started —
@@ -1027,6 +1039,29 @@ class QueueModel(QAbstractTableModel):
         if refusal is not None:
             parts.append(refusal)
         return " · ".join(part for part in parts if part and part != UNKNOWN_TEXT)
+
+    def _cancellation_detail(self, row: _Row) -> str:
+        """Why this row stopped, when this application is not the one that stopped it.
+
+        **Most cancellations are the user's**, and `DownloadManager._cancelled` stores
+        `CANCELLED_BY_THE_APPLICATION` for those. Drawing that sentence under every row somebody
+        cancelled is noise on the common path to explain the rare one, so it is drawn under none
+        of them: the chip already says *Cancelled*, which is the whole story.
+
+        **yt-dlp can also stop a job**, and then the reason is worth reading. `--break-on-existing`
+        ends the **current** item when it is already in the download archive, measured rather than
+        assumed, and `classify_exception` answers `CANCELLED` carrying yt-dlp's own sentence — which
+        names the option. Without this the reason was kept in `error_message` and shown nowhere
+        (`T184-R2`).
+
+        **The comparison is against a string this project owns**, held in one place so the manager
+        and this line cannot drift apart. That is what separates it from the substring matching
+        `core.errors.classify` refuses: it will not read extractor prose and guess.
+        """
+        message = " ".join((row.job.error_message or "").splitlines()).strip()
+        if not message or message == CANCELLED_BY_THE_APPLICATION:
+            return ""
+        return message
 
     def _failure_detail(self, row: _Row) -> str:
         """Why this row failed: the class in plain words, then the extractor's own message.

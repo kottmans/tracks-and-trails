@@ -75,7 +75,12 @@ from PySide6.QtCore import QObject, QTimer, Signal
 
 from tracks_and_trails.core import logging as app_logging
 from tracks_and_trails.core import output_template
-from tracks_and_trails.core.errors import ErrorKind, is_retryable, is_transient
+from tracks_and_trails.core.errors import (
+    CANCELLED_BY_THE_APPLICATION,
+    ErrorKind,
+    is_retryable,
+    is_transient,
+)
 from tracks_and_trails.core.job_state import JobStatus, can_transition, is_terminal
 from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo, Preset
 from tracks_and_trails.core.output_template import OutputPreview
@@ -3252,7 +3257,7 @@ class DownloadManager(QObject):
         return replace(
             job.with_status(JobStatus.CANCELLED),
             error_kind=ErrorKind.CANCELLED,
-            error_message=message or "Cancelled at your request.",
+            error_message=message or CANCELLED_BY_THE_APPLICATION,
             finished_at=_now(),
         )
 
