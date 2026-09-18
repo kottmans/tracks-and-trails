@@ -4342,13 +4342,20 @@ def test_a_screen_reader_hears_the_same_cancellation_reason_the_row_shows(
     drawn = view.model.data(index, DETAIL_ROLE)
     heard = view.model.data(index, int(Qt.ItemDataRole.AccessibleTextRole))
 
-    expected = " ".join(reason.splitlines()) if spoken else ""
+    expected = " ".join(reason.splitlines())
     if spoken:
         assert expected in drawn, f"the row does not show it: {drawn!r}"
         assert expected in heard, f"the row shows what it does not say: {heard!r}"
     else:
-        assert expected == "" or expected not in heard, (
+        # **Against the sentence, not against `expected`.** This read `expected == "" or expected
+        # not in heard`, and for the two silent cases `expected` is the empty string — so the
+        # first half was true and nothing was ever asserted. A reviewer proved it by making the
+        # spoken line repeat the application's own sentence: all four cases stayed green.
+        assert CANCELLED_BY_THE_APPLICATION not in heard, (
             f"a cancellation nobody needs explained was spoken: {heard!r}"
+        )
+        assert CANCELLED_BY_THE_APPLICATION not in drawn, (
+            f"a cancellation nobody needs explained was drawn: {drawn!r}"
         )
 
 
