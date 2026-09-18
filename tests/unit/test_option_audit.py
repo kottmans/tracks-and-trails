@@ -338,6 +338,105 @@ def test_the_forbidden_exec_family_has_a_suppressed_member(option: str) -> None:
     assert option in suppressed
 
 
+#: The suppressed options whose `dest` **no** classified option shares — the parser surface the
+#: audit's 250 rows do not reach, and `T-184`'s own acceptance criterion: *"every option the parser
+#: accepts is dispositioned, suppressed ones included"*.
+#:
+#: Pinned by name rather than counted, so a yt-dlp bump that adds a thirty-seventh fails here
+#: instead of quietly widening what a user can type into the escape hatch. Two of them are the
+#: forbidden family outright (`--exec-before-download`, and its `--no-` form), which `SEC-003`
+#: already rules; the rest are deprecated aliases and command-line plumbing whose disposition is
+#: `T-184`'s to state.
+SUPPRESSED_WITH_THEIR_OWN_DESTINATION: Final = frozenset(
+    {
+        "--all-subs",
+        "--allow-unplayable-formats",
+        "--autonumber-size",
+        "--autonumber-start",
+        "--break-on-reject",
+        "--exec-before-download",
+        "--force-generic-extractor",
+        "--get-description",
+        "--get-duration",
+        "--get-filename",
+        "--get-format",
+        "--get-id",
+        "--get-thumbnail",
+        "--get-title",
+        "--get-url",
+        "--hls-prefer-ffmpeg",
+        "--hls-prefer-native",
+        "--id",
+        "--list-formats-as-table",
+        "--list-formats-old",
+        "--load-pages",
+        "--match-title",
+        "--max-views",
+        "--metadata-from-title",
+        "--min-views",
+        "--no-allow-unplayable-formats",
+        "--no-exec-before-download",
+        "--no-list-formats-as-table",
+        "--no-playlist-reverse",
+        "--playlist-end",
+        "--playlist-reverse",
+        "--playlist-start",
+        "--print-json",
+        "--referer",
+        "--reject-title",
+        "--test",
+        "--user-agent",
+        "-e",
+        "-g",
+    }
+)
+
+
+def test_the_parser_surface_the_audit_does_not_reach_is_the_set_we_know() -> None:
+    """The audit classifies 250 documented options; the parser carries more than that.
+
+    A suppressed option that **shares** a classified `dest` is already covered — refusing the
+    documented spelling refuses the alias, which `test_suppressed_aliases_still_reach_a_refused_key`
+    holds. What is left is the suppressed options with a destination of their own, and this names
+    them so the set cannot change without somebody deciding.
+    """
+    classified = {string for strings, cls, _ in ROWS for string in strings}
+    classified_dests = {
+        option["dest"]
+        for option in ALL_OPTIONS
+        if option["strings"] and option["strings"][0] in classified
+    }
+    on_their_own = {
+        string
+        for option in SUPPRESSED
+        if option["dest"] not in classified_dests
+        for string in option["strings"]
+    }
+
+    assert on_their_own == SUPPRESSED_WITH_THEIR_OWN_DESTINATION, (
+        "the parser's undispositioned surface changed. Added: "
+        f"{sorted(on_their_own - SUPPRESSED_WITH_THEIR_OWN_DESTINATION)}; gone: "
+        f"{sorted(SUPPRESSED_WITH_THEIR_OWN_DESTINATION - on_their_own)}"
+    )
+
+
+def test_every_documented_option_the_parser_carries_has_an_audit_row() -> None:
+    """The audit's own completeness claim, checked against the parser rather than against itself.
+
+    `test_every_documented_option_is_classified_exactly_once` walks the audit's rows; this walks
+    `create_parser()` and asks the audit about each documented option it finds. A documented option
+    upstream adds would land here.
+    """
+    classified = {string for strings, cls, _ in ROWS for string in strings}
+    missing = [
+        "/".join(option["strings"])
+        for option in DOCUMENTED
+        if not set(option["strings"]) & classified
+    ]
+
+    assert missing == [], f"documented options with no row in the audit: {missing}"
+
+
 # --- the derivations the audit claims, actually performed (`T183-R4`) ---------------------------
 #
 # The audit said the test re-derived the excluded families and asserted the typed-task partition.

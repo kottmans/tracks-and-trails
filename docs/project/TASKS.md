@@ -674,6 +674,38 @@ onward as a later task. If the field turns out to need no data transformation, s
 **Risk:** **High.** It is a new route to two boundaries whose breach is Critical-band: writing
 outside the chosen directory, and a secret in a log
 
+#### Stage A, 2026-09-18: the parser surface measured, and the one design question it raises
+
+Two derivations, both now tests in `tests/unit/test_option_audit.py`, both mutation-checked:
+
+- **Every one of the 250 documented options has an audit row**, asked of `create_parser()` rather
+  than of the audit itself. Deleting a row fails it.
+- **The parser carries 36 suppressed options whose destination no classified option shares**, and
+  they are now **pinned by name**. A yt-dlp bump that adds a thirty-seventh fails the test instead
+  of quietly widening what a user can type. Two are the forbidden family outright
+  (`--exec-before-download` and its `--no-` form, already ruled by `SEC-003`); the rest are
+  deprecated aliases (`--all-subs`, `--playlist-start`, `--user-agent`, `--referer`, `--min-views`)
+  and command-line plumbing (the `--get-*` family, `--print-json`, `--list-formats-*`).
+
+**The question this settles is the refusal list's polarity**, and it is the maintainer's:
+
+| | |
+|---|---|
+| **Default-deny** (recommended) | The hatch accepts an option **only** if the destination `parse_options` produces is in a permitted set: the audit's `hatch` class, plus the `typed` options whose controls do not exist yet. Everything else is refused with its reason, the 34 unruled suppressed spellings included |
+| Default-allow | The hatch accepts anything not on the 92-option refusal list. Then those 34 need a disposition each before this ships, and every future yt-dlp release adds more |
+
+**Why default-deny.** The refusal list is a security boundary and the surface behind it **grows on
+somebody else's schedule** — the pinning test exists because it does. A blacklist over a growing
+surface fails open, and `ARC-010` §4's posture is to refuse what is not permitted. It also costs
+nothing in reach: the 34 are deprecated spellings of options reachable another way, so `REQ-030`'s
+claim, which is about the documented 250, is untouched. Any of them can be permitted later by a
+ruling, one line at a time.
+
+**What default-deny does not excuse.** The refusal still keys on the value `parse_options` produces
+(Finding 4), still names the string the user typed, and the 92 refused options still get their
+stated reasons rather than a generic "not permitted" — a user who types `--exec` is told it runs
+code, not that it is unknown.
+
 #### Scope
 
 An *Additional yt-dlp options* field, per preset and overridable per job, taking command-line
