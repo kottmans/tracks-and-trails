@@ -54,9 +54,11 @@ extractor's message.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Protocol
@@ -184,7 +186,196 @@ def reveal_file(
     refusal = _refuse_unless_usable(path, within)
     if refusal is not None:
         return refusal
-    return _spawn(reveal_command(path, platform), run)
+    launched = _spawn(reveal_command(path, platform), run)
+    if launched is None:
+        # `T-347`, and it is deliberately after the reveal rather than instead of it: `ShowItems`
+        # is what selects the file, and this only decides whether the window it reused is in front.
+        raise_the_file_manager(path, run=run, platform=platform)
+    return launched
+
+
+# --- bringing an already-open window forward (`T-347`) -----------------------------------------
+#
+# **Measured on KDE Plasma Wayland, which is where the report came from**
+# (`docs/project/evidence/2026-09-18-T347-raising-dolphin.md`). With no window showing the folder,
+# `ShowItems` opens one and it arrives in front. With one already showing it, that window is reused
+# and **left exactly where it was** — behind another window, or minimized on the taskbar.
+#
+# **Nothing in Qt can fix that.** Raising somebody else's window on Wayland needs an
+# xdg-activation token from the application the user clicked in, `Dolphin.activateWindow` takes one,
+# an empty one does nothing, and PySide6 exposes no way to obtain one.
+#
+# **So the ruling of 2026-09-18 is this narrow route**: ask KWin to activate the window, and only
+# the window of the Dolphin instance that already has the folder open. Anything missing — another
+# desktop, no KWin, no match — leaves the behaviour exactly as it was.
+
+
+#: Dolphin publishes one bus name per instance, ending in its process id. That id is the only exact
+#: link between "the instance showing this folder" and "this window", because `WindowsRunner`'s
+#: matches carry an **icon name** where an application id would be useful (`T347-R1`).
+DOLPHIN_PREFIX: Final = "org.kde.dolphin-"
+
+#: KWin's own answer for what a window belongs to, read through `getWindowInfo`.
+DOLPHIN_CLASS: Final = "org.kde.dolphin"
+
+#: The query only has to *generate* candidates; the pid picks among them, so this can be broad.
+WINDOW_QUERY: Final = "dolphin"
+
+#: `0_{uuid}`, as `WindowsRunner` spells a match, with KWin's window uuid inside it.
+_MATCH_ID = re.compile(r"\b(\d+_\{[0-9a-f-]+\})")
+
+#: `dict entry( key variant value )`, as `dbus-send --print-reply=literal` prints a property map.
+_PROPERTY = re.compile(r"dict entry\(\s*(\S+)\s+variant\s+(.*?)\s*\)", re.S)
+
+
+def list_names_command() -> list[str]:
+    """The argv that asks the session bus who is on it."""
+    return [
+        DBUS_TOOL,
+        "--session",
+        "--print-reply=literal",
+        "--dest=org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus.ListNames",
+    ]
+
+
+def url_open_command(name: str, folder: Path) -> list[str]:
+    """The argv that asks one Dolphin instance whether it has `folder` open.
+
+    **It answers for the instance, not for the window**: a folder open in any tab counts, which is
+    what makes it the right question here — the reveal reuses that instance whichever tab is on top.
+    """
+    return [
+        DBUS_TOOL,
+        "--session",
+        "--print-reply=literal",
+        f"--dest={name}",
+        "/dolphin/Dolphin_1",
+        "org.kde.dolphin.MainWindow.isUrlOpen",
+        f"string:{folder.as_uri()}",
+    ]
+
+
+def window_match_command() -> list[str]:
+    """The argv that asks KWin for candidate windows."""
+    return [
+        DBUS_TOOL,
+        "--session",
+        "--print-reply=literal",
+        "--dest=org.kde.KWin",
+        "/WindowsRunner",
+        "org.kde.krunner1.Match",
+        f"string:{WINDOW_QUERY}",
+    ]
+
+
+def window_info_command(uuid: str) -> list[str]:
+    """The argv that asks KWin what a window is, by its own uuid."""
+    return [
+        DBUS_TOOL,
+        "--session",
+        "--print-reply=literal",
+        "--dest=org.kde.KWin",
+        "/KWin",
+        "org.kde.KWin.getWindowInfo",
+        f"string:{uuid}",
+    ]
+
+
+def activate_command(match_id: str) -> list[str]:
+    """The argv that asks KWin to bring one window forward."""
+    return [
+        DBUS_TOOL,
+        "--session",
+        "--print-reply=literal",
+        "--dest=org.kde.KWin",
+        "/WindowsRunner",
+        "org.kde.krunner1.Run",
+        f"string:{match_id}",
+        "string:",
+    ]
+
+
+def answered_true(text: str) -> bool:
+    """Whether a `dbus-send` reply is a boolean true. Anything else, including an error, is not."""
+    return "error" not in text.lower() and "true" in text.lower()
+
+
+def instance_showing(folder: Path, ask: Callable[[list[str]], str]) -> str | None:
+    """The Dolphin bus name that already has `folder` open, or `None` if no instance does."""
+    names = ask(list_names_command())
+    for name in sorted(n for n in names.split() if n.startswith(DOLPHIN_PREFIX)):
+        if answered_true(ask(url_open_command(name, folder))):
+            return name
+    return None
+
+
+def pid_of(name: str) -> int | None:
+    """The process id a Dolphin bus name ends with."""
+    tail = name.rsplit("-", 1)[-1]
+    return int(tail) if tail.isdigit() else None
+
+
+def window_of(pid: int, ask: Callable[[list[str]], str]) -> str | None:
+    """KWin's match id for the window belonging to `pid`, by identity rather than by title text."""
+    matches: list[str] = _MATCH_ID.findall(ask(window_match_command()))
+    for match_id in matches:
+        uuid = match_id.split("_", 1)[1]
+        pairs: list[tuple[str, str]] = _PROPERTY.findall(ask(window_info_command(uuid)))
+        properties = dict(pairs)
+        if properties.get("resourceClass", "").strip() != DOLPHIN_CLASS:
+            continue
+        if properties.get("pid", "").strip().split()[-1:] == [str(pid)]:
+            return match_id
+    return None
+
+
+def raise_the_file_manager(
+    path: Path, *, run: Spawner | None = None, platform: str = sys.platform
+) -> bool:
+    """Bring the window already showing `path`'s folder forward. `True` if KWin was asked to.
+
+    **Every step may simply not apply**, and none of them is an error worth telling anyone about:
+    the platform is not Linux, `dbus-send` is absent, no Dolphin instance has the folder open (the
+    common case, where the reveal has just opened a window that is already in front), KWin is not
+    the compositor, or no window carries that pid. Each answers `False` and leaves the behaviour
+    exactly as it was.
+    """
+    if platform == "win32" or not dbus_available():
+        return False
+
+    def ask(command: list[str]) -> str:
+        """One D-Bus question, with every failure answered as "no reply" rather than raised.
+
+        A question this module asks nobody about: it is deciding whether a window can be brought
+        forward, and a desktop that cannot answer is a desktop where the answer is no.
+        """
+        spawn: Spawner = run if run is not None else _run
+        try:
+            completed = spawn(
+                command,
+                shell=False,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=LAUNCH_TIMEOUT_SECONDS,
+            )
+        except OSError, subprocess.SubprocessError:
+            return ""
+        return str(getattr(completed, "stdout", "") or "")
+
+    name = instance_showing(path.parent, ask)
+    if name is None:
+        return False
+    pid = pid_of(name)
+    if pid is None:
+        return False
+    match_id = window_of(pid, ask)
+    if match_id is None:
+        return False
+    ask(activate_command(match_id))
+    return True
 
 
 def open_command(path: Path, platform: str = sys.platform) -> list[str]:

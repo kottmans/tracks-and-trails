@@ -116,6 +116,30 @@ minimizes a window and a Wayland client cannot minimize somebody else's, so the 
 scripting. Unloading the script immediately after `run` left every window un-minimized while
 reporting success; it now settles first.
 
+## Built, and measured through the application's own function
+
+The ruled route is in `ui/reveal.py`: after `ShowItems`, and only when a Dolphin instance already
+has the folder open, ask KWin to activate **that instance's** window — found by `pid`, never by
+title text or icon name. Everything that can be absent answers "no" and leaves the behaviour as it
+was.
+
+**Verified by calling `reveal_file` itself on the real desktop**, not by re-running the probe's own
+version of the route:
+
+| Case, with our window in front | Before | `reveal_file` | After |
+|---|---|---|---|
+| a window shows the folder, behind | `active: False` | returned `None`, meaning launched | **`active: True`** |
+| a window shows the folder, minimized | `active: False, minimized: true` | returned `None` | **`active: True, minimized: false`** |
+
+So the window is both raised and restored, which is the acceptance criterion for the case that was
+failing. The other two cases open a new window that is already in front, and the route declines
+there because no instance had the folder open — measured in the four-case table above.
+
+**The offscreen half is `tests/ui/test_reveal_raises.py`**: the argv, the identity rule and every
+path that declines, with the `Spawner` seam answering the D-Bus questions. Five mutations, all
+caught, including "the first match wins" and "an error reply is read as a yes" — the second needed
+an error message quoting a folder named `true`, because without one the guard could not fail.
+
 ## What the instruments cannot say
 
 Stated because `T347-R2` asked for the claim to be narrowed to what is observable:
