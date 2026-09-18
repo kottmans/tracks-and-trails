@@ -741,6 +741,59 @@ one — is the spelling that *does* show up as a change. So the hatch is **two-s
   security-relevant and gets its own test, because the default depends on an argument the hatch
   happens to pass.
 
+#### Finding 7's five measured, 2026-09-18, and the two options that do break the reservation
+
+`tests/integration/test_reservation_and_resume.py` (new, 8 tests, 5 s) reserves the target with
+`O_CREAT | O_EXCL` the way the session does, then downloads over `http.server` on `127.0.0.1`.
+
+| With the reservation in place | Result |
+|---|---|
+| The application's own options | complete, 64,000 bytes |
+| `--continue`, `--no-continue`, `--part`, `--no-part`, `--post-overwrites` | **each complete** |
+| `-w/--no-overwrites` | **reports success, leaves the file at 0 bytes** |
+| `--no-force-overwrites` | the same |
+
+**Finding 7 is answered: the five are harmless** and can stay hatch-reachable, because
+`overwrites=True` decides the question before they reach it.
+
+**And the audit's reason for refusing `overwrites` is now a measurement.** All three spellings are
+`app:sets`, reason *"T-046's reservation owns it"* — and what happens without that refusal is an
+empty file the user finds by opening it, with no error anywhere. Written as a characterisation test
+on purpose: if a later yt-dlp stops behaving this way, it fails and the reason gets re-read rather
+than inherited.
+
+**Mutation**: with `build_options` no longer passing `overwrites`, 4 of the 8 fail. So the suite
+now protects `T-046`'s guarantee rather than describing it.
+
+*(The first version of this measurement labelled a row "the application's own behaviour" and it was
+not — it omitted `overwrites=True`, so it showed the application leaving 0-byte files, which it does
+not do. The label was the defect, and the corrected run is the table above.)*
+
+#### `--break-on-existing` measured, 2026-09-18: not inert, and it arrives as a cancellation
+
+The criterion asks for this to be measured rather than assumed, and it was assumed wrongly in both
+directions before being measured.
+
+**It is not inert for this worker.** `YoutubeDL._match_entry` references `break_on_existing` and
+raises `ExistingVideoReached` **on the current item** when that item is in the archive. Measured
+directly: with `break_on_existing=True` and an archive holding the id, `_match_entry` raised
+*"Encountered a video that is already in the archive, stopping due to --break-on-existing"*; with an
+id the archive does not hold, it returned `None`. So the option can end the job the user is
+watching, not merely stop a playlist.
+
+**The effect is visible, and it arrives as `CANCELLED`.** `ytdlp_adapter.classify_exception`
+answers `ErrorKind.CANCELLED` for it, carrying yt-dlp's own sentence — which names the option. That
+is because `ExistingVideoReached` descends from yt-dlp's `DownloadCancelled`, which the adapter maps
+deliberately. The same holds for `RejectedVideoReached`.
+
+**So the criterion's condition is met, with one wrinkle worth a ruling.** The row reads *cancelled*
+rather than *failed*, which is honest — yt-dlp stopped on purpose — but a user who typed the option
+in a preset three days ago sees a cancellation they did not press. The message is the only thing
+connecting the two, and the application does show it. **Recommendation: keep both hatch-reachable
+and leave the state as `CANCELLED`**, because inventing a new state for an option nobody has asked
+for yet is worse than a message that explains itself. `--download-archive` is permitted as a
+user-named file by `SEC-003`, so the combination is reachable by design rather than by accident.
+
 #### Scope
 
 An *Additional yt-dlp options* field, per preset and overridable per job, taking command-line
