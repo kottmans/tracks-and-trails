@@ -392,6 +392,42 @@ SUPPRESSED_WITH_THEIR_OWN_DESTINATION: Final = frozenset(
 )
 
 
+PLAN: Final = Path(__file__).resolve().parents[2] / "docs" / "project" / "IMPLEMENTATION_PLAN.md"
+
+#: How `IMPLEMENTATION_PLAN.md` §Phase 4.5 states the split, as `| **<count>** <words> |` rows.
+_PLAN_COUNT = re.compile(
+    r"^\|\s*\*\*(\d+)\*\*\s+(get a typed control|are escape-hatch only|are refused)",
+    re.MULTILINE,
+)
+
+
+def test_the_phase_plan_states_the_counts_the_audit_holds() -> None:
+    """The plan's arithmetic, checked against the audit rather than against itself.
+
+    **It was wrong for a month and nothing could see it.** The plan said 95 escape-hatch options
+    while the audit's own class table, its rows and its arithmetic all said 93 — and
+    65 + 95 + 92 is 252, not the 250 the plan states one line above. Every test here read the
+    audit; the plan is where the number a reader quotes actually lives, and it was checked by
+    nobody. Found by deriving `T-184`'s permitted set from the audit and noticing it disagreed
+    with the sentence that sent me there.
+    """
+    counts = {
+        words: int(number)
+        for number, words in _PLAN_COUNT.findall(PLAN.read_text(encoding="utf-8"))
+    }
+    assert counts, "the plan no longer states the split in the shape this reads"
+
+    classes = {cls for _, cls, _ in ROWS}
+    audit = {
+        "get a typed control": sum(1 for _, cls, _ in ROWS if cls == "typed"),
+        "are escape-hatch only": sum(1 for _, cls, _ in ROWS if cls == "hatch"),
+        "are refused": sum(1 for _, cls, _ in ROWS if cls in REFUSED),
+    }
+    assert classes <= KNOWN_CLASSES
+    assert counts == audit, f"the plan says {counts} and the audit holds {audit}"
+    assert sum(audit.values()) == len(ROWS)
+
+
 def test_the_parser_surface_the_audit_does_not_reach_is_the_set_we_know() -> None:
     """The audit classifies 250 documented options; the parser carries more than that.
 

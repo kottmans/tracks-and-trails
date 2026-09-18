@@ -854,9 +854,15 @@ with their help suppressed. Classified:
 | | |
 |---|---|
 | **65** get a typed control | **21 already have one**; the other **44** are nine tasks, `T-247`…`T-255` |
-| **95** are escape-hatch only | `T-184` |
+| **93** are escape-hatch only | `T-184` |
 | **92** are refused | the application owns them (`app:sets`, `app:plumbing`, `app:policy`, `app:contained`), or `SEC-003`/`SEC-004`/`SEC-005` forbid them |
 | **0** are unclassified | ~~`--legacy-server-connect`, a transport-security downgrade the audit first missed (`T183-R3`)~~ — **ruled forbidden by `SEC-005` on 2026-08-21**, which unblocked `T-184` |
+
+*(**The hatch row read 95 until 2026-09-18**, and the audit has always said **93**: its class table,
+its tables, and the arithmetic, since 65 + 93 + 92 = 250 and 65 + 95 + 92 does not. Found while
+deriving the permitted set for `T-184` from the audit rather than from this table, which is the
+only reason it was found at all. `tests/unit/test_option_audit.py` now reads this table and fails
+when it disagrees with the audit.)*
 
 *(**The last two rows read 89 and 1 until 2026-09-17.** `SEC-005` moved that option into the refused
 class on 2026-08-21, and so did `T-256`'s two `SEC-003` corrections; this table was not updated with
@@ -908,7 +914,7 @@ independent of each other and of the hatch, so stage 3 is where a second Linux m
 | Stage | Tasks, in order | Why here |
 |---|---|---|
 | **1 — the `0.1.1` patch** | `T-343`, `T-347`, then `T-349` | Patch-sized, no option surface touched. `RELEASE.md`: patch releases carry fixes only |
-| **2 — the escape hatch, alone** | `T-184`, carrying `T-048` | It is what makes `REQ-030` true before any typed field exists: the 95 hatch-only options and the 44 not yet typed all become reachable the day it lands. It runs alone because it is the phase's one High-risk task, a new route to two Critical-band boundaries (`T-034`'s containment, `DAT-003`/`DAT-004`'s redaction). Its migration is expected to be the first that transforms stored values, which is the condition `T-048` has waited on since Phase 2 |
+| **2 — the escape hatch, alone** | `T-184`, carrying `T-048` | It is what makes `REQ-030` true before any typed field exists: the 93 hatch-only options and the 44 not yet typed all become reachable the day it lands. It runs alone because it is the phase's one High-risk task, a new route to two Critical-band boundaries (`T-034`'s containment, `DAT-003`/`DAT-004`'s redaction). Its migration is expected to be the first that transforms stored values, which is the condition `T-048` has waited on since Phase 2 |
 | **3 — the typed fields** | `T-247`, `T-249`, `T-251`, `T-250`, `T-248`, `T-252`, `T-253`, `T-254`, `T-255` | Ordered by what users ask for first, then by shared machinery, then by risk to existing boundaries. `T-247`'s `-I` grammar is the first parse-and-refuse-at-edit-time control and the later tasks reuse it; `T-249` needs `DAT-003`'s redaction question answered before `--write-info-json` ships; `T-248` wants `STARBASE` free, because `--windows-filenames` has to be asserted on both platforms; `T-255` is last by the audit's own ranking |
 | **4 — the `0.1.0` debt and the exit** | `T-339`, `T-348`'s ruling, the walk that closes `T-340`, `T-342`, `T-344` and `T328-R4`, then the `0.2.0` release | What the waived `§11` walk would have found is carried here by the 2026-09-16 ruling. Two of these need a person at a Windows desktop, so they are one sitting |
 
