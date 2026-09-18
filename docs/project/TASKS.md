@@ -477,9 +477,11 @@ ends badly — the shape `2026-08-27-T212-ytdlp-update-double-free.md` recorded.
 
 ### T-347 — Show in folder leaves an already-open Dolphin window minimized on KDE Wayland
 
-**Status:** Proposed — **left for after `0.1.0` by the maintainer on 2026-09-15**, from two options
-(leave it and file a task; try to fix it now). Not release-blocking. **Scheduled 2026-09-17** into
-the `0.1.1` patch, second after `T-343`.
+**Status:** Proposed — **measured 2026-09-18 and now waiting on a ruling**: every route that could
+raise the window was tried on the KDE Plasma Wayland desktop the report came from, one works, and
+which shape to build is the maintainer's (below). *(Was:)* left for after `0.1.0` by the maintainer
+on 2026-09-15, from two options (leave it and file a task; try to fix it now). Not
+release-blocking. **Scheduled 2026-09-17** into the `0.1.1` patch, second after `T-343`.
 **Owner:** Implementer
 **Priority:** Low — the file is selected in the window the user already has
 **Phase:** Phase 4.5 — stage 1, the `0.1.1` patch
@@ -500,16 +502,57 @@ call the application makes:
 xdg-activation token from the application the user clicked in, and Qt gives Python no public way to
 request one.
 
+#### Measured 2026-09-18, on the desktop the report came from
+
+Evidence: [`2026-09-18-T347-raising-dolphin.md`](evidence/2026-09-18-T347-raising-dolphin.md). The
+development host **is** the KDE Plasma Wayland machine, and the maintainer allowed the verification
+to be driven there, so this stopped being guesswork. The instrument is Dolphin's own
+`isActiveWindow` and `isUrlOpen` over D-Bus, so the question is answered in text rather than by
+someone looking at a screen.
+
+**The report reproduces exactly**: with a window already showing the folder, `ShowItems` selects the
+item and the window stays behind.
+
+| Route | Raises it | Selects the file | Cost |
+|---|---|---|---|
+| `ShowItems`, as shipped | no | yes | the report |
+| portal `OpenURI.OpenDirectory` | no, opens a new window | no, folder only | a window per call, selection lost |
+| `dolphin --select`, second process | no | yes | no effect |
+| `xdg-open` the folder | no | no | no effect |
+| `dolphin --new-window --select` | the **new** window is active | yes | a second window every time |
+| `KWin.WindowsRunner.Run` | **yes** | yes, `ShowItems` selects | KDE only, finds the window by matching text |
+
+**The correct fix is not available from this toolkit.** `Dolphin.activateWindow` takes an
+activation token and an empty one does nothing (measured). On Wayland only an application holding
+user focus can hand activation to another, and PySide6 exposes no way to obtain a token:
+`xdg_activation_v1` sits behind Qt's private Wayland interfaces.
+
+#### The shape, for the maintainer to rule
+
+| Option | What the user sees | What it costs |
+|---|---|---|
+| **A. Leave it** | The file is selected in the window they already have; they click Dolphin in the taskbar. What `0.1.0`'s README already documents | Nothing new. The report stays true |
+| **B. Raise it through `WindowsRunner`** (recommended) | The window comes to the front with the file selected, which is the criterion | KDE and KWin only, and the window is found by matching the folder name against window titles. Each match carries its application id, so the filter can require `org.kde.dolphin` as well, but it is still matching text. No effect on other desktops, so it degrades to A |
+| **C. Always open a new window** | A new window in front, file selected, on any desktop running Dolphin | A second window every time the user reveals a file, and the one they already had is left behind. Window clutter as the price of the raise |
+
+**Recommended: B**, narrowed — try it only when a Dolphin window already shows that folder (which
+`isUrlOpen` answers), require the match's application id to be `org.kde.dolphin`, and fall back
+silently to today's behaviour when anything is missing. It buys the criterion without changing what
+any other desktop does. **C is the honest alternative** if matching on title text is unacceptable at
+any price.
+
 #### Scope
 
-Find a dependable way to pass an activation token (for example through the desktop portal's
-`OpenDirectory` with an `activation_token`, or a Wayland activation request), and measure the three
-cases above again.
+Build the ruled shape, then measure the three cases again with the instrument above.
 
 #### Acceptance criteria
 
-- [ ] The download folder already open: Dolphin comes to the front with the file selected
-- [ ] The other two cases unchanged
+- [x] The three cases measured again on KDE Plasma Wayland, and every route tried recorded with
+  what it costs — 2026-09-18
+- [ ] A recorded ruling on the shape, from the table above
+- [ ] If built: the download folder already open, Dolphin comes to the front with the file selected
+- [ ] If built: the other two cases unchanged, and a desktop without `WindowsRunner` behaves as it
+  does today
 
 ---
 
