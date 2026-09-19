@@ -2,7 +2,7 @@
 
 **Purpose:** Unfinished work: review, ready, proposed and blocked tasks.
 **Owner:** Planner (priorities); Implementer (task/status); Reviewer (review disposition)
-**Last updated:** 2026-09-17
+**Last updated:** 2026-09-18
 **Update when:** Work starts, changes scope/status, closes or reopens.
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
@@ -559,6 +559,59 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 - Predicting a size for a format the user has not chosen. The row shows what it will download
 
 ## Proposed — Phase 4
+
+### T-350 — A staged format fixture races a real probe and loses its format control
+
+**Status:** Proposed — filed during the independent 2026-09-18 correction review at `0cec265`.
+**Owner:** Implementer
+**Priority:** Medium — intermittent failures obscure the full-suite gate; the fixture also starts
+the real network worker despite the UI suite's fixture-only network contract.
+**Phase:** Phase 4 (test infrastructure; not a product deliverable)
+**Depends on:** nothing
+**Effort:** Small, estimated: control the staged probe, audit this helper's callers and verify the
+combined integration/UI run. Do not change production state handling to accommodate the test.
+**Relevant context:** `T310-R2`, `T118-R10`, [T-347 review](reviews/T-347.md), TESTING §§1 and 14.
+**Affected surfaces:** `tests/ui/test_add_dialog.py`, particularly `_staged` and
+`_probed_with_formats`; any shared fixture extracted for their callers.
+**Risk:** Low — keep the mounted-panel geometry assertions and process cleanup intact.
+**Required checks:** Ruff lint/format, bare mypy and Windows-platform mypy; the nine mounted-panel
+cases, affected helper callers, the combined integration/UI selection, and the full-suite gate.
+Retain the exact revision, command and actual pytest exit status for each gate.
+
+#### Evidence and scope
+
+The implementer reports **6 failed, 4,807 passed, 22 skipped** in the full suite, all at
+`test_the_mounted_format_panel_fits_the_dialog_it_asked_for`: `row 0 offered no format control`.
+The supplied narrower baseline log has five such failures but does not identify its revision.
+Neither that log nor a passing isolated test establishes the stated machine-load cause.
+
+The reviewer independently reproduced the same assertion at `0cec265`. `_staged` creates
+`managers()` with the default real worker, resolves `https://example.invalid/one`, and waits only
+for a job ID. `_probed_with_formats` then calls `_on_media_probed` directly to mark the row ready.
+Processing events for up to three seconds before opening the editor delivered the real probe's
+DNS failure: the row changed from `READY` to `FAILED`, and its format control disappeared.
+This produced **1 failed** in 2.07 seconds. Repeating the same delayed check with the existing
+`child_never_returning` injected kept the row ready and produced **1 passed** in 4.91 seconds.
+These were temporary reviewer instrumentation, not repository test changes.
+
+The test helper, dialog and manager files are unchanged between `72a0979` and `0cec265`.
+This is independently actionable test-fixture work, separate from T-301's four font-growth
+tests. The race is established; attribution of every reported suite failure or the desktop's
+slowdown is not. Merely waiting longer for a format control is insufficient once the row failed.
+
+#### Acceptance criteria
+
+- [ ] A format-fixture test cannot start the real site probe. Use a controlled worker/result
+      sequence consistent with the suite's process-boundary contract.
+- [ ] Exercise delayed event delivery between staging and opening the editor, and prove the row
+      remains ready with the intended formats. Restoring the uncontrolled probe must fail the
+      regression check; do not rely on a fixed sleep or external DNS timing as the permanent test.
+- [ ] Audit sibling callers of the helper for competing real callbacks and preserve teardown of
+      workers, timers and widgets.
+- [ ] All nine existing geometry cases retain their assertions and pass with the relevant combined
+      suites. Record failing gates honestly; a successful `tail` is not a successful pytest run.
+
+---
 
 ### T-302 — Nothing detects orphaned workers automatically on either platform
 
