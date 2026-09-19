@@ -340,22 +340,27 @@ def answered_false(text: str) -> bool:
     return "error" not in text.lower() and "false" in text.lower()
 
 
-#: The D-Bus errors that say **this service is not a window**, as opposed to not answering.
+#: The D-Bus errors that say **there is no window here**, as opposed to no answer from one.
 #:
-#: `dolphin --daemon` runs on every KDE desktop that has ever used the file manager, owns a
-#: `org.kde.dolphin-<pid>` name like any other instance, and has **no** `/dolphin/Dolphin_1`
-#: object — so it answers `UnknownObject`. The other two are the same statement about the
-#: interface and the method, and a name whose owner has gone answers `ServiceUnknown`: none of
-#: them can be the window the reveal went to, because none of them has one.
+#: `UnknownObject`: `/dolphin/Dolphin_1` does not exist on that service. `dolphin --daemon` runs on
+#: every KDE desktop that has ever used the file manager and owns an `org.kde.dolphin-<pid>` name
+#: exactly as a window does, and this is the reply it gives to every question (`T347-R6`).
+#: `ServiceUnknown`: the name has no owner, so the instance listed a moment ago has since exited
+#: and its window went with it.
 #:
-#: **This is the narrow exception to "an unanswered instance is not a no"** (`T347-R6`). Skipping
-#: *every* failed query would reintroduce `T347-R1`; skipping a service that has told us it has no
-#: main window is not a guess about what it might be showing.
+#: **`UnknownInterface` and `UnknownMethod` were here and are not** (`T347-R1`, reopened). They
+#: say the object was reached and does not offer that interface or method — which is a statement
+#: about the API, not about the window. A main window that exists but cannot answer
+#: `isItemVisibleInAnyView` is exactly the candidate whose answer we do not have, and skipping it
+#: let one positive look unique again. Qt's own error table separates a missing object path from a
+#: missing method on an object for this reason.
+#:
+#: **This is the narrow exception to "an unanswered instance is not a no"**. Skipping *every*
+#: failed query would reintroduce `T347-R1`; skipping a service that has said it has no main
+#: window is not a guess about what it might be showing.
 NOT_A_WINDOW: Final = frozenset(
     {
         "org.freedesktop.DBus.Error.UnknownObject",
-        "org.freedesktop.DBus.Error.UnknownInterface",
-        "org.freedesktop.DBus.Error.UnknownMethod",
         "org.freedesktop.DBus.Error.ServiceUnknown",
     }
 )

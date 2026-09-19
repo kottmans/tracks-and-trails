@@ -460,6 +460,44 @@ def test_a_service_that_merely_stalls_still_stops_the_raise(folder: Path) -> Non
     assert desktop.method_calls("org.kde.krunner1.Run") == []
 
 
+@pytest.mark.parametrize(
+    "error",
+    [
+        "org.freedesktop.DBus.Error.UnknownMethod",
+        "org.freedesktop.DBus.Error.UnknownInterface",
+    ],
+)
+def test_a_window_that_cannot_answer_the_question_is_not_a_window_that_has_none(
+    folder: Path, error: str
+) -> None:
+    """`T347-R1`, reopened by my own `T347-R6` fix: unsupported is not absent.
+
+    These two errors say the object was **reached** and does not offer that method or interface.
+    The object is the main window, so a service answering either of them has one — it just cannot
+    say whether the file is visible in it. That is the candidate whose answer we do not have,
+    which is the whole reason this declines, and treating it as "no window here" let one positive
+    look unique again. Qt's error table separates a missing object path from a missing method on
+    an object, and the difference is exactly this.
+
+    Driven through the production route, because the classifier only sees an error at all when
+    `ask` carries `stderr` — a test that called the predicate directly would pass either way.
+    """
+    unsupported = Said(problem=f"Error {error}: No such method 'isItemVisibleInAnyView'", code=1)
+    desktop = OnePerInstance(
+        {"org.kde.dolphin-4242": True, "org.kde.dolphin-777": unsupported},
+        {"org.kde.krunner1.Match": MATCHES, "aaaaaaaa": window_info(4242)},
+    )
+
+    raised = raise_the_file_manager(
+        folder / "clip.mp4", run=desktop, platform="linux", available=INSTALLED
+    )
+
+    assert raised is False, (
+        f"{error} was read as proof the service has no window, so one positive looked unique"
+    )
+    assert desktop.method_calls("org.kde.krunner1.Run") == []
+
+
 def test_an_error_quoting_a_file_named_after_it_is_not_a_windowless_service(folder: Path) -> None:
     """The name is read from where `dbus-send` puts it, not from anywhere in the text.
 

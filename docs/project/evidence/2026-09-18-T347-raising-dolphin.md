@@ -199,9 +199,19 @@ called `true` was proving something about a function the desktop could not reach
 both streams.
 
 The exception is narrow, because skipping every failed query would reintroduce `T347-R1`: only the
-four errors that *establish* a service has no main window — `UnknownObject`, `UnknownInterface`,
-`UnknownMethod`, `ServiceUnknown` — are skipped, and the name is read from where `dbus-send` puts
-it, anchored at the start of the line and stopped at the colon. A user may name a file
+errors that *establish* there is no window are skipped — `UnknownObject`, because the main window
+object does not exist on that service, and `ServiceUnknown`, because the name listed a moment ago
+has since lost its owner. The name is read from where `dbus-send` puts it, anchored at the start of
+the line and stopped at the colon.
+
+*(**The first version of this exception carried four errors and the reviewer reopened `T347-R1` on
+two of them.** `UnknownInterface` and `UnknownMethod` say the object was *reached* and does not
+offer that interface or method — a statement about the API, not about the window. A main window
+that exists but cannot answer `isItemVisibleInAnyView` is precisely the candidate whose answer we
+do not have, so skipping it let one positive look unique again, which is the defect this whole
+function exists to prevent. Qt's own error table separates a missing object path from a missing
+method on an object. Both are now tested through the production route, and restoring them to the
+list fails those tests.)* A user may name a file
 `org.freedesktop.DBus.Error.UnknownObject`, and the failure message quotes the argument; a
 substring search would let that file turn an unrelated error into "this service has no window".
 Four mutations, each caught by the test that names it: the branch removed, `stderr` dropped, the
