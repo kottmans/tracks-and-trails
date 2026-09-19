@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-09-18
+**Last updated:** 2026-09-19
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -58,14 +58,24 @@ task and review records it summarised.*
   reason when that reason is not the application's own sentence (`UX-005` amended); and `T-348` is
   **fetch, verify, hand over** (`REL-009` amended, built in a later phase). Nothing in the phase is
   waiting on a decision now.
-- **`T-347` was measured before it was ruled** (2026-09-18,
-  [evidence](evidence/2026-09-18-T347-raising-dolphin.md)). Every route that could raise an
-  already-open Dolphin was tried on the desktop the report came from; `ShowItems` leaves the window
-  behind, and **only `KWin.WindowsRunner.Run` raises it**. The correct fix is unavailable from this
-  toolkit: `Dolphin.activateWindow` needs an activation token and PySide6 exposes no way to get one.
-  Four cases are measured with a retained probe, `tools/dolphin_raise_probe.py`, and the ruled shape
-  raises the window when it is behind **and** when it is minimized while leaving the two
-  already-working cases untouched.
+- **`T-347` is Complete**, approved 2026-09-19 ([record](reviews/T-347.md)) and **re-measured on
+  the KDE Plasma Wayland desktop at `bfc11c1`**
+  ([capture](evidence/2026-09-19-T347-production-route.txt)): all four cases establish their
+  preconditions and the window comes forward when it is behind **and** when it is minimized. Every
+  route was tried before it was ruled ([evidence](evidence/2026-09-18-T347-raising-dolphin.md));
+  `ShowItems` leaves the window where it is and **only `KWin.WindowsRunner.Run` raises it**. The
+  correct fix is unavailable from this toolkit: `Dolphin.activateWindow` needs an activation token
+  and PySide6 exposes no way to get one.
+- **It took five review rounds, and two of the findings were regressions in the corrections.**
+  `T347-R3` found a window *caption* able to turn Show in folder into a request to **close** a
+  window; `T347-R4` found the discovery worker outside the shutdown barrier. Then stricter
+  discovery, written to close `T347-R1`, broke the feature on every KDE desktop: `dolphin --daemon`
+  owns a bus name like any window, has no main window object, and answers an error to every
+  question — so "decline on any reply I cannot read" declined on all of them (`T347-R6`). Its first
+  fix over-corrected in turn, reading *unsupported method* as *no window*, which reopened `T347-R1`.
+  **The approval does not cover release readiness**, and two follow-ups remain: `T-350`, and the
+  human selection walk, which no instrument here can perform — `isItemVisibleInAnyView` says the
+  item is in a view, not that it is highlighted.
 - **`T-184` has started, measurements first.** The parser surface the audit does not reach is pinned
   at 36 suppressed options; `tools/ytdlp_option_keys.py` derives what each option changes and found
   that **`--geo-bypass` changes nothing**, so the hatch cannot decide from a diff alone. Finding 7's

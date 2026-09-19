@@ -2,7 +2,7 @@
 
 **Purpose:** Unfinished work: review, ready, proposed and blocked tasks.
 **Owner:** Planner (priorities); Implementer (task/status); Reviewer (review disposition)
-**Last updated:** 2026-09-18
+**Last updated:** 2026-09-19
 **Update when:** Work starts, changes scope/status, closes or reopens.
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
@@ -14,160 +14,8 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
-### T-347 — Show in folder leaves an already-open Dolphin window minimized on KDE Wayland
-
-**Status:** **In Review** — **ruled and built 2026-09-18**, corrected through four review rounds
-and **re-measured on the desktop at `bfc11c1` on 2026-09-19**. The narrow KWin route is in
-`ui/reveal.py`, verified on the real desktop through `reveal_file` itself for all four cases.
-
-**Maintainer ruling, 2026-09-19 — `TESTING.md` §14.** The ordinary budget of one comprehensive
-review plus one focused correction was spent with two blocking Medium findings open
-(`T347-R1` reopened, `T347-R2`), so the reviewer stopped the loop and asked. The maintainer
-**authorized one further focused correction and evidence pass**, and separately consented to the
-probe being run on their own desktop — it opens and closes Dolphin windows, minimizes one and
-takes focus for about three minutes. Both corrections and the capture are in that pass.
-*(Was Proposed:)* measured 2026-09-18 and waiting on a ruling: every route that could
-raise the window was tried on the KDE Plasma Wayland desktop the report came from, one works, and
-which shape to build is the maintainer's (below). *(Was:)* left for after `0.1.0` by the maintainer
-on 2026-09-15, from two options (leave it and file a task; try to fix it now). Not
-release-blocking. **Scheduled 2026-09-17** into the `0.1.1` patch, second after `T-343`.
-**Owner:** Implementer
-**Priority:** Low — the file is selected in the window the user already has
-**Phase:** Phase 4.5 — stage 1, the `0.1.1` patch
-**Relevant context:** `T-086`, `ui/reveal.py` (`FileManager1.ShowItems` over `dbus-send`)
-
-#### What was found
-
-Tried by the maintainer on KDE Plasma (Wayland), Fedora 44, with a test window running the exact
-call the application makes:
-
-| Dolphin before the click | Result |
-|---|---|
-| closed | opens in front with the file selected |
-| open on another folder, or minimized | comes to the front |
-| **open on the download folder** | selects the file, **stays minimized on the taskbar** |
-
-`ShowItems` is sent with an empty startup id. On Wayland, raising an existing window needs an
-xdg-activation token from the application the user clicked in, and Qt gives Python no public way to
-request one.
-
-#### Measured 2026-09-18, on the desktop the report came from
-
-Evidence: [`2026-09-18-T347-raising-dolphin.md`](evidence/2026-09-18-T347-raising-dolphin.md). The
-development host **is** the KDE Plasma Wayland machine, and the maintainer allowed the verification
-to be driven there, so this stopped being guesswork. The instrument is Dolphin's own
-`isActiveWindow` and `isUrlOpen` over D-Bus, so the question is answered in text rather than by
-someone looking at a screen.
-
-**The report reproduces, and the table above it needed correcting.** Measured over four cases with
-`tools/dolphin_raise_probe.py`, each stating whether its precondition held:
-
-| Case | `ShowItems` today | With the proposed route |
-|---|---|---|
-| nothing open | a **new** window, active, item visible | unchanged |
-| a window open elsewhere | a **new** window, active; the existing one untouched | unchanged |
-| a window shows the folder, behind | **not raised** | **raised** |
-| a window shows the folder, minimized | **stays minimized** | **raised and restored** |
-
-**The dividing line is not "behind or minimized", it is whether a window already shows that
-folder.** The original table grouped *"open on another folder, or minimized"* as the working case;
-minimized is **not** a working case when that window is the one showing the folder. This matches
-what the maintainer said afterwards — *"It only stays collapsed on the taskbar if the downloads
-folder is already open"* — rather than what the table said.
-
-| Route | Raises it | Selects the file | Cost |
-|---|---|---|---|
-| `ShowItems`, as shipped | no | yes | the report |
-| portal `OpenURI.OpenDirectory` | no, opens a new window | no, folder only | a window per call, selection lost |
-| `dolphin --select`, second process | no | yes | no effect |
-| `xdg-open` the folder | no | no | no effect |
-| `dolphin --new-window --select` | the **new** window is active | yes | a second window every time |
-| `KWin.WindowsRunner.Run` | **yes** | yes, `ShowItems` selects | KDE only, finds the window by matching text |
-
-**The correct fix is not available from this toolkit.** `Dolphin.activateWindow` takes an
-activation token and an empty one does nothing (measured). On Wayland only an application holding
-user focus can hand activation to another, and PySide6 exposes no way to obtain a token:
-`xdg_activation_v1` sits behind Qt's private Wayland interfaces.
-
-#### The shape, for the maintainer to rule
-
-| Option | What the user sees | What it costs |
-|---|---|---|
-| **A. Leave it** | The file is selected in the window they already have; they click Dolphin in the taskbar. What `0.1.0`'s README already documents | Nothing new. The report stays true |
-| **B. Raise it through `WindowsRunner`** (recommended) | The window comes to the front with the file selected, which is the criterion | KDE and KWin only. Candidates come from matching text, and **identity comes from `pid`** (below), so the right window is chosen rather than a similarly titled one. No effect on other desktops, so it degrades to A |
-| **C. Always open a new window** | A new window in front, file selected, on any desktop running Dolphin | A second window every time the user reveals a file, and the one they already had is left behind. Window clutter as the price of the raise |
-
-#### Ruled 2026-09-18: B, the narrow `WindowsRunner` raise
-
-**The maintainer chose B** from the costed options, as recommended. What that settles:
-
-- The raise is tried **only when a Dolphin instance already has that folder open**, which is the
-  only case that needs it — measured, the other two open a new window that is already in front.
-- The window is found by **`pid`**, not by title text and not by the icon name: `isUrlOpen` names the
-  instance, `getWindowInfo` names the window, and the bus name carries the pid that joins them.
-- Anything missing — no KWin, no `WindowsRunner`, no match — **falls back silently to today's
-  behaviour**. No other desktop changes, and nothing fails loudly for a convenience.
-
-*(The recommendation as first written is kept below, because the maintainer ruled on it.)*
-
-**Recommended: B**, narrowed — try it only when a Dolphin window already shows that folder (which
-`isUrlOpen` answers), and fall back silently to today's behaviour when anything is missing.
-
-**The identity half of that recommendation was wrong and is corrected** (`T347-R1`). This entry said
-*"each match carries its application id"*. It does not: `WindowsRunner.Match` returns
-`a(sssuda{sv})` — `(id, text, iconName, categoryRelevance, relevance, properties)` — and KWin fills
-the third member from the window's **icon**. It reads `org.kde.dolphin` because KDE names icons
-after desktop ids, and an icon can be shared or changed. **It is not identity, and filtering on it
-would not tell two Dolphin windows apart at all.**
-
-**What is identity**, measured the same day: the match id embeds KWin's window uuid, and
-`org.kde.KWin.getWindowInfo(uuid)` answers `pid`, `resourceClass`, `desktopFile` — and `minimized`.
-Dolphin's bus name **is** `org.kde.dolphin-<pid>`, so the instance that answers
-`isUrlOpen(folder) == true` can be tied to exactly one KWin window by `pid`. The text query only
-generates candidates; `pid` picks among them. That is an exact link rather than a resemblance, and
-it is what `tools/dolphin_raise_probe.py` uses.
-
-**C is the honest alternative** if reaching into KWin at all is unacceptable.
-
-#### What the instruments can and cannot say
-
-`T347-R2` asked for this to be stated rather than implied, and one of its two points narrows a
-claim this entry made:
-
-| Instrument | Answers | Does **not** answer |
-|---|---|---|
-| `isActiveWindow` | whether that window is the active one | whether a non-active window is behind another or minimized |
-| `getWindowInfo(uuid).minimized` | exactly that, and the `pid` that identifies the window | — |
-| `isUrlOpen(folder)` | whether the window shows the folder | anything about the file |
-| `isItemVisibleInAnyView(file)` | whether the item is **shown in a view** | whether it is **selected**. Nothing on Dolphin's interface reports selection |
-
-**So the criterion's *"with the file selected"* half is not machine-observable here.** What a probe
-can establish is that the window came to the front showing the item; that it is *highlighted* is
-left to the person doing the end-of-phase walk, and this entry no longer implies otherwise.
-
-#### Scope
-
-Build the ruled shape, then measure the cases again with `tools/dolphin_raise_probe.py`.
-
-#### Acceptance criteria
-
-- [x] Every route that could raise the window tried and recorded with what it costs — 2026-09-18
-- [x] The four cases measured with a **retained, runnable** probe
-  (`tools/dolphin_raise_probe.py`), which is `T347-R2`'s ask: nothing open, open elsewhere, open on
-  the folder, and open on the folder **minimized** — the last through KWin scripting, because
-  nothing else here can minimize a window
-- [x] A recorded ruling on the shape, from the table above — 2026-09-18, B
-- [x] The download folder already open, Dolphin comes to the front showing the item — 2026-09-18,
-  measured by calling `reveal_file` itself: `active: False → True` when behind, and
-  `minimized: true → false, active: True` when minimized
-- [x] The other cases unchanged, and a desktop without `WindowsRunner` behaves as it does today —
-  the route declines when no instance has the folder open, which is both of them, and every absent
-  piece answers no. Asserted offscreen in `tests/ui/test_reveal_raises.py`, five mutations caught
-- [ ] The *selected* half, by a person, at the end-of-phase walk — it is not machine-observable
-
----
-
----
+Nothing. `T-347` was approved on 2026-09-19 and moved to
+[COMPLETED_TASKS](COMPLETED_TASKS.md); `T-184` is In Progress under Phase 4.5 stage 2.
 
 ## Ready
 
@@ -724,7 +572,7 @@ user-facing says otherwise, and nothing here claims the criteria were checked.
 
 #### Acceptance criteria
 
-- [ ] `T-343` and `T-347` complete and approved
+- [x] `T-343` and `T-347` complete and approved — 2026-09-17 and 2026-09-19
 - [ ] `TESTING.md` §8 run on both platforms, **item 6 excepted by the ruling above**, with item 5
   carried out against `0.1.0`'s database rather than a fabricated one
 - [ ] The five steps of `RELEASE.md` followed, evidence recorded as `0.1.0`'s was
