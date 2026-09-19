@@ -63,18 +63,30 @@ def truthy(answer: str) -> bool:
     return "true" in answer.lower()
 
 
-def instances() -> list[str]:
-    """Every Dolphin bus name that has a main window. `--daemon` has none and is skipped."""
+def services() -> list[tuple[str, str]]:
+    """Every Dolphin bus name, with what it answered when asked for its main window.
+
+    **Both halves are reported** (`T347-R2`, second pass). This tool has always skipped the names
+    with no main window, and production had not — which is `T347-R6`, the finding that a
+    `dolphin --daemon` service stopped every raise. Evidence from a desktop where the daemon was
+    not visible in the output cannot show whether that desktop had one, so the run now names what
+    it skipped and why.
+    """
     names = dbus(
         "--dest=org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus.ListNames"
     )
     found = []
     for name in sorted(n for n in names.split() if n.startswith(DOLPHIN_PREFIX)):
-        if "Error" not in dbus(
+        reply = dbus(
             f"--dest={name}", "/dolphin/Dolphin_1", "org.kde.dolphin.MainWindow.isActiveWindow"
-        ):
-            found.append(name)
+        )
+        found.append((name, reply.strip().splitlines()[-1] if reply.strip() else "no reply"))
     return found
+
+
+def instances() -> list[str]:
+    """Every Dolphin bus name that has a main window. `--daemon` has none and is skipped."""
+    return [name for name, reply in services() if "Error" not in reply]
 
 
 def ask(name: str, method: str, *arguments: str) -> str:
@@ -169,8 +181,15 @@ def precondition(case: str, target: str | None, before: dict[str, dict[str, Any]
         return f"NOT established: {target} is already active, so nothing has to be raised"
 
     if case.startswith("3"):
-        if state["minimized"] == "true":
-            return f"NOT established: {target} is minimized, which is case 4 and not this one"
+        # **A measured `false`, not merely "not true"** (`T347-R2`, second pass). `state` answers
+        # `unknown` when `getWindowInfo` carried no `minimized` field at all, and reading that as
+        # "not minimized" let this case report an established precondition it had never measured —
+        # the same unfalsifiable-term defect the case itself exists to rule out.
+        if state["minimized"] != "false":
+            return (
+                f"NOT established: KWin reports {target} minimized={state['minimized']}, and this "
+                "case needs a measured false"
+            )
         return f"established: {target} shows the folder, is behind ours and is not minimized"
 
     if state["minimized"] != "true":
@@ -332,6 +351,28 @@ def open_dolphin_on(folder: Path) -> str | None:
     return None
 
 
+def revision() -> str:
+    """The commit this ran at, so an output file cannot be read against the wrong source.
+
+    `T347-R2` kept a production-route capture that predated the discovery change it was quoted as
+    evidence for. A capture that names its own revision cannot be reused that way by accident.
+    """
+    head = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],  # noqa: S607 - git is on the path here
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    dirty = subprocess.run(
+        ["git", "status", "--porcelain"],  # noqa: S607 - git is on the path here
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    mark = " plus uncommitted changes" if dirty.stdout.strip() else ""
+    return f"{head.stdout.strip() or 'unknown'}{mark}"
+
+
 def quit_dolphins() -> None:
     """Close every window this run caused, and nothing that was there before it."""
     for name in instances():
@@ -355,6 +396,13 @@ def main() -> int:
         ),
     )
     arguments = parser.parse_args()
+
+    print(f"probe revision: {revision()}")
+    # Named before anything else, because `T347-R6` was invisible in every earlier run: a service
+    # with no main window is skipped here and was *not* skipped by the application.
+    for name, reply in services():
+        kind = "window" if "Error" not in reply else "no main window"
+        print(f"  service {name}: {kind} ({reply})")
 
     PRE_EXISTING.update(instances())
     if PRE_EXISTING:

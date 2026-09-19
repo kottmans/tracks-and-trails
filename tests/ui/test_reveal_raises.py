@@ -15,8 +15,9 @@ window — is `tools/dolphin_raise_probe.py`, which no runner can execute.
 from __future__ import annotations
 
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 
@@ -72,6 +73,32 @@ array [ struct { 0_{cccccccc-0000-0000-0000-000000000003} a folder called struct
 struct { 0_{bbbbbbbb-0000-0000-0000-000000000002} other — Dolphin org.kde.dolphin int32 30
 double 0.7 array [ ] } ]
 """
+
+
+@dataclass(frozen=True)
+class Said:
+    """What one `dbus-send` call wrote, **on each stream** (`T347-R6`).
+
+    Which stream matters: `dbus-send` writes a reply to `stdout` and a failure to `stderr`, and
+    production returned `stdout` alone — so every error reached the module as an empty string.
+    A fake that answers on one stream cannot tell that defect from a stall, which is how it
+    survived a review.
+    """
+
+    out: str = ""
+    problem: str = ""
+    code: int = 0
+
+
+#: `dolphin --daemon`, exactly as the reviewer measured it on their desktop: empty `stdout`,
+#: exit 1, and the error on `stderr`. It owns an `org.kde.dolphin-<pid>` name like any window
+#: does, and has no main window behind it.
+DAEMON: Final = Said(
+    problem=(
+        "Error org.freedesktop.DBus.Error.UnknownObject: No such object path '/dolphin/Dolphin_1'"
+    ),
+    code=1,
+)
 
 
 def window_info(pid: int, resource_class: str = DOLPHIN_CLASS) -> str:
@@ -242,7 +269,7 @@ class OnePerInstance:
     """
 
     def __init__(
-        self, visible_to: dict[str, bool | str], answers: dict[str, str] | None = None
+        self, visible_to: dict[str, bool | str | Said], answers: dict[str, str] | None = None
     ) -> None:
         self.visible_to = visible_to
         self.answers = answers or {}
@@ -256,8 +283,13 @@ class OnePerInstance:
         elif any("isItemVisibleInAnyView" in argument for argument in args):
             name = next(a.removeprefix("--dest=") for a in args if a.startswith("--dest="))
             # A bool is that instance's yes or no; a **string** is its literal reply, which is how
-            # a test says "this one did not answer" — the case `T347-R1`'s second pass is about.
+            # a test says "this one did not answer" — the case `T347-R1`'s second pass is about;
+            # and a `Said` writes on the stream of its choosing, which is `T347-R6`'s.
             answer = self.visible_to.get(name, False)
+            if isinstance(answer, Said):
+                return subprocess.CompletedProcess(
+                    args=args, returncode=answer.code, stdout=answer.out, stderr=answer.problem
+                )
             reply = answer if isinstance(answer, str) else f"   boolean {answer}".lower()
         else:
             for key, value in self.answers.items():
@@ -376,6 +408,83 @@ def test_the_window_showing_the_folder_is_activated(folder: Path) -> None:
     runs = desktop.method_calls("org.kde.krunner1.Run")
     assert len(runs) == 1
     assert "string:0_{aaaaaaaa-0000-0000-0000-000000000001}" in runs[0]
+
+
+def test_the_background_daemon_does_not_stop_the_raise(folder: Path) -> None:
+    """`T347-R6`, the reviewer's reproduction: one windowless service killed every raise.
+
+    `dolphin --daemon` is on any KDE desktop that has used the file manager. It owns a
+    `org.kde.dolphin-<pid>` name exactly as a window does, and it has no `/dolphin/Dolphin_1`, so
+    it answers `UnknownObject` to every question. Declining on "any reply I cannot read" therefore
+    declined on **every** desktop this task exists to fix, including when the window answered yes.
+
+    **It runs the whole route**, because the defect was only half in `instance_showing`: the other
+    half was `ask` returning `stdout` alone, which turned that error into an empty string. A test
+    that handed the classifier the error text directly would pass with production still blind.
+    """
+    desktop = OnePerInstance(
+        {"org.kde.dolphin-4242": True, "org.kde.dolphin-777": DAEMON},
+        {
+            "org.kde.krunner1.Match": MATCHES,
+            "aaaaaaaa": window_info(4242),
+            "bbbbbbbb": window_info(777),
+        },
+    )
+
+    raised = raise_the_file_manager(
+        folder / "clip.mp4", run=desktop, platform="linux", available=INSTALLED
+    )
+
+    assert raised is True, "a background daemon with no window stopped the window from being raised"
+    runs = desktop.method_calls("org.kde.krunner1.Run")
+    assert len(runs) == 1
+    assert "string:0_{aaaaaaaa-0000-0000-0000-000000000001}" in runs[0]
+
+
+def test_a_service_that_merely_stalls_still_stops_the_raise(folder: Path) -> None:
+    """The other side of `T347-R6`: skipping *every* failed query would reintroduce `T347-R1`.
+
+    A service that says nothing has not said it has no window. It may be a second instance showing
+    the same file, which is the ambiguity this declines on, so a timeout is still unresolved.
+    """
+    desktop = OnePerInstance(
+        {"org.kde.dolphin-4242": True, "org.kde.dolphin-777": Said(code=1)},
+        {"org.kde.krunner1.Match": MATCHES, "aaaaaaaa": window_info(4242)},
+    )
+
+    raised = raise_the_file_manager(
+        folder / "clip.mp4", run=desktop, platform="linux", available=INSTALLED
+    )
+
+    assert raised is False, "a service that answered nothing was treated as one with no window"
+    assert desktop.method_calls("org.kde.krunner1.Run") == []
+
+
+def test_an_error_quoting_a_file_named_after_it_is_not_a_windowless_service(folder: Path) -> None:
+    """The name is read from where `dbus-send` puts it, not from anywhere in the text.
+
+    A user may name a file `org.freedesktop.DBus.Error.UnknownObject`, and the failure message
+    quotes the argument — so a substring search would let an unrelated error claim the service has
+    no window, and the raise would go to whichever instance answered first. This is the same
+    hazard as the folder named `true` that `answered_true` has a case for.
+    """
+    named = Said(
+        problem=(
+            "Error org.freedesktop.DBus.Error.InvalidArgs: bad url "
+            '"file:///home/u/org.freedesktop.DBus.Error.UnknownObject"'
+        ),
+        code=1,
+    )
+    desktop = OnePerInstance(
+        {"org.kde.dolphin-4242": True, "org.kde.dolphin-777": named},
+        {"org.kde.krunner1.Match": MATCHES, "aaaaaaaa": window_info(4242)},
+    )
+
+    raised = raise_the_file_manager(
+        folder / "clip.mp4", run=desktop, platform="linux", available=INSTALLED
+    )
+
+    assert raised is False, "a file name inside a message was read as the error's own name"
 
 
 def test_nothing_is_asked_on_windows(folder: Path) -> None:

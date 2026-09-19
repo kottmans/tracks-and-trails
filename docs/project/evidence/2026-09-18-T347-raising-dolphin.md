@@ -167,15 +167,45 @@ that means something is the exact pre-correction implementation.)*
 **`T347-R4`, the GUI thread.** Every question was a blocking `subprocess.run` from a Qt slot, with
 the **launch** timeout of ten seconds each. A stalled Dolphin could freeze the application for the
 length of the whole sequence, which `NFR-001` does not allow. `reveal_file` no longer raises
-anything; `ui/file_actions.py` runs the raise on a `QThreadPool` worker that holds no widget, and
-discovery uses a **one second** per-question timeout, because a question nobody asked for does not
-deserve a launch's patience.
+anything; `ui/file_actions.py` runs the raise on a worker that holds no widget, and discovery uses
+a **one second** per-question timeout, because a question nobody asked for does not deserve a
+launch's patience.
+
+*(Its first correction used `QThreadPool.globalInstance()`, which no barrier waits for, and the
+reviewer's probe reached `finished` and called `quit` with a reveal worker still running. The pool
+is a `SealedPool` that composition registers with the shutdown, so it is sealed and drained like
+the other three.)*
 
 **`T347-R1`, ambiguity.** `isUrlOpen(folder)` was the wrong question: several instances can have a
 folder open, and the reveal went to exactly one of them. Dolphin picks its recipient by walking from
 the active window and testing item visibility. The question is now
 `isItemVisibleInAnyView(file)` — the nearest thing this application can ask — and **more than one
-answer declines** rather than raising a window that may be showing a different tab.
+answer declines** rather than raising a window that may be showing a different tab. An instance
+that does not answer at all leaves uniqueness unestablished and declines too.
+
+**`T347-R6`, the daemon, and this one was a regression I introduced.** That last sentence, written
+to close `T347-R1`, broke the feature on every desktop it was built for. `dolphin --daemon` runs on
+any KDE session that has used the file manager, owns an `org.kde.dolphin-<pid>` name exactly as a
+window does, and has **no** `/dolphin/Dolphin_1` object: it answers `UnknownObject` to every
+question. "Decline on any reply I cannot read" therefore declined on all of them, including when
+the window process answered true. The reviewer reproduced it on their own desktop, and the
+maintainer's has the same service.
+
+**Two defects, not one, and the second is why the first was invisible.** `ask` returned `stdout`
+alone, and `dbus-send` writes failures to `stderr` — so the daemon's error arrived as an **empty
+string**, indistinguishable from a stall. The same gap made `answered_true`'s "an error is never a
+yes" guard unreachable in production: no error text ever got to it, so the test naming a folder
+called `true` was proving something about a function the desktop could not reach. `ask` now carries
+both streams.
+
+The exception is narrow, because skipping every failed query would reintroduce `T347-R1`: only the
+four errors that *establish* a service has no main window — `UnknownObject`, `UnknownInterface`,
+`UnknownMethod`, `ServiceUnknown` — are skipped, and the name is read from where `dbus-send` puts
+it, anchored at the start of the line and stopped at the colon. A user may name a file
+`org.freedesktop.DBus.Error.UnknownObject`, and the failure message quotes the argument; a
+substring search would let that file turn an unrelated error into "this service has no window".
+Four mutations, each caught by the test that names it: the branch removed, `stderr` dropped, the
+anchor replaced by a substring search, and every failed query skipped.
 
 **`T347-R5`, the Windows job.** The tests asked the *running machine* whether `dbus-send` exists, so
 the same test asserted one thing on Linux and another on Windows, and the Windows job failed. The
@@ -187,6 +217,12 @@ same `_cancellation_detail`, tested across foreign, default, empty and multiline
 the real model roles.
 
 ## The four cases through the shipped functions
+
+**This table is superseded and is kept for what it measured.** It was captured before the
+discovery changes of `T347-R1` and `T347-R6`, so it cannot speak for the code that ships; the
+reviewer caught it being quoted as though it could. A fresh run at a named revision replaces it,
+and the probe now prints its own revision and every Dolphin service it saw — including the daemon
+it skips — so a capture cannot be read against the wrong source again.
 
 `T347-R2` asked for the production route to have a retained, runnable invocation. It does:
 

@@ -340,6 +340,39 @@ def answered_false(text: str) -> bool:
     return "error" not in text.lower() and "false" in text.lower()
 
 
+#: The D-Bus errors that say **this service is not a window**, as opposed to not answering.
+#:
+#: `dolphin --daemon` runs on every KDE desktop that has ever used the file manager, owns a
+#: `org.kde.dolphin-<pid>` name like any other instance, and has **no** `/dolphin/Dolphin_1`
+#: object — so it answers `UnknownObject`. The other two are the same statement about the
+#: interface and the method, and a name whose owner has gone answers `ServiceUnknown`: none of
+#: them can be the window the reveal went to, because none of them has one.
+#:
+#: **This is the narrow exception to "an unanswered instance is not a no"** (`T347-R6`). Skipping
+#: *every* failed query would reintroduce `T347-R1`; skipping a service that has told us it has no
+#: main window is not a guess about what it might be showing.
+NOT_A_WINDOW: Final = frozenset(
+    {
+        "org.freedesktop.DBus.Error.UnknownObject",
+        "org.freedesktop.DBus.Error.UnknownInterface",
+        "org.freedesktop.DBus.Error.UnknownMethod",
+        "org.freedesktop.DBus.Error.ServiceUnknown",
+    }
+)
+
+#: `Error <name>: <message>`, as `dbus-send` writes a failure. **Anchored to the start of a line
+#: and stopping at the colon**, because the message quotes our own argument: a file named
+#: `org.freedesktop.DBus.Error.UnknownObject` would otherwise let an unrelated failure read as
+#: "this service has no window", and the file's name is something a user chooses.
+_ERROR_NAME = re.compile(r"^\s*Error\s+(\S+?):", re.M)
+
+
+def reply_names_no_window(text: str) -> bool:
+    """Whether a reply is one of the errors that establish the service has no main window."""
+    found = _ERROR_NAME.search(text)
+    return found is not None and found.group(1) in NOT_A_WINDOW
+
+
 def instance_showing(path: Path, ask: Callable[[list[str]], str]) -> str | None:
     """The one Dolphin instance showing `path`, or `None` when that is not exactly one.
 
@@ -352,6 +385,12 @@ def instance_showing(path: Path, ask: Callable[[list[str]], str]) -> str | None:
     So the question is the item, and the answer has to be unique. Two instances showing the file is
     a situation this application cannot resolve from outside, and leaving the window where it is
     beats raising the wrong one.
+
+    **But a service that has no window is not an unresolved answer** (`T347-R6`). The first version
+    of that rule declined on any reply it could not read, and `dolphin --daemon` — present on the
+    reviewer's desktop, and on the maintainer's — replies with an error to every question, because
+    it has no main window at all. One background service was therefore enough to stop every raise
+    on the desktops this task exists to fix, including when the window process answered true.
     """
     names = ask(list_names_command())
     showing = []
@@ -359,11 +398,14 @@ def instance_showing(path: Path, ask: Callable[[list[str]], str]) -> str | None:
         reply = ask(item_visible_command(name, path))
         if answered_true(reply):
             showing.append(name)
+        elif reply_names_no_window(reply):
+            # Established not to be a candidate: it said it has no main window. `tools/
+            # dolphin_raise_probe.py` has skipped these since it was written; production had not.
+            continue
         elif not answered_false(reply):
-            # **An instance that did not answer is not an instance that said no.** A timeout, an
-            # error, or a reply this cannot read leaves uniqueness unestablished — and "one yes
-            # and one unknown" was being treated as one yes, which is the ambiguity this whole
-            # function exists to refuse.
+            # **An instance that did not answer is not an instance that said no.** A timeout or a
+            # reply this cannot read leaves uniqueness unestablished — and "one yes and one
+            # unknown" was being treated as one yes, which is the ambiguity this refuses.
             return None
     return showing[0] if len(showing) == 1 else None
 
@@ -455,6 +497,14 @@ def raise_the_file_manager(
 
         A question this module asks nobody about: it is deciding whether a window can be brought
         forward, and a desktop that cannot answer is a desktop where the answer is no.
+
+        **The answer includes `stderr`, and that is not tidiness** (`T347-R6`). `dbus-send` writes
+        a reply to `stdout` and a *failure* to `stderr`, so returning `stdout` alone turned every
+        error into an empty string. Two things followed. The error this module has to recognise —
+        the background daemon saying it has no main window — was indistinguishable from a stall,
+        which stopped every raise on a real desktop. And `answered_true`'s "an error is never a
+        yes" guard, which has a test naming a folder called `true`, could never fire in
+        production, because no error text ever reached it.
         """
         spawn: Spawner = run if run is not None else _run
         try:
@@ -468,7 +518,9 @@ def raise_the_file_manager(
             )
         except OSError, subprocess.SubprocessError:
             return ""
-        return str(getattr(completed, "stdout", "") or "")
+        out = str(getattr(completed, "stdout", "") or "")
+        problem = str(getattr(completed, "stderr", "") or "")
+        return f"{out}\n{problem}" if problem else out
 
     name = instance_showing(path, ask)
     if name is None:
