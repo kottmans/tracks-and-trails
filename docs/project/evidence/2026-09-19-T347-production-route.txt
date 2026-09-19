@@ -1,0 +1,52 @@
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x56322552d040] Format mov,mp4,m4a,3gp,3g2,mj2 detected only with low score of 1, misdetection possible!
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x56322552d040] moov atom not found
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x56322552d040] Format mov,mp4,m4a,3gp,3g2,mj2 detected only with low score of 1, misdetection possible!
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x56322552d040] moov atom not found
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x55591cce0ec0] Format mov,mp4,m4a,3gp,3g2,mj2 detected only with low score of 1, misdetection possible!
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x55591cce0ec0] moov atom not found
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x55591cce0ec0] Format mov,mp4,m4a,3gp,3g2,mj2 detected only with low score of 1, misdetection possible!
+[mov,mp4,m4a,3gp,3g2,mj2 @ 0x55591cce0ec0] moov atom not found
+probe revision: bfc11c1
+  service org.kde.dolphin-758844: no main window (Error org.freedesktop.DBus.Error.UnknownObject: No such object path '/dolphin/Dolphin_1')
+folder: /tmp/claude-1000/-mnt-storage-software-projects-tracks-and-trails/96fe6b5d-0b34-499b-b845-bc11049b231a/scratchpad/t347/downloads
+target: clip.mp4
+route after ShowItems: production
+
+  == 1. nothing open ==
+    before
+      (no Dolphin window)
+    precondition: established: no Dolphin window at all
+    reveal_file -> None
+    raise_the_file_manager -> True
+    after
+      org.kde.dolphin-1496079: {'pid': 1496079, 'active': True, 'shows the folder': True, 'item visible': True, 'minimized': 'false'}
+
+  == 2. open on another folder ==
+    before
+      org.kde.dolphin-1496186: {'pid': 1496186, 'active': False, 'shows the folder': False, 'item visible': False, 'minimized': 'false'}
+    precondition: established: org.kde.dolphin-1496186 is open and no window shows the folder
+    reveal_file -> None
+    raise_the_file_manager -> True
+    after
+      org.kde.dolphin-1496186: {'pid': 1496186, 'active': False, 'shows the folder': False, 'item visible': False, 'minimized': 'false'}
+      org.kde.dolphin-1496250: {'pid': 1496250, 'active': True, 'shows the folder': True, 'item visible': True, 'minimized': 'false'}
+
+  == 3. open on the target folder ==
+    before
+      org.kde.dolphin-1496307: {'pid': 1496307, 'active': False, 'shows the folder': True, 'item visible': True, 'minimized': 'false'}
+    precondition: established: org.kde.dolphin-1496307 shows the folder, is behind ours and is not minimized
+    reveal_file -> None
+    raise_the_file_manager -> True
+    after
+      org.kde.dolphin-1496307: {'pid': 1496307, 'active': True, 'shows the folder': True, 'item visible': True, 'minimized': 'false'}
+
+  == 4. open on the target folder, minimized ==
+    minimized, and KWin agrees
+    before
+      org.kde.dolphin-1496388: {'pid': 1496388, 'active': False, 'shows the folder': True, 'item visible': True, 'minimized': 'true'}
+    precondition: established: org.kde.dolphin-1496388 shows the folder and is minimized
+    reveal_file -> None
+    raise_the_file_manager -> True
+    after
+      org.kde.dolphin-1496388: {'pid': 1496388, 'active': True, 'shows the folder': True, 'item visible': True, 'minimized': 'false'}
+

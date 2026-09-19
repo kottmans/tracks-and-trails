@@ -16,8 +16,16 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ### T-347 — Show in folder leaves an already-open Dolphin window minimized on KDE Wayland
 
-**Status:** **In Review** — **ruled and built 2026-09-18**. The narrow KWin route is in
-`ui/reveal.py`, verified on the real desktop through `reveal_file` itself for both failing cases.
+**Status:** **In Review** — **ruled and built 2026-09-18**, corrected through four review rounds
+and **re-measured on the desktop at `bfc11c1` on 2026-09-19**. The narrow KWin route is in
+`ui/reveal.py`, verified on the real desktop through `reveal_file` itself for all four cases.
+
+**Maintainer ruling, 2026-09-19 — `TESTING.md` §14.** The ordinary budget of one comprehensive
+review plus one focused correction was spent with two blocking Medium findings open
+(`T347-R1` reopened, `T347-R2`), so the reviewer stopped the loop and asked. The maintainer
+**authorized one further focused correction and evidence pass**, and separately consented to the
+probe being run on their own desktop — it opens and closes Dolphin windows, minimizes one and
+takes focus for about three minutes. Both corrections and the capture are in that pass.
 *(Was Proposed:)* measured 2026-09-18 and waiting on a ruling: every route that could
 raise the window was tried on the KDE Plasma Wayland desktop the report came from, one works, and
 which shape to build is the maintainer's (below). *(Was:)* left for after `0.1.0` by the maintainer

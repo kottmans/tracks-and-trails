@@ -228,25 +228,44 @@ the real model roles.
 
 ## The four cases through the shipped functions
 
-**This table is superseded and is kept for what it measured.** It was captured before the
-discovery changes of `T347-R1` and `T347-R6`, so it cannot speak for the code that ships; the
-reviewer caught it being quoted as though it could. A fresh run at a named revision replaces it,
-and the probe now prints its own revision and every Dolphin service it saw — including the daemon
-it skips — so a capture cannot be read against the wrong source again.
-
 `T347-R2` asked for the production route to have a retained, runnable invocation. It does:
 
     PYTHONPATH=tools python -m dolphin_raise_probe --folder <…> --raise-route production
 
-which calls `reveal_file` and `raise_the_file_manager` themselves. The full output is
-[`2026-09-18-T347-production-route.txt`](2026-09-18-T347-production-route.txt); in summary:
+which calls `reveal_file` and `raise_the_file_manager` themselves.
 
-| Case | Precondition | After the application's own call |
-|---|---|---|
-| 1. nothing open | established: no Dolphin window at all | a new window, **active** |
-| 2. a window open elsewhere | established: it shows no folder | a new window, active; the first untouched |
-| 3. shows the folder, behind ours | established: behind **and not minimized** | **`active: False → True`** |
-| 4. shows the folder, minimized | `minimized, and KWin agrees` | **`minimized: true → false`, `active: True`** |
+### Measured 2026-09-19 at `bfc11c1`, on a clean tree
+
+Full output: [`2026-09-19-T347-production-route.txt`](2026-09-19-T347-production-route.txt). The
+maintainer authorized this third focused pass and the desktop run under `TESTING.md` §14.
+
+**The daemon is in the capture, by name**, which is the point of it:
+
+    service org.kde.dolphin-758844: no main window
+      (Error org.freedesktop.DBus.Error.UnknownObject: No such object path '/dolphin/Dolphin_1')
+
+That is the service that made `T347-R6` stop every raise on this desktop. It is still there, still
+answering `UnknownObject`, and every case below now works with it present.
+
+| Case | Precondition | `raise_the_file_manager` | The target window |
+|---|---|---|---|
+| 1. nothing open | established: no Dolphin window at all | `True` | a new window, `active: True` |
+| 2. a window open elsewhere | established: one open, none shows the folder | `True` | a new window active; the first untouched, `active: False` throughout |
+| 3. shows the folder, behind ours | established: behind and **measured** `minimized: false` | `True` | **`active: False → True`** |
+| 4. shows the folder, minimized | `minimized, and KWin agrees`, `minimized: true` | `True` | **`minimized: true → false`, `active: False → True`** |
+
+**Cases 1 and 2 return `True` where the earlier table said "unchanged", and that is not a change in
+behaviour.** `ShowItems` has just opened a window showing the file, so discovery finds exactly one
+instance and asks KWin to activate the window that is already in front. The user sees what they saw
+before; the return value reports that a request was sent, not that anything moved.
+
+### The superseded capture, kept for what it measured
+
+[`2026-09-18-T347-production-route.txt`](2026-09-18-T347-production-route.txt) was taken before the
+discovery changes of `T347-R1` and `T347-R6`, so it cannot speak for the code that ships; the
+reviewer caught it being quoted as though it could. It is retained because it is the measurement
+that corrected the original report's table. The probe now prints its own revision and every Dolphin
+service it saw, so a capture cannot be read against the wrong source again.
 
 **Three corrections to the probe itself**, all from `T347-R2`:
 
