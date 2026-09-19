@@ -2,7 +2,7 @@
 
 **Purpose:** Navigation to canonical task and shared-scope review records.
 **Owner:** Reviewer; Coordinator / Integrator owns shared routing during a wave.
-**Last updated:** 2026-09-18
+**Last updated:** 2026-09-19
 **Update when:** A review record is introduced or its navigation changes.
 
 ## Current navigation
@@ -165,7 +165,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-344](reviews/T-344.md) | T-344; processing progress at 55dcf05, checked through ea49516; installed-build observation pending | 0 |
 | [T-345](reviews/T-345.md) | T-345; startup offer and chip wording at 81d7bdd, checked through ea49516; implementation approved, draft acceptance separate | 0 |
 | [T-346](reviews/T-346.md) | T-346, accompanying T-347 filing; [plain-text correction review](reviews/T-346.md#2026-09-15--focused-plain-text-correction-review), b900047 to 48cf076; implementation approved, T346-R1 resolved | 0 |
-| [T-347](reviews/T-347.md) | T-347; [sealed worker correction and daemon discovery regression](reviews/T-347.md#2026-09-18--sealed-worker-correction-and-daemon-discovery-regression), checked at 0cec265; changes requested on R6 and remaining R2 evidence | 0 |
+| [T-347](reviews/T-347.md) | T-347; [daemon exception correction and unsupported-query ambiguity](reviews/T-347.md#2026-09-19--daemon-exception-correction-and-unsupported-query-ambiguity), bounded patch over 4222a7e; R6 resolved, blocked on reopened R1 and R2 evidence | 0 |
 | [T-348](reviews/T-348.md) | T-348; [attribution correction and accepted amendment](reviews/T-348.md#2026-09-18--attribution-correction-and-accepted-amendment), checked at 24a5450 | 0 |
 | [Phase 5 second batch](reviews/phase-5-second-batch.md) | Shared validation and coordination, 2e2507b to 8e67f6f; corrections through ddc8f3d | 0 |
 | <a id="2026-07-26--note-commit-shas-in-this-file-were-remapped"></a>[commit-reference-remap](reviews/commit-reference-remap.md) | T-033 | 1 |
