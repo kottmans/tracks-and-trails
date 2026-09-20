@@ -828,6 +828,50 @@ under a stated precedence.
 - **Precedence.** A typed field wins over the hatch for the same user-owned key, because it is the
   one with a visible control; an application-owned key is never overridable at all
 
+#### Maintainer rulings, 2026-09-20 — the four shapes the build needed
+
+Put with costs and a recommendation each; all four taken as recommended. The `writethumbnail` one
+is recorded as an **`ARC-010` amendment**, because that entry owns the precedence rule it excepts.
+
+| Ruling | Recorded in |
+|---|---|
+| Edit-time validation runs **in the GUI process, lazily** | here |
+| The field holds **the text the user typed and the parsed result** | here |
+| `writethumbnail` is a **union**, and the user's keep survives it | **`ARC-010` amendment** |
+| A per-job value **replaces** the preset's entirely | here |
+
+**Validation runs in the GUI, on a lazy import.** The GUI process does not import yt-dlp today, and
+`yt_dlp.options` costs **0.13 s and 25 MiB** (measured 2026-09-19). A downloader-layer module
+imports it on first use of the hatch field, so only a user who types an option pays, once, and
+validation stays synchronous — which is what makes "a malformed field fails at edit time" a simple
+rule rather than a pending state in the dialog. The alternative, validating through the worker
+pool, keeps the GUI free of yt-dlp but makes an edit-time refusal asynchronous and able to arrive
+after the user has moved on. **What this costs:** the GUI process holds yt-dlp once the hatch is
+used, which `ARCHITECTURE.md` §4 keeps out of `ui/` by import rule. The rule is not broken — `ui/`
+imports a `downloader/` module, which is where yt-dlp is allowed — but the intent is worth stating
+plainly rather than discovering in review.
+
+**The field holds both the text and the parsed result.** `REQ-031` requires the parsed result to be
+a declared member rather than an untyped dictionary, and it is; the text is kept beside it because
+it is what the user edits and must be shown back verbatim. Storing only the parsed values would
+return `-c` as `--continue` and could not show anything that normalised away. Storing only the text
+would move the parse to job-creation time, so a queued job that validated a week ago could be
+refused on a yt-dlp that has moved since. Keeping both makes that disagreement **visible** instead.
+
+**A per-job value replaces the preset's.** `REQ-031` says the field is per preset and overridable
+per job; replacement is the reading a user can see, because the text in front of them is the text
+that will apply. Appending would produce an effective option set that appears in neither field and
+resolve conflicts by a rule with no surface. `core/presets.to_request` raises `PresetOverrideError`
+for any override of a preset-owned field, so this ruling needs an exemption there rather than
+riding on the existing behaviour.
+
+**Migration `0013` is still not started, and may not be owed at all.** Measured 2026-09-20: the
+request is stored as one JSON blob in `jobs.request`, `_REQUEST_FIELDS` is derived from the
+dataclass, and `_deserialize_request` gives a blob without the key the dataclass default — so a new
+optional field needs **no schema change**. If that holds once the field exists, `T-048` keeps
+waiting for the project's first value-transforming migration rather than getting one here, and this
+task says so rather than inventing one to satisfy a criterion.
+
 #### Acceptance criteria
 
 - A valid option typed into the field reaches yt-dlp, proved by the option dictionary the worker

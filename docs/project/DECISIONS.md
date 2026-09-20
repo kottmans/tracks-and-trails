@@ -5413,6 +5413,37 @@ Which option families `REQ-EXCL` forbids, permits, or permits in a narrowed form
 `--impersonate`, `--xff`, `--exec`, `--download-archive`. **`T-182` owns that ruling**, and no
 typed field or refusal-list entry for those families may be written until it is taken.
 
+### Amended 2026-09-20 — `writethumbnail` is shared, and sharing it is a union
+
+**Status:** **Accepted** — maintainer ruling of 2026-09-20, on `T-184`'s costed options. Raised by
+the audit's **Finding 6**, which named this the one key a typed control has to *share* rather than
+own and left the merge rule to `T-184`.
+
+**The problem this entry did not foresee.** §3's precedence rule has two halves: where a typed
+field and the hatch name the same user-owned key the typed field wins, and **the hatch may not
+override an application-owned key**. `writethumbnail` is application-owned — `build_options` sets
+it `True` whenever `embed_thumbnail` is set, so yt-dlp writes the picture, embeds it and then
+deletes it. Read literally, the second half refuses `--write-thumbnail` outright, and `T-249`'s
+future control could not keep the file either.
+
+**Why refusing it would be the wrong reading.** The two intents are not in conflict. The
+application writes the thumbnail *in order to embed it* and deletes it afterwards because nobody
+asked to keep it; a user asking to keep it changes only the deletion. Treating that as an override
+would refuse a request that takes nothing away from what the application wanted.
+
+**What is ruled: a union, and the user's keep survives it.** The thumbnail is written when
+**either** the application or the user asks for it, and the file is **kept** when the user asks to
+keep it, whether that request arrives through `T-249`'s control or through the hatch. Embedding is
+unaffected: a job that embeds and a user who keeps both get what they asked for.
+
+**This is the exception and it is named.** `writethumbnail` is the only application-owned key the
+hatch may reach, by this amendment. Every other one is refused with the audit's stated reason, and
+§3's second half stands unchanged for all of them.
+
+**Not ruled:** the tri-state control itself, which is `T-249`'s, or what the hatch does when a
+*future* application-owned key turns out to be shareable. That needs its own reading, because the
+argument above is about these two intents rather than about sharing in general.
+
 ---
 
 ## UX-007 — The Phase 3 surfaces, ruled: all 25 open `[P]` clauses
