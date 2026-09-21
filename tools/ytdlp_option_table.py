@@ -61,6 +61,23 @@ AUDIT_VERSION: Final = "{version}"
 #: is by the string the user actually typed and no caller has to know which spellings are aliases.
 OPTION_CLASSES: Final[dict[str, tuple[str, str]]] = {{
 {rows}}}
+
+#: The typed options that already have a control, spelling -> the `DownloadRequest` field.
+#:
+#: `ARC-010` gives the visible control the win where both name the same user-owned key, so these
+#: are **refused** through the hatch and pointed at their control. A typed option that is still
+#: waiting for its task is permitted, and only this table tells the two apart.
+TYPED_WITH_A_FIELD: Final[dict[str, str]] = {{
+{built}}}
+
+#: Every spelling the parser knows, and how many values it consumes.
+#:
+#: **Pinned rather than asked at runtime.** `tests/unit/test_layering.py` confines `yt_dlp` imports
+#: to `worker.py` and `ytdlp_adapter.py` so upstream churn stays absorbable (`NFR-008`), and the
+#: hatch has to decide what a user typed before anything is parsed. It covers suppressed options
+#: too: they are known spellings with no ruling, which is a different answer from "no such option".
+OPTION_ARITY: Final[dict[str, int]] = {{
+{arity}}}
 '''
 
 
@@ -77,6 +94,49 @@ def audit_rows() -> list[tuple[tuple[str, ...], str, str]]:
             spellings = tuple(re.findall(r"`([^`]+)`", match.group(1)))
             found.append((spellings, match.group(2), match.group(3)))
     return found
+
+
+def built_typed_options() -> dict[str, str]:
+    """The typed options that already have a `DownloadRequest` field, read from the audit.
+
+    **Stated rather than inferred**, which is `T183-R4`'s correction: deriving "built" from what
+    the nine typed tasks did not claim is circular, and swapping a built option for an unbuilt one
+    kept every count intact. The hatch needs this because a typed option **with** a control is
+    refused — `ARC-010` gives the visible control the win — while one still waiting for its task is
+    permitted, and only this table separates them.
+    """
+    text = AUDIT.read_text(encoding="utf-8")
+    header = text.index("| Option | `DownloadRequest` field |")
+    table = text[header : text.index("\n\n", header)]
+    return {
+        found.group(1): found.group(2)
+        for line in table.split("\n")[2:]
+        if (found := re.match(r"^\| `([^`]+)` \| `([^`]+)` \|$", line.strip()))
+    }
+
+
+def parser_arity() -> dict[str, int]:
+    """Every spelling yt-dlp's parser knows, and how many values each consumes.
+
+    **Generated rather than read at runtime**, and that is an architecture rule rather than a
+    preference: `tests/unit/test_layering.py` confines `yt_dlp` imports to `worker.py` and
+    `ytdlp_adapter.py`, so upstream churn stays absorbable (`NFR-008`). Pinning the table here
+    means the hatch can decide what a user typed **without importing yt-dlp at all**, and the
+    version test fails if the installed release ever stops matching the pin.
+
+    `create_parser()` builds the option table and returns; none of `parse_options`' side effects
+    happen, which is what makes this safe to run at all.
+    """
+    from yt_dlp.options import create_parser
+
+    parser = create_parser()
+    arity: dict[str, int] = {}
+    for group in parser.option_groups:
+        for option in group.option_list:
+            takes = option.nargs if option.takes_value() else 0
+            for spelling in tuple(option._short_opts) + tuple(option._long_opts):
+                arity[spelling] = takes or 0
+    return arity
 
 
 def audit_version() -> str:
@@ -122,7 +182,16 @@ def rendered() -> str:
     for spellings, group, reason in sorted(audit_rows()):
         for spelling in spellings:
             lines.append(_entry(spelling, group, reason))
-    return _formatted(_HEADER.format(version=audit_version(), rows="".join(lines)))
+    built = "".join(
+        f"    {spelling!r}: {field!r},\n"
+        for spelling, field in sorted(built_typed_options().items())
+    )
+    arity = "".join(
+        f"    {spelling!r}: {takes!r},\n" for spelling, takes in sorted(parser_arity().items())
+    )
+    return _formatted(
+        _HEADER.format(version=audit_version(), rows="".join(lines), built=built, arity=arity)
+    )
 
 
 def _formatted(text: str) -> str:
