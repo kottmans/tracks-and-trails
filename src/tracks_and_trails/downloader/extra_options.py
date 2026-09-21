@@ -39,6 +39,8 @@ from dataclasses import dataclass
 from typing import Final
 
 from tracks_and_trails.downloader.option_table import (
+    EFFECT_UNKNOWN,
+    NO_OBSERVABLE_EFFECT,
     OPTION_ARITY,
     OPTION_CLASSES,
     TYPED_WITH_A_FIELD,
@@ -65,6 +67,20 @@ NOT_AN_OPTION: Final = "yt-dlp has no option by this name at the version this ap
 #: permitted later by a ruling of its own. Until then default-deny answers for them.
 NOT_RULED: Final = (
     "This option has no ruling behind it yet, so this application does not pass it on."
+)
+
+#: What a user is told when the option does nothing this application can see.
+#:
+#: Measured rather than assumed: `tools/ytdlp_option_table.py` compares two values of the option
+#: and finds no key that changes. Ten admitted options are in that position at this yt-dlp release
+#: — several are negations that restore a default, and `--post-overwrites` is one the audit's
+#: Finding 7 singled out. The maintainer ruled on 2026-09-20 that they are refused rather than
+#: accepted as silent no-ops, because a user told nothing has no way to learn the option was idle.
+NO_EFFECT: Final = "This option changes nothing in the version of yt-dlp this application uses."
+
+#: What a user is told when the effect cannot be measured at all.
+UNKNOWN_EFFECT: Final = (
+    "This application cannot tell what this option would change, so it does not pass it on."
 )
 
 
@@ -124,7 +140,15 @@ def _reason_to_refuse(spelling: str) -> str | None:
     if ruling is None:
         return NOT_RULED
     group, reason = ruling
-    return None if group in ADMITTED_CLASSES else reason
+    if group not in ADMITTED_CLASSES:
+        return reason
+    # Admitted by class, and then asked whether it does anything. An option this application
+    # cannot show reaching yt-dlp is refused rather than accepted and quietly ignored.
+    if spelling in NO_OBSERVABLE_EFFECT:
+        return NO_EFFECT
+    if spelling in EFFECT_UNKNOWN:
+        return UNKNOWN_EFFECT
+    return None
 
 
 def split_the_text(text: str) -> tuple[list[str], Refusal | None]:

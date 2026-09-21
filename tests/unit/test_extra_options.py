@@ -16,8 +16,10 @@ import pytest
 
 from tracks_and_trails.downloader.extra_options import (
     HAS_A_CONTROL,
+    NO_EFFECT,
     NOT_AN_OPTION,
     NOT_RULED,
+    UNKNOWN_EFFECT,
     admit,
     option_arity,
     refusal_lines,
@@ -143,6 +145,40 @@ def test_an_option_no_ruling_covers_is_refused_rather_than_allowed() -> None:
 
     assert option == "--all-subs"
     assert reason == NOT_RULED
+
+
+def test_an_option_that_changes_nothing_is_refused_rather_than_ignored() -> None:
+    """Maintainer ruling of 2026-09-20, measured rather than assumed.
+
+    `--post-overwrites` is a `hatch` row, so its class admits it — and comparing two values of it
+    produces no key at all at this yt-dlp release. Accepting it would accept an option and then do
+    nothing, which is `REQ-031`'s "accepted and silently dropped" with extra steps, and leaves the
+    criterion "a valid option reaches yt-dlp, proved by the option dictionary" with nothing to
+    prove. The user is told the fact instead.
+    """
+    option, reason = only_refusal("--post-overwrites")
+
+    assert option == "--post-overwrites"
+    assert reason == NO_EFFECT
+
+
+def test_an_option_whose_effect_cannot_be_measured_is_refused() -> None:
+    """The stronger case: not "it does nothing" but "this cannot say what it does".
+
+    `--ap-mso` needs a real television provider id to validate, so no value the generator can
+    supply exercises it, and its destinations were never measured. Refusing is the honest answer;
+    admitting it would mean merging keys nobody has seen.
+    """
+    option, reason = only_refusal("--ap-mso x")
+
+    assert option == "--ap-mso"
+    assert reason == UNKNOWN_EFFECT
+
+
+def test_an_option_with_a_measured_destination_is_still_usable() -> None:
+    """The control for the two above: refusing the unprovable did not refuse everything."""
+    assert admit("--continue").usable
+    assert admit("--fragment-retries 10").usable
 
 
 def test_a_word_that_is_not_an_option_is_refused() -> None:

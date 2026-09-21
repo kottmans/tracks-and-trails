@@ -23,6 +23,8 @@ hatch is **default-deny** — is the maintainer's, taken 2026-09-18.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import re
 import subprocess
 import sys
@@ -31,6 +33,10 @@ from typing import Final
 
 ROOT: Final = Path(__file__).resolve().parent.parent
 AUDIT: Final = ROOT / "docs" / "YTDLP_OPTION_AUDIT.md"
+
+#: The audit classes the hatch may reach. Mirrors `downloader/extra_options.ADMITTED_CLASSES`,
+#: which is the module that acts on it; a disagreement shows up as an option with no destination.
+_ADMITTED: Final = frozenset({"hatch", "typed"})
 TARGET: Final = ROOT / "src" / "tracks_and_trails" / "downloader" / "option_table.py"
 
 #: The audit's own row shape: one or more backtick-quoted spellings, a class, a reason.
@@ -78,6 +84,38 @@ TYPED_WITH_A_FIELD: Final[dict[str, str]] = {{
 #: too: they are known spellings with no ruling, which is a different answer from "no such option".
 OPTION_ARITY: Final[dict[str, int]] = {{
 {arity}}}
+
+#: Spelling -> the option-dictionary keys that option changes.
+#:
+#: **Measured by comparing two values of the same option**, never a value against the defaults
+#: (`T184-R1`). An explicit value that happens to equal the default produces an empty diff, so a
+#: map built that way would omit `fragment_retries` for `--fragment-retries 10` — and yt-dlp reads
+#: the absent key as **zero** retries, giving the user the opposite of what they asked for.
+#:
+#: The merge carries these keys at whatever value the parse produced, equal to the default or not.
+OPTION_KEYS: Final[dict[str, tuple[str, ...]]] = {{
+{keys}}}
+
+#: Admitted options that change nothing this application can observe at this yt-dlp release.
+#:
+#: The maintainer ruled on 2026-09-20 that these are **refused with that reason**. Accepting them
+#: would mean accepting an option and then doing nothing, which is what `REQ-031` means by "never
+#: accepted and silently dropped"; and the acceptance criterion that a valid option reaches yt-dlp
+#: is unprovable for them, because there is no key to prove it with.
+NO_OBSERVABLE_EFFECT: Final[frozenset[str]] = frozenset(
+    {{
+{inert}    }}
+)
+
+#: Admitted options no value in the generator's ladder can exercise, so their effect is unmeasured.
+#:
+#: Refused by the same ruling and for the stronger reason: this application cannot say what they
+#: would change. `--max-sleep-interval` needs `--min-sleep-interval` beside it to validate, and
+#: `--ap-mso` needs a real television provider id.
+EFFECT_UNKNOWN: Final[frozenset[str]] = frozenset(
+    {{
+{unknown}    }}
+)
 '''
 
 
@@ -139,6 +177,127 @@ def parser_arity() -> dict[str, int]:
     return arity
 
 
+#: Values tried in order until a pair of them parses and shows a difference.
+#:
+#: **Two values of the same option, never a value against the defaults** (`T184-R1`). Diffing an
+#: option against an empty argv is blind whenever the value a user typed *is* the default:
+#: `--fragment-retries 10` produces exactly the default dictionary, the diff is empty, and the key
+#: is then absent — which yt-dlp's `RetryManager` reads as **zero** retries. Comparing two values
+#: of the option finds the destination whatever the defaults happen to be.
+#:
+#: The list is a ladder rather than a type map because yt-dlp declares many numeric and format
+#: options as strings and validates them itself, so `option.type` does not say what is acceptable.
+_LADDER: Final = (
+    ("1", "2"),
+    ("x", "y"),
+    ("1K", "2K"),
+    ("20200101", "20200102"),
+    ("mp4", "mkv"),
+    ("srt", "vtt"),
+    ("jpg", "png"),
+    ("sponsor", "selfpromo"),
+    ("youtube-dl", "filename"),
+    ("en", "de"),
+    ("1s", "2s"),
+    ("title:x", "title:y"),
+    ("key=1", "key=2"),
+    ("1:2", "3:4"),
+    ("infinite", "3"),
+    ("5", "6"),
+)
+
+
+def _quietly(argv: list[str]) -> dict[str, object]:
+    """`parse_options`, with its usage text kept out of this program's own output."""
+    from yt_dlp import parse_options
+
+    with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+        return dict(parse_options(argv).ydl_opts)
+
+
+def _spellings(option: object) -> tuple[str, ...]:
+    return tuple(option._short_opts) + tuple(option._long_opts)  # type: ignore[attr-defined]
+
+
+def _canonical(option: object) -> str:
+    return (option._long_opts or option._short_opts)[0]  # type: ignore[attr-defined]
+
+
+def _candidate_pairs(option: object, known: dict[str, object]) -> list[tuple[list[str], list[str]]]:
+    """Argv pairs differing only in this option, best first."""
+    spelling = _canonical(option)
+    tried: list[tuple[list[str], list[str]]] = []
+    if not option.takes_value():  # type: ignore[attr-defined]
+        negation = "--no-" + spelling.removeprefix("--")
+        plain = "--" + spelling.removeprefix("--no-")
+        if negation in known:
+            tried.append(([spelling], [negation]))
+        if spelling.startswith("--no-") and plain in known and not known[plain].takes_value():  # type: ignore[attr-defined]
+            tried.append(([spelling], [plain]))
+        # Against nothing at all, which is the only pair available to a flag with no counterpart.
+        tried.append(([spelling], []))
+        return tried
+
+    count = max(1, option.nargs or 1)  # type: ignore[attr-defined]
+    choices = option.choices  # type: ignore[attr-defined]
+    if option.type == "choice" and choices and len(choices) > 1:  # type: ignore[attr-defined]
+        tried.append(([spelling, *[choices[0]] * count], [spelling, *[choices[1]] * count]))
+    tried.extend(
+        ([spelling, *[first] * count], [spelling, *[second] * count]) for first, second in _LADDER
+    )
+    return tried
+
+
+def derive_destinations() -> tuple[dict[str, tuple[str, ...]], list[str], list[str]]:
+    """What each admitted option changes in the option dictionary, measured rather than assumed.
+
+    Returns the destinations per spelling, the options that change nothing observable at this pin,
+    and the options no value here can exercise. The maintainer ruled on 2026-09-20 that the last
+    two are **refused**, each with the reason it is refused: an option that cannot be shown to
+    reach yt-dlp must not be accepted and then quietly do nothing.
+    """
+    from yt_dlp.options import create_parser
+
+    parser = create_parser()
+    options = [option for group in parser.option_groups for option in group.option_list]
+    known = {spelling: option for option in options for spelling in _spellings(option)}
+
+    classes = {spelling: group for spellings, group, _ in audit_rows() for spelling in spellings}
+    built = set(built_typed_options())
+
+    destinations: dict[str, tuple[str, ...]] = {}
+    inert: list[str] = []
+    unknown: list[str] = []
+    for option in options:
+        spellings = _spellings(option)
+        group = classes.get(_canonical(option))
+        if group not in _ADMITTED or any(spelling in built for spelling in spellings):
+            continue
+        keys: list[str] = []
+        parsed = False
+        for first, second in _candidate_pairs(option, known):
+            try:
+                before, after = _quietly(first), _quietly(second)
+            except BaseException:  # noqa: S112 - a value this pair cannot supply; try the next
+                # `BaseException`, because `optparse` raises `SystemExit` for a bad value as
+                # readily as it raises an error, and a probe that let that through would take the
+                # generator with it. Nothing is logged: an unusable pair is the expected case,
+                # and the pairs that never work are reported by name as `EFFECT_UNKNOWN`.
+                continue
+            parsed = True
+            keys = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+            if keys:
+                break
+        if keys:
+            for spelling in spellings:
+                destinations[spelling] = tuple(keys)
+        elif parsed:
+            inert.extend(spellings)
+        else:
+            unknown.extend(spellings)
+    return destinations, sorted(inert), sorted(unknown)
+
+
 def audit_version() -> str:
     stated = re.search(r"\*\*yt-dlp version:\*\* \*\*([0-9.]+)\*\*", AUDIT.read_text("utf-8"))
     if stated is None:
@@ -189,8 +348,20 @@ def rendered() -> str:
     arity = "".join(
         f"    {spelling!r}: {takes!r},\n" for spelling, takes in sorted(parser_arity().items())
     )
+    destinations, inert, unknown = derive_destinations()
+    keys = "".join(
+        f"    {spelling!r}: {found!r},\n" for spelling, found in sorted(destinations.items())
+    )
     return _formatted(
-        _HEADER.format(version=audit_version(), rows="".join(lines), built=built, arity=arity)
+        _HEADER.format(
+            version=audit_version(),
+            rows="".join(lines),
+            built=built,
+            arity=arity,
+            keys=keys,
+            inert="".join(f"        {spelling!r},\n" for spelling in inert),
+            unknown="".join(f"        {spelling!r},\n" for spelling in unknown),
+        )
     )
 
 
