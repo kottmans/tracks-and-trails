@@ -22,6 +22,7 @@ from tracks_and_trails.downloader.extra_options import (
     UNKNOWN_EFFECT,
     admit,
     option_arity,
+    options_for,
     refusal_lines,
 )
 from tracks_and_trails.downloader.option_table import OPTION_CLASSES
@@ -310,6 +311,59 @@ def test_admitting_options_pulls_in_no_yt_dlp() -> None:
     assert finished.stdout.strip() == "False", (
         f"admission imported yt-dlp after all: {finished.stdout!r} {finished.stderr!r}"
     )
+
+
+def test_the_one_call_the_interface_makes_gives_both_halves() -> None:
+    """`options_for` is what the dialog calls: the refusals to show, and the values to store."""
+    admission, values = options_for("--continue --fragment-retries 10")
+
+    assert admission.usable
+    assert values == (("continuedl", True), ("fragment_retries", 10))
+
+
+def test_a_refused_field_produces_no_values_to_store() -> None:
+    """A caller cannot store options from a field the user has not got right yet."""
+    admission, values = options_for('--exec "touch /tmp/x"')
+
+    assert not admission.usable
+    assert values == ()
+
+
+def test_an_empty_field_parses_nothing_and_loads_nothing() -> None:
+    """The common case. **Nothing is imported for a user who never opens the hatch.**
+
+    The maintainer approved 0.13 s and 25 MiB for edit-time validation on the understanding that
+    only a user who types an option pays it. This asserts the empty field costs nothing, in a
+    subprocess because this session has long since imported yt-dlp for other reasons.
+    """
+    source = (
+        "import sys;"
+        "from tracks_and_trails.downloader.extra_options import options_for;"
+        "options_for('');"
+        "print('yt_dlp' in sys.modules)"
+    )
+    finished = subprocess.run(
+        [sys.executable, "-c", source], capture_output=True, text=True, check=True
+    )
+
+    assert finished.stdout.strip() == "False", (
+        f"an empty hatch field loaded yt-dlp: {finished.stdout!r} {finished.stderr!r}"
+    )
+
+
+def test_a_refused_field_does_not_load_the_parser_either() -> None:
+    """Refusal comes before the parser, so a refused field never reaches the import (`T184-R3`)."""
+    source = (
+        "import sys;"
+        "from tracks_and_trails.downloader.extra_options import options_for;"
+        "options_for('--exec x');"
+        "print('yt_dlp' in sys.modules)"
+    )
+    finished = subprocess.run(
+        [sys.executable, "-c", source], capture_output=True, text=True, check=True
+    )
+
+    assert finished.stdout.strip() == "False", "a refused field still paid for the parser"
 
 
 def test_the_refusals_read_as_lines_a_person_can_be_shown() -> None:

@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import shlex
 from dataclasses import dataclass
-from typing import Final
+from typing import Any, Final
 
 from tracks_and_trails.downloader.option_table import (
     EFFECT_UNKNOWN,
@@ -223,6 +223,31 @@ def admit(text: str) -> Admission:
         # Nothing is offered from a field that has a refusal in it. See `Admission`.
         return Admission((), tuple(refusals))
     return Admission(tuple(accepted), ())
+
+
+def options_for(text: str) -> tuple[Admission, tuple[tuple[str, Any], ...]]:
+    """Admit `text` and, if every option in it may be used, say what it produces.
+
+    **The one call the user interface makes**, and the reason it exists here rather than in `ui/`:
+    the parse needs yt-dlp, `ui/` may not import it, and the maintainer ruled on 2026-09-20 that
+    edit-time validation runs in the GUI process **lazily**. So the import happens on the line
+    below, reached only when a field has usable options in it — a user who never opens the hatch,
+    and one whose text is refused, both pay nothing.
+
+    Returns the admission — which carries every refusal the user has to see — and the parsed
+    pairs, which are empty whenever the admission is not usable. The pair shape is what
+    `DownloadRequest.extra_option_values` takes.
+    """
+    admission = admit(text)
+    if not admission.usable or not admission.accepted:
+        # **`accepted` as well as `usable`**, or an empty field imports the parser to ask it
+        # about nothing. Every user who never opens the hatch has an empty field, so that is the
+        # common path, and it is the one the 25 MiB was approved on the understanding it avoids.
+        return admission, ()
+
+    from tracks_and_trails.downloader.ytdlp_adapter import hatch_options
+
+    return admission, tuple(sorted(hatch_options(admission.accepted).items()))
 
 
 def refusal_lines(admission: Admission) -> tuple[str, ...]:
