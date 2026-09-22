@@ -77,6 +77,9 @@ _BASE: Final[dict[str, Any]] = {
     "format_selector": "bv*+ba/b",
     "output_template": "%(title)s.%(ext)s",
 }
+#: The hatch's contribution to the cases below, named once so it can be taken back out.
+_HATCH_ON: Final[tuple[tuple[str, Any], ...]] = (("fragment_retries", 10),)
+
 #: One value per `DownloadRequest` field that can turn a branch on inside `build_options`.
 _FIELD_ON: Final = {
     "media_kind": MediaKind.AUDIO,
@@ -94,7 +97,18 @@ _FIELD_ON: Final = {
     "rate_limit_bytes": 1024,
     "retries": 0,
     "cookies_from_browser": "firefox",
+    # **The escape hatch, exercised with a key nothing else in this file uses** (`T-184`).
+    #
+    # It has to be here, or the completeness assertion below fails — but what it contributes is
+    # subtracted again in `_emitted_keys`. See the note there: a key the *user* supplied through
+    # the hatch is not a key the application sets, and conflating the two would make
+    # `test_no_key_build_options_sets_is_reachable_through_the_hatch` vacuous.
+    "extra_options": "--fragment-retries 10",
+    "extra_option_values": _HATCH_ON,
 }
+
+#: What the hatch case above contributes, so it can be taken back out.
+_HATCH_KEYS: Final = frozenset(key for key, _ in _HATCH_ON)
 _KEYWORD_ON: Final = {
     "probe_only": True,
     "ffmpeg_location": Path("/usr/bin/ffmpeg"),
@@ -130,7 +144,15 @@ def _emitted_keys() -> frozenset[str]:
         # through every branch, and the values are deliberately heterogeneous.
         request = DownloadRequest(**_BASE, **overrides)
         keys |= set(build_options(request, str(_BASE["output_template"]), **keywords))
-    return frozenset(keys)
+
+    # **What the hatch carried is not what the application sets** (`T-184`). `build_options` now
+    # copies the request's parsed hatch values into the dictionary, so without this every option
+    # a user is allowed to type would read as an application-owned key — and the invariant below,
+    # that no key the application sets is reachable through the hatch, would be asserting against
+    # itself. The application's own thumbnail decision is *not* subtracted: `writethumbnail` is
+    # set by `embed_thumbnail` in its own right, which is exactly why `ARC-010`'s amendment had
+    # to rule on sharing it.
+    return frozenset(keys - _HATCH_KEYS)
 
 
 EMITTED: Final = _emitted_keys()

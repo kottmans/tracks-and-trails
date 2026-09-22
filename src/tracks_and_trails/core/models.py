@@ -30,7 +30,7 @@ durable records belong with their schema, not in this module — is why it is wo
 import os
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import Enum, StrEnum
 from typing import Any, ClassVar, Final, Self
@@ -391,6 +391,69 @@ def proxy_refusal(value: str | None) -> str | None:
 def _require_optional_datetime(owner: str, name: str, value: object) -> None:
     if value is not None and not isinstance(value, datetime):
         _fail(owner, name, value, "a datetime or None")
+
+
+def _require_text_or_empty(owner: str, name: str, value: object) -> None:
+    """Text, where empty is a meaning rather than a mistake.
+
+    `_require_text` refuses an empty string because every field it guards has no sensible empty
+    value. The escape hatch does: it is how a user says they typed nothing.
+    """
+    if not isinstance(value, str):
+        _fail(owner, name, value, "text")
+
+
+#: What a parsed hatch value may be. yt-dlp's own option dictionary holds exactly these, and the
+#: request is persisted as JSON and pickled to a worker (`ARC-002`), so anything else is a value
+#: that cannot survive either trip.
+_JSON_SCALARS: Final = (str, int, float, bool, type(None))
+
+
+def _is_json_native(value: object) -> bool:
+    """Whether `value` survives a JSON round trip and a pickle unchanged."""
+    if isinstance(value, _JSON_SCALARS):
+        return True
+    if isinstance(value, list | tuple):
+        return all(_is_json_native(item) for item in value)
+    if isinstance(value, dict):
+        return all(isinstance(k, str) and _is_json_native(v) for k, v in value.items())
+    return False
+
+
+def _as_option_values(owner: str, name: str, value: object) -> tuple[tuple[str, Any], ...]:
+    """Return the hatch's parsed result as an immutable tuple of `(key, value)` pairs.
+
+    **Pairs rather than a mapping**, for the reason `_as_tuple_of` gives one field up: a frozen
+    dataclass holding a dict is only shallowly frozen, and this object is sent to another process
+    and written to the database. A caller passing a mapping is not making a mistake, so one is
+    accepted and normalised.
+
+    **Sorted**, so two requests built from the same options compare and serialize identically
+    whatever order the parser produced.
+    """
+    if isinstance(value, dict):
+        pairs: tuple[Any, ...] = tuple(value.items())
+    elif isinstance(value, str) or not isinstance(value, Sequence):
+        _fail(owner, name, value, "a mapping or a sequence of (key, value) pairs")
+    else:
+        pairs = tuple(value)
+
+    found: list[tuple[str, Any]] = []
+    for index, pair in enumerate(pairs):
+        if isinstance(pair, str) or not isinstance(pair, Sequence) or len(pair) != 2:
+            raise TypeError(f"{owner}.{name}[{index}] must be a (key, value) pair, not {pair!r}")
+        key, parsed = pair
+        if not isinstance(key, str) or not key:
+            raise TypeError(f"{owner}.{name}[{index}] must be keyed by a non-empty name")
+        if not _is_json_native(parsed):
+            # A value yt-dlp's parser would never produce, or one that cannot cross `ARC-002`'s
+            # process boundary. Refused here rather than at the moment the job is sent.
+            raise TypeError(
+                f"{owner}.{name}[{key!r}] must be a value JSON and pickle both carry, "
+                f"not {type(parsed).__name__}"
+            )
+        found.append((key, parsed))
+    return tuple(sorted(found))
 
 
 def _as_tuple_of[T](owner: str, name: str, value: object, element: type[T]) -> tuple[T, ...]:
@@ -1023,6 +1086,27 @@ class DownloadRequest:
     #: **A path for cookies goes in `settings.toml`, never here** — that is what keeps *"a cookie
     #: path this application supplies is never in the database"* structural.
     cookies_from_browser: str | None = None
+    #: The escape hatch, as the user typed it (`REQ-031`, `T-184`). Empty means they typed nothing.
+    #:
+    #: **The text is kept as well as the parse**, by the maintainer's ruling of 2026-09-20: it is
+    #: what the user edits and must be shown back unchanged, and storing only the parse would
+    #: return `-c` as `--continue` and lose anything that normalised away.
+    #:
+    #: **`repr=False`, and that is the redaction** (`REQ-026`, `DAT-004`). `core/logging.py`
+    #: redacts the finished string at the handler precisely because `f"starting {request}"` is the
+    #: most natural line anyone will write, and its reasoning is that two thirds of what `REQ-026`
+    #: binds is *unrepresentable rather than filtered*. A hatch value cannot be filtered by shape:
+    #: `--add-headers "Authorization: Bearer …"` is an innocuous option name carrying a secret, and
+    #: no pattern separates it from `--concurrent-fragments 4`. So it is kept out of the repr
+    #: instead, which is the route into a log this application actually takes.
+    extra_options: str = field(default="", repr=False)
+    #: What `extra_options` parses to: the option-dictionary keys it sets, as sorted pairs.
+    #:
+    #: `REQ-031` requires the **parsed result** to be a declared member rather than an untyped
+    #: dictionary, so the field is the parse and not a promise to parse later. The parse happens
+    #: where the user typed it, which is what makes a malformed field fail at edit time rather
+    #: than after the bytes are spent.
+    extra_option_values: tuple[tuple[str, Any], ...] = field(default=(), repr=False)
 
     def __post_init__(self) -> None:
         _require_text("DownloadRequest", "url", self.url)
@@ -1061,6 +1145,12 @@ class DownloadRequest:
         _require_browser_name("DownloadRequest", "cookies_from_browser", self.cookies_from_browser)
         _require_optional_count("DownloadRequest", "rate_limit_bytes", self.rate_limit_bytes)
         _require_optional_count("DownloadRequest", "retries", self.retries)
+        _require_text_or_empty("DownloadRequest", "extra_options", self.extra_options)
+        object.__setattr__(
+            self,
+            "extra_option_values",
+            _as_option_values("DownloadRequest", "extra_option_values", self.extra_option_values),
+        )
 
 
 @dataclass(frozen=True, slots=True)

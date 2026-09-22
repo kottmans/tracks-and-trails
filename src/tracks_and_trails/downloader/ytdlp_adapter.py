@@ -786,6 +786,20 @@ def build_options(
         # and would silently use a different binary — or none — without being told.
         options["ffmpeg_location"] = str(ffmpeg_location)
 
+    # **The escape hatch, before the probe branch and therefore on both paths** (`T-184`).
+    #
+    # A probe that saw different options from the download would list formats the download then
+    # could not produce: `--extractor-args youtube:player_client=…` changes which formats exist,
+    # and the user picks from what the probe found. So the hatch applies to both, and the
+    # application's own probe keys are set below this line, where they still win.
+    #
+    # **Read from the request, never re-parsed here.** The parse happened where the user typed
+    # it, which is what makes a malformed field fail at edit time; the worker receives the result
+    # (`REQ-031`). `writethumbnail` is left for `merge_thumbnail` in the download-only tail,
+    # because it is the one key the application also sets.
+    hatch = dict(request.extra_option_values)
+    options.update({key: value for key, value in hatch.items() if key != "writethumbnail"})
+
     if probe_only:
         options["skip_download"] = True
         # **A playlist is enumerated flatly** (`T-137`). Without this yt-dlp extracts every entry
@@ -815,6 +829,10 @@ def build_options(
         # one beside the media, and a stray `.jpg` in the output directory is not what was asked
         # for.
         options["writethumbnail"] = True
+
+    # The one key the application and the user share, settled as `ARC-010`'s 2026-09-20 amendment
+    # rules: written when either asks, and the user's request to keep it survives.
+    merge_thumbnail(options, hatch)
 
     options["postprocessors"] = build_postprocessors(request)
     return options
