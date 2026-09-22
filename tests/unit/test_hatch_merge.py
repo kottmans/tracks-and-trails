@@ -11,10 +11,26 @@ carries the destinations each named option touches, at whatever value the parse 
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
+from tracks_and_trails.downloader.extra_options import admit
 from tracks_and_trails.downloader.option_table import OPTION_KEYS
-from tracks_and_trails.downloader.ytdlp_adapter import hatch_options, merge_thumbnail
+from tracks_and_trails.downloader.ytdlp_adapter import (
+    UnusableOptionsError,
+    hatch_options,
+    merge_thumbnail,
+)
+
+
+def hatch_for(text: str) -> dict[str, Any]:
+    """What `text` contributes, paired with the argv admission produces from it.
+
+    The two arguments must agree — `hatch_options` refuses them otherwise (`T184-R5`) — so the
+    tests below pass the real pairing rather than inventing one.
+    """
+    return hatch_options(text, admit(text).accepted)
 
 
 def test_an_explicit_value_equal_to_the_default_is_still_carried() -> None:
@@ -25,7 +41,7 @@ def test_an_explicit_value_equal_to_the_default_is_still_carried() -> None:
     `RetryManager(self.params.get('fragment_retries') or 0)` turns absent into zero: the user asks
     for ten retries and gets none. Carrying the destination regardless is the fix.
     """
-    carried = hatch_options(["--fragment-retries", "10"])
+    carried = hatch_for("--fragment-retries 10")
 
     assert carried == {"fragment_retries": 10}, (
         "an explicit value equal to the default was dropped, which is the defect T184-R1 names"
@@ -34,23 +50,23 @@ def test_an_explicit_value_equal_to_the_default_is_still_carried() -> None:
 
 def test_a_flag_whose_default_is_already_true_is_carried() -> None:
     """The same trap as a flag: `continuedl` is already true, so `--continue` diffs to nothing."""
-    assert hatch_options(["--continue"]) == {"continuedl": True}
+    assert hatch_for("--continue") == {"continuedl": True}
 
 
 def test_the_negation_carries_the_other_value() -> None:
     """And the pair is what makes the destination findable at all."""
-    assert hatch_options(["--no-continue"]) == {"continuedl": False}
+    assert hatch_for("--no-continue") == {"continuedl": False}
 
 
 def test_several_options_each_carry_their_own_destination() -> None:
-    carried = hatch_options(["--continue", "--concurrent-fragments", "4"])
+    carried = hatch_for("--continue --concurrent-fragments 4")
 
     assert carried == {"continuedl": True, "concurrent_fragment_downloads": 4}
 
 
 def test_nothing_typed_produces_nothing() -> None:
     """And without a parse: an empty field must not pay for importing yt-dlp's parser."""
-    assert hatch_options([]) == {}
+    assert hatch_for("") == {}
 
 
 def test_only_the_destinations_of_the_options_named_are_carried() -> None:
@@ -60,7 +76,7 @@ def test_only_the_destinations_of_the_options_named_are_carried() -> None:
     parser's own defaults drifting between releases. The result is keyed on what the user actually
     named.
     """
-    carried = hatch_options(["--concurrent-fragments", "4"])
+    carried = hatch_for("--concurrent-fragments 4")
 
     assert set(carried) == set(OPTION_KEYS["--concurrent-fragments"])
     assert "continuedl" not in carried, "a key nobody asked for came along with the answer"
@@ -68,17 +84,46 @@ def test_only_the_destinations_of_the_options_named_are_carried() -> None:
 
 def test_the_equals_form_reaches_the_same_destination() -> None:
     """Admission keeps `--opt=value` as one word, so the merge has to read it as one."""
-    assert hatch_options(["--fragment-retries=7"]) == {"fragment_retries": 7}
+    assert hatch_for("--fragment-retries=7") == {"fragment_retries": 7}
 
 
-def test_an_option_the_parser_refuses_adds_nothing_rather_than_raising() -> None:
-    """A guard, not a route (`T184-R3`).
+def test_an_option_the_parser_refuses_stops_the_job_rather_than_running_it() -> None:
+    """**Refusing loudly, which is `T184-R8`'s correction.**
 
-    Every option that exits or fails is refused before this runs, so reaching here means admission
-    and the parser disagree — which a yt-dlp bump between the pin and the installed release would
-    do. The worker is mid-job by then, and an option nobody can parse is not worth a crash.
+    The first version returned `{}` here, so a job whose saved options no longer parse ran
+    *without them* and reported success — the user's intent discarded in silence. Raising means
+    the job fails with a reason, which is the honest answer when the options cannot be honoured.
     """
-    assert hatch_options(["--fragment-retries", "not-a-number"]) == {}
+    with pytest.raises(UnusableOptionsError):
+        hatch_options("--fragment-retries not-a-number", ("--fragment-retries", "not-a-number"))
+
+
+def test_stored_options_that_the_audit_now_refuses_stop_the_job() -> None:
+    """`T184-R5`, the Critical: stored values are re-admitted, never trusted.
+
+    A preset is a file a user can edit and a request is a JSON blob in a database, so tokens can
+    arrive that no dialog ever produced. The reviewer wrote `geo_bypass = true` into a preset by
+    hand and watched it override the `False` this adapter sets under `SEC-003`.
+    """
+    with pytest.raises(UnusableOptionsError):
+        hatch_options("--geo-bypass", ("--geo-bypass",))
+
+
+def test_stored_tokens_that_disagree_with_their_text_stop_the_job() -> None:
+    """The other half of `T184-R5`: the text a user was shown must be the text that runs."""
+    with pytest.raises(UnusableOptionsError):
+        hatch_options("--continue", ("--continue", "--fragment-retries", "10"))
+
+
+def test_no_saved_token_is_repeated_in_the_reason() -> None:
+    """`T184-R6`: a hatch token can be a credential, and this message reaches a log."""
+    # A synthetic header, not a credential: `S105` flags the shape, and the shape is the point.
+    canary = "Authorization: Bearer T184_CANARY"
+
+    with pytest.raises(UnusableOptionsError) as refused:
+        hatch_options("--continue", ("--add-headers", canary))
+
+    assert "T184_CANARY" not in str(refused.value), f"a token reached the reason: {refused.value}"
 
 
 # --- the shared key, ruled as a union -----------------------------------------------------------

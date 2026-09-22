@@ -78,7 +78,12 @@ _BASE: Final[dict[str, Any]] = {
     "output_template": "%(title)s.%(ext)s",
 }
 #: The hatch's contribution to the cases below, named once so it can be taken back out.
-_HATCH_ON: Final[tuple[tuple[str, Any], ...]] = (("fragment_retries", 10),)
+#:
+#: The field holds the **admitted argv** since the ruling of 2026-09-22 (`T184-R9`), so the keys
+#: it contributes are the destinations of the options named here rather than the pairs themselves.
+_HATCH_TEXT: Final = "--fragment-retries 10"
+_HATCH_ARGV: Final[tuple[str, ...]] = ("--fragment-retries", "10")
+_HATCH_ON: Final[tuple[str, ...]] = ("fragment_retries",)
 
 #: One value per `DownloadRequest` field that can turn a branch on inside `build_options`.
 _FIELD_ON: Final = {
@@ -103,12 +108,12 @@ _FIELD_ON: Final = {
     # subtracted again in `_emitted_keys`. See the note there: a key the *user* supplied through
     # the hatch is not a key the application sets, and conflating the two would make
     # `test_no_key_build_options_sets_is_reachable_through_the_hatch` vacuous.
-    "extra_options": "--fragment-retries 10",
-    "extra_option_values": _HATCH_ON,
+    "extra_options": _HATCH_TEXT,
+    "extra_option_argv": _HATCH_ARGV,
 }
 
 #: What the hatch case above contributes, so it can be taken back out.
-_HATCH_KEYS: Final = frozenset(key for key, _ in _HATCH_ON)
+_HATCH_KEYS: Final = frozenset(_HATCH_ON)
 _KEYWORD_ON: Final = {
     "probe_only": True,
     "ffmpeg_location": Path("/usr/bin/ffmpeg"),
@@ -132,8 +137,14 @@ def _emitted_keys() -> frozenset[str]:
     )
 
     on = {name: value for name, value in _FIELD_ON.items() if value is not None}
+    # **The hatch's two fields are one case, not two.** They have to agree: the argv is what
+    # admitting the text produces, and `hatch_options` refuses the pair when they do not, which
+    # is `T184-R5`'s correction. Turning one on alone is a request that could not exist.
+    hatch = {name: on.pop(name) for name in ("extra_options", "extra_option_argv")}
     cases: list[tuple[dict[str, Any], dict[str, Any]]] = [({}, {})]
     cases += [({name: value}, {}) for name, value in on.items()]
+    cases.append((dict(hatch), {}))
+    on.update(hatch)
     cases += [({}, {name: value}) for name, value in _KEYWORD_ON.items()]
     cases.append((on, dict(_KEYWORD_ON)))
     cases.append((on, {k: v for k, v in _KEYWORD_ON.items() if k != "probe_only"}))

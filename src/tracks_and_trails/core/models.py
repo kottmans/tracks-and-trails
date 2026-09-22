@@ -403,57 +403,43 @@ def _require_text_or_empty(owner: str, name: str, value: object) -> None:
         _fail(owner, name, value, "text")
 
 
-#: What a parsed hatch value may be. yt-dlp's own option dictionary holds exactly these, and the
-#: request is persisted as JSON and pickled to a worker (`ARC-002`), so anything else is a value
-#: that cannot survive either trip.
-_JSON_SCALARS: Final = (str, int, float, bool, type(None))
+#: What an admitted option token may be: text, and nothing else.
+#:
+#: **The field holds the admitted argv rather than the parsed dictionary** (maintainer's ruling of
+#: 2026-09-22, on `T184-R9`). 13 of 124 admitted options parse to values that cannot cross
+#: `ARC-002`'s process boundary — a `DateRange`, compiled match filters, a `set`, postprocessor
+#: specifications — and a compiled filter is a closure, so the only honest encoding of one is the
+#: text it came from. Tokens are that text, they are immutable, and they round-trip through JSON
+#: and TOML unchanged.
 
 
-def _is_json_native(value: object) -> bool:
-    """Whether `value` survives a JSON round trip and a pickle unchanged."""
-    if isinstance(value, _JSON_SCALARS):
-        return True
-    if isinstance(value, list | tuple):
-        return all(_is_json_native(item) for item in value)
-    if isinstance(value, dict):
-        return all(isinstance(k, str) and _is_json_native(v) for k, v in value.items())
-    return False
+def _as_option_argv(owner: str, name: str, value: object) -> tuple[str, ...]:
+    """Return the admitted option tokens as an immutable tuple of strings.
 
+    **This does not admit anything**, and the distinction matters: `core/` may not import yt-dlp
+    (`ARCHITECTURE.md` §4), so the audit's classification is out of reach here. What this checks
+    is the *shape* a token must have to be one. Whether these particular tokens may be used is
+    re-established where they are used, by `downloader/extra_options.admit`, because a value read
+    back from settings or the database was not necessarily put there by this application
+    (`T184-R5`).
 
-def _as_option_values(owner: str, name: str, value: object) -> tuple[tuple[str, Any], ...]:
-    """Return the hatch's parsed result as an immutable tuple of `(key, value)` pairs.
-
-    **Pairs rather than a mapping**, for the reason `_as_tuple_of` gives one field up: a frozen
-    dataclass holding a dict is only shallowly frozen, and this object is sent to another process
-    and written to the database. A caller passing a mapping is not making a mistake, so one is
-    accepted and normalised.
-
-    **Sorted**, so two requests built from the same options compare and serialize identically
-    whatever order the parser produced.
+    **No token is quoted in an error** (`T184-R6`): a hatch token can be
+    `Authorization: Bearer …`, and a validation message ends up in a settings problem that
+    startup logs.
     """
-    if isinstance(value, dict):
-        pairs: tuple[Any, ...] = tuple(value.items())
-    elif isinstance(value, str) or not isinstance(value, Sequence):
-        _fail(owner, name, value, "a mapping or a sequence of (key, value) pairs")
-    else:
-        pairs = tuple(value)
-
-    found: list[tuple[str, Any]] = []
-    for index, pair in enumerate(pairs):
-        if isinstance(pair, str) or not isinstance(pair, Sequence) or len(pair) != 2:
-            raise TypeError(f"{owner}.{name}[{index}] must be a (key, value) pair, not {pair!r}")
-        key, parsed = pair
-        if not isinstance(key, str) or not key:
-            raise TypeError(f"{owner}.{name}[{index}] must be keyed by a non-empty name")
-        if not _is_json_native(parsed):
-            # A value yt-dlp's parser would never produce, or one that cannot cross `ARC-002`'s
-            # process boundary. Refused here rather than at the moment the job is sent.
+    if isinstance(value, str) or not isinstance(value, Sequence):
+        _fail(owner, name, value, "a sequence of option tokens")
+    # `_fail` raises, but its signature says `None`, so mypy still sees `object` here — the same
+    # `type: ignore` `_as_tuple_of` carries one function down, for the same reason.
+    tokens: tuple[Any, ...] = tuple(value)  # type: ignore[arg-type]
+    for index, token in enumerate(tokens):
+        if not isinstance(token, str):
             raise TypeError(
-                f"{owner}.{name}[{key!r}] must be a value JSON and pickle both carry, "
-                f"not {type(parsed).__name__}"
+                f"{owner}.{name}[{index}] must be an option token, not {type(token).__name__}"
             )
-        found.append((key, parsed))
-    return tuple(sorted(found))
+        if not token:
+            raise TypeError(f"{owner}.{name}[{index}] is empty, which is not an option token")
+    return tuple(str(token) for token in tokens)
 
 
 def _as_tuple_of[T](owner: str, name: str, value: object, element: type[T]) -> tuple[T, ...]:
@@ -1100,13 +1086,14 @@ class DownloadRequest:
     #: no pattern separates it from `--concurrent-fragments 4`. So it is kept out of the repr
     #: instead, which is the route into a log this application actually takes.
     extra_options: str = field(default="", repr=False)
-    #: What `extra_options` parses to: the option-dictionary keys it sets, as sorted pairs.
+    #: The tokens admission produced from `extra_options` — the admitted command line.
     #:
-    #: `REQ-031` requires the **parsed result** to be a declared member rather than an untyped
-    #: dictionary, so the field is the parse and not a promise to parse later. The parse happens
-    #: where the user typed it, which is what makes a malformed field fail at edit time rather
-    #: than after the bytes are spent.
-    extra_option_values: tuple[tuple[str, Any], ...] = field(default=(), repr=False)
+    #: **Not the parsed dictionary** (ruling of 2026-09-22, `T184-R9`): 13 admitted options parse
+    #: to values that cannot cross `ARC-002`'s boundary. The worker's conversion is the parser
+    #: itself, run on these tokens after they are admitted again — which is also what stops a
+    #: value read back from settings or the database from smuggling in an option the audit
+    #: refuses (`T184-R5`).
+    extra_option_argv: tuple[str, ...] = field(default=(), repr=False)
 
     def __post_init__(self) -> None:
         _require_text("DownloadRequest", "url", self.url)
@@ -1148,8 +1135,8 @@ class DownloadRequest:
         _require_text_or_empty("DownloadRequest", "extra_options", self.extra_options)
         object.__setattr__(
             self,
-            "extra_option_values",
-            _as_option_values("DownloadRequest", "extra_option_values", self.extra_option_values),
+            "extra_option_argv",
+            _as_option_argv("DownloadRequest", "extra_option_argv", self.extra_option_argv),
         )
 
 
@@ -1204,7 +1191,7 @@ class Preset:
     #: effective option set that appears in neither field, with conflicts settled by a rule with
     #: no surface.
     extra_options: str = field(default="", repr=False)
-    extra_option_values: tuple[tuple[str, Any], ...] = field(default=(), repr=False)
+    extra_option_argv: tuple[str, ...] = field(default=(), repr=False)
 
     #: Built-ins ship with the application and may not be edited or deleted; user presets may.
     #: The flag lives on the preset rather than in a separate list so the UI cannot lose track
@@ -1236,8 +1223,8 @@ class Preset:
         _require_text_or_empty("Preset", "extra_options", self.extra_options)
         object.__setattr__(
             self,
-            "extra_option_values",
-            _as_option_values("Preset", "extra_option_values", self.extra_option_values),
+            "extra_option_argv",
+            _as_option_argv("Preset", "extra_option_argv", self.extra_option_argv),
         )
         _require_flag("Preset", "built_in", self.built_in)
 

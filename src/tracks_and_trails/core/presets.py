@@ -44,7 +44,7 @@ already made it unrepresentable everywhere, and re-opening an approved model to 
 selector would trade a clear error for a silent substitution.
 """
 
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, field, fields, replace
 from typing import Any, Final
 
 from tracks_and_trails.core.models import (
@@ -441,8 +441,8 @@ class FormatChoice:
     #: **It is still not a credential**, which is what `T159-R1` narrowed this type to exclude.
     #: The values are refused before they reach a request unless the audit admits them, and every
     #: credential-bearing option is refused — so nothing reaches here that the boundary keeps out.
-    extra_options: str
-    extra_option_values: tuple[tuple[str, Any], ...]
+    extra_options: str = field(repr=False)
+    extra_option_argv: tuple[str, ...] = field(repr=False)
 
 
 def format_choice_of(source: DownloadRequest | Preset) -> FormatChoice:
@@ -499,7 +499,7 @@ def preset_of(request: DownloadRequest, *, name: str) -> Preset:
 #: `REQ-031` says the field is *per preset and overridable per job*, and the maintainer ruled on
 #: 2026-09-20 that a job's value **replaces** the preset's outright. Nothing is silently combined,
 #: so what the user sees in the field is still what runs — the promise holds, by a different route.
-OVERRIDABLE_PER_JOB: Final = frozenset({"extra_options", "extra_option_values"})
+OVERRIDABLE_PER_JOB: Final = frozenset({"extra_options", "extra_option_argv"})
 
 
 class PresetOverrideError(ValueError):
@@ -573,7 +573,7 @@ def to_request(
         embed_metadata=preset.embed_metadata,
         embed_chapters=preset.embed_chapters,
         extra_options=preset.extra_options,
-        extra_option_values=preset.extra_option_values,
+        extra_option_argv=preset.extra_option_argv,
     )
     return replace(request, **overrides) if overrides else request
 

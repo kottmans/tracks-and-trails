@@ -35,8 +35,9 @@ and it is not in this module.
 from __future__ import annotations
 
 import shlex
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Final
 
 from tracks_and_trails.downloader.option_table import (
     EFFECT_UNKNOWN,
@@ -77,6 +78,12 @@ NOT_RULED: Final = (
 #: Finding 7 singled out. The maintainer ruled on 2026-09-20 that they are refused rather than
 #: accepted as silent no-ops, because a user told nothing has no way to learn the option was idle.
 NO_EFFECT: Final = "This option changes nothing in the version of yt-dlp this application uses."
+
+#: What a user is told when the option is fine but its value is not.
+#:
+#: **Value-free on purpose** (`T184-R6`): the message names the option and stops there, because a
+#: hatch value can be `Authorization: Bearer …` and a refusal may be repeated somewhere durable.
+BAD_VALUE: Final = "yt-dlp will not accept the value given for this option."
 
 #: What a user is told when the effect cannot be measured at all.
 UNKNOWN_EFFECT: Final = (
@@ -225,7 +232,30 @@ def admit(text: str) -> Admission:
     return Admission(tuple(accepted), ())
 
 
-def options_for(text: str) -> tuple[Admission, tuple[tuple[str, Any], ...]]:
+def grouped(accepted: Sequence[str]) -> list[list[str]]:
+    """The admitted argv split into one chunk per option, each with its own values.
+
+    Used to say **which** option a parser complaint is about without quoting the value, which a
+    hatch token may not be safe to repeat (`T184-R6`).
+    """
+    arity = option_arity()
+    chunks: list[list[str]] = []
+    index = 0
+    while index < len(accepted):
+        word = accepted[index]
+        index += 1
+        spelling, _, inline = word.partition("=")
+        wanted = 0 if inline else arity.get(spelling, 0)
+        chunk = [word]
+        while wanted and index < len(accepted):
+            chunk.append(accepted[index])
+            index += 1
+            wanted -= 1
+        chunks.append(chunk)
+    return chunks
+
+
+def options_for(text: str) -> tuple[Admission, tuple[str, ...]]:
     """Admit `text` and, if every option in it may be used, say what it produces.
 
     **The one call the user interface makes**, and the reason it exists here rather than in `ui/`:
@@ -234,9 +264,14 @@ def options_for(text: str) -> tuple[Admission, tuple[tuple[str, Any], ...]]:
     below, reached only when a field has usable options in it — a user who never opens the hatch,
     and one whose text is refused, both pay nothing.
 
-    Returns the admission — which carries every refusal the user has to see — and the parsed
-    pairs, which are empty whenever the admission is not usable. The pair shape is what
-    `DownloadRequest.extra_option_values` takes.
+    Returns the admission — which carries every refusal the user has to see — and the admitted
+    tokens, which are empty whenever it is not usable. The tokens are what
+    `DownloadRequest.extra_option_argv` takes.
+
+    **The value is checked here too, and that is `T184-R8`.** Admission knows which options may
+    be used; only the parser knows whether `--fragment-retries nope` is a number. Without this,
+    that field reported *usable* with no refusal and no options — the user's intent silently
+    discarded, and any valid option typed beside it discarded too.
     """
     admission = admit(text)
     if not admission.usable or not admission.accepted:
@@ -245,9 +280,13 @@ def options_for(text: str) -> tuple[Admission, tuple[tuple[str, Any], ...]]:
         # common path, and it is the one the 25 MiB was approved on the understanding it avoids.
         return admission, ()
 
-    from tracks_and_trails.downloader.ytdlp_adapter import hatch_options
+    from tracks_and_trails.downloader.ytdlp_adapter import first_unparseable
 
-    return admission, tuple(sorted(hatch_options(admission.accepted).items()))
+    refused = first_unparseable(grouped(admission.accepted))
+    if refused is not None:
+        return Admission((), (Refusal(refused, BAD_VALUE),)), ()
+
+    return admission, admission.accepted
 
 
 def refusal_lines(admission: Admission) -> tuple[str, ...]:

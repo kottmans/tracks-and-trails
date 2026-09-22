@@ -853,7 +853,24 @@ plainly rather than discovering in review.
 
 **The field holds both the text and the parsed result.** `REQ-031` requires the parsed result to be
 a declared member rather than an untyped dictionary, and it is; the text is kept beside it because
-it is what the user edits and must be shown back verbatim. Storing only the parsed values would
+it is what the user edits and must be shown back verbatim.
+
+> **Superseded in part, 2026-09-22 — the second half is the admitted argv, not the parsed
+> dictionary.** `T184-R9` measured that **13 of 124** admitted options parse to values that cannot
+> cross `ARC-002`'s process boundary: a `DateRange`, compiled match filters, a `set`, and
+> postprocessor specifications. A compiled filter is a closure, so the only honest encoding of it
+> is the text it came from — which is the argv again. The maintainer ruled the argv on 2026-09-22.
+>
+> **What this buys beyond transport.** The argv is re-admitted where it is used, so a stored value
+> cannot smuggle a refused option past the boundary — which is `T184-R5`, the Critical finding
+> that a hand-edited preset could set `geo_bypass` or replace `outtmpl`. It is immutable, which is
+> `T184-R12`. And the text is checked against it, so the two cannot disagree about what will run.
+>
+> **What it costs, stated rather than argued away.** `REQ-031` says *"the parsed result is a
+> declared field of the download request rather than an untyped dictionary"*. What is declared is
+> now the **admitted command line**. The spirit holds — it is declared, typed, validated, and not
+> an untyped dictionary — but the letter does not, and that is the maintainer's to amend in
+> `REQUIREMENTS.md` if they want the letter to match. Storing only the parsed values would
 return `-c` as `--continue` and could not show anything that normalised away. Storing only the text
 would move the parse to job-creation time, so a queued job that validated a week ago could be
 refused on a yt-dlp that has moved since. Keeping both makes that disagreement **visible** instead.

@@ -797,7 +797,7 @@ def build_options(
     # it, which is what makes a malformed field fail at edit time; the worker receives the result
     # (`REQ-031`). `writethumbnail` is left for `merge_thumbnail` in the download-only tail,
     # because it is the one key the application also sets.
-    hatch = dict(request.extra_option_values)
+    hatch = hatch_options(request.extra_options, request.extra_option_argv)
     options.update({key: value for key, value in hatch.items() if key != "writethumbnail"})
 
     if probe_only:
@@ -834,50 +834,102 @@ def build_options(
     # rules: written when either asks, and the user's request to keep it survives.
     merge_thumbnail(options, hatch)
 
-    options["postprocessors"] = build_postprocessors(request)
+    # **Composed, not overwritten** (`T184-R10`). This assignment used to replace whatever the
+    # hatch had produced, so `--split-chapters` and `--convert-thumbnails png` parsed, entered the
+    # request, reached this dictionary and were then dropped on the floor — and `requires_ffmpeg`,
+    # reading the same list, answered "no ffmpeg needed" for both.
+    #
+    # **The application's chain runs first**, because it is derived from the request's own typed
+    # fields — what the download *is* — and the hatch's are additions to it. yt-dlp groups
+    # processors by their `when` key before running them, so this order decides only what happens
+    # within a stage.
+    options["postprocessors"] = [
+        *build_postprocessors(request, keep_thumbnail=bool(hatch.get("writethumbnail"))),
+        *hatch.get("postprocessors", []),
+    ]
     return options
 
 
-def hatch_options(accepted: Sequence[str]) -> dict[str, Any]:
-    """What the escape hatch's admitted options produce, as keys for `build_options` (`T-184`).
+def first_unparseable(groups: Sequence[Sequence[str]]) -> str | None:
+    """The first option in `groups` yt-dlp will not accept, by spelling, or `None` if all parse.
 
-    **Here rather than in `extra_options.py`, by the layering rule**: only this module and
-    `worker.py` may import yt-dlp, so that upstream churn stays absorbable (`NFR-008`). Admission
-    — which options may be used at all — is `extra_options.admit()`, and it imports nothing of
-    yt-dlp's. This is the half that needs the parser.
-
-    **Only the destinations the named options touch, and at whatever value the parse produced**
-    (`T184-R1`). Not the diff against the defaults: `--fragment-retries 10` produces *exactly* the
-    default dictionary, so a diff-derived merge omits the key — and yt-dlp's fragment downloader
-    reads the absent value into `RetryManager(self.params.get('fragment_retries') or 0)`, giving
-    **zero** retries to a user who asked for ten. The destinations are measured ahead of time by
-    `tools/ytdlp_option_table.py`, which compares two values of the same option for exactly this
-    reason.
-
-    **And only those destinations.** Handing back everything that differed would let one option
-    carry keys belonging to another, or to the parser's own defaults drifting between releases.
-
-    `accepted` must be an `Admission.accepted` from `extra_options.admit`. Passing raw user text
-    here would run the parser over options that were never admitted, which is the ordering
-    `T184-R3` rules out: `--help` exits the process and `--config-locations` reads a file.
+    **Per option rather than all at once**, so the answer names something the user can find in
+    what they typed. The parser's own complaint quotes the value, and a hatch value may be a
+    credential (`T184-R6`), so the value is never carried out of here.
     """
-    if not accepted:
+    from yt_dlp import parse_options
+
+    for group in groups:
+        try:
+            parse_options(list(group))
+        except SystemExit, OptParseError:
+            return str(group[0]).partition("=")[0]
+    return None
+
+
+class UnusableOptionsError(ValueError):
+    """Saved hatch options that may not be used, discovered where they are about to be used.
+
+    Its own type so the worker can tell it from a malformed request: the job is not invalid, its
+    **stored options are no longer admissible** — because yt-dlp moved under a queued job, or
+    because something other than this application wrote them.
+
+    **No token is ever in the message** (`T184-R6`). A hatch token can be
+    `Authorization: Bearer …` and this text reaches a log.
+    """
+
+
+def hatch_options(text: str, argv: Sequence[str]) -> dict[str, Any]:
+    """What the admitted options produce, **re-admitting them first** (`T184-R5`).
+
+    **Stored options are not trusted, and that is the whole point.** The first version applied
+    whatever pairs the request carried, on the reasoning that the dialog would have parsed them.
+    It would not always have: a preset is a TOML file a user can edit, and a request is a JSON
+    blob in a database. The reviewer wrote `geo_bypass = true` into a preset by hand and watched
+    it override the `False` this adapter sets on purpose (`REQ-EXCL-002`, `SEC-003`), and
+    replaced `outtmpl` with a path outside the download directory by the same route.
+    "Semantically validated at the boundary where it is used" is the only version of this that
+    holds, because that is the only place all the routes meet.
+
+    So three things are established here, every time:
+
+    1. the **text** still admits, against today's audit and today's yt-dlp;
+    2. the **argv** is exactly what admitting that text produces, so the tokens cannot have been
+       edited away from the text a user was shown;
+    3. the parse **succeeds**, so no job runs with options the parser would reject.
+
+    Any of them failing raises `UnusableOptionsError` rather than quietly dropping the options,
+    which would run a job that is not the one the user asked for (`T184-R8`).
+
+    **Only the destinations the named options touch, at whatever value the parse produced**
+    (`T184-R1`): `--fragment-retries 10` produces exactly the default dictionary, so a diff-derived
+    merge omits the key and yt-dlp reads the absent value as **zero** retries.
+    """
+    if not argv:
         return {}
+
+    from tracks_and_trails.downloader.extra_options import admit
+
+    admission = admit(text)
+    if not admission.usable:
+        raise UnusableOptionsError(
+            f"{len(admission.refusals)} of the options saved with this download are not accepted "
+            "any more. Open it and check the extra options field."
+        )
+    if admission.accepted != tuple(argv):
+        raise UnusableOptionsError(
+            "the options saved with this download do not match the text they came from, so it is "
+            "not clear which of them was meant to run"
+        )
 
     from yt_dlp import parse_options
 
-    argv = list(accepted)
     try:
-        parsed = dict(parse_options(argv).ydl_opts)
-    except SystemExit:
-        # **A guard, not a route** (`T184-R3`). Every option that exits is refused before this
-        # runs, so reaching here means admission and the parser disagree about what an option is
-        # — a yt-dlp bump between the pin and the installed release would do it. Nothing is worth
-        # taking the process down for, and an empty result adds no keys.
-        return {}
-    except OptParseError:
-        # Likewise: a value admission could not judge. The options are simply not applied.
-        return {}
+        parsed = dict(parse_options(list(argv)).ydl_opts)
+    except (SystemExit, OptParseError) as refused:
+        raise UnusableOptionsError(
+            "yt-dlp will not accept the options saved with this download"
+        ) from refused
 
     wanted: dict[str, Any] = {}
     for word in argv:
@@ -921,7 +973,18 @@ def requires_ffmpeg(request: DownloadRequest) -> bool:
     from yt_dlp.postprocessor import get_postprocessor
     from yt_dlp.postprocessor.ffmpeg import FFmpegPostProcessor
 
-    for spec in build_postprocessors(request):
+    # **The hatch's processors count too** (`T184-R10`). This read the application's own list, so
+    # `--split-chapters` and `--convert-thumbnails png` — both ffmpeg work, both admitted —
+    # answered "no ffmpeg needed", and the user learned otherwise after the bytes were spent,
+    # which is the whole point of `REQ-024` asking before.
+    try:
+        hatch = hatch_options(request.extra_options, request.extra_option_argv)
+    except UnusableOptionsError:
+        # The job will fail on those options when its dictionary is built, with a reason. This
+        # preflight answers for the part of the request that is still readable.
+        hatch = {}
+    added = hatch.get("postprocessors", [])
+    for spec in [*build_postprocessors(request), *added]:
         try:
             processor = get_postprocessor(str(spec["key"]))
         except KeyError, AttributeError:  # pragma: no cover - build_postprocessors validates
@@ -931,7 +994,9 @@ def requires_ffmpeg(request: DownloadRequest) -> bool:
     return False
 
 
-def build_postprocessors(request: DownloadRequest) -> list[dict[str, Any]]:
+def build_postprocessors(
+    request: DownloadRequest, *, keep_thumbnail: bool = False
+) -> list[dict[str, Any]]:
     """Translate the request's post-processing intent into what `YoutubeDL` actually consumes.
 
     **`extractaudio` and `embedsubtitles` are argument-parser flags, not library options**
@@ -1006,7 +1071,16 @@ def build_postprocessors(request: DownloadRequest) -> list[dict[str, Any]]:
             }
         )
     if request.embed_thumbnail:
-        specs.append({"key": "EmbedThumbnail"})
+        # `already_have_thumbnail` tells the postprocessor to **leave the picture behind**
+        # (`T184-R11`). Without it the real `EmbedThumbnail` deletes the cover after embedding, so
+        # a user who asked to keep it with `--write-thumbnail` watched it vanish from a download
+        # that reported success. `ARC-010`'s 2026-09-20 amendment rules the union; this is where
+        # the keep half of it actually happens.
+        # **Keyed on what the *user* asked for, not on `writethumbnail`.** The application sets
+        # that key itself whenever it embeds, purely so there is a picture to embed, so reading it
+        # here would keep the file for every embedding job — which `REQ-010` does not ask for and
+        # `T-109` deliberately decided against. The keep comes from the hatch or it does not come.
+        specs.append({"key": "EmbedThumbnail", "already_have_thumbnail": keep_thumbnail})
     specs.extend({"key": name} for name in request.post_processors)
 
     resolved: list[dict[str, Any]] = []

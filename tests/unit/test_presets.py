@@ -474,7 +474,7 @@ def test_the_escape_hatch_is_the_one_preset_field_a_job_may_replace() -> None:
     nothing is combined, so the text in front of the user is the text that runs.
     """
     preset = replace(
-        presets.BEST_VIDEO, extra_options="--continue", extra_option_values=(("continuedl", True),)
+        presets.BEST_VIDEO, extra_options="--continue", extra_option_argv=("--continue",)
     )
 
     request = presets.to_request(
@@ -482,11 +482,11 @@ def test_the_escape_hatch_is_the_one_preset_field_a_job_may_replace() -> None:
         url=URL,
         output_directory=DIRECTORY,
         extra_options="--fragment-retries 10",
-        extra_option_values=(("fragment_retries", 10),),
+        extra_option_argv=("--fragment-retries", "10"),
     )
 
     assert request.extra_options == "--fragment-retries 10"
-    assert request.extra_option_values == (("fragment_retries", 10),), (
+    assert request.extra_option_argv == ("--fragment-retries", "10"), (
         "the preset's options were merged with the job's rather than replaced by them"
     )
 
@@ -494,13 +494,13 @@ def test_the_escape_hatch_is_the_one_preset_field_a_job_may_replace() -> None:
 def test_a_job_carries_the_preset_s_hatch_when_it_names_none_of_its_own() -> None:
     """Per preset is the other half of the same sentence."""
     preset = replace(
-        presets.BEST_VIDEO, extra_options="--continue", extra_option_values=(("continuedl", True),)
+        presets.BEST_VIDEO, extra_options="--continue", extra_option_argv=("--continue",)
     )
 
     request = presets.to_request(preset, url=URL, output_directory=DIRECTORY)
 
     assert request.extra_options == "--continue"
-    assert request.extra_option_values == (("continuedl", True),)
+    assert request.extra_option_argv == ("--continue",)
 
 
 def test_replacing_only_one_half_of_the_hatch_is_refused() -> None:
@@ -511,7 +511,7 @@ def test_replacing_only_one_half_of_the_hatch_is_refused() -> None:
     prevent, arriving through the one field allowed past it.
     """
     preset = replace(
-        presets.BEST_VIDEO, extra_options="--continue", extra_option_values=(("continuedl", True),)
+        presets.BEST_VIDEO, extra_options="--continue", extra_option_argv=("--continue",)
     )
 
     with pytest.raises(presets.PresetOverrideError, match="together"):

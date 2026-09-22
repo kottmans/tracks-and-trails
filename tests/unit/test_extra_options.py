@@ -314,19 +314,53 @@ def test_admitting_options_pulls_in_no_yt_dlp() -> None:
 
 
 def test_the_one_call_the_interface_makes_gives_both_halves() -> None:
-    """`options_for` is what the dialog calls: the refusals to show, and the values to store."""
-    admission, values = options_for("--continue --fragment-retries 10")
+    """`options_for` is what the dialog calls: the refusals to show, and the tokens to store."""
+    admission, argv = options_for("--continue --fragment-retries 10")
 
     assert admission.usable
-    assert values == (("continuedl", True), ("fragment_retries", 10))
+    assert argv == ("--continue", "--fragment-retries", "10")
 
 
-def test_a_refused_field_produces_no_values_to_store() -> None:
+@pytest.mark.parametrize(
+    ("text", "option"),
+    [
+        ("--fragment-retries nope", "--fragment-retries"),
+        ("--concurrent-fragments 0", "--concurrent-fragments"),
+        # **And the valid option beside it goes too** — the field is refused whole, so a user is
+        # never left with half of what they typed running.
+        ("--fragment-retries 7 --concurrent-fragments 0", "--concurrent-fragments"),
+    ],
+)
+def test_a_value_the_parser_will_not_take_is_refused_at_the_seam(text: str, option: str) -> None:
+    """`T184-R8`, the High finding: these reported **usable** with no refusal and no options.
+
+    Admission knows which options may be used; only the parser knows whether `nope` is a number.
+    Without asking it, the field said yes and produced nothing, which discards the user's intent
+    in silence — and took any valid option typed beside it along.
+    """
+    admission, argv = options_for(text)
+
+    assert not admission.usable, f"{text!r} was accepted with nothing to show for it"
+    assert argv == ()
+    assert [refusal.option for refusal in admission.refusals] == [option]
+
+
+def test_the_refusal_for_a_bad_value_does_not_repeat_the_value() -> None:
+    """`T184-R6`: the parser's own complaint quotes the value, and a value can be a credential."""
+    admission, _ = options_for("--add-headers @@@not-a-header@@@")
+
+    if not admission.usable:
+        assert all("@@@" not in refusal.reason for refusal in admission.refusals), (
+            f"the value was repeated back: {[r.reason for r in admission.refusals]}"
+        )
+
+
+def test_a_refused_field_produces_nothing_to_store() -> None:
     """A caller cannot store options from a field the user has not got right yet."""
-    admission, values = options_for('--exec "touch /tmp/x"')
+    admission, argv = options_for('--exec "touch /tmp/x"')
 
     assert not admission.usable
-    assert values == ()
+    assert argv == ()
 
 
 def test_an_empty_field_parses_nothing_and_loads_nothing() -> None:
