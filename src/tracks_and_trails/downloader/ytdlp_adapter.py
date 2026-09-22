@@ -28,6 +28,7 @@ import contextlib
 import importlib
 import logging
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from optparse import OptParseError
 from pathlib import Path
 from typing import Any, Final
 
@@ -53,6 +54,7 @@ from tracks_and_trails.core.models import (
     parse_browser_specification,
 )
 from tracks_and_trails.core.paths import APP_SLUG
+from tracks_and_trails.downloader.option_table import OPTION_KEYS
 
 #: This module's own log name, under the application's tree so `configure_logging`'s redacting
 #: handler formats it (`T-038`, `REQ-026`). Named for the module rather than shared with the
@@ -816,6 +818,74 @@ def build_options(
 
     options["postprocessors"] = build_postprocessors(request)
     return options
+
+
+def hatch_options(accepted: Sequence[str]) -> dict[str, Any]:
+    """What the escape hatch's admitted options produce, as keys for `build_options` (`T-184`).
+
+    **Here rather than in `extra_options.py`, by the layering rule**: only this module and
+    `worker.py` may import yt-dlp, so that upstream churn stays absorbable (`NFR-008`). Admission
+    — which options may be used at all — is `extra_options.admit()`, and it imports nothing of
+    yt-dlp's. This is the half that needs the parser.
+
+    **Only the destinations the named options touch, and at whatever value the parse produced**
+    (`T184-R1`). Not the diff against the defaults: `--fragment-retries 10` produces *exactly* the
+    default dictionary, so a diff-derived merge omits the key — and yt-dlp's fragment downloader
+    reads the absent value into `RetryManager(self.params.get('fragment_retries') or 0)`, giving
+    **zero** retries to a user who asked for ten. The destinations are measured ahead of time by
+    `tools/ytdlp_option_table.py`, which compares two values of the same option for exactly this
+    reason.
+
+    **And only those destinations.** Handing back everything that differed would let one option
+    carry keys belonging to another, or to the parser's own defaults drifting between releases.
+
+    `accepted` must be an `Admission.accepted` from `extra_options.admit`. Passing raw user text
+    here would run the parser over options that were never admitted, which is the ordering
+    `T184-R3` rules out: `--help` exits the process and `--config-locations` reads a file.
+    """
+    if not accepted:
+        return {}
+
+    from yt_dlp import parse_options
+
+    argv = list(accepted)
+    try:
+        parsed = dict(parse_options(argv).ydl_opts)
+    except SystemExit:
+        # **A guard, not a route** (`T184-R3`). Every option that exits is refused before this
+        # runs, so reaching here means admission and the parser disagree about what an option is
+        # — a yt-dlp bump between the pin and the installed release would do it. Nothing is worth
+        # taking the process down for, and an empty result adds no keys.
+        return {}
+    except OptParseError:
+        # Likewise: a value admission could not judge. The options are simply not applied.
+        return {}
+
+    wanted: dict[str, Any] = {}
+    for word in argv:
+        spelling = word.partition("=")[0]
+        for key in OPTION_KEYS.get(spelling, ()):
+            if key in parsed:
+                wanted[key] = parsed[key]
+    return wanted
+
+
+def merge_thumbnail(options: dict[str, Any], hatch: dict[str, Any]) -> None:
+    """Settle `writethumbnail`, the one key the application and the user share (Finding 6).
+
+    **A union, ruled by the maintainer on 2026-09-20 as an `ARC-010` amendment.** `ARC-010` §3
+    says the hatch may not override an application-owned key, and this is one: `build_options`
+    sets `writethumbnail` whenever `embed_thumbnail` is set, so the picture is written, embedded
+    and then deleted. Read literally that refuses `--write-thumbnail` outright.
+
+    The amendment says the two intents are not in conflict. The application writes the thumbnail
+    *in order to embed it*; a user asking to keep it changes only the deletion. So the thumbnail
+    is written when **either** asks, and the user's request to keep it survives — which is the
+    `already_have_thumbnail` half, and `T-249`'s control when it exists.
+    """
+    if "writethumbnail" not in hatch:
+        return
+    options["writethumbnail"] = bool(options.get("writethumbnail")) or bool(hatch["writethumbnail"])
 
 
 def requires_ffmpeg(request: DownloadRequest) -> bool:
