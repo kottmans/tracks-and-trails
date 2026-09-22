@@ -425,9 +425,11 @@ def test_the_preset_refuses_rather_than_delivering_something_else(
 # --- overrides cannot contradict what was shown (T015-R1) -------------------------------------
 
 
-@pytest.mark.parametrize("field_name", sorted(presets.PRESET_OWNED_FIELDS))
+@pytest.mark.parametrize(
+    "field_name", sorted(presets.PRESET_OWNED_FIELDS - presets.OVERRIDABLE_PER_JOB)
+)
 def test_a_preset_owned_field_cannot_be_overridden(field_name: str) -> None:
-    """`REQ-009`'s promise, enforced against **every** field a preset owns.
+    """`REQ-009`'s promise, enforced against **every** field a preset owns but the hatch.
 
     The finding was `format_selector`, where an override produced a request for `worst` while
     `effective_selector()` still displayed the preset's own string. The sibling audit is the
@@ -461,6 +463,60 @@ def test_a_preset_owned_field_cannot_be_overridden(field_name: str) -> None:
             url=URL,
             output_directory=DIRECTORY,
             **{field_name: sample[field_name]},
+        )
+
+
+def test_the_escape_hatch_is_the_one_preset_field_a_job_may_replace() -> None:
+    """`REQ-031`, and the maintainer's ruling of 2026-09-20.
+
+    The field is *per preset and overridable per job*, and a job's value **replaces** the
+    preset's rather than appending to it. `REQ-009`'s promise still holds by a different route:
+    nothing is combined, so the text in front of the user is the text that runs.
+    """
+    preset = replace(
+        presets.BEST_VIDEO, extra_options="--continue", extra_option_values=(("continuedl", True),)
+    )
+
+    request = presets.to_request(
+        preset,
+        url=URL,
+        output_directory=DIRECTORY,
+        extra_options="--fragment-retries 10",
+        extra_option_values=(("fragment_retries", 10),),
+    )
+
+    assert request.extra_options == "--fragment-retries 10"
+    assert request.extra_option_values == (("fragment_retries", 10),), (
+        "the preset's options were merged with the job's rather than replaced by them"
+    )
+
+
+def test_a_job_carries_the_preset_s_hatch_when_it_names_none_of_its_own() -> None:
+    """Per preset is the other half of the same sentence."""
+    preset = replace(
+        presets.BEST_VIDEO, extra_options="--continue", extra_option_values=(("continuedl", True),)
+    )
+
+    request = presets.to_request(preset, url=URL, output_directory=DIRECTORY)
+
+    assert request.extra_options == "--continue"
+    assert request.extra_option_values == (("continuedl", True),)
+
+
+def test_replacing_only_one_half_of_the_hatch_is_refused() -> None:
+    """**Both halves or neither.**
+
+    The text and the parse describe the same thing. A job that replaced the text alone would run
+    the preset's options while showing its own, which is the defect `T015-R1`'s guard exists to
+    prevent, arriving through the one field allowed past it.
+    """
+    preset = replace(
+        presets.BEST_VIDEO, extra_options="--continue", extra_option_values=(("continuedl", True),)
+    )
+
+    with pytest.raises(presets.PresetOverrideError, match="together"):
+        presets.to_request(
+            preset, url=URL, output_directory=DIRECTORY, extra_options="--fragment-retries 10"
         )
 
 

@@ -1196,6 +1196,15 @@ class Preset:
     embed_thumbnail: bool = False
     embed_metadata: bool = False
     embed_chapters: bool = False
+    #: The escape hatch this preset carries (`REQ-031`, `T-184`), the same shape as the request's.
+    #:
+    #: `REQ-031` says the field is **per preset and overridable per job**, and the maintainer ruled
+    #: on 2026-09-20 that a job's value **replaces** the preset's rather than appending to it: the
+    #: text in front of the user is the text that will apply, and appending would produce an
+    #: effective option set that appears in neither field, with conflicts settled by a rule with
+    #: no surface.
+    extra_options: str = field(default="", repr=False)
+    extra_option_values: tuple[tuple[str, Any], ...] = field(default=(), repr=False)
 
     #: Built-ins ship with the application and may not be edited or deleted; user presets may.
     #: The flag lives on the preset rather than in a separate list so the UI cannot lose track
@@ -1224,6 +1233,12 @@ class Preset:
         _require_one_container_change("Preset", self.remux_container, self.recode_container)
         for flag in ("embed_thumbnail", "embed_metadata", "embed_chapters"):
             _require_flag("Preset", flag, getattr(self, flag))
+        _require_text_or_empty("Preset", "extra_options", self.extra_options)
+        object.__setattr__(
+            self,
+            "extra_option_values",
+            _as_option_values("Preset", "extra_option_values", self.extra_option_values),
+        )
         _require_flag("Preset", "built_in", self.built_in)
 
 

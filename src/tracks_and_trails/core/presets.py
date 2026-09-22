@@ -434,6 +434,16 @@ class FormatChoice:
     embed_metadata: bool
     embed_chapters: bool
 
+    #: The escape hatch (`T-184`), here because it is preset-owned and the field set must equal
+    #: `PRESET_OWNED_FIELDS`. It does describe what a download **is**, which is this type's test:
+    #: a job carrying `--write-thumbnail` produces a different download from one that does not.
+    #:
+    #: **It is still not a credential**, which is what `T159-R1` narrowed this type to exclude.
+    #: The values are refused before they reach a request unless the audit admits them, and every
+    #: credential-bearing option is refused — so nothing reaches here that the boundary keeps out.
+    extra_options: str
+    extra_option_values: tuple[tuple[str, Any], ...]
+
 
 def format_choice_of(source: DownloadRequest | Preset) -> FormatChoice:
     """Narrow a request **or a preset** to what describes the download (`T159-R1`).
@@ -482,6 +492,16 @@ def preset_of(request: DownloadRequest, *, name: str) -> Preset:
     )
 
 
+#: The preset-owned fields a job **may** override, and the only ones (`REQ-031`, `T-184`).
+#:
+#: Every other preset field is refused by `to_request` because `REQ-009` promises that the
+#: selector a user is shown is the one that runs. The escape hatch is the deliberate exception:
+#: `REQ-031` says the field is *per preset and overridable per job*, and the maintainer ruled on
+#: 2026-09-20 that a job's value **replaces** the preset's outright. Nothing is silently combined,
+#: so what the user sees in the field is still what runs — the promise holds, by a different route.
+OVERRIDABLE_PER_JOB: Final = frozenset({"extra_options", "extra_option_values"})
+
+
 class PresetOverrideError(ValueError):
     """An override that would make the request disagree with the preset that was shown.
 
@@ -515,7 +535,17 @@ def to_request(
     a reader can see what a preset controls. The risk that carries — a field added and not
     copied — is covered by a test that derives the correspondence from both dataclasses instead.
     """
-    owned = sorted(PRESET_OWNED_FIELDS & set(overrides))
+    hatch = OVERRIDABLE_PER_JOB & set(overrides)
+    if hatch and hatch != OVERRIDABLE_PER_JOB:
+        # **Both halves or neither.** The text and the parse describe the same thing, and a job
+        # that replaced one would run options its own field does not show — which is the defect
+        # this whole guard exists to prevent, arriving through the one field allowed past it.
+        raise PresetOverrideError(
+            f"{sorted(hatch)} overrides only part of the escape hatch: the text a user sees and "
+            "the parsed options that run have to be replaced together, or the job runs something "
+            "its own field does not say (REQ-031)."
+        )
+    owned = sorted((PRESET_OWNED_FIELDS - OVERRIDABLE_PER_JOB) & set(overrides))
     if owned:
         raise PresetOverrideError(
             f"{owned} belong to the preset {preset.name!r} and cannot be overridden here: the "
@@ -542,6 +572,8 @@ def to_request(
         embed_thumbnail=preset.embed_thumbnail,
         embed_metadata=preset.embed_metadata,
         embed_chapters=preset.embed_chapters,
+        extra_options=preset.extra_options,
+        extra_option_values=preset.extra_option_values,
     )
     return replace(request, **overrides) if overrides else request
 
