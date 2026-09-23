@@ -2,7 +2,7 @@
 
 **Purpose:** Navigation to canonical task and shared-scope review records.
 **Owner:** Reviewer; Coordinator / Integrator owns shared routing during a wave.
-**Last updated:** 2026-09-22
+**Last updated:** 2026-09-23
 **Update when:** A review record is introduced or its navigation changes.
 
 ## Current navigation
@@ -98,7 +98,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | <a id="2026-08-14--t-242-settings-screen-fit-review"></a><a id="2026-08-14--t-242-corrections-focused-re-review"></a>[T-242](reviews/T-242.md) | T-242 | 2 |
 | <a id="2026-08-14--t-244-expanded-child-verb-review"></a><a id="2026-08-14--t-244-correction-focused-re-review"></a><a id="2026-08-14--t-244-authorized-documentation-re-review"></a>[T-244](reviews/T-244.md) | T-244 | 3 |
 | <a id="2026-08-21--t-256-ruling-batch-review"></a><a id="2026-08-21--t256-r1r2-focused-correction-re-review"></a><a id="2026-08-21--t-256-authorized-record-only-focused-pass"></a>[T-256](reviews/T-256.md) | T-184, T-256, T-267 | 3 |
-| [T-184](reviews/T-184.md) | T-184; [parser, request and preset implementation](reviews/T-184.md#2026-09-22--parser-request-and-preset-implementation-review), checked at 51f90ab; changes requested, T184-R5–R12 open; earlier cancellation approval remains bounded | 0 |
+| [T-184](reviews/T-184.md) | T-184; [parser and output correction review](reviews/T-184.md#2026-09-23--parser-and-output-correction-review), checked at e7c6b8d; changes requested; R5/R7/R12 resolved, R6/R8/R9/R10/R11/R13 open | 0 |
 | <a id="2026-08-17--t-257--t-259-windows-chain-review"></a><a id="2026-08-17--t-259-duration-report-correction-re-review"></a>[T-257](reviews/T-257.md) | T-257, T-259 | 2 |
 | <a id="2026-08-17--t-258-pre-bootstrap-containment-review"></a><a id="2026-08-17--t-258-focused-containment-correction-review"></a><a id="2026-08-17--t-258-lifecycle-wording-re-review"></a><a id="2026-08-17--t-258-second-focused-correction-re-review"></a><a id="2026-08-19--t-258-scanner-evidence-disposition"></a><a id="2026-08-21--t258-r10-authorised-record-only-re-review"></a>[T-258](reviews/T-258.md) | T-258 | 6 |
 | <a id="2026-08-17--t-260-implementation-review"></a><a id="2026-08-17--t-260-focused-re-review"></a><a id="2026-08-17--t-260-authorized-third-focused-re-review"></a><a id="2026-08-17--t-260-final-authorized-focused-re-review"></a><a id="2026-08-17--t-260-maintainer-authorized-redesign-review"></a><a id="2026-08-17--t-260-authorized-aliasexemption-re-review"></a>[T-260](reviews/T-260.md) | T-260 | 6 |
