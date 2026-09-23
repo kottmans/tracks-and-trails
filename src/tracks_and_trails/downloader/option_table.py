@@ -1062,3 +1062,24 @@ EFFECT_UNKNOWN: Final[frozenset[str]] = frozenset(
         "--max-sleep-interval",
     }
 )
+
+#: Postprocessor key -> the position yt-dlp itself gives it (`T184-R10`).
+#:
+#: **Dependency order, read from yt-dlp rather than assumed.** `ModifyChapters` has to run before
+#: `FFmpegMetadata`, or the metadata is written from chapters that are then removed and the file
+#: ends up with none. Composing the hatch's chain by appending it lost that, so the combined chain
+#: is sorted by this instead.
+POSTPROCESSOR_ORDER: Final[dict[str, int]] = {
+    "SponsorBlock": 0,
+    "FFmpegSubtitlesConvertor": 1,
+    "FFmpegThumbnailsConvertor": 2,
+    "FFmpegExtractAudio": 3,
+    "FFmpegVideoRemuxer": 4,
+    "FFmpegEmbedSubtitle": 5,
+    "ModifyChapters": 6,
+    "FFmpegMetadata": 7,
+    "EmbedThumbnail": 8,
+    "FFmpegSplitChapters": 9,
+    "XAttrMetadata": 10,
+    "FFmpegConcat": 11,
+}

@@ -54,7 +54,7 @@ from tracks_and_trails.core.models import (
     parse_browser_specification,
 )
 from tracks_and_trails.core.paths import APP_SLUG
-from tracks_and_trails.downloader.option_table import OPTION_KEYS
+from tracks_and_trails.downloader.option_table import OPTION_KEYS, POSTPROCESSOR_ORDER
 
 #: This module's own log name, under the application's tree so `configure_logging`'s redacting
 #: handler formats it (`T-038`, `REQ-026`). Named for the module rather than shared with the
@@ -682,6 +682,23 @@ def _entry_thumbnail(
     return candidates[0]
 
 
+def _in_dependency_order(specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """`specs` in the order yt-dlp's own builder emits them (`T184-R10`).
+
+    The ranks are measured, not written here: `tools/ytdlp_option_table.py` runs yt-dlp over an
+    argv that activates every processor this project can produce and reads the order back, so a
+    release that reorders them is picked up by regenerating rather than by anyone noticing.
+
+    A key the table does not know keeps its position relative to other unknowns and goes last —
+    it can only be one yt-dlp has added since the pin, and `tests/unit/test_ytdlp_adapter.py`
+    asserts that nothing this application itself emits is in that position.
+    """
+    return sorted(
+        specs,
+        key=lambda spec: POSTPROCESSOR_ORDER.get(str(spec.get("key")), len(POSTPROCESSOR_ORDER)),
+    )
+
+
 def _chapter_template(output_template: str) -> str:
     """The media's own name, plus the chapter's number and title (`T184-R13`).
 
@@ -855,19 +872,18 @@ def build_options(
     # rules: written when either asks, and the user's request to keep it survives.
     merge_thumbnail(options, hatch)
 
-    # **Composed, not overwritten** (`T184-R10`). This assignment used to replace whatever the
-    # hatch had produced, so `--split-chapters` and `--convert-thumbnails png` parsed, entered the
-    # request, reached this dictionary and were then dropped on the floor — and `requires_ffmpeg`,
-    # reading the same list, answered "no ffmpeg needed" for both.
-    #
-    # **The application's chain runs first**, because it is derived from the request's own typed
-    # fields — what the download *is* — and the hatch's are additions to it. yt-dlp groups
-    # processors by their `when` key before running them, so this order decides only what happens
-    # within a stage.
-    options["postprocessors"] = [
-        *build_postprocessors(request, keep_thumbnail=bool(hatch.get("writethumbnail"))),
-        *hatch.get("postprocessors", []),
-    ]
+    # **Composed in yt-dlp's own order** (`T184-R10`). This assignment used to replace whatever
+    # the hatch produced, so `--split-chapters` reached this dictionary and was dropped. The first
+    # correction appended instead, which was still wrong: `FFmpegMetadata` then ran **before**
+    # `ModifyChapters`, so `--remove-chapters` wrote metadata from chapters that were removed
+    # straight afterwards and the finished file had none. Grouping by `when` does not settle
+    # order *within* a stage, and these two share one.
+    options["postprocessors"] = _in_dependency_order(
+        [
+            *build_postprocessors(request, keep_thumbnail=bool(hatch.get("writethumbnail"))),
+            *hatch.get("postprocessors", []),
+        ]
+    )
     return options
 
 

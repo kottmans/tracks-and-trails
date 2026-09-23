@@ -282,3 +282,102 @@ def test_a_user_asking_for_the_thumbnail_gets_it_without_embedding() -> None:
     options = build_options(request, BASE["output_template"])
 
     assert options["writethumbnail"] is True
+
+
+# --- what a log may carry (`T184-R6`) ------------------------------------------------------------
+
+
+def test_a_hatch_value_is_redacted_where_yt_dlp_itself_prints_it() -> None:
+    """**`repr=False` was necessary and nowhere near sufficient.**
+
+    It closed the route this application takes into a log and did nothing about the routes yt-dlp
+    takes. The reviewer typed a match filter carrying a canary and watched
+    `YoutubeDL._match_entry` write it through `YtdlpLog` and the real formatter, with no verbose
+    mode involved. So the value is registered with `remember_a_secret` and the formatter redacts
+    it wherever it surfaces, whoever wrote the line.
+    """
+    import logging
+
+    from tracks_and_trails.core.logging import RedactingFormatter
+    from tracks_and_trails.downloader.worker import _remember_the_hatch
+
+    canary = "T184_FILTER_CANARY_UNIQUE"
+    request = a_request(
+        extra_options=f'--match-filters "title~={canary}"',
+        extra_option_argv=("--match-filters", f"title~={canary}"),
+    )
+
+    _remember_the_hatch(request)
+    record = logging.LogRecord(
+        "t",
+        logging.INFO,
+        __file__,
+        1,
+        f"[download] does not pass filter (title~={canary})",
+        (),
+        None,
+    )
+    shown = RedactingFormatter().format(record)
+
+    assert canary not in shown, f"a hatch value reached a log unredacted: {shown}"
+
+
+def test_an_ordinary_short_value_is_not_redacted_into_nonsense() -> None:
+    """The other half, and the reason registering everything is safe.
+
+    `remember_a_secret` ignores values under its byte floor (`T197-R1`), so `10` from
+    `--fragment-retries 10` cannot redact its way through every line that mentions ten. Over
+    redaction is a log nobody can read, which this project has four review rounds about.
+    """
+    import logging
+
+    from tracks_and_trails.core.logging import RedactingFormatter
+    from tracks_and_trails.downloader.worker import _remember_the_hatch
+
+    request = a_request(
+        extra_options="--fragment-retries 10", extra_option_argv=("--fragment-retries", "10")
+    )
+
+    _remember_the_hatch(request)
+    record = logging.LogRecord("t", logging.INFO, __file__, 1, "fragment 10 of 25 done", (), None)
+
+    assert "10 of 25" in RedactingFormatter().format(record)
+
+
+def test_the_option_names_themselves_are_not_registered() -> None:
+    """Arguments carry the user's text; spellings are yt-dlp's own vocabulary.
+
+    Registering `--continue` would redact the word wherever it appeared in a log, for nothing.
+    """
+    import logging
+
+    from tracks_and_trails.core.logging import RedactingFormatter
+    from tracks_and_trails.downloader.worker import _remember_the_hatch
+
+    _remember_the_hatch(
+        a_request(extra_options="--write-thumbnail", extra_option_argv=("--write-thumbnail",))
+    )
+    record = logging.LogRecord(
+        "t", logging.INFO, __file__, 1, "using --write-thumbnail for this job", (), None
+    )
+
+    assert "--write-thumbnail" in RedactingFormatter().format(record)
+
+
+def test_the_session_registers_the_hatch_before_it_runs_anything() -> None:
+    """**The wiring, because the tests above would pass without it.**
+
+    They call `_remember_the_hatch` themselves, so deleting its call from `_run` left them green —
+    a mutation showed exactly that. Redaction that is never switched on protects nothing, and the
+    call has to come before the session does any work, or the first line yt-dlp writes is already
+    past it.
+    """
+    import inspect
+
+    from tracks_and_trails.downloader.worker import _run
+
+    body = inspect.getsource(_run)
+    called = body.index("_remember_the_hatch(request)")
+    extracts = body.index("_extract(")
+
+    assert called < extracts, "the hatch is registered after the session has started working"

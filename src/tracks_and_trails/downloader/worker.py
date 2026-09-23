@@ -70,7 +70,7 @@ from tracks_and_trails.core.paths import (
     numbered_variant,
 )
 from tracks_and_trails.core.presets import selector_merges
-from tracks_and_trails.downloader import process_tree
+from tracks_and_trails.downloader import extra_options, process_tree
 from tracks_and_trails.downloader.environment import (
     FfmpegReport,
     YtdlpCandidate,
@@ -577,6 +577,32 @@ def _log_the_session_header(kind: SessionKind, resolved: ResolvedYtdlp) -> None:
         logger.debug("the session header could not be assembled", exc_info=True)
 
 
+def _remember_the_hatch(request: DownloadRequest) -> None:
+    """Register the hatch's **arguments** so a log redacts them wherever they surface (`T184-R6`).
+
+    **`repr=False` on the models was necessary and nowhere near sufficient.** It closed the route
+    this application takes into a log; it did nothing about the routes yt-dlp takes. The reviewer
+    typed a match filter carrying a canary and watched `YoutubeDL._match_entry` write it through
+    `YtdlpLog` and the real formatter, with no verbose mode involved. A hatch value can reach a
+    log from inside a library this project does not control, so the value has to be known to the
+    formatter rather than kept away from it.
+
+    **Arguments, not option spellings.** `--continue` is not a secret and registering it would
+    redact the word wherever it appeared. What carries a user's own text is the argument beside
+    the option.
+
+    **Short ones are ignored by `remember_a_secret` itself** (`T197-R1`), and that is what makes
+    this safe to do wholesale: registering `10` from `--fragment-retries 10` would otherwise
+    redact its way through every log line that mentions ten.
+    """
+    from tracks_and_trails.core.logging import remember_a_secret
+
+    arity = extra_options.option_arity()
+    for token in request.extra_option_argv:
+        if token.partition("=")[0] not in arity:
+            remember_a_secret(token)
+
+
 def _run(
     kind: SessionKind,
     job_id: str,
@@ -588,6 +614,8 @@ def _run(
 ) -> Probed | Succeeded | Failed:
     """The session body. Returns the outcome rather than sending it, so there is one send."""
     from tracks_and_trails.downloader import ytdlp_adapter as adapter
+
+    _remember_the_hatch(request)
 
     context: dict[str, str] = {
         "ytdlp_version": resolved.version,

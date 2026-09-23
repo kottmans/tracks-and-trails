@@ -116,6 +116,15 @@ EFFECT_UNKNOWN: Final[frozenset[str]] = frozenset(
     {{
 {unknown}    }}
 )
+
+#: Postprocessor key -> the position yt-dlp itself gives it (`T184-R10`).
+#:
+#: **Dependency order, read from yt-dlp rather than assumed.** `ModifyChapters` has to run before
+#: `FFmpegMetadata`, or the metadata is written from chapters that are then removed and the file
+#: ends up with none. Composing the hatch's chain by appending it lost that, so the combined chain
+#: is sorted by this instead.
+POSTPROCESSOR_ORDER: Final[dict[str, int]] = {{
+{order}}}
 '''
 
 
@@ -298,6 +307,47 @@ def derive_destinations() -> tuple[dict[str, tuple[str, ...]], list[str], list[s
     return destinations, sorted(inert), sorted(unknown)
 
 
+#: An argv that between them activate every postprocessor this project can produce — its own and
+#: the hatch's. Used only to read back the **order** yt-dlp puts them in.
+_EVERY_PROCESSOR: Final = (
+    "--sponsorblock-remove",
+    "sponsor",
+    "--convert-subs",
+    "srt",
+    "--convert-thumbnails",
+    "png",
+    "--extract-audio",
+    "--remux-video",
+    "mkv",
+    "--embed-subs",
+    "--remove-chapters",
+    "x",
+    "--embed-metadata",
+    "--embed-chapters",
+    "--embed-thumbnail",
+    "--split-chapters",
+    "--xattrs",
+    "--concat-playlist",
+    "always",
+)
+
+
+def postprocessor_order() -> list[str]:
+    """The order yt-dlp itself puts postprocessors in (`T184-R10`).
+
+    **Derived, because appending is wrong and guessing is worse.** Composing the hatch's chain
+    after the application's put `FFmpegMetadata` before `ModifyChapters`, so `--remove-chapters`
+    produced a file with no chapters at all — the metadata was written from the chapters, and then
+    the chapters were removed. yt-dlp's own builder emits them in dependency order; this reads
+    that order rather than reasoning about it.
+    """
+    from yt_dlp import parse_options
+
+    with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+        parsed = parse_options(list(_EVERY_PROCESSOR))
+    return [str(spec["key"]) for spec in parsed.ydl_opts.get("postprocessors", [])]
+
+
 def audit_version() -> str:
     stated = re.search(r"\*\*yt-dlp version:\*\* \*\*([0-9.]+)\*\*", AUDIT.read_text("utf-8"))
     if stated is None:
@@ -361,6 +411,9 @@ def rendered() -> str:
             keys=keys,
             inert="".join(f"        {spelling!r},\n" for spelling in inert),
             unknown="".join(f"        {spelling!r},\n" for spelling in unknown),
+            order="".join(
+                f"    {key!r}: {rank},\n" for rank, key in enumerate(postprocessor_order())
+            ),
         )
     )
 

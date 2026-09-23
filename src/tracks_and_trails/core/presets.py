@@ -438,9 +438,15 @@ class FormatChoice:
     #: `PRESET_OWNED_FIELDS`. It does describe what a download **is**, which is this type's test:
     #: a job carrying `--write-thumbnail` produces a different download from one that does not.
     #:
-    #: **It is still not a credential**, which is what `T159-R1` narrowed this type to exclude.
-    #: The values are refused before they reach a request unless the audit admits them, and every
-    #: credential-bearing option is refused — so nothing reaches here that the boundary keeps out.
+    #: **It can carry a credential, and the earlier claim here that it could not was wrong**
+    #: (`T184-R6`). That comment said every credential-bearing option is refused. It is not:
+    #: `--add-headers "Authorization: Bearer …"` is admitted, and the reviewer printed the value
+    #: out of this type's own repr. Both fields are `repr=False` now, and the worker registers the
+    #: hatch's arguments with `remember_a_secret` so they are redacted wherever they surface.
+    #:
+    #: `T159-R1` narrowed this type to keep `cookies_from_browser`, `proxy` and the rest out of a
+    #: record that outlives a job. That reasoning is unchanged; what changed is that this field is
+    #: not covered by it, and says so rather than claiming a safety it does not have.
     extra_options: str = field(repr=False)
     extra_option_argv: tuple[str, ...] = field(repr=False)
 

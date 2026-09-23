@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import shutil
 import subprocess
 import threading
@@ -28,6 +29,7 @@ from typing import Any
 
 import pytest
 from yt_dlp import YoutubeDL
+from yt_dlp.postprocessor import get_postprocessor
 
 from tracks_and_trails.core.models import DownloadRequest
 from tracks_and_trails.core.paths import UnsafePathError
@@ -397,4 +399,83 @@ def test_split_chapters_writes_inside_the_download_directory(tmp_path: Path) -> 
 
     assert sorted(path.name for path in kept) == ["clip.001 First.mp4", "clip.002 Second.mp4"], (
         f"the chapter files were left for the cleanup to delete: {[p.name for p in kept]}"
+    )
+
+
+# --- the chain's order, measured on the finished file (`T184-R10`) -------------------------------
+
+
+def _chapters_of(media: Path) -> list[str]:
+    """The chapter titles ffprobe finds in `media`."""
+    probed = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-print_format",
+            "json",
+            "-show_chapters",
+            str(media),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return [
+        chapter.get("tags", {}).get("title", "")
+        for chapter in json.loads(probed.stdout).get("chapters", [])
+    ]
+
+
+@pytest.mark.skipif(shutil.which("ffprobe") is None, reason="reading chapters needs real ffprobe")
+def test_removing_a_chapter_leaves_the_others_in_the_finished_file(tmp_path: Path) -> None:
+    """`T184-R10`, asserted on the **file** rather than on the list of specs.
+
+    Appending the hatch's chain after the application's put `FFmpegMetadata` ahead of
+    `ModifyChapters`: the metadata was written from the chapters, and the chapters were then
+    removed, so the finished file had none at all. Both orders produce the same two specs, so a
+    test that checked the specs were present would have passed either way.
+    """
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    media = staging / "clip.mp4"
+    media.write_bytes(_chaptered_media(tmp_path))
+    assert _chapters_of(media) == ["First", "Second"], "the fixture has no chapters to remove"
+
+    request = DownloadRequest(
+        url="https://example.invalid/watch",
+        output_directory=str(staging),
+        format_selector="best",
+        output_template="clip.%(ext)s",
+        embed_chapters=True,
+        embed_metadata=True,
+        extra_options="--remove-chapters Second",
+        extra_option_argv=("--remove-chapters", "Second"),
+    )
+    options = adapter.build_options(request, str(media))
+    info = {
+        "title": "Clip",
+        "id": "x",
+        "ext": "mp4",
+        "filepath": str(media),
+        "duration": 4,
+        "chapters": [
+            {"start_time": 0, "end_time": 2, "title": "First"},
+            {"start_time": 2, "end_time": 4, "title": "Second"},
+        ],
+    }
+
+    with (
+        contextlib.redirect_stderr(io.StringIO()),
+        contextlib.redirect_stdout(io.StringIO()),
+        YoutubeDL(options) as ydl,
+    ):
+        for spec in options["postprocessors"]:
+            processor = get_postprocessor(str(spec["key"]))
+            arguments = {k: v for k, v in spec.items() if k not in {"key", "when"}}
+            _files, info = processor(ydl, **arguments).run(info)
+
+    surviving = _chapters_of(Path(str(info["filepath"])))
+    assert surviving == ["First"], (
+        f"the chapter that was not removed did not survive the chain: {surviving}"
     )
