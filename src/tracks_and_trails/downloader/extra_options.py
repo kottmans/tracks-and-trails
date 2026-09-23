@@ -85,6 +85,12 @@ NO_EFFECT: Final = "This option changes nothing in the version of yt-dlp this ap
 #: hatch value can be `Authorization: Bearer …` and a refusal may be repeated somewhere durable.
 BAD_VALUE: Final = "yt-dlp will not accept the value given for this option."
 
+#: What a user is told when each option is fine alone and they contradict one another.
+#:
+#: `--dateafter 20260920 --datebefore 20260901` asks for a window that ends before it starts.
+#: Neither option is wrong; the pair is.
+TOGETHER: Final = "These options are each valid, but yt-dlp will not accept them together."
+
 #: What a user is told when the effect cannot be measured at all.
 UNKNOWN_EFFECT: Final = (
     "This application cannot tell what this option would change, so it does not pass it on."
@@ -280,11 +286,14 @@ def options_for(text: str) -> tuple[Admission, tuple[str, ...]]:
         # common path, and it is the one the 25 MiB was approved on the understanding it avoids.
         return admission, ()
 
-    from tracks_and_trails.downloader.ytdlp_adapter import first_unparseable
+    from tracks_and_trails.downloader.ytdlp_adapter import unparseable
 
-    refused = first_unparseable(grouped(admission.accepted))
-    if refused is not None:
-        return Admission((), (Refusal(refused, BAD_VALUE),)), ()
+    refused, culprit = unparseable(admission.accepted, grouped(admission.accepted))
+    if refused:
+        # The whole field is refused. `culprit` only decides **what to call it** — when no single
+        # option fails alone, the options contradict one another and the field is named instead.
+        named = culprit if culprit is not None else text.strip()[:40]
+        return Admission((), (Refusal(named, BAD_VALUE if culprit else TOGETHER),)), ()
 
     return admission, admission.accepted
 

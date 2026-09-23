@@ -19,6 +19,7 @@ from tracks_and_trails.downloader.extra_options import (
     NO_EFFECT,
     NOT_AN_OPTION,
     NOT_RULED,
+    TOGETHER,
     UNKNOWN_EFFECT,
     admit,
     option_arity,
@@ -343,6 +344,33 @@ def test_a_value_the_parser_will_not_take_is_refused_at_the_seam(text: str, opti
     assert not admission.usable, f"{text!r} was accepted with nothing to show for it"
     assert argv == ()
     assert [refusal.option for refusal in admission.refusals] == [option]
+
+
+def test_options_that_contradict_each_other_are_refused_together() -> None:
+    """`T184-R8`: each is valid alone, so asking one at a time accepted a field yt-dlp refuses.
+
+    `--dateafter 20260920 --datebefore 20260901` asks for a window that ends before it starts.
+    The seam said usable and the worker then refused it, which is the failure arriving after the
+    user has left the dialog.
+    """
+    admission, argv = options_for("--dateafter 20260920 --datebefore 20260901")
+
+    assert not admission.usable
+    assert argv == ()
+    assert [refusal.reason for refusal in admission.refusals] == [TOGETHER]
+
+
+def test_an_option_repeated_with_a_good_value_last_is_accepted() -> None:
+    """The other direction of the same finding, and the reason the whole line has to decide.
+
+    The real command line takes the last value, so `--fragment-retries nope --fragment-retries 7`
+    is seven retries. Asking one option at a time refused it on the first, which would have
+    rejected a field yt-dlp accepts.
+    """
+    admission, argv = options_for("--fragment-retries nope --fragment-retries 7")
+
+    assert admission.usable, [(r.option, r.reason) for r in admission.refusals]
+    assert argv == ("--fragment-retries", "nope", "--fragment-retries", "7")
 
 
 def test_the_refusal_for_a_bad_value_does_not_repeat_the_value() -> None:

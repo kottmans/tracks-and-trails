@@ -682,6 +682,16 @@ def _entry_thumbnail(
     return candidates[0]
 
 
+def _chapter_template(output_template: str) -> str:
+    """The media's own name, plus the chapter's number and title (`T184-R13`).
+
+    `output_template` is the literal, already-contained path the worker validated, so taking its
+    stem keeps every chapter in the same directory by construction rather than by a check.
+    """
+    stem, _, _ = output_template.rpartition(".")
+    return f"{stem or output_template}.%(section_number)03d %(section_title)s.%(ext)s"
+
+
 def build_options(
     request: DownloadRequest,
     output_template: str,
@@ -711,7 +721,18 @@ def build_options(
     present they suppress nothing. `core.logging.YtdlpLog` is what this receives.
     """
     options: dict[str, Any] = {
-        "outtmpl": output_template,
+        # **Every template type, because one of them is not derived from this one** (`T184-R13`).
+        # Measured 2026-09-23: of yt-dlp's eleven `OUTTMPL_TYPES`, ten resolve inside the
+        # directory this names — `infojson` to `clip.info.json` beside the media, and so on — but
+        # **`chapter` has its own default and it is relative**, so it renders
+        # `Clip - 001 First [x].mp4` against the process working directory. `--split-chapters` is
+        # admitted, and once `T184-R10` stopped discarding the hatch's postprocessors it became
+        # reachable: real ffmpeg wrote chapter files outside the chosen download folder.
+        #
+        # The chapter template is therefore pinned here, **before anything is written** rather
+        # than checked afterwards, and it keeps the media's own stem so the files belong to the
+        # family `claim_outputs` moves under one index (`T109-R4`).
+        "outtmpl": {"default": output_template, "chapter": _chapter_template(output_template)},
         "format": request.format_selector,
         "quiet": True,
         "no_warnings": True,
@@ -850,21 +871,35 @@ def build_options(
     return options
 
 
-def first_unparseable(groups: Sequence[Sequence[str]]) -> str | None:
-    """The first option in `groups` yt-dlp will not accept, by spelling, or `None` if all parse.
+def unparseable(argv: Sequence[str], groups: Sequence[Sequence[str]]) -> tuple[bool, str | None]:
+    """Whether yt-dlp refuses `argv` as a whole, and which option to point the user at.
 
-    **Per option rather than all at once**, so the answer names something the user can find in
-    what they typed. The parser's own complaint quotes the value, and a hatch value may be a
-    credential (`T184-R6`), so the value is never carried out of here.
+    **The whole ordered command line decides** (`T184-R8`). Asking about each option alone gets
+    both directions wrong, and the reviewer measured both: `--dateafter 20260920 --datebefore
+    20260901` is fine one at a time and contradictory together, so the seam accepted a field the
+    worker would refuse; and `--fragment-retries nope --fragment-retries 7` is fine to the real
+    parser, which takes the last value, while one-at-a-time refused it on the first.
+
+    **Attribution is a second question, asked only after the first has been answered.** Once the
+    whole line is known to be bad, each option is tried alone to find something to name — and if
+    none of them fails alone, the answer is still *refused*, with no option named. A diagnostic
+    that could change the verdict would be the same defect wearing a different hat.
     """
     from yt_dlp import parse_options
+
+    try:
+        parse_options(list(argv))
+    except SystemExit, OptParseError:
+        pass
+    else:
+        return False, None
 
     for group in groups:
         try:
             parse_options(list(group))
         except SystemExit, OptParseError:
-            return str(group[0]).partition("=")[0]
-    return None
+            return True, str(group[0]).partition("=")[0]
+    return True, None
 
 
 class UnusableOptionsError(ValueError):
@@ -905,7 +940,11 @@ def hatch_options(text: str, argv: Sequence[str]) -> dict[str, Any]:
     (`T184-R1`): `--fragment-retries 10` produces exactly the default dictionary, so a diff-derived
     merge omits the key and yt-dlp reads the absent value as **zero** retries.
     """
-    if not argv:
+    if not argv and not text.strip():
+        # **Both empty, which is every user who never opens the hatch.** The cheap path stays
+        # cheap; what it may not do is skip the comparison below when only the *argv* is empty
+        # (`T184-R8`), because stored text with no tokens beside it would then run silently
+        # without the options it names.
         return {}
 
     from tracks_and_trails.downloader.extra_options import admit

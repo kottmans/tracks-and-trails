@@ -66,10 +66,17 @@ def test_a_token_that_is_not_text_is_refused() -> None:
         a_request(extra_option_argv=[object()])
 
 
-def test_an_empty_token_is_refused() -> None:
-    """An empty string is not an option and would silently vanish from any argv it joined."""
-    with pytest.raises(TypeError, match="empty"):
-        a_request(extra_option_argv=["--continue", ""])
+def test_an_empty_argument_is_a_valid_argument() -> None:
+    """`T184-R9`: a token is not always an option spelling.
+
+    `--replace-in-metadata title foo ""` asks for the matched text to be **removed**, and the
+    empty replacement is the whole request. The real command line accepts it and so does
+    admission; this model refused it, so a field the user could type could not be constructed.
+    What a token means is the parser's to judge.
+    """
+    request = a_request(extra_option_argv=["--replace-in-metadata", "title", "foo", ""])
+
+    assert request.extra_option_argv == ("--replace-in-metadata", "title", "foo", "")
 
 
 def test_no_token_is_repeated_in_a_validation_message() -> None:

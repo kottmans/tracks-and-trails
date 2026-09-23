@@ -426,6 +426,13 @@ def _as_option_argv(owner: str, name: str, value: object) -> tuple[str, ...]:
     **No token is quoted in an error** (`T184-R6`): a hatch token can be
     `Authorization: Bearer …`, and a validation message ends up in a settings problem that
     startup logs.
+
+    **An empty token is a valid token** (`T184-R9`). This refused them, on the reasoning that an
+    empty string is not an option — but a token is not always an option spelling. It is also an
+    option's *argument*, and `--replace-in-metadata title foo ""` asks for the matched text to be
+    removed, which is exactly an empty replacement. The real command line accepts it and so does
+    admission; only this model refused, so a request the user could build could not be
+    constructed. What a token *means* is the parser's to judge, not this function's.
     """
     if isinstance(value, str) or not isinstance(value, Sequence):
         _fail(owner, name, value, "a sequence of option tokens")
@@ -437,8 +444,6 @@ def _as_option_argv(owner: str, name: str, value: object) -> tuple[str, ...]:
             raise TypeError(
                 f"{owner}.{name}[{index}] must be an option token, not {type(token).__name__}"
             )
-        if not token:
-            raise TypeError(f"{owner}.{name}[{index}] is empty, which is not an option token")
     return tuple(str(token) for token in tokens)
 
 

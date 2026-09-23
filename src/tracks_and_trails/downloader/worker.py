@@ -57,7 +57,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Final, Protocol
+from typing import Any, Final, NamedTuple, Protocol
 
 from tracks_and_trails.core.errors import ErrorKind, FailureDetail
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind
@@ -1321,6 +1321,21 @@ def resumable_partial(directory: Path, job_id: str) -> Path | None:
     return partials[0] if partials else None
 
 
+class Sidecar(NamedTuple):
+    """One file beside the media, and whether its absence is a failure (`T184-R11`).
+
+    **The kind is the point.** The first version returned `(path, exists)` and `claim_outputs`
+    treated every missing one as a missing subtitle — so an ordinary job embedding a thumbnail and
+    writing subtitles failed as `DISK`, reporting that its `.jpg` was a subtitle it never asked
+    for. A thumbnail deleted after embedding is the embed having worked; a subtitle in a language
+    the user named is not there when it should be. Only the second is an error.
+    """
+
+    path: Path
+    exists: bool
+    required: bool
+
+
 def retained_sidecars(options: Mapping[str, Any], staging: Path, stem: str) -> tuple[Path, ...]:
     """The files the built options ask yt-dlp to keep whose paths it does not report back.
 
@@ -1341,51 +1356,47 @@ def retained_sidecars(options: Mapping[str, Any], staging: Path, stem: str) -> t
     )
 
 
+def _recorded_paths(entries: Any, key: str = "filepath") -> Iterator[Path]:
+    """Every `key` in `entries` that names a file, however yt-dlp shaped the collection."""
+    values = entries.values() if isinstance(entries, Mapping) else entries or ()
+    for entry in values:
+        if not isinstance(entry, Mapping):
+            continue
+        found = entry.get(key)
+        if isinstance(found, str) and found:
+            yield Path(found)
+
+
 def requested_sidecars(
     result: Mapping[str, Any], retained: Sequence[Path] = ()
-) -> tuple[tuple[Path, bool], ...]:
+) -> tuple[Sidecar, ...]:
     """Every file yt-dlp was asked to write **beside** the media, and whether it is there.
 
-    Subtitles, the thumbnail, and whatever `retained` names. `REQ-010` offers *embed or write*,
-    and a written subtitle is an output in its own right rather than an intermediate. Read from
-    `requested_subtitles`, which is yt-dlp's own record of what it fetched and where it put it —
-    the decision rather than a rendering of it, which is `_will_merge`'s lesson and `T-061`'s.
+    Subtitles, the thumbnail, the chapter files and whatever `retained` names. `REQ-010` offers
+    *embed or write*, and a written subtitle is an output in its own right rather than an
+    intermediate. Read from yt-dlp's own records of what it fetched and where it put it — the
+    decision rather than a rendering of it, which is `_will_merge`'s lesson and `T-061`'s.
     Globbing the staging directory for `*.srt` would also find a subtitle that was embedded and
     then deleted, and would find one nobody asked for.
 
-    **Presence is reported rather than filtered** (`T109-R3`). This used to drop the missing ones
-    silently, on the reasoning that *"the absence is the embed having worked"* — which is true when
-    the request embeds and says nothing at all when it writes. The two cases need different
-    answers, and a function that cannot tell them apart cannot give either: `claim_outputs` knows
-    which the request asked for, so the fact travels there instead of being decided here.
+    **Only subtitles are required** (`T184-R11`). Their absence means a language the user named
+    did not arrive. A thumbnail's absence usually means it was embedded and removed, which is the
+    embed having worked, and a description the extractor never had is not a failure either.
+
+    **Chapters are here because `--split-chapters` is admitted** (`T184-R13`).
+    `FFmpegSplitChaptersPP` writes each one and records it on the chapter, the way thumbnails are
+    recorded; without claiming them the cleanup would delete files the user asked for.
     """
-    found: list[tuple[Path, bool]] = []
-    requested = result.get("requested_subtitles")
-    if isinstance(requested, Mapping):
-        for entry in requested.values():
-            if not isinstance(entry, Mapping):
-                continue
-            filepath = entry.get("filepath")
-            if not isinstance(filepath, str) or not filepath:
-                continue
-            candidate = Path(filepath)
-            found.append((candidate, candidate.is_file()))
-
-    # **The thumbnail, which the hatch can ask to keep** (`T184-R11`). Measured 2026-09-22:
-    # `thumbnails[*]["filepath"]` is one of the few written-file records that survives into what
-    # `extract_info` hands back — `infojson_filename` and `__files_to_move` do not, which is why
-    # those two are derived from the options instead. Without this the picture was downloaded and
-    # then deleted by the cleanup below, and the job reported success without it.
-    for entry in result.get("thumbnails") or ():
-        if not isinstance(entry, Mapping):
-            continue
-        filepath = entry.get("filepath")
-        if isinstance(filepath, str) and filepath:
-            candidate = Path(filepath)
-            found.append((candidate, candidate.is_file()))
-
-    for path in retained:
-        found.append((path, path.is_file()))
+    found: list[Sidecar] = [
+        Sidecar(path, path.is_file(), required=True)
+        for path in _recorded_paths(result.get("requested_subtitles"))
+    ]
+    for source in ("thumbnails", "chapters"):
+        found += [
+            Sidecar(path, path.is_file(), required=False)
+            for path in _recorded_paths(result.get(source))
+        ]
+    found += [Sidecar(path, path.is_file(), required=False) for path in retained]
     return tuple(found)
 
 
@@ -1495,9 +1506,10 @@ def claim_outputs(
     # session reporting success without an output the request asked for, which is `T109-R3`. Doing
     # it before the reservation loop is what makes *"without leaving reservations"* true by
     # construction rather than by unwinding.
+    sidecars = requested_sidecars(result, retained)
     outside = [
         path
-        for path, exists in ((produced, True), *requested_sidecars(result, retained))
+        for path, exists in ((produced, True), *((s.path, s.exists) for s in sidecars))
         if exists and not _inside(path, staging)
     ]
     if outside:
@@ -1506,15 +1518,16 @@ def claim_outputs(
             + ", ".join(str(path) for path in sorted(outside))
         )
 
-    sidecars = [(path, exists) for path, exists in requested_sidecars(result, retained)]
     if writing_subtitles:
-        absent = [path.name for path, exists in sidecars if not exists]
+        # **Only the required ones**, which is subtitles (`T184-R11`). Asking about every sidecar
+        # turned a deliberately deleted thumbnail into a missing subtitle and failed the job.
+        absent = [s.path.name for s in sidecars if s.required and not s.exists]
         if absent:
             raise UnsafePathError(
                 "the download finished without the subtitle file(s) it was asked to write: "
                 f"{', '.join(sorted(absent))}"
             )
-    present = [path for path, exists in sidecars if exists]
+    present = [s.path for s in sidecars if s.exists]
     suffixes = [_sidecar_suffix(path.name, stem) for path in present]
 
     for candidate in _candidates(target):

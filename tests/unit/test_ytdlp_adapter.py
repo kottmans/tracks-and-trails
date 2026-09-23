@@ -683,7 +683,56 @@ def test_options_are_quiet_and_non_interactive() -> None:
 def test_the_format_selector_and_template_come_from_the_request() -> None:
     options = adapter.build_options(request_for(format_selector="worst"), "given.%(ext)s")
     assert options["format"] == "worst"
-    assert options["outtmpl"] == "given.%(ext)s"
+    assert options["outtmpl"]["default"] == "given.%(ext)s"
+
+
+def test_every_template_type_lands_where_the_worker_said(tmp_path: Path) -> None:
+    """`T184-R13`: `chapter` is the one type yt-dlp does not derive from the default.
+
+    Measured 2026-09-23 against the pinned release: ten of the eleven `OUTTMPL_TYPES` resolve
+    inside the directory the worker names, and `chapter` renders `Clip - 001 First [x].mp4`
+    **relative to the process working directory**. `--split-chapters` is admitted, and once the
+    hatch's postprocessors stopped being discarded it wrote real files outside the download
+    folder. Pinning the template contains them before anything is written, rather than checking
+    afterwards.
+    """
+    from yt_dlp import YoutubeDL
+    from yt_dlp.utils import OUTTMPL_TYPES
+
+    staging = tmp_path / "staging"
+    options = adapter.build_options(request_for(), str(staging / "clip.mp4"))
+    info = {
+        "title": "Clip",
+        "ext": "mp4",
+        "id": "x",
+        "format_id": "0",
+        "section_number": 1,
+        "section_title": "First",
+    }
+
+    with YoutubeDL(options) as ydl:
+        escaping = {
+            kind: ydl.prepare_filename(info, kind)
+            for kind in OUTTMPL_TYPES
+            if not str(ydl.prepare_filename(info, kind)).startswith(str(staging))
+        }
+
+    assert escaping == {}, f"a template type writes outside the staging directory: {escaping}"
+
+
+def test_a_chapter_file_keeps_the_media_s_own_name(tmp_path: Path) -> None:
+    """So the family moves under one index together (`T109-R4`), rather than as strangers."""
+    from yt_dlp import YoutubeDL
+
+    staging = tmp_path / "staging"
+    options = adapter.build_options(request_for(), str(staging / "clip.mp4"))
+    info = {"title": "Clip", "ext": "mp4", "id": "x", "section_number": 1, "section_title": "First"}
+
+    with YoutubeDL(options) as ydl:
+        chapter = Path(ydl.prepare_filename(info, "chapter"))
+
+    assert chapter.parent == staging
+    assert chapter.name.startswith("clip."), f"a chapter left the family: {chapter.name}"
 
 
 def test_network_options_are_only_set_when_asked_for() -> None:
