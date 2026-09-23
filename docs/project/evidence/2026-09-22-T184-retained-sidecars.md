@@ -43,16 +43,31 @@ than inferred from the result.
 
 - `writeinfojson` → `<stem>.info.json`, deterministic.
 - `writedescription` → `<stem>.description`, deterministic.
-- `writethumbnail` → `<stem>.<ext>`, and **the extension is not knowable in advance**: yt-dlp
-  writes whatever the source offered. This is the part that needs a source with a real thumbnail
-  to pin down, which `http.server` serving a bare mp4 cannot provide.
+- `writethumbnail` → **read from the result after all.** The first pass here said the extension
+  was not knowable in advance, because a bare mp4 has no thumbnail to write. Served an HTML page
+  carrying `og:image`, yt-dlp writes `clip.jpg` **and records it**:
+
+```text
+files:                     ['clip.jpg', 'clip.mp4']
+thumbnails key present:     True
+entries: [{"url": ".../cover.jpg", "id": "0", "filepath": "/tmp/…/clip.jpg"}]
+```
+
+  `thumbnails[*]["filepath"]` survives where `infojson_filename` and `__files_to_move` do not. So
+  no extension list is needed and none is pinned: the thumbnail is claimed by the path yt-dlp
+  reports, exactly as subtitles already are.
 
 **Globbing the staging directory is not the answer**, and the reviewer said so: *"do not simply
 keep every staging intermediate"*. `requested_sidecars`' own docstring already rejects globbing for
-subtitles, because it finds files that were embedded and then deleted.
+subtitles, because it finds files that were embedded and then deleted. The mutation that replaces
+the derivation with `staging.iterdir()` fails the control test, which is a download that asked for
+nothing extra and must keep nothing extra.
 
-## Not done here
+## The correction
 
-The correction itself. It needs the thumbnail extension question answered against a source that
-has one, and the contained, collision-safe output family extended to carry the result — which is
-`claim_outputs`' contract, not a line in `requested_sidecars`.
+`retained_sidecars(options, staging, stem)` derives the two the result does not report;
+`requested_sidecars` reads subtitles and the thumbnail from the result; `claim_outputs` takes both
+and moves the whole family under one index, so a kept thumbnail cannot land as `clip.jpg` beside a
+`clip (2).mp4` (`T109-R4`). Three real downloads cover it in
+`tests/integration/test_retained_sidecars.py`, and three mutations are caught: dropping the
+thumbnail, dropping the derived pair, and keeping everything in staging.

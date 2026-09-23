@@ -52,7 +52,7 @@ import sys
 import threading
 import time
 import traceback
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -694,6 +694,12 @@ def _run(
             produced=produced,
             # What tells a deleted intermediate from a lost output — see `claim_outputs`.
             writing_subtitles=bool(request.subtitle_languages) and not request.embed_subtitles,
+            # What the hatch asked to keep whose path the result does not report (`T184-R11`).
+            retained=retained_sidecars(
+                adapter.build_options(request, as_literal_template(staging / target.name)),
+                staging,
+                Path(target.name).stem,
+            ),
         )
         # **Discarded here, on the success path, and no longer in a `finally`** (`T-113`).
         # A `finally` threw the partial away whichever way the session ended, which is right for
@@ -1315,15 +1321,37 @@ def resumable_partial(directory: Path, job_id: str) -> Path | None:
     return partials[0] if partials else None
 
 
-def requested_sidecars(result: Mapping[str, Any]) -> tuple[tuple[Path, bool], ...]:
+def retained_sidecars(options: Mapping[str, Any], staging: Path, stem: str) -> tuple[Path, ...]:
+    """The files the built options ask yt-dlp to keep whose paths it does not report back.
+
+    **Derived from what was asked for, because the result cannot be asked** (`T184-R11`, measured
+    2026-09-22). `YoutubeDL.process_info` sets `info_dict["infojson_filename"]` and folds written
+    thumbnails into `__files_to_move`, and **neither survives** into what `extract_info` returns.
+    The subtitle reading works only because `requested_subtitles` happens to be one of the few
+    such keys that does. So these two are computed from the options and the name, which is the
+    shape `claim_outputs` already has for subtitles.
+
+    **Presence is not required.** A description or an info file that the extractor had nothing to
+    write is not a failure, unlike a subtitle in a language the user named — so these are claimed
+    when they are there and passed over when they are not.
+    """
+    expected = {"writeinfojson": ".info.json", "writedescription": ".description"}
+    return tuple(
+        staging / f"{stem}{suffix}" for key, suffix in expected.items() if options.get(key)
+    )
+
+
+def requested_sidecars(
+    result: Mapping[str, Any], retained: Sequence[Path] = ()
+) -> tuple[tuple[Path, bool], ...]:
     """Every file yt-dlp was asked to write **beside** the media, and whether it is there.
 
-    Today that means subtitle files: `REQ-010` offers *embed or write*, and a written subtitle is
-    an output in its own right rather than an intermediate. Read from `requested_subtitles`, which
-    is yt-dlp's own record of what it fetched and where it put it — the decision rather than a
-    rendering of it, which is `_will_merge`'s lesson and `T-061`'s. Globbing the staging directory
-    for `*.srt` would also find a subtitle that was embedded and then deleted, and would find one
-    nobody asked for.
+    Subtitles, the thumbnail, and whatever `retained` names. `REQ-010` offers *embed or write*,
+    and a written subtitle is an output in its own right rather than an intermediate. Read from
+    `requested_subtitles`, which is yt-dlp's own record of what it fetched and where it put it —
+    the decision rather than a rendering of it, which is `_will_merge`'s lesson and `T-061`'s.
+    Globbing the staging directory for `*.srt` would also find a subtitle that was embedded and
+    then deleted, and would find one nobody asked for.
 
     **Presence is reported rather than filtered** (`T109-R3`). This used to drop the missing ones
     silently, on the reasoning that *"the absence is the embed having worked"* — which is true when
@@ -1331,18 +1359,33 @@ def requested_sidecars(result: Mapping[str, Any]) -> tuple[tuple[Path, bool], ..
     answers, and a function that cannot tell them apart cannot give either: `claim_outputs` knows
     which the request asked for, so the fact travels there instead of being decided here.
     """
-    requested = result.get("requested_subtitles")
-    if not isinstance(requested, Mapping):
-        return ()
     found: list[tuple[Path, bool]] = []
-    for entry in requested.values():
+    requested = result.get("requested_subtitles")
+    if isinstance(requested, Mapping):
+        for entry in requested.values():
+            if not isinstance(entry, Mapping):
+                continue
+            filepath = entry.get("filepath")
+            if not isinstance(filepath, str) or not filepath:
+                continue
+            candidate = Path(filepath)
+            found.append((candidate, candidate.is_file()))
+
+    # **The thumbnail, which the hatch can ask to keep** (`T184-R11`). Measured 2026-09-22:
+    # `thumbnails[*]["filepath"]` is one of the few written-file records that survives into what
+    # `extract_info` hands back — `infojson_filename` and `__files_to_move` do not, which is why
+    # those two are derived from the options instead. Without this the picture was downloaded and
+    # then deleted by the cleanup below, and the job reported success without it.
+    for entry in result.get("thumbnails") or ():
         if not isinstance(entry, Mapping):
             continue
         filepath = entry.get("filepath")
-        if not isinstance(filepath, str) or not filepath:
-            continue
-        candidate = Path(filepath)
-        found.append((candidate, candidate.is_file()))
+        if isinstance(filepath, str) and filepath:
+            candidate = Path(filepath)
+            found.append((candidate, candidate.is_file()))
+
+    for path in retained:
+        found.append((path, path.is_file()))
     return tuple(found)
 
 
@@ -1402,6 +1445,7 @@ def claim_outputs(
     target: Path,
     produced: Path,
     writing_subtitles: bool,
+    retained: Sequence[Path] = (),
 ) -> tuple[Path, tuple[Path, ...]]:
     """Move the media **and every requested sidecar** out of staging, under one shared name.
 
@@ -1453,7 +1497,7 @@ def claim_outputs(
     # construction rather than by unwinding.
     outside = [
         path
-        for path, exists in ((produced, True), *requested_sidecars(result))
+        for path, exists in ((produced, True), *requested_sidecars(result, retained))
         if exists and not _inside(path, staging)
     ]
     if outside:
@@ -1462,7 +1506,7 @@ def claim_outputs(
             + ", ".join(str(path) for path in sorted(outside))
         )
 
-    sidecars = [(path, exists) for path, exists in requested_sidecars(result)]
+    sidecars = [(path, exists) for path, exists in requested_sidecars(result, retained)]
     if writing_subtitles:
         absent = [path.name for path, exists in sidecars if not exists]
         if absent:
