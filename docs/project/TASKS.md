@@ -2,7 +2,7 @@
 
 **Purpose:** Unfinished work: review, ready, proposed and blocked tasks.
 **Owner:** Planner (priorities); Implementer (task/status); Reviewer (review disposition)
-**Last updated:** 2026-09-19
+**Last updated:** 2026-09-24
 **Update when:** Work starts, changes scope/status, closes or reopens.
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
@@ -1243,6 +1243,103 @@ it; and apply the update in place, per platform. Whatever is chosen amends `REL-
   both platforms, with the failure path shown to the user
 - [ ] If built: a clean-machine run on each platform, updating a real earlier release to a newer one
 - [ ] `REQ-030`'s wording and the README's update section match what the application does
+
+---
+
+### T-351 — With a playlist in the queue, a row's changes are signalled on the wrong row
+
+**Status:** Proposed. Filed 2026-09-24 by maintainer instruction, from the codebase audit of that
+date. This was shipped in `0.1.0`.
+**Owner:** Implementer
+**Priority:** High within the `0.1.0` debt. A screen reader hears less than the row shows whenever
+a playlist is in the queue (`NFR-005`), and repaint signals name another row or none at all.
+**Phase:** Phase 4.5 (`0.1.0` debt)
+**Depends on:** nothing
+**Effort:** Small, estimated. Translate at the model boundary, then audit every caller.
+**Relevant context:** `T-140` (the grouped playlist and `_visible`), `T126-R4` (the spoken row
+reads `SELECTOR_ROLE`), `T-344` (the busy tick), `UX-005` §3
+**Affected surfaces:** `ui/queue_view.py` (`QueueModel`) and its tests
+**Risk:** Medium. Repaint spans and the spoken row are easy to break silently in a way a green
+suite does not notice.
+**Required checks:** Ruff lint and format, `mypy src`, bare `mypy` and Windows-platform `mypy`,
+`tests/ui/test_queue_view.py`, `tests/ui/test_row_delegate.py`, `tests/ui/test_accessibility.py`,
+and the full UI suite.
+
+#### Evidence
+
+`QueueModel` has two numberings. `data()` and `rowCount()` use **visible** rows:
+`self._visible[index.row()]`, where a playlist header is inserted and the members of a collapsed
+playlist are left out. Four paths build a `QModelIndex` from `self._index_of` instead, which is the
+position in `self._rows`: `_on_job_changed` → `_emit_row_changed`, `_draw_pending`, `_tick_busy`
+and `_whole_row`. The two agree only while no playlist is grouped.
+
+A probe at `8857753`, using the fixtures in `tests/ui/test_queue_view.py`, put a three-entry
+playlist and one ordinary job `solo` in the queue:
+
+| State | `rowCount` | `_index_of[solo]` | `_visible_of[solo]` | A status change on `solo` signals |
+|---|---|---|---|---|
+| Collapsed | 2 | 3 | 1 | an **invalid** index (row 3 of 2) |
+| Expanded | 5 | 3 | 4 | row 3, which is a playlist entry |
+
+In both states `solo`'s spoken row (`AccessibleTextRole`) omits `Download as: best`, although its
+drawn row shows it. `_whole_row` read `SELECTOR_ROLE` from row 3.
+
+**Not established:** how visible the missed repaint is on a real display. Whole-viewport repaints on
+hover (`row_delegate._repaint`) may hide it.
+
+#### Acceptance criteria
+
+- [ ] Every `QModelIndex` the model builds for a job comes from its **visible** row. A member hidden
+      in a collapsed playlist signals its group's header, whose chip and segments summarise it, or
+      nothing, whichever is ruled in the implementation and stated there.
+- [ ] Regression tests with a grouped playlist ahead of an ordinary job, collapsed **and** expanded,
+      cover a status change, a progress span, the busy tick and the spoken row. Restoring
+      `_index_of` in any one of the four paths makes a test fail.
+- [ ] Every other `_index_of` read is audited. Reads that look up `_rows` by job id are correct and
+      stay; only index construction changes.
+- [ ] Nothing a queue without playlists draws or speaks changes. The existing queue, delegate and
+      accessibility tests pass unchanged.
+
+---
+
+### T-352 — Retire `JobProgressView`, keeping the helpers the row uses
+
+**Status:** Proposed. Filed 2026-09-24 to carry `UX-005`'s
+[2026-09-24 amendment](DECISIONS.md#amended-2026-09-24--the-progress-view-is-retired-and-the-row-is-the-only-progress-surface),
+the maintainer's ruling to retire the view.
+**Owner:** Implementer. The Planner updates `ARCHITECTURE.md`'s module map.
+**Priority:** Low. This is maintenance with no user-visible change, but it removes about 2,200
+lines and their full-suite time.
+**Phase:** Phase 4.5 (`0.1.0` debt)
+**Depends on:** nothing. Land it after `T-351` if both are open at once: both touch `queue_view.py`
+imports, and `T-351`'s fix is the user-visible one.
+**Effort:** Medium, estimated. Most of the work is moving helpers and their tests without changing
+behaviour.
+**Relevant context:** `UX-005` §2 and its 2026-08-06 and 2026-09-24 amendments, `T-017`, `T-340`,
+`T-344`, the comment in `app.compose` above the pool naming
+**Affected surfaces:** `ui/job_detail.py`; its importers `ui/queue_view.py`, `ui/row_delegate.py`,
+`ui/format_table.py`, `ui/add_dialog.py`, `ui/main_window.py` and `app.py`; `ui/error_text.py`
+(`describe_failure`); `tests/ui/test_job_detail.py`; the view's cases in
+`tests/ui/test_windows_desktop.py`, `tests/integration/test_composition.py` and the other test files
+that import it; `tools/windows/mutations/mut_view_stray.py` and `mut_view_reverse.py`, with their
+`CASES` entries; and comments that name the view (`ui/log_view.py`, `ui/queue_view.py`,
+`ui/row_delegate.py`, `ui/row_verbs.py`)
+**Risk:** Low to Medium. Deleting tests can delete coverage of the helpers they also exercised.
+**Required checks:** Ruff lint and format, `mypy src`, bare `mypy` and Windows-platform `mypy`, the
+full suite, and the `windows desktop` job, because Windows tests and mutation plugins change.
+
+#### Acceptance criteria
+
+- [ ] The pure helpers the product imports (the list is in the amendment) live in a module named for
+      what they are. Every importer uses it, and their unit tests move with them rather than going
+      with the view.
+- [ ] `JobProgressView` and `build_progress_view` are gone, with the tests and mutation plugins that
+      exist only for them. Anything they alone reached (`CANCELLED_TEXT`, `describe_failure`) goes
+      too, unless another caller is found and named.
+- [ ] Nothing the row draws or speaks changes. The queue, delegate, accessibility and composition
+      tests pass unchanged, apart from import paths.
+- [ ] No comment still describes the view as present or pending, and `ARCHITECTURE.md`'s module map
+      no longer lists `job_detail.py` as a per-job detail view.
 
 ---
 

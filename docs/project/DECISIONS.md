@@ -6,7 +6,7 @@ requirements or design — those live in `REQUIREMENTS.md` and `ARCHITECTURE.md`
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-09-08
+**Last updated:** 2026-09-24
 **Update when:** A durable choice is accepted, superseded, or deliberately rejected.
 **Does not contain:** Completion notes for routine work. Routine fixes go to `TASKS.md` and `CHANGELOG.md`.
 
@@ -83,7 +83,7 @@ Current requirements and architecture retain their own canonical authority.
 | [DAT-004](#dat-004--log-redaction-is-provenance-aware-exact-values-always-shape-rules-only-on-our-own-lines) | Log redaction is provenance-aware: exact values always, shape rules only on our own lines | Withdrawn | [Withdrawn 2026-08-01](#withdrawn-2026-08-01--it-contradicted-an-accepted-decision-and-shipped-a-critical); [Ruled 2026-08-01](#ruled-2026-08-01--accepted-dat-003-wins-and-the-criterion-is-amended) |
 | [UX-003](#ux-003--nothing-enters-the-queue-unprobed) | Nothing enters the queue unprobed | Accepted | — |
 | [UX-004](#ux-004--the-staging-rows-controls-a-visible-preset-a-menu-for-the-rest) | The staging row's controls: a visible preset, a menu for the rest | Accepted | [Amended 2026-08-02](#amended-2026-08-02--the-control-is-on-the-row-and-the-cost-was-measured) |
-| [UX-005](#ux-005--the-main-window-two-tabs-no-detail-pane-and-the-verbs-on-the-row) | The main window: two tabs, no detail pane, and the verbs on the row | Accepted | [Amended 2026-08-14](#amended-2026-08-14--a-failed-row-is-one-line-taller-when-it-has-something-to-suggest); [Amended 2026-08-06](#amended-2026-08-06--one-tab-because-the-second-ones-contents-are-no-longer-a-product); [Amended 2026-08-05](#amended-2026-08-05--a-finished-playlist-is-one-history-row); [Amended 2026-08-05](#amended-2026-08-05--a-divergent-playlist-says-which-row-got-which); [Amended 2026-08-05](#amended-2026-08-05--pause-all-is-deferred-to-req-017); [Amendment, 2026-08-04](#amendment-2026-08-04--the-toolbar-the-state-badge-and-the-selection-t-130); [Amended 2026-08-04, third](#amended-2026-08-04-third--a-playlist-is-many-rows-in-one-folder); [Amended 2026-08-04, again](#amended-2026-08-04-again--the-toolbars-appearance-and-what-the--carries); [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch); [UX-007](#ux-007--the-phase-3-surfaces-ruled-all-25-open-p-clauses); [UX-010](#ux-010--a-queue-groups-chip-is-progress-done-of-total); [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu); [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button); [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) |
+| [UX-005](#ux-005--the-main-window-two-tabs-no-detail-pane-and-the-verbs-on-the-row) | The main window: two tabs, no detail pane, and the verbs on the row | Accepted | [Amended 2026-09-24](#amended-2026-09-24--the-progress-view-is-retired-and-the-row-is-the-only-progress-surface); [Amended 2026-09-18](#amended-2026-09-18--a-cancelled-row-says-why-when-the-reason-is-not-the-applications-own); [Amended 2026-08-14](#amended-2026-08-14--a-failed-row-is-one-line-taller-when-it-has-something-to-suggest); [Amended 2026-08-06](#amended-2026-08-06--one-tab-because-the-second-ones-contents-are-no-longer-a-product); [Amended 2026-08-05](#amended-2026-08-05--a-finished-playlist-is-one-history-row); [Amended 2026-08-05](#amended-2026-08-05--a-divergent-playlist-says-which-row-got-which); [Amended 2026-08-05](#amended-2026-08-05--pause-all-is-deferred-to-req-017); [Amendment, 2026-08-04](#amendment-2026-08-04--the-toolbar-the-state-badge-and-the-selection-t-130); [Amended 2026-08-04, third](#amended-2026-08-04-third--a-playlist-is-many-rows-in-one-folder); [Amended 2026-08-04, again](#amended-2026-08-04-again--the-toolbars-appearance-and-what-the--carries); [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch); [UX-007](#ux-007--the-phase-3-surfaces-ruled-all-25-open-p-clauses); [UX-010](#ux-010--a-queue-groups-chip-is-progress-done-of-total); [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu); [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button); [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) |
 | [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) | Linux runs on the maintainer's Fedora machines, because it is faster as well as free | Accepted | [Amended 2026-08-05](#amended-2026-08-05--the-linux-jobs-are-named-linux-not-after-a-distribution); [Amended 2026-09-08](#amended-2026-09-08--linux-returns-to-hosted-for-the-exposure-and-not-the-meter) |
 | [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died) | A prose-only push runs no CI, and the one gate that read prose moved rather than died | Accepted | — |
 | [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously) | Windows runs on `STARBASE`, on every push, and asynchronously | Accepted | [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died); [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
@@ -4117,6 +4117,35 @@ behind a document would leave known-broken behaviour on `main` for longer.
 ---
 
 ## UX-005 — The main window: two tabs, no detail pane, and the verbs on the row
+
+### Amended 2026-09-24 — the progress view is retired, and the row is the only progress surface
+
+**Status:** **Accepted.** Maintainer ruling of 2026-09-24, made on the codebase audit of that
+date. It answers the question this entry left open under *Consequences*:
+*"`T-017`'s `JobProgressView` … need[s] a ruling of its own: retire it, or keep it for a route this
+window no longer offers. **Not decided here.**"*
+
+**What was found.** Nothing in the product constructs `JobProgressView` or calls
+`build_progress_view` (`ui/job_detail.py`, about 585 lines). The pane that hosted it went with the
+2026-08-06 amendment. The composition root calls the disconnection deliberate but undecided
+(*"a disconnection rather than a deletion"*). About 1,600 lines of tests and two Windows mutation
+plugins still carry the widget, and every full-suite run pays for them.
+
+**Ruled: retire it.** The row already carries what the view drew: progress, stage, state and the
+reason a job failed or was cancelled (§§2–3, `T-344`, and the 2026-09-18 amendment). A failed
+download's log opens through *Diagnostics…* (`T-340`). §2 forbids the detail pane the view would
+need, so keeping the widget is maintenance for a route the window does not offer.
+
+**Not retired: the pure helpers in the same file.** `ui/job_detail.py` also holds functions and
+constants the product imports: `format_bytes`, `format_speed`, `format_eta`, `describe_bar`,
+`totals_for_ending`, `percent_of`, `STAGE_TEXT`, `STATUS_TEXT`, `UNKNOWN_TEXT`,
+`UNTRUSTED_TEXT_LABELS`, `REPAINT_INTERVAL_MS` and the `JobReader` protocol, used by `queue_view`,
+`row_delegate`, `format_table`, `add_dialog`, `main_window` and `app.py`. They move to a module named
+for what they are **before** the widget goes, so nothing the row draws or speaks changes. What only
+the widget reached, such as `CANCELLED_TEXT` and `error_text.describe_failure`, goes with it unless
+the move finds another caller.
+
+**Carried by `T-352`.** The module map in `ARCHITECTURE.md` changes with it.
 
 ### Amended 2026-09-18 — a cancelled row says why, when the reason is not the application's own
 
