@@ -360,6 +360,47 @@ def test_a_value_the_parser_will_not_take_is_refused_at_the_seam(text: str, opti
     assert [refusal.option for refusal in admission.refusals] == [option]
 
 
+@pytest.mark.parametrize(
+    ("text", "option"),
+    [
+        ('--match-filters "duration<5 & T184_PART ~~ x"', "--match-filters"),
+        ('--break-match-filters "T184_PART >>"', "--break-match-filters"),
+        ("--encoding T184-no-such-codec", "--encoding"),
+    ],
+)
+def test_a_value_yt_dlp_reads_only_when_the_job_runs_is_checked_at_edit_time(
+    text: str, option: str
+) -> None:
+    """`T184-R8`'s class: the parser takes these values as text and reads them later.
+
+    A filter is read part by part as each item arrives, and an encoding is looked up when output is
+    written. Measured 2026-09-26: each passed the whole-line parse and then failed the job, which is
+    a malformed field failing after the user has left the dialog.
+    """
+    admission, argv = options_for(text)
+
+    assert not admission.usable, f"{text!r} was accepted and would fail the job instead"
+    assert argv == ()
+    assert [refusal.option for refusal in admission.refusals] == [option]
+    assert all("T184" not in line for line in refusal_lines(admission)), "the value was repeated"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "--match-filters \"duration>100 & title~='(?i)talk' & !is_live\"",
+        '--match-filters "like_count>?100" --break-match-filters "upload_date<20200101"',
+        "--encoding utf-8",
+    ],
+)
+def test_a_value_yt_dlp_can_read_is_still_accepted(text: str) -> None:
+    """The check asks yt-dlp's own question with no item, so every field is merely missing."""
+    admission, argv = options_for(text)
+
+    assert admission.usable, refusal_lines(admission)
+    assert argv
+
+
 def test_options_that_contradict_each_other_are_refused_together() -> None:
     """`T184-R8`: each is valid alone, so asking one at a time accepted a field yt-dlp refuses.
 

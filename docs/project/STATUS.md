@@ -91,6 +91,12 @@ task and review records it summarised.*
   file (`ARC-010`); the field is stored verbatim like a URL, in `settings.toml` and the queue
   database (`DAT-003`); and `REQ-031` now says the admitted command line rather than a parsed
   dictionary.
+- **A fourth `T-184` correction round, 2026-09-26, is with the Reviewer.** It closes a false
+  success reachable through `--compat-options`, the same outcome the audit refuses `-i` for, plus a
+  merge that read values as options, three unregistered pieces of logged values, and two values
+  that failed only at run time. **One measured defect waits on a ruling:** an item yt-dlp skips by
+  the user's own selection (archive, filter, size limit) fails the job as `DISK` and pauses the
+  queue.
 - **A codebase audit ran on 2026-09-24** and is with the Reviewer for its own record. Two outcomes
   are already filed: `T-351` (with a playlist in the queue, row changes are signalled on the wrong
   row, and a screen reader hears less than the row shows) and `T-352`, which retires
@@ -109,17 +115,22 @@ task and review records it summarised.*
 
 ## Verification
 
-*Refreshed 2026-09-26, for `T-184`'s third correction round, on Linux with the project `.venv`
-(Python 3.14.7, yt-dlp 2026.08.19).* The previous section described `T-300`'s documentation
-follow-up; its results are kept in
+*Refreshed 2026-09-27, for `T-184`'s third and fourth correction rounds (`428f65d`, then the
+fourth round's commit), on Linux with the project `.venv` (Python 3.14.7, yt-dlp 2026.08.19).* The
+previous section described `T-300`'s documentation follow-up; its results are kept in
 [T-300](COMPLETED_TASKS.md#t-300--agentsmd-is-628-lines-and-is-loaded-on-every-task).
 
-| Check | Result |
-|---|---|
-| `ruff check .`; `ruff format --check .` | Passed; 461 files |
-| `mypy src`; bare `mypy`; `mypy --platform win32` | Passed; 69, 209 and 209 files |
-| Full `pytest -q -p no:cacheprovider` | **1 failed, 4,948 passed, 22 skipped, 2 deselected**, 3,091 s. The one failure is `T-350`'s race (`derived_format_columns-10pt`, *"row 0 offered no format control"*); the nine mounted-panel cases then passed alone |
-| Repo root before and after the suite | Unchanged |
+| Check | Third round | Fourth round |
+|---|---|---|
+| `ruff check .`; `ruff format --check .` | Passed; 461 files | Passed; 462 files |
+| `mypy src`; bare `mypy`; `mypy --platform win32` | Passed; 69, 209, 209 files | Passed; 69, 210, 210 files |
+| Full `pytest -q -p no:cacheprovider` | **1 failed, 4,948 passed**, 22 skipped, 2 deselected; 3,091 s | **6 failed, 4,959 passed**, 22 skipped, 2 deselected; 3,575 s |
+| Repo root before and after the suite | Unchanged | Unchanged |
+
+**Every failure in both runs is `T-350`'s race**: one or more cases of
+`test_the_mounted_format_panel_fits_the_dialog_it_asked_for`, each failing with *"row 0 offered no
+format control"*. The nine cases passed alone after each run, twice after the second. Neither
+round changes the add dialog or the probe of a request with no hatch.
 
 No Windows runtime, external download or release-gate result is claimed here.
 

@@ -304,6 +304,59 @@ def test_the_hatch_brings_no_processor_it_did_not_name() -> None:
         assert "FFmpegConcat" not in keys, f"{text!r} brought in a refused option's default: {keys}"
 
 
+def test_a_stored_filter_yt_dlp_cannot_read_stops_the_build() -> None:
+    """Re-admission asks what the dialog asks, or a hand-edited preset skips the question.
+
+    The parse accepts any text for a filter, so without this the job would start and fail on the
+    first item instead of being refused with its reason (`T184-R5`, `T184-R8`).
+    """
+    value = "duration<5 & title ~~ x"
+    request = a_request(
+        extra_options=f'--match-filters "{value}"', extra_option_argv=("--match-filters", value)
+    )
+
+    with pytest.raises(UnusableOptionsError):
+        build_options(request, BASE["output_template"])
+
+
+def test_a_value_spelled_like_an_option_is_only_a_value() -> None:
+    """The merge asked every token which destinations it names, values included.
+
+    So the value in `--output-na-placeholder --fragment-retries` copied `--fragment-retries`'
+    destination at its default, an option the user never named. Measured 2026-09-26: 305 fields
+    built this way copied a key their named option does not touch. The placeholder takes any text,
+    so nothing else refuses it first.
+    """
+    request = a_request(
+        extra_options="--output-na-placeholder --fragment-retries",
+        extra_option_argv=("--output-na-placeholder", "--fragment-retries"),
+    )
+
+    options = build_options(request, BASE["output_template"])
+
+    assert "fragment_retries" not in options, "a value was read as the option it is spelled like"
+
+
+def test_an_option_with_several_destinations_brings_only_what_it_changed() -> None:
+    """`--compat-options` carried the command line's default for every key it can reach.
+
+    One of them is `ignoreerrors: "only_download"`, which is what `-i/--ignore-errors` sets and
+    the audit refuses: the worker reads success from the info dict, so a failed conversion was
+    reported as a finished download (`T183-R2`). `T184-R1` still holds for an option with one
+    destination, whose value travels even when it equals the default.
+    """
+    request = a_request(
+        extra_options="--compat-options no-live-chat --fragment-retries 10",
+        extra_option_argv=("--compat-options", "no-live-chat", "--fragment-retries", "10"),
+    )
+
+    options = build_options(request, BASE["output_template"])
+
+    assert options["compat_opts"] == {"no-live-chat"}
+    assert not options.get("ignoreerrors"), "a failed download would be reported as a success"
+    assert options["fragment_retries"] == 10, "T184-R1: a value equal to the default was dropped"
+
+
 # --- what a log may carry (`T184-R6`) ------------------------------------------------------------
 
 
@@ -360,6 +413,40 @@ def test_a_header_value_is_redacted_without_its_name(registered: None) -> None:
     remember_the_hatch((f"--add-headers=Authorization: Bearer {canary}",))
 
     assert canary not in _shown(f"headers: {{'Authorization': 'Bearer {canary}'}}")
+
+
+def test_a_piece_of_an_extractor_argument_is_redacted_where_yt_dlp_prints_it_alone(
+    registered: None,
+) -> None:
+    """yt-dlp splits `--extractor-args` before it uses it, and prints one piece by itself.
+
+    A malformed `po_token` is echoed back alone, *Expected "CLIENT.CONTEXT+PO_TOKEN", got "…"*,
+    measured 2026-09-26 through the real `YoutubeIE._get_config_po_token`. The whole argument was
+    registered and the piece was not.
+    """
+    canary = "T184_PO_TOKEN_CANARY"
+
+    remember_the_hatch(("--extractor-args", f"youtube:player_client=web;po_token={canary}"))
+
+    assert canary not in _shown(f'Expected "CLIENT.CONTEXT+PO_TOKEN", got "{canary}"')
+
+
+def test_a_filter_is_redacted_as_yt_dlp_prints_it_trimmed(registered: None) -> None:
+    """`match_filter_func` strips each filter before it names one it rejected."""
+    canary = "T184_SPACED_FILTER_CANARY"
+
+    remember_the_hatch(("--match-filters", f" title={canary} "))
+
+    assert canary not in _shown(f"Clip does not pass filter (title={canary}), skipping ..")
+
+
+def test_a_part_of_a_filter_is_redacted_where_yt_dlp_quotes_it_alone(registered: None) -> None:
+    """`match_str` splits a filter on `&` and quotes a part it cannot read with `repr`."""
+    canary = "T184_FILTER_PART_CANARY"
+
+    remember_the_hatch(("--match-filters", f"duration<5 & {canary} ~~ x"))
+
+    assert canary not in _shown(f"Invalid filter part ' {canary} ~~ x'")
 
 
 def test_a_path_the_hatch_names_is_redacted_however_short(registered: None) -> None:

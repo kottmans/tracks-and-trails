@@ -253,6 +253,12 @@ that, so a user's own cancellation is unchanged. The options as they were costed
 complete path through this worker to a row. That measurement is still owed before either option is
 built.
 
+**Measured 2026-09-26, through the real worker.** With the item's id in a `--download-archive`,
+`--break-on-existing` ends the session `Failed(CANCELLED)` carrying yt-dlp's sentence, which names
+the option, and nothing is fetched. `--break-per-input` beside it changes nothing, because a job has
+one input. `tests/integration/test_hatch_outcomes.py` keeps both. The manager stores that message
+(`manager.py`, `_cancelled(…, outcome.message)`) and the row tests for `T184-R2` show it.
+
 #### Scope
 
 An *Additional yt-dlp options* field, per preset and overridable per job, taking command-line
@@ -290,6 +296,35 @@ under a stated precedence.
 > **Storing the field verbatim is ruled as well** (2026-09-26,
 > [`DAT-003`](DECISIONS.md#amended-2026-09-26--text-typed-into-the-options-field-is-stored-verbatim-like-a-url-t-184)):
 > it is text the user typed, like a URL, kept as typed in `settings.toml` and the queue database.
+
+> **Found and corrected 2026-09-26, the fourth round, not yet reviewed.** Each has a test that fails
+> when the correction is reverted.
+>
+> - **A false success through an admitted option.** `--compat-options` with any value carried
+>   yt-dlp's command-line default `ignoreerrors: "only_download"`, so a failed MP3 conversion was
+>   reported as a finished `.m4a`: the reason the audit refuses `-i` (`T183-R2`). An option that
+>   reaches several keys now carries only the keys its value changed.
+> - **A value read as an option.** The merge looked every token up, so a value spelled like an
+>   option copied that option's keys at their defaults (305 measured fields).
+> - **Three pieces of a value that yt-dlp prints on its own**, now registered as well: an
+>   extractor argument's items (a malformed `po_token` is echoed alone), a filter printed stripped,
+>   and a filter part quoted alone when yt-dlp cannot read it.
+> - **Two values the parser takes as text and reads only when a job runs**: match filters and
+>   `--encoding`. Both are now checked at edit time and again where the job is built.
+>
+> **Measured the same day and not corrected, because each needs a ruling or a disposition:**
+>
+> - **An item yt-dlp skips by the user's own selection fails the job as `DISK`**, which pauses the
+>   queue. With the id already in a `--download-archive`, or a `--match-filters` or `--max-filesize`
+>   that excludes it, yt-dlp downloads nothing and the worker then fails to move a file that does
+>   not exist: *"cannot move the finished download to '…/clip.NA'"*. How a skipped item should end
+>   is the maintainer's to rule.
+> - **A relative path in `--download-archive` or `--cache-dir` resolves against the process's
+>   working directory**, not the download folder. A probe wrote an archive into the repository
+>   root this way.
+> - **Three more options fail only when the job runs**: an unknown `--ies`/`--use-extractors` name
+>   (*"No suitable extractor"*), a `--source-address` that is not an address, and a missing
+>   `--client-certificate` file. Unlike filters and encodings, none has an exact check to borrow.
 
 #### Maintainer rulings, 2026-09-20 — the four shapes the build needed
 

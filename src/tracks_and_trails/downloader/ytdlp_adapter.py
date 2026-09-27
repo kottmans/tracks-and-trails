@@ -24,6 +24,7 @@ listed explicitly rather than quietly absent, so a reader can tell "not applicab
 "forgotten".
 """
 
+import codecs
 import contextlib
 import functools
 import importlib
@@ -32,6 +33,7 @@ import os
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from optparse import OptParseError
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Final
 
 from yt_dlp.networking.exceptions import HTTPError, TransportError
@@ -910,6 +912,9 @@ def unparseable(argv: Sequence[str], groups: Sequence[Sequence[str]]) -> tuple[b
     whole line is known to be bad, each option is tried alone to find something to name — and if
     none of them fails alone, the answer is still *refused*, with no option named. A diagnostic
     that could change the verdict would be the same defect wearing a different hat.
+
+    **A line that parses can still hold a value yt-dlp reads only when a job runs**, and that is
+    asked next, by `_unreadable_when_it_runs`, naming the option it found.
     """
     from yt_dlp import parse_options
 
@@ -918,7 +923,8 @@ def unparseable(argv: Sequence[str], groups: Sequence[Sequence[str]]) -> tuple[b
     except SystemExit, OptParseError:
         pass
     else:
-        return False, None
+        culprit = _unreadable_when_it_runs(groups)
+        return culprit is not None, culprit
 
     for group in groups:
         try:
@@ -926,6 +932,32 @@ def unparseable(argv: Sequence[str], groups: Sequence[Sequence[str]]) -> tuple[b
         except SystemExit, OptParseError:
             return True, str(group[0]).partition("=")[0]
     return True, None
+
+
+def _unreadable_when_it_runs(groups: Sequence[Sequence[str]]) -> str | None:
+    """The first option whose value the parser took as text and yt-dlp cannot read later.
+
+    **The whole-line parse passes these, whatever they say** (`T184-R8`'s class, measured
+    2026-09-26). A match filter is read part by part as each item arrives, and an encoding is looked
+    up when output is written, so a bad one failed the job rather than the field. Each is asked
+    yt-dlp's own question with no item: `match_str` with every field missing still parses every
+    part, and `codecs.lookup` is the lookup `--encoding` gets.
+    """
+    from yt_dlp.utils import match_str
+
+    from tracks_and_trails.downloader.extra_options import FILTER_OPTIONS
+
+    for group in groups:
+        spelling, _, inline = str(group[0]).partition("=")
+        for value in [inline] if inline else group[1:]:
+            try:
+                if spelling in FILTER_OPTIONS:
+                    match_str(value, {}, incomplete=True)
+                elif spelling == "--encoding":
+                    codecs.lookup(value)
+            except LookupError, ValueError:
+                return spelling
+    return None
 
 
 class UnusableOptionsError(ValueError):
@@ -973,7 +1005,7 @@ def hatch_options(text: str, argv: Sequence[str]) -> dict[str, Any]:
         # without the options it names.
         return {}
 
-    from tracks_and_trails.downloader.extra_options import admit
+    from tracks_and_trails.downloader.extra_options import admit, grouped
 
     admission = admit(text)
     if not admission.usable:
@@ -995,12 +1027,26 @@ def hatch_options(text: str, argv: Sequence[str]) -> dict[str, Any]:
         raise UnusableOptionsError(
             "yt-dlp will not accept the options saved with this download"
         ) from refused
+    if _unreadable_when_it_runs(grouped(argv)) is not None:
+        # The dialog's question, asked again: a stored filter no dialog checked would otherwise
+        # start the job and fail on its first item.
+        raise UnusableOptionsError("yt-dlp will not accept the options saved with this download")
 
+    # **Options, not tokens, and from an option with several destinations only what it changed.**
+    # Both halves were measured on 2026-09-26. Walking every token looked values up as if they
+    # were options, so `--output-na-placeholder --fragment-retries` copied `fragment_retries` at
+    # its default. And an option that can reach several keys brought all of them at whatever the
+    # parse held, which for the keys its value did not touch is the *command line's* default rather
+    # than the library's: `--compat-options no-live-chat` carried `ignoreerrors: "only_download"`,
+    # and a failed MP3 conversion then came back as a finished `.m4a` — the false success the audit
+    # refuses `-i/--ignore-errors` for (`T183-R2`). An option with one destination still carries
+    # it whatever its value (`T184-R1`).
+    command_line = _command_line_defaults()
     wanted: dict[str, Any] = {}
-    for word in argv:
-        spelling = word.partition("=")[0]
-        for key in OPTION_KEYS.get(spelling, ()):
-            if key in parsed:
+    for chunk in grouped(argv):
+        keys = OPTION_KEYS.get(chunk[0].partition("=")[0], ())
+        for key in keys:
+            if key in parsed and (len(keys) == 1 or parsed[key] != command_line.get(key)):
                 wanted[key] = parsed[key]
     if "postprocessors" in wanted:
         # **Only the processors the named options asked for.** Every `parse_options` result
@@ -1017,11 +1063,21 @@ def hatch_options(text: str, argv: Sequence[str]) -> dict[str, Any]:
 
 
 @functools.cache
-def _default_postprocessors() -> tuple[dict[str, Any], ...]:
-    """What `parse_options` puts in `postprocessors` when nothing asks for any (`T184-R10`)."""
+def _command_line_defaults() -> Mapping[str, Any]:
+    """What `parse_options` holds when nothing is typed: the command line's defaults.
+
+    **Not the library's.** `YoutubeDL` reads an absent key its own way, and the two disagree:
+    `ignoreerrors` is `"only_download"` here and absent, so false, to the library.
+    """
     from yt_dlp import parse_options
 
-    return tuple(parse_options([]).ydl_opts.get("postprocessors", ()))
+    return MappingProxyType(dict(parse_options([]).ydl_opts))
+
+
+@functools.cache
+def _default_postprocessors() -> tuple[dict[str, Any], ...]:
+    """What `parse_options` puts in `postprocessors` when nothing asks for any (`T184-R10`)."""
+    return tuple(_command_line_defaults().get("postprocessors", ()))
 
 
 def merge_thumbnail(options: dict[str, Any], hatch: dict[str, Any]) -> None:

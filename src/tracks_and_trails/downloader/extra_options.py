@@ -34,6 +34,7 @@ and it is not in this module.
 
 from __future__ import annotations
 
+import re
 import shlex
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -334,6 +335,10 @@ NOT_SECRET_VALUES: Final = frozenset(
     }
 )
 
+#: The options whose value is a match filter. yt-dlp compiles nothing when it parses one: a filter
+#: is read part by part when an item arrives, so a part it cannot read is found then.
+FILTER_OPTIONS: Final = frozenset({"--match-filters", "--break-match-filters"})
+
 #: Admitted options whose value is a **path the user configured**, registered with
 #: `remember_a_path`, which has no length floor (`T197-R1`).
 PATH_VALUES: Final = frozenset(
@@ -373,9 +378,38 @@ def remember_the_hatch(argv: Sequence[str]) -> None:
             if spelling in PATH_VALUES:
                 remember_a_path(value)
                 continue
-            remember_a_secret(value)
-            if spelling == "--add-headers":
-                remember_a_secret(value.partition(":")[2].strip())
+            for piece in _as_yt_dlp_may_print_it(spelling, value):
+                remember_a_secret(piece)
+
+
+def _as_yt_dlp_may_print_it(spelling: str, value: str) -> set[str]:
+    """`value`, and each piece of it yt-dlp keeps apart and can print alone (`T184-R6`).
+
+    Registering the whole value covers a line that quotes the whole value. yt-dlp splits three of
+    these before it uses them, and each has a line, measured on 2026-09-26, that prints a piece:
+
+    - **A header** is kept as a mapping, so its value is printed without `Name:`.
+    - **An extractor argument** is split on `:`, `;`, `=` and unescaped commas, each value
+      stripped, and a malformed `po_token` is echoed alone: *got "…"*. The split here is yt-dlp's.
+    - **A match filter** is printed stripped (*does not pass filter (…)*), and a part yt-dlp cannot
+      read is quoted alone with `repr` (*Invalid filter part '…'*), split on unescaped `&`.
+
+    Pieces under `remember_a_secret`'s floor are ignored there, so `web` in `player_client=web`
+    stays readable. A longer client name such as `android` is redacted, which is the safe direction.
+    """
+    pieces = {value, value.strip()}
+    if spelling == "--add-headers":
+        pieces.add(value.partition(":")[2].strip())
+    elif spelling == "--extractor-args":
+        for argument in value.partition(":")[2].split(";"):
+            items = argument.partition("=")[2]
+            pieces.update((argument.strip(), items.strip()))
+            pieces.update(item.replace(r"\,", ",").strip() for item in re.split(r"(?<!\\),", items))
+    elif spelling in FILTER_OPTIONS:
+        for escaped in re.split(r"(?<!\\)&", value):
+            part = escaped.replace(r"\&", "&")
+            pieces.update((part, part.strip(), repr(part)[1:-1]))
+    return pieces
 
 
 def options_for(text: str) -> tuple[Admission, tuple[str, ...]]:
