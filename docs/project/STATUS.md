@@ -84,10 +84,13 @@ task and review records it summarised.*
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the
-  `--opt=value` spelling, and exempts options whose values cannot be secrets. **That exemption
-  narrows one acceptance criterion's letter and is the maintainer's to accept**
-  ([T-184](TASKS.md#t-184--the-escape-hatch-additional-yt-dlp-options-parsed-and-bounded)).
-  Storing a user-typed credential in `settings.toml` (`DAT-003`) is still undecided.
+  `--opt=value` spelling, and exempts options whose values cannot be secrets.
+- **Three rulings taken 2026-09-26, all as recommended**
+  ([T-184](TASKS.md#t-184--the-escape-hatch-additional-yt-dlp-options-parsed-and-bounded)): that
+  exemption is accepted and the criterion narrowed to values that can carry a credential or name a
+  file (`ARC-010`); the field is stored verbatim like a URL, in `settings.toml` and the queue
+  database (`DAT-003`); and `REQ-031` now says the admitted command line rather than a parsed
+  dictionary.
 - **A codebase audit ran on 2026-09-24** and is with the Reviewer for its own record. Two outcomes
   are already filed: `T-351` (with a playlist in the queue, row changes are signalled on the wrong
   row, and a screen reader hears less than the row shows) and `T-352`, which retires

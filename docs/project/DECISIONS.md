@@ -6,7 +6,7 @@ requirements or design — those live in `REQUIREMENTS.md` and `ARCHITECTURE.md`
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-09-24
+**Last updated:** 2026-09-26
 **Update when:** A durable choice is accepted, superseded, or deliberately rejected.
 **Does not contain:** Completion notes for routine work. Routine fixes go to `TASKS.md` and `CHANGELOG.md`.
 
@@ -65,7 +65,7 @@ Current requirements and architecture retain their own canonical authority.
 | [OPS-003](#ops-003--windows-verification-is-ci-only-until-a-real-windows-machine-exists) | Windows verification is CI-only until a real Windows machine exists | Partly superseded | [OPS-004](#ops-004--windows-ci-runners-provide-a-real-desktop-verify-against-it); [OPS-005](#ops-005--starbase-is-the-windows-verification-platform-hosted-only-findings-do-not-gate-the-phase) |
 | [ARC-003](#arc-003--versioned-in-arc-002-means-version-controlled-not-version-negotiated) | "Versioned" in `ARC-002` means version-controlled, not version-negotiated | Accepted | — |
 | [DAT-002](#dat-002--filename-sanitizing-promises-idempotence-not-uniqueness) | Filename sanitizing promises idempotence, not uniqueness | Accepted | — |
-| [DAT-003](#dat-003--a-stored-diagnostic-is-verbatim-cookie-paths-inside-one-are-accepted) | A stored diagnostic is verbatim; cookie paths inside one are accepted | Accepted | [Amended 2026-07-30](#amended-2026-07-30--the-boundary-is-provenance-and-the-table-above-overstated-it-t-049); [Amended 2026-08-10](#amended-2026-08-10--cookie-files-land-and-the-path-never-enters-the-model-t-197) |
+| [DAT-003](#dat-003--a-stored-diagnostic-is-verbatim-cookie-paths-inside-one-are-accepted) | A stored diagnostic is verbatim; cookie paths inside one are accepted | Accepted | [Amended 2026-07-30](#amended-2026-07-30--the-boundary-is-provenance-and-the-table-above-overstated-it-t-049); [Amended 2026-08-10](#amended-2026-08-10--cookie-files-land-and-the-path-never-enters-the-model-t-197); [Amended 2026-09-26](#amended-2026-09-26--text-typed-into-the-options-field-is-stored-verbatim-like-a-url-t-184) |
 | [SEC-002](#sec-002--a-fixture-commits-values-only-for-the-fields-the-projection-reads) | A fixture commits values only for the fields the projection reads | Accepted | [Amended 2026-08-04](#amended-2026-08-04--a-playlist-entry-is-a-record-not-a-count) |
 | [ARC-004](#arc-004--a-probed-job-downloads-from-ready-the-download-re-extracts-it-does-not-re-probe) | A probed job downloads from `READY`; the download re-extracts, it does not re-probe | Accepted | — |
 | [ARC-005](#arc-005--the-gui-thread-never-waits-on-sqlite-one-writer-thread-owns-every-queue-write) | The GUI thread never waits on SQLite; one writer thread owns every queue write | Accepted | [Amended 2026-07-27](#amended-2026-07-27--every-queue-write-means-the-managers-too); [Amended 2026-07-28](#amended-2026-07-28--only-the-announcement-moved-was-not-true-and-callers-unchanged-cost-the-most) |
@@ -90,7 +90,7 @@ Current requirements and architecture retain their own canonical authority.
 | [OPS-009](#ops-009--where-each-ci-job-runs-now-that-starbase-is-back-and-minutes-are-metered) | Where each CI job runs, now that `STARBASE` is back and minutes are metered | Partly superseded | [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously); [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died); [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
 | [DAT-006](#dat-006--the-completion-ledger-what-it-stores-and-what-it-deliberately-does-not) | The completion ledger: what it stores, and what it deliberately does not | Withdrawn; purge ruling accepted | [Withdrawn 2026-08-06](#withdrawn-2026-08-06--there-is-no-ledger-so-there-is-nothing-to-decide); [Legacy-data ruling 2026-08-06](#legacy-data-ruling-2026-08-06--the-rows-already-written-are-purged-on-upgrade) |
 | [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch) | The queue does not run until it is started, and it is stopped at every launch | Accepted | [Amended 2026-09-12](#amended-2026-09-12--a-queue-with-nothing-left-to-do-stops-itself) |
-| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | — |
+| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted) |
 | [UX-007](#ux-007--the-phase-3-surfaces-ruled-all-25-open-p-clauses) | The Phase 3 surfaces, ruled: all 25 open `[P]` clauses | Accepted | — |
 | [SEC-004](#sec-004--the-fifteen-options-sec-003-did-not-see-are-all-forbidden) | The fifteen options `SEC-003` did not see are all forbidden | Accepted | — |
 | [SEC-005](#sec-005----legacy-server-connect-is-forbidden-on-sec-004s-own-tls-reasoning) | `--legacy-server-connect` is forbidden, on `SEC-004`'s own TLS reasoning | Accepted | — |
@@ -2134,6 +2134,42 @@ no longer pending: cookie-file support, and constraining `cookies_from_browser`.
   then say so.
 - **Constraining `url`.** Still untaken, and still the remaining half of `T-049`'s caveat: a
   credential the user typed into a URL is in the database today, deliberately.
+
+### Amended 2026-09-26 — text typed into the options field is stored verbatim, like a URL (`T-184`)
+
+**Status:** **Accepted** — maintainer ruling of 2026-09-26, on the question `T-184`'s review of
+2026-09-23 raised under this entry's reopening condition *"any other secret-bearing persisted
+field"*.
+**Amends:** the provenance table's second row.
+**Does not amend:** `T-038`, which binds every log in full; the cookie-path sinks of 2026-08-10; or
+the reopening conditions.
+
+**The question.** `REQ-031`'s field takes command-line syntax, so it takes
+`--add-headers "Authorization: Bearer …"` and `--extractor-args` tokens. It is stored in two places:
+in a preset, in `settings.toml`, and in the request JSON of a job's `jobs` row. That is a new
+persisted field that can hold a secret, and this entry requires it to be decided before it lands.
+
+**What is ruled.** The field is **text the user typed**, the second row of the provenance table, and
+it is stored verbatim in both places. That is the rule a source URL carrying userinfo already
+follows: it is the user's own text in the user's own local files, and it is not this application's
+secret to withhold from them. A queued job has to carry the field to run as it was queued.
+
+| Provenance | Where it is stored | How that is guaranteed |
+|---|---|---|
+| **Values the user typed** — a source URL, **and the options field: its text and its admitted command line** | **Verbatim**, in the database; the options field also in `settings.toml` when a preset carries it | Deliberate. The field is part of the job and of the preset |
+
+**What stays as it was.** Every log this application emits is redacted, as `T-038` requires. The
+field's values are registered for redaction in the process that formats the logs, under
+`ARC-010`'s 2026-09-26 amendment. Neither half of the field appears in the model's `repr`.
+
+**The alternatives, as they were put.** Refusing credential-bearing headers where the user types
+them does not cover the field, because `--extractor-args` can carry tokens too, and it removes the
+only route to header authentication. Keeping secret values elsewhere, in the system keyring for
+example, needs a new runtime dependency and a decision of its own, and `T-184` would wait for it.
+
+**Reopening conditions.** Unchanged, and they now reach `settings.toml` as well as the database:
+sync, export, cloud backup, or a bug report that attaches either. An export of presets is the
+likeliest trigger, because a preset is where this field travels.
 
 
 ---
@@ -5472,6 +5508,53 @@ hatch may reach, by this amendment. Every other one is refused with the audit's 
 **Not ruled:** the tri-state control itself, which is `T-249`'s, or what the hatch does when a
 *future* application-owned key turns out to be shareable. That needs its own reading, because the
 argument above is about these two intents rather than about sharing in general.
+
+### Amended 2026-09-26 — the declared member is the admitted command line
+
+**Status:** **Accepted** — maintainer ruling of 2026-09-26, bringing this entry and `REQ-031` into
+line with the design ruled on 2026-09-22 on `T184-R9`'s measurement.
+**Amends:** §3's **Typing** invariant.
+
+**What §3 said, and why it could not be built.** *"Parsed into a checked structure at job-creation
+time."* `T184-R9` measured **13 of 124** admitted options parsing to values that cannot cross
+`ARC-002`'s process boundary: a `DateRange`, compiled match filters, a `set`, postprocessor
+specifications. A compiled filter is a closure, so the only faithful encoding of it is the text it
+came from.
+
+**What is ruled.** The declared member of `DownloadRequest`, and of `Preset`, is the text the user
+typed together with the **admitted command line**: the tokens admission produced from that text.
+It is typed, immutable and picklable, and it is still never an untyped dictionary. It is
+**re-admitted and parsed where it is used**, so a stored value that no dialog produced cannot reach
+`build_options` (`T184-R5`), and the text and the tokens cannot disagree about what will run.
+
+**What it costs.** The parse of a queued job happens when the job runs, not when it was queued. A
+yt-dlp update that stops accepting one of its options fails that job with a stated reason rather
+than running it differently.
+
+### Amended 2026-09-26, second — a value that cannot carry a secret is not redacted
+
+**Status:** **Accepted** — maintainer ruling of 2026-09-26, on `T-184`'s costed recommendation.
+**Amends:** §3's **Redaction** invariant, and with it `T-184`'s acceptance criterion *"No hatch value
+appears unredacted in any log"*.
+
+**Why.** Registering every argument redacted the ordinary words people type into this field.
+`--sub-format best` removed every `best` from the rest of the log, `--retries 1000` every `1000`,
+and `--fixup never` every `never`. `remember_a_secret`'s four-byte floor stops none of them, and a
+log nobody can read is `T197-R7`'s failure.
+
+**What is ruled.** Values of admitted options that take only numbers, sizes, rates, dates,
+durations, ranges, enumerated words, format names, language codes, extractor names, or chapter and
+section patterns are **not** registered for redaction. The list is `extra_options.NOT_SECRET_VALUES`.
+**Every other value is registered**, including the value of an option admitted after the list was
+written, so an omission over-redacts rather than leaks. A value that names a path is registered with
+`remember_a_path`, which has no length floor.
+
+**The invariant, restated.** No value in the field that can carry a credential or name a file
+reaches a log unredacted. The criterion's own case, an innocuous option name carrying a sensitive
+value, is unchanged.
+
+**Not ruled.** Whether each entry on the list belongs there. That is the Reviewer's to challenge in
+`T-184`'s review, entry by entry.
 
 ---
 

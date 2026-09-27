@@ -2,7 +2,7 @@
 
 **Purpose:** Unfinished work: review, ready, proposed and blocked tasks.
 **Owner:** Planner (priorities); Implementer (task/status); Reviewer (review disposition)
-**Last updated:** 2026-09-24
+**Last updated:** 2026-09-26
 **Update when:** Work starts, changes scope/status, closes or reopens.
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
@@ -280,10 +280,16 @@ under a stated precedence.
 > numbers, sizes, rates, dates, durations, enumerated words, format names, language codes,
 > extractor names or chapter patterns (`extra_options.NOT_SECRET_VALUES`) are **not** registered.
 > Registering them removed `best`, `1000`, `never` and the like from every later line of the log.
-> The criterion says *"No hatch value appears unredacted in any log"*. Its stated case, an
-> innocuous option name carrying a sensitive value, is met, but its letter is not for those
-> options. **Accepting that narrowing is the maintainer's decision**, as is ruling otherwise. Any
+> The criterion said *"No hatch value appears unredacted in any log"*. Its stated case, an
+> innocuous option name carrying a sensitive value, is met, but its letter was not for those
+> options. **The maintainer accepted the narrowing on 2026-09-26**
+> ([`ARC-010`'s second amendment of that day](DECISIONS.md#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted)),
+> and the criterion below now says it. The Reviewer still challenges the list entry by entry. Any
 > option missing from the list is registered, so an omission over-redacts rather than leaks.
+>
+> **Storing the field verbatim is ruled as well** (2026-09-26,
+> [`DAT-003`](DECISIONS.md#amended-2026-09-26--text-typed-into-the-options-field-is-stored-verbatim-like-a-url-t-184)):
+> it is text the user typed, like a URL, kept as typed in `settings.toml` and the queue database.
 
 #### Maintainer rulings, 2026-09-20 — the four shapes the build needed
 
@@ -327,7 +333,10 @@ it is what the user edits and must be shown back verbatim.
 > declared field of the download request rather than an untyped dictionary"*. What is declared is
 > now the **admitted command line**. The spirit holds — it is declared, typed, validated, and not
 > an untyped dictionary — but the letter does not, and that is the maintainer's to amend in
-> `REQUIREMENTS.md` if they want the letter to match. Storing only the parsed values would
+> `REQUIREMENTS.md` if they want the letter to match. *(Amended 2026-09-26 at the maintainer's
+> instruction: `REQ-031` and
+> [`ARC-010`](DECISIONS.md#amended-2026-09-26--the-declared-member-is-the-admitted-command-line)
+> now say the admitted command line.)* Storing only the parsed values would
 return `-c` as `--continue` and could not show anything that normalised away. Storing only the text
 would move the parse to job-creation time, so a queued job that validated a week ago could be
 refused on a yt-dlp that has moved since. Keeping both makes that disagreement **visible** instead.
@@ -354,8 +363,11 @@ task says so rather than inventing one to satisfy a criterion.
   dictionary** — the assertion that keeps two routes from meaning two things
 - An option that would write outside the output directory is **refused or contained**, with a test
   that fails when the containment call is removed
-- **No hatch value appears unredacted in any log**, under the existing redaction test extended over
-  the parsed values — including the case where the option name is innocuous and the value is not
+- **No hatch value that can carry a credential or name a file appears unredacted in any log**, under
+  the existing redaction test extended over the parsed values — including the case where the option
+  name is innocuous and the value is not. *(Narrowed 2026-09-26 by the maintainer's `ARC-010`
+  amendment: values of the options in `extra_options.NOT_SECRET_VALUES` are not registered. It
+  said "No hatch value".)*
 - An application-owned option and an excluded option are each refused at edit time with a stated
   reason, and a test asserts they never reach `build_options`
 - A malformed field fails **at edit time**, not after the bytes are spent — the same rule

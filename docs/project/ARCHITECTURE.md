@@ -5,8 +5,8 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-09 — the status note corrected; it had described the Phase 0 stub tree
-for two weeks after the tree was built
+**Last updated:** 2026-09-26 — §8 says where the additional-options field's values are registered
+for redaction
 **Last reviewed:** 2026-08-09
 **Update when:** A boundary, data model, major dependency, or approved cross-cutting pattern changes.
 **Does not contain:** Task status, review history, local setup commands, rationale (see `DECISIONS.md`).
@@ -377,6 +377,13 @@ classification. Classification is a hint, not a replacement.
   holds, because `DownloadRequest` carries a browser name and yt-dlp reads the jar itself. When
   the application does hold a sensitive literal, `core/logging.remember_a_secret()` redacts that
   exact string, which needs no pattern at all.
+
+  **Values typed into the additional-options field (`REQ-031`) are registered where the log is
+  formatted, which is the parent.** A worker's records are redacted by the parent's handlers, so
+  `DownloadManager` registers a job's values before its session starts. A value that cannot carry
+  a credential or name a file is not registered, so the log keeps words such as `best`; every
+  other value is, including one admitted after that list was written (`ARC-010`, amended
+  2026-09-26).
 
   **The `REQ-026` boundary is narrower than this one, and both stand.** `REQ-026` and `DAT-003`
   preserve a cookie path that yt-dlp names inside a *stored diagnostic*, because `NFR-006`

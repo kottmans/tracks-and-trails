@@ -5,7 +5,7 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-09-12
+**Last updated:** 2026-09-26
 **Last reviewed:** 2026-08-07
 **Update when:** Product scope, a feature, a user-facing constraint, or acceptance criteria change.
 **Does not contain:** Schema details, framework specifics, task lists, review history.
@@ -186,9 +186,11 @@ application is **not**, and the heading was the first place that read otherwise.
 - **REQ-031** — Provide an **additional yt-dlp options** field, per preset and overridable per job,
   taking command-line syntax — the escape hatch `REQ-009` already establishes for format selectors,
   widened to the rest of the option surface. It is **parsed and validated, never passed through**:
-  path-redirecting options are subject to the same containment check as the output template, values
-  are redacted in logs like any other value this application supplies, and the parsed result is a
-  declared field of the download request rather than an untyped dictionary. An option the
+  path-redirecting options are subject to the same containment check as the output template; a
+  value that can carry a credential or name a file is redacted in logs like any other value this
+  application supplies; and the **admitted command line**, the tokens validation accepted, is a
+  declared, typed, immutable field of the download request, validated again where it is used,
+  rather than an untyped dictionary (`ARC-010`, amended 2026-09-26). An option the
   application owns, or one `REQ-EXCL` forbids, is **refused where the user typed it, with the
   reason** — never accepted and silently dropped.
 
