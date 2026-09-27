@@ -1439,6 +1439,112 @@ full suite, and the `windows desktop` job, because Windows tests and mutation pl
 
 ---
 
+### T-353 — Remove unused paths and correct dialog ownership
+
+**Status:** Proposed — the cleanup follow-up requested by the maintainer on 2026-09-24,
+bounded by the independent [September codebase audit](reviews/codebase-audit-2026-09.md).
+**Owner:** Implementer
+**Priority:** Medium within Phase 4.5 debt — repeated dialog retention and tests exercising unused
+production helpers warrant scheduled work; cosmetic simplification alone would not.
+**Phase:** Phase 4.5 (`0.1.0` debt)
+**Depends on:** T-352 for any overlapping progress-view/helper removals. Independent cleanup may
+be prepared first; do not duplicate that task's retirement or change the phase order.
+**Relevant context:** AUD26-R2/R3/R7/R9; AGENTS §§6–8; TESTING §14; T-350's controlled-probe work.
+**Affected surfaces:** The audit's bounded cleanup inventory across `src/`, its actual test
+consumers, and `tools/t308_warning_stacking_probe.py`.
+**Risk:** Medium — Qt result-consumption order, persistence callbacks and real coverage must
+survive removal. Treat tests as evidence to migrate, not as dead weight.
+**Required checks:** Ruff lint/format, `mypy src`, bare mypy and Windows-platform mypy;
+relevant UI/lifecycle tests, full unit/integration suites for core/downloader/persistence edits;
+full UI suite if dialog lifetime/ownership changes. Record actual failures and exact heads.
+
+#### Scope and evidence
+
+The audit at `a7310d1` independently found five retained Settings dialogs and 475 child widgets
+after five open/reject cycles. It also fault-injected a partial geometry write that destroyed the
+previous layout file. These are the behavior corrections. The rest is removal of confirmed dead
+members and migration of tests off obsolete wrappers, plus the small duplications enumerated in
+AUD26-R7/R9. In particular, queue-order tests must reach `_next_startable`/actual scheduling rather
+than asserting that the unused `_next_waiting` is the production decision.
+
+Use the audit's inventory, including its exclusions. Preserve Qt callbacks, intentional observation
+seams, lifecycle guards, historical evidence and the helpers T-352 moves. Do not redesign
+`app.compose`, unify unrelated thread/network services, or introduce a generic persistence dispatcher
+on the strength of a complexity/lint score. Keep the warning-stacking diagnostic's production
+presentation path and temporary profile while controlling its automatic-update dependency.
+
+#### Acceptance criteria
+
+- [ ] Repeated production open/close cycles release closed Settings, Options, preset, format and
+      add dialogs after callers consume results. Cover both accepted and rejected results and
+      late callbacks; do not put `WA_DeleteOnClose` on a modal whose caller still reads it.
+- [ ] A failed geometry write preserves the previous complete file; successful save/load and
+      nonfatal failure behavior remain intact.
+- [ ] For each inventory removal, record the live consumer search and either preserve the assertion
+      through the actual production route or state why it tested only a retired API. A scheduler
+      ordering mutation must fail the replacement ordering test.
+- [ ] Small deduplication preserves pending-write rollback/order and variant-specific behavior.
+      No test seam or documented invariant disappears merely because production does not call it.
+- [ ] The warning-stacking probe uses a controlled release-check dependency and keeps its profile
+      isolation, actual `present()` route, and shutdown cleanup.
+- [ ] Required checks pass, or failures are independently dispositioned; review the exact final
+      head. Update current navigation/comments while preserving captured historical bytes.
+
+---
+
+### T-354 — Bound repeated queue rendering and scheduling work
+
+**Status:** Proposed — the performance follow-up requested by the maintainer on 2026-09-24,
+bounded by the independent [September codebase audit](reviews/codebase-audit-2026-09.md).
+**Owner:** Implementer
+**Priority:** Medium within Phase 4.5 debt — measured quadratic format computation and repeated
+store reads on the GUI thread, plus long-line formatter cost.
+**Phase:** Phase 4.5 (`0.1.0` debt)
+**Depends on:** T-351 before changing playlist caches or invalidation; its incorrect visible-row
+mapping must not be hidden by a faster refresh. Coordinate helper moves with T-352.
+**Relevant context:** AUD26-R4/R5/R6/R8; NFR-001; ARC-005; T016-R1/R3; T197 redaction invariants.
+**Affected surfaces:** Queue/staging models and delegate invalidation, manager scheduling,
+`core/logging.py`, and narrowly measured secondary paths listed in the audit.
+**Risk:** High — a stale cache can display the wrong request; scheduler shortcuts can violate
+ordering/holds; formatter optimization must not leak values or over-redact ordinary logs.
+**Required checks:** Ruff lint/format, `mypy src`, bare mypy and Windows-platform mypy;
+full unit/integration suites for core/downloader changes; relevant queue, staging, delegate and
+accessibility UI tests. Use controlled workloads and call counts, plus before/after timings on one
+machine, not timing-only tests whose result depends on host load.
+
+#### Scope and evidence
+
+At `a7310d1`, one selector-role read for each of 25/50/100/200 playlist members performs
+650/2,550/10,100/40,200 format computations: n(n+1). The 200-member instrument took 343.9 ms,
+measuring model reads rather than a viewport repaint. One scheduling decision over 500 startable
+waiting jobs performs 500 store reads. A synthetic 8,000-character `/a b` log line took 549.0 ms
+to redact. These independent counts and measurements establish the primary work.
+
+Then measure the bounded secondary leads: preset resolution for unrelated staging roles,
+segments computed for unrelated header roles, whole-model thumbnail invalidation, unchanged gate
+label polishing, stopped-queue timer work, repeated template previews/settings saves, repeated
+worker option construction, and the duplicate clear-completed predicate. Implement only changes
+with measured benefit and an explicit invalidation/order contract. Keep immediate-settings
+behavior, transaction boundaries and the progress chain's persistence-before-signal ordering.
+
+#### Acceptance criteria
+
+- [ ] Repeated group/member role reads scale linearly for an unchanged request set, with counted
+      work at multiple playlist sizes. Changes to group membership, order, requests and relevant
+      status immediately invalidate the affected result; mixed-group/accessibility text stays true.
+- [ ] One scheduling/fill cycle avoids a fresh store read per waiting job per free slot. Preserve
+      two-lane capacity, retry order, queue reordering, worker-tree holds, pending writes and
+      shutdown. Exercise the actual production selection path.
+- [ ] Long-line redaction has bounded growth on the captured synthetic family while every existing
+      privacy case, overlapping-secret case and ordinary-prose control remains covered.
+- [ ] Measure secondary changes before/after and retain those justified by the evidence. A lead
+      not confirmed as worthwhile is recorded as such, not silently claimed optimized.
+- [ ] Run relevant mutations/controls against caching, ordering and redaction; preserve all required
+      checks and exact-head review. No external dependency or architecture change without its own
+      authorization.
+
+---
+
 ## Proposed — Phase 5
 
 ### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
