@@ -37,11 +37,13 @@ from __future__ import annotations
 import os
 import re
 import shlex
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+from tracks_and_trails.core.models import Preset
+from tracks_and_trails.core.presets import needs_ffmpeg as fields_need_ffmpeg
 from tracks_and_trails.downloader.option_table import (
     EFFECT_UNKNOWN,
     NO_OBSERVABLE_EFFECT,
@@ -113,6 +115,23 @@ UNKNOWN_EFFECT: Final = (
 NOT_A_FULL_PATH: Final = (
     "Give a full path. A relative one would be taken from wherever this application was started."
 )
+
+#: What a user is told when what they typed begins more than one option's name.
+#:
+#: yt-dlp's parser, which is optparse, accepts a long option by any prefix that names exactly one
+#: (`--fragment-retr`), and refuses a prefix that names several. The seam does both the same way.
+AMBIGUOUS: Final = "This begins more than one option's name. Type the whole name."
+
+#: What a user is told when an option that takes no value is given one with `=`.
+TAKES_NO_VALUE: Final = "This option takes no value."
+
+#: What the editor says about an option that needs ffmpeg where there is none (`T184-R14`).
+NEEDS_FFMPEG: Final = (
+    "This needs ffmpeg, which was not found. Install ffmpeg, or set its location in Preferences."
+)
+
+#: What a user is told about a word that is not an option at all.
+NOT_AN_OPTION_WORD: Final = "This is not an option. Only options belong in this box."
 
 #: How yt-dlp expands a path option before it opens it; a spelling not listed is used as written.
 #:
@@ -218,53 +237,37 @@ def admit(text: str) -> Admission:
     if unreadable is not None:
         return Admission((), (unreadable,))
 
-    arity = option_arity()
     accepted: list[str] = []
     refusals: list[Refusal] = []
-    index = 0
-    while index < len(tokens):
-        word = tokens[index]
-        index += 1
-        if not word.startswith("-") or word == "-":
+    for read in _read(tokens):
+        if isinstance(read, str):
             # A bare word is a URL or a stray value. The field takes options; the URL has its own
             # box, and a value that arrived without its option is not something to guess about.
-            refusals.append(
-                Refusal(word, "This is not an option. Only options belong in this box.")
-            )
+            refusals.append(Refusal(read, NOT_AN_OPTION_WORD))
             continue
-
-        spelling, _, inline = word.partition("=")
-        if spelling not in arity:
-            refusals.append(Refusal(spelling, NOT_AN_OPTION))
+        if read.spelling is None:
+            refusals.append(Refusal(read.typed, read.problem or NOT_AN_OPTION))
             continue
-
-        wanted = arity[spelling]
-        values: list[str] = [inline] if inline else []
-        while len(values) < wanted and index < len(tokens):
-            values.append(tokens[index])
-            index += 1
 
         # **The class decides before the value does.** Consuming the values is tokenizing — it is
         # how the scan finds the next option — but a user who types a forbidden option bare must
         # be told it is forbidden, not that it needs a value. The first version asked for the
         # value first and answered `--exec` with "this option needs a value", which is both
         # unhelpful and the wrong statement about it.
-        refusal = _reason_to_refuse(spelling)
+        refusal = _reason_to_refuse(read.spelling)
         if refusal is not None:
-            refusals.append(Refusal(spelling, refusal))
+            refusals.append(Refusal(read.typed, refusal))
+            continue
+        if read.problem is not None:
+            refusals.append(Refusal(read.typed, read.problem))
+            continue
+        if read.spelling in PATH_VALUES and not all(
+            _a_full_path(read.spelling, value) for value in read.values
+        ):
+            refusals.append(Refusal(read.typed, NOT_A_FULL_PATH))
             continue
 
-        if len(values) < wanted:
-            refusals.append(Refusal(spelling, "This option needs a value and none was given."))
-            continue
-
-        if spelling in PATH_VALUES and not all(_a_full_path(spelling, value) for value in values):
-            refusals.append(Refusal(spelling, NOT_A_FULL_PATH))
-            continue
-
-        accepted.append(word if inline else spelling)
-        if not inline:
-            accepted.extend(values)
+        accepted.extend((read.spelling, *read.values))
 
     if refusals:
         # Nothing is offered from a field that has a refusal in it. See `Admission`.
@@ -278,26 +281,107 @@ def _a_full_path(spelling: str, path: str) -> bool:
     return Path(expand(path) if expand is not None else path).is_absolute()
 
 
-def grouped(accepted: Sequence[str]) -> list[list[str]]:
-    """The admitted argv split into one chunk per option, each with its own values.
+@dataclass(frozen=True, slots=True)
+class _Occurrence:
+    """One option as yt-dlp's parser reads it: what was typed, what it means, and its values.
 
-    Used to say **which** option a parser complaint is about without quoting the value, which a
-    hatch token may not be safe to repeat (`T184-R6`).
+    `spelling` is the option the parser resolves `typed` to, and `None` when it resolves to
+    nothing. `problem` is why the parser would refuse these tokens whatever the option's class.
+    """
+
+    typed: str
+    spelling: str | None
+    values: tuple[str, ...]
+    problem: str | None
+
+
+def _resolved(name: str) -> tuple[str | None, str | None]:
+    """The long option `name` means by optparse's rule: an exact name, else a unique prefix."""
+    arity = option_arity()
+    if name in arity:
+        return name, None
+    prefixed = [
+        spelling for spelling in arity if spelling.startswith("--") and spelling.startswith(name)
+    ]
+    if len(prefixed) == 1:
+        return prefixed[0], None
+    return None, AMBIGUOUS if prefixed else NOT_AN_OPTION
+
+
+def _read(tokens: Sequence[str]) -> Iterator[_Occurrence | str]:
+    """`tokens` read the way yt-dlp's parser reads them, an option at a time (`T184-R8`).
+
+    **One tokenizer, optparse's own rules** (the 2026-09-27 redesign). Three hand-written splits
+    disagreed with each other and with yt-dlp: an empty inline value was called missing, an inline
+    first value lost the values after it, and attached short values, clusters and unique prefixes
+    were refused though yt-dlp accepts them. So:
+
+    - a long option is resolved by exact name or unique prefix, and `--opt=text` makes `text` its
+      first value **even when empty**, the rest coming from the tokens after it;
+    - a short word is read a letter at a time, and the first letter that takes a value takes the
+      rest of the word as its first value (`-N4`, `-cN4`).
+
+    Yields each option, or a word that is not one, which the field does not take.
     """
     arity = option_arity()
-    chunks: list[list[str]] = []
     index = 0
-    while index < len(accepted):
-        word = accepted[index]
-        index += 1
-        spelling, _, inline = word.partition("=")
-        wanted = 0 if inline else arity.get(spelling, 0)
-        chunk = [word]
-        while wanted and index < len(accepted):
-            chunk.append(accepted[index])
+
+    def rest_of(values: list[str], wanted: int) -> tuple[str, ...]:
+        nonlocal index
+        while len(values) < wanted and index < len(tokens):
+            values.append(tokens[index])
             index += 1
-            wanted -= 1
-        chunks.append(chunk)
+        return tuple(values)
+
+    while index < len(tokens):
+        word = tokens[index]
+        index += 1
+        if word in ("-", "--") or not word.startswith("-"):
+            yield word
+            continue
+        if word.startswith("--"):
+            name, separator, inline = word.partition("=")
+            spelling, problem = _resolved(name)
+            wanted = arity.get(spelling, 0) if spelling is not None else 0
+            if spelling is not None and separator and not wanted:
+                yield _Occurrence(name, spelling, (), TAKES_NO_VALUE)
+                continue
+            values = rest_of([inline] if separator else [], wanted)
+            yield _Occurrence(name, spelling, values, problem or _missing(values, wanted))
+            continue
+        for position, letter in enumerate(word[1:], start=2):
+            flag = f"-{letter}"
+            if flag not in arity:
+                yield _Occurrence(flag, None, (), NOT_AN_OPTION)
+                break
+            wanted = arity[flag]
+            if wanted:
+                rest = word[position:]
+                values = rest_of([rest] if rest else [], wanted)
+                yield _Occurrence(flag, flag, values, _missing(values, wanted))
+                break
+            yield _Occurrence(flag, flag, (), None)
+
+
+def _missing(values: tuple[str, ...], wanted: int) -> str | None:
+    return "This option needs a value and none was given." if len(values) < wanted else None
+
+
+def grouped(accepted: Sequence[str]) -> list[list[str]]:
+    """The argv split into one chunk per option, each spelled in full with its own values.
+
+    Read by `_read`, so it agrees with admission and with yt-dlp about where each option's values
+    end, whichever spelling the tokens use. Used to say **which** option a parser complaint is
+    about without quoting the value, which a hatch token may not be safe to repeat (`T184-R6`).
+    """
+    chunks: list[list[str]] = []
+    for read in _read(list(accepted)):
+        if isinstance(read, str):
+            chunks.append([read])
+        elif read.spelling is None:
+            chunks.append([read.typed])
+        else:
+            chunks.append([read.spelling, *read.values])
     return chunks
 
 
@@ -307,6 +391,9 @@ def grouped(accepted: Sequence[str]) -> list[list[str]]:
 #: extractor names and chapter or section patterns. The values describe the media, not the user.
 #: **Everything else is registered**, including any option admitted after this list was written,
 #: so the list fails safe: forgetting an entry over-redacts, and never leaks.
+#:
+#: **`--default-search` and `--output-na-placeholder` left the list on 2026-09-27**: the Reviewer's
+#: entry-by-entry check found both take unrestricted text, so neither is in the families above.
 #:
 #: The reason it exists. Registering every argument, which the first correction did, redacted the
 #: ordinary vocabulary users type here: `--sub-format best` removed every `best` from the log,
@@ -326,7 +413,6 @@ NOT_SECRET_VALUES: Final = frozenset(
         "--date",
         "--dateafter",
         "--datebefore",
-        "--default-search",
         "--download-sections",
         "--encoding",
         "--extractor-retries",
@@ -348,7 +434,6 @@ NOT_SECRET_VALUES: Final = frozenset(
         "--sleep-interval",
         "--sleep-requests",
         "--sleep-subtitles",
-        "--output-na-placeholder",
         "--playlist-items",
         "-I",
         "--remove-chapters",
@@ -394,23 +479,36 @@ def remember_the_hatch(argv: Sequence[str]) -> None:
 
     **Values, however they were spelled.** `--match-filters=title=X` is one token, and the first
     version skipped it because the token's spelling is an option's, so the `=` form was never
-    registered at all. `grouped` pairs every option with its values in either form.
+    registered at all. `grouped` reads through `_read`, so every spelling arrives as the option and
+    its values, the same way admission and yt-dlp read them.
 
     **A header's value is registered on its own as well.** yt-dlp keeps `--add-headers` as a
     mapping, so anything that prints a header prints the value without the `Name:` in front of it.
     """
     from tracks_and_trails.core.logging import remember_a_path, remember_a_secret
 
-    for chunk in grouped(argv):
-        spelling, _, inline = chunk[0].partition("=")
+    for spelling, *values in grouped(argv):
         if spelling in NOT_SECRET_VALUES:
             continue
-        for value in [inline] if inline else chunk[1:]:
+        for value in values:
             if spelling in PATH_VALUES:
-                remember_a_path(value)
+                for form in _as_yt_dlp_opens(spelling, value):
+                    remember_a_path(form)
                 continue
             for piece in _as_yt_dlp_may_print_it(spelling, value):
                 remember_a_secret(piece)
+
+
+def _as_yt_dlp_opens(spelling: str, path: str) -> set[str]:
+    """`path` as typed, and as yt-dlp expands it before opening it (`T184-R6`).
+
+    **Both, because yt-dlp prints the one it opened.** Its cache warning names
+    `$ROOT/cache/probe/key.json` expanded, and a path registered only as typed cannot match that
+    (the Reviewer's reproduction, 2026-09-27). The expansion is `_AS_YT_DLP_EXPANDS`, the table the
+    absolute-path rule reads, so what admission judges and what redaction registers cannot drift.
+    """
+    expand = _AS_YT_DLP_EXPANDS.get(spelling)
+    return {path, expand(path)} if expand is not None else {path}
 
 
 def _as_yt_dlp_may_print_it(spelling: str, value: str) -> set[str]:
@@ -482,6 +580,41 @@ def options_for(text: str) -> tuple[Admission, tuple[str, ...]]:
         return Admission((), (Refusal(", ".join(spellings), TOGETHER),)), ()
 
     return admission, admission.accepted
+
+
+def preset_needs_ffmpeg(preset: Preset) -> bool:
+    """Whether a preset asks for work ffmpeg performs, **its hatch included** (`T184-R14`).
+
+    The offer's one answer: the add dialog's catalogue and the default-preset list both ask it,
+    as the worker's `requires_ffmpeg` counts. A preset whose hatch holds no tokens is answered from
+    its fields alone and loads nothing, which is every preset a user has not typed options into.
+    """
+    if fields_need_ffmpeg(preset):
+        return True
+    if not preset.extra_option_argv and not preset.extra_options.strip():
+        return False
+    from tracks_and_trails.downloader.ytdlp_adapter import hatch_requires_ffmpeg
+
+    return hatch_requires_ffmpeg(preset.extra_options, preset.extra_option_argv)
+
+
+def ffmpeg_refusals(text: str, argv: Sequence[str]) -> tuple[Refusal, ...]:
+    """Admitted options that need ffmpeg, refused by name where it is missing (`T184-R14`).
+
+    For the editor, which says so under the box rather than offering work the worker would then
+    refuse. Empty when the field needs no ffmpeg; the caller asks only when ffmpeg is missing.
+    """
+    if not argv:
+        return ()
+    from tracks_and_trails.downloader.ytdlp_adapter import (
+        hatch_requires_ffmpeg,
+        options_needing_ffmpeg,
+    )
+
+    if not hatch_requires_ffmpeg(text, argv):
+        return ()
+    named = options_needing_ffmpeg(argv) or (WHOLE_FIELD,)
+    return tuple(Refusal(name, NEEDS_FFMPEG) for name in named)
 
 
 def refusal_lines(admission: Admission) -> tuple[str, ...]:

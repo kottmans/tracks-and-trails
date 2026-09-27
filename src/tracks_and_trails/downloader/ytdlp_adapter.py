@@ -923,7 +923,7 @@ def unparseable(argv: Sequence[str], groups: Sequence[Sequence[str]]) -> tuple[b
     except SystemExit, OptParseError:
         pass
     else:
-        culprit = _unreadable_when_it_runs(groups)
+        culprit = _unreadable_when_it_runs(argv)
         return culprit is not None, culprit
 
     for group in groups:
@@ -934,29 +934,39 @@ def unparseable(argv: Sequence[str], groups: Sequence[Sequence[str]]) -> tuple[b
     return True, None
 
 
-def _unreadable_when_it_runs(groups: Sequence[Sequence[str]]) -> str | None:
-    """The first option whose value the parser took as text and yt-dlp cannot read later.
+def _unreadable_when_it_runs(argv: Sequence[str]) -> str | None:
+    """The option whose **effective** value yt-dlp takes as text now and cannot read later.
 
-    **The whole-line parse passes these, whatever they say** (`T184-R8`'s class, measured
-    2026-09-26). A match filter is read part by part as each item arrives, and an encoding is looked
-    up when output is written, so a bad one failed the job rather than the field. Each is asked
-    yt-dlp's own question with no item: `match_str` with every field missing still parses every
-    part, and `codecs.lookup` is the lookup `--encoding` gets.
+    **The whole-line parse passes these, whatever they say** (`T184-R8`). A match filter is read
+    part by part as each item arrives, and an encoding is looked up when output is written, so a
+    bad one failed the job rather than the field.
+
+    **What yt-dlp keeps, not each occurrence** (the 2026-09-27 redesign). The first version checked
+    every occurrence, so `--encoding nope --encoding utf-8` was refused though yt-dlp takes the
+    last one. `parseOpts` is yt-dlp's own parser step, and it answers with what every repeat and
+    reset leaves: the last encoding, and each filter list as it stands. Each is then asked yt-dlp's
+    own question with no item: `match_str` with every field missing still parses every part, and
+    `codecs.lookup` is the lookup `--encoding` gets. Filters are alternatives, and yt-dlp reaches
+    them in no fixed order, so every one is checked rather than any.
     """
+    from yt_dlp.options import parseOpts
     from yt_dlp.utils import match_str
 
-    from tracks_and_trails.downloader.extra_options import FILTER_OPTIONS
-
-    for group in groups:
-        spelling, _, inline = str(group[0]).partition("=")
-        for value in [inline] if inline else group[1:]:
+    _, parsed, _ = parseOpts(list(argv))
+    for spelling, filters in (
+        ("--match-filters", parsed.match_filter),
+        ("--break-match-filters", parsed.breaking_match_filter),
+    ):
+        for text in filters or ():
             try:
-                if spelling in FILTER_OPTIONS:
-                    match_str(value, {}, incomplete=True)
-                elif spelling == "--encoding":
-                    codecs.lookup(value)
-            except LookupError, ValueError:
+                match_str(text, {}, incomplete=True)
+            except ValueError:
                 return spelling
+    if parsed.encoding is not None:
+        try:
+            codecs.lookup(parsed.encoding)
+        except LookupError:
+            return "--encoding"
     return None
 
 
@@ -1027,7 +1037,7 @@ def hatch_options(text: str, argv: Sequence[str]) -> dict[str, Any]:
         raise UnusableOptionsError(
             "yt-dlp will not accept the options saved with this download"
         ) from refused
-    if _unreadable_when_it_runs(grouped(argv)) is not None:
+    if _unreadable_when_it_runs(argv) is not None:
         # The dialog's question, asked again: a stored filter no dialog checked would otherwise
         # start the job and fail on its first item.
         raise UnusableOptionsError("yt-dlp will not accept the options saved with this download")
@@ -1044,7 +1054,7 @@ def hatch_options(text: str, argv: Sequence[str]) -> dict[str, Any]:
     command_line = _command_line_defaults()
     wanted: dict[str, Any] = {}
     for chunk in grouped(argv):
-        keys = OPTION_KEYS.get(chunk[0].partition("=")[0], ())
+        keys = OPTION_KEYS.get(chunk[0], ())
         for key in keys:
             if key in parsed and (len(keys) == 1 or parsed[key] != command_line.get(key)):
                 wanted[key] = parsed[key]
@@ -1110,21 +1120,64 @@ def requires_ffmpeg(request: DownloadRequest) -> bool:
     Read by `worker._ffmpeg_gap` so the user is told **before** the download, not after the
     bytes are already spent — the entire point of `REQ-024`.
     """
-    from yt_dlp.postprocessor import get_postprocessor
-    from yt_dlp.postprocessor.ffmpeg import FFmpegPostProcessor
-
     # **The hatch's processors count too** (`T184-R10`). This read the application's own list, so
     # `--split-chapters` and `--convert-thumbnails png` — both ffmpeg work, both admitted —
     # answered "no ffmpeg needed", and the user learned otherwise after the bytes were spent,
     # which is the whole point of `REQ-024` asking before.
+    return _performed_by_ffmpeg(build_postprocessors(request)) or hatch_requires_ffmpeg(
+        request.extra_options, request.extra_option_argv
+    )
+
+
+def hatch_requires_ffmpeg(text: str, argv: Sequence[str]) -> bool:
+    """Whether the hatch alone asks for work ffmpeg performs, counted as the worker counts it.
+
+    **The one answer the offer and the worker share** (`T184-R14`). `core.presets.needs_ffmpeg`
+    reads a preset's fields and cannot see the hatch without yt-dlp, so a preset carrying
+    `--split-chapters` was offered with ffmpeg absent and refused by `_ffmpeg_gap` straight after:
+    `T199-R1`'s offered-then-refused, through the newest field. `requires_ffmpeg` and
+    `extra_options.preset_needs_ffmpeg` both ask here.
+
+    Stored options that no longer admit count as none: the job fails on them with its own reason
+    when its dictionary is built, and this answers for the part that is still readable.
+    """
+    if not argv and not text.strip():
+        return False
     try:
-        hatch = hatch_options(request.extra_options, request.extra_option_argv)
+        hatch = hatch_options(text, argv)
     except UnusableOptionsError:
-        # The job will fail on those options when its dictionary is built, with a reason. This
-        # preflight answers for the part of the request that is still readable.
-        hatch = {}
-    added = hatch.get("postprocessors", [])
-    for spec in [*build_postprocessors(request), *added]:
+        return False
+    return _performed_by_ffmpeg(hatch.get("postprocessors", []))
+
+
+def options_needing_ffmpeg(argv: Sequence[str]) -> tuple[str, ...]:
+    """Which admitted options each install work ffmpeg performs, to name them where typed.
+
+    Attribution only, asked one option at a time; whether the field needs ffmpeg is
+    `hatch_requires_ffmpeg`'s answer for the whole line.
+    """
+    from yt_dlp import parse_options
+
+    from tracks_and_trails.downloader.extra_options import grouped
+
+    defaults = _default_postprocessors()
+    named: dict[str, None] = {}
+    for chunk in grouped(argv):
+        try:
+            specs = parse_options(list(chunk)).ydl_opts.get("postprocessors", [])
+        except SystemExit, OptParseError:
+            continue
+        if _performed_by_ffmpeg([spec for spec in specs if spec not in defaults]):
+            named[chunk[0]] = None
+    return tuple(named)
+
+
+def _performed_by_ffmpeg(specs: Sequence[Mapping[str, Any]]) -> bool:
+    """Whether any of these postprocessors is ffmpeg's, by yt-dlp's own class hierarchy."""
+    from yt_dlp.postprocessor import get_postprocessor
+    from yt_dlp.postprocessor.ffmpeg import FFmpegPostProcessor
+
+    for spec in specs:
         try:
             processor = get_postprocessor(str(spec["key"]))
         except KeyError, AttributeError:  # pragma: no cover - build_postprocessors validates

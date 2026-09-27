@@ -52,7 +52,7 @@ from typing import TYPE_CHECKING, Any, Final
 from tracks_and_trails import __version__
 from tracks_and_trails.core import settings as settings_module
 from tracks_and_trails.core.models import NetworkOptions, Preset
-from tracks_and_trails.core.presets import DEFAULT_OUTPUT_TEMPLATE, needs_ffmpeg
+from tracks_and_trails.core.presets import DEFAULT_OUTPUT_TEMPLATE
 from tracks_and_trails.core.settings import Settings as AppSettings
 
 if TYPE_CHECKING:
@@ -580,6 +580,7 @@ def compose(
         find_ffmpeg,
         user_ytdlp_directory,
     )
+    from tracks_and_trails.downloader.extra_options import preset_needs_ffmpeg
     from tracks_and_trails.downloader.manager import DownloadManager
     from tracks_and_trails.downloader.ytdlp_service import YtdlpService
     from tracks_and_trails.persistence import db
@@ -1302,14 +1303,15 @@ def compose(
         preset_names=lambda: tuple(
             preset.name
             for preset in app_settings.all_presets(held.settings)
-            # `needs_ffmpeg` and not `manager.requires_ffmpeg`: the add dialog filters with the
-            # former, and 'one answer' has to mean the same call, not two that a test says agree.
+            # `preset_needs_ffmpeg` and not `manager.requires_ffmpeg`: the add dialog filters with
+            # the former, and 'one answer' has to mean the same call, not two that a test says
+            # agree. It counts the hatch as well (`T184-R14`).
             # **`in_force.report`, not the `ffmpeg` this function closed over** (`T195-R5`). The
             # startup report is a snapshot: `choose_ffmpeg_location` accepts a new one and updates
             # `in_force.report`, so a lambda reading the captured value went on offering one preset
             # after ffmpeg became available while the add dialog offered four. Restart was the only
             # way to make the new defaults selectable, and nothing on screen said so.
-            if in_force.report.available or not needs_ffmpeg(preset)
+            if in_force.report.available or not preset_needs_ffmpeg(preset)
         ),
         output_template=lambda: held.settings.output_template,
         shipped_template=DEFAULT_OUTPUT_TEMPLATE,

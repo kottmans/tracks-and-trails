@@ -739,9 +739,10 @@ def _run(
         # rejected output template has nothing to do with an extractor, and `EXTRACTOR_ERROR`
         # would tell the user the site failed when their own template is the problem.
         #
-        # `DISK` is the taxonomy's filesystem bucket and its consequence — fail, pause the
-        # queue — is the right one: the template is shared by every queued job, so continuing
-        # would produce the identical failure once per job.
+        # `DISK` is the taxonomy's filesystem bucket, which is where a template that will not
+        # render inside the folder belongs. It fails this job and **nothing stops the queue** for
+        # it: this comment said it paused the queue, which no code does (`T184-R16`). Every queued
+        # job sharing the template therefore fails the same way, each saying why.
         return with_hook_failures(
             Failed(
                 job_id=job_id,

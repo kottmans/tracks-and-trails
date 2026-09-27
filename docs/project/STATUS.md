@@ -80,7 +80,8 @@ task and review records it summarised.*
   2026-09-27 resolved `R9`, `R10`, `R11` and `R13` and left `R6` (Critical), `R8`, `R14` and
   `R15` blocking. It invoked TESTING §14, because the redaction and validation corrections keep
   reproducing their defect class. **The maintainer chose to revisit both designs** and correct
-  all four in one batch; the design is in the task entry. The push stays held.
+  all four in one batch; the design is in the task entry. **The batch is built** as a sixth
+  round and is with the Reviewer. The push stays held.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the
@@ -119,18 +120,18 @@ task and review records it summarised.*
 
 ## Verification
 
-*Refreshed 2026-09-27, for `T-184`'s correction rounds and its interface stage, on Linux with the
+*Refreshed 2026-09-27, for `T-184`'s six correction rounds and its interface stage, on Linux with the
 project `.venv` (Python 3.14.7, yt-dlp 2026.08.19).* The previous section described `T-300`'s
 documentation follow-up; its results are kept in
 [T-300](COMPLETED_TASKS.md#t-300--agentsmd-is-628-lines-and-is-loaded-on-every-task).
 
-| Check | Third round (`428f65d`) | Fourth round (`78a5f9f`) | Fifth round (`52ace9a`) | Interface stage |
-|---|---|---|---|---|
-| `ruff check .`; `ruff format --check .` | Passed; 461 files | Passed; 462 | Passed; 462 | Passed; 462 |
-| `mypy src`; bare `mypy`; `mypy --platform win32` | Passed; 69, 209, 209 | Passed; 69, 210, 210 | Passed; 69, 210, 210 | Passed; 69, 210, 210 |
-| `pytest tests/unit tests/integration` | In the full suite | In the full suite | **3,500 passed**, 19 skipped; 722 s | In the full suite |
-| Full `pytest -q -p no:cacheprovider` | **1 failed, 4,948 passed**; 3,091 s | **6 failed, 4,959 passed**; 3,575 s | Not run on that tree alone | **4 failed, 4,987 passed**; 3,421 s |
-| Repo root before and after | Unchanged | Unchanged | Unchanged | Unchanged |
+| Check | Third round (`428f65d`) | Fourth round (`78a5f9f`) | Fifth round (`52ace9a`) | Interface stage (`a7310d1`) | Sixth round |
+|---|---|---|---|---|---|
+| `ruff check .`; `ruff format --check .` | Passed; 461 files | Passed; 462 | Passed; 462 | Passed; 462 | Passed; 463 |
+| `mypy src`; bare `mypy`; `mypy --platform win32` | Passed; 69, 209, 209 | Passed; 69, 210, 210 | Passed; 69, 210, 210 | Passed; 69, 210, 210 | Passed; 69, 210, 210 |
+| `pytest tests/unit tests/integration` | In the full suite | In the full suite | **3,500 passed**, 19 skipped; 722 s | In the full suite | In the full suite |
+| Full `pytest -q -p no:cacheprovider` | **1 failed, 4,948 passed**; 3,091 s | **6 failed, 4,959 passed**; 3,575 s | Not run on that tree alone | **4 failed, 4,987 passed**; 3,421 s | **5 failed, 5,014 passed**; 3,642 s |
+| Repo root before and after | Unchanged | Unchanged | Unchanged | Unchanged | Unchanged |
 
 Every full run also skipped 22 and deselected 2. **Every failure in them is `T-350`'s race**: cases
 of `test_the_mounted_format_panel_fits_the_dialog_it_asked_for`, each failing with *"row 0 offered

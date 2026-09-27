@@ -382,6 +382,26 @@ revisit them**, with `R14`, `R15` and `R16` in the same batch. The design, writt
 8. **`R16`.** The worker's queue-pause comment, and the two snapshots that still call the
    interface unbuilt.
 
+**Built 2026-09-27, the sixth round, not yet reviewed.** Mapped finding by finding:
+
+| Finding | Where | Tests | Mutations caught |
+|---|---|---|---|
+| `R8` tokenizer | `extra_options._read`, which `admit` and `grouped` both use | `test_the_seam_reads_a_command_line_the_way_yt_dlp_s_parser_does` compares the canonical argv's parse with yt-dlp's parse of the typed text; also refusals, abbreviations and the empty inline value | M24–M28 |
+| `R8` effective values | `ytdlp_adapter._unreadable_when_it_runs(argv)`, through `parseOpts` | `test_a_value_read_later_is_judged_by_what_yt_dlp_keeps`, `test_what_the_seam_accepts_the_job_builds_the_same_way` | M29a, M29b |
+| `R6` | `extra_options._as_yt_dlp_opens`; two exemptions removed | The cache warning (`$VAR` and `~`) and the netrc warning, each through the real yt-dlp consumer and the application's formatter; the two text options | M30, M31 |
+| `R14` | `ytdlp_adapter.hatch_requires_ffmpeg`, which `requires_ffmpeg` and `extra_options.preset_needs_ffmpeg` share; the add dialog, `app.py` and the editor | The anti-drift binding over every built-in with four hatches; the add dialog with and without ffmpeg; the editor both ways; no parser loaded for an empty hatch | M32, M33 |
+| `R15` | The editor checks on opening when either half is non-empty | Empty and whitespace text through *Save as preset…* and OK | M34 |
+| `R16` | `worker.py`'s `UnsafePathError` comment; the two snapshots in `8fdc10a` | — | — |
+
+**The tokenizer found more than the review listed**, measured against the CLI at the pin. Attached
+short values (`-N4`, `-I1:3`), clusters (`-cN4`) and unique long prefixes (`--fragment-retr`)
+were refused though yt-dlp accepts them. `--continue=yes` was admitted though yt-dlp refuses it.
+All now agree. **A unique prefix of a refused option is refused for that option's reason**
+(`--exec-b` is `--exec-before-download`), and a refused flag inside a cluster is refused (`-ci`).
+**The stored argv is canonical**, each option in full with its values as separate tokens. A hatch
+stored in the `--opt=value` spelling before this round now fails re-admission with its reason. No
+release carries the field, so that affects only local test data.
+
 #### Maintainer ruling, 2026-09-27 — the interface is specified
 
 [`UX-015`](DECISIONS.md#ux-015--the-additional-options-field-the-editors-last-group-checked-as-you-type),

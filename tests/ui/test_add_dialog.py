@@ -6890,3 +6890,29 @@ def test_a_failed_staged_row_states_what_it_is_where_the_eye_looks(
     # **The words stay in the detail line too when they differ.** `T130-R3` drops the state from
     # that line only where the chip repeats it exactly, so nothing is lost by chipping it.
     assert STATE_TEXT[RowState.FAILED] in index.data(STATE_ROLE)
+
+
+def test_a_preset_whose_hatch_needs_ffmpeg_is_offered_only_where_ffmpeg_is(
+    dialogs: Callable[..., AddUrlDialog], managers: Callable[..., DownloadManager]
+) -> None:
+    """`T184-R14`: `T199-R1`'s offered-then-refused, reached through the hatch.
+
+    A user preset carrying `--split-chapters` needs ffmpeg as surely as an MP3 one, and the
+    fields-only predicate could not see it, so it was offered here and refused by the worker.
+    """
+    splitting = replace(
+        preset_registry.BEST_VIDEO,
+        name="Split at chapters",
+        built_in=False,
+        extra_options="--split-chapters",
+        extra_option_argv=("--split-chapters",),
+    )
+    catalogue = (preset_registry.BEST_VIDEO, splitting)
+
+    def offered(available: bool) -> list[str]:
+        dialog = dialogs(managers(), presets=catalogue, ffmpeg_available=available)
+        choice = dialog._preset_choice
+        return [choice.itemText(index) for index in range(choice.count())]
+
+    assert "Split at chapters" not in offered(False)
+    assert "Split at chapters" in offered(True)

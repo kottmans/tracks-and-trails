@@ -20,7 +20,11 @@ from typing import Any
 import pytest
 
 from tracks_and_trails.core.models import DownloadRequest
-from tracks_and_trails.downloader.extra_options import remember_the_hatch
+from tracks_and_trails.downloader.extra_options import (
+    options_for,
+    refusal_lines,
+    remember_the_hatch,
+)
 from tracks_and_trails.downloader.ytdlp_adapter import (
     UnusableOptionsError,
     build_options,
@@ -319,6 +323,31 @@ def test_a_stored_filter_yt_dlp_cannot_read_stops_the_build() -> None:
         build_options(request, BASE["output_template"])
 
 
+@pytest.mark.parametrize(
+    ("text", "key", "expected"),
+    [
+        ("--encoding T184-nope --encoding utf-8", "encoding", "utf-8"),
+        ('--replace-in-metadata=title foo ""', "postprocessors", "title"),
+    ],
+)
+def test_what_the_seam_accepts_the_job_builds_the_same_way(
+    text: str, key: str, expected: str
+) -> None:
+    """`T184-R8`: the seam, the stored tokens and the worker agree with yt-dlp's parser.
+
+    Both were refused or cut short before the 2026-09-27 redesign. Re-admission at build time runs
+    the same tokenizer and the same effective-value check, so a field the dialog accepted builds.
+    """
+    admission, argv = options_for(text)
+    assert admission.usable, refusal_lines(admission)
+
+    options = build_options(
+        a_request(extra_options=text, extra_option_argv=argv), BASE["output_template"]
+    )
+
+    assert expected in repr(options[key]), options[key]
+
+
 def test_a_value_spelled_like_an_option_is_only_a_value() -> None:
     """The merge asked every token which destinations it names, values included.
 
@@ -449,6 +478,101 @@ def test_a_part_of_a_filter_is_redacted_where_yt_dlp_quotes_it_alone(registered:
     assert canary not in _shown(f"Invalid filter part ' {canary} ~~ x'")
 
 
+def _yt_dlp_logged(options: dict[str, Any], act: Any) -> str:
+    """What yt-dlp printed while `act` ran, through the application's own logger and formatter."""
+    import io
+    import logging
+
+    from yt_dlp import YoutubeDL
+
+    from tracks_and_trails.core.logging import RedactingFormatter, YtdlpLog
+
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(RedactingFormatter())
+    logger = logging.getLogger("t184.real-consumer")
+    logger.addHandler(handler)
+    logger.propagate = False
+    try:
+        with YoutubeDL({**options, "logger": YtdlpLog(logger)}) as ydl:
+            act(ydl)
+    finally:
+        logger.removeHandler(handler)
+    return stream.getvalue()
+
+
+@pytest.mark.parametrize(
+    "spelling", ["$T184_CACHE_ROOT/private-cache-canary", "~/private-cache-canary"]
+)
+def test_a_cache_path_is_redacted_as_yt_dlp_expands_it(
+    registered: None, spelling: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T184-R6`, the Reviewer's reproduction: yt-dlp's own cache warning printed the path expanded.
+
+    The path was registered only as typed, and `$T184_CACHE_ROOT/…` cannot match what it becomes.
+    Measured through the real `YoutubeDL.cache.load` and the application's formatter, no verbose
+    mode involved.
+    """
+    monkeypatch.setenv("T184_CACHE_ROOT", str(tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    text = f"--cache-dir '{spelling}'"
+    admission, argv = options_for(text)
+    assert admission.usable, refusal_lines(admission)
+    broken = tmp_path / "private-cache-canary" / "probe" / "key.json"
+    broken.parent.mkdir(parents=True)
+    broken.write_text("{", encoding="utf-8")
+
+    remember_the_hatch(argv)
+    options = build_options(
+        a_request(extra_options=text, extra_option_argv=argv), BASE["output_template"]
+    )
+    said = _yt_dlp_logged(options, lambda ydl: ydl.cache.load("probe", "key"))
+
+    assert "Cache retrieval" in said, f"yt-dlp printed nothing to redact: {said!r}"
+    assert "private-cache-canary" not in said, said
+
+
+def test_a_netrc_location_is_redacted_as_yt_dlp_expands_it(
+    registered: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other expansion family: `~` alone, which is all yt-dlp does to a netrc location."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    text = "--netrc --netrc-location ~/private-netrc-canary"
+    admission, argv = options_for(text)
+    assert admission.usable, refusal_lines(admission)
+    (tmp_path / "private-netrc-canary").write_text("machine\n", encoding="utf-8")
+
+    remember_the_hatch(argv)
+    options = build_options(
+        a_request(extra_options=text, extra_option_argv=argv), BASE["output_template"]
+    )
+    said = _yt_dlp_logged(
+        options,
+        lambda ydl: ydl.get_info_extractor("Youtube")._get_login_info(netrc_machine="youtube"),
+    )
+
+    assert "netrc" in said, f"yt-dlp printed nothing to redact: {said!r}"
+    assert "private-netrc-canary" not in said, said
+
+
+@pytest.mark.parametrize(
+    ("argv", "value"),
+    [
+        (("--default-search", "T184_SEARCH_CANARY"), "T184_SEARCH_CANARY"),
+        (("--output-na-placeholder", "T184_PLACEHOLDER_CANARY"), "T184_PLACEHOLDER_CANARY"),
+    ],
+)
+def test_the_two_unrestricted_text_options_are_registered(
+    registered: None, argv: tuple[str, ...], value: str
+) -> None:
+    """The Reviewer's entry-by-entry check of the exemptions: these two take any text at all."""
+    remember_the_hatch(argv)
+
+    assert value not in _shown(f"using {value} for this job")
+
+
 def test_a_path_the_hatch_names_is_redacted_however_short(registered: None) -> None:
     """A path gets `remember_a_path`, which has no length floor (`T197-R1`)."""
     remember_the_hatch(("--client-certificate-key", "/k"))
@@ -514,5 +638,8 @@ def test_only_admitted_options_are_exempt_and_no_credential_carrier_is() -> None
         "--replace-in-metadata",
         "--geo-verification-proxy",
         "--source-address",
+        # Unrestricted text, found by the Reviewer's entry-by-entry check (2026-09-27).
+        "--default-search",
+        "--output-na-placeholder",
     }
     assert not NOT_SECRET_VALUES & (carriers | PATH_VALUES)

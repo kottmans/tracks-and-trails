@@ -135,6 +135,7 @@ from tracks_and_trails.core.models import (
 from tracks_and_trails.core.output_template import OutputPreview
 from tracks_and_trails.core.paths import sanitize_component
 from tracks_and_trails.core.presets import format_choice_of
+from tracks_and_trails.downloader.extra_options import preset_needs_ffmpeg
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import SessionKind
 from tracks_and_trails.ui.format_selection import (
@@ -1475,13 +1476,15 @@ class AddUrlDialog(QDialog):
         #: subtitles` all offered with ffmpeg absent, every one of them refused by the worker's
         #: `_ffmpeg_gap` before a byte moves.
         #:
-        #: **`needs_ffmpeg` rather than the definitive `requires_ffmpeg`**, which imports `yt_dlp`
-        #: and is barred from `ui/` (`ARCHITECTURE.md` §6). A unit test binds the two over the
-        #: whole built-in catalogue so they cannot drift.
+        #: **`preset_needs_ffmpeg` rather than the definitive `requires_ffmpeg`**, which imports
+        #: `yt_dlp` and is barred from `ui/` (`ARCHITECTURE.md` §6). A unit test binds the two over
+        #: the whole built-in catalogue so they cannot drift. **It counts the hatch** (`T184-R14`):
+        #: the fields-only `needs_ffmpeg` offered a preset carrying `--split-chapters` here, and the
+        #: worker refused it. yt-dlp's parser is loaded only for a preset that has hatch tokens.
         offerable = tuple(presets)
         if not ffmpeg_available:
             without_ffmpeg = tuple(
-                preset for preset in offerable if not preset_registry.needs_ffmpeg(preset)
+                preset for preset in offerable if not preset_needs_ffmpeg(preset)
             )
             # **Unless that leaves nothing to offer.** A picker with no entries is a dialog that
             # cannot be used at all, which is worse than an offer the worker refuses with a

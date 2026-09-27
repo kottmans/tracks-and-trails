@@ -96,7 +96,12 @@ from tracks_and_trails.core.presets import (
     with_post_processing,
 )
 from tracks_and_trails.downloader.environment import FfmpegFeature
-from tracks_and_trails.downloader.extra_options import options_for, refusal_lines
+from tracks_and_trails.downloader.extra_options import (
+    Admission,
+    ffmpeg_refusals,
+    options_for,
+    refusal_lines,
+)
 from tracks_and_trails.ui.format_text import format_name
 
 __all__ = ["OptionsDialog"]
@@ -333,10 +338,14 @@ class OptionsDialog(QDialog):
         self._build()
         self._show_preset(preset)
         self._update_enabled()
-        if preset.extra_options.strip():
+        if preset.extra_options.strip() or preset.extra_option_argv:
             # **Checked on opening, not trusted**: a preset saved against an older yt-dlp can hold
             # an option this one refuses, and the job would otherwise learn it when it runs. Only
-            # a preset that has text pays for loading the parser (the 2026-09-20 ruling).
+            # a preset that has either half pays for loading the parser (the 2026-09-20 ruling).
+            #
+            # **Either half** (`T184-R15`). This asked only about the text, so a stored pair of
+            # empty text and hidden tokens opened unchecked, and OK accepted tokens nobody could
+            # see. The check rebuilds the tokens from the text shown, so that pair becomes empty.
             self._check_extra_options()
         self._open_at_a_size_that_shows_the_options()
 
@@ -696,14 +705,20 @@ class OptionsDialog(QDialog):
         self._extra_pause.stop()
         text = self._extra.toPlainText()
         admission, argv = options_for(text)
-        lines = refusal_lines(admission)
-        self._extra_checked = (text, argv, admission.usable)
+        refusals = admission.refusals
+        if admission.usable and not self._ffmpeg_available:
+            # **Work ffmpeg performs, where there is no ffmpeg** (`T184-R14`). Offered, it would be
+            # refused by the worker before a byte moved; said here, it is refused where typed.
+            refusals = ffmpeg_refusals(text, argv)
+        usable = not refusals
+        lines = refusal_lines(Admission((), refusals))
+        self._extra_checked = (text, argv if usable else (), usable)
         self._extra_refusals.setText("\n".join(lines))
         # What a screen reader hears for the box: the refusals if there are any, or what it is for.
         self._extra.setAccessibleDescription(" ".join(lines) if lines else EXTRA_OPTIONS_HINT)
-        self._ok_button.setEnabled(admission.usable)
+        self._ok_button.setEnabled(usable)
         if self._save_preset is not None:
-            self._save_button.setEnabled(admission.usable)
+            self._save_button.setEnabled(usable)
 
     def _extra_options_usable(self) -> bool:
         """Whether the field as it reads now may be used, checking it first if it has changed.

@@ -740,15 +740,25 @@ def test_the_pure_ffmpeg_predicate_agrees_with_the_definitive_one() -> None:
     offered with ffmpeg absent that the worker refuses before a byte moves, and a test naming the
     three it happened to know about would not have caught the fourth.
     """
+    from tracks_and_trails.downloader.extra_options import options_for, preset_needs_ffmpeg
     from tracks_and_trails.downloader.ytdlp_adapter import requires_ffmpeg
 
+    # **And every built-in again with a hatch** (`T184-R14`). The fields-only predicate offered a
+    # preset carrying `--split-chapters` with ffmpeg absent, and the worker refused it. The offer
+    # now asks `preset_needs_ffmpeg`, which counts the hatch, so that is what is bound here.
+    hatches = ("", "--split-chapters", "--convert-thumbnails png", "--fragment-retries 3")
     disagreements = []
-    for preset in presets.BUILT_IN_PRESETS:
-        request = request_for(preset)
-        pure = presets.needs_ffmpeg(preset)
-        definitive = requires_ffmpeg(request)
-        if pure != definitive:
-            disagreements.append(f"{preset.name}: pure={pure} definitive={definitive}")
+    for built_in in presets.BUILT_IN_PRESETS:
+        for text in hatches:
+            _, argv = options_for(text)
+            preset = replace(built_in, extra_options=text, extra_option_argv=argv)
+            request = request_for(preset)
+            pure = preset_needs_ffmpeg(preset)
+            definitive = requires_ffmpeg(request)
+            if pure != definitive:
+                disagreements.append(
+                    f"{preset.name} + {text!r}: pure={pure} definitive={definitive}"
+                )
 
     assert not disagreements, (
         "the predicate the add dialog uses disagrees with the one the worker enforces: "

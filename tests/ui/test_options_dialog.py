@@ -37,6 +37,7 @@ from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.models import AudioCodec, Preset
 from tracks_and_trails.core.presets import MP3_BITRATES
 from tracks_and_trails.downloader.environment import FfmpegFeature
+from tracks_and_trails.downloader.extra_options import NEEDS_FFMPEG
 from tracks_and_trails.ui.options_dialog import (
     AUDIO_CODEC_NAME,
     AUDIO_QUALITY_NAME,
@@ -1284,3 +1285,55 @@ def test_a_preset_whose_saved_options_are_refused_now_says_so_on_opening(
     assert dialog.result_preset().extra_option_argv == ("--exec", "x"), (
         "a refused field decided something: the preset's own pair should be carried untouched"
     )
+
+
+def test_options_that_need_ffmpeg_are_refused_where_typed_without_it(
+    editor: Callable[..., OptionsDialog], spin: Callable[..., bool]
+) -> None:
+    """`T184-R14`: said under the box and named, rather than offered and refused by the worker."""
+    dialog = editor(ffmpeg_available=False)
+
+    typed(dialog, "--split-chapters --fragment-retries 3", spin)
+
+    assert dialog.extra_refusals_text() == f"--split-chapters: {NEEDS_FFMPEG}"
+    assert not ok_button(dialog).isEnabled()
+
+
+def test_the_same_options_are_accepted_where_ffmpeg_is(
+    editor: Callable[..., OptionsDialog], spin: Callable[..., bool]
+) -> None:
+    dialog = editor(ffmpeg_available=True)
+
+    typed(dialog, "--split-chapters", spin)
+
+    assert dialog.extra_refusals_text() == ""
+    assert ok_button(dialog).isEnabled()
+
+
+@pytest.mark.parametrize("shown", ["", "   "])
+def test_hidden_tokens_behind_empty_text_become_the_empty_pair(
+    editor: Callable[..., OptionsDialog], shown: str
+) -> None:
+    """`T184-R15`: a stored pair is checked whenever either half is non-empty.
+
+    Only the text was asked about, so empty text with hidden tokens opened unchecked, and OK and
+    *Save as preset…* both carried tokens the user could not see.
+    """
+    hidden = replace(
+        preset_registry.BEST_VIDEO, extra_options=shown, extra_option_argv=("--exec", "x")
+    )
+    saved: list[Preset] = []
+    dialog = editor(
+        hidden,
+        save_preset=lambda preset: saved.append(preset),
+        ask_name=lambda: ("kept", True),
+    )
+
+    save = dialog.findChild(QPushButton, SAVE_PRESET_NAME)
+    assert save is not None
+    save.click()
+    dialog.accept()
+
+    assert saved and saved[0].extra_option_argv == (), "Save as preset kept the hidden tokens"
+    assert dialog.result() == QDialog.DialogCode.Accepted
+    assert dialog.result_preset().extra_option_argv == (), "OK kept the hidden tokens"

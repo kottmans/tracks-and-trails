@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from tracks_and_trails.downloader.extra_options import (
+    BAD_VALUE,
     HAS_A_CONTROL,
     NO_EFFECT,
     NOT_AN_OPTION,
@@ -59,11 +60,16 @@ def test_an_option_that_takes_a_value_keeps_it() -> None:
 
 
 def test_the_equals_form_is_the_same_option() -> None:
-    """A user may write either, and a boundary that only understood one would be porous."""
+    """A user may write either, and a boundary that only understood one would be porous.
+
+    **Stored canonically since the 2026-09-27 redesign**: the option in full and its values as
+    separate tokens, which is what `--fragment-retries 10` means to yt-dlp as well. Every consumer
+    after admission then reads one spelling.
+    """
     admission = admit("--fragment-retries=10")
 
     assert admission.usable
-    assert admission.accepted == ("--fragment-retries=10",)
+    assert admission.accepted == ("--fragment-retries", "10")
 
 
 def test_a_value_that_looks_like_an_option_is_still_a_value() -> None:
@@ -289,6 +295,24 @@ def test_a_config_file_is_refused_without_being_read(tmp_path: Path) -> None:
     assert secret.stat().st_atime_ns == before, "the config file was read before it was refused"
 
 
+def test_asking_whether_a_preset_without_a_hatch_needs_ffmpeg_loads_no_parser() -> None:
+    """`T184-R14`'s cost bound: the offer asks this of every preset, and most carry no hatch."""
+    source = (
+        "import sys;"
+        "from tracks_and_trails.core.presets import BUILT_IN_PRESETS;"
+        "from tracks_and_trails.downloader.extra_options import preset_needs_ffmpeg;"
+        "[preset_needs_ffmpeg(preset) for preset in BUILT_IN_PRESETS];"
+        "print('yt_dlp' in sys.modules)"
+    )
+    finished = subprocess.run(
+        [sys.executable, "-c", source], capture_output=True, text=True, check=True
+    )
+
+    assert finished.stdout.strip() == "False", (
+        f"asking about an empty hatch loaded yt-dlp: {finished.stdout!r} {finished.stderr!r}"
+    )
+
+
 def test_the_option_table_is_pinned_data_rather_than_a_live_parser() -> None:
     """Admission imports **no** yt-dlp, which is an architecture rule and not a preference.
 
@@ -452,6 +476,92 @@ def test_a_path_absolute_once_yt_dlp_expands_it_is_accepted(
     admission = admit(text)
 
     assert admission.usable, refusal_lines(admission)
+
+
+@pytest.mark.parametrize(
+    ("text", "canonical"),
+    [
+        ("-N4", ("-N", "4")),
+        ("-I1:3", ("-I", "1:3")),
+        ("-cN4", ("-c", "-N", "4")),
+        ("--fragment-retr 5", ("--fragment-retries", "5")),
+        ('--replace-in-metadata=title foo ""', ("--replace-in-metadata", "title", "foo", "")),
+        ('"--add-headers=Referer: T184"', ("--add-headers", "Referer: T184")),
+    ],
+)
+def test_the_seam_reads_a_command_line_the_way_yt_dlp_s_parser_does(
+    text: str, canonical: tuple[str, ...]
+) -> None:
+    """`T184-R8`, redesigned 2026-09-27: one tokenizer, optparse's own rules, one canonical argv.
+
+    Three hand-written splits disagreed with yt-dlp. Attached short values (`-N4`), clusters
+    (`-cN4`), unique long prefixes (`--fragment-retr`) and an inline first value followed by the
+    rest were refused or truncated; yt-dlp's parser accepts every one. The canonical form spells
+    each option in full with its values as separate tokens, and means exactly what was typed.
+    """
+    from yt_dlp import parse_options
+
+    admission, argv = options_for(text)
+
+    assert admission.usable, refusal_lines(admission)
+    assert argv == canonical
+    typed = repr(parse_options(shlex.split(text)).ydl_opts)
+    assert repr(parse_options(list(argv)).ydl_opts) == typed, "the canonical form means otherwise"
+
+
+@pytest.mark.parametrize(
+    ("text", "named"),
+    [
+        ("--continue=yes", "--continue"),
+        ("--no-", "--no-"),
+        # A unique prefix of a forbidden option is that option, and is refused for its reason.
+        ("--exec-b x", "--exec-b"),
+        # A cluster is decided flag by flag, so a refused flag inside one is still refused.
+        ("-ci", "-i"),
+    ],
+)
+def test_the_seam_refuses_what_yt_dlp_s_parser_refuses_or_forbids(text: str, named: str) -> None:
+    admission = admit(text)
+
+    assert not admission.usable, f"{text!r} was admitted"
+    assert named in [refusal.option for refusal in admission.refusals], admission.refusals
+
+
+def test_an_abbreviation_is_refused_for_the_option_it_abbreviates() -> None:
+    """The reason is the full option's, so the user learns what they actually asked for."""
+    [refusal] = admit("--exec-b x").refusals
+
+    assert refusal.reason == admit("--exec-before-download x").refusals[0].reason
+
+
+def test_an_empty_inline_value_is_a_value_and_this_one_fails_the_job() -> None:
+    """`--match-filters=` is not a missing value. It is an empty filter, and yt-dlp's
+    `match_str('')` raises *Invalid filter part ''* on the first item, so it is a bad value."""
+    assert admit("--match-filters=").accepted == ("--match-filters", "")
+
+    admission, argv = options_for("--match-filters=")
+
+    assert argv == ()
+    assert [(r.option, r.reason) for r in admission.refusals] == [("--match-filters", BAD_VALUE)]
+
+
+@pytest.mark.parametrize(
+    ("text", "usable"),
+    [
+        ("--encoding T184-nope --encoding utf-8", True),
+        ("--encoding utf-8 --encoding T184-nope", False),
+        ('--match-filters "duration>5" --match-filters "title ~~ x"', False),
+    ],
+)
+def test_a_value_read_later_is_judged_by_what_yt_dlp_keeps(text: str, usable: bool) -> None:
+    """`T184-R8`: the effective value after every repeat, not each occurrence.
+
+    yt-dlp takes the last `--encoding`, so a bad one overwritten is harmless. Filters accumulate,
+    so every one is kept and every one is checked.
+    """
+    admission, _ = options_for(text)
+
+    assert admission.usable is usable, refusal_lines(admission)
 
 
 def test_options_that_contradict_each_other_are_refused_together() -> None:
