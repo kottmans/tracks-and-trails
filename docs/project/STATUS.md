@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-09-26
+**Last updated:** 2026-09-27
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -94,9 +94,11 @@ task and review records it summarised.*
 - **A fourth `T-184` correction round, 2026-09-26, is with the Reviewer.** It closes a false
   success reachable through `--compat-options`, the same outcome the audit refuses `-i` for, plus a
   merge that read values as options, three unregistered pieces of logged values, and two values
-  that failed only at run time. **One measured defect waits on a ruling:** an item yt-dlp skips by
-  the user's own selection (archive, filter, size limit) fails the job as `DISK` and pauses the
-  queue.
+  that failed only at run time.
+- **Three more rulings taken 2026-09-27, all as recommended.** An item yt-dlp skips at the user's
+  request ends Cancelled with its reason and does not pause the queue (`UX-005`). It used to fail
+  as `DISK`. A path option must be absolute (`ARC-010`). And the field is the options editor's last
+  group, checked as the user types (`UX-015`), so `T-184`'s interface is specified.
 - **A codebase audit ran on 2026-09-24** and is with the Reviewer for its own record. Two outcomes
   are already filed: `T-351` (with a playlist in the queue, row changes are signalled on the wrong
   row, and a screen reader hears less than the row shows) and `T-352`, which retires

@@ -9,7 +9,8 @@ listed in §10.
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active — created 2026-08-06 for `T-105`, at the start of Phase 3
-**Last updated:** 2026-08-11 — `T222-R2` demoted §6's scroll-region clause from `[D]` to `[P]`
+**Last updated:** 2026-09-27 — `UX-015` added §6's additional-options group. Before it, 2026-08-11:
+`T222-R2` demoted §6's scroll-region clause from `[D]` to `[P]`
 and opened it as `P-29`; the clause is built ahead of ratification on the reviewer's instruction.
 Before it, 2026-08-09: `UX-010` amended §2.2's group chip: a queue group's chip is
 done-of-total progress, and the History count rule stays History's. Before it, 2026-08-07: `UX-007`
@@ -622,11 +623,30 @@ it: five checkboxes and one free list are different screens.
   recorded here rather than left to be discovered. What is open for the maintainer is whether
   scrolling is the right shape, not whether the clipping needs fixing. See §10.
 
+### Additional yt-dlp options — `REQ-031`, built by `T-184`
+
+**[T]** *(ruled `UX-015`)* **The fifth group**, *Additional yt-dlp options*, below *Subtitles* and
+always visible: a multi-line text box, with one line saying it takes options this screen has no
+control for.
+
+**[T]** *(ruled `UX-015`)* **Checked as the user types**, once typing pauses. Each refusal is a line
+under the box, naming the option as typed and the reason, and the accepting buttons are disabled
+while any refusal stands. A refusal never repeats a value (`T184-R6`).
+
+**[T]** *(`ARC-010`, and its audit)* An option the application owns, or one `REQ-EXCL` forbids, is
+refused in the audit's own words; an option with a control of its own points at that control.
+
+**[T]** *(ruled 2026-09-20, recorded in `T-184`)* For one download the box starts with the preset's
+text, and what is in it when the dialog is accepted **replaces** the preset's, never adds to it.
+
 ### Keyboard path
 
 **[D]** A form, so the platform's own order applies: `Tab` between fields, `Space` toggles a
 checkbox, arrow keys move within a combo, `Enter` commits, `Esc` cancels. **[T]** Every control
 carries a screen-reader label (`NFR-005`).
+
+**[D]** The options box is a field like the others, so `Tab` leaves it rather than typing a tab
+character, and its refusals are part of what a screen reader hears for it (`NFR-005`).
 
 **[T]** *(ruled `P-17`, `UX-007`)* **The subtitle language control is a labelled multi-select** rather than a
 comma-separated text field. `NFR-005` requires the control to be labelled and reachable; it does not

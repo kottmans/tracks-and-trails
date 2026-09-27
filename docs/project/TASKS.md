@@ -2,7 +2,7 @@
 
 **Purpose:** Unfinished work: review, ready, proposed and blocked tasks.
 **Owner:** Planner (priorities); Implementer (task/status); Reviewer (review disposition)
-**Last updated:** 2026-09-26
+**Last updated:** 2026-09-27
 **Update when:** Work starts, changes scope/status, closes or reopens.
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
@@ -317,14 +317,25 @@ under a stated precedence.
 > - **An item yt-dlp skips by the user's own selection fails the job as `DISK`**, which pauses the
 >   queue. With the id already in a `--download-archive`, or a `--match-filters` or `--max-filesize`
 >   that excludes it, yt-dlp downloads nothing and the worker then fails to move a file that does
->   not exist: *"cannot move the finished download to '…/clip.NA'"*. How a skipped item should end
->   is the maintainer's to rule.
+>   not exist: *"cannot move the finished download to '…/clip.NA'"*. **Ruled 2026-09-27**
+>   ([`UX-005`](DECISIONS.md#amended-2026-09-27--an-item-yt-dlp-skipped-at-the-users-request-ends-cancelled-and-says-why)):
+>   it ends Cancelled with yt-dlp's sentence, and the queue keeps running.
 > - **A relative path in `--download-archive` or `--cache-dir` resolves against the process's
 >   working directory**, not the download folder. A probe wrote an archive into the repository
->   root this way.
+>   root this way. **Ruled 2026-09-27**
+>   ([`ARC-010`](DECISIONS.md#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute)): a path
+>   option is refused unless absolute after yt-dlp's own expansion. That covers all five path
+>   options, the three that only read included.
 > - **Three more options fail only when the job runs**: an unknown `--ies`/`--use-extractors` name
 >   (*"No suitable extractor"*), a `--source-address` that is not an address, and a missing
 >   `--client-certificate` file. Unlike filters and encodings, none has an exact check to borrow.
+
+#### Maintainer ruling, 2026-09-27 — the interface is specified
+
+[`UX-015`](DECISIONS.md#ux-015--the-additional-options-field-the-editors-last-group-checked-as-you-type),
+transcribed in `docs/UX_SPEC.md` §6: the field is the options editor's fifth group, below
+*Subtitles* and always visible, and it is checked as the user types. Refusals are listed under it,
+and the accepting buttons are disabled while any stands.
 
 #### Maintainer rulings, 2026-09-20 — the four shapes the build needed
 

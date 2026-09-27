@@ -6,7 +6,7 @@ requirements or design — those live in `REQUIREMENTS.md` and `ARCHITECTURE.md`
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-09-26
+**Last updated:** 2026-09-27
 **Update when:** A durable choice is accepted, superseded, or deliberately rejected.
 **Does not contain:** Completion notes for routine work. Routine fixes go to `TASKS.md` and `CHANGELOG.md`.
 
@@ -83,14 +83,14 @@ Current requirements and architecture retain their own canonical authority.
 | [DAT-004](#dat-004--log-redaction-is-provenance-aware-exact-values-always-shape-rules-only-on-our-own-lines) | Log redaction is provenance-aware: exact values always, shape rules only on our own lines | Withdrawn | [Withdrawn 2026-08-01](#withdrawn-2026-08-01--it-contradicted-an-accepted-decision-and-shipped-a-critical); [Ruled 2026-08-01](#ruled-2026-08-01--accepted-dat-003-wins-and-the-criterion-is-amended) |
 | [UX-003](#ux-003--nothing-enters-the-queue-unprobed) | Nothing enters the queue unprobed | Accepted | — |
 | [UX-004](#ux-004--the-staging-rows-controls-a-visible-preset-a-menu-for-the-rest) | The staging row's controls: a visible preset, a menu for the rest | Accepted | [Amended 2026-08-02](#amended-2026-08-02--the-control-is-on-the-row-and-the-cost-was-measured) |
-| [UX-005](#ux-005--the-main-window-two-tabs-no-detail-pane-and-the-verbs-on-the-row) | The main window: two tabs, no detail pane, and the verbs on the row | Accepted | [Amended 2026-09-24](#amended-2026-09-24--the-progress-view-is-retired-and-the-row-is-the-only-progress-surface); [Amended 2026-09-18](#amended-2026-09-18--a-cancelled-row-says-why-when-the-reason-is-not-the-applications-own); [Amended 2026-08-14](#amended-2026-08-14--a-failed-row-is-one-line-taller-when-it-has-something-to-suggest); [Amended 2026-08-06](#amended-2026-08-06--one-tab-because-the-second-ones-contents-are-no-longer-a-product); [Amended 2026-08-05](#amended-2026-08-05--a-finished-playlist-is-one-history-row); [Amended 2026-08-05](#amended-2026-08-05--a-divergent-playlist-says-which-row-got-which); [Amended 2026-08-05](#amended-2026-08-05--pause-all-is-deferred-to-req-017); [Amendment, 2026-08-04](#amendment-2026-08-04--the-toolbar-the-state-badge-and-the-selection-t-130); [Amended 2026-08-04, third](#amended-2026-08-04-third--a-playlist-is-many-rows-in-one-folder); [Amended 2026-08-04, again](#amended-2026-08-04-again--the-toolbars-appearance-and-what-the--carries); [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch); [UX-007](#ux-007--the-phase-3-surfaces-ruled-all-25-open-p-clauses); [UX-010](#ux-010--a-queue-groups-chip-is-progress-done-of-total); [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu); [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button); [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) |
+| [UX-005](#ux-005--the-main-window-two-tabs-no-detail-pane-and-the-verbs-on-the-row) | The main window: two tabs, no detail pane, and the verbs on the row | Accepted | [Amended 2026-09-27](#amended-2026-09-27--an-item-yt-dlp-skipped-at-the-users-request-ends-cancelled-and-says-why); [Amended 2026-09-24](#amended-2026-09-24--the-progress-view-is-retired-and-the-row-is-the-only-progress-surface); [Amended 2026-09-18](#amended-2026-09-18--a-cancelled-row-says-why-when-the-reason-is-not-the-applications-own); [Amended 2026-08-14](#amended-2026-08-14--a-failed-row-is-one-line-taller-when-it-has-something-to-suggest); [Amended 2026-08-06](#amended-2026-08-06--one-tab-because-the-second-ones-contents-are-no-longer-a-product); [Amended 2026-08-05](#amended-2026-08-05--a-finished-playlist-is-one-history-row); [Amended 2026-08-05](#amended-2026-08-05--a-divergent-playlist-says-which-row-got-which); [Amended 2026-08-05](#amended-2026-08-05--pause-all-is-deferred-to-req-017); [Amendment, 2026-08-04](#amendment-2026-08-04--the-toolbar-the-state-badge-and-the-selection-t-130); [Amended 2026-08-04, third](#amended-2026-08-04-third--a-playlist-is-many-rows-in-one-folder); [Amended 2026-08-04, again](#amended-2026-08-04-again--the-toolbars-appearance-and-what-the--carries); [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch); [UX-007](#ux-007--the-phase-3-surfaces-ruled-all-25-open-p-clauses); [UX-010](#ux-010--a-queue-groups-chip-is-progress-done-of-total); [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu); [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button); [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) |
 | [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) | Linux runs on the maintainer's Fedora machines, because it is faster as well as free | Accepted | [Amended 2026-08-05](#amended-2026-08-05--the-linux-jobs-are-named-linux-not-after-a-distribution); [Amended 2026-09-08](#amended-2026-09-08--linux-returns-to-hosted-for-the-exposure-and-not-the-meter) |
 | [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died) | A prose-only push runs no CI, and the one gate that read prose moved rather than died | Accepted | — |
 | [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously) | Windows runs on `STARBASE`, on every push, and asynchronously | Accepted | [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died); [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
 | [OPS-009](#ops-009--where-each-ci-job-runs-now-that-starbase-is-back-and-minutes-are-metered) | Where each CI job runs, now that `STARBASE` is back and minutes are metered | Partly superseded | [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously); [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died); [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
 | [DAT-006](#dat-006--the-completion-ledger-what-it-stores-and-what-it-deliberately-does-not) | The completion ledger: what it stores, and what it deliberately does not | Withdrawn; purge ruling accepted | [Withdrawn 2026-08-06](#withdrawn-2026-08-06--there-is-no-ledger-so-there-is-nothing-to-decide); [Legacy-data ruling 2026-08-06](#legacy-data-ruling-2026-08-06--the-rows-already-written-are-purged-on-upgrade) |
 | [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch) | The queue does not run until it is started, and it is stopped at every launch | Accepted | [Amended 2026-09-12](#amended-2026-09-12--a-queue-with-nothing-left-to-do-stops-itself) |
-| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted) |
+| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted); [Amended 2026-09-27](#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute) |
 | [UX-007](#ux-007--the-phase-3-surfaces-ruled-all-25-open-p-clauses) | The Phase 3 surfaces, ruled: all 25 open `[P]` clauses | Accepted | — |
 | [SEC-004](#sec-004--the-fifteen-options-sec-003-did-not-see-are-all-forbidden) | The fifteen options `SEC-003` did not see are all forbidden | Accepted | — |
 | [SEC-005](#sec-005----legacy-server-connect-is-forbidden-on-sec-004s-own-tls-reasoning) | `--legacy-server-connect` is forbidden, on `SEC-004`'s own TLS reasoning | Accepted | — |
@@ -104,6 +104,7 @@ Current requirements and architecture retain their own canonical authority.
 | [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu) | The row picks a preset; the per-row verbs are the row's own menu | Accepted | — |
 | [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) | The concurrency control leaves the toolbar for Settings | Accepted | — |
 | [UX-014](#ux-014--naming-is-a-setting-a-single-download-is-renamed-not-templated) | Naming is a setting; a single download is renamed, not templated | Accepted | — |
+| [UX-015](#ux-015--the-additional-options-field-the-editors-last-group-checked-as-you-type) | The additional-options field: the editor's last group, checked as you type | Accepted | — |
 | [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button) | The row's menu says what it removes, and the ⋮ reads as a button | Accepted | — |
 | [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted; revision 2026-09-08.5 by amendment | [Status retention](#doc-007-status-retention); [running completed-task record](#doc-007-completed-tasks); [shared source and captured formatting](#doc-007-shared-source); [review storage](#doc-007-review-storage); [historical review migration](#doc-007-review-migration) |
 
@@ -4154,6 +4155,29 @@ behind a document would leave known-broken behaviour on `main` for longer.
 
 ## UX-005 — The main window: two tabs, no detail pane, and the verbs on the row
 
+### Amended 2026-09-27 — an item yt-dlp skipped at the user's request ends Cancelled, and says why
+
+**Status:** **Accepted** — maintainer ruling of 2026-09-27, on `T-184`'s measurement of the day
+before.
+**Extends:** the 2026-09-18 amendment below, which this reuses rather than replaces.
+
+**The problem.** The additional-options field admits yt-dlp's selection options:
+`--download-archive`, `--match-filters`, `--max-filesize` and the rest. When one of them excludes a
+job's own item, yt-dlp downloads nothing and returns normally. The worker then failed to move a file
+that does not exist and classified that as `DISK`, *"cannot move the finished download to
+'…/clip.NA'"*, which **pauses the queue**. A user who had asked to skip what their archive already
+holds was told their disk had failed.
+
+**What is ruled.** A job whose item yt-dlp skipped because of the user's own selection ends
+**Cancelled**, and the row shows yt-dlp's own sentence under the 2026-09-18 rule: *"… has already
+been recorded in the archive"*, *"… does not pass filter …"*. **The queue keeps running**, because
+nothing about the next job is wrong. A playlist's entries are jobs of their own, so each is decided
+the same way.
+
+**The alternatives, as they were put.** A *Skipped* status of its own would be clearer, and costs a
+status, the model and this entry's wording before `T-184` could finish. *Completed with nothing
+written* would report a success with no file to open.
+
 ### Amended 2026-09-24 — the progress view is retired, and the row is the only progress surface
 
 **Status:** **Accepted.** Maintainer ruling of 2026-09-24, made on the codebase audit of that
@@ -5556,6 +5580,31 @@ value, is unchanged.
 **Not ruled.** Whether each entry on the list belongs there. That is the Reviewer's to challenge in
 `T-184`'s review, entry by entry.
 
+### Amended 2026-09-27 — a path the hatch names must be absolute
+
+**Status:** **Accepted** — maintainer ruling of 2026-09-27, on `T-184`'s measurement of the day
+before.
+**Amends:** §3's **Containment** invariant.
+
+**The problem.** yt-dlp resolves a relative path against the process's working directory. At a
+terminal that is where the user is standing; in this application it is wherever the application was
+started. A relative `--download-archive` therefore wrote its archive to a place the user never
+chose, and a probe run from this repository's root left one there.
+
+**What is ruled.** An option whose value is a path is refused where the user typed it unless the
+path is **absolute once yt-dlp has expanded it**, and the refusal asks for a full path. yt-dlp
+expands `~` and environment variables for `--download-archive` and `--cache-dir`, `~` alone for
+`--netrc-location`, and nothing for `--client-certificate` and `--client-certificate-key`, so each is
+judged after its own expansion.
+
+**The question named the two that write**, the archive and the cache. The three that only read are
+held to the same rule because a relative path there is just as much someone else's working
+directory; that extension is the implementer's reading and is the maintainer's to overturn.
+
+**The alternatives, as they were put.** Resolving against the download folder would give one preset
+a separate archive in every folder. Leaving yt-dlp's behaviour would keep writing wherever the
+application was started.
+
 ---
 
 ## UX-007 — The Phase 3 surfaces, ruled: all 25 open `[P]` clauses
@@ -6701,6 +6750,40 @@ collision and containment rules, left out; *Show in folder* is the route.
   now changes the setting, or renames that item by hand.
 - **Per-preset naming.** A user who kept an *Audio* preset naming files differently loses that on
   upgrade; the setting names everything.
+
+---
+
+## UX-015 — The additional-options field: the editor's last group, checked as you type
+
+**Status:** **Accepted** (2026-09-27) — maintainer decision, on `T-184`'s recommendation
+**Date:** 2026-09-27
+**Specifies:** the presentation `REQ-031` and `ARC-010` leave open, in the editor `UX_SPEC.md` §6
+describes. **Builds on:** the 2026-09-20 rulings recorded in `T-184`: validation runs in the GUI
+process on a lazy import, and a per-job value replaces the preset's.
+
+### Decision
+
+1. **Where.** The field is the editor's **fifth group**, *Additional yt-dlp options*, below
+   *Subtitles*, in the same widget for one download and for a saved preset. It is always visible: a
+   multi-line text box, with one line saying it takes options this screen has no control for.
+2. **How it answers.** The field is checked **as the user types**, once typing pauses. Each refusal
+   is a line of its own under the box, naming the option as typed and the reason, and the dialog's
+   accepting buttons are **disabled while any refusal stands**. The first check loads yt-dlp's
+   parser into the GUI process once, as the 2026-09-20 ruling allows.
+
+### The alternatives, as they were put
+
+- **A collapsed *Advanced* group**, opened when a preset already has text: calmer for new users and
+  one click further for experts.
+- **A dialog of its own:** leaves the editor unchanged, and splits one download's settings across
+  two windows.
+- **Checking when the field loses focus, or only on accept in a message box:** fewer checks, and
+  feedback that arrives after the user has moved on.
+
+### Consequences
+
+- `UX_SPEC.md` §6 transcribes both as `[T]` clauses.
+- A disabled button needs its reason beside it (`UX-005` §5), and the refusal list is that reason.
 
 ---
 
