@@ -1672,6 +1672,14 @@ class DownloadManager(QObject):
         del self._reserved[job_id]
         kind = reservation.kind
         job = self._require(job_id)
+        if job.request.extra_option_argv:
+            # **Here, in the parent, because this process does the redacting** (`T184-R6`). The
+            # worker's records are rendered by this process's handlers, so a value only the worker
+            # had registered reached the log intact. Before the process exists, so its first
+            # line is already covered. Imported lazily: most jobs have no hatch.
+            from tracks_and_trails.downloader.extra_options import remember_the_hatch
+
+            remember_the_hatch(job.request.extra_option_argv)
         session: _Session | None = None
         queue: Any = None
         try:

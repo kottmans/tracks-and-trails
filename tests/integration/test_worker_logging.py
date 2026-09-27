@@ -13,6 +13,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Final, cast
 
@@ -131,6 +132,78 @@ def test_a_spawned_workers_line_reaches_the_parents_log_without_its_token(
     assert TOKEN not in written, (
         "the worker's token reached the log file. Records travel unformatted so the parent's "
         "handlers redact them; if this fails, something formatted in the child."
+    )
+
+
+#: What a user typed into the hatch, and what must not reach a log file (`T184-R6`).
+HATCH_CANARY = "T184-parent-canary-5c1f"
+
+
+def a_worker_that_prints_the_hatch(
+    kind: Any, job_id: str, request: Any, queue: Any, **kwargs: Any
+) -> None:
+    """A real spawned child that writes the hatch's values the way yt-dlp's diagnostics do.
+
+    It registers nothing itself. The worker has no redacting formatter, so whatever the child
+    registers redacts nothing, which is what the first `T184-R6` correction got wrong.
+    """
+    from tracks_and_trails.core.logging import ytdlp_logger
+    from tracks_and_trails.downloader import worker
+
+    worker.prepare_this_worker(kwargs.get("log_queue"))
+    ytdlp_logger().info(
+        "[download] Clip does not pass filter (title~=%s), skipping ..", HATCH_CANARY
+    )
+    ytdlp_logger().info("headers: {'Authorization': 'Bearer %s-header'}", HATCH_CANARY)
+    queue.put(Succeeded(job_id=job_id, output_path="/written/clip.mp4", total_bytes=1))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+
+
+def test_a_hatch_value_a_spawned_worker_logs_is_redacted_by_the_parent(
+    tmp_path: Path, qapp: QCoreApplication
+) -> None:
+    """`T184-R6` across the real boundary: the parent redacts, so the parent must know the values.
+
+    Both spellings that reach yt-dlp are used: the `=` form, which the first correction never
+    registered, and a header, whose value yt-dlp prints apart from its name.
+    """
+    job = make_job("job-1", "https://example.invalid/clip", tmp_path)
+    argv = (
+        f"--match-filters=title~={HATCH_CANARY}",
+        "--add-headers",
+        f"Authorization: Bearer {HATCH_CANARY}-header",
+    )
+    request = replace(job.request, extra_options=" ".join(argv), extra_option_argv=argv)
+    repository = FakeRepository()
+    repository.add(replace(job, request=request))
+    app_logging.forget_the_secrets()
+    log_path = app_logging.configure_logging(directory=tmp_path, level=logging.DEBUG)
+    download = DownloadManager(repository, entry_point=a_worker_that_prints_the_hatch)
+    download.start_queue()
+
+    try:
+        download.start("job-1")
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline and not download.is_idle:
+            qapp.processEvents()
+            time.sleep(0.05)
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and "headers:" not in log_path.read_text("utf-8"):
+            qapp.processEvents()
+            time.sleep(0.05)
+        for handler in logging.getLogger("tracksandtrails").handlers:
+            handler.flush()
+        written = log_path.read_text("utf-8")
+    finally:
+        quiet_the_logging()
+        app_logging.forget_the_secrets()
+
+    assert "does not pass filter" in written and "headers:" in written, (
+        f"the worker's lines never reached the parent's log. Written:\n{written}"
+    )
+    assert HATCH_CANARY not in written, (
+        "a hatch value reached the log file. The parent formats the worker's records, so the "
+        "parent has to have registered the values before the session started."
     )
 
 

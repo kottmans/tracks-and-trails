@@ -32,6 +32,7 @@ from tracks_and_trails.core import logging as app_logging
 from tracks_and_trails.core.logging import (
     JOB_LOG_BACKUPS,
     MAX_JOB_LOG_BYTES,
+    REDACTED,
     YtdlpLog,
     forget_the_secrets,
     job_log_path,
@@ -339,3 +340,33 @@ def test_the_database_keeps_verbatim_what_the_log_redacts(tmp_path: Path) -> Non
 
     assert COOKIE_PATH not in emitted, "the log kept a path DAT-003 redacts at this sink"
     assert "<redacted>" in emitted
+
+
+def test_a_secret_inside_another_is_redacted_whole_whatever_the_hash_seed() -> None:
+    """`redact` walked a `set`, so its order was `PYTHONHASHSEED`'s.
+
+    With a path and a longer value containing that path both registered, replacing the path first
+    cut the value apart and left its other characters in the line. Measured: three seeds in six.
+    Each seed runs in its own interpreter, because a set's order is fixed for the life of one.
+    """
+    import os
+    import subprocess
+    import sys
+
+    program = (
+        "from tracks_and_trails.core import logging as l\n"
+        "l.remember_a_secret('/home/alice/cookies.txt')\n"
+        "l.remember_a_secret('SECRET-alice-/home/alice/cookies.txt-TAIL')\n"
+        "print(l.redact('value=SECRET-alice-/home/alice/cookies.txt-TAIL'))\n"
+    )
+    for seed in range(6):
+        finished = subprocess.run(
+            [sys.executable, "-c", program],
+            capture_output=True,
+            text=True,
+            check=True,
+            env={**os.environ, "PYTHONHASHSEED": str(seed)},
+        )
+        assert finished.stdout.strip() == f"value={REDACTED}", (
+            f"seed {seed} left part of a registered secret: {finished.stdout.strip()!r}"
+        )

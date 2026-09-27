@@ -25,8 +25,10 @@ listed explicitly rather than quietly absent, so a reader can tell "not applicab
 """
 
 import contextlib
+import functools
 import importlib
 import logging
+import os
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from optparse import OptParseError
 from pathlib import Path
@@ -704,9 +706,17 @@ def _chapter_template(output_template: str) -> str:
 
     `output_template` is the literal, already-contained path the worker validated, so taking its
     stem keeps every chapter in the same directory by construction rather than by a check.
+
+    **The stem is the file name's, not the path's.** The first version split the whole path on its
+    last dot, so `/home/u/my.dir/staging/clip` became `/home/u/my` plus the chapter suffix,
+    written beside `my.dir` rather than inside staging. `os.path.split` finds the file name on
+    either platform's separator. Only that name is replaced, and every character before it is
+    kept exactly as the worker validated it.
     """
-    stem, _, _ = output_template.rpartition(".")
-    return f"{stem or output_template}.%(section_number)03d %(section_title)s.%(ext)s"
+    name = os.path.split(output_template)[1]
+    stem, dot, _ = name.rpartition(".")
+    chapter = f"{stem if dot and stem else name}.%(section_number)03d %(section_title)s.%(ext)s"
+    return output_template[: len(output_template) - len(name)] + chapter
 
 
 def build_options(
@@ -992,7 +1002,26 @@ def hatch_options(text: str, argv: Sequence[str]) -> dict[str, Any]:
         for key in OPTION_KEYS.get(spelling, ()):
             if key in parsed:
                 wanted[key] = parsed[key]
+    if "postprocessors" in wanted:
+        # **Only the processors the named options asked for.** Every `parse_options` result
+        # carries yt-dlp's default `FFmpegConcat` (`only_multi_video`, run per playlist), which is
+        # `--concat-playlist`'s default. The audit refuses that option, and the application's own
+        # chain never had it. Copying the whole list brought it in with any processor the hatch
+        # names, `--convert-thumbnails png` included. `postprocessors` is the one destination that
+        # accumulates across options and has a non-empty default, so it is the one filtered.
+        defaults = _default_postprocessors()
+        wanted["postprocessors"] = [
+            spec for spec in wanted["postprocessors"] if spec not in defaults
+        ]
     return wanted
+
+
+@functools.cache
+def _default_postprocessors() -> tuple[dict[str, Any], ...]:
+    """What `parse_options` puts in `postprocessors` when nothing asks for any (`T184-R10`)."""
+    from yt_dlp import parse_options
+
+    return tuple(parse_options([]).ydl_opts.get("postprocessors", ()))
 
 
 def merge_thumbnail(options: dict[str, Any], hatch: dict[str, Any]) -> None:

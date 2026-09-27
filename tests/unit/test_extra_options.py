@@ -21,6 +21,7 @@ from tracks_and_trails.downloader.extra_options import (
     NOT_RULED,
     TOGETHER,
     UNKNOWN_EFFECT,
+    WHOLE_FIELD,
     admit,
     option_arity,
     options_for,
@@ -212,6 +213,19 @@ def test_an_unclosed_quote_is_reported_as_what_it_is() -> None:
     assert "complete command line" in reason
 
 
+def test_an_unclosed_quote_does_not_repeat_what_was_typed() -> None:
+    """`T184-R6`: the refusal named the first forty characters of the field.
+
+    An unclosed quote is exactly where a header value is most likely to be, so forty characters of
+    `--add-headers "Authorization: Bearer …` was most of a credential, in a refusal that
+    `BAD_VALUE`'s own note says may be repeated somewhere durable.
+    """
+    option, reason = only_refusal('--add-headers "Authorization: Bearer T184_QUOTE_CANARY')
+
+    assert option == WHOLE_FIELD
+    assert "T184_QUOTE_CANARY" not in option + reason
+
+
 def test_one_refusal_refuses_the_whole_field() -> None:
     """`REQ-031`: never "accepted and silently dropped".
 
@@ -358,6 +372,23 @@ def test_options_that_contradict_each_other_are_refused_together() -> None:
     assert not admission.usable
     assert argv == ()
     assert [refusal.reason for refusal in admission.refusals] == [TOGETHER]
+
+
+def test_contradicting_options_are_named_by_spelling_and_never_by_value() -> None:
+    """`T184-R6`: when no option fails alone, the refusal named forty raw characters of the field.
+
+    With a header first, that was `--add-headers "Authorization: Bearer SEC`, a credential cut
+    short. The spellings are what the user needs to find and the only part that is safe to repeat.
+    """
+    admission, _ = options_for(
+        '--add-headers "Authorization: Bearer T184_TOGETHER_CANARY" '
+        "--dateafter 20260920 --datebefore 20260901"
+    )
+
+    [refusal] = admission.refusals
+    assert refusal.reason == TOGETHER
+    assert refusal.option == "--add-headers, --dateafter, --datebefore"
+    assert "CANARY" not in refusal.option
 
 
 def test_an_option_repeated_with_a_good_value_last_is_accepted() -> None:

@@ -91,6 +91,13 @@ BAD_VALUE: Final = "yt-dlp will not accept the value given for this option."
 #: Neither option is wrong; the pair is.
 TOGETHER: Final = "These options are each valid, but yt-dlp will not accept them together."
 
+#: What a refusal names when it is about the whole field rather than one option.
+#:
+#: **Never the text itself** (`T184-R6`). Two refusals used to name `text.strip()[:40]`: an
+#: unclosed quote, and options that are each valid but contradict one another. Forty characters of
+#: `--add-headers "Authorization: Bearer …"` is most of a credential.
+WHOLE_FIELD: Final = "The whole field"
+
 #: What a user is told when the effect cannot be measured at all.
 UNKNOWN_EFFECT: Final = (
     "This application cannot tell what this option would change, so it does not pass it on."
@@ -173,7 +180,8 @@ def split_the_text(text: str) -> tuple[list[str], Refusal | None]:
     try:
         return shlex.split(text), None
     except ValueError as unbalanced:
-        return [], Refusal(text.strip()[:40], f"This is not a complete command line: {unbalanced}.")
+        # `shlex`'s own message ("No closing quotation") quotes nothing the user typed.
+        return [], Refusal(WHOLE_FIELD, f"This is not a complete command line: {unbalanced}.")
 
 
 def admit(text: str) -> Admission:
@@ -261,6 +269,115 @@ def grouped(accepted: Sequence[str]) -> list[list[str]]:
     return chunks
 
 
+#: Admitted options whose values **cannot** carry a credential or name a file (`T184-R6`).
+#:
+#: Numbers, sizes, rates, dates, durations, ranges, enumerated words, format names, language codes,
+#: extractor names and chapter or section patterns. The values describe the media, not the user.
+#: **Everything else is registered**, including any option admitted after this list was written,
+#: so the list fails safe: forgetting an entry over-redacts, and never leaks.
+#:
+#: The reason it exists. Registering every argument, which the first correction did, redacted the
+#: ordinary vocabulary users type here: `--sub-format best` removed every `best` from the log,
+#: `--retries 1000` every `1000` and `--fixup never` every `never`. `remember_a_secret`'s four-byte
+#: floor stops none of them. A log nobody can read is `T197-R7`'s failure.
+NOT_SECRET_VALUES: Final = frozenset(
+    {
+        "--age-limit",
+        "--buffer-size",
+        "--compat-options",
+        "--concurrent-fragments",
+        "-N",
+        "--convert-sub",
+        "--convert-subs",
+        "--convert-subtitles",
+        "--convert-thumbnails",
+        "--date",
+        "--dateafter",
+        "--datebefore",
+        "--default-search",
+        "--download-sections",
+        "--encoding",
+        "--extractor-retries",
+        "--file-access-retries",
+        "--fixup",
+        "--format-sort",
+        "-S",
+        "--fragment-retries",
+        "--http-chunk-size",
+        "--ies",
+        "--use-extractors",
+        "--limit-rate",
+        "--rate-limit",
+        "--max-downloads",
+        "--max-filesize",
+        "--merge-output-format",
+        "--min-filesize",
+        "--min-sleep-interval",
+        "--sleep-interval",
+        "--sleep-requests",
+        "--sleep-subtitles",
+        "--output-na-placeholder",
+        "--playlist-items",
+        "-I",
+        "--remove-chapters",
+        "--retries",
+        "--retry-sleep",
+        "--socket-timeout",
+        "--sponsorblock-mark",
+        "--sponsorblock-remove",
+        "--srt-langs",
+        "--sub-format",
+        "--throttled-rate",
+        "--trim-file-names",
+        "--trim-filenames",
+        "--wait-for-video",
+    }
+)
+
+#: Admitted options whose value is a **path the user configured**, registered with
+#: `remember_a_path`, which has no length floor (`T197-R1`).
+PATH_VALUES: Final = frozenset(
+    {
+        "--cache-dir",
+        "--client-certificate",
+        "--client-certificate-key",
+        "--download-archive",
+        "--netrc-location",
+    }
+)
+
+
+def remember_the_hatch(argv: Sequence[str]) -> None:
+    """Register what `argv` could leak, so this process's log handlers redact it (`T184-R6`).
+
+    **Called in the process that formats the logs, which is the parent.** A worker's records
+    cross to the parent on a `QueueHandler` and are redacted by the parent's `RedactingFormatter`
+    (`T-038`). The first correction registered the values inside the worker, where they redacted
+    nothing, because no redacting formatter runs there. `DownloadManager` calls this before it
+    starts a session.
+
+    **Values, however they were spelled.** `--match-filters=title=X` is one token, and the first
+    version skipped it because the token's spelling is an option's, so the `=` form was never
+    registered at all. `grouped` pairs every option with its values in either form.
+
+    **A header's value is registered on its own as well.** yt-dlp keeps `--add-headers` as a
+    mapping, so anything that prints a header prints the value without the `Name:` in front of it.
+    """
+    from tracks_and_trails.core.logging import remember_a_path, remember_a_secret
+
+    for chunk in grouped(argv):
+        spelling, _, inline = chunk[0].partition("=")
+        if spelling in NOT_SECRET_VALUES:
+            continue
+        for value in [inline] if inline else chunk[1:]:
+            if spelling in PATH_VALUES:
+                remember_a_path(value)
+                continue
+            remember_a_secret(value)
+            if spelling == "--add-headers":
+                remember_a_secret(value.partition(":")[2].strip())
+
+
 def options_for(text: str) -> tuple[Admission, tuple[str, ...]]:
     """Admit `text` and, if every option in it may be used, say what it produces.
 
@@ -288,12 +405,16 @@ def options_for(text: str) -> tuple[Admission, tuple[str, ...]]:
 
     from tracks_and_trails.downloader.ytdlp_adapter import unparseable
 
-    refused, culprit = unparseable(admission.accepted, grouped(admission.accepted))
+    chunks = grouped(admission.accepted)
+    refused, culprit = unparseable(admission.accepted, chunks)
     if refused:
-        # The whole field is refused. `culprit` only decides **what to call it** — when no single
-        # option fails alone, the options contradict one another and the field is named instead.
-        named = culprit if culprit is not None else text.strip()[:40]
-        return Admission((), (Refusal(named, BAD_VALUE if culprit else TOGETHER),)), ()
+        # The whole field is refused. `culprit` only decides **what to call it**. When no single
+        # option fails alone, they contradict one another, and the refusal names their spellings,
+        # never the text around them (`T184-R6`, `WHOLE_FIELD`).
+        if culprit is not None:
+            return Admission((), (Refusal(culprit, BAD_VALUE),)), ()
+        spellings = dict.fromkeys(chunk[0].partition("=")[0] for chunk in chunks)
+        return Admission((), (Refusal(", ".join(spellings), TOGETHER),)), ()
 
     return admission, admission.accepted
 

@@ -296,7 +296,12 @@ def redact(text: str) -> str:
     `NFR-006`'s promise is kept at the other sink: the database stores the extractor's message
     verbatim (`T-014`, `DAT-003`).
     """
-    for secret in _secrets:
+    # **Longest first, then by value, so the result does not depend on hash order.** A `set`
+    # iterates in `PYTHONHASHSEED`'s order. When one secret contains another, replacing the
+    # shorter one first cut the longer one apart, so its surroundings survived: with a cookie path
+    # and a value containing that path both registered, three seeds in six left the value's other
+    # characters in the line. `T-184`'s hatch registers many values, so overlap became likely.
+    for secret in sorted(_secrets, key=lambda value: (-len(value), value)):
         text = text.replace(secret, REDACTED)
     text = _COOKIE_HEADER.sub(lambda match: f"{match.group(1)}: {REDACTED}", text)
     text = _COOKIE_PATH.sub(REDACTED, text)

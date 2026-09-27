@@ -735,6 +735,26 @@ def test_a_chapter_file_keeps_the_media_s_own_name(tmp_path: Path) -> None:
     assert chapter.name.startswith("clip."), f"a chapter left the family: {chapter.name}"
 
 
+def test_a_dot_in_a_directory_does_not_move_the_chapters(tmp_path: Path) -> None:
+    """`T184-R13`'s containment, when the path's last dot is not the file name's.
+
+    The first version split the whole path on its last dot. With a directory named `my.dir` and a
+    file name with no extension, the chapter template became `…/my` plus the chapter suffix: a
+    file beside `my.dir`, outside staging.
+    """
+    from yt_dlp import YoutubeDL
+
+    staging = tmp_path / "my.dir" / "staging"
+    options = adapter.build_options(request_for(), str(staging / "job-123"))
+    info = {"title": "Clip", "ext": "mp4", "id": "x", "section_number": 1, "section_title": "First"}
+
+    with YoutubeDL(options) as ydl:
+        chapter = Path(ydl.prepare_filename(info, "chapter"))
+
+    assert chapter.parent == staging, f"a chapter would be written outside staging: {chapter}"
+    assert chapter.name.startswith("job-123."), f"a chapter left the family: {chapter.name}"
+
+
 def test_network_options_are_only_set_when_asked_for() -> None:
     """An unconditional `proxy: None` is not the same as no proxy to yt-dlp."""
     plain = adapter.build_options(request_for(), "o.%(ext)s")

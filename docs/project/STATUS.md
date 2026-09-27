@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-09-19
+**Last updated:** 2026-09-26
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -76,12 +76,22 @@ task and review records it summarised.*
   **The approval does not cover release readiness**, and two follow-ups remain: `T-350`, and the
   human selection walk, which no instrument here can perform — `isItemVisibleInAnyView` says the
   item is in a view, not that it is highlighted.
-- **`T-184` has started, measurements first.** The parser surface the audit does not reach is pinned
-  at 36 suppressed options; `tools/ytdlp_option_keys.py` derives what each option changes and found
-  that **`--geo-bypass` changes nothing**, so the hatch cannot decide from a diff alone. Finding 7's
-  five are measured harmless against `T-046`'s reservation, and `-w/--no-overwrites` is measured
-  leaving a 0-byte "successful" download, which is the audit's refusal reason as behaviour.
-  The polarity is **ruled default-deny**, so the parser can be built.
+- **`T-184` is In Progress, and its correction rounds are with the Reviewer.** The parser,
+  request, presets and output stages are built; the user interface is not. The review of
+  2026-09-22 raised eight blockers and the one of 2026-09-23 left five of them open, plus a new
+  Critical (`T184-R13`, chapter files written outside the download folder). Its stage A
+  measurements are in the task entry.
+- **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
+  the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
+  the value in the log. The correction of 2026-09-24 registers them in the parent, covers the
+  `--opt=value` spelling, and exempts options whose values cannot be secrets. **That exemption
+  narrows one acceptance criterion's letter and is the maintainer's to accept**
+  ([T-184](TASKS.md#t-184--the-escape-hatch-additional-yt-dlp-options-parsed-and-bounded)).
+  Storing a user-typed credential in `settings.toml` (`DAT-003`) is still undecided.
+- **A codebase audit ran on 2026-09-24** and is with the Reviewer for its own record. Two outcomes
+  are already filed: `T-351` (with a playlist in the queue, row changes are signalled on the wrong
+  row, and a screen reader hears less than the row shows) and `T-352`, which retires
+  `JobProgressView` by the maintainer's `UX-005` amendment of the same day.
 - **`T-348`'s shape is recommended** (2026-09-18): fetch, verify against the published
   `SHA256SUMS`, hand over. The release publishes no `.zsync`, so delta updating would need a release
   change, and in-place updating waits on signing.
@@ -96,18 +106,19 @@ task and review records it summarised.*
 
 ## Verification
 
-After the shared-source/formatting follow-up, the Linux full suite passed with
-**3940 passed / 21 skipped / 17 warnings** in **169.81 s**, using the activated
-project environment. Ruff lint, whole-tree formatting, source/test type checks
-(including Windows-platform bodies), preservation and formatter controls passed.
-The previous format failure is resolved by controls outside the captured evidence;
-the captured bytes are unchanged. Independent documentation review remains pending.
-
-This follow-up's checks and review boundary are in
+*Refreshed 2026-09-26, for `T-184`'s third correction round, on Linux with the project `.venv`
+(Python 3.14.7, yt-dlp 2026.08.19).* The previous section described `T-300`'s documentation
+follow-up; its results are kept in
 [T-300](COMPLETED_TASKS.md#t-300--agentsmd-is-628-lines-and-is-loaded-on-every-task).
-The later review-storage adoption and historical migration have their own
-documentation-check results in T-300. They preserve those earlier verification boundaries. No new Windows
-execution or release-gate result is claimed here.
+
+| Check | Result |
+|---|---|
+| `ruff check .`; `ruff format --check .` | Passed; 461 files |
+| `mypy src`; bare `mypy`; `mypy --platform win32` | Passed; 69, 209 and 209 files |
+| Full `pytest -q -p no:cacheprovider` | **1 failed, 4,948 passed, 22 skipped, 2 deselected**, 3,091 s. The one failure is `T-350`'s race (`derived_format_columns-10pt`, *"row 0 offered no format control"*); the nine mounted-panel cases then passed alone |
+| Repo root before and after the suite | Unchanged |
+
+No Windows runtime, external download or release-gate result is claimed here.
 
 ## Current risks and external blockers
 

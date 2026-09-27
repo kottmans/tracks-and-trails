@@ -13,12 +13,14 @@ can edit and a request is a JSON blob in a database, so tokens can arrive that n
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from tracks_and_trails.core.models import DownloadRequest
+from tracks_and_trails.downloader.extra_options import remember_the_hatch
 from tracks_and_trails.downloader.ytdlp_adapter import (
     UnusableOptionsError,
     build_options,
@@ -284,100 +286,146 @@ def test_a_user_asking_for_the_thumbnail_gets_it_without_embedding() -> None:
     assert options["writethumbnail"] is True
 
 
+def test_the_hatch_brings_no_processor_it_did_not_name() -> None:
+    """`T184-R10`'s correction copied the whole parsed chain, yt-dlp's defaults included.
+
+    Every `parse_options` result carries `FFmpegConcat` with `only_multi_video`, which is
+    `--concat-playlist`'s default. The audit refuses that option and the application's chain never
+    had it, yet it arrived with any processor the hatch named.
+    """
+    for text in ("--convert-thumbnails png", "--split-chapters"):
+        request = a_request(extra_options=text, extra_option_argv=tuple(text.split()))
+
+        keys = [
+            spec.get("key")
+            for spec in build_options(request, BASE["output_template"])["postprocessors"]
+        ]
+
+        assert "FFmpegConcat" not in keys, f"{text!r} brought in a refused option's default: {keys}"
+
+
 # --- what a log may carry (`T184-R6`) ------------------------------------------------------------
 
 
-def test_a_hatch_value_is_redacted_where_yt_dlp_itself_prints_it() -> None:
+@pytest.fixture
+def registered() -> Iterator[None]:
+    """Registered values are process-wide, so each test here starts and ends with none."""
+    from tracks_and_trails.core.logging import forget_the_secrets
+
+    forget_the_secrets()
+    yield
+    forget_the_secrets()
+
+
+def _shown(message: str) -> str:
+    """`message` as the application's own formatter writes it."""
+    import logging
+
+    from tracks_and_trails.core.logging import RedactingFormatter
+
+    record = logging.LogRecord("t", logging.INFO, __file__, 1, message, (), None)
+    return RedactingFormatter().format(record)
+
+
+def test_a_hatch_value_is_redacted_where_yt_dlp_itself_prints_it(registered: None) -> None:
     """**`repr=False` was necessary and nowhere near sufficient.**
 
-    It closed the route this application takes into a log and did nothing about the routes yt-dlp
-    takes. The reviewer typed a match filter carrying a canary and watched
-    `YoutubeDL._match_entry` write it through `YtdlpLog` and the real formatter, with no verbose
-    mode involved. So the value is registered with `remember_a_secret` and the formatter redacts
-    it wherever it surfaces, whoever wrote the line.
+    The reviewer typed a match filter carrying a canary and watched `YoutubeDL._match_entry` write
+    it through `YtdlpLog` and the real formatter, with no verbose mode involved. That the manager
+    calls this in the process that formats is `test_worker_logging`'s to prove, across a spawn.
     """
-    import logging
-
-    from tracks_and_trails.core.logging import RedactingFormatter
-    from tracks_and_trails.downloader.worker import _remember_the_hatch
-
     canary = "T184_FILTER_CANARY_UNIQUE"
-    request = a_request(
-        extra_options=f'--match-filters "title~={canary}"',
-        extra_option_argv=("--match-filters", f"title~={canary}"),
-    )
 
-    _remember_the_hatch(request)
-    record = logging.LogRecord(
-        "t",
-        logging.INFO,
-        __file__,
-        1,
-        f"[download] does not pass filter (title~={canary})",
-        (),
-        None,
-    )
-    shown = RedactingFormatter().format(record)
+    remember_the_hatch(("--match-filters", f"title~={canary}"))
 
-    assert canary not in shown, f"a hatch value reached a log unredacted: {shown}"
+    assert canary not in _shown(f"[download] does not pass filter (title~={canary})")
 
 
-def test_an_ordinary_short_value_is_not_redacted_into_nonsense() -> None:
-    """The other half, and the reason registering everything is safe.
+def test_the_equals_spelling_is_registered_as_well(registered: None) -> None:
+    """`--match-filters=title~=X` is one token, and the first correction skipped it entirely.
 
-    `remember_a_secret` ignores values under its byte floor (`T197-R1`), so `10` from
-    `--fragment-retries 10` cannot redact its way through every line that mentions ten. Over
-    redaction is a log nobody can read, which this project has four review rounds about.
+    It asked whether the token's spelling was an option's, which it is, and registered nothing.
     """
-    import logging
+    canary = "T184_EQUALS_CANARY"
 
-    from tracks_and_trails.core.logging import RedactingFormatter
-    from tracks_and_trails.downloader.worker import _remember_the_hatch
+    remember_the_hatch((f"--match-filters=title~={canary}",))
 
-    request = a_request(
-        extra_options="--fragment-retries 10", extra_option_argv=("--fragment-retries", "10")
-    )
-
-    _remember_the_hatch(request)
-    record = logging.LogRecord("t", logging.INFO, __file__, 1, "fragment 10 of 25 done", (), None)
-
-    assert "10 of 25" in RedactingFormatter().format(record)
+    assert canary not in _shown(f"[download] does not pass filter (title~={canary})")
 
 
-def test_the_option_names_themselves_are_not_registered() -> None:
-    """Arguments carry the user's text; spellings are yt-dlp's own vocabulary.
+def test_a_header_value_is_redacted_without_its_name(registered: None) -> None:
+    """yt-dlp keeps headers as a mapping, so it prints the value apart from `Name:`."""
+    canary = "T184_HEADER_CANARY"
 
-    Registering `--continue` would redact the word wherever it appeared in a log, for nothing.
+    remember_the_hatch((f"--add-headers=Authorization: Bearer {canary}",))
+
+    assert canary not in _shown(f"headers: {{'Authorization': 'Bearer {canary}'}}")
+
+
+def test_a_path_the_hatch_names_is_redacted_however_short(registered: None) -> None:
+    """A path gets `remember_a_path`, which has no length floor (`T197-R1`)."""
+    remember_the_hatch(("--client-certificate-key", "/k"))
+
+    assert "/k" not in _shown("could not read /k")
+
+
+@pytest.mark.parametrize(
+    ("argv", "word"),
+    [
+        (("--sub-format", "best"), "best"),
+        (("--retries", "1000"), "1000"),
+        (("--fixup", "never"), "never"),
+        (("--convert-thumbnails", "webp"), "webp"),
+        (("--max-filesize", "100M"), "100M"),
+        (("--sleep-requests", "1.25"), "1.25"),
+        (("--fragment-retries=10",), "10"),
+    ],
+)
+def test_an_ordinary_value_is_not_redacted_into_nonsense(
+    registered: None, argv: tuple[str, ...], word: str
+) -> None:
+    """The first correction registered every argument and claimed the byte floor made it safe.
+
+    The floor is four bytes. `best`, `1000`, `never`, `webp`, `100M` and `1.25` all clear it, so
+    each one vanished from every later line of the log.
     """
-    import logging
+    remember_the_hatch(argv)
 
-    from tracks_and_trails.core.logging import RedactingFormatter
-    from tracks_and_trails.downloader.worker import _remember_the_hatch
-
-    _remember_the_hatch(
-        a_request(extra_options="--write-thumbnail", extra_option_argv=("--write-thumbnail",))
-    )
-    record = logging.LogRecord(
-        "t", logging.INFO, __file__, 1, "using --write-thumbnail for this job", (), None
-    )
-
-    assert "--write-thumbnail" in RedactingFormatter().format(record)
+    assert word in _shown(f"chose {word} for this job"), f"{argv} redacted an ordinary word"
 
 
-def test_the_session_registers_the_hatch_before_it_runs_anything() -> None:
-    """**The wiring, because the tests above would pass without it.**
+def test_the_option_names_themselves_are_not_registered(registered: None) -> None:
+    """Arguments carry the user's text; spellings are yt-dlp's own vocabulary."""
+    remember_the_hatch(("--write-thumbnail",))
 
-    They call `_remember_the_hatch` themselves, so deleting its call from `_run` left them green —
-    a mutation showed exactly that. Redaction that is never switched on protects nothing, and the
-    call has to come before the session does any work, or the first line yt-dlp writes is already
-    past it.
+    assert "--write-thumbnail" in _shown("using --write-thumbnail for this job")
+
+
+def test_only_admitted_options_are_exempt_and_no_credential_carrier_is() -> None:
+    """The exemptions stay honest: each names an admitted option that takes a value.
+
+    A stale entry would be harmless, but one that names a credential carrier would not be.
     """
-    import inspect
+    from tracks_and_trails.downloader.extra_options import (
+        NOT_SECRET_VALUES,
+        PATH_VALUES,
+        _reason_to_refuse,
+        option_arity,
+    )
 
-    from tracks_and_trails.downloader.worker import _run
+    arity = option_arity()
+    for spelling in NOT_SECRET_VALUES | PATH_VALUES:
+        assert arity.get(spelling, 0) > 0, f"{spelling} takes no value"
+        assert _reason_to_refuse(spelling) is None, f"{spelling} is not admitted"
 
-    body = inspect.getsource(_run)
-    called = body.index("_remember_the_hatch(request)")
-    extracts = body.index("_extract(")
-
-    assert called < extracts, "the hatch is registered after the session has started working"
+    carriers = {
+        "--add-headers",
+        "--extractor-args",
+        "--match-filters",
+        "--break-match-filters",
+        "--parse-metadata",
+        "--replace-in-metadata",
+        "--geo-verification-proxy",
+        "--source-address",
+    }
+    assert not NOT_SECRET_VALUES & (carriers | PATH_VALUES)
