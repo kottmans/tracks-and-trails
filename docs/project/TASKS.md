@@ -21,8 +21,9 @@ Nothing. `T-347` was approved on 2026-09-19 and moved to
 
 ### T-184 — The escape hatch: additional yt-dlp options, parsed and bounded
 
-**Status:** In Progress since 2026-09-18. The parser, request, presets and output stages are
-built and with the Reviewer, and the user interface is not built yet. Filed 2026-08-07 with the
+**Status:** In Progress since 2026-09-18. **Every stage is built, the interface included
+(2026-09-27).** The 2026-09-27 review left `R6`, `R8`, `R14` and `R15` blocking, and they are being
+corrected in one batch after the maintainer's design ruling of that day. Filed 2026-08-07 with the
 phase. **Unblocked 2026-08-21**: `SEC-005` ruled
 `--legacy-server-connect`, the one disposition this waited on (`T183-R3`, the sixteenth option the
 audit surfaced), and **`unruled` is now 0** — every documented option has a class, which is the
@@ -339,6 +340,47 @@ under a stated precedence.
 > - **Three more options fail only when the job runs**: an unknown `--ies`/`--use-extractors` name
 >   (*"No suitable extractor"*), a `--source-address` that is not an address, and a missing
 >   `--client-certificate` file. Unlike filters and encodings, none has an exact check to borrow.
+
+#### Maintainer ruling, 2026-09-27 — redesign validation and redaction, then one batch
+
+Codex's review of 2026-09-27 left `T184-R6` and `T184-R8` open again and invoked TESTING §14:
+corrections to both keep reproducing their defect class. Asked to split the task, narrow what is
+accepted, correct the findings as stated, or revisit the two mechanisms, **the maintainer chose to
+revisit them**, with `R14`, `R15` and `R16` in the same batch. The design, written before the code:
+
+**Validation asks yt-dlp's own parser rather than re-deriving its grammar.**
+
+1. **One tokenizer.** `=` is split the way optparse splits it: the inline text is the first value
+   even when it is empty, and an option taking several values reads the rest from the tokens after
+   it. Admission, grouping, redaction and the merge all read values through it. Three hand-written
+   splits disagreed with each other and with yt-dlp (`--match-filters=`,
+   `--replace-in-metadata=title foo ""`).
+2. **Effective values, not occurrences.** A value yt-dlp reads only when a job runs is checked on
+   what yt-dlp's parser step, `yt_dlp.options.parseOpts`, leaves after every repeat and reset:
+   `--encoding nope --encoding utf-8` is `utf-8`, and `--no-match-filters` empties the list. Match
+   filters go through `match_str(value, {}, incomplete=True)` and the encoding through
+   `codecs.lookup`. **Measured:** `--match-filters=` parses, then fails the first item with
+   *Invalid filter part ''*, so it is refused as a bad value rather than as a missing one.
+
+**Redaction registers what yt-dlp's consumers print, from the tables admission already reads.**
+
+3. **A path is registered as typed and as yt-dlp expands it**, through `_AS_YT_DLP_EXPANDS`, the
+   table the absolute-path rule uses, so the two cannot disagree about what a path becomes.
+4. **`--default-search` and `--output-na-placeholder` leave the exemptions.** The Reviewer checked
+   all 49 and found these two take unrestricted text.
+5. **Proved at a real consumer**, such as yt-dlp's own cache warning, and not only on a composed
+   line.
+
+**The interface findings, in the same batch.**
+
+6. **`R14`.** The offer asks whether a preset's hatch needs ffmpeg through a downloader seam that
+   loads yt-dlp only when the preset carries tokens, so an empty hatch stays free. The add
+   dialog's catalogue and the editor both use it, and the editor refuses such options with the
+   reason when ffmpeg is missing. The worker's guard stays.
+7. **`R15`.** A saved pair is checked whenever **either** half is non-empty, so empty text with
+   hidden tokens becomes the empty pair it shows.
+8. **`R16`.** The worker's queue-pause comment, and the two snapshots that still call the
+   interface unbuilt.
 
 #### Maintainer ruling, 2026-09-27 — the interface is specified
 

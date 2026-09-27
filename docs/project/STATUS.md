@@ -76,11 +76,11 @@ task and review records it summarised.*
   **The approval does not cover release readiness**, and two follow-ups remain: `T-350`, and the
   human selection walk, which no instrument here can perform — `isItemVisibleInAnyView` says the
   item is in a view, not that it is highlighted.
-- **`T-184` is In Progress, and its correction rounds are with the Reviewer.** The parser,
-  request, presets and output stages are built; the user interface is not. The review of
-  2026-09-22 raised eight blockers and the one of 2026-09-23 left five of them open, plus a new
-  Critical (`T184-R13`, chapter files written outside the download folder). Its stage A
-  measurements are in the task entry.
+- **`T-184` is In Progress, with every stage built, the interface included.** The review of
+  2026-09-27 resolved `R9`, `R10`, `R11` and `R13` and left `R6` (Critical), `R8`, `R14` and
+  `R15` blocking. It invoked TESTING §14, because the redaction and validation corrections keep
+  reproducing their defect class. **The maintainer chose to revisit both designs** and correct
+  all four in one batch; the design is in the task entry. The push stays held.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the
