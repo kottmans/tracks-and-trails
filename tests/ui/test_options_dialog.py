@@ -23,8 +23,10 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QGroupBox,
     QLabel,
     QListWidget,
+    QPlainTextEdit,
     QPushButton,
     QRadioButton,
     QScrollArea,
@@ -48,6 +50,8 @@ from tracks_and_trails.ui.options_dialog import (
     EMBED_METADATA_NAME,
     EMBED_SUBTITLES_NAME,
     EMBED_THUMBNAIL_NAME,
+    EXTRA_OPTIONS_NAME,
+    EXTRA_OPTIONS_TITLE,
     FFMPEG_FEATURE_CONTROLS,
     NO_AUDIO_REASON,
     NO_FFMPEG_REASON,
@@ -1137,3 +1141,146 @@ def test_the_container_note_says_what_recoding_is_for(
         assert codec not in said.lower(), (
             f"the note names {codec}, which is not the register the rest of this dialog uses"
         )
+
+
+# --- the additional-options field (`UX-015`, `REQ-031`, `T-184`) --------------------------------
+
+
+def extra_box(dialog: OptionsDialog) -> QPlainTextEdit:
+    found = dialog.findChild(QPlainTextEdit, EXTRA_OPTIONS_NAME)
+    assert found is not None, "the dialog has no additional-options field"
+    return found
+
+
+def ok_button(dialog: OptionsDialog) -> QPushButton:
+    buttons = dialog.findChild(QDialogButtonBox)
+    assert buttons is not None
+    found = buttons.button(QDialogButtonBox.StandardButton.Ok)
+    assert found is not None
+    return found
+
+
+def typed(dialog: OptionsDialog, text: str, spin: Callable[..., bool]) -> None:
+    """Put `text` in the field and wait out the pause, the way a user's typing ends."""
+    extra_box(dialog).setPlainText(text)
+    checked = spin(lambda: not dialog._extra_pause.isActive(), timeout=5)
+    assert checked, "the field was never checked after typing paused"
+
+
+def test_the_field_is_the_fifth_group_below_subtitles(editor: Callable[..., OptionsDialog]) -> None:
+    """`UX-015`: after the four `REQ-010` groups, in the scrolling region, always visible."""
+    dialog = editor()
+    scroller = dialog.findChild(QScrollArea)
+    assert scroller is not None
+    content = scroller.widget()
+    assert content is not None
+    groups = [
+        child.title()
+        for child in content.findChildren(
+            QGroupBox, options=Qt.FindChildOption.FindDirectChildrenOnly
+        )
+    ]
+
+    assert groups[-2:] == ["Subtitles", EXTRA_OPTIONS_TITLE], groups
+    assert extra_box(dialog).isVisibleTo(dialog)
+
+
+def test_the_field_opens_on_the_preset_s_own_text(editor: Callable[..., OptionsDialog]) -> None:
+    """Opening the editor must not be a way to lose options typed last time."""
+    preset = replace(
+        preset_registry.BEST_VIDEO,
+        extra_options="--fragment-retries 7",
+        extra_option_argv=("--fragment-retries", "7"),
+    )
+
+    dialog = editor(preset)
+
+    assert extra_box(dialog).toPlainText() == "--fragment-retries 7"
+    assert ok_button(dialog).isEnabled()
+    assert dialog.result_preset().extra_option_argv == ("--fragment-retries", "7")
+
+
+def test_an_admitted_option_travels_with_the_tokens_it_produced(
+    editor: Callable[..., OptionsDialog], spin: Callable[..., bool]
+) -> None:
+    """The text a user sees and the tokens that run are one pair (`T184-R5`)."""
+    dialog = editor()
+
+    typed(dialog, "--fragment-retries 7 --continue", spin)
+    chosen = dialog.result_preset()
+
+    assert dialog.extra_refusals_text() == ""
+    assert ok_button(dialog).isEnabled()
+    assert chosen.extra_options == "--fragment-retries 7 --continue"
+    assert chosen.extra_option_argv == ("--fragment-retries", "7", "--continue")
+    assert chosen.name.endswith("with additional yt-dlp options"), chosen.name
+
+
+def test_a_refused_option_is_said_under_the_box_and_nothing_accepts_it(
+    editor: Callable[..., OptionsDialog], spin: Callable[..., bool]
+) -> None:
+    """`UX-015`: the refusal where the user typed it, and the accepting buttons disabled.
+
+    The refusal names the option and the audit's reason, and never the value (`T184-R6`).
+    """
+    saved: list[Preset] = []
+    dialog = editor(save_preset=lambda preset: saved.append(preset))
+
+    typed(dialog, '--exec "echo T184_REFUSAL_CANARY"', spin)
+    said = dialog.extra_refusals_text()
+
+    assert said.startswith("--exec: "), said
+    assert "CANARY" not in said, "the refusal repeated the value"
+    assert not ok_button(dialog).isEnabled()
+    save = dialog.findChild(QPushButton, SAVE_PRESET_NAME)
+    assert save is not None and not save.isEnabled()
+    assert said.split(": ", 1)[1] in extra_box(dialog).accessibleDescription(), (
+        "a screen reader hears the box without its refusal"
+    )
+
+
+def test_mending_the_field_makes_it_acceptable_again(
+    editor: Callable[..., OptionsDialog], spin: Callable[..., bool]
+) -> None:
+    dialog = editor()
+    typed(dialog, "--exec x", spin)
+
+    typed(dialog, "--fragment-retries 3", spin)
+
+    assert dialog.extra_refusals_text() == ""
+    assert ok_button(dialog).isEnabled()
+
+
+def test_accepting_inside_the_pause_still_checks_the_field(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """*Enter* straight after typing would otherwise accept text nobody had checked."""
+    dialog = editor()
+    extra_box(dialog).setPlainText("--exec x")
+
+    dialog.accept()
+
+    assert dialog.result() != QDialog.DialogCode.Accepted, "a refused field was accepted"
+    assert dialog.extra_refusals_text().startswith("--exec: ")
+
+
+def test_tab_leaves_the_field(editor: Callable[..., OptionsDialog]) -> None:
+    """`docs/UX_SPEC.md` §6: a field like the others, so `Tab` moves on."""
+    assert extra_box(editor()).tabChangesFocus()
+
+
+def test_a_preset_whose_saved_options_are_refused_now_says_so_on_opening(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """A preset saved against an older yt-dlp, or edited by hand, is checked, not trusted."""
+    stale = replace(
+        preset_registry.BEST_VIDEO, extra_options="--exec x", extra_option_argv=("--exec", "x")
+    )
+
+    dialog = editor(stale)
+
+    assert dialog.extra_refusals_text().startswith("--exec: ")
+    assert not ok_button(dialog).isEnabled()
+    assert dialog.result_preset().extra_option_argv == ("--exec", "x"), (
+        "a refused field decided something: the preset's own pair should be carried untouched"
+    )

@@ -347,6 +347,16 @@ transcribed in `docs/UX_SPEC.md` §6: the field is the options editor's fifth gr
 *Subtitles* and always visible, and it is checked as the user types. Refusals are listed under it,
 and the accepting buttons are disabled while any stands.
 
+**Built 2026-09-27, the interface stage, not yet reviewed.** `ui/options_dialog.py` adds the
+group, with a check once typing pauses (400 ms), a fresh check on accept and on *Save as preset…*,
+and refusals under the box that are also its screen-reader description. A preset's saved text is
+checked on opening rather than trusted, and a refused field decides nothing: the preset's own pair
+is carried. **The name gained a clause** (`ui/format_text.py`): a preset with additional options
+matched no built-in and was named by its raw selector, `T140-R3`'s defect again. It now reads
+*… · with additional yt-dlp options*, never the options themselves. Nine mutations, all caught.
+Every route to the editor reaches the field, because they all open the same widget: a queued
+row's and an add-dialog row's *Options…*, and the preset manager's.
+
 #### Maintainer rulings, 2026-09-20 — the four shapes the build needed
 
 Put with costs and a recommendation each; all four taken as recommended. The `writethumbnail` one

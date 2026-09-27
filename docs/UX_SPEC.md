@@ -639,6 +639,12 @@ refused in the audit's own words; an option with a control of its own points at 
 **[T]** *(ruled 2026-09-20, recorded in `T-184`)* For one download the box starts with the preset's
 text, and what is in it when the dialog is accepted **replaces** the preset's, never adds to it.
 
+**[D]** *(`T140-R3`'s and `T-159`'s naming rule, applied to the new field)* A download carrying
+additional options is **named for its preset, and says so**: *Best video available · with
+additional yt-dlp options*. The name never repeats the options, because they can carry a
+credential and a name is drawn on every row. No built-in carries any, so without this such a
+download matched nothing and was named by its raw selector.
+
 ### Keyboard path
 
 **[D]** A form, so the platform's own order applies: `Tab` between fields, `Space` toggles a

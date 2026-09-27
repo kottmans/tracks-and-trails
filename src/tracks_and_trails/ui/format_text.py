@@ -81,6 +81,9 @@ UNADJUSTED: Final[dict[str, object]] = {
 }
 
 
+#: What a download's name adds when it carries additional yt-dlp options (`T-184`).
+EXTRA_OPTIONS_CLAUSE: Final = "with additional yt-dlp options"
+
 #: The fields a preset is recognised by: every one it owns. Naming used to be excluded here, and
 #: since `UX-014` a preset carries none to exclude.
 IDENTIFYING_FIELDS: Final[frozenset[str]] = PRESET_OWNED_FIELDS
@@ -124,8 +127,8 @@ def format_name(choice: FormatChoice) -> str:
     """
     name = preset_name_for(choice) or _converting_preset_for(choice) or _base_preset_for(choice)
     if name is None:
-        return f"{choice.format_selector}{_post_processing(choice)}"
-    return f"{name}{_bitrate(choice)}{_post_processing(choice)}"
+        return f"{choice.format_selector}{_post_processing(choice)}{_extra_options(choice)}"
+    return f"{name}{_bitrate(choice)}{_post_processing(choice)}{_extra_options(choice)}"
 
 
 def _base_preset_for(choice: FormatChoice) -> str | None:
@@ -141,8 +144,12 @@ def _base_preset_for(choice: FormatChoice) -> str | None:
     reset and the same two functions are consulted, so there is one definition of what counts as
     a match and this cannot drift from it. Returning `None` when nothing was adjusted keeps the
     misses above meaningful: a genuinely custom selector still names itself.
+
+    **The additional yt-dlp options are set aside too** (`T-184`). No built-in carries any, so a
+    preset with some matched nothing and its row read as the raw selector — `T140-R3`'s defect
+    again, through the newest field. `_extra_options` says they are there instead.
     """
-    plain = unadjusted(choice)
+    plain = replace(unadjusted(choice), extra_options="", extra_option_argv=())
     if plain == choice:
         return None
     return preset_name_for(plain) or _converting_preset_for(plain)
@@ -195,6 +202,17 @@ def _post_processing(choice: FormatChoice) -> str:
     if embedded:
         parts.append(f"embedding {_joined(embedded)}")
     return "".join(f" · {part}" for part in parts)
+
+
+def _extra_options(choice: FormatChoice) -> str:
+    """That this download carries additional yt-dlp options, and never what they are (`T-184`).
+
+    The text can carry a credential, `--add-headers "Authorization: …"`, and a name is drawn on
+    every row and read aloud by a screen reader. The options themselves are one click away, in
+    *Options…*.
+    """
+    carries = bool(choice.extra_options.strip() or choice.extra_option_argv)
+    return f" · {EXTRA_OPTIONS_CLAUSE}" if carries else ""
 
 
 def _joined(labels: list[str]) -> str:

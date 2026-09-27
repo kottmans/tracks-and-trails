@@ -441,8 +441,9 @@ class FormatChoice:
     #: **It can carry a credential, and the earlier claim here that it could not was wrong**
     #: (`T184-R6`). That comment said every credential-bearing option is refused. It is not:
     #: `--add-headers "Authorization: Bearer …"` is admitted, and the reviewer printed the value
-    #: out of this type's own repr. Both fields are `repr=False` now, and the worker registers the
-    #: hatch's arguments with `remember_a_secret` so they are redacted wherever they surface.
+    #: out of this type's own repr. Both fields are `repr=False` now, and `DownloadManager`
+    #: registers the hatch's values in the parent, whose handlers do the redacting, so they are
+    #: redacted wherever they surface. Storing them verbatim is ruled (`DAT-003`, 2026-09-26).
     #:
     #: `T159-R1` narrowed this type to keep `cookies_from_browser`, `proxy` and the rest out of a
     #: record that outlives a job. That reasoning is unchanged; what changed is that this field is

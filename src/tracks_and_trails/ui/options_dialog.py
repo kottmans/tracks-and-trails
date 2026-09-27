@@ -4,6 +4,10 @@
 container; recode container; embed thumbnail; embed metadata; embed chapters; embed or write
 subtitles with language selection. This is the one screen all seven are set on.
 
+**And `REQ-031`'s additional yt-dlp options, as the fifth group** (`UX-015`, `T-184`): a text box
+for what no control here covers, checked as the user types once typing pauses. Refusals are listed
+under it, never repeating a value, and the accepting buttons are disabled while any stands.
+
 ## Reached two ways, and it is the same widget both times
 
 `UX-007`'s `P-3`: as *Options…* on a row's format control, editing a one-off for that download,
@@ -62,7 +66,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import replace
 from typing import Final, Protocol
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -75,9 +79,11 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QPlainTextEdit,
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -90,6 +96,7 @@ from tracks_and_trails.core.presets import (
     with_post_processing,
 )
 from tracks_and_trails.downloader.environment import FfmpegFeature
+from tracks_and_trails.downloader.extra_options import options_for, refusal_lines
 from tracks_and_trails.ui.format_text import format_name
 
 __all__ = ["OptionsDialog"]
@@ -205,6 +212,19 @@ CONTAINER_NOTE: Final = (
 )
 SUBTITLES_HINT: Final = "Chosen languages are written beside the file unless they are embedded."
 
+EXTRA_OPTIONS_NAME: Final = "optionsExtraOptions"
+EXTRA_REFUSALS_NAME: Final = "optionsExtraRefusals"
+
+#: The fifth group, and the one line saying what it is for (`UX-015`, `docs/UX_SPEC.md` §6).
+EXTRA_OPTIONS_TITLE: Final = "Additional yt-dlp options"
+EXTRA_OPTIONS_HINT: Final = (
+    "For options this screen has no control for, written the way you would give them to yt-dlp."
+)
+
+#: How long typing has to pause before the field is checked (`UX-015`). Long enough not to refuse
+#: an option at every keystroke of its name; short enough to answer before the user looks up.
+EXTRA_OPTIONS_PAUSE_MS: Final = 400
+
 
 class PresetSink(Protocol):
     """Where a saved preset goes. Answers `None` on success, or why it was refused.
@@ -244,8 +264,31 @@ class _OptionGroups(QScrollArea):
         return QSize(max(hint.width(), preferred.width() + frame), preferred.height() + frame)
 
 
+class _OptionsBox(QPlainTextEdit):
+    """The additional-options field: three lines by default, and never less than one (`UX-015`).
+
+    `QPlainTextEdit` asks for the height of a document editor, which would make this one group
+    taller than the other four together and push them out of the opening size `T222-R1` measured.
+    Options are typed on one line and rarely need three, so the hint is in lines of the current font
+    rather than pixels, and grows with it.
+    """
+
+    # Qt's override names, hence the camelCase.
+    def sizeHint(self) -> QSize:
+        return QSize(super().sizeHint().width(), self._lines_tall(3))
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(super().minimumSizeHint().width(), self._lines_tall(1))
+
+    def _lines_tall(self, lines: int) -> int:
+        margins = self.contentsMargins()
+        document = round(2 * self.document().documentMargin())
+        spacing = self.fontMetrics().lineSpacing()
+        return spacing * lines + document + margins.top() + margins.bottom()
+
+
 class OptionsDialog(QDialog):
-    """Set `REQ-010`'s seven options for one download, or for a preset.
+    """Set `REQ-010`'s seven options, and any additional ones, for one download or a preset.
 
     Takes the `Preset` being edited and the languages the probe found, and answers with a derived
     preset. It never edits the preset it was given: `Preset` is frozen, and the caller decides
@@ -279,9 +322,22 @@ class OptionsDialog(QDialog):
         self._ask_name = ask_name if ask_name is not None else self._ask_name_modally
         self.setWindowTitle(title)
         self.setObjectName("optionsDialog")
+        #: The additional-options field as last checked: its text, the tokens admission produced,
+        #: and whether it may be used (`UX-015`). Starts as the preset's own, which needs no check
+        #: while it is empty and gets one below when it is not.
+        self._extra_checked: tuple[str, tuple[str, ...], bool] = (
+            preset.extra_options,
+            preset.extra_option_argv,
+            True,
+        )
         self._build()
         self._show_preset(preset)
         self._update_enabled()
+        if preset.extra_options.strip():
+            # **Checked on opening, not trusted**: a preset saved against an older yt-dlp can hold
+            # an option this one refuses, and the job would otherwise learn it when it runs. Only
+            # a preset that has text pays for loading the parser (the 2026-09-20 ruling).
+            self._check_extra_options()
         self._open_at_a_size_that_shows_the_options()
 
     def _open_at_a_size_that_shows_the_options(self) -> None:
@@ -335,7 +391,7 @@ class OptionsDialog(QDialog):
     def _build(self) -> None:
         layout = QVBoxLayout(self)
 
-        # **The four groups scroll; the save line and the buttons do not** (`T-222`).
+        # **The groups scroll; the save line and the buttons do not** (`T-222`).
         #
         # The reported defect was the Container group's explanation clipped to one of its two
         # wrapped lines. The measured cause is larger than that group: the four groups together
@@ -363,6 +419,7 @@ class OptionsDialog(QDialog):
         stack.addWidget(self._build_container())
         stack.addWidget(self._build_embedding())
         stack.addWidget(self._build_subtitles())
+        stack.addWidget(self._build_extra_options())
 
         scroller = _OptionGroups(self)
         scroller.setWidgetResizable(True)
@@ -407,6 +464,7 @@ class OptionsDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
         self._buttons = buttons
+        self._ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
 
     def _build_audio(self) -> QWidget:
         group = QGroupBox("Audio", self)
@@ -526,6 +584,42 @@ class OptionsDialog(QDialog):
         layout.addWidget(self._subtitle_reason)
         return group
 
+    def _build_extra_options(self) -> QWidget:
+        """The fifth group, below *Subtitles* and always visible (`UX-015`, `REQ-031`)."""
+        group = QGroupBox(EXTRA_OPTIONS_TITLE, self)
+        layout = QVBoxLayout(group)
+
+        hint = QLabel(EXTRA_OPTIONS_HINT, group)
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        self._extra = _OptionsBox(group)
+        self._extra.setObjectName(EXTRA_OPTIONS_NAME)
+        self._extra.setAccessibleName(EXTRA_OPTIONS_TITLE)
+        self._extra.setAccessibleDescription(EXTRA_OPTIONS_HINT)
+        # **A field like the others** (`docs/UX_SPEC.md` §6): `Tab` moves on rather than typing a
+        # tab character, which in a command line is only more whitespace.
+        self._extra.setTabChangesFocus(True)
+        self._extra.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        hint.setBuddy(self._extra)
+        layout.addWidget(self._extra)
+
+        self._extra_refusals = QLabel("", group)
+        self._extra_refusals.setObjectName(EXTRA_REFUSALS_NAME)
+        self._extra_refusals.setWordWrap(True)
+        # A refusal names the option as the user typed it, which is their text.
+        self._extra_refusals.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self._extra_refusals)
+
+        # **Once typing pauses** (`UX-015`): each change restarts the wait, so a half-typed option
+        # is not refused at every keystroke of its name.
+        self._extra_pause = QTimer(self)
+        self._extra_pause.setSingleShot(True)
+        self._extra_pause.setInterval(EXTRA_OPTIONS_PAUSE_MS)
+        self._extra_pause.timeout.connect(self._check_extra_options)
+        self._extra.textChanged.connect(self._extra_pause.start)
+        return group
+
     def _container_buttons(self) -> tuple[QRadioButton, QRadioButton, QRadioButton]:
         return (self._container_keep, self._container_remux, self._container_recode)
 
@@ -582,6 +676,54 @@ class OptionsDialog(QDialog):
             item = self._languages.item(index)
             checked = everything or item.text() in wanted
             item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+
+        # The preset's own text, shown without starting the pause: showing it is not typing it.
+        self._extra.setPlainText(preset.extra_options)
+        self._extra_pause.stop()
+
+    # --- the additional-options field (`UX-015`, `REQ-031`) -----------------------------------
+
+    def _check_extra_options(self) -> None:
+        """Admit what the field says now, and say what is wrong with it under the box.
+
+        **Every refusal, each on its own line**, naming the option as typed and the reason, and
+        never the value (`T184-R6`). The accepting buttons follow the answer, and the refusal list
+        is the reason beside them that `UX-005` §5 asks a disabled control to keep.
+
+        `options_for` is the one call the interface makes, and it loads yt-dlp's parser only for a
+        field that has usable options in it (the 2026-09-20 ruling).
+        """
+        self._extra_pause.stop()
+        text = self._extra.toPlainText()
+        admission, argv = options_for(text)
+        lines = refusal_lines(admission)
+        self._extra_checked = (text, argv, admission.usable)
+        self._extra_refusals.setText("\n".join(lines))
+        # What a screen reader hears for the box: the refusals if there are any, or what it is for.
+        self._extra.setAccessibleDescription(" ".join(lines) if lines else EXTRA_OPTIONS_HINT)
+        self._ok_button.setEnabled(admission.usable)
+        if self._save_preset is not None:
+            self._save_button.setEnabled(admission.usable)
+
+    def _extra_options_usable(self) -> bool:
+        """Whether the field as it reads now may be used, checking it first if it has changed.
+
+        **However soon after typing** (`UX-015`): *Enter* pressed inside the pause would otherwise
+        accept text nobody had checked.
+        """
+        if self._extra_pause.isActive() or self._extra.toPlainText() != self._extra_checked[0]:
+            self._check_extra_options()
+        return self._extra_checked[2]
+
+    def extra_refusals_text(self) -> str:
+        """What the field's refusal list says. A method, so a test reads what the user reads."""
+        return self._extra_refusals.text()
+
+    # Qt's override name.
+    def accept(self) -> None:
+        """Accept only a field that may be used, checked as it reads at this moment."""
+        if self._extra_options_usable():
+            super().accept()
 
     def _update_enabled(self) -> None:
         """Keep every control live exactly while it can act (`T-139`, `UX-005` §5).
@@ -655,6 +797,9 @@ class OptionsDialog(QDialog):
         """
         if self._save_preset is None:  # pragma: no cover - the button only exists with a sink
             return
+        if not self._extra_options_usable():
+            # The refusals are already under the box; a preset is not saved with them in it.
+            return
         name, accepted = self._ask_name()
         if not accepted or not name.strip():
             return
@@ -726,14 +871,32 @@ class OptionsDialog(QDialog):
         )
         codec, quality = self._chosen_audio()
         languages, embed = self._chosen_subtitles()
+        extra_text, extra_argv = self._chosen_extra_options()
         derived = replace(
             derived,
             audio_codec=codec,
             audio_quality=quality,
             subtitle_languages=languages,
             embed_subtitles=embed,
+            extra_options=extra_text,
+            extra_option_argv=extra_argv,
         )
         return replace(derived, name=format_name(format_choice_of(derived)))
+
+    def _chosen_extra_options(self) -> tuple[str, tuple[str, ...]]:
+        """The text and the tokens it admitted, together — or the preset's own, if it is refused.
+
+        **The two travel as a pair** (`T184-R5`): `hatch_options` refuses a job whose tokens are not
+        what its text admits. A refused field has no tokens to pair with, and the accepting buttons
+        are disabled while it stands, so a caller that asks anyway gets what the preset already had
+        rather than text that would fail the job (`T109-R2`: what cannot be used decides nothing).
+        """
+        text, argv, usable = self._extra_checked
+        if usable and text == self._extra.toPlainText():
+            return text, argv
+        if self._extra_options_usable():
+            return self._extra_checked[0], self._extra_checked[1]
+        return self._preset.extra_options, self._preset.extra_option_argv
 
     def _chosen_audio(self) -> tuple[AudioCodec, str | None]:
         """The codec and quality the user chose — or the preset's own, where they could not choose.

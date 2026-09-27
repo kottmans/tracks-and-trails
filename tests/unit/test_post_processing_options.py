@@ -314,6 +314,37 @@ def test_a_custom_selector_with_options_still_says_both() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("embed_metadata", "spoken"),
+    [
+        (False, "Best video available · with additional yt-dlp options"),
+        (True, "Best video available · embedding metadata · with additional yt-dlp options"),
+    ],
+)
+def test_a_download_with_additional_options_names_its_preset_and_never_the_options(
+    embed_metadata: bool, spoken: str
+) -> None:
+    """`T140-R3`'s defect, through `T-184`'s field: no built-in carries any additional options.
+
+    So a preset with some matched nothing, and its row read as the raw selector. The name says the
+    options are there and never repeats them, because the text can carry a credential and the name
+    is drawn on every row and heard by a screen reader.
+    """
+    text = '--add-headers "Authorization: Bearer T184_NAME_CANARY"'
+    carrying = replace(
+        preset_registry.with_post_processing(
+            preset_registry.BEST_VIDEO, name="x", embed_metadata=embed_metadata
+        ),
+        extra_options=text,
+        extra_option_argv=("--add-headers", "Authorization: Bearer T184_NAME_CANARY"),
+    )
+
+    name = format_name(preset_registry.format_choice_of(carrying))
+
+    assert name == spoken, name
+    assert "CANARY" not in name
+
+
 def test_the_written_reset_and_the_derived_one_agree() -> None:
     """Two statements of what *unadjusted* means, one transcribed and one derived (§13).
 

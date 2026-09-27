@@ -99,7 +99,8 @@ task and review records it summarised.*
   request ends Cancelled with its reason (`UX-005`), where it failed as `DISK`, *The file could
   not be written*. A path option must be absolute (`ARC-010`). And the field is the options
   editor's last group, checked as the user types (`UX-015`), so `T-184`'s interface is specified.
-  **The first two are built** in a fifth correction round, with the Reviewer.
+  **All three are built** and with the Reviewer: the first two as a fifth correction round, the
+  third as `T-184`'s interface stage.
 - **A codebase audit ran on 2026-09-24** and is with the Reviewer for its own record. Two outcomes
   are already filed: `T-351` (with a playlist in the queue, row changes are signalled on the wrong
   row, and a screen reader hears less than the row shows) and `T-352`, which retires
@@ -118,22 +119,23 @@ task and review records it summarised.*
 
 ## Verification
 
-*Refreshed 2026-09-27, for `T-184`'s third and fourth correction rounds (`428f65d`, then the
-fourth round's commit), on Linux with the project `.venv` (Python 3.14.7, yt-dlp 2026.08.19).* The
-previous section described `T-300`'s documentation follow-up; its results are kept in
+*Refreshed 2026-09-27, for `T-184`'s correction rounds and its interface stage, on Linux with the
+project `.venv` (Python 3.14.7, yt-dlp 2026.08.19).* The previous section described `T-300`'s
+documentation follow-up; its results are kept in
 [T-300](COMPLETED_TASKS.md#t-300--agentsmd-is-628-lines-and-is-loaded-on-every-task).
 
-| Check | Third round | Fourth round |
-|---|---|---|
-| `ruff check .`; `ruff format --check .` | Passed; 461 files | Passed; 462 files |
-| `mypy src`; bare `mypy`; `mypy --platform win32` | Passed; 69, 209, 209 files | Passed; 69, 210, 210 files |
-| Full `pytest -q -p no:cacheprovider` | **1 failed, 4,948 passed**, 22 skipped, 2 deselected; 3,091 s | **6 failed, 4,959 passed**, 22 skipped, 2 deselected; 3,575 s |
-| Repo root before and after the suite | Unchanged | Unchanged |
+| Check | Third round (`428f65d`) | Fourth round (`78a5f9f`) | Fifth round (`52ace9a`) | Interface stage |
+|---|---|---|---|---|
+| `ruff check .`; `ruff format --check .` | Passed; 461 files | Passed; 462 | Passed; 462 | Passed; 462 |
+| `mypy src`; bare `mypy`; `mypy --platform win32` | Passed; 69, 209, 209 | Passed; 69, 210, 210 | Passed; 69, 210, 210 | Passed; 69, 210, 210 |
+| `pytest tests/unit tests/integration` | In the full suite | In the full suite | **3,500 passed**, 19 skipped; 722 s | In the full suite |
+| Full `pytest -q -p no:cacheprovider` | **1 failed, 4,948 passed**; 3,091 s | **6 failed, 4,959 passed**; 3,575 s | Not run on that tree alone | **4 failed, 4,987 passed**; 3,421 s |
+| Repo root before and after | Unchanged | Unchanged | Unchanged | Unchanged |
 
-**Every failure in both runs is `T-350`'s race**: one or more cases of
-`test_the_mounted_format_panel_fits_the_dialog_it_asked_for`, each failing with *"row 0 offered no
-format control"*. The nine cases passed alone after each run, twice after the second. Neither
-round changes the add dialog or the probe of a request with no hatch.
+Every full run also skipped 22 and deselected 2. **Every failure in them is `T-350`'s race**: cases
+of `test_the_mounted_format_panel_fits_the_dialog_it_asked_for`, each failing with *"row 0 offered
+no format control"*. The nine cases passed alone after each run. None of these rounds changes the
+add dialog or the probe of a request with no hatch.
 
 No Windows runtime, external download or release-gate result is claimed here.
 
