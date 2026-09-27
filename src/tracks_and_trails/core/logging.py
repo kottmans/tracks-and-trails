@@ -411,21 +411,33 @@ class YtdlpLog:
 
     def __init__(self, logger: logging.Logger) -> None:
         self._logger = logger
+        #: The last line yt-dlp wrote, so a session it ended by downloading nothing can say why in
+        #: yt-dlp's own words (`UX-005`, amended 2026-09-27). It is shown, and never classified on.
+        self.last_line: str | None = None
 
     def debug(self, message: str) -> None:
         if message.startswith("[debug] "):
             self._logger.debug("%s", message)
         else:
+            self._remember(message)
             self._logger.info("%s", message)
 
     def info(self, message: str) -> None:
+        self._remember(message)
         self._logger.info("%s", message)
 
     def warning(self, message: str) -> None:
+        self._remember(message)
         self._logger.warning("%s", message)
 
     def error(self, message: str) -> None:
+        self._remember(message)
         self._logger.error("%s", message)
+
+    def _remember(self, message: str) -> None:
+        # `strip`, because yt-dlp starts a progress-style line with `\r`: *File is larger than
+        # max-filesize … Aborting.* arrives that way.
+        self.last_line = message.strip() or self.last_line
 
 
 class _OnlyThisJob(logging.Filter):

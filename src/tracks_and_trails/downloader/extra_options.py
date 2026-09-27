@@ -34,10 +34,12 @@ and it is not in this module.
 
 from __future__ import annotations
 
+import os
 import re
 import shlex
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Final
 
 from tracks_and_trails.downloader.option_table import (
@@ -103,6 +105,25 @@ WHOLE_FIELD: Final = "The whole field"
 UNKNOWN_EFFECT: Final = (
     "This application cannot tell what this option would change, so it does not pass it on."
 )
+
+#: What a user is told when a path option is given a relative path (`ARC-010`, amended 2026-09-27).
+#:
+#: yt-dlp resolves one against the process's working directory, which at a terminal is where the
+#: user stands and here is wherever the application was started. Value-free, like `BAD_VALUE`.
+NOT_A_FULL_PATH: Final = (
+    "Give a full path. A relative one would be taken from wherever this application was started."
+)
+
+#: How yt-dlp expands a path option before it opens it; a spelling not listed is used as written.
+#:
+#: `expand_path`, which is `~` and then environment variables, for the archive and the cache;
+#: `~` alone for the netrc location; nothing for the certificates. Read at 2026.08.19. `os.path`
+#: rather than `Path`, because it is what yt-dlp calls and `Path.expanduser` can raise instead.
+_AS_YT_DLP_EXPANDS: Final[dict[str, Callable[[str], str]]] = {
+    "--download-archive": lambda path: os.path.expandvars(os.path.expanduser(path)),  # noqa: PTH111
+    "--cache-dir": lambda path: os.path.expandvars(os.path.expanduser(path)),  # noqa: PTH111
+    "--netrc-location": os.path.expanduser,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,6 +258,10 @@ def admit(text: str) -> Admission:
             refusals.append(Refusal(spelling, "This option needs a value and none was given."))
             continue
 
+        if spelling in PATH_VALUES and not all(_a_full_path(spelling, value) for value in values):
+            refusals.append(Refusal(spelling, NOT_A_FULL_PATH))
+            continue
+
         accepted.append(word if inline else spelling)
         if not inline:
             accepted.extend(values)
@@ -245,6 +270,12 @@ def admit(text: str) -> Admission:
         # Nothing is offered from a field that has a refusal in it. See `Admission`.
         return Admission((), tuple(refusals))
     return Admission(tuple(accepted), ())
+
+
+def _a_full_path(spelling: str, path: str) -> bool:
+    """Whether `path` is absolute as yt-dlp will open it, after its own expansion for `spelling`."""
+    expand = _AS_YT_DLP_EXPANDS.get(spelling)
+    return Path(expand(path) if expand is not None else path).is_absolute()
 
 
 def grouped(accepted: Sequence[str]) -> list[list[str]]:

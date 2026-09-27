@@ -314,18 +314,28 @@ under a stated precedence.
 >
 > **Measured the same day and not corrected, because each needs a ruling or a disposition:**
 >
-> - **An item yt-dlp skips by the user's own selection fails the job as `DISK`**, which pauses the
->   queue. With the id already in a `--download-archive`, or a `--match-filters` or `--max-filesize`
+> - **An item yt-dlp skips by the user's own selection fails the job as `DISK`**, shown as *The
+>   file could not be written* with advice to check free space. With the id already in a `--download-archive`, or a `--match-filters` or `--max-filesize`
 >   that excludes it, yt-dlp downloads nothing and the worker then fails to move a file that does
 >   not exist: *"cannot move the finished download to '…/clip.NA'"*. **Ruled 2026-09-27**
 >   ([`UX-005`](DECISIONS.md#amended-2026-09-27--an-item-yt-dlp-skipped-at-the-users-request-ends-cancelled-and-says-why)):
->   it ends Cancelled with yt-dlp's sentence, and the queue keeps running.
+>   it ends Cancelled with yt-dlp's sentence. *(This entry and the ruling's question both said the
+>   `DISK` failure paused the queue. Nothing in the manager does that; the claim came from an older
+>   comment in `worker.py`, repeated unchecked. Corrected 2026-09-27.)*
 > - **A relative path in `--download-archive` or `--cache-dir` resolves against the process's
 >   working directory**, not the download folder. A probe wrote an archive into the repository
 >   root this way. **Ruled 2026-09-27**
 >   ([`ARC-010`](DECISIONS.md#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute)): a path
 >   option is refused unless absolute after yt-dlp's own expansion. That covers all five path
 >   options, the three that only read included.
+> **Both rulings built 2026-09-27, the fifth round, not yet reviewed.** An item yt-dlp skips ends
+> `Failed(CANCELLED)` carrying yt-dlp's last line with its `[tag]` removed, and the attempt's
+> staging directory goes. Decided on what exists (a normal return, and no file yt-dlp reports is
+> on disk), never on the line, and only for a job with a hatch, so anything else that writes
+> nothing still fails loudly. A path option is refused at edit time unless absolute after
+> yt-dlp's own expansion, and re-admission applies the same rule to a stored value.
+> `tests/integration/test_hatch_outcomes.py` and `tests/unit/test_extra_options.py` carry both.
+>
 > - **Three more options fail only when the job runs**: an unknown `--ies`/`--use-extractors` name
 >   (*"No suitable extractor"*), a `--source-address` that is not an address, and a missing
 >   `--client-certificate` file. Unlike filters and encodings, none has an exact check to borrow.

@@ -22,13 +22,15 @@ from collections.abc import Callable, Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from queue import Queue
-from typing import Any, Final
+from types import ModuleType, SimpleNamespace
+from typing import Any, Final, cast
 
 import pytest
 
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind
 from tracks_and_trails.downloader import worker as worker_module
+from tracks_and_trails.downloader import ytdlp_adapter
 from tracks_and_trails.downloader.extra_options import options_for, refusal_lines
 from tracks_and_trails.downloader.protocol import Failed, SessionKind, Succeeded
 
@@ -147,3 +149,111 @@ def test_an_archived_item_under_break_on_existing_ends_cancelled_with_yt_dlp_s_r
     assert failed.kind is ErrorKind.CANCELLED, f"{failed.kind}: {failed.message}"
     assert "--break-on-existing" in failed.message, f"the reason was lost: {failed.message!r}"
     assert not list(downloads.iterdir()), "an item the archive already holds was fetched again"
+
+
+@pytest.mark.parametrize(
+    ("selection", "said"),
+    [
+        ("--download-archive {archive}", "has already been recorded in the archive"),
+        ("--match-filters title=nomatch", "does not pass filter"),
+        ("--max-filesize 1k", "larger than max-filesize"),
+    ],
+    ids=["archive", "filter", "size"],
+)
+def test_an_item_the_user_s_own_selection_skips_ends_cancelled_with_yt_dlp_s_reason(
+    serve: Callable[[bytes, str, str], str], tmp_path: Path, selection: str, said: str
+) -> None:
+    """`UX-005`, amended 2026-09-27: yt-dlp skipped it because the user asked; not a failure.
+
+    yt-dlp downloads nothing and returns normally. The worker then failed to move a file that does
+    not exist and called that `DISK`, *"cannot move the finished download to '…/clip.NA'"*: a user
+    who asked to skip what their archive holds was told the file could not be written.
+    """
+    archive = tmp_path / "archive.txt"
+    archive.write_text(ARCHIVED_CLIP, encoding="utf-8")
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    request = DownloadRequest(
+        url=serve(b"\0" * 4000, "video/mp4", "clip.mp4"),
+        output_directory=str(downloads),
+        format_selector="best",
+        output_template="%(title)s.%(ext)s",
+        **_hatch(selection.format(archive=shlex.quote(str(archive)))),
+    )
+
+    messages = _session(request)
+
+    failed = next(m for m in messages if isinstance(m, Failed))
+    assert failed.kind is ErrorKind.CANCELLED, f"{failed.kind}: {failed.message}"
+    assert said in failed.message, f"yt-dlp's reason was not the one shown: {failed.message!r}"
+    assert not list(downloads.iterdir()), "the skipped attempt left its staging directory behind"
+
+
+# --- the seam that decides it, with yt-dlp stood in -----------------------------------------------
+
+
+def _extract_writing_nothing(tmp_path: Path, said: str, **hatch: Any) -> dict[str, Any]:
+    """Run the worker's `_extract` against a yt-dlp that prints `said` and writes nothing."""
+
+    class WritesNothing:
+        def __init__(self, options: dict[str, Any]) -> None:
+            self._options = options
+
+        def __enter__(self) -> WritesNothing:
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+        def extract_info(self, url: str, download: bool) -> dict[str, Any]:
+            self._options["logger"].debug(said)
+            return {"id": "clip", "_filename": str(tmp_path / "clip.mp4")}
+
+    # A name nothing can import, so `ffmpeg_progress` steps aside rather than patching it.
+    module = ModuleType("t184_stand_in_ytdlp")
+    module.YoutubeDL = WritesNothing  # type: ignore[attr-defined]
+    reporter = SimpleNamespace(
+        progress_hook=lambda _: None,
+        postprocessor_hook=lambda _: None,
+        ffmpeg_position=lambda _: None,
+    )
+    request = DownloadRequest(
+        url="https://example.invalid/clip",
+        output_directory=str(tmp_path),
+        format_selector="best",
+        output_template="%(title)s.%(ext)s",
+        **hatch,
+    )
+    result: dict[str, Any] = worker_module._extract(
+        ytdlp_adapter,
+        request,
+        cast(Any, SimpleNamespace(module=module)),
+        cast(Any, reporter),
+        probe_only=False,
+        output_template=str(tmp_path / "clip.%(ext)s"),
+    )
+    return result
+
+
+@pytest.mark.parametrize(
+    ("said", "shown"),
+    [
+        ("[download] clip: A has already been recorded in the archive", "clip: A has already"),
+        ("\r[download] File is larger than max-filesize (9 bytes > 1 bytes). Aborting.", "File is"),
+    ],
+)
+def test_a_skip_is_named_in_yt_dlp_s_words_without_its_stage_tag(
+    tmp_path: Path, said: str, shown: str
+) -> None:
+    """The tag names a stage, not a reason, and the size abort arrives with a carriage return."""
+    with pytest.raises(worker_module.NothingDownloadedError) as skipped:
+        _extract_writing_nothing(tmp_path, said, **_hatch("--continue"))
+
+    assert skipped.value.reason.startswith(shown), skipped.value.reason
+
+
+def test_a_job_without_the_hatch_that_writes_nothing_is_not_called_a_skip(tmp_path: Path) -> None:
+    """No selection option can reach such a job, so nothing written is still a fault, loudly."""
+    result = _extract_writing_nothing(tmp_path, "[download] something went quietly wrong")
+
+    assert result["id"] == "clip", "the worker's own failure path no longer saw this result"

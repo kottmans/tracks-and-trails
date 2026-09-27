@@ -4178,6 +4178,14 @@ the same way.
 status, the model and this entry's wording before `T-184` could finish. *Completed with nothing
 written* would report a success with no file to open.
 
+> **Corrected the same day: the `DISK` failure did not pause the queue.** The problem above, and
+> the question the ruling answered, both said it did. Nothing in `DownloadManager` stops the queue
+> for any failure kind. The claim came from an older comment in `downloader/worker.py`, repeated
+> without being checked. What the failure did was present as *The file could not be written*,
+> advise checking free space, and offer a retry. That is still a user told their disk failed when
+> they had asked to skip an item, so the ruling stands as written. *"The queue keeps running"* is
+> true of `CANCELLED`, but it was never at risk.
+
 ### Amended 2026-09-24 — the progress view is retired, and the row is the only progress surface
 
 **Status:** **Accepted.** Maintainer ruling of 2026-09-24, made on the codebase audit of that

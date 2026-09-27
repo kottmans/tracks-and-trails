@@ -100,6 +100,25 @@ class SessionCancelledError(Exception):
     """
 
 
+class NothingDownloadedError(Exception):
+    """yt-dlp returned normally and wrote nothing, because the job's own options excluded the item.
+
+    **Not a failure** (`UX-005`, amended 2026-09-27). A `--download-archive` that already holds the
+    item, a `--match-filters` or `--max-filesize` that rules it out: yt-dlp prints why and returns.
+    The worker then failed to move a file that does not exist and called that `DISK`, so a user who
+    asked to skip what their archive holds was told the file could not be written and to check the
+    free space. The job ends `CANCELLED`, carrying yt-dlp's own sentence, which the row shows.
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+#: What a skipped job says when yt-dlp printed nothing at all, which no measured skip does.
+NOTHING_DOWNLOADED: Final = "yt-dlp downloaded nothing for this item, because of its options."
+
+
 class CancelSignal(Protocol):
     """Anything the parent can use to ask this session to stop.
 
@@ -728,6 +747,18 @@ def _run(
                 job_id=job_id,
                 kind=ErrorKind.DISK,
                 message=str(error),
+                context=tuple(sorted(context.items())),
+            )
+        )
+    except NothingDownloadedError as skipped:
+        # Cancelled rather than failed, so it is neither offered a retry nor shown as a disk
+        # fault. Nothing is kept for one either: the attempt wrote nothing, and cancelled is final.
+        _discard_staging(staging)
+        return with_hook_failures(
+            Failed(
+                job_id=job_id,
+                kind=ErrorKind.CANCELLED,
+                message=skipped.reason,
                 context=tuple(sorted(context.items())),
             )
         )
@@ -1810,6 +1841,7 @@ def _extract(
 ) -> dict[str, Any]:
     from tracks_and_trails.core.logging import YtdlpLog, ytdlp_logger
 
+    log = YtdlpLog(ytdlp_logger())
     options = adapter.build_options(
         request,
         output_template if output_template is not None else request.output_template,
@@ -1822,7 +1854,7 @@ def _extract(
         # `REQ-019`. Built here rather than passed in from `spawn_session` because both the probe
         # and the download go through this function, and `REQ-019` wants *the* diagnostic output
         # for the job — a failure during the probe is the case a user most needs the log for.
-        logger=YtdlpLog(ytdlp_logger()),
+        logger=log,
     )
     # **ffmpeg's position reported while a step runs** (`T-344`). yt-dlp runs ffmpeg and says
     # nothing until it ends, which on a long video is minutes of a row that looks stuck. A probe
@@ -1834,7 +1866,33 @@ def _extract(
     )
     with positions, resolved.module.YoutubeDL(options) as ydl:
         info = ydl.extract_info(request.url, download=not probe_only)
-    return dict(info or {})
+    result = dict(info or {})
+    # **A normal return that wrote nothing is yt-dlp skipping the item on the job's own options**
+    # (`UX-005`, amended 2026-09-27). Decided on what exists, never on what yt-dlp said: its last
+    # line is only what the row shows. Asked only of a job with a hatch, which is the one route a
+    # selection option reaches a request today, so anything else that writes nothing still fails
+    # loudly; `T-247`'s typed selection fields join this condition when they exist.
+    if not probe_only and request.extra_option_argv and not _wrote_anything(result):
+        raise NothingDownloadedError(_without_the_tag(log.last_line) or NOTHING_DOWNLOADED)
+    return result
+
+
+def _wrote_anything(result: Mapping[str, Any]) -> bool:
+    """Whether any file yt-dlp reports for this download exists."""
+    entries = [*(result.get("requested_downloads") or ()), result]
+    return any(
+        Path(str(path)).exists()
+        for entry in entries
+        if (path := entry.get("filepath") or entry.get("_filename"))
+    )
+
+
+def _without_the_tag(line: str | None) -> str | None:
+    """yt-dlp's line without the `[download] ` it starts with, which names a stage, not a reason."""
+    if line is None:
+        return None
+    tag, separator, rest = line.partition("] ")
+    return rest.strip() if tag.startswith("[") and separator else line
 
 
 def _written_path(result: dict[str, Any], target: Path) -> Path:

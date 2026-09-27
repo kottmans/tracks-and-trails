@@ -96,9 +96,10 @@ task and review records it summarised.*
   merge that read values as options, three unregistered pieces of logged values, and two values
   that failed only at run time.
 - **Three more rulings taken 2026-09-27, all as recommended.** An item yt-dlp skips at the user's
-  request ends Cancelled with its reason and does not pause the queue (`UX-005`). It used to fail
-  as `DISK`. A path option must be absolute (`ARC-010`). And the field is the options editor's last
-  group, checked as the user types (`UX-015`), so `T-184`'s interface is specified.
+  request ends Cancelled with its reason (`UX-005`), where it failed as `DISK`, *The file could
+  not be written*. A path option must be absolute (`ARC-010`). And the field is the options
+  editor's last group, checked as the user types (`UX-015`), so `T-184`'s interface is specified.
+  **The first two are built** in a fifth correction round, with the Reviewer.
 - **A codebase audit ran on 2026-09-24** and is with the Reviewer for its own record. Two outcomes
   are already filed: `T-351` (with a playlist in the queue, row changes are signalled on the wrong
   row, and a screen reader hears less than the row shows) and `T-352`, which retires

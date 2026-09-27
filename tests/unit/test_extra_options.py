@@ -8,6 +8,7 @@ it — `T184-R3` established that `parse_options` exits the process on `--help` 
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -399,6 +400,58 @@ def test_a_value_yt_dlp_can_read_is_still_accepted(text: str) -> None:
 
     assert admission.usable, refusal_lines(admission)
     assert argv
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "--download-archive archive.txt",
+        "--cache-dir=cache",
+        "--netrc-location .netrc",
+        "--client-certificate certs/me.pem",
+        # yt-dlp expands nothing for a certificate, so `~` stays a directory named `~`.
+        "--client-certificate-key ~/me.key",
+    ],
+)
+def test_a_relative_path_is_refused_where_it_was_typed(text: str) -> None:
+    """`ARC-010`, amended 2026-09-27: yt-dlp resolves it against wherever this was started.
+
+    Measured the day before: a relative `--download-archive` wrote its archive into the working
+    directory of the process, which a user never chose. A probe left one in this repository.
+    """
+    admission = admit(text)
+
+    assert not admission.usable, f"{text!r} would land wherever the application was started"
+    [refusal] = admission.refusals
+    assert refusal.option == text.split()[0].partition("=")[0]
+    assert "full path" in refusal.reason
+    assert text.split("=")[-1].split()[-1] not in refusal.reason, "the path was repeated back"
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        "--download-archive {absolute}",
+        "--client-certificate {absolute}",
+        "--download-archive ~/archive.txt",
+        "--cache-dir $T184_MEDIA/cache",
+        "--netrc-location ~",
+    ],
+)
+def test_a_path_absolute_once_yt_dlp_expands_it_is_accepted(
+    template: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Judged as yt-dlp will use it: `~` and variables for the archive and cache, `~` for netrc.
+
+    The absolute paths come from `tmp_path` so they are absolute on Windows too, where a path with
+    no drive is not.
+    """
+    monkeypatch.setenv("T184_MEDIA", str(tmp_path))
+    text = template.format(absolute=shlex.quote(str(tmp_path / "archive.txt")))
+
+    admission = admit(text)
+
+    assert admission.usable, refusal_lines(admission)
 
 
 def test_options_that_contradict_each_other_are_refused_together() -> None:
