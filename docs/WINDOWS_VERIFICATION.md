@@ -5,7 +5,7 @@ make a run look valid when it is not.
 **Owner:** Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-28
+**Last updated:** 2026-10-09
 **Related:** `docs/project/TESTING.md` §12, `T-040`, `T-056`, `T-066`…`T-070`, `OPS-003`, `OPS-004`
 
 ---
@@ -249,6 +249,41 @@ gh api /repos/<owner>/<repo>/actions/runners -q '.runners[] | "\(.name) \(.statu
 A `.env` file in the runner root points `TEMP`/`TMP` at `C:\actions-runner\_temp`. Without it,
 the elevated runner and an unelevated manual run share `%LOCALAPPDATA%\Temp\pytest-of-<user>`,
 and whichever comes second fails with `PermissionError: [WinError 5]` on hundreds of tests.
+
+### Offline for more than 14 days, it must be registered again
+
+**Measured 2026-10-09**, after `STARBASE` had been offline since 2026-09-18. GitHub
+[removes a self-hosted runner](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/remove-runners)
+that has not connected for more than 14 days. The registration was still listed, offline, at about
+17:45 UTC, and was gone within the hour, after `run.cmd` had been started once. Whether GitHub's
+cleanup or that connection removed it is not known. Either way the API then answers
+`"total_count":0` rather than `offline`, and starting the runner cannot bring it back: the
+machine's registration files describe a runner GitHub no longer has.
+
+**`.runner` is not the only file that says "configured".** With `.runner`, `.credentials` and
+`.credentials_rsaparams` gone and `.runner_migrated` left behind, `config.cmd` still refused with
+*"Cannot configure the runner because it is already configured"*, and `run.cmd` looped on
+*"Value cannot be null. (Parameter 'configuredSettings')"*, relaunching every five seconds.
+`config.cmd remove` was not tried: it also deregisters on GitHub's side, and there was nothing
+left there to remove.
+
+To recover, stop the runner with Ctrl-C, then list the runner root's dot-files from an elevated
+prompt in `C:\actions-runner`:
+
+```
+dir /a /b .*
+```
+
+Keep `.env` (above) and `.path` if it is there. Delete every `.runner*` and `.credentials*` file
+the listing shows, with `del /f /a <name>`; the runner marks some of them hidden. Then register
+and start it with the setup commands at the top of this section: a fresh token,
+`config.cmd … --replace`, then `schtasks /run /tn ghrunner`. Verify both properties again.
+Registering under the same name with `--labels desktop` restores the four labels the workflow's
+`runs-on` matches: `self-hosted`, `Windows`, `X64` and `desktop`.
+
+**Away for two weeks or more, expect to do this on return.** While the machine is away,
+`STARBASE_AVAILABLE` is what stops runs from queueing for a day each (`OPS-005`'s 2026-08-01
+amendment). The outage above left it set, so every scheduled run waited the full 24 hours.
 
 ### A self-hosted runner is a machine, not a container
 
