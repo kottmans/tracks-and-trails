@@ -29,8 +29,11 @@ classifiers = [
 #   truststore   REL-007 (amended 2026-09-12): Windows verifies TLS with its own chain builder
 # yt-dlp is pinned exactly, not floated: OPS-002 requires a pinned, tested baseline so
 # behavior is reproducible. Users update their own copy out-of-band instead.
+# PySide6 is held below 6.12 (T-355): from 6.12 the `pyside6` metapackage also requires the
+# PySide6_WebEngine and PySide6_Pdf wheels. Nothing here imports either, and no licence text
+# here covers WebEngine's bundled Chromium, so the LIC-001 gate rightly refuses them.
 dependencies = [
-    "PySide6>=6.11,<7",
+    "PySide6>=6.11,<6.12",
     "platformdirs>=4.0",
     "yt-dlp==2026.8.19",
     "truststore>=0.10.4",

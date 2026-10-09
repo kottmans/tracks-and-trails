@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-09-27
+**Last updated:** 2026-10-09
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -142,6 +142,15 @@ No Windows runtime, external download or release-gate result is claimed here.
 
 ## Current risks and external blockers
 
+- **CI's Linux job has failed since PySide6 6.12.0 was published** (runs of 2026-10-08 and
+  2026-10-09): the new metapackage requires `PySide6_WebEngine` and `PySide6_Pdf`, and the
+  `LIC-001` gate refuses them. **`T-355` caps PySide6 below 6.12** and is In Review
+  ([record](TASKS.md#t-355--pyside6-612-brings-webengine-and-pdf-into-the-bundled-tree)).
+- **No Windows evidence since 2026-09-18.** The GitHub API reports `STARBASE` **offline** on
+  2026-10-09; it last took a job at about 19:49 UTC on 2026-09-18. Every run since has left
+  `windows desktop` and `frozen windows` queued until cancelled, a full day for each scheduled run. `STARBASE_AVAILABLE`
+  is still `true`, so `STARBASE coverage` reports both jobs as having run when neither did. The
+  maintainer is bringing the machine back (2026-10-09).
 - **T-289 is Complete under the 2026-09-04 re-scope, and Phase 4 may exit over it**
   — the reserved decision was taken by the maintainer on 2026-09-11 (`P4EXIT-R3`):
   **bounded acceptance**, on the implemented pool/ownership guards rather than on an

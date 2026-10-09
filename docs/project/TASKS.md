@@ -2,7 +2,7 @@
 
 **Purpose:** Unfinished work: review, ready, proposed and blocked tasks.
 **Owner:** Planner (priorities); Implementer (task/status); Reviewer (review disposition)
-**Last updated:** 2026-09-27
+**Last updated:** 2026-10-09
 **Update when:** Work starts, changes scope/status, closes or reopens.
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
@@ -14,8 +14,69 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
-Nothing. `T-347` was approved on 2026-09-19 and moved to
-[COMPLETED_TASKS](COMPLETED_TASKS.md); `T-184` is In Progress under Phase 4.5 stage 2.
+`T-184` is In Progress under Phase 4.5 stage 2.
+
+### T-355 — PySide6 6.12 brings WebEngine and Pdf into the bundled tree
+
+**Status:** In Review — the cap the maintainer chose on 2026-10-09.
+**Owner:** Implementer
+**Priority:** High — every CI run's Linux job has failed since PySide6 6.12.0 was published.
+**Phase:** Phase 4.5 (maintenance)
+**Relevant context:** `ARC-001`; `LIC-001`; [artifact_gates.py](../../packaging/artifact_gates.py)'s
+`LICENCE_FOR_DISTRIBUTION`; `test_every_bundled_python_distribution_has_its_licence_shipped`.
+**Affected surfaces:** `pyproject.toml`'s PySide6 range.
+**Risk:** Low — it keeps the 6.11 line both platforms were last verified on, and forgoes 6.12's
+fixes until 6.12 is evaluated.
+**Required checks:** a fresh resolve under the cap; CI's Linux test slice in that environment;
+Ruff lint and format; the placement check.
+
+#### Cause
+
+Scheduled runs [`37777459357`](https://github.com/kottmans/tracks-and-trails/actions/runs/37777459357)
+(2026-10-08) and [`37929286459`](https://github.com/kottmans/tracks-and-trails/actions/runs/37929286459)
+(2026-10-09) each fail one test of 4,427 in the Linux Tests step:
+*"bundled with no licence text named for it: ['pyside6-pdf', 'pyside6-webengine']"*. The hosted
+runner resolved `PySide6>=6.11,<7` to **6.12.0**, whose `pyside6` metapackage now also requires
+`PySide6_WebEngine` 6.12.0.140 (a 116.7 MB wheel) and `PySide6_Pdf` 6.12.0.140. `src/` imports only
+QtCore, QtGui, QtNetwork and QtWidgets. The maintainer's `.venv` still holds 6.11.1, so the gate
+passed locally.
+
+The gate was right. **Mapping both wheels to `Qt-LGPLv3.txt` was rejected**: WebEngine bundles
+Chromium under licences that no shipped text covers. **Depending on `PySide6_Essentials` directly**
+is the longer-term route, but it changes a runtime dependency (`ARC-001`, `AGENTS.md` §7) and needs
+a decision and Windows evidence, which cannot be gathered while `STARBASE` is offline.
+
+#### Change
+
+`"PySide6>=6.11,<6.12"`, with the reason beside it in `pyproject.toml`.
+
+#### Acceptance criteria
+
+- [x] A fresh `pip install -e ".[dev]"` resolves a 6.11 release and neither new wheel.
+- [x] CI's Linux test slice passes in that fresh environment, the licence gate included.
+- [ ] A CI run at the commit passes its Linux job. Windows evidence waits on `STARBASE`.
+
+#### Evidence, 2026-10-09
+
+On the maintainer's Fedora machine, in a new virtualenv from `/usr/bin/python3.14` (3.14.8) with
+CI's own install command, the cap resolved **PySide6, PySide6_Essentials, PySide6_Addons and
+shiboken6 6.11.2**, and neither new wheel. CI's Linux Tests step, run there with
+`TRACKSANDTRAILS_REQUIRE_FFMPEG=1`:
+
+| Slice | Result |
+|---|---|
+| `pytest -n auto tests/unit tests/ui` | **4,501 passed**, 22 skipped; 80 s |
+| `pytest tests/integration` | **518 passed**; 653 s |
+| `test_artifact_gates.py -k licence`, the gate included | 5 passed |
+
+`ruff check .` and `ruff format --check .` passed (463 files), as did the placement and
+task-reading tests (82 passed). The working tree held only this task's three files afterwards.
+
+The counts differ from the failing runs because those ran at `origin/main` (`8857753`), twelve
+commits behind this one. The third criterion needs a push, and the push is held for `T-184`.
+
+**Moving to 6.12 needs its own ruling**: the dependency shape above, or licence coverage for
+everything the metapackage brings.
 
 ## Ready
 
