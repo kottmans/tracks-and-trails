@@ -2,7 +2,7 @@
 
 **Purpose:** Running record of completed and cancelled tasks and their evidence.
 **Owner:** Task/status owner; Coordinator / Integrator during a parallel wave
-**Last updated:** 2026-09-19
+**Last updated:** 2026-10-10
 **Update when:** A task closes, reopens, or needs a dated correction or navigation update.
 
 [TASKS](TASKS.md) contains unfinished work. Move each newly Complete or Cancelled
@@ -40111,6 +40111,661 @@ Build the ruled shape, then measure the cases again with `tools/dolphin_raise_pr
 ---
 
 ---
+
+---
+
+### T-184 — The escape hatch: additional yt-dlp options, parsed and bounded
+
+**Status:** **Complete — approved 2026-10-10** at `83749d7`
+([record](reviews/T-184.md#2026-10-10--eighth-round-focused-verification)), with `R8` and `R17`
+resolved and `R18`'s wording corrected in completion. Pushed with `d18bcb8`; CI run
+[`38088244998`](https://github.com/kottmans/tracks-and-trails/actions/runs/38088244998) passed
+every job on both platforms. Release readiness and the `0.2.0` acceptance walk are **not**
+approved by it, and `T-048`, which it carried, stays its own task. *(Was In Progress:)* In
+Progress since 2026-09-18. **Every stage is built, the interface included
+(2026-09-27).** The sixth round's review, also 2026-09-27, resolved `R6`, `R15` and `R16` and left
+`R8` and `R14` High and blocking. **The maintainer ruled on 2026-10-10** (exact long spellings,
+[below](#maintainer-ruling-2026-10-10--exact-long-spellings-then-the-seventh-round)). The
+seventh round's review, the same day, resolved `R14` and left `R8` High on regex compiler
+failures that escape every boundary, with `R17` Low beside it. **The maintainer then chose to
+revise the validation boundary within this task**
+([below](#maintainer-ruling-2026-10-10-second--the-validation-boundary-then-the-eighth-round));
+the eighth round is built and with the Reviewer, and the push stays held until approval. Filed 2026-08-07 with the
+phase. **Unblocked 2026-08-21**: `SEC-005` ruled
+`--legacy-server-connect`, the one disposition this waited on (`T183-R3`, the sixteenth option the
+audit surfaced), and **`unruled` is now 0** — every documented option has a class, which is the
+condition a final refusal list needs. The three `SEC-003` corrections `T-256` also carried were
+non-blocking and were ruled the same day; two of them **add** to this list. `T-183` delivered the
+classification and `SEC-004` ruled the original fifteen forbidden, so the refusal list is the
+audit's `app:sets` + `app:contained` + `app:plumbing` + **`app:policy`** + `excluded` classes —
+**92 documented options**, up from 89 by `--legacy-server-connect`, `--netrc-cmd` and
+`--client-certificate-password`. **Nothing in this phase starts before Phase 4 exits**, so this is
+unblocked rather than startable.
+
+**`Depends on:` is satisfied rather than removed.** `T-256` is still In Review; what it owed this
+task is taken, and a reviewer disposing `T-256` differently would reach this line.
+
+**The refusal list is 92 and this entry gave two numbers** (`T256-R2`). Its `Depends on:` line still
+carried the pre-ruling **89**, so an implementer could read both the three newly refused options and
+the old list that omits them — from the same entry. **92 is the live figure**, and 89 survives below
+only inside the struck dependency, as what it was.
+
+*(**This entry said "both blockers are cleared", "nothing outstanding" and "79 documented options",
+and required a destination-keyed refusal, after `T183-R1`…`R5` had changed all four.** The
+re-review found it: correcting the audit and leaving the task that consumes it is how an
+implementer follows a specification the audit no longer holds — and it would have refused a safe
+normalized value as though it were the `SEC-003` bypass.)*
+**Owner:** Implementer
+**Priority:** High within the phase — it is what makes `REQ-030` true before the typed fields exist
+**Phase:** Phase 4.5
+**Depends on:** ~~**`T-256`** — **one** unruled option, `--legacy-server-connect`~~ — **satisfied
+2026-08-21 by `SEC-005`**. *(This said "sixteen unruled options and three `SEC-003` corrections"; fifteen were ruled by `SEC-004` and the three corrections are explicitly non-blocking — `T183-F1`.)* `T-183` delivered the classification, `SEC-004` ruled the original fifteen and `SEC-005` the sixteenth, with `SEC-003`'s amendment withdrawing two permissions; the refusal list is **92 documented options** across five refused classes, in `docs/YTDLP_OPTION_AUDIT.md`. *(This line said **89** while the status above said 92, so one entry gave both the pre-ruling and post-ruling list to whoever builds it — `T256-R2`.)* *(It also waited on `T-182`, which ruled on 2026-08-07: the refusal list starts with `-u`, `-p`, `--video-password`, `--impersonate`, `--xff`, `--exec` and `--exec-before-download` — `SEC-003`.)*
+
+> **Four of `T-183`'s findings land here, and the first changes the design.**
+>
+>
+> - **Finding 4 — the refusal list keys on the normalized value `parse_options` produces**, not on
+>   the option string and **not on the `dest`**. Three suppressed spellings — `--geo-bypass`,
+>   `--geo-bypass-country`, `--geo-bypass-ip-block` — reach the value `SEC-003` forbids under the
+>   name `--xff`, so a list of strings enforces `REQ-EXCL-002` against one spelling in four. **But
+>   `--no-geo-bypass` shares that same `dest` and normalizes to the value that *disables* the
+>   bypass**, so keying on `dest` refuses a safe input. Run the candidate through `parse_options`
+>   and refuse on what comes out. The refusal still names the string the user typed, because that
+>   is where it is stated.
+>
+>   *(This bullet required destination-keying until `T183-R1`'s re-review. It was the audit's
+>   original conclusion and it was wrong in the direction that looks safe.)*
+> - **Finding 4, second half — decide the whole parser, not the documented part.** 36 suppressed
+>   options have a `dest` no documented option has, so keying on `dest` does not reach them either.
+>   Two are the forbidden family outright (`--exec-before-download`, `--no-exec-before-download`).
+> - **Finding 6 — `--write-thumbnail` shares `writethumbnail` with the application.** It is the one
+>   place a typed control has to share a key rather than own it; `T-249` owns the tri-state and the
+>   merge rule is this task's.
+> - **Finding 7 — five hatch options touch `T-046`'s reservation, unmeasured.** `--continue`,
+>   `--no-continue`, `--part`, `--no-part` and `--post-overwrites` all change how yt-dlp treats a
+>   file already at the target path, and the download session leaves a zero-byte reservation there.
+**Relevant context:** `REQ-031`, `ARC-010`, `REQ-009` (the pattern), `T-034` (path containment),
+`DAT-003` and `DAT-004` (redaction, and whose text this is), `ARCHITECTURE.md` §8 (a request is
+frozen at job-creation time), `ARC-002` (it crosses a process boundary and must pickle),
+`core/models.DownloadRequest`, `downloader/ytdlp_adapter.build_options`
+**Affected surfaces:** `core/models.py`, `core/presets.py`, `downloader/ytdlp_adapter.py`,
+`persistence/` (the request gains a field, so a migration), the preset/options UI, and their tests
+**Carries:** **`T-048`** — that migration is expected to be the project's first that *transforms*
+stored values rather than leaving them alone or removing a table, which is the condition `T-048` has
+waited on since Phase 2. **By the 2026-09-17 order it is done inside this task's review**, not filed
+onward as a later task. If the field turns out to need no data transformation, say so there and
+`T-048` keeps waiting
+**Risk:** **High.** It is a new route to two boundaries whose breach is Critical-band: writing
+outside the chosen directory, and a secret in a log
+
+#### Stage A, 2026-09-18: the parser surface measured, and the one design question it raises
+
+Two derivations, both now tests in `tests/unit/test_option_audit.py`, both mutation-checked:
+
+- **Every one of the 250 documented options has an audit row**, asked of `create_parser()` rather
+  than of the audit itself. Deleting a row fails it.
+- **The parser carries 36 suppressed options whose destination no classified option shares**, and
+  they are now **pinned by name**. A yt-dlp bump that adds a thirty-seventh fails the test instead
+  of quietly widening what a user can type. Two are the forbidden family outright
+  (`--exec-before-download` and its `--no-` form, already ruled by `SEC-003`); the rest are
+  deprecated aliases (`--all-subs`, `--playlist-start`, `--user-agent`, `--referer`, `--min-views`)
+  and command-line plumbing (the `--get-*` family, `--print-json`, `--list-formats-*`).
+
+**Ruled 2026-09-18: default-deny**, as recommended. The hatch accepts an option only when the
+destination `parse_options` produces is in the permitted set, and refuses everything else with its
+reason — the 34 unruled suppressed spellings included, each of which can be permitted later by a
+ruling of its own. The options as they were costed:
+
+| | |
+|---|---|
+| **Default-deny** (recommended) | The hatch accepts an option **only** if the destination `parse_options` produces is in a permitted set: the audit's `hatch` class, plus the `typed` options whose controls do not exist yet. Everything else is refused with its reason, the 34 unruled suppressed spellings included |
+| Default-allow | The hatch accepts anything not on the 92-option refusal list. Then those 34 need a disposition each before this ships, and every future yt-dlp release adds more |
+
+**Why default-deny.** The refusal list is a security boundary and the surface behind it **grows on
+somebody else's schedule** — the pinning test exists because it does. A blacklist over a growing
+surface fails open, and `ARC-010` §4's posture is to refuse what is not permitted. It also costs
+nothing in reach: the 34 are deprecated spellings of options reachable another way, so `REQ-030`'s
+claim, which is about the documented 250, is untouched. Any of them can be permitted later by a
+ruling, one line at a time.
+
+**What default-deny does not excuse.** The refusal still keys on the value `parse_options` produces
+(Finding 4), still names the string the user typed, and the 92 refused options still get their
+stated reasons rather than a generic "not permitted" — a user who types `--exec` is told it runs
+code, not that it is unknown.
+
+#### Stage A, second half: the hatch cannot decide from a diff alone
+
+`tools/ytdlp_option_keys.py` (new) runs every option the parser carries through `parse_options` and
+diffs the option dictionary against the defaults, which is what "the value `parse_options`
+produces" means in code. Re-run it when the pin moves. At 2026.08.19, of **292** parser options:
+
+| | |
+|---|---|
+| **175** change at least one key | the effect the hatch would merge |
+| **72** change **nothing** | their value is already the default |
+| **45** cannot be parsed alone | the value has to mean something (`--xff`, `--color`, `--compat-options`) or the option exits (`-h`, `--version`) |
+| **27** change more than one key | `-O/--print` sets four, `--force-overwrites` also clears `continuedl`, `--id` rewrites `outtmpl` |
+
+**`--geo-bypass` is in the 72, and that decides the design.** The behaviour `SEC-003` forbids is
+**on by default**, so the option that names it changes no key at all: a hatch that decided from the
+diff would be blind to the exact option Finding 4 is about, while `--no-geo-bypass` — the safe
+one — is the spelling that *does* show up as a change. So the hatch is **two-sided**:
+
+- **Refusal decides per option the user named**, from the parser's own action and the value that
+  action produces. `--geo-bypass` is refused because its action turns the bypass on;
+  `--no-geo-bypass` is not, because its action turns it off. Neither decision can come from a diff.
+- **Merging is per named option as well** (`T184-R1`, which corrected this entry). It first said
+  *"merging uses the diff"*, and a diff **loses an explicit value that equals the command line's
+  default**: `--fragment-retries 10` produces the same dictionary as typing nothing, so the diff is
+  empty, the key stays absent, and yt-dlp's fragment downloader reads
+  `self.params.get('fragment_retries')` — no default — into `RetryManager`, whose first line is
+  `self.retries = _retries or 0`. **The user asks for ten and gets none.** Re-measured here: the
+  defaults carry `fragment_retries` 10, an explicit 10 yields `{}` as the diff, and `RetryManager`
+  turns the absent value into zero. So the merge carries **every destination the named options
+  touch**, at the value `parse_options` produced, whether or not it differs from the default. The
+  diff stays useful as the way to *find* those destinations, not as the thing that is merged.
+
+**The two isolation claims this entry made were too strong**, and `T184-R3` corrected both.
+Re-measured here rather than taken on the finding's word:
+
+| As written | What it actually does |
+|---|---|
+| *"`parse_options` raises `OptParseError`, it does not exit"* | True of an unknown option and a bad value. **`--help` and `--version` raise `SystemExit`** — which this task's own derivation tool had already printed under *cannot be parsed alone*, while the entry said the opposite |
+| *"config files are ignored when an argv is passed"* | Only **automatic discovery** is suppressed. An **explicit** `--config-locations FILE` is still loaded: a config holding `--fragment-retries 37`, supplied that way, came back as 37 |
+
+**So a refusal that runs after `parse_options` is too late**, for two separate reasons: the process
+can already have exited, and a file the user named can already have been read. The hatch therefore
+refuses the exiting and config-loading options **on the raw tokens, before parsing**, and the parse
+runs behind a `SystemExit` guard as well. `--config-locations`, `--ignore-config` and the help and
+version options are all refused classes in the audit already; what changes is *when* that refusal
+has to happen.
+
+#### Finding 7's five measured, 2026-09-18, and the two options that do break the reservation
+
+`tests/integration/test_reservation_and_resume.py` (new, 8 tests, 5 s) reserves the target with
+`O_CREAT | O_EXCL` the way the session does, then downloads over `http.server` on `127.0.0.1`.
+
+| With the reservation in place | Result |
+|---|---|
+| The application's own options | complete, 64,000 bytes |
+| `--continue`, `--no-continue`, `--part`, `--no-part`, `--post-overwrites` | **each complete** |
+| `-w/--no-overwrites` | **reports success, leaves the file at 0 bytes** |
+| `--no-force-overwrites` | the same |
+
+**Finding 7 is answered: the five are harmless** and can stay hatch-reachable, because
+`overwrites=True` decides the question before they reach it.
+
+**And the audit's reason for refusing `overwrites` is now a measurement.** All three spellings are
+`app:sets`, reason *"T-046's reservation owns it"* — and what happens without that refusal is an
+empty file the user finds by opening it, with no error anywhere. Written as a characterisation test
+on purpose: if a later yt-dlp stops behaving this way, it fails and the reason gets re-read rather
+than inherited.
+
+**Mutation**: with `build_options` no longer passing `overwrites`, 4 of the 8 fail. So the suite
+now protects `T-046`'s guarantee rather than describing it.
+
+*(The first version of this measurement labelled a row "the application's own behaviour" and it was
+not — it omitted `overwrites=True`, so it showed the application leaving 0-byte files, which it does
+not do. The label was the defect, and the corrected run is the table above.)*
+
+#### `--break-on-existing` measured, 2026-09-18: not inert, and it arrives as a cancellation
+
+The criterion asks for this to be measured rather than assumed, and it was assumed wrongly in both
+directions before being measured.
+
+**It is not inert for this worker.** `YoutubeDL._match_entry` references `break_on_existing` and
+raises `ExistingVideoReached` **on the current item** when that item is in the archive. Measured
+directly: with `break_on_existing=True` and an archive holding the id, `_match_entry` raised
+*"Encountered a video that is already in the archive, stopping due to --break-on-existing"*; with an
+id the archive does not hold, it returned `None`. So the option can end the job the user is
+watching, not merely stop a playlist.
+
+**The effect is visible, and it arrives as `CANCELLED`.** `ytdlp_adapter.classify_exception`
+answers `ErrorKind.CANCELLED` for it, carrying yt-dlp's own sentence — which names the option. That
+is because `ExistingVideoReached` descends from yt-dlp's `DownloadCancelled`, which the adapter maps
+deliberately. The same holds for `RejectedVideoReached`.
+
+**The criterion's condition is NOT met, and this entry claimed it was** (`T184-R2`). It said *"the
+message is the only thing connecting the two, and the application does show it"*. **It does not.**
+`QueueModel._detail` routes only `FAILED` rows to `_failure_detail` (`ui/queue_view.py:992`), and
+that method's own comment states it: *"`CANCELLED` is not routed here, because it is not a
+failure"*. The reviewer's probe put the real `ExistingVideoReached` message on a cancelled row and
+got `''`; the same row switched to `FAILED` showed the message. **The adapter keeps the reason and
+the queue drops it**, so a user would see a row that says *Cancelled* and nothing else, for an
+option they typed into a preset days earlier.
+
+**So this is a decision, not a recommendation to keep things as they are.** Either:
+
+**"A cancelled row that has a message" is every cancelled row**, which this entry's first attempt at
+a fix missed (the reviewer's second pass). `DownloadManager._cancelled` stores
+`message or "Cancelled at your request."`, so a user's own cancel already carries a non-empty
+message, and showing *any* non-empty message would put that sentence under every row the user
+cancelled — noise, on the common path, to explain the rare one.
+
+**The origin is known where the record is made, and is then flattened.** The worker's outcome
+reaches `_cancelled` as `reason` when yt-dlp stopped the job (`manager.py:2936-2941`), and as `None`
+when the user did. So the distinction exists at the moment of writing and is lost in the stored
+string.
+
+**Ruled 2026-09-18: A**, recorded as an amendment to `UX-005`, which owns what a row shows. The
+sentence becomes one shared constant and a cancelled row shows its message only when it differs from
+that, so a user's own cancellation is unchanged. The options as they were costed:
+
+| Option | What it means |
+|---|---|
+| **A. Show a cancelled row's message only when it is not the application's own sentence** (ruled) | The default sentence becomes one constant instead of the two literals that exist today (`manager.py:3255` and `ui/job_detail.py:140` both spell it out), and the queue compares against **that constant**, not against extractor prose — which is the distinction `classify` warns about. A user's cancel looks exactly as it does now; a cancel yt-dlp explains gains its sentence |
+| B. Record the origin as its own field | Exact rather than compared, and it costs a model change and a migration for a difference nobody can see |
+| C. Refuse `--break-on-existing` and `--break-per-input` | The effect cannot happen, so nothing needs showing. Costs two options a user may legitimately want with `--download-archive`, which `SEC-003` permits |
+
+**Not in evidence either way:** the recorded `_match_entry` probe shows the library raising, not the
+complete path through this worker to a row. That measurement is still owed before either option is
+built.
+
+**Measured 2026-09-26, through the real worker.** With the item's id in a `--download-archive`,
+`--break-on-existing` ends the session `Failed(CANCELLED)` carrying yt-dlp's sentence, which names
+the option, and nothing is fetched. `--break-per-input` beside it changes nothing, because a job has
+one input. `tests/integration/test_hatch_outcomes.py` keeps both. The manager stores that message
+(`manager.py`, `_cancelled(…, outcome.message)`) and the row tests for `T184-R2` show it.
+
+#### Scope
+
+An *Additional yt-dlp options* field, per preset and overridable per job, taking command-line
+syntax, **parsed into a validated structure at job-creation time** and merged into `build_options`
+under a stated precedence.
+
+- **Parsed, not passed through.** The stored field is declared, typed, frozen and picklable like
+  every other member of `DownloadRequest`; an unparsed string handed to yt-dlp is not acceptable
+  even as an intermediate step
+- **Containment.** Options that redirect where files land go through `T-034`'s check, not beside it
+- **Redaction.** Values are this application's text under `DAT-004` and are redacted as such
+- **Refusal.** An application-owned or excluded option is refused **where the user typed it, with
+  the reason** — never accepted and dropped
+- **Precedence.** A typed field wins over the hatch for the same user-owned key, because it is the
+  one with a visible control; an application-owned key is never overridable at all
+
+> **Redaction as built, 2026-09-24 (`T184-R6`).** Hatch values are registered in the **parent**:
+> `DownloadManager` does it before a session starts, because the parent's handlers redact a
+> worker's records (`T-038`). The first correction registered them inside the worker, where no
+> redacting formatter runs, so it redacted nothing. Both spellings are covered (`--opt value` and
+> `--opt=value`), a header's value is registered apart from its name, and path values go through
+> `remember_a_path`.
+>
+> **One narrowing of the acceptance criterion on logs.** Values of admitted options that take only
+> numbers, sizes, rates, dates, durations, enumerated words, format names, language codes,
+> extractor names or chapter patterns (`extra_options.NOT_SECRET_VALUES`) are **not** registered.
+> Registering them removed `best`, `1000`, `never` and the like from every later line of the log.
+> The criterion said *"No hatch value appears unredacted in any log"*. Its stated case, an
+> innocuous option name carrying a sensitive value, is met, but its letter was not for those
+> options. **The maintainer accepted the narrowing on 2026-09-26**
+> ([`ARC-010`'s second amendment of that day](DECISIONS.md#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted)),
+> and the criterion below now says it. The Reviewer still challenges the list entry by entry. Any
+> option missing from the list is registered, so an omission over-redacts rather than leaks.
+>
+> **Storing the field verbatim is ruled as well** (2026-09-26,
+> [`DAT-003`](DECISIONS.md#amended-2026-09-26--text-typed-into-the-options-field-is-stored-verbatim-like-a-url-t-184)):
+> it is text the user typed, like a URL, kept as typed in `settings.toml` and the queue database.
+
+> **Found and corrected 2026-09-26, the fourth round, not yet reviewed.** Each has a test that fails
+> when the correction is reverted.
+>
+> - **A false success through an admitted option.** `--compat-options` with any value carried
+>   yt-dlp's command-line default `ignoreerrors: "only_download"`, so a failed MP3 conversion was
+>   reported as a finished `.m4a`: the reason the audit refuses `-i` (`T183-R2`). An option that
+>   reaches several keys now carries only the keys its value changed.
+> - **A value read as an option.** The merge looked every token up, so a value spelled like an
+>   option copied that option's keys at their defaults (305 measured fields).
+> - **Three pieces of a value that yt-dlp prints on its own**, now registered as well: an
+>   extractor argument's items (a malformed `po_token` is echoed alone), a filter printed stripped,
+>   and a filter part quoted alone when yt-dlp cannot read it.
+> - **Two values the parser takes as text and reads only when a job runs**: match filters and
+>   `--encoding`. Both are now checked at edit time and again where the job is built.
+>
+> **Measured the same day and not corrected, because each needs a ruling or a disposition:**
+>
+> - **An item yt-dlp skips by the user's own selection fails the job as `DISK`**, shown as *The
+>   file could not be written* with advice to check free space. With the id already in a `--download-archive`, or a `--match-filters` or `--max-filesize`
+>   that excludes it, yt-dlp downloads nothing and the worker then fails to move a file that does
+>   not exist: *"cannot move the finished download to '…/clip.NA'"*. **Ruled 2026-09-27**
+>   ([`UX-005`](DECISIONS.md#amended-2026-09-27--an-item-yt-dlp-skipped-at-the-users-request-ends-cancelled-and-says-why)):
+>   it ends Cancelled with yt-dlp's sentence. *(This entry and the ruling's question both said the
+>   `DISK` failure paused the queue. Nothing in the manager does that; the claim came from an older
+>   comment in `worker.py`, repeated unchecked. Corrected 2026-09-27.)*
+> - **A relative path in `--download-archive` or `--cache-dir` resolves against the process's
+>   working directory**, not the download folder. A probe wrote an archive into the repository
+>   root this way. **Ruled 2026-09-27**
+>   ([`ARC-010`](DECISIONS.md#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute)): a path
+>   option is refused unless absolute after yt-dlp's own expansion. That covers all five path
+>   options, the three that only read included.
+> **Both rulings built 2026-09-27, the fifth round, not yet reviewed.** An item yt-dlp skips ends
+> `Failed(CANCELLED)` carrying yt-dlp's last line with its `[tag]` removed, and the attempt's
+> staging directory goes. Decided on what exists (a normal return, and no file yt-dlp reports is
+> on disk), never on the line, and only for a job with a hatch, so anything else that writes
+> nothing still fails loudly. A path option is refused at edit time unless absolute after
+> yt-dlp's own expansion, and re-admission applies the same rule to a stored value.
+> `tests/integration/test_hatch_outcomes.py` and `tests/unit/test_extra_options.py` carry both.
+>
+> - **Three more options fail only when the job runs**: an unknown `--ies`/`--use-extractors` name
+>   (*"No suitable extractor"*), a `--source-address` that is not an address, and a missing
+>   `--client-certificate` file. Unlike filters and encodings, none has an exact check to borrow.
+
+#### Maintainer ruling, 2026-10-10, second — the validation boundary, then the eighth round
+
+The seventh round's review ([record](reviews/T-184.md#2026-10-10--seventh-round-focused-verification))
+found `R8` still High. `re.compile` raises `OverflowError` for a repeat count past its limit
+(`title~=a{4294967296}`) and `RecursionError` for 500 nested groups. Neither is `re.error`, and
+nothing caught them: they escaped `options_for`, the editor's timer and `accept()`, and stored
+consumption, for both filter spellings and for `--remove-chapters` and `--download-sections`, whose
+patterns yt-dlp compiles while parsing. It also filed `R17`, Low: a prefix whose candidates
+disagree on how many values they take reads none, so `--video T184_REVIEW_CANARY` named the value
+in a second refusal, and the editor showed it. Under TESTING §14 the maintainer chose to **revise
+the validation boundary within this task** rather than split it
+([record](reviews/T-184.md#2026-10-10--maintainer-ruling-on-the-remaining-validation-boundary)).
+The batch, written before the code:
+
+1. **A pattern that cannot compile is a refusal at every parse.** `ytdlp_adapter` names the
+   failures once, `re.error`, `OverflowError` and `RecursionError`, and catches them beside
+   `SystemExit` and `OptParseError` wherever user text meets yt-dlp: `unparseable`'s whole-line
+   parse and its per-option attribution, both filter checks in `_unreadable_when_it_runs`,
+   `hatch_options`, which raises the documented `UnusableOptionsError`, and
+   `options_needing_ffmpeg`. Nothing broader is caught: a defect elsewhere must still raise.
+2. **A refused long option whose value count is unknown takes the words after it** (`R17`). An
+   abbreviation whose candidates disagree, and, found by the same sweep, an option the inventory
+   does not have (`--typo T184_CANARY` named its value the same way), read the following words
+   up to the next one that begins with `-`. They stay inside that option's single refusal and are
+   never named. No candidate is guessed, and the field is refused either way.
+3. **Evidence.** `OverflowError` and `RecursionError` for both filter spellings and both
+   siblings, refused value-free at `options_for`, in the editor's timer with OK disabled, at
+   `accept()` without raising, and as `UnusableOptionsError` in stored consumption. Each is
+   shown to be a real compile failure. Mixed-arity and unknown-option cases keep their values
+   out of every refusal, and the editor's visible and accessible text; the unique-prefix and
+   inline controls stay. Valid patterns, escapes, repeats, exact spellings and the resolved
+   section behaviour are unchanged. The `duration~=5` disposition stands.
+
+**Built 2026-10-10, the eighth round**, and approved the same day
+([record](reviews/T-184.md#2026-10-10--eighth-round-focused-verification)): `R8` and `R17`
+resolved; `R18`, Low, was this entry's wording, corrected below. Mapped finding by finding:
+
+| Finding | Where | Tests | Mutations caught |
+|---|---|---|---|
+| `R8`, filters | `ytdlp_adapter._UNCOMPILABLE`, caught in `_unreadable_when_it_runs` beside `ValueError` | `test_a_pattern_re_cannot_compile_is_refused_where_it_is_typed` (8: both filters and both siblings, each failure, each shown to be a real `re.compile` failure, value-free) | M42 |
+| `R8`, siblings at the parse | `_REFUSED_BY_YT_DLP` in `unparseable`'s whole-line parse and its attribution | The same 8; the editor's timer with OK disabled and `accept()` not accepting, for one case of each option, and *Enter* inside the pause | M43, M44 |
+| `R8`, stored consumption | `hatch_options` raises `UnusableOptionsError`; `options_needing_ffmpeg` answers | `test_a_stored_pattern_that_cannot_compile_is_the_stored_options_refusal` (8: `hatch_options`, `build_options`, `requires_ffmpeg`, and `options_needing_ffmpeg` asked directly, since no route reaches it today) | M45, M46 |
+| `R17`, and an unknown option | `extra_options._resolved` returns `None` for an unknown count; `_read` keeps the words up to the next `-` word | `test_a_refused_option_of_unknown_arity_keeps_the_words_after_it` (mixed-arity, header, inline, unknown option, two words); the editor's visible and accessible text; the next option still decided | M47, M48 |
+
+M35–M41 were re-run on the final source and are all still caught. **One limit:** a value that
+itself begins with `-` after such an option is read as options, as yt-dlp would; at most its
+first letters are named, never the whole word.
+
+*(Corrected 2026-10-10, `T184-R18`: that limit holds only for a single-dash word. A word
+beginning with `-` after such an option starts another option or marker, as yt-dlp reads it, and
+is decided on its own rather than taken as the refused option's value. A single-dash word names
+at most its first flag letters (`--video -T184secret` names `-T`); a long one is named in full
+(`--video --T184secret` names `--T184secret`); and `--typo -- CANARY` names the `--` marker and
+the stray word after it. Each is refused, and none is accepted or logged by the editor's
+diagnostic.)*
+
+**Checks, 2026-10-10, on Linux** (project `.venv`, PySide6 6.11.1, yt-dlp 2026.08.19): `ruff check
+.` and `ruff format --check .` (466 files, three of them the new review records); `mypy src` (69),
+bare `mypy` and `mypy --platform win32` (210 each); M35–M48 all caught on the final source, each
+restored. The default suite as CI runs it, `.venv/bin` on `PATH`,
+`TRACKSANDTRAILS_REQUIRE_FFMPEG=1`: `tests/unit tests/ui` under `-n auto`, **4,558 passed**, 22
+skipped; `tests/integration`, **520 passed**. No Windows run.
+
+#### Maintainer ruling, 2026-10-10 — exact long spellings, then the seventh round
+
+The sixth round's review ([record](reviews/T-184.md#2026-09-27--sixth-round-redesign-verification))
+left `R8` and `R14` High. `R8` reproduced its class after the 2026-09-27 redesign, so TESTING §14
+asked for a ruling before another batch. Three options were put: exact spellings only, resolving
+prefixes through the pinned parser (the reviewer's recommendation), or exact spellings now with a
+follow-up task to restore abbreviations. **The maintainer chose exact spellings only**
+([`ARC-010`, amended 2026-10-10](DECISIONS.md#amended-2026-10-10--a-long-option-is-typed-in-full)).
+The batch, written before the code:
+
+1. **`R8`, abbreviations.** `extra_options._resolved` accepts a long option only by an exact name.
+   A word that is a prefix of one or more names is refused as an abbreviation, with the full
+   spellings it could stand for; one that prefixes none stays *not an option*. A prefix of a
+   refused option is now refused as an abbreviation, which is still a refusal. The review's cases
+   are tests: `--convert-s srt`, `--clean-info` and `--ca` are refused, and every exact name the
+   inventory holds is still admitted. Short options, clusters, attached values, the inline `=`
+   value and the canonical argv are unchanged.
+2. **`R8`, regex operands.** `_unreadable_when_it_runs` calls `match_str` with no fields, which
+   checks a filter's grammar but never compiles a `~=` operand. The effective filters' operands are
+   checked as yt-dlp will evaluate them, so `title~=[` is refused for `--match-filters` and
+   `--break-match-filters`, while valid patterns, repeats and escaping still pass. How to reach the
+   compile without a real item is measured before it is built. The proof is the admitted filter
+   evaluated against an ordinary item, not only agreement between helpers.
+3. **`R14`, download operations.** `hatch_requires_ffmpeg` counts only post-processors.
+   `--download-sections` installs `download_ranges`, which needs the ffmpeg downloader. The shared
+   answer, and `options_needing_ffmpeg`'s attribution, count downloader work that needs ffmpeg as
+   well, so the offer, the editor and `_ffmpeg_gap` agree. Cover ffmpeg absent and present, through
+   yt-dlp's real downloader decision. The empty-hatch path stays free of yt-dlp, and the worker's
+   guard stays.
+
+**Built 2026-10-10, the seventh round**, and reviewed the same day
+([record](reviews/T-184.md#2026-10-10--seventh-round-focused-verification)): `R14` resolved, `R6`
+stays resolved, `R8` still High, and `R17` filed Low. Mapped finding by finding:
+
+| Finding | Where | Tests | Mutations caught |
+|---|---|---|---|
+| `R8` abbreviations | `extra_options._resolved`: an exact name or nothing; `_abbreviated` names up to three spellings, else a count. `AMBIGUOUS` is replaced by `ABBREVIATED` | `test_an_abbreviated_long_option_is_refused_naming_its_full_spellings` (the review's three, plus `--fragment-retr` both spellings and `--exec-b`); `test_every_exact_long_name_is_still_read_as_itself` over the whole inventory | M35 |
+| `R6`'s class, kept closed | The same: an abbreviation still reads the values its candidates agree on | `test_an_abbreviation_does_not_repeat_the_value_typed_after_it` (`--video-pass`, `--add-head`, `=` form) | M36 |
+| `R8` regex operands | `ytdlp_adapter._unreadable_when_it_runs`: each part, split on yt-dlp's own `(?<!\\)&`, is also evaluated alone against `_EveryFieldIsText` | `test_a_filter_pattern_yt_dlp_cannot_compile_is_refused` (both spellings, a part hidden behind a false one, a second filter) and `..._can_compile_is_still_accepted`, each proved with `match_str` on an ordinary item | M37, M38 |
+| `R14` download work | `ytdlp_adapter._cuts_sections`, read by `hatch_requires_ffmpeg` and `options_needing_ffmpeg`, so the offer, the editor and `_ffmpeg_gap` share it | `test_a_partial_download_needs_ffmpeg_by_yt_dlp_s_own_decision` (yt-dlp's range callback and `get_suitable_downloader`, ffmpeg absent and present); the built-in binding; the worker gate for a resolved single file; the editor both ways; chapter patterns and `*from-url` | M39, M40, M41 |
+
+**Two traps the measurements found.** `match_str` evaluates parts with `all()`, so a false
+comparison in front hid a bad pattern behind it, and evaluating the whole filter at once misses it
+(M38). And every parse carries a `download_range_func`, an empty one when nothing was asked, so
+"is `download_ranges` set" counts every option as download work; its `__eq__` also ignores
+`from_info` (M40, M41).
+
+**Sibling audit.** Regex: `--replace-in-metadata`, `--parse-metadata`, `--remove-chapters` and
+`--download-sections` compile their patterns in yt-dlp's parse step, so the seam already refused
+bad ones; `--match-title` and `--reject-title` would not, and are refused as unruled. Download
+work: `--downloader` and `--external-downloader` are forbidden (`SEC-004`), and
+`--hls-prefer-ffmpeg` and `--hls-prefer-native` are unruled. `--fixup` without ffmpeg is a warning
+in yt-dlp, not an abort, and `--hls-use-mpegts` and `--live-from-start` need none from the hatch.
+Live items reach yt-dlp's ffmpeg downloader whatever the hatch says; that is not hatch work, is
+outside `R14`, and was not investigated. **One sibling stays open by its nature:** a string
+operator on a numeric field (`duration~=5`) raises only on a real item, because the field's type
+belongs to the item; it is not checked.
+
+**Checks, 2026-10-10, on Linux** (project `.venv`, Python 3.14.7, PySide6 6.11.1, yt-dlp
+2026.08.19): `ruff check .` and `ruff format --check .` (463 files); `mypy src` (69), bare `mypy`
+and `mypy --platform win32` (210 each); M35–M41 all caught, with each source restored after its
+mutation. The default suite as CI runs it, with `.venv/bin` on `PATH` and
+`TRACKSANDTRAILS_REQUIRE_FFMPEG=1`: `tests/unit tests/ui` under `-n auto`, **4,529 passed**, 22
+skipped; `tests/integration`, **520 passed**. No Windows run.
+
+#### Maintainer ruling, 2026-09-27 — redesign validation and redaction, then one batch
+
+Codex's review of 2026-09-27 left `T184-R6` and `T184-R8` open again and invoked TESTING §14:
+corrections to both keep reproducing their defect class. Asked to split the task, narrow what is
+accepted, correct the findings as stated, or revisit the two mechanisms, **the maintainer chose to
+revisit them**, with `R14`, `R15` and `R16` in the same batch. The design, written before the code:
+
+**Validation asks yt-dlp's own parser rather than re-deriving its grammar.**
+
+1. **One tokenizer.** `=` is split the way optparse splits it: the inline text is the first value
+   even when it is empty, and an option taking several values reads the rest from the tokens after
+   it. Admission, grouping, redaction and the merge all read values through it. Three hand-written
+   splits disagreed with each other and with yt-dlp (`--match-filters=`,
+   `--replace-in-metadata=title foo ""`).
+2. **Effective values, not occurrences.** A value yt-dlp reads only when a job runs is checked on
+   what yt-dlp's parser step, `yt_dlp.options.parseOpts`, leaves after every repeat and reset:
+   `--encoding nope --encoding utf-8` is `utf-8`, and `--no-match-filters` empties the list. Match
+   filters go through `match_str(value, {}, incomplete=True)` and the encoding through
+   `codecs.lookup`. **Measured:** `--match-filters=` parses, then fails the first item with
+   *Invalid filter part ''*, so it is refused as a bad value rather than as a missing one.
+
+**Redaction registers what yt-dlp's consumers print, from the tables admission already reads.**
+
+3. **A path is registered as typed and as yt-dlp expands it**, through `_AS_YT_DLP_EXPANDS`, the
+   table the absolute-path rule uses, so the two cannot disagree about what a path becomes.
+4. **`--default-search` and `--output-na-placeholder` leave the exemptions.** The Reviewer checked
+   all 49 and found these two take unrestricted text.
+5. **Proved at a real consumer**, such as yt-dlp's own cache warning, and not only on a composed
+   line.
+
+**The interface findings, in the same batch.**
+
+6. **`R14`.** The offer asks whether a preset's hatch needs ffmpeg through a downloader seam that
+   loads yt-dlp only when the preset carries tokens, so an empty hatch stays free. The add
+   dialog's catalogue and the editor both use it, and the editor refuses such options with the
+   reason when ffmpeg is missing. The worker's guard stays.
+7. **`R15`.** A saved pair is checked whenever **either** half is non-empty, so empty text with
+   hidden tokens becomes the empty pair it shows.
+8. **`R16`.** The worker's queue-pause comment, and the two snapshots that still call the
+   interface unbuilt.
+
+**Built 2026-09-27, the sixth round**, and reviewed the same day
+([record](reviews/T-184.md#2026-09-27--sixth-round-redesign-verification)): `R6`, `R15` and `R16`
+resolved; `R8` and `R14` partly corrected and still High. Mapped finding by finding:
+
+| Finding | Where | Tests | Mutations caught |
+|---|---|---|---|
+| `R8` tokenizer | `extra_options._read`, which `admit` and `grouped` both use | `test_the_seam_reads_a_command_line_the_way_yt_dlp_s_parser_does` compares the canonical argv's parse with yt-dlp's parse of the typed text; also refusals, abbreviations and the empty inline value | M24–M28 |
+| `R8` effective values | `ytdlp_adapter._unreadable_when_it_runs(argv)`, through `parseOpts` | `test_a_value_read_later_is_judged_by_what_yt_dlp_keeps`, `test_what_the_seam_accepts_the_job_builds_the_same_way` | M29a, M29b |
+| `R6` | `extra_options._as_yt_dlp_opens`; two exemptions removed | The cache warning (`$VAR` and `~`) and the netrc warning, each through the real yt-dlp consumer and the application's formatter; the two text options | M30, M31 |
+| `R14` | `ytdlp_adapter.hatch_requires_ffmpeg`, which `requires_ffmpeg` and `extra_options.preset_needs_ffmpeg` share; the add dialog, `app.py` and the editor | The anti-drift binding over every built-in with four hatches; the add dialog with and without ffmpeg; the editor both ways; no parser loaded for an empty hatch | M32, M33 |
+| `R15` | The editor checks on opening when either half is non-empty | Empty and whitespace text through *Save as preset…* and OK | M34 |
+| `R16` | `worker.py`'s `UnsafePathError` comment; the two snapshots in `8fdc10a` | — | — |
+
+**The tokenizer found more than the review listed**, measured against the CLI at the pin. Attached
+short values (`-N4`, `-I1:3`), clusters (`-cN4`) and unique long prefixes (`--fragment-retr`)
+were refused though yt-dlp accepts them. `--continue=yes` was admitted though yt-dlp refuses it.
+All now agree. **A unique prefix of a refused option is refused for that option's reason**
+(`--exec-b` is `--exec-before-download`), and a refused flag inside a cluster is refused (`-ci`).
+**The stored argv is canonical**, each option in full with its values as separate tokens. A hatch
+stored in the `--opt=value` spelling before this round now fails re-admission with its reason. No
+release carries the field, so that affects only local test data.
+
+#### Maintainer ruling, 2026-09-27 — the interface is specified
+
+[`UX-015`](DECISIONS.md#ux-015--the-additional-options-field-the-editors-last-group-checked-as-you-type),
+transcribed in `docs/UX_SPEC.md` §6: the field is the options editor's fifth group, below
+*Subtitles* and always visible, and it is checked as the user types. Refusals are listed under it,
+and the accepting buttons are disabled while any stands.
+
+**Built 2026-09-27, the interface stage, not yet reviewed.** `ui/options_dialog.py` adds the
+group, with a check once typing pauses (400 ms), a fresh check on accept and on *Save as preset…*,
+and refusals under the box that are also its screen-reader description. A preset's saved text is
+checked on opening rather than trusted, and a refused field decides nothing: the preset's own pair
+is carried. **The name gained a clause** (`ui/format_text.py`): a preset with additional options
+matched no built-in and was named by its raw selector, `T140-R3`'s defect again. It now reads
+*… · with additional yt-dlp options*, never the options themselves. Nine mutations, all caught.
+Every route to the editor reaches the field, because they all open the same widget: a queued
+row's and an add-dialog row's *Options…*, and the preset manager's.
+
+#### Maintainer rulings, 2026-09-20 — the four shapes the build needed
+
+Put with costs and a recommendation each; all four taken as recommended. The `writethumbnail` one
+is recorded as an **`ARC-010` amendment**, because that entry owns the precedence rule it excepts.
+
+| Ruling | Recorded in |
+|---|---|
+| Edit-time validation runs **in the GUI process, lazily** | here |
+| The field holds **the text the user typed and the parsed result** | here |
+| `writethumbnail` is a **union**, and the user's keep survives it | **`ARC-010` amendment** |
+| A per-job value **replaces** the preset's entirely | here |
+
+**Validation runs in the GUI, on a lazy import.** The GUI process does not import yt-dlp today, and
+`yt_dlp.options` costs **0.13 s and 25 MiB** (measured 2026-09-19). A downloader-layer module
+imports it on first use of the hatch field, so only a user who types an option pays, once, and
+validation stays synchronous — which is what makes "a malformed field fails at edit time" a simple
+rule rather than a pending state in the dialog. The alternative, validating through the worker
+pool, keeps the GUI free of yt-dlp but makes an edit-time refusal asynchronous and able to arrive
+after the user has moved on. **What this costs:** the GUI process holds yt-dlp once the hatch is
+used, which `ARCHITECTURE.md` §4 keeps out of `ui/` by import rule. The rule is not broken — `ui/`
+imports a `downloader/` module, which is where yt-dlp is allowed — but the intent is worth stating
+plainly rather than discovering in review.
+
+**The field holds both the text and the parsed result.** `REQ-031` requires the parsed result to be
+a declared member rather than an untyped dictionary, and it is; the text is kept beside it because
+it is what the user edits and must be shown back verbatim.
+
+> **Superseded in part, 2026-09-22 — the second half is the admitted argv, not the parsed
+> dictionary.** `T184-R9` measured that **13 of 124** admitted options parse to values that cannot
+> cross `ARC-002`'s process boundary: a `DateRange`, compiled match filters, a `set`, and
+> postprocessor specifications. A compiled filter is a closure, so the only honest encoding of it
+> is the text it came from — which is the argv again. The maintainer ruled the argv on 2026-09-22.
+>
+> **What this buys beyond transport.** The argv is re-admitted where it is used, so a stored value
+> cannot smuggle a refused option past the boundary — which is `T184-R5`, the Critical finding
+> that a hand-edited preset could set `geo_bypass` or replace `outtmpl`. It is immutable, which is
+> `T184-R12`. And the text is checked against it, so the two cannot disagree about what will run.
+>
+> **What it costs, stated rather than argued away.** `REQ-031` says *"the parsed result is a
+> declared field of the download request rather than an untyped dictionary"*. What is declared is
+> now the **admitted command line**. The spirit holds — it is declared, typed, validated, and not
+> an untyped dictionary — but the letter does not, and that is the maintainer's to amend in
+> `REQUIREMENTS.md` if they want the letter to match. *(Amended 2026-09-26 at the maintainer's
+> instruction: `REQ-031` and
+> [`ARC-010`](DECISIONS.md#amended-2026-09-26--the-declared-member-is-the-admitted-command-line)
+> now say the admitted command line.)* Storing only the parsed values would
+return `-c` as `--continue` and could not show anything that normalised away. Storing only the text
+would move the parse to job-creation time, so a queued job that validated a week ago could be
+refused on a yt-dlp that has moved since. Keeping both makes that disagreement **visible** instead.
+
+**A per-job value replaces the preset's.** `REQ-031` says the field is per preset and overridable
+per job; replacement is the reading a user can see, because the text in front of them is the text
+that will apply. Appending would produce an effective option set that appears in neither field and
+resolve conflicts by a rule with no surface. `core/presets.to_request` raises `PresetOverrideError`
+for any override of a preset-owned field, so this ruling needs an exemption there rather than
+riding on the existing behaviour.
+
+**Migration `0013` is still not started, and may not be owed at all.** Measured 2026-09-20: the
+request is stored as one JSON blob in `jobs.request`, `_REQUEST_FIELDS` is derived from the
+dataclass, and `_deserialize_request` gives a blob without the key the dataclass default — so a new
+optional field needs **no schema change**. If that holds once the field exists, `T-048` keeps
+waiting for the project's first value-transforming migration rather than getting one here, and this
+task says so rather than inventing one to satisfy a criterion.
+
+#### Acceptance criteria
+
+- A valid option typed into the field reaches yt-dlp, proved by the option dictionary the worker
+  receives rather than by the download succeeding
+- **The same intent expressed as a typed field and as a hatch option produces the same option
+  dictionary** — the assertion that keeps two routes from meaning two things
+- An option that would write outside the output directory is **refused or contained**, with a test
+  that fails when the containment call is removed
+- **No hatch value that can carry a credential or name a file appears unredacted in any log**, under
+  the existing redaction test extended over the parsed values — including the case where the option
+  name is innocuous and the value is not. *(Narrowed 2026-09-26 by the maintainer's `ARC-010`
+  amendment: values of the options in `extra_options.NOT_SECRET_VALUES` are not registered. It
+  said "No hatch value".)*
+- An application-owned option and an excluded option are each refused at edit time with a stated
+  reason, and a test asserts they never reach `build_options`
+- A malformed field fails **at edit time**, not after the bytes are spent — the same rule
+  `audio_quality` already follows and for the same reason
+- The migration adding the field round-trips an existing queue, and an old row without it loads
+- `requires_ffmpeg` still answers correctly for a post-processor the hatch installed
+- Both mypy platforms, `ruff`, the model, adapter, persistence and UI tests are clean
+- **The refusal list is keyed on the value `parse_options` produces**, and a test asserts that
+  `--geo-bypass` is refused for the same reason `--xff` is **while `--no-geo-bypass` is not refused
+  as a bypass** — it fails if the list is rebuilt on option strings *or* on destinations (Finding 4,
+  as corrected by `T183-R1`)
+- **All five refused classes are enforced**, `app:policy` included. It is 10 rows the application
+  owns by behaviour rather than by setting a key, and a refusal list built from the other four
+  omits every one of them
+- **`--break-on-existing` and `--break-per-input` are measured, not assumed inert.** At the pin
+  `_match_entry` can raise on the current item and this worker calls `extract_info` directly rather
+  than through `YoutubeDL.download`, so the option can turn the current job into a failure. Keep
+  them hatch-reachable only if that effect is visible to the user
+- **Every option the parser accepts is dispositioned, suppressed ones included.** A test walks
+  `create_parser()` and fails on an option that is neither refused, nor typed, nor hatch-reachable
+  — the documented 250 are not the parser's whole surface
+- **`--continue`, `--no-continue`, `--part`, `--no-part` and `--post-overwrites` are measured
+  against `T-046`'s reservation**, not reasoned about: a test shows what each does to a job whose
+  target path already holds the zero-byte exclusive-create file (Finding 7)
+- **The `writethumbnail` merge is stated and tested** — the application sets it to embed and delete,
+  `T-249`'s control sets it to keep, and one of them has to win by a written rule (Finding 6)
+
+#### Out of scope
+
+- Typed fields for individual options — those are `T-183`'s tasks
+- yt-dlp **configuration files** as an input route. A config file is a second, invisible source of
+  options and would defeat every check above; if it is ever wanted it needs its own decision
+- Per-entry hatch options within a playlist — `T-110` owns per-entry anything
 
 ---
 

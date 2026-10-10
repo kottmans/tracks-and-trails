@@ -76,21 +76,22 @@ task and review records it summarised.*
   **The approval does not cover release readiness**, and two follow-ups remain: `T-350`, and the
   human selection walk, which no instrument here can perform — `isItemVisibleInAnyView` says the
   item is in a view, not that it is highlighted.
-- **`T-184` is In Progress, and its eighth round is built and with the Reviewer.** On 2026-10-10 the
-  maintainer chose exact long spellings (`ARC-010` amended) after `R8` reproduced its class through
-  the 2026-09-27 redesign. The seventh round, reviewed the same day
-  ([record](reviews/T-184.md#2026-10-10--seventh-round-focused-verification)), resolved `R14` and
-  left `R8` High: a pattern `re.compile` cannot build raises `OverflowError` or `RecursionError`,
-  which escaped every boundary, the editor's included. `R17`, Low, is a value named back after an
-  ambiguous prefix. **The maintainer chose to revise the validation boundary within the task**; the
-  eighth round's design, mapping and checks are in the task entry. **The push stays held until
-  approval**, and with it CI evidence for `T-355`, `T-356` and `T-357`.
+- **`T-184` is Complete**, approved 2026-10-10 at `83749d7`
+  ([record](reviews/T-184.md#2026-10-10--eighth-round-focused-verification)) after eight correction
+  rounds; its entry is in
+  [COMPLETED_TASKS](COMPLETED_TASKS.md#t-184--the-escape-hatch-additional-yt-dlp-options-parsed-and-bounded).
+  The last two rulings, both 2026-10-10: a long option is typed in full (`ARC-010` amended), and the
+  validation boundary was revised within the task, so a pattern `re.compile` cannot build is refused
+  rather than raised. **The push hold is released**: `main` was pushed with `d18bcb8`, and CI run
+  [`38088244998`](https://github.com/kottmans/tracks-and-trails/actions/runs/38088244998) passed
+  every job on both platforms. Release readiness and the `0.2.0` acceptance walk are not approved by
+  it, and `T-048` stays its own task.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the
   `--opt=value` spelling, and exempts options whose values cannot be secrets.
 - **Three rulings taken 2026-09-26, all as recommended**
-  ([T-184](TASKS.md#t-184--the-escape-hatch-additional-yt-dlp-options-parsed-and-bounded)): that
+  ([T-184](COMPLETED_TASKS.md#t-184--the-escape-hatch-additional-yt-dlp-options-parsed-and-bounded)): that
   exemption is accepted and the criterion narrowed to values that can carry a credential or name a
   file (`ARC-010`); the field is stored verbatim like a URL, in `settings.toml` and the queue
   database (`DAT-003`); and `REQ-031` now says the admitted command line rather than a parsed
@@ -144,7 +145,7 @@ add dialog or the probe of a request with no hatch.
 **The seventh round (2026-10-10)** ran the default suite as CI runs it rather than this serial
 command: unit and UI under `-n auto`, **4,529 passed**, 22 skipped; integration **520 passed**; no
 `T-350` failure appeared. Its other checks are in the
-[task entry](TASKS.md#maintainer-ruling-2026-10-10--exact-long-spellings-then-the-seventh-round).
+[task entry](COMPLETED_TASKS.md#maintainer-ruling-2026-10-10--exact-long-spellings-then-the-seventh-round).
 
 No Windows runtime, external download or release-gate result is claimed here.
 
