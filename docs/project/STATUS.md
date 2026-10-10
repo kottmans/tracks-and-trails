@@ -155,7 +155,10 @@ No Windows runtime, external download or release-gate result is claimed here.
   ([`37929286459`](https://github.com/kottmans/tracks-and-trails/actions/runs/37929286459)). The
   desktop slice passed (46). The Full suite failed one test on a cp1252 pipe to Ruff, which
   **`T-356`** fixes (In Review), and that stopped the Windows integration suite before it ran.
-  **Nothing committed since 2026-09-18 has Windows integration evidence.**
+  **Nothing committed since 2026-09-18 has Windows integration evidence.** The frozen build
+  failed because BtbN had deleted the pinned ffmpeg, a daily build; **`T-357`** repins to a
+  month-end build kept for two years (In Review). `release.yml` uses the same pin, so `0.1.1`
+  cannot be built without it.
 - **T-289 is Complete under the 2026-09-04 re-scope, and Phase 4 may exit over it**
   — the reserved decision was taken by the maintainer on 2026-09-11 (`P4EXIT-R3`):
   **bounded acceptance**, on the implemented pool/ownership guards rather than on an

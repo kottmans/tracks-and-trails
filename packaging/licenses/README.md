@@ -4,7 +4,7 @@
 their provenance, so a later reader can verify each one rather than trust it.
 **Owner:** Implementer
 **Status:** Active
-**Last updated:** 2026-09-11 — created with `T-323`.
+**Last updated:** 2026-10-10 — ffmpeg repinned by `T-357`; created with `T-323`.
 
 `packaging/artifact_gates.py` checks these are present in every build. **The check is the point:**
 a licence obligation that depends on somebody remembering to copy a file is one that eventually
@@ -18,7 +18,7 @@ ships unmet.
 | `truststore-MIT.txt` | truststore 0.10.4 | MIT | the installed wheel's own `dist-info/licenses/LICENSE` | 2026-09-12 | 1,086 |
 | `platformdirs-MIT.txt` | platformdirs 4.11.0 | MIT | the installed wheel's own `dist-info/licenses/LICENSE` — **shipped since Phase 0 with no licence text until 2026-09-12**; `LICENCE_FOR_DISTRIBUTION` is the check that found nothing had asked | 2026-09-12 | 1,089 |
 | `NOTICE.txt` | — | — | written here | 2026-09-11 | — |
-| `ffmpeg-LGPL.txt` | ffmpeg 9.0.1-29-gad500d59cb, `win64-lgpl-shared` | LGPL-3.0-or-later | the archive's own `LICENSE.txt` (see below) | 2026-09-12 | 7,651 |
+| `ffmpeg-LGPL.txt` | ffmpeg 9.0.2-17-g2a571b6068, `win64-lgpl-shared` | LGPL-3.0-or-later | the archive's own `LICENSE.txt` (see below) — the same text as 9.0.1-29's, compared at the `T-357` repin | 2026-09-12 | 7,651 |
 
 ## Why the GPLv3 text is here for an LGPL dependency
 
@@ -40,19 +40,24 @@ is not failed for lacking a licence for something it does not ship.
 
 The build is pinned in `packaging/fetch_ffmpeg.py`:
 
-    https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-12-13-12/
-        ffmpeg-n9.0.1-29-gad500d59cb-win64-lgpl-shared-9.0.zip
-    sha256  609245cc0a906c1423f2cdb96e27925302d375fe8024dcbc4b3f6aaf757a43ff
+    https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/
+        ffmpeg-n9.0.2-17-g2a571b6068-win64-lgpl-shared-9.0.zip
+    sha256  7157177b8a6cb2174c1650ba8c71b363f2c78cba5330f88c4c02cf5b2b880646
 
 **Every part of that name is load-bearing.** `lgpl` because `LIC-001` forbids bundling a GPL
 ffmpeg with an MIT application — `gyan.dev`'s builds are GPL and may **not** be used. `shared`
 because the same requirement says the libraries must stay *replaceable*, which a static build is
 not. An `autobuild-*` tag rather than `latest`, because `latest` is rolling and a release artifact
-has to be rebuildable.
+has to be rebuildable. **A month's last build rather than a daily** (`T-357`), because BtbN keeps
+the last 14 daily builds and each month's last build for two years. The first pin,
+`autobuild-2026-09-12-13-12` (ffmpeg 9.0.1-29, which `0.1.0` shipped), was a daily and had been
+deleted by 2026-10-09.
 
-**Verified rather than assumed** (2026-09-12): the configure line embedded in `ffmpeg.exe` carries
-`--enable-version3` and **no** `--enable-gpl` and **no** `--enable-nonfree`, and `avutil-61.dll`
-self-reports `libavutil license: LGPL version 3 or later`.
+**Verified rather than assumed**, for 9.0.1-29 on 2026-09-12 and again for 9.0.2-17 on 2026-10-10:
+the configure line embedded in `ffmpeg.exe` carries `--enable-version3` and **no**
+`--enable-gpl` and **no** `--enable-nonfree`, and `avutil-61.dll` self-reports
+`libavutil license: LGPL version 3 or later`. The 2026-10-10 check read both strings from the
+extracted binaries without running them.
 
 **The text here is the archive's own `LICENSE.txt`, byte-for-byte**, which is the same principle
 as yt-dlp's above: the licence that ships is the bundled build's, not whatever upstream carries

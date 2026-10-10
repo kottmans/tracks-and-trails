@@ -130,6 +130,73 @@ em dash failed decoding the child's own command line, which proved nothing about
 - [ ] The `windows desktop` Full suite passes at a pushed head that includes this, integration
       suite included. The push is held for `T-184`.
 
+### T-357 — The pinned Windows ffmpeg was deleted upstream
+
+**Status:** In Review — repinned on the maintainer's ruling of 2026-10-10.
+**Owner:** Implementer
+**Priority:** High — the frozen Windows build fails, and `release.yml` runs the same fetch, so
+`T-349`'s `0.1.1` cannot be built until this lands.
+**Phase:** Phase 4.5 (release readiness)
+**Relevant context:** `OPS-001`; `LIC-001`; `T-319`; `T-323`;
+[fetch_ffmpeg.py](../../packaging/fetch_ffmpeg.py);
+[the licence provenance](../../packaging/licenses/README.md#which-ffmpeg-and-how-its-licence-was-obtained).
+**Affected surfaces:** `packaging/fetch_ffmpeg.py`'s pin; `packaging/licenses/README.md`. The
+committed `ffmpeg-LGPL.txt` is unchanged.
+**Risk:** Medium — the Windows artifact bundles a newer ffmpeg point release, 9.0.2-17 in place of
+9.0.1-29, whose runtime behaviour no Windows run here has yet exercised.
+**Required checks:** the new archive's digest measured and compared with GitHub's; the fetcher
+run end to end on it; the LGPL build flags re-read; Ruff; packaging tests; frozen Windows at a
+pushed head.
+
+#### Cause
+
+`frozen windows` in
+[`37929286459`](https://github.com/kottmans/tracks-and-trails/actions/runs/37929286459/job/113833312372)
+failed in *Build the windowed release artifact*: `fetch_ffmpeg.py` got **HTTP 404** for
+`autobuild-2026-09-12-13-12`. The GitHub API answers 404 for that tag too. BtbN's README:
+*"The last build of each month is kept for two years. The last 14 daily builds are kept."* The
+pin was a daily build, so it was always going to expire. `0.1.0` was built from it, so `0.1.0`'s
+Windows artifact can no longer be rebuilt from its recorded URL either. Keeping a copy of the
+archive ourselves would remove the dependency on BtbN's retention; that is not filed, and it
+would need its own ruling.
+
+#### Change
+
+`autobuild-2026-09-30-13-08`, September's last build:
+`ffmpeg-n9.0.2-17-g2a571b6068-win64-lgpl-shared-9.0.zip`, 76,972,461 bytes, SHA-256
+`7157177b8a6cb2174c1650ba8c71b363f2c78cba5330f88c4c02cf5b2b880646`. It is kept until about 2028-09.
+The rationale for a month-end build is written beside the pin and in the licence README.
+
+#### Evidence, 2026-10-10
+
+- **Digest:** downloaded into an empty scratch directory, the archive hashed to the value above,
+  equal to the `sha256:` digest GitHub publishes for the asset.
+- **The fetcher, end to end:** `main()` with `VENDOR` pointed at that directory exited 0. It
+  verified the digest, found the archive's `LICENSE.txt` equal to the committed
+  `ffmpeg-LGPL.txt`, and extracted `ffmpeg.exe`, `ffprobe.exe` and seven DLLs, 157 MB. The nine
+  file names match the 9.0.1-29 build's, so no DLL's ABI version moved.
+- **LGPL, not GPL** (`LIC-001`), read from the binaries without running them: `ffmpeg.exe` and
+  `avutil-61.dll` carry a 99-flag configure line with `--enable-version3` and neither
+  `--enable-gpl` nor `--enable-nonfree`, and `avutil-61.dll` reports
+  *"LGPL version 3 or later"*.
+- Ruff lint and format; `mypy src`, bare `mypy` and `mypy --platform win32`;
+  `test_artifact_gates.py` and `test_build_scripts.py` (84 passed).
+- **CI's Linux test slice** on this tree, with `T-356` beneath it, in the project `.venv` (PySide6
+  6.11.1): `tests/integration` **518 passed**; `tests/unit tests/ui` **4,500 passed, 2 failed**,
+  22 skipped. Both failures were `test_the_command_the_gates_run_is_the_declared_one`, because the
+  run did not put `.venv/bin` on `PATH` and this machine has no other `ruff` or `mypy`. With it on
+  `PATH`, `test_toolchain_versions.py` passed (5).
+
+#### Acceptance criteria
+
+- [x] The pin names a build BtbN retains, with a measured digest that equals GitHub's.
+- [x] The fetcher accepts it: digest, licence text and the executables the app runs.
+- [x] The configure flags still satisfy `LIC-001`.
+- [ ] `frozen windows` builds and smoke-tests the release artifact at a pushed head that includes
+      this. The push is held for `T-184`.
+
+`CHANGELOG.md` keeps no unreleased section, so naming the ffmpeg change is recorded on `T-349`.
+
 ## Ready
 
 ### T-184 — The escape hatch: additional yt-dlp options, parsed and bounded
@@ -1169,7 +1236,9 @@ a later call.
 **Priority:** Medium — it carries two Low-priority fixes, and it is the first update `0.1.0`'s users
 are told about by the checker they already have. **Not a blocker on `T-184`** since the amendment
 **Phase:** Phase 4.5 — stage 1
-**Depends on:** `T-343`, `T-347`
+**Depends on:** `T-343`, `T-347`; and, added 2026-10-10, `T-355` and `T-357`, without which a
+fresh build installs PySide6 6.12 and cannot fetch the Windows ffmpeg. The changelog should name
+the bundled ffmpeg's move from 9.0.1-29 to 9.0.2-17 (`T-357`).
 **Relevant context:** `docs/RELEASE.md` (the five steps, and *patch releases carry fixes only*);
 `TESTING.md` §8 (the release gate); `REL-003` (SemVer); `REL-009` (the checker that tells users)
 

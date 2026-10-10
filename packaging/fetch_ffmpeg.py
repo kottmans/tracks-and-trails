@@ -20,6 +20,10 @@ already on disk and fails loudly if it is absent.
 **Pinned to an `autobuild-*` tag, not `latest`.** `latest` is a rolling tag: the same URL returns
 a different binary tomorrow, and a release artifact would then not be rebuildable. The tag below
 names one moment.
+
+**And to a month's last build, not a daily one** (`T-357`). BtbN keeps the last 14 daily builds
+and each month's last build for two years. The first pin, `autobuild-2026-09-12-13-12`, was a daily:
+it answered 404 by 2026-10-09 and failed the frozen Windows build.
 """
 
 from __future__ import annotations
@@ -31,16 +35,17 @@ import zipfile
 from pathlib import Path
 from urllib.request import urlopen
 
-#: One published moment, not a rolling tag.
-FFMPEG_RELEASE = "autobuild-2026-09-12-13-12"
+#: One published moment, not a rolling tag: September 2026's last build, kept until about 2028-09.
+FFMPEG_RELEASE = "autobuild-2026-09-30-13-08"
 
 #: The **shared LGPL** build. Every part of this name is load-bearing: `lgpl` because `LIC-001`
 #: forbids bundling a GPL ffmpeg with this application, and `shared` because the same requirement
 #: says the libraries must stay replaceable — a static build is neither.
-FFMPEG_ARCHIVE = "ffmpeg-n9.0.1-29-gad500d59cb-win64-lgpl-shared-9.0.zip"
+FFMPEG_ARCHIVE = "ffmpeg-n9.0.2-17-g2a571b6068-win64-lgpl-shared-9.0.zip"
 
-#: Verified before anything is extracted. Measured 2026-09-12 on the archive this pin names.
-FFMPEG_SHA256 = "609245cc0a906c1423f2cdb96e27925302d375fe8024dcbc4b3f6aaf757a43ff"
+#: Verified before anything is extracted. Measured 2026-10-10 on the archive this pin names, and
+#: equal to the digest GitHub publishes for that release asset.
+FFMPEG_SHA256 = "7157177b8a6cb2174c1650ba8c71b363f2c78cba5330f88c4c02cf5b2b880646"
 
 FFMPEG_URL = (
     f"https://github.com/BtbN/FFmpeg-Builds/releases/download/{FFMPEG_RELEASE}/{FFMPEG_ARCHIVE}"
