@@ -30,6 +30,7 @@ import functools
 import importlib
 import logging
 import os
+import re
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from optparse import OptParseError
 from pathlib import Path
@@ -934,6 +935,22 @@ def unparseable(argv: Sequence[str], groups: Sequence[Sequence[str]]) -> tuple[b
     return True, None
 
 
+#: Where `match_str` splits a filter into parts: an `&` not escaped with a backslash. yt-dlp's own
+#: expression, read at 2026.08.19; each part keeps its `\&`, which `match_str` unescapes itself.
+_FILTER_PARTS: Final = re.compile(r"(?<!\\)&")
+
+
+class _EveryFieldIsText:
+    """An item whose every field is the empty string, so each comparison in a filter is made.
+
+    Text rather than a number on purpose: a string operator on a number raises before the pattern
+    is reached, and on text every operator here is defined, so the only error left is the pattern.
+    """
+
+    def get(self, key: str, default: object = None) -> str:
+        return ""
+
+
 def _unreadable_when_it_runs(argv: Sequence[str]) -> str | None:
     """The option whose **effective** value yt-dlp takes as text now and cannot read later.
 
@@ -948,6 +965,12 @@ def _unreadable_when_it_runs(argv: Sequence[str]) -> str | None:
     own question with no item: `match_str` with every field missing still parses every part, and
     `codecs.lookup` is the lookup `--encoding` gets. Filters are alternatives, and yt-dlp reaches
     them in no fixed order, so every one is checked rather than any.
+
+    **Parsing a part is not compiling its pattern** (`T184-R8`, seventh round). A missing field
+    answers before `re.search` is reached, so `title~=[` parsed here and raised `PatternError` on
+    the first item with a title. So each part is also evaluated on its own against an item whose
+    every field is text: `~=` then compiles its operand, and no part's answer can hide the next
+    one's, as `match_str`'s `all()` would.
     """
     from yt_dlp.options import parseOpts
     from yt_dlp.utils import match_str
@@ -960,7 +983,9 @@ def _unreadable_when_it_runs(argv: Sequence[str]) -> str | None:
         for text in filters or ():
             try:
                 match_str(text, {}, incomplete=True)
-            except ValueError:
+                for part in _FILTER_PARTS.split(text):
+                    match_str(part, _EveryFieldIsText())
+            except ValueError, re.error:
                 return spelling
     if parsed.encoding is not None:
         try:
@@ -1140,6 +1165,11 @@ def hatch_requires_ffmpeg(text: str, argv: Sequence[str]) -> bool:
 
     Stored options that no longer admit count as none: the job fails on them with its own reason
     when its dictionary is built, and this answers for the part that is still readable.
+
+    **Downloading counts as well as post-processing** (`T184-R14`, seventh round). This read only
+    `postprocessors`, so `--download-sections "*1-2"` was offered with ffmpeg absent and yt-dlp
+    then aborted: *"You have requested downloading the video partially, but ffmpeg is not
+    installed"*. See `_cuts_sections`.
     """
     if not argv and not text.strip():
         return False
@@ -1147,7 +1177,23 @@ def hatch_requires_ffmpeg(text: str, argv: Sequence[str]) -> bool:
         hatch = hatch_options(text, argv)
     except UnusableOptionsError:
         return False
-    return _performed_by_ffmpeg(hatch.get("postprocessors", []))
+    return _performed_by_ffmpeg(hatch.get("postprocessors", [])) or _cuts_sections(
+        hatch.get("download_ranges")
+    )
+
+
+def _cuts_sections(ranges: object) -> bool:
+    """Whether `download_ranges` asks yt-dlp to download only part of an item, which needs ffmpeg.
+
+    yt-dlp gives each requested range a `section_start`, and its downloader choice sends any item
+    with one to the ffmpeg downloader, or aborts when ffmpeg is missing (`YoutubeDL.process_info`,
+    read at 2026.08.19). **Every parse carries a `download_range_func`**, an empty one when
+    nothing was asked, so this asks what it holds rather than whether it is there: chapter
+    patterns, time ranges, or `*from-url`. Its `__eq__` ignores the last, so it is not compared
+    with the default. A chapter pattern that matches nothing cuts nothing, and is still counted,
+    because what it matches depends on the item.
+    """
+    return any(getattr(ranges, part, None) for part in ("chapters", "ranges", "from_info"))
 
 
 def options_needing_ffmpeg(argv: Sequence[str]) -> tuple[str, ...]:
@@ -1164,10 +1210,13 @@ def options_needing_ffmpeg(argv: Sequence[str]) -> tuple[str, ...]:
     named: dict[str, None] = {}
     for chunk in grouped(argv):
         try:
-            specs = parse_options(list(chunk)).ydl_opts.get("postprocessors", [])
+            parsed = parse_options(list(chunk)).ydl_opts
         except SystemExit, OptParseError:
             continue
-        if _performed_by_ffmpeg([spec for spec in specs if spec not in defaults]):
+        specs = parsed.get("postprocessors", [])
+        if _performed_by_ffmpeg([spec for spec in specs if spec not in defaults]) or (
+            _cuts_sections(parsed.get("download_ranges"))
+        ):
             named[chunk[0]] = None
     return tuple(named)
 

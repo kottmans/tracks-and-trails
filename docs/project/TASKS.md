@@ -205,7 +205,8 @@ The rationale for a month-end build is written beside the pin and in the licence
 (2026-09-27).** The sixth round's review, also 2026-09-27, resolved `R6`, `R15` and `R16` and left
 `R8` and `R14` High and blocking. **The maintainer ruled on 2026-10-10** (exact long spellings,
 [below](#maintainer-ruling-2026-10-10--exact-long-spellings-then-the-seventh-round)); the seventh
-round is next, and the push stays held until approval. Filed 2026-08-07 with the
+round is built and with the Reviewer, and the push stays held until approval. Filed 2026-08-07
+with the
 phase. **Unblocked 2026-08-21**: `SEC-005` ruled
 `--legacy-server-connect`, the one disposition this waited on (`T183-R3`, the sixteenth option the
 audit surfaced), and **`unruled` is now 0** — every documented option has a class, which is the
@@ -552,6 +553,40 @@ The batch, written before the code:
    well, so the offer, the editor and `_ffmpeg_gap` agree. Cover ffmpeg absent and present, through
    yt-dlp's real downloader decision. The empty-hatch path stays free of yt-dlp, and the worker's
    guard stays.
+
+**Built 2026-10-10, the seventh round, not yet reviewed.** Corrected and awaiting re-review;
+only the Reviewer marks a finding resolved. Mapped finding by finding:
+
+| Finding | Where | Tests | Mutations caught |
+|---|---|---|---|
+| `R8` abbreviations | `extra_options._resolved`: an exact name or nothing; `_abbreviated` names up to three spellings, else a count. `AMBIGUOUS` is replaced by `ABBREVIATED` | `test_an_abbreviated_long_option_is_refused_naming_its_full_spellings` (the review's three, plus `--fragment-retr` both spellings and `--exec-b`); `test_every_exact_long_name_is_still_read_as_itself` over the whole inventory | M35 |
+| `R6`'s class, kept closed | The same: an abbreviation still reads the values its candidates agree on | `test_an_abbreviation_does_not_repeat_the_value_typed_after_it` (`--video-pass`, `--add-head`, `=` form) | M36 |
+| `R8` regex operands | `ytdlp_adapter._unreadable_when_it_runs`: each part, split on yt-dlp's own `(?<!\\)&`, is also evaluated alone against `_EveryFieldIsText` | `test_a_filter_pattern_yt_dlp_cannot_compile_is_refused` (both spellings, a part hidden behind a false one, a second filter) and `..._can_compile_is_still_accepted`, each proved with `match_str` on an ordinary item | M37, M38 |
+| `R14` download work | `ytdlp_adapter._cuts_sections`, read by `hatch_requires_ffmpeg` and `options_needing_ffmpeg`, so the offer, the editor and `_ffmpeg_gap` share it | `test_a_partial_download_needs_ffmpeg_by_yt_dlp_s_own_decision` (yt-dlp's range callback and `get_suitable_downloader`, ffmpeg absent and present); the built-in binding; the worker gate for a resolved single file; the editor both ways; chapter patterns and `*from-url` | M39, M40, M41 |
+
+**Two traps the measurements found.** `match_str` evaluates parts with `all()`, so a false
+comparison in front hid a bad pattern behind it, and evaluating the whole filter at once misses it
+(M38). And every parse carries a `download_range_func`, an empty one when nothing was asked, so
+"is `download_ranges` set" counts every option as download work; its `__eq__` also ignores
+`from_info` (M40, M41).
+
+**Sibling audit.** Regex: `--replace-in-metadata`, `--parse-metadata`, `--remove-chapters` and
+`--download-sections` compile their patterns in yt-dlp's parse step, so the seam already refused
+bad ones; `--match-title` and `--reject-title` would not, and are refused as unruled. Download
+work: `--downloader` and `--external-downloader` are forbidden (`SEC-004`), and
+`--hls-prefer-ffmpeg` and `--hls-prefer-native` are unruled. `--fixup` without ffmpeg is a warning
+in yt-dlp, not an abort, and `--hls-use-mpegts` and `--live-from-start` need none from the hatch.
+Live items reach yt-dlp's ffmpeg downloader whatever the hatch says; that is not hatch work, is
+outside `R14`, and was not investigated. **One sibling stays open by its nature:** a string
+operator on a numeric field (`duration~=5`) raises only on a real item, because the field's type
+belongs to the item; it is not checked.
+
+**Checks, 2026-10-10, on Linux** (project `.venv`, Python 3.14.7, PySide6 6.11.1, yt-dlp
+2026.08.19): `ruff check .` and `ruff format --check .` (463 files); `mypy src` (69), bare `mypy`
+and `mypy --platform win32` (210 each); M35–M41 all caught, with each source restored after its
+mutation. The default suite as CI runs it, with `.venv/bin` on `PATH` and
+`TRACKSANDTRAILS_REQUIRE_FFMPEG=1`: `tests/unit tests/ui` under `-n auto`, **4,529 passed**, 22
+skipped; `tests/integration`, **520 passed**. No Windows run.
 
 #### Maintainer ruling, 2026-09-27 — redesign validation and redaction, then one batch
 

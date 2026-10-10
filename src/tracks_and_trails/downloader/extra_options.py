@@ -116,11 +116,16 @@ NOT_A_FULL_PATH: Final = (
     "Give a full path. A relative one would be taken from wherever this application was started."
 )
 
-#: What a user is told when what they typed begins more than one option's name.
+#: What a user is told when a long option is abbreviated (`ARC-010`, amended 2026-10-10).
 #:
-#: yt-dlp's parser, which is optparse, accepts a long option by any prefix that names exactly one
-#: (`--fragment-retr`), and refuses a prefix that names several. The seam does both the same way.
-AMBIGUOUS: Final = "This begins more than one option's name. Type the whole name."
+#: optparse accepts a unique prefix, and yt-dlp's parser bends that rule: aliases of one option are
+#: not ambiguous with each other, and it knows deprecated options this inventory does not. Two
+#: designs that mirrored it disagreed with yt-dlp (`T184-R8`), so the maintainer ruled that a long
+#: option is typed in full. The names offered are from this application's inventory.
+ABBREVIATED: Final = "Type the option's whole name."
+
+#: How many names an abbreviation's refusal lists before it gives a count instead.
+_NAMES_LISTED: Final = 3
 
 #: What a user is told when an option that takes no value is given one with `=`.
 TAKES_NO_VALUE: Final = "This option takes no value."
@@ -295,17 +300,33 @@ class _Occurrence:
     problem: str | None
 
 
-def _resolved(name: str) -> tuple[str | None, str | None]:
-    """The long option `name` means by optparse's rule: an exact name, else a unique prefix."""
+def _resolved(name: str) -> tuple[str | None, str | None, int]:
+    """The long option `name` is, its problem if it is none, and how many values to read after it.
+
+    **An exact name or nothing** (`ARC-010`, amended 2026-10-10). A prefix of one or more names is
+    refused as an abbreviation, naming them. **It still reads the values those names agree on**,
+    so `--video-pass hunter2` is one refusal for `--video-pass`, and the password never comes back
+    as a stray word the refusal would repeat (`T184-R6`). Names that disagree read none, as an
+    ambiguous prefix always has.
+    """
     arity = option_arity()
     if name in arity:
-        return name, None
-    prefixed = [
+        return name, None, arity[name]
+    prefixed = sorted(
         spelling for spelling in arity if spelling.startswith("--") and spelling.startswith(name)
-    ]
-    if len(prefixed) == 1:
-        return prefixed[0], None
-    return None, AMBIGUOUS if prefixed else NOT_AN_OPTION
+    )
+    if not prefixed:
+        return None, NOT_AN_OPTION, 0
+    takes = {arity[spelling] for spelling in prefixed}
+    return None, _abbreviated(prefixed), takes.pop() if len(takes) == 1 else 0
+
+
+def _abbreviated(names: Sequence[str]) -> str:
+    """The refusal for an abbreviation of `names`, which lists them while there are few."""
+    if len(names) > _NAMES_LISTED:
+        return f"{ABBREVIATED} This begins {len(names)} options' names."
+    listed = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} or {names[-1]}"
+    return f"{ABBREVIATED} This could be {listed}."
 
 
 def _read(tokens: Sequence[str]) -> Iterator[_Occurrence | str]:
@@ -313,11 +334,12 @@ def _read(tokens: Sequence[str]) -> Iterator[_Occurrence | str]:
 
     **One tokenizer, optparse's own rules** (the 2026-09-27 redesign). Three hand-written splits
     disagreed with each other and with yt-dlp: an empty inline value was called missing, an inline
-    first value lost the values after it, and attached short values, clusters and unique prefixes
-    were refused though yt-dlp accepts them. So:
+    first value lost the values after it, and attached short values and clusters were refused
+    though yt-dlp accepts them. So:
 
-    - a long option is resolved by exact name or unique prefix, and `--opt=text` makes `text` its
-      first value **even when empty**, the rest coming from the tokens after it;
+    - a long option is known only by an exact name, an abbreviation being refused
+      (`ARC-010`, amended 2026-10-10), and `--opt=text` makes `text` its first value
+      **even when empty**, the rest coming from the tokens after it;
     - a short word is read a letter at a time, and the first letter that takes a value takes the
       rest of the word as its first value (`-N4`, `-cN4`).
 
@@ -341,8 +363,7 @@ def _read(tokens: Sequence[str]) -> Iterator[_Occurrence | str]:
             continue
         if word.startswith("--"):
             name, separator, inline = word.partition("=")
-            spelling, problem = _resolved(name)
-            wanted = arity.get(spelling, 0) if spelling is not None else 0
+            spelling, problem, wanted = _resolved(name)
             if spelling is not None and separator and not wanted:
                 yield _Occurrence(name, spelling, (), TAKES_NO_VALUE)
                 continue

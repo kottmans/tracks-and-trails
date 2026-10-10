@@ -273,6 +273,64 @@ def test_the_ffmpeg_preflight_counts_the_hatch_s_work() -> None:
     assert requires_ffmpeg(splitting), "a job needing ffmpeg said it did not"
 
 
+@pytest.mark.parametrize("ffmpeg_installed", [False, True])
+@pytest.mark.parametrize(
+    ("text", "partial"),
+    [
+        ('--download-sections "*1-2"', True),
+        ("--fragment-retries 3", False),
+        ("", False),
+    ],
+)
+def test_a_partial_download_needs_ffmpeg_by_yt_dlp_s_own_decision(
+    text: str, partial: bool, ffmpeg_installed: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T184-R14`, seventh round: downloading counts as ffmpeg work, not only post-processing.
+
+    The preflight read only `postprocessors`, so `--download-sections "*1-2"` said no ffmpeg was
+    needed for a resolved single-file format, and yt-dlp then aborted: *"You have requested
+    downloading the video partially, but ffmpeg is not installed"*. Here the options the job is
+    built with drive yt-dlp's own range callback and downloader choice for an ordinary item.
+    yt-dlp aborts exactly when an item has a `section_start` and the choice is not `FFmpegFD`.
+    """
+    from yt_dlp.downloader import get_suitable_downloader
+    from yt_dlp.downloader.external import FFmpegFD
+
+    monkeypatch.setattr(
+        FFmpegFD, "available", classmethod(lambda _cls, _path=None: ffmpeg_installed)
+    )
+    _, argv = options_for(text)
+    request = a_request(extra_options=text, extra_option_argv=argv)
+    options = build_options(request, BASE["output_template"])
+    item = {"id": "t184", "url": "https://example.invalid/t184.mp4", "ext": "mp4", "duration": 10}
+
+    ranges = options.get("download_ranges", lambda *_: [{}])
+    sections = [section for section in ranges(item, None) if section]
+    cut = [
+        {**item, "section_start": section["start_time"], "section_end": section["end_time"]}
+        for section in sections
+    ]
+    aborts = any(get_suitable_downloader(dict(each), options) is not FFmpegFD for each in cut)
+
+    assert requires_ffmpeg(request) is partial
+    assert bool(cut) is partial, "the range callback did not cut the item as expected"
+    assert aborts is (partial and not ffmpeg_installed), (
+        "yt-dlp's own choice disagrees: it aborts only where sections need an absent ffmpeg"
+    )
+
+
+@pytest.mark.parametrize("text", ['--download-sections "intro"', '--download-sections "*from-url"'])
+def test_sections_that_depend_on_the_item_are_counted_as_ffmpeg_work(text: str) -> None:
+    """A chapter pattern cuts only items with a matching chapter, and `*from-url` only a URL with
+    a time in it. Neither is knowable before the item, so both count: a refusal up front costs
+    less than an abort after the probe. `download_range_func.__eq__` ignores `from_info`, which is
+    why the predicate asks what the ranges hold rather than comparing them with the default.
+    """
+    _, argv = options_for(text)
+
+    assert requires_ffmpeg(a_request(extra_options=text, extra_option_argv=argv))
+
+
 def test_stored_options_the_audit_refuses_stop_the_build() -> None:
     """`T184-R5`, through `build_options` itself: a hand-edited preset cannot smuggle one in."""
     request = a_request(extra_options="--continue", extra_option_argv=("--geo-bypass",))

@@ -8,6 +8,7 @@ it — `T184-R3` established that `parse_options` exits the process on `--help` 
 
 from __future__ import annotations
 
+import re
 import shlex
 import subprocess
 import sys
@@ -16,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from tracks_and_trails.downloader.extra_options import (
+    ABBREVIATED,
     BAD_VALUE,
     HAS_A_CONTROL,
     NO_EFFECT,
@@ -484,7 +486,6 @@ def test_a_path_absolute_once_yt_dlp_expands_it_is_accepted(
         ("-N4", ("-N", "4")),
         ("-I1:3", ("-I", "1:3")),
         ("-cN4", ("-c", "-N", "4")),
-        ("--fragment-retr 5", ("--fragment-retries", "5")),
         ('--replace-in-metadata=title foo ""', ("--replace-in-metadata", "title", "foo", "")),
         ('"--add-headers=Referer: T184"', ("--add-headers", "Referer: T184")),
     ],
@@ -495,9 +496,10 @@ def test_the_seam_reads_a_command_line_the_way_yt_dlp_s_parser_does(
     """`T184-R8`, redesigned 2026-09-27: one tokenizer, optparse's own rules, one canonical argv.
 
     Three hand-written splits disagreed with yt-dlp. Attached short values (`-N4`), clusters
-    (`-cN4`), unique long prefixes (`--fragment-retr`) and an inline first value followed by the
-    rest were refused or truncated; yt-dlp's parser accepts every one. The canonical form spells
-    each option in full with its values as separate tokens, and means exactly what was typed.
+    (`-cN4`) and an inline first value followed by the rest were refused or truncated; yt-dlp's
+    parser accepts every one. The canonical form spells each option in full with its values as
+    separate tokens, and means exactly what was typed. Abbreviated long options are refused
+    instead (`ARC-010`, amended 2026-10-10), so none is here.
     """
     from yt_dlp import parse_options
 
@@ -514,7 +516,7 @@ def test_the_seam_reads_a_command_line_the_way_yt_dlp_s_parser_does(
     [
         ("--continue=yes", "--continue"),
         ("--no-", "--no-"),
-        # A unique prefix of a forbidden option is that option, and is refused for its reason.
+        # An abbreviation of a forbidden option is refused, as every abbreviation is.
         ("--exec-b x", "--exec-b"),
         # A cluster is decided flag by flag, so a refused flag inside one is still refused.
         ("-ci", "-i"),
@@ -527,11 +529,81 @@ def test_the_seam_refuses_what_yt_dlp_s_parser_refuses_or_forbids(text: str, nam
     assert named in [refusal.option for refusal in admission.refusals], admission.refusals
 
 
-def test_an_abbreviation_is_refused_for_the_option_it_abbreviates() -> None:
-    """The reason is the full option's, so the user learns what they actually asked for."""
-    [refusal] = admit("--exec-b x").refusals
+@pytest.mark.parametrize(
+    ("text", "names"),
+    [
+        # The review's three (`T184-R8`, 2026-09-27). yt-dlp accepts the first two, because aliases
+        # of one option are not ambiguous to its parser, and refuses the third as ambiguous; the
+        # sixth round refused the first two and quietly turned the third into `--cache-dir`.
+        ("--convert-s srt", ("--convert-sub", "--convert-subs", "--convert-subtitles")),
+        ("--clean-info", ("--clean-info-json", "--clean-infojson")),
+        ("--ca /tmp/t184-review-cache", ("--cache-dir",)),
+        # A prefix of exactly one name, which the sixth round admitted as that option.
+        ("--fragment-retr 5", ("--fragment-retries",)),
+        ("--fragment-retr=5", ("--fragment-retries",)),
+        ("--exec-b x", ("--exec-before-download",)),
+    ],
+)
+def test_an_abbreviated_long_option_is_refused_naming_its_full_spellings(
+    text: str, names: tuple[str, ...]
+) -> None:
+    """`ARC-010`, amended 2026-10-10: a long option is typed in full.
 
-    assert refusal.reason == admit("--exec-before-download x").refusals[0].reason
+    Two designs that resolved prefixes disagreed with yt-dlp's parser, which bends optparse's rule.
+    Refusing every abbreviation never admits what yt-dlp would refuse or read differently, and
+    the refusal names what to type instead.
+    """
+    admission = admit(text)
+
+    assert admission.accepted == (), f"{text!r} was admitted"
+    [refusal] = admission.refusals
+    assert refusal.option == text.split()[0].partition("=")[0]
+    assert refusal.reason.startswith(ABBREVIATED)
+    for name in names:
+        assert name in refusal.reason, f"{name} is not offered: {refusal.reason!r}"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "--video-pass T184_ABBREVIATED_CANARY",
+        '--add-head "Authorization: Bearer T184_ABBREVIATED_CANARY"',
+        "--video-pass=T184_ABBREVIATED_CANARY",
+    ],
+)
+def test_an_abbreviation_does_not_repeat_the_value_typed_after_it(text: str) -> None:
+    """`T184-R6`'s class, kept closed by the 2026-10-10 change.
+
+    The sixth round read a unique prefix as its option, values included. Refused without reading
+    them, the value would have been the next word, and a stray word is refused **by name**: the
+    password would be shown back and could be repeated wherever a refusal is.
+    """
+    admission = admit(text)
+
+    assert len(admission.refusals) == 1, admission.refusals
+    for line in refusal_lines(admission):
+        assert "CANARY" not in line, f"the value was repeated back: {line!r}"
+
+
+def test_every_exact_long_name_is_still_read_as_itself() -> None:
+    """The other direction: refusing abbreviations must not refuse a name typed in full.
+
+    Every long spelling in the inventory, with as many values as it takes. Each may still be
+    refused for its class or its value, but never as an abbreviation of something else, which a
+    name that is also a prefix of a longer one (`--convert-sub`) would be under a careless rule.
+    """
+    arity = option_arity()
+    abbreviated = [
+        spelling
+        for spelling in arity
+        if spelling.startswith("--")
+        and any(
+            refusal.reason.startswith(ABBREVIATED)
+            for refusal in admit(shlex.join([spelling, *["T184"] * arity[spelling]])).refusals
+        )
+    ]
+
+    assert not abbreviated, f"refused as abbreviations though typed in full: {abbreviated}"
 
 
 def test_an_empty_inline_value_is_a_value_and_this_one_fails_the_job() -> None:
@@ -562,6 +634,77 @@ def test_a_value_read_later_is_judged_by_what_yt_dlp_keeps(text: str, usable: bo
     admission, _ = options_for(text)
 
     assert admission.usable is usable, refusal_lines(admission)
+
+
+#: An ordinary item, for evaluating a filter the way yt-dlp does as each one arrives.
+_AN_ITEM: dict[str, object] = {
+    "title": "T184 ordinary [title] a&b",
+    "uploader": "someone",
+    "duration": 120,
+    "is_live": False,
+}
+
+
+@pytest.mark.parametrize(
+    ("text", "option", "evaluated"),
+    [
+        ('--match-filters "title~=["', "--match-filters", "title~=["),
+        ('--break-match-filters "title~=["', "--break-match-filters", "title~=["),
+        # `match_str` stops at the first part that is false, so a comparison in front hides the
+        # pattern from a check that only ever evaluates the whole filter.
+        ('--match-filters "duration>5 & title~=["', "--match-filters", "duration>5 & title~=["),
+        (
+            '--match-filters "title~=T184" --match-filters "uploader~=(unclosed"',
+            "--match-filters",
+            "uploader~=(unclosed",
+        ),
+    ],
+)
+def test_a_filter_pattern_yt_dlp_cannot_compile_is_refused(
+    text: str, option: str, evaluated: str
+) -> None:
+    """`T184-R8`, seventh round: parsing a filter part is not compiling its pattern.
+
+    The sixth round asked `match_str` with every field missing, which answers before `re.search`
+    is reached. `title~=[` passed the seam, the stored-options check and the editor, and raised
+    `PatternError` on the first item with a title. The last line is that item, evaluated as yt-dlp
+    evaluates it, so the refusal is shown to stand for a real failure.
+    """
+    from yt_dlp.utils import match_str
+
+    admission, argv = options_for(text)
+
+    assert argv == ()
+    assert [(refusal.option, refusal.reason) for refusal in admission.refusals] == [
+        (option, BAD_VALUE)
+    ]
+    with pytest.raises(re.error):
+        match_str(evaluated, _AN_ITEM)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '--match-filters "title~=(?i)^t184"',
+        "--match-filters 'title~=\\[title\\]'",
+        '--match-filters "title*=a\\&b"',
+        '--match-filters "title~=T184" --match-filters "uploader~=some(one)?"',
+        "--break-match-filters \"title~='(?P<word>ordinary)'\"",
+    ],
+)
+def test_a_filter_pattern_yt_dlp_can_compile_is_still_accepted(text: str) -> None:
+    """The other direction: valid patterns, escapes, quoting and repeats keep passing.
+
+    Each admitted filter is then evaluated against an ordinary item, as yt-dlp will, and must
+    not raise: agreement between the application's helpers is not the proof.
+    """
+    from yt_dlp.utils import match_str
+
+    admission, argv = options_for(text)
+
+    assert admission.usable, refusal_lines(admission)
+    for value in argv[1::2]:
+        match_str(value, _AN_ITEM)
 
 
 def test_options_that_contradict_each_other_are_refused_together() -> None:

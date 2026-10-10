@@ -746,7 +746,14 @@ def test_the_pure_ffmpeg_predicate_agrees_with_the_definitive_one() -> None:
     # **And every built-in again with a hatch** (`T184-R14`). The fields-only predicate offered a
     # preset carrying `--split-chapters` with ffmpeg absent, and the worker refused it. The offer
     # now asks `preset_needs_ffmpeg`, which counts the hatch, so that is what is bound here.
-    hatches = ("", "--split-chapters", "--convert-thumbnails png", "--fragment-retries 3")
+    # `--download-sections` is download work rather than a processor (`T184-R14`, seventh round).
+    hatches = (
+        "",
+        "--split-chapters",
+        "--convert-thumbnails png",
+        "--fragment-retries 3",
+        '--download-sections "*1-2"',
+    )
     disagreements = []
     for built_in in presets.BUILT_IN_PRESETS:
         for text in hatches:

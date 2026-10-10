@@ -929,6 +929,22 @@ def test_the_rejection_reason_carries_no_filesystem_path(tmp_path: Path) -> None
         ({"subtitle_languages": ("en",), "embed_subtitles": True}, True),
         ({"media_kind": MediaKind.AUDIO, "format_selector": "bestaudio"}, True),
         ({"format_selector": "bestvideo+bestaudio"}, True),
+        # `T184-R14`, seventh round: a resolved single-file format, cut by the hatch into a section,
+        # which yt-dlp downloads only through ffmpeg. A hatch needing no ffmpeg is the control.
+        (
+            {
+                "extra_options": '--download-sections "*1-2"',
+                "extra_option_argv": ("--download-sections", "*1-2"),
+            },
+            True,
+        ),
+        (
+            {
+                "extra_options": "--fragment-retries 3",
+                "extra_option_argv": ("--fragment-retries", "3"),
+            },
+            False,
+        ),
         ({"post_processors": ("Exec",)}, False),
         ({}, False),
     ],

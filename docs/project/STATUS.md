@@ -76,15 +76,15 @@ task and review records it summarised.*
   **The approval does not cover release readiness**, and two follow-ups remain: `T-350`, and the
   human selection walk, which no instrument here can perform — `isItemVisibleInAnyView` says the
   item is in a view, not that it is highlighted.
-- **`T-184` is In Progress, with every stage built, and needs a seventh round.** The sixth round,
+- **`T-184` is In Progress, and its seventh round is built and with the Reviewer.** The sixth round,
   the redesign the maintainer chose on 2026-09-27, was reviewed the same day
   ([record](reviews/T-184.md#2026-09-27--sixth-round-redesign-verification)): `R6`, `R15` and `R16`
   resolved, and `R8` and `R14` are still High. `R8` reproduced its class again, so TESTING §14
   asked for a ruling, and **on 2026-10-10 the maintainer chose exact long spellings**: an
-  abbreviated option is refused with its full names (`ARC-010` amended). The seventh round also
-  checks regex operands in match filters and counts ffmpeg download work such as
-  `--download-sections`; its design is in the task entry. **The push stays held until approval**,
-  and with it CI evidence for `T-355`, `T-356` and `T-357`.
+  abbreviated option is refused with its full names (`ARC-010` amended). The seventh round, built
+  2026-10-10, also checks regex operands in match filters and counts ffmpeg download work such as
+  `--download-sections`; its design, mapping and checks are in the task entry. **The push stays
+  held until approval**, and with it CI evidence for `T-355`, `T-356` and `T-357`.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the
@@ -140,6 +140,11 @@ Every full run also skipped 22 and deselected 2. **Every failure in them is `T-3
 of `test_the_mounted_format_panel_fits_the_dialog_it_asked_for`, each failing with *"row 0 offered
 no format control"*. The nine cases passed alone after each run. None of these rounds changes the
 add dialog or the probe of a request with no hatch.
+
+**The seventh round (2026-10-10)** ran the default suite as CI runs it rather than this serial
+command: unit and UI under `-n auto`, **4,529 passed**, 22 skipped; integration **520 passed**; no
+`T-350` failure appeared. Its other checks are in the
+[task entry](TASKS.md#maintainer-ruling-2026-10-10--exact-long-spellings-then-the-seventh-round).
 
 No Windows runtime, external download or release-gate result is claimed here.
 

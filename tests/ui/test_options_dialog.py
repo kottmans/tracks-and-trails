@@ -1310,6 +1310,24 @@ def test_the_same_options_are_accepted_where_ffmpeg_is(
     assert ok_button(dialog).isEnabled()
 
 
+@pytest.mark.parametrize("ffmpeg_available", [False, True])
+def test_a_section_download_is_refused_where_typed_only_without_ffmpeg(
+    editor: Callable[..., OptionsDialog], spin: Callable[..., bool], ffmpeg_available: bool
+) -> None:
+    """`T184-R14`, seventh round: downloading part of an item is ffmpeg's work too.
+
+    The editor accepted `--download-sections` with no ffmpeg and no refusal, because only
+    post-processors were counted, and yt-dlp aborted the job.
+    """
+    dialog = editor(ffmpeg_available=ffmpeg_available)
+
+    typed(dialog, '--download-sections "*1-2" --fragment-retries 3', spin)
+
+    expected = "" if ffmpeg_available else f"--download-sections: {NEEDS_FFMPEG}"
+    assert dialog.extra_refusals_text() == expected
+    assert ok_button(dialog).isEnabled() is ffmpeg_available
+
+
 @pytest.mark.parametrize("shown", ["", "   "])
 def test_hidden_tokens_behind_empty_text_become_the_empty_pair(
     editor: Callable[..., OptionsDialog], shown: str
