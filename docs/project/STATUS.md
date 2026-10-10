@@ -76,15 +76,15 @@ task and review records it summarised.*
   **The approval does not cover release readiness**, and two follow-ups remain: `T-350`, and the
   human selection walk, which no instrument here can perform — `isItemVisibleInAnyView` says the
   item is in a view, not that it is highlighted.
-- **`T-184` is In Progress, and its seventh round is built and with the Reviewer.** The sixth round,
-  the redesign the maintainer chose on 2026-09-27, was reviewed the same day
-  ([record](reviews/T-184.md#2026-09-27--sixth-round-redesign-verification)): `R6`, `R15` and `R16`
-  resolved, and `R8` and `R14` are still High. `R8` reproduced its class again, so TESTING §14
-  asked for a ruling, and **on 2026-10-10 the maintainer chose exact long spellings**: an
-  abbreviated option is refused with its full names (`ARC-010` amended). The seventh round, built
-  2026-10-10, also checks regex operands in match filters and counts ffmpeg download work such as
-  `--download-sections`; its design, mapping and checks are in the task entry. **The push stays
-  held until approval**, and with it CI evidence for `T-355`, `T-356` and `T-357`.
+- **`T-184` is In Progress, and its eighth round is next.** On 2026-10-10 the maintainer chose
+  exact long spellings (`ARC-010` amended) after `R8` reproduced its class through the 2026-09-27
+  redesign. The seventh round, reviewed the same day
+  ([record](reviews/T-184.md#2026-10-10--seventh-round-focused-verification)), resolved `R14`
+  and left `R8` High: a pattern `re.compile` cannot build raises `OverflowError` or
+  `RecursionError`, which escaped every boundary, the editor's included. `R17`, Low, is a value
+  named back after an ambiguous prefix. **The maintainer chose to revise the validation boundary
+  within the task**; the eighth round's design is in the task entry. **The push stays held until
+  approval**, and with it CI evidence for `T-355`, `T-356` and `T-357`.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the
@@ -152,7 +152,8 @@ No Windows runtime, external download or release-gate result is claimed here.
 
 - **CI's Linux job has failed since PySide6 6.12.0 was published** (runs of 2026-10-08 and
   2026-10-09): the new metapackage requires `PySide6_WebEngine` and `PySide6_Pdf`, and the
-  `LIC-001` gate refuses them. **`T-355` caps PySide6 below 6.12** and is In Review
+  `LIC-001` gate refuses them. **`T-355` caps PySide6 below 6.12**; reviewed 2026-10-10, it is
+  Blocked only on CI evidence from a pushed head
   ([record](TASKS.md#t-355--pyside6-612-brings-webengine-and-pdf-into-the-bundled-tree)).
 - **`STARBASE` was offline from 2026-09-18 to 2026-10-09**, and GitHub had removed its
   registration by the time it returned; it was registered again on 2026-10-09
@@ -162,11 +163,14 @@ No Windows runtime, external download or release-gate result is claimed here.
 - **The first Windows run since, at `8857753`, failed both Windows jobs**
   ([`37929286459`](https://github.com/kottmans/tracks-and-trails/actions/runs/37929286459)). The
   desktop slice passed (46). The Full suite failed one test on a cp1252 pipe to Ruff, which
-  **`T-356`** fixes (In Review), and that stopped the Windows integration suite before it ran.
-  **Nothing committed since 2026-09-18 has Windows integration evidence.** The frozen build
-  failed because BtbN had deleted the pinned ffmpeg, a daily build; **`T-357`** repins to a
-  month-end build kept for two years (In Review). `release.yml` uses the same pin, so `0.1.1`
-  cannot be built without it.
+  **`T-356`** fixes, and that stopped the Windows integration suite before it ran. **Nothing
+  committed since 2026-09-18 has Windows integration evidence.** The frozen build failed because
+  BtbN had deleted the pinned ffmpeg, a daily build; **`T-357`** repins to a month-end build kept
+  for two years. `release.yml` uses the same pin, so `0.1.1` cannot be built without it. Both were
+  reviewed 2026-10-10 and are Blocked only on Windows CI evidence from a pushed head.
+- **`0.1.0`'s ffmpeg archive survives only in the maintainer's ignored
+  `packaging/vendor/ffmpeg/`** (`T357-R2`): its recorded URL answers 404, and the copy there hashes
+  to the digest `0.1.0` recorded. Keep it until `T-349` settles where build dependencies are kept.
 - **T-289 is Complete under the 2026-09-04 re-scope, and Phase 4 may exit over it**
   — the reserved decision was taken by the maintainer on 2026-09-11 (`P4EXIT-R3`):
   **bounded acceptance**, on the implemented pool/ownership guards rather than on an
