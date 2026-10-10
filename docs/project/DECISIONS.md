@@ -6,7 +6,7 @@ requirements or design — those live in `REQUIREMENTS.md` and `ARCHITECTURE.md`
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-09-27
+**Last updated:** 2026-10-10
 **Update when:** A durable choice is accepted, superseded, or deliberately rejected.
 **Does not contain:** Completion notes for routine work. Routine fixes go to `TASKS.md` and `CHANGELOG.md`.
 
@@ -90,7 +90,7 @@ Current requirements and architecture retain their own canonical authority.
 | [OPS-009](#ops-009--where-each-ci-job-runs-now-that-starbase-is-back-and-minutes-are-metered) | Where each CI job runs, now that `STARBASE` is back and minutes are metered | Partly superseded | [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously); [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died); [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
 | [DAT-006](#dat-006--the-completion-ledger-what-it-stores-and-what-it-deliberately-does-not) | The completion ledger: what it stores, and what it deliberately does not | Withdrawn; purge ruling accepted | [Withdrawn 2026-08-06](#withdrawn-2026-08-06--there-is-no-ledger-so-there-is-nothing-to-decide); [Legacy-data ruling 2026-08-06](#legacy-data-ruling-2026-08-06--the-rows-already-written-are-purged-on-upgrade) |
 | [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch) | The queue does not run until it is started, and it is stopped at every launch | Accepted | [Amended 2026-09-12](#amended-2026-09-12--a-queue-with-nothing-left-to-do-stops-itself) |
-| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted); [Amended 2026-09-27](#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute) |
+| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted); [Amended 2026-09-27](#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute); [Amended 2026-10-10](#amended-2026-10-10--a-long-option-is-typed-in-full) |
 | [UX-007](#ux-007--the-phase-3-surfaces-ruled-all-25-open-p-clauses) | The Phase 3 surfaces, ruled: all 25 open `[P]` clauses | Accepted | — |
 | [SEC-004](#sec-004--the-fifteen-options-sec-003-did-not-see-are-all-forbidden) | The fifteen options `SEC-003` did not see are all forbidden | Accepted | — |
 | [SEC-005](#sec-005----legacy-server-connect-is-forbidden-on-sec-004s-own-tls-reasoning) | `--legacy-server-connect` is forbidden, on `SEC-004`'s own TLS reasoning | Accepted | — |
@@ -5612,6 +5612,34 @@ directory; that extension is the implementer's reading and is the maintainer's t
 **The alternatives, as they were put.** Resolving against the download folder would give one preset
 a separate archive in every folder. Leaving yt-dlp's behaviour would keep writing wherever the
 application was started.
+
+### Amended 2026-10-10 — a long option is typed in full
+
+**Status:** **Accepted** — maintainer ruling of 2026-10-10, on `T184-R8` as the 2026-09-27
+sixth-round review left it.
+**Amends:** §2's *"taking command-line syntax"*.
+
+**The problem.** optparse accepts a unique prefix of a long option, and `T-184`'s sixth round
+admitted them by re-implementing that rule. yt-dlp's parser does not follow it: aliases of one
+option are not ambiguous with each other, and its inventory includes deprecated options the
+application's does not. The review found the hatch refusing `--convert-s srt` and `--clean-info`,
+which yt-dlp accepts, and turning `--ca`, which yt-dlp refuses as ambiguous, into `--cache-dir`.
+That was the second design whose correction reproduced `R8`'s class (`TESTING.md` §14).
+
+**What is ruled.** **A long option is accepted only when typed exactly as one of its names.** An
+abbreviation is refused where the user typed it, with the reason, naming the full spellings it
+could stand for. Short options, clusters and attached values are unaffected; none of them depends
+on prefix matching.
+
+**What it gives up.** The hatch accepts less than yt-dlp's command line: a pasted command that
+abbreviates needs one edit. It never accepts what yt-dlp would refuse or read as a different
+option, and an abbreviation's meaning stops depending on the option list of whichever yt-dlp is
+pinned.
+
+**The alternatives, as they were put.** Resolving prefixes through the pinned parser's own matching,
+the reviewer's recommendation, keeps full parity but leaves the hatch mirroring optparse where this
+class has now failed twice. Exact spellings now with a follow-up task to restore abbreviations
+was also offered, and was not chosen.
 
 ---
 

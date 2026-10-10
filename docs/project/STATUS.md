@@ -76,12 +76,15 @@ task and review records it summarised.*
   **The approval does not cover release readiness**, and two follow-ups remain: `T-350`, and the
   human selection walk, which no instrument here can perform — `isItemVisibleInAnyView` says the
   item is in a view, not that it is highlighted.
-- **`T-184` is In Progress, with every stage built, the interface included.** The review of
-  2026-09-27 resolved `R9`, `R10`, `R11` and `R13` and left `R6` (Critical), `R8`, `R14` and
-  `R15` blocking. It invoked TESTING §14, because the redaction and validation corrections keep
-  reproducing their defect class. **The maintainer chose to revisit both designs** and correct
-  all four in one batch; the design is in the task entry. **The batch is built** as a sixth
-  round and is with the Reviewer. The push stays held.
+- **`T-184` is In Progress, with every stage built, and needs a seventh round.** The sixth round,
+  the redesign the maintainer chose on 2026-09-27, was reviewed the same day
+  ([record](reviews/T-184.md#2026-09-27--sixth-round-redesign-verification)): `R6`, `R15` and `R16`
+  resolved, and `R8` and `R14` are still High. `R8` reproduced its class again, so TESTING §14
+  asked for a ruling, and **on 2026-10-10 the maintainer chose exact long spellings**: an
+  abbreviated option is refused with its full names (`ARC-010` amended). The seventh round also
+  checks regex operands in match filters and counts ffmpeg download work such as
+  `--download-sections`; its design is in the task entry. **The push stays held until approval**,
+  and with it CI evidence for `T-355`, `T-356` and `T-357`.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the
@@ -92,7 +95,7 @@ task and review records it summarised.*
   file (`ARC-010`); the field is stored verbatim like a URL, in `settings.toml` and the queue
   database (`DAT-003`); and `REQ-031` now says the admitted command line rather than a parsed
   dictionary.
-- **A fourth `T-184` correction round, 2026-09-26, is with the Reviewer.** It closes a false
+- **A fourth `T-184` correction round, 2026-09-26, was reviewed on 2026-09-27.** It closes a false
   success reachable through `--compat-options`, the same outcome the audit refuses `-i` for, plus a
   merge that read values as options, three unregistered pieces of logged values, and two values
   that failed only at run time.
@@ -100,8 +103,8 @@ task and review records it summarised.*
   request ends Cancelled with its reason (`UX-005`), where it failed as `DISK`, *The file could
   not be written*. A path option must be absolute (`ARC-010`). And the field is the options
   editor's last group, checked as the user types (`UX-015`), so `T-184`'s interface is specified.
-  **All three are built** and with the Reviewer: the first two as a fifth correction round, the
-  third as `T-184`'s interface stage.
+  **All three are built** and were reviewed on 2026-09-27: the first two as a fifth correction
+  round, the third as `T-184`'s interface stage.
 - **A codebase audit ran on 2026-09-24** and is with the Reviewer for its own record. Two outcomes
   are already filed: `T-351` (with a playlist in the queue, row changes are signalled on the wrong
   row, and a screen reader hears less than the row shows) and `T-352`, which retires

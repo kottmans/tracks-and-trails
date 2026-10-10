@@ -202,8 +202,10 @@ The rationale for a month-end build is written beside the pin and in the licence
 ### T-184 — The escape hatch: additional yt-dlp options, parsed and bounded
 
 **Status:** In Progress since 2026-09-18. **Every stage is built, the interface included
-(2026-09-27).** The 2026-09-27 review left `R6`, `R8`, `R14` and `R15` blocking, and they are being
-corrected in one batch after the maintainer's design ruling of that day. Filed 2026-08-07 with the
+(2026-09-27).** The sixth round's review, also 2026-09-27, resolved `R6`, `R15` and `R16` and left
+`R8` and `R14` High and blocking. **The maintainer ruled on 2026-10-10** (exact long spellings,
+[below](#maintainer-ruling-2026-10-10--exact-long-spellings-then-the-seventh-round)); the seventh
+round is next, and the push stays held until approval. Filed 2026-08-07 with the
 phase. **Unblocked 2026-08-21**: `SEC-005` ruled
 `--legacy-server-connect`, the one disposition this waited on (`T183-R3`, the sixteenth option the
 audit surfaced), and **`unruled` is now 0** — every documented option has a class, which is the
@@ -521,6 +523,36 @@ under a stated precedence.
 >   (*"No suitable extractor"*), a `--source-address` that is not an address, and a missing
 >   `--client-certificate` file. Unlike filters and encodings, none has an exact check to borrow.
 
+#### Maintainer ruling, 2026-10-10 — exact long spellings, then the seventh round
+
+The sixth round's review ([record](reviews/T-184.md#2026-09-27--sixth-round-redesign-verification))
+left `R8` and `R14` High. `R8` reproduced its class after the 2026-09-27 redesign, so TESTING §14
+asked for a ruling before another batch. Three options were put: exact spellings only, resolving
+prefixes through the pinned parser (the reviewer's recommendation), or exact spellings now with a
+follow-up task to restore abbreviations. **The maintainer chose exact spellings only**
+([`ARC-010`, amended 2026-10-10](DECISIONS.md#amended-2026-10-10--a-long-option-is-typed-in-full)).
+The batch, written before the code:
+
+1. **`R8`, abbreviations.** `extra_options._resolved` accepts a long option only by an exact name.
+   A word that is a prefix of one or more names is refused as an abbreviation, with the full
+   spellings it could stand for; one that prefixes none stays *not an option*. A prefix of a
+   refused option is now refused as an abbreviation, which is still a refusal. The review's cases
+   are tests: `--convert-s srt`, `--clean-info` and `--ca` are refused, and every exact name the
+   inventory holds is still admitted. Short options, clusters, attached values, the inline `=`
+   value and the canonical argv are unchanged.
+2. **`R8`, regex operands.** `_unreadable_when_it_runs` calls `match_str` with no fields, which
+   checks a filter's grammar but never compiles a `~=` operand. The effective filters' operands are
+   checked as yt-dlp will evaluate them, so `title~=[` is refused for `--match-filters` and
+   `--break-match-filters`, while valid patterns, repeats and escaping still pass. How to reach the
+   compile without a real item is measured before it is built. The proof is the admitted filter
+   evaluated against an ordinary item, not only agreement between helpers.
+3. **`R14`, download operations.** `hatch_requires_ffmpeg` counts only post-processors.
+   `--download-sections` installs `download_ranges`, which needs the ffmpeg downloader. The shared
+   answer, and `options_needing_ffmpeg`'s attribution, count downloader work that needs ffmpeg as
+   well, so the offer, the editor and `_ffmpeg_gap` agree. Cover ffmpeg absent and present, through
+   yt-dlp's real downloader decision. The empty-hatch path stays free of yt-dlp, and the worker's
+   guard stays.
+
 #### Maintainer ruling, 2026-09-27 — redesign validation and redaction, then one batch
 
 Codex's review of 2026-09-27 left `T184-R6` and `T184-R8` open again and invoked TESTING §14:
@@ -562,7 +594,9 @@ revisit them**, with `R14`, `R15` and `R16` in the same batch. The design, writt
 8. **`R16`.** The worker's queue-pause comment, and the two snapshots that still call the
    interface unbuilt.
 
-**Built 2026-09-27, the sixth round, not yet reviewed.** Mapped finding by finding:
+**Built 2026-09-27, the sixth round**, and reviewed the same day
+([record](reviews/T-184.md#2026-09-27--sixth-round-redesign-verification)): `R6`, `R15` and `R16`
+resolved; `R8` and `R14` partly corrected and still High. Mapped finding by finding:
 
 | Finding | Where | Tests | Mutations caught |
 |---|---|---|---|
