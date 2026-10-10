@@ -29,7 +29,7 @@ seventh round's review, the same day, resolved `R14` and left `R8` High on regex
 failures that escape every boundary, with `R17` Low beside it. **The maintainer then chose to
 revise the validation boundary within this task**
 ([below](#maintainer-ruling-2026-10-10-second--the-validation-boundary-then-the-eighth-round));
-the eighth round is next, and the push stays held until approval. Filed 2026-08-07 with the
+the eighth round is built and with the Reviewer, and the push stays held until approval. Filed 2026-08-07 with the
 phase. **Unblocked 2026-08-21**: `SEC-005` ruled
 `--legacy-server-connect`, the one disposition this waited on (`T183-R3`, the sixteenth option the
 audit surfaced), and **`unruled` is now 0** — every documented option has a class, which is the
@@ -379,6 +379,27 @@ The batch, written before the code:
    out of every refusal, and the editor's visible and accessible text; the unique-prefix and
    inline controls stay. Valid patterns, escapes, repeats, exact spellings and the resolved
    section behaviour are unchanged. The `duration~=5` disposition stands.
+
+**Built 2026-10-10, the eighth round, not yet reviewed.** Corrected and awaiting re-review; only
+the Reviewer marks a finding resolved. Mapped finding by finding:
+
+| Finding | Where | Tests | Mutations caught |
+|---|---|---|---|
+| `R8`, filters | `ytdlp_adapter._UNCOMPILABLE`, caught in `_unreadable_when_it_runs` beside `ValueError` | `test_a_pattern_re_cannot_compile_is_refused_where_it_is_typed` (8: both filters and both siblings, each failure, each shown to be a real `re.compile` failure, value-free) | M42 |
+| `R8`, siblings at the parse | `_REFUSED_BY_YT_DLP` in `unparseable`'s whole-line parse and its attribution | The same 8; the editor's timer with OK disabled and `accept()` not accepting, for one case of each option, and *Enter* inside the pause | M43, M44 |
+| `R8`, stored consumption | `hatch_options` raises `UnusableOptionsError`; `options_needing_ffmpeg` answers | `test_a_stored_pattern_that_cannot_compile_is_the_stored_options_refusal` (8: `hatch_options`, `build_options`, `requires_ffmpeg`, and `options_needing_ffmpeg` asked directly, since no route reaches it today) | M45, M46 |
+| `R17`, and an unknown option | `extra_options._resolved` returns `None` for an unknown count; `_read` keeps the words up to the next `-` word | `test_a_refused_option_of_unknown_arity_keeps_the_words_after_it` (mixed-arity, header, inline, unknown option, two words); the editor's visible and accessible text; the next option still decided | M47, M48 |
+
+M35–M41 were re-run on the final source and are all still caught. **One limit:** a value that
+itself begins with `-` after such an option is read as options, as yt-dlp would; at most its
+first letters are named, never the whole word.
+
+**Checks, 2026-10-10, on Linux** (project `.venv`, PySide6 6.11.1, yt-dlp 2026.08.19): `ruff check
+.` and `ruff format --check .` (466 files, three of them the new review records); `mypy src` (69),
+bare `mypy` and `mypy --platform win32` (210 each); M35–M48 all caught on the final source, each
+restored. The default suite as CI runs it, `.venv/bin` on `PATH`,
+`TRACKSANDTRAILS_REQUIRE_FFMPEG=1`: `tests/unit tests/ui` under `-n auto`, **4,558 passed**, 22
+skipped; `tests/integration`, **520 passed**. No Windows run.
 
 #### Maintainer ruling, 2026-10-10 — exact long spellings, then the seventh round
 

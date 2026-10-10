@@ -300,14 +300,16 @@ class _Occurrence:
     problem: str | None
 
 
-def _resolved(name: str) -> tuple[str | None, str | None, int]:
+def _resolved(name: str) -> tuple[str | None, str | None, int | None]:
     """The long option `name` is, its problem if it is none, and how many values to read after it.
 
     **An exact name or nothing** (`ARC-010`, amended 2026-10-10). A prefix of one or more names is
     refused as an abbreviation, naming them. **It still reads the values those names agree on**,
     so `--video-pass hunter2` is one refusal for `--video-pass`, and the password never comes back
-    as a stray word the refusal would repeat (`T184-R6`). Names that disagree read none, as an
-    ambiguous prefix always has.
+    as a stray word the refusal would repeat (`T184-R6`).
+
+    **`None` when nobody can say how many** (`T184-R17`): names that disagree, and a name the
+    inventory does not have. `_read` then keeps the words after it inside its refusal.
     """
     arity = option_arity()
     if name in arity:
@@ -316,9 +318,9 @@ def _resolved(name: str) -> tuple[str | None, str | None, int]:
         spelling for spelling in arity if spelling.startswith("--") and spelling.startswith(name)
     )
     if not prefixed:
-        return None, NOT_AN_OPTION, 0
+        return None, NOT_AN_OPTION, None
     takes = {arity[spelling] for spelling in prefixed}
-    return None, _abbreviated(prefixed), takes.pop() if len(takes) == 1 else 0
+    return None, _abbreviated(prefixed), takes.pop() if len(takes) == 1 else None
 
 
 def _abbreviated(names: Sequence[str]) -> str:
@@ -364,6 +366,17 @@ def _read(tokens: Sequence[str]) -> Iterator[_Occurrence | str]:
         if word.startswith("--"):
             name, separator, inline = word.partition("=")
             spelling, problem, wanted = _resolved(name)
+            if wanted is None:
+                # **The words after it are its values, as far as anyone can tell** (`T184-R17`).
+                # Read as stray words, they were refused by name, and `--video T184_CANARY` showed
+                # the value in the editor. Up to the next word that begins with `-`: no candidate
+                # is guessed, and the field is refused either way.
+                kept = [inline] if separator else []
+                while index < len(tokens) and not tokens[index].startswith("-"):
+                    kept.append(tokens[index])
+                    index += 1
+                yield _Occurrence(name, None, tuple(kept), problem)
+                continue
             if spelling is not None and separator and not wanted:
                 yield _Occurrence(name, spelling, (), TAKES_NO_VALUE)
                 continue

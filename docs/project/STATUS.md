@@ -76,14 +76,14 @@ task and review records it summarised.*
   **The approval does not cover release readiness**, and two follow-ups remain: `T-350`, and the
   human selection walk, which no instrument here can perform — `isItemVisibleInAnyView` says the
   item is in a view, not that it is highlighted.
-- **`T-184` is In Progress, and its eighth round is next.** On 2026-10-10 the maintainer chose
-  exact long spellings (`ARC-010` amended) after `R8` reproduced its class through the 2026-09-27
-  redesign. The seventh round, reviewed the same day
-  ([record](reviews/T-184.md#2026-10-10--seventh-round-focused-verification)), resolved `R14`
-  and left `R8` High: a pattern `re.compile` cannot build raises `OverflowError` or
-  `RecursionError`, which escaped every boundary, the editor's included. `R17`, Low, is a value
-  named back after an ambiguous prefix. **The maintainer chose to revise the validation boundary
-  within the task**; the eighth round's design is in the task entry. **The push stays held until
+- **`T-184` is In Progress, and its eighth round is built and with the Reviewer.** On 2026-10-10 the
+  maintainer chose exact long spellings (`ARC-010` amended) after `R8` reproduced its class through
+  the 2026-09-27 redesign. The seventh round, reviewed the same day
+  ([record](reviews/T-184.md#2026-10-10--seventh-round-focused-verification)), resolved `R14` and
+  left `R8` High: a pattern `re.compile` cannot build raises `OverflowError` or `RecursionError`,
+  which escaped every boundary, the editor's included. `R17`, Low, is a value named back after an
+  ambiguous prefix. **The maintainer chose to revise the validation boundary within the task**; the
+  eighth round's design, mapping and checks are in the task entry. **The push stays held until
   approval**, and with it CI evidence for `T-355`, `T-356` and `T-357`.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left

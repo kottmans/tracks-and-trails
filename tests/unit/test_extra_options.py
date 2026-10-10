@@ -13,6 +13,7 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
+from typing import Final
 
 import pytest
 
@@ -705,6 +706,74 @@ def test_a_filter_pattern_yt_dlp_can_compile_is_still_accepted(text: str) -> Non
     assert admission.usable, refusal_lines(admission)
     for value in argv[1::2]:
         match_str(value, _AN_ITEM)
+
+
+#: Patterns `re.compile` cannot build, and not with `re.error` (`T184-R8`, eighth round).
+_TOO_MANY: Final = "a{4294967296}"
+_TOO_DEEP: Final = "(" * 500 + "a" + ")" * 500
+
+#: Each spelling that carries a pattern, with each failure: the two filters, and the two options
+#: whose patterns yt-dlp compiles while it parses, outside its own `re.error` handling.
+UNCOMPILABLE: Final = [
+    pytest.param(option, f"{prefix}{pattern}", pattern, raised, id=f"{option}-{raised.__name__}")
+    for option, prefix in (
+        ("--match-filters", "title~="),
+        ("--break-match-filters", "title~="),
+        ("--remove-chapters", ""),
+        ("--download-sections", ""),
+    )
+    for pattern, raised in ((_TOO_MANY, OverflowError), (_TOO_DEEP, RecursionError))
+]
+
+
+@pytest.mark.parametrize(("option", "value", "pattern", "raised"), UNCOMPILABLE)
+def test_a_pattern_re_cannot_compile_is_refused_where_it_is_typed(
+    option: str, value: str, pattern: str, raised: type[Exception]
+) -> None:
+    """`T184-R8`, eighth round: refused by name and value-free, rather than raised.
+
+    `re.compile` raises `OverflowError` and `RecursionError` for these, which are not `re.error`,
+    and yt-dlp catches only that. They escaped `options_for`, so the editor's check raised instead
+    of refusing. The first lines show each is a real compile failure, decided by the text alone.
+    """
+    with pytest.raises(raised):
+        re.compile(pattern)
+
+    admission, argv = options_for(shlex.join([option, value]))
+
+    assert argv == ()
+    assert [(refusal.option, refusal.reason) for refusal in admission.refusals] == [
+        (option, BAD_VALUE)
+    ]
+    assert all("4294967296" not in line and "((((" not in line for line in refusal_lines(admission))
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "--video T184_R17_CANARY",
+        '--add "Authorization: Bearer T184_R17_CANARY"',
+        "--video=T184_R17_CANARY",
+        "--typo T184_R17_CANARY",
+        "--typo first T184_R17_CANARY",
+    ],
+)
+def test_a_refused_option_of_unknown_arity_keeps_the_words_after_it(text: str) -> None:
+    """`T184-R17`: a prefix whose candidates disagree read no values, so the value came next as a
+    stray word and was refused **by name**. An option the inventory does not have did the same.
+    Nobody can say how many words are its values, so the words up to the next option are."""
+    admission = admit(text)
+
+    [refusal] = admission.refusals
+    assert refusal.option == text.split()[0].partition("=")[0]
+    assert all("CANARY" not in line for line in refusal_lines(admission))
+
+
+def test_the_next_option_is_still_decided_after_one_of_unknown_arity() -> None:
+    """Keeping the words stops at the next word that begins with `-`, so nothing after is lost."""
+    admission = admit("--video T184_R17_CANARY --exec x")
+
+    assert [refusal.option for refusal in admission.refusals] == ["--video", "--exec"]
 
 
 def test_options_that_contradict_each_other_are_refused_together() -> None:

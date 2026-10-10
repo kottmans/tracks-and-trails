@@ -13,6 +13,7 @@ can edit and a request is a JSON blob in a database, so tokens can arrive that n
 from __future__ import annotations
 
 import json
+import shlex
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ import pytest
 
 from tracks_and_trails.core.models import DownloadRequest
 from tracks_and_trails.downloader.extra_options import (
+    admit,
     options_for,
     refusal_lines,
     remember_the_hatch,
@@ -28,6 +30,8 @@ from tracks_and_trails.downloader.extra_options import (
 from tracks_and_trails.downloader.ytdlp_adapter import (
     UnusableOptionsError,
     build_options,
+    hatch_options,
+    options_needing_ffmpeg,
     requires_ffmpeg,
 )
 from tracks_and_trails.persistence.repositories import _deserialize_request, _serialize_request
@@ -329,6 +333,44 @@ def test_sections_that_depend_on_the_item_are_counted_as_ffmpeg_work(text: str) 
     _, argv = options_for(text)
 
     assert requires_ffmpeg(a_request(extra_options=text, extra_option_argv=argv))
+
+
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [
+        pytest.param(option, f"{prefix}{pattern}", id=f"{option}-{failure}")
+        for option, prefix in (
+            ("--match-filters", "title~="),
+            ("--break-match-filters", "title~="),
+            ("--remove-chapters", ""),
+            ("--download-sections", ""),
+        )
+        for pattern, failure in (
+            ("a{4294967296}", "overflow"),
+            ("(" * 500 + "a" + ")" * 500, "recursion"),
+        )
+    ],
+)
+def test_a_stored_pattern_that_cannot_compile_is_the_stored_options_refusal(
+    option: str, value: str
+) -> None:
+    """`T184-R8`, eighth round: stored consumption raised `OverflowError` or `RecursionError`.
+
+    Admission parses nothing, so a hand-edited preset or request can carry such a pair. The job
+    must meet the documented `UnusableOptionsError`, and the ffmpeg preflight must answer.
+    """
+    text = shlex.join([option, value])
+    argv = admit(text).accepted
+    assert argv, "admission now refuses it, so this would never reach the parse"
+    request = a_request(extra_options=text, extra_option_argv=argv)
+
+    with pytest.raises(UnusableOptionsError):
+        hatch_options(text, argv)
+    with pytest.raises(UnusableOptionsError):
+        build_options(request, BASE["output_template"])
+    assert requires_ffmpeg(request) is False
+    # Defensive, since no route hands it unparsed tokens today; asked directly so it is held.
+    assert options_needing_ffmpeg(argv) == ()
 
 
 def test_stored_options_the_audit_refuses_stop_the_build() -> None:

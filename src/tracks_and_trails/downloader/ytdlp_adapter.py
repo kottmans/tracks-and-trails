@@ -900,6 +900,20 @@ def build_options(
     return options
 
 
+#: What compiling a pattern the user typed raises (`T184-R8`, eighth round).
+#:
+#: `re.compile` raises `OverflowError` for a repeat count past its limit (`a{4294967296}`) and
+#: `RecursionError` for nesting too deep for its parser (500 groups), neither of them `re.error`.
+#: yt-dlp catches only `re.error`, so both escaped the parse of `--remove-chapters` and
+#: `--download-sections` and every filter check, up through the editor. Each is decided by the
+#: text alone, so it is refused like any bad value. **Nothing broader is caught**: any other
+#: exception here is a defect and must still raise.
+_UNCOMPILABLE: Final = (re.error, OverflowError, RecursionError)
+
+#: What a parse of the user's options raises when yt-dlp will not take them.
+_REFUSED_BY_YT_DLP: Final = (SystemExit, OptParseError, *_UNCOMPILABLE)
+
+
 def unparseable(argv: Sequence[str], groups: Sequence[Sequence[str]]) -> tuple[bool, str | None]:
     """Whether yt-dlp refuses `argv` as a whole, and which option to point the user at.
 
@@ -921,7 +935,7 @@ def unparseable(argv: Sequence[str], groups: Sequence[Sequence[str]]) -> tuple[b
 
     try:
         parse_options(list(argv))
-    except SystemExit, OptParseError:
+    except _REFUSED_BY_YT_DLP:
         pass
     else:
         culprit = _unreadable_when_it_runs(argv)
@@ -930,7 +944,7 @@ def unparseable(argv: Sequence[str], groups: Sequence[Sequence[str]]) -> tuple[b
     for group in groups:
         try:
             parse_options(list(group))
-        except SystemExit, OptParseError:
+        except _REFUSED_BY_YT_DLP:
             return True, str(group[0]).partition("=")[0]
     return True, None
 
@@ -985,7 +999,7 @@ def _unreadable_when_it_runs(argv: Sequence[str]) -> str | None:
                 match_str(text, {}, incomplete=True)
                 for part in _FILTER_PARTS.split(text):
                     match_str(part, _EveryFieldIsText())
-            except ValueError, re.error:
+            except (ValueError, *_UNCOMPILABLE):
                 return spelling
     if parsed.encoding is not None:
         try:
@@ -1058,7 +1072,7 @@ def hatch_options(text: str, argv: Sequence[str]) -> dict[str, Any]:
 
     try:
         parsed = dict(parse_options(list(argv)).ydl_opts)
-    except (SystemExit, OptParseError) as refused:
+    except _REFUSED_BY_YT_DLP as refused:
         raise UnusableOptionsError(
             "yt-dlp will not accept the options saved with this download"
         ) from refused
@@ -1211,7 +1225,7 @@ def options_needing_ffmpeg(argv: Sequence[str]) -> tuple[str, ...]:
     for chunk in grouped(argv):
         try:
             parsed = parse_options(list(chunk)).ydl_opts
-        except SystemExit, OptParseError:
+        except _REFUSED_BY_YT_DLP:
             continue
         specs = parsed.get("postprocessors", [])
         if _performed_by_ffmpeg([spec for spec in specs if spec not in defaults]) or (

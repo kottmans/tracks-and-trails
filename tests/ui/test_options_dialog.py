@@ -11,6 +11,7 @@ position — the audio group, the bitrate, and the subtitle list — and each is
 its reason on screen rather than merely absent.
 """
 
+import shlex
 from collections.abc import Callable, Iterator
 from dataclasses import replace
 from typing import Final
@@ -37,7 +38,7 @@ from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.models import AudioCodec, Preset
 from tracks_and_trails.core.presets import MP3_BITRATES
 from tracks_and_trails.downloader.environment import FfmpegFeature
-from tracks_and_trails.downloader.extra_options import NEEDS_FFMPEG
+from tracks_and_trails.downloader.extra_options import BAD_VALUE, NEEDS_FFMPEG
 from tracks_and_trails.ui.options_dialog import (
     AUDIO_CODEC_NAME,
     AUDIO_QUALITY_NAME,
@@ -1263,6 +1264,74 @@ def test_accepting_inside_the_pause_still_checks_the_field(
 
     assert dialog.result() != QDialog.DialogCode.Accepted, "a refused field was accepted"
     assert dialog.extra_refusals_text().startswith("--exec: ")
+
+
+#: Patterns `re.compile` cannot build, and not with `re.error` (`T184-R8`, eighth round).
+_TOO_MANY: Final = "a{4294967296}"
+_TOO_DEEP: Final = "(" * 500 + "a" + ")" * 500
+
+
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [
+        pytest.param("--match-filters", f"title~={_TOO_MANY}", id="match-filters-overflow"),
+        pytest.param("--break-match-filters", f"title~={_TOO_DEEP}", id="break-filters-recursion"),
+        pytest.param("--remove-chapters", _TOO_MANY, id="remove-chapters-overflow"),
+        pytest.param("--download-sections", _TOO_DEEP, id="download-sections-recursion"),
+    ],
+)
+def test_a_pattern_that_cannot_compile_is_refused_in_the_editor(
+    editor: Callable[..., OptionsDialog], spin: Callable[..., bool], option: str, value: str
+) -> None:
+    """`T184-R8`, eighth round: `OverflowError` and `RecursionError` escaped the timer's check.
+
+    The review measured it on this dialog: the check raised into Qt's exception hook, no refusal
+    appeared, OK stayed enabled, and `accept()` raised again. pytest-qt fails a test on an
+    exception inside a Qt callback, so reaching the assertions is part of the proof.
+    """
+    dialog = editor()
+
+    typed(dialog, shlex.join([option, value]), spin)
+
+    assert dialog.extra_refusals_text() == f"{option}: {BAD_VALUE}"
+    assert not ok_button(dialog).isEnabled()
+    dialog.accept()
+    assert dialog.result() != QDialog.DialogCode.Accepted, "an uncompilable pattern was accepted"
+
+
+def test_accepting_an_uncompilable_pattern_inside_the_pause_refuses_it(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """The same check reached by *Enter* before the pause ends, through `accept()` itself."""
+    dialog = editor()
+    extra_box(dialog).setPlainText(shlex.join(["--match-filters", f"title~={_TOO_MANY}"]))
+
+    dialog.accept()
+
+    assert dialog.result() != QDialog.DialogCode.Accepted
+    assert dialog.extra_refusals_text() == f"--match-filters: {BAD_VALUE}"
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["--video T184_R17_CANARY", '--typo "Authorization: Bearer T184_R17_CANARY"'],
+)
+def test_an_option_of_unknown_arity_keeps_its_value_out_of_the_editor(
+    editor: Callable[..., OptionsDialog], spin: Callable[..., bool], text: str
+) -> None:
+    """`T184-R17`: the value was the second refusal, shown and read out as a stray word.
+
+    `--video` begins options that take one value and none, and `--typo` is no option at all, so
+    nobody can say how many words are its values. They stay inside its one refusal.
+    """
+    dialog = editor()
+
+    typed(dialog, text, spin)
+    said = dialog.extra_refusals_text()
+
+    assert said.startswith(text.split()[0] + ": "), said
+    assert "CANARY" not in said, f"the refusal repeated the value: {said!r}"
+    assert "CANARY" not in extra_box(dialog).accessibleDescription(), "a screen reader hears it"
 
 
 def test_tab_leaves_the_field(editor: Callable[..., OptionsDialog]) -> None:
