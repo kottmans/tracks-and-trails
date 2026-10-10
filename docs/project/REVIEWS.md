@@ -101,6 +101,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-184](reviews/T-184.md) | T-184; [sixth-round redesign verification](reviews/T-184.md#2026-09-27--sixth-round-redesign-verification), checked at 104f7b3; changes requested | 0 |
 | [T-355](reviews/T-355.md) | T-355 | 0 |
 | [T-356](reviews/T-356.md) | T-356 | 0 |
+| [T-357](reviews/T-357.md) | T-357 | 0 |
 | [September 2026 codebase audit](reviews/codebase-audit-2026-09.md) | T-351, T-352, T-353, T-354; independent audit at a7310d1 | 0 |
 | <a id="2026-08-17--t-257--t-259-windows-chain-review"></a><a id="2026-08-17--t-259-duration-report-correction-re-review"></a>[T-257](reviews/T-257.md) | T-257, T-259 | 2 |
 | <a id="2026-08-17--t-258-pre-bootstrap-containment-review"></a><a id="2026-08-17--t-258-focused-containment-correction-review"></a><a id="2026-08-17--t-258-lifecycle-wording-re-review"></a><a id="2026-08-17--t-258-second-focused-correction-re-review"></a><a id="2026-08-19--t-258-scanner-evidence-disposition"></a><a id="2026-08-21--t258-r10-authorised-record-only-re-review"></a>[T-258](reviews/T-258.md) | T-258 | 6 |
