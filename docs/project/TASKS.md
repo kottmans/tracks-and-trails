@@ -2,7 +2,7 @@
 
 **Purpose:** Unfinished work: review, ready, proposed and blocked tasks.
 **Owner:** Planner (priorities); Implementer (task/status); Reviewer (review disposition)
-**Last updated:** 2026-10-09
+**Last updated:** 2026-10-10
 **Update when:** Work starts, changes scope/status, closes or reopens.
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
@@ -77,6 +77,58 @@ commits behind this one. The third criterion needs a push, and the push is held 
 
 **Moving to 6.12 needs its own ruling**: the dependency shape above, or licence coverage for
 everything the metapackage brings.
+
+### T-356 — The option-table generator writes its pipe to Ruff in the locale's encoding
+
+**Status:** In Review — filed and fixed on the maintainer's ruling of 2026-10-10.
+**Owner:** Implementer
+**Priority:** High — it fails the Windows unit suite, and that stops the Windows integration suite
+from running at all.
+**Phase:** Phase 4.5 (`T-184`'s generator)
+**Relevant context:** `T-184`; `REQ-031`; [ytdlp_option_table.py](../../tools/ytdlp_option_table.py)'s
+`_formatted`, introduced by `2046207` on 2026-09-19.
+**Affected surfaces:** `tools/ytdlp_option_table.py`; `tests/unit/test_option_table.py`.
+**Risk:** Low — one keyword on one call. The generated module is unchanged.
+**Required checks:** Ruff lint and format; `mypy src`, bare `mypy` and `mypy --platform win32`;
+`tests/unit/test_option_table.py`; the new test failing without the fix.
+
+#### Cause
+
+The first Windows run in three weeks, `windows desktop` in
+[`37929286459`](https://github.com/kottmans/tracks-and-trails/actions/runs/37929286459/job/113833312335)
+at `8857753` on 2026-10-09, failed one test in its Full suite step (1 failed, 4,404 passed):
+`test_the_generated_table_is_what_the_audit_says_today`, with *"ruff format refused the generated
+module: … stream did not contain valid UTF-8"*. `_formatted` pipes the module to
+`ruff format -` with `text=True` and no `encoding`, so Python writes it in the locale's encoding,
+which is cp1252 on `STARBASE`. The module has 24 lines with em dashes; Ruff reads stdin as UTF-8.
+The step stops at the first failing command, so the integration suite never ran.
+
+`STARBASE` was offline from 2026-09-18, the day before `2046207`, so this is the first Windows run
+the generator has had. Encoding the module as cp1252 and piping it to Ruff on Linux reproduces the
+exact message; UTF-8 formats cleanly.
+
+Of the repository's 97 text-mode `subprocess` calls without an `encoding`, this is the only one
+that writes `input`. The rest only decode output, which has passed on Windows; no wider sweep is
+filed.
+
+#### Change
+
+`encoding="utf-8"` on the call, which also decodes Ruff's UTF-8 output correctly. A new test,
+`test_the_formatter_is_handed_utf_8_whatever_the_locale`, runs `_formatted` in a child interpreter
+with UTF-8 mode and locale coercion off under `LC_ALL=C`, whose encoding is ASCII; Windows supplies
+its code page instead. Its probe passes the text through `!a`, because the first draft's literal
+em dash failed decoding the child's own command line, which proved nothing about the generator.
+
+#### Acceptance criteria
+
+- [x] The new test fails without the fix (*"'ascii' codec can't encode character '—'"*) and
+      passes with it. Checked both ways on 2026-10-10.
+- [x] `tests/unit/test_option_table.py` passes (11), and
+      `python tools/ytdlp_option_table.py --check` reports the module up to date.
+- [x] Ruff lint and format (463 files); `mypy src` (69), bare `mypy` (210) and
+      `mypy --platform win32` (210) pass.
+- [ ] The `windows desktop` Full suite passes at a pushed head that includes this, integration
+      suite included. The push is held for `T-184`.
 
 ## Ready
 

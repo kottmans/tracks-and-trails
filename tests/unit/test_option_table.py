@@ -14,6 +14,8 @@ row invented here that the audit does not have, and a reason reworded in either 
 from __future__ import annotations
 
 import importlib.util
+import os
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -63,6 +65,34 @@ def test_the_generated_table_is_what_the_audit_says_today() -> None:
         "downloader/option_table.py is out of date with docs/YTDLP_OPTION_AUDIT.md. "
         "Run: python tools/ytdlp_option_table.py"
     )
+
+
+def test_the_formatter_is_handed_utf_8_whatever_the_locale() -> None:
+    """**`T-356`.** `ruff format` reads its stdin as UTF-8, so the generator must write it as UTF-8.
+
+    A text-mode pipe with no `encoding` is written in the locale's encoding. On `STARBASE` that is
+    cp1252, and Ruff refused the generated module's em dashes as invalid UTF-8, which failed the
+    test above. A UTF-8 locale hides it, so the child runs with UTF-8 mode and locale coercion off
+    under `LC_ALL=C`, whose encoding is ASCII. Windows ignores `LC_ALL` and supplies its code page.
+    """
+    text = 'reason = "forbidden — a secret"\n'
+    probe = (
+        "import importlib.util, sys\n"
+        f"specification = importlib.util.spec_from_file_location('tool', {str(TOOL)!r})\n"
+        "module = importlib.util.module_from_spec(specification)\n"
+        "sys.modules['tool'] = module\n"
+        "specification.loader.exec_module(module)\n"
+        # `!a`, not `!r`: the command line is decoded in the same locale, so a literal em dash
+        # fails before the generator runs, and the test would pass or fail on that instead.
+        f"sys.stdout.buffer.write(module._formatted({text!a}).encode('utf-8'))\n"
+    )
+    environment = {**os.environ, "PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0", "LC_ALL": "C"}
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, env=environment, check=False, timeout=60
+    )
+
+    assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+    assert result.stdout.decode("utf-8") == text
 
 
 def test_every_spelling_carries_a_class_the_audit_defines() -> None:

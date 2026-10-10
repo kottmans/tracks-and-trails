@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-10-09
+**Last updated:** 2026-10-10
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -146,11 +146,16 @@ No Windows runtime, external download or release-gate result is claimed here.
   2026-10-09): the new metapackage requires `PySide6_WebEngine` and `PySide6_Pdf`, and the
   `LIC-001` gate refuses them. **`T-355` caps PySide6 below 6.12** and is In Review
   ([record](TASKS.md#t-355--pyside6-612-brings-webengine-and-pdf-into-the-bundled-tree)).
-- **No Windows evidence since 2026-09-18.** The GitHub API reports `STARBASE` **offline** on
-  2026-10-09; it last took a job at about 19:49 UTC on 2026-09-18. Every run since has left
-  `windows desktop` and `frozen windows` queued until cancelled, a full day for each scheduled run. `STARBASE_AVAILABLE`
-  is still `true`, so `STARBASE coverage` reports both jobs as having run when neither did. The
-  maintainer is bringing the machine back (2026-10-09).
+- **`STARBASE` was offline from 2026-09-18 to 2026-10-09**, and GitHub had removed its
+  registration by the time it returned; it was registered again on 2026-10-09
+  ([procedure](../WINDOWS_VERIFICATION.md#offline-for-more-than-14-days-it-must-be-registered-again)).
+  Every run in between left `windows desktop` and `frozen windows` queued until cancelled, and
+  `STARBASE coverage` reported both as having run, because `STARBASE_AVAILABLE` stayed `true`.
+- **The first Windows run since, at `8857753`, failed both Windows jobs**
+  ([`37929286459`](https://github.com/kottmans/tracks-and-trails/actions/runs/37929286459)). The
+  desktop slice passed (46). The Full suite failed one test on a cp1252 pipe to Ruff, which
+  **`T-356`** fixes (In Review), and that stopped the Windows integration suite before it ran.
+  **Nothing committed since 2026-09-18 has Windows integration evidence.**
 - **T-289 is Complete under the 2026-09-04 re-scope, and Phase 4 may exit over it**
   — the reserved decision was taken by the maintainer on 2026-09-11 (`P4EXIT-R3`):
   **bounded acceptance**, on the implemented pool/ownership guards rather than on an

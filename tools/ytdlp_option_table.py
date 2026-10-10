@@ -419,12 +419,18 @@ def rendered() -> str:
 
 
 def _formatted(text: str) -> str:
-    """`text` as `ruff format` would write it, so the gate and the generator cannot disagree."""
+    """`text` as `ruff format` would write it, so the gate and the generator cannot disagree.
+
+    **The pipe is UTF-8 by name** (`T-356`). Ruff reads stdin as UTF-8; text mode left to itself
+    writes the locale's encoding, which is cp1252 on Windows, and the module's em dashes then
+    arrive as bytes Ruff refuses.
+    """
     formatted = subprocess.run(  # noqa: S603 - a fixed argv, and ruff is this repo's formatter
         [sys.executable, "-m", "ruff", "format", "--stdin-filename", str(TARGET), "-"],
         input=text,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
     if formatted.returncode != 0:
