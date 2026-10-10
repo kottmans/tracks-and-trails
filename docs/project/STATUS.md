@@ -151,24 +151,33 @@ No Windows runtime, external download or release-gate result is claimed here.
 
 ## Current risks and external blockers
 
-- **CI's Linux job has failed since PySide6 6.12.0 was published** (runs of 2026-10-08 and
-  2026-10-09): the new metapackage requires `PySide6_WebEngine` and `PySide6_Pdf`, and the
-  `LIC-001` gate refuses them. **`T-355` caps PySide6 below 6.12**; reviewed 2026-10-10, it is
-  Blocked only on CI evidence from a pushed head
-  ([record](TASKS.md#t-355--pyside6-612-brings-webengine-and-pdf-into-the-bundled-tree)).
+- **CI is green again.** Its Linux job failed from 2026-10-08, when PySide6 6.12.0's metapackage
+  began requiring `PySide6_WebEngine` and `PySide6_Pdf` and the `LIC-001` gate refused them.
+  **`T-355`** caps PySide6 below 6.12, and the push of `d18bcb8` passed every job in run
+  [`38088244998`](https://github.com/kottmans/tracks-and-trails/actions/runs/38088244998). `T-355`
+  is In Review with that evidence
+  ([record](TASKS.md#t-355--pyside6-612-brings-webengine-and-pdf-into-the-bundled-tree)). Moving to
+  6.12 needs its own ruling.
+- **The `Commit messages` gate failed on that push**, run
+  [`38088245029`](https://github.com/kottmans/tracks-and-trails/actions/runs/38088245029):
+  `5314816`, a documentation commit no task covers, has no `Task:` trailer where the gate wants
+  `Task: none - <reason>`. It is published, so it is not rewritten; later pushes are checked from
+  their own base and do not meet it again. The local `commit-msg` hook that would have stopped it
+  was not active in this clone. Grandfathering it as `T-065` did `12dff92` is the maintainer's to
+  decide.
 - **`STARBASE` was offline from 2026-09-18 to 2026-10-09**, and GitHub had removed its
   registration by the time it returned; it was registered again on 2026-10-09
   ([procedure](../WINDOWS_VERIFICATION.md#offline-for-more-than-14-days-it-must-be-registered-again)).
   Every run in between left `windows desktop` and `frozen windows` queued until cancelled, and
   `STARBASE coverage` reported both as having run, because `STARBASE_AVAILABLE` stayed `true`.
-- **The first Windows run since, at `8857753`, failed both Windows jobs**
-  ([`37929286459`](https://github.com/kottmans/tracks-and-trails/actions/runs/37929286459)). The
-  desktop slice passed (46). The Full suite failed one test on a cp1252 pipe to Ruff, which
-  **`T-356`** fixes, and that stopped the Windows integration suite before it ran. **Nothing
-  committed since 2026-09-18 has Windows integration evidence.** The frozen build failed because
-  BtbN had deleted the pinned ffmpeg, a daily build; **`T-357`** repins to a month-end build kept
-  for two years. `release.yml` uses the same pin, so `0.1.1` cannot be built without it. Both were
-  reviewed 2026-10-10 and are Blocked only on Windows CI evidence from a pushed head.
+- **Windows evidence is back.** The first run after `STARBASE` returned, at `8857753`
+  ([`37929286459`](https://github.com/kottmans/tracks-and-trails/actions/runs/37929286459)), failed
+  both Windows jobs: a cp1252 pipe to Ruff, which **`T-356`** fixes, and a pinned ffmpeg BtbN had
+  deleted, which **`T-357`** repins to a month-end build kept for two years. At `d18bcb8` both
+  passed: `windows desktop` ran the desktop slice and the full suite, integration included, for the
+  first Windows integration result since 2026-09-18, and `frozen windows` built the release artifact
+  and ran its bundled ffmpeg. Both tasks are In Review with that evidence. `release.yml` uses the
+  same pin, so `0.1.1` depends on `T-357`.
 - **`0.1.0`'s ffmpeg archive survives only in the maintainer's ignored
   `packaging/vendor/ffmpeg/`** (`T357-R2`): its recorded URL answers 404, and the copy there hashes
   to the digest `0.1.0` recorded. Keep it until `T-349` settles where build dependencies are kept.
