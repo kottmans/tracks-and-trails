@@ -269,6 +269,16 @@ jobs:
           path: dist/*-setup.exe
           if-no-files-found: error
 
+      # **The ffmpeg archive this build bundled, kept beside the release** (`OPS-001`, amended
+      # 2026-10-11, `T-360`). BtbN deletes builds: `0.1.0`'s pin was gone within a month. A release
+      # whose archive survives only upstream cannot be rebuilt once upstream lets it go, and
+      # `fetch_ffmpeg.py` asks this release's assets for it, by the same digest, when that happens.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-ffmpeg-archive
+          path: packaging/vendor/ffmpeg/ffmpeg-*-win64-lgpl-shared-*.zip
+          if-no-files-found: error
+
       - name: Remove this job's profile
         if: always()
         run: rm -rf "$RELEASE_PROFILE" || true
@@ -299,12 +309,15 @@ jobs:
       - name: Collect the artifacts and checksum them
         run: |
           mkdir -p release
-          find incoming -type f \( -name '*.AppImage' -o -name '*.exe' \) -exec cp {} release/ \;
+          find incoming -type f \( -name '*.AppImage' -o -name '*.exe' -o -name 'ffmpeg-*.zip' \) \
+            -exec cp {} release/ \;
           cd release
           # Both artifacts, or neither. A release missing a platform is a release nobody notices
           # is missing a platform.
           test -n "$(ls *.AppImage 2>/dev/null)" || { echo "::error::no AppImage"; exit 1; }
           test -n "$(ls *.exe 2>/dev/null)" || { echo "::error::no installer"; exit 1; }
+          # And the ffmpeg archive the installer bundles, kept beside it (`OPS-001`, `T-360`).
+          test -n "$(ls ffmpeg-*.zip 2>/dev/null)" || { echo "::error::no ffmpeg archive"; exit 1; }
           sha256sum * > SHA256SUMS
           cat SHA256SUMS
 

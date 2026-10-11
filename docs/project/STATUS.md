@@ -187,10 +187,10 @@ No Windows runtime, external download or release-gate result is claimed here.
   first Windows integration result since 2026-09-18, and `frozen windows` built the release artifact
   and ran its bundled ffmpeg. Both tasks are In Review with that evidence. `release.yml` uses the
   same pin, so `0.2.0` depends on `T-357`.
-- **`0.1.0`'s ffmpeg archive survives only in the maintainer's ignored `packaging/vendor/ffmpeg/`**
-  (`T357-R2`): its recorded URL answers 404, and the copy there hashes to the digest `0.1.0`
-  recorded. **Keep it until `T-360` attaches it to the `v0.1.0` release**, as `OPS-001`'s 2026-10-11
-  amendment rules.
+- **`0.1.0`'s ffmpeg archive is kept beside `v0.1.0`** (`T-360`, 2026-10-11): BtbN deleted it, and
+  it is now a release asset at the digest `0.1.0` pinned, so the local copy is no longer the only
+  one. The fetcher takes such a copy by the same digest when upstream fails, and each release
+  attaches its own (`OPS-001`, amended 2026-10-11). `T-360` is In Review.
 - **T-289 is Complete under the 2026-09-04 re-scope, and Phase 4 may exit over it**
   — the reserved decision was taken by the maintainer on 2026-09-11 (`P4EXIT-R3`):
   **bounded acceptance**, on the implemented pool/ownership guards rather than on an

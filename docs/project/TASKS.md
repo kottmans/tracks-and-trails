@@ -15,8 +15,8 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 ## In Review
 
 `T-184` was approved on 2026-10-10 and moved to [COMPLETED_TASKS](COMPLETED_TASKS.md). `T-351`
-was built on 2026-10-11, and `T-355`, `T-356` and `T-357` return here with the CI evidence their
-reviews waited on.
+and `T-360` were built on 2026-10-11, and `T-355`, `T-356` and `T-357` return here with the CI
+evidence their reviews waited on.
 
 ### T-351 — With a playlist in the queue, a row's changes are signalled on the wrong row
 
@@ -110,6 +110,70 @@ module builds an index from a job's position.
 existing queue, delegate and accessibility tests pass unchanged. No Windows run, and the visible
 effect on a real display is still not established; whole-viewport repaints on hover may have hidden
 it.
+
+---
+
+### T-360 — Keep each pinned build archive beside its release
+
+**Status:** In Review — built 2026-10-11, the maintainer's confirmation given for the upload.
+*(Was Proposed:)* filed 2026-10-11 to carry `OPS-001`'s amendment of that day, ruled on
+`T357-R2`.
+**Owner:** Implementer; the maintainer confirms each upload to a published release
+**Priority:** Medium — `0.1.0`'s ffmpeg archive exists only on the maintainer's disk
+**Phase:** Phase 4.5
+**Depends on:** nothing. Lands before `T-358`.
+**Relevant context:** `OPS-001`, amended 2026-10-11; `T-357`; `packaging/fetch_ffmpeg.py`;
+`packaging/licenses/README.md`; `.github/workflows/release.yml`; `docs/RELEASE.md`
+
+#### Scope
+
+`0.1.0`'s original archive, `ffmpeg-n9.0.1-29-gad500d59cb-win64-lgpl-shared-9.0.zip`, hashes to
+`609245cc0a906c1423f2cdb96e27925302d375fe8024dcbc4b3f6aaf757a43ff` in the maintainer's ignored
+`packaging/vendor/ffmpeg/`, and BtbN no longer has it. Attach it to the `v0.1.0` release. Then
+make the fetcher take the release asset, by the same digest, when upstream no longer answers,
+and make each release attach the archive it bundled. The asset is the same LGPL build as the
+installer, with its own `LICENSE.txt`, so `LIC-001`'s obligations do not change.
+
+#### Acceptance criteria
+
+- [x] `0.1.0`'s archive attached to `v0.1.0` at its recorded digest, with the maintainer's
+  confirmation, since it changes a published release
+- [x] `fetch_ffmpeg.py` falls back to the release asset only at the pinned digest, and refuses it
+  otherwise; a test covers both, with no network
+- [x] The release procedure attaches the bundled archive to each new release
+- [x] `packaging/licenses/README.md` and `docs/RELEASE.md` say where the archive is kept
+
+#### Built 2026-10-11
+
+- **`v0.1.0`.** The archive was re-hashed before upload, at `609245cc…a43ff` and 76,400,239 bytes,
+  then attached with `gh release upload`. GitHub records the asset at the same digest and size, and
+  downloading it back from the release's public URL hashed to the same value. The release's
+  published `SHA256SUMS` was left as it was.
+- **The fetcher.** `fetched()` asks BtbN, and on any `URLError` asks
+  `kept_url()`: `releases/download/v<version>/<archive>` on this repository, `v<version>` being
+  this tree's version without a development suffix. Both sources pass the same digest check. On
+  this development tree that names `v0.1.1`, which will never exist since `0.1.1` was skipped;
+  harmless while the month-end pin lives upstream, and `T-358`'s bump to `0.2.0` corrects it.
+- **The release workflow.** `build-windows` uploads `packaging/vendor/ffmpeg/ffmpeg-*-win64-lgpl-shared-*.zip`
+  as its own artifact, failing when there is none. `draft` collects it beside the AppImage and the
+  installer, checksums it into `SHA256SUMS` with them, and fails with *no ffmpeg archive* without it.
+- **The docs.** `packaging/licenses/README.md` says where the archive is kept, with `v0.1.0`'s
+  copy; `docs/RELEASE.md` says the archive is published with each release and left there.
+
+**Tests:** `tests/unit/test_fetch_ffmpeg.py`, four, with no network: the kept copy stands in when
+upstream answers 404; a copy one byte different is refused before anything is extracted or kept;
+upstream is asked first, and the copy not at all while it answers; the copy is looked for beside
+this tree's release. `test_the_bundled_ffmpeg_archive_is_kept_beside_the_release` in
+`test_release_workflow.py` matches the upload glob against the pin's real file name.
+
+**Mutations**, each applied in place and restored: no fallback (F1), the copy skipping the digest
+(F2), the wrong release tag (F3), the copy asked first (F4), the archive not uploaded (W1), and a
+draft without it passing (W2). **All six caught.**
+
+**Checks, 2026-10-11, on Linux:** `ruff check .` and `ruff format --check .` (467 files); `mypy src`
+(69), bare `mypy` and `mypy --platform win32` (211 each); the fetcher, release-workflow, artifact
+gate and build-script tests (117 passed). Not run: a real release workflow, which only a `v*` tag
+starts; `T-358` is its first run with this change.
 
 ---
 
@@ -914,37 +978,6 @@ option promoted becomes a typed-field task of its own, on the pattern `T-247`…
 - [ ] A recorded ruling on what evidence promotes an option, with no telemetry
 - [ ] The reports reviewed before `T-358`, and each promotion filed as its own task, or none, with
   the reason recorded
-
----
-
-### T-360 — Keep each pinned build archive beside its release
-
-**Status:** Proposed — filed 2026-10-11 to carry `OPS-001`'s amendment of that day, ruled on
-`T357-R2`.
-**Owner:** Implementer; the maintainer confirms each upload to a published release
-**Priority:** Medium — `0.1.0`'s ffmpeg archive exists only on the maintainer's disk
-**Phase:** Phase 4.5
-**Depends on:** nothing. Lands before `T-358`.
-**Relevant context:** `OPS-001`, amended 2026-10-11; `T-357`; `packaging/fetch_ffmpeg.py`;
-`packaging/licenses/README.md`; `.github/workflows/release.yml`; `docs/RELEASE.md`
-
-#### Scope
-
-`0.1.0`'s original archive, `ffmpeg-n9.0.1-29-gad500d59cb-win64-lgpl-shared-9.0.zip`, hashes to
-`609245cc0a906c1423f2cdb96e27925302d375fe8024dcbc4b3f6aaf757a43ff` in the maintainer's ignored
-`packaging/vendor/ffmpeg/`, and BtbN no longer has it. Attach it to the `v0.1.0` release. Then
-make the fetcher take the release asset, by the same digest, when upstream no longer answers,
-and make each release attach the archive it bundled. The asset is the same LGPL build as the
-installer, with its own `LICENSE.txt`, so `LIC-001`'s obligations do not change.
-
-#### Acceptance criteria
-
-- [ ] `0.1.0`'s archive attached to `v0.1.0` at its recorded digest, with the maintainer's
-  confirmation, since it changes a published release
-- [ ] `fetch_ffmpeg.py` falls back to the release asset only at the pinned digest, and refuses it
-  otherwise; a test covers both, with no network
-- [ ] The release procedure attaches the bundled archive to each new release
-- [ ] `packaging/licenses/README.md` and `docs/RELEASE.md` say where the archive is kept
 
 ---
 

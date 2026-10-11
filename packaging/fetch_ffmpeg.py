@@ -29,10 +29,12 @@ it answered 404 by 2026-10-09 and failed the frozen Windows build.
 from __future__ import annotations
 
 import hashlib
+import re
 import shutil
 import sys
 import zipfile
 from pathlib import Path
+from urllib.error import URLError
 from urllib.request import urlopen
 
 #: One published moment, not a rolling tag: September 2026's last build, kept until about 2028-09.
@@ -50,6 +52,14 @@ FFMPEG_SHA256 = "7157177b8a6cb2174c1650ba8c71b363f2c78cba5330f88c4c02cf5b2b88064
 FFMPEG_URL = (
     f"https://github.com/BtbN/FFmpeg-Builds/releases/download/{FFMPEG_RELEASE}/{FFMPEG_ARCHIVE}"
 )
+
+#: Where this project keeps the archive: beside each release that bundled it, as one of its
+#: assets (`OPS-001`, amended 2026-10-11, `T-360`). Asked only when upstream fails, and held to
+#: the same digest, so it can only ever supply the bytes this pin names.
+KEPT_BESIDE = "https://github.com/kottmans/tracks-and-trails/releases/download"
+
+#: The file that states this tree's version, read as text: this runs before anything is installed.
+VERSION_FILE = Path(__file__).resolve().parent.parent / "src" / "tracks_and_trails" / "__init__.py"
 
 #: Where the spec looks. Gitignored: 174 MB of third-party binary does not belong in the history,
 #: which is the half of `T-319`'s open question that was never in doubt.
@@ -92,6 +102,37 @@ def download(url: str) -> bytes:
         return bytes(response.read())
 
 
+def release_tag() -> str:
+    """The release whose assets hold the archive this tree bundles: `v` and its version.
+
+    A development suffix is dropped. A checkout of a release tag names itself, which is the case
+    the copy exists for: rebuilding a release after upstream has deleted its build. A development
+    tree names the release it is heading towards, which holds nothing until it is published.
+    """
+    found = re.search(r'^__version__ = "(\d+\.\d+\.\d+)', VERSION_FILE.read_text("utf-8"), re.M)
+    if found is None:
+        raise SystemExit(f"FAIL: no __version__ in {VERSION_FILE}")
+    return f"v{found.group(1)}"
+
+
+def kept_url() -> str:
+    return f"{KEPT_BESIDE}/{release_tag()}/{FFMPEG_ARCHIVE}"
+
+
+def fetched() -> bytes:
+    """The archive from upstream, or, when upstream no longer has it, from beside the release.
+
+    BtbN deletes daily builds after 14 and month-end builds after two years, and `0.1.0`'s pin was
+    gone within a month (`T-357`). Whichever source answers, the digest check that follows is the
+    same, so the copy can stand in only for the exact bytes the pin names.
+    """
+    try:
+        return download(FFMPEG_URL)
+    except URLError as missing:
+        print(f"==> upstream did not answer ({missing}); trying the copy kept beside the release")
+        return download(kept_url())
+
+
 def main() -> int:
     VENDOR.mkdir(parents=True, exist_ok=True)
     archive = VENDOR / FFMPEG_ARCHIVE
@@ -100,7 +141,7 @@ def main() -> int:
         print(f"==> already have a verified {FFMPEG_ARCHIVE}")
         payload = archive.read_bytes()
     else:
-        payload = download(FFMPEG_URL)
+        payload = fetched()
         digest = hashlib.sha256(payload).hexdigest()
         if digest != FFMPEG_SHA256:
             # **Refuse rather than warn.** This binary is about to be signed and shipped under

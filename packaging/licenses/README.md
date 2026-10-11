@@ -4,7 +4,7 @@
 their provenance, so a later reader can verify each one rather than trust it.
 **Owner:** Implementer
 **Status:** Active
-**Last updated:** 2026-10-10 — ffmpeg repinned by `T-357`; created with `T-323`.
+**Last updated:** 2026-10-11 — where the archive is kept, `T-360`; ffmpeg repinned by `T-357`; created with `T-323`.
 
 `packaging/artifact_gates.py` checks these are present in every build. **The check is the point:**
 a licence obligation that depends on somebody remembering to copy a file is one that eventually
@@ -52,6 +52,15 @@ has to be rebuildable. **A month's last build rather than a daily** (`T-357`), b
 the last 14 daily builds and each month's last build for two years. The first pin,
 `autobuild-2026-09-12-13-12` (ffmpeg 9.0.1-29, which `0.1.0` shipped), was a daily and had been
 deleted by 2026-10-09.
+
+**Kept beside each release** (`OPS-001`, amended 2026-10-11, `T-360`). Upstream retention is finite,
+so the archive a release bundled is also one of that release's assets, and `fetch_ffmpeg.py` takes
+it from there, by the same digest, when BtbN no longer has it. The release workflow attaches it,
+and a draft without it fails.
+
+**`0.1.0`'s archive**, 9.0.1-29 above, is an asset of
+[`v0.1.0`](https://github.com/kottmans/tracks-and-trails/releases/tag/v0.1.0), attached on 2026-10-11
+after BtbN had deleted it. GitHub records it at the digest `0.1.0` pinned, `609245cc…a43ff`.
 
 **Verified rather than assumed**, for 9.0.1-29 on 2026-09-12 and again for 9.0.2-17 on 2026-10-10:
 the configure line embedded in `ffmpeg.exe` carries `--enable-version3` and **no**

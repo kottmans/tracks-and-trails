@@ -408,3 +408,37 @@ def test_the_appimage_probes_do_not_depend_on_fuse() -> None:
         step for step in steps("build-linux") if "--spawn-probe" in str(step.get("run", ""))
     )
     assert str(probes.get("env", {}).get("APPIMAGE_EXTRACT_AND_RUN")) == "1"
+
+
+def test_the_bundled_ffmpeg_archive_is_kept_beside_the_release() -> None:
+    """**`T-360`, `OPS-001` amended 2026-10-11.** The archive the installer bundles is uploaded from
+    where `fetch_ffmpeg.py` writes it, collected into the draft, and its absence fails the draft.
+
+    BtbN deleted `0.1.0`'s pin within a month, and the fetcher looks for the copy among the
+    release's assets. Matched against the pin's real file name, so a glob that drifted from it
+    could not pass by matching nothing.
+    """
+    import fnmatch
+    import importlib.util
+
+    specification = importlib.util.spec_from_file_location(
+        "fetch_ffmpeg", REPOSITORY / "packaging" / "fetch_ffmpeg.py"
+    )
+    assert specification is not None and specification.loader is not None
+    fetcher = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(fetcher)
+    written = (fetcher.VENDOR / fetcher.FFMPEG_ARCHIVE).relative_to(REPOSITORY).as_posix()
+
+    uploads = [
+        step["with"]
+        for step in steps("build-windows")
+        if step.get("uses", "").startswith("actions/upload-artifact")
+    ]
+    kept = [upload for upload in uploads if fnmatch.fnmatch(written, str(upload["path"]).strip())]
+    assert kept, f"no upload picks up {written}: {[upload['path'] for upload in uploads]}"
+    assert kept[0].get("if-no-files-found") == "error", "a missing archive would upload nothing"
+
+    text = "\n".join(str(step.get("run", "")) for step in steps("draft"))
+    assert "-name 'ffmpeg-*.zip'" in text
+    assert fnmatch.fnmatch(fetcher.FFMPEG_ARCHIVE, "ffmpeg-*.zip")
+    assert "no ffmpeg archive" in text, "a release without its archive would still be drafted"

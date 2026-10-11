@@ -5,7 +5,7 @@ has to be withdrawn.
 **Owner:** Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-09-11 — created with Phase 5, per `DOC-002`.
+**Last updated:** 2026-10-11 — the ffmpeg archive goes with each release (`T-360`); created with Phase 5, per `DOC-002`.
 **Related:** [`REL-003`](project/DECISIONS.md#rel-003--semver-and-the-first-release-is-010) the
 version scheme · [`REL-004`](project/DECISIONS.md#rel-004--the-linux-artifact-ships-as-an-appimage)
 the Linux format · [`REL-005`](project/DECISIONS.md#rel-005--the-first-windows-installer-ships-unsigned)
@@ -104,6 +104,12 @@ Linux AppImage, `T-322` for the installer — and the gate is run as §8 describ
 **Draft, then publish — never publish directly.** The workflow drafts a release and stops; a human
 publishes it after checking the artifacts attached are the ones the gate passed. Nothing in this
 project publishes automatically, and `T-324`'s criteria say so.
+
+**The ffmpeg archive goes with the release** (`OPS-001`, amended 2026-10-11, `T-360`). The workflow
+attaches the pinned archive the installer bundled, checksums it in `SHA256SUMS` with the
+artifacts, and refuses to draft without it. Publish it with the release and leave it there: it is
+what rebuilds the release once BtbN deletes the build, and `fetch_ffmpeg.py` looks for it among
+that release's assets, by the same digest.
 
 ### What the release page must state
 
