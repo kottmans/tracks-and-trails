@@ -2,7 +2,7 @@
 
 **Purpose:** Unfinished work: review, ready, proposed and blocked tasks.
 **Owner:** Planner (priorities); Implementer (task/status); Reviewer (review disposition)
-**Last updated:** 2026-10-10
+**Last updated:** 2026-10-11
 **Update when:** Work starts, changes scope/status, closes or reopens.
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
@@ -163,7 +163,8 @@ passed**, 5 skipped. That is the first Windows integration result since 2026-09-
 at `d18bcb8`, for the Reviewer to check. *(Was Blocked:)* reviewed 2026-10-10
 ([record](reviews/T-357.md)): approval waits on
 `T357-R1`, `frozen windows` building and smoke-testing at a pushed head. `T357-R2`, keeping
-verified build dependencies, is routed to `T-349`. *(Was In Review:)* repinned on the
+verified build dependencies, is routed to `T-349`, and was ruled on 2026-10-11: kept beside each
+release (`OPS-001` amended), carried by `T-360`. *(Was In Review:)* repinned on the
 maintainer's ruling of 2026-10-10.
 **Owner:** Implementer
 **Priority:** High — the frozen Windows build fails, and `release.yml` runs the same fetch, so
@@ -240,6 +241,64 @@ release build.
 `CHANGELOG.md` keeps no unreleased section, so naming the ffmpeg change is recorded on `T-349`.
 
 ## Ready
+
+### T-351 — With a playlist in the queue, a row's changes are signalled on the wrong row
+
+**Status:** Ready — **next, by the maintainer's ruling of 2026-10-11**: before stage 3's `T-247`
+([the amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-11-no-011-and-t-351-first)). *(Was
+Proposed:)* Filed 2026-09-24 by maintainer instruction, from the codebase audit of that
+date. This was shipped in `0.1.0`.
+**Owner:** Implementer
+**Priority:** High within the `0.1.0` debt. A screen reader hears less than the row shows whenever
+a playlist is in the queue (`NFR-005`), and repaint signals name another row or none at all.
+**Phase:** Phase 4.5 (`0.1.0` debt)
+**Depends on:** nothing
+**Effort:** Small, estimated. Translate at the model boundary, then audit every caller.
+**Relevant context:** `T-140` (the grouped playlist and `_visible`), `T126-R4` (the spoken row
+reads `SELECTOR_ROLE`), `T-344` (the busy tick), `UX-005` §3
+**Affected surfaces:** `ui/queue_view.py` (`QueueModel`) and its tests
+**Risk:** Medium. Repaint spans and the spoken row are easy to break silently in a way a green
+suite does not notice.
+**Required checks:** Ruff lint and format, `mypy src`, bare `mypy` and Windows-platform `mypy`,
+`tests/ui/test_queue_view.py`, `tests/ui/test_row_delegate.py`, `tests/ui/test_accessibility.py`,
+and the full UI suite.
+
+#### Evidence
+
+`QueueModel` has two numberings. `data()` and `rowCount()` use **visible** rows:
+`self._visible[index.row()]`, where a playlist header is inserted and the members of a collapsed
+playlist are left out. Four paths build a `QModelIndex` from `self._index_of` instead, which is the
+position in `self._rows`: `_on_job_changed` → `_emit_row_changed`, `_draw_pending`, `_tick_busy`
+and `_whole_row`. The two agree only while no playlist is grouped.
+
+A probe at `8857753`, using the fixtures in `tests/ui/test_queue_view.py`, put a three-entry
+playlist and one ordinary job `solo` in the queue:
+
+| State | `rowCount` | `_index_of[solo]` | `_visible_of[solo]` | A status change on `solo` signals |
+|---|---|---|---|---|
+| Collapsed | 2 | 3 | 1 | an **invalid** index (row 3 of 2) |
+| Expanded | 5 | 3 | 4 | row 3, which is a playlist entry |
+
+In both states `solo`'s spoken row (`AccessibleTextRole`) omits `Download as: best`, although its
+drawn row shows it. `_whole_row` read `SELECTOR_ROLE` from row 3.
+
+**Not established:** how visible the missed repaint is on a real display. Whole-viewport repaints on
+hover (`row_delegate._repaint`) may hide it.
+
+#### Acceptance criteria
+
+- [ ] Every `QModelIndex` the model builds for a job comes from its **visible** row. A member hidden
+      in a collapsed playlist signals its group's header, whose chip and segments summarise it, or
+      nothing, whichever is ruled in the implementation and stated there.
+- [ ] Regression tests with a grouped playlist ahead of an ordinary job, collapsed **and** expanded,
+      cover a status change, a progress span, the busy tick and the spoken row. Restoring
+      `_index_of` in any one of the four paths makes a test fail.
+- [ ] Every other `_index_of` read is audited. Reads that look up `_rows` by job id are correct and
+      stay; only index construction changes.
+- [ ] Nothing a queue without playlists draws or speaks changes. The existing queue, delegate and
+      accessibility tests pass unchanged.
+
+---
 
 ### T-301 — Four UI tests break when the application font grows by one point
 
@@ -753,58 +812,101 @@ ends badly — the shape `2026-08-27-T212-ytdlp-update-double-free.md` recorded.
 
 ## Proposed — Phase 4.5
 
-### T-349 — The `0.1.1` patch release
+### T-358 — The `0.2.0` release
 
-**Status:** Proposed — **ruled by the maintainer on 2026-09-17** with the Phase 4.5 order: the two
-`0.1.0` defects left open go out as a patch before the phase's own work starts
-([the order](IMPLEMENTATION_PLAN.md#order-2026-09-17)). **Amended the same evening**: the patch
-**no longer gates** the phase's work, *"even if it means skipping the interrim release"*. It is not
-cancelled and its preparation continues, so a tag stays one act away; whether it goes out at all is
-a later call.
+**Status:** Proposed — filed 2026-10-11 by the maintainer's rulings that day: `0.1.1` is skipped
+and its preparation lands here, and the README's `REQ-030` statement, an exit criterion with no
+owner, is owned here.
 **Owner:** Implementer prepares; Maintainer tags and publishes
-**Priority:** Medium — it carries two Low-priority fixes, and it is the first update `0.1.0`'s users
-are told about by the checker they already have. **Not a blocker on `T-184`** since the amendment
-**Phase:** Phase 4.5 — stage 1
-**Depends on:** `T-343`, `T-347`; and, added 2026-10-10, `T-355` and `T-357`, without which a
-fresh build installs PySide6 6.12 and cannot fetch the Windows ffmpeg. The changelog should name
-the bundled ffmpeg's move from 9.0.1-29 to 9.0.2-17 (`T-357`). **Routed here by `T357-R2`
-(2026-10-10), a maintainer decision:** where verified build dependencies are kept, since BtbN's
-retention is finite and `0.1.0`'s recorded ffmpeg URL already answers 404. The original archive
-survives only in the maintainer's ignored `packaging/vendor/ffmpeg/`, hashing to the digest
-`0.1.0` recorded, so keep it until that is decided.
-**Relevant context:** `docs/RELEASE.md` (the five steps, and *patch releases carry fixes only*);
-`TESTING.md` §8 (the release gate); `REL-003` (SemVer); `REL-009` (the checker that tells users)
+**Priority:** High at the end of the phase; nothing to do before stage 3 and the debt are done
+**Phase:** Phase 4.5 — stage 4, the exit
+**Depends on:** `T-247`…`T-255`; `T-351`…`T-354`; `T-339` and the `§11` walk, which happens on
+this release's finished build; `T-355` and `T-357`, without which a fresh build installs PySide6
+6.12 and cannot fetch the Windows ffmpeg; `T-360`, so this release's ffmpeg archive is kept
+beside it.
+**Relevant context:** `docs/RELEASE.md` (the five steps); `TESTING.md` §8 (the release gate);
+`REL-003` (SemVer); `REL-009` (the checker that tells users); `REQ-030`; `OPS-001`, amended
+2026-10-11; the cancelled `T-349` in COMPLETED_TASKS, whose preparation this inherits.
 
 #### Scope
 
-`0.1.1` from `main`, carrying `T-343` and `T-347` and nothing from stages 2 to 4. It is the second
-run of the release process while it is still fresh, and three things happen for the first time:
+`0.2.0` from `main`: the escape hatch, the nine typed fields, the `0.1.0` debt, and the two fixes
+that would have been `0.1.1`. Inherited from `T-349`, three things happen for the first time:
 
-- **`TESTING.md` §8 item 5 gets its first real use.** The migration check has never had a previous
-  release's database to open; `0.1.0` is the first there is one for. `tests/fixtures/schema_versions/`
-  holds the per-version fixtures the suite already uses, `v12.sql` being the newest.
-- **The update checker reaches real users.** Everyone on `0.1.0` is told, by `T-338`'s check, that
-  a newer release exists, and updates by hand (`REL-009` item 3).
-- **The release notes are written for people who already have the application**, rather than for
-  someone meeting it.
-
-#### The `§11` walk, ruled 2026-09-17
-
-**This release ships without `TESTING.md` §8 item 6**, and that is the maintainer's ruling rather
-than an omission: *"go with your recommendations, except for the acceptance walk. We'll do that at
-the end of 4.5 when everything is finished."* One walk, on the finished phase, closes `T328-R4`,
-`T-340`, `T-342`, `T-344` and Phase 4.5's own criterion together.
-
-**`0.1.0` was the first release to ship without it** (2026-09-16) and this is the second. Nothing
-user-facing says otherwise, and nothing here claims the criteria were checked.
+- **`TESTING.md` §8 item 5 gets its first real use**: the migration check opens `0.1.0`'s real
+  database rather than a fabricated one.
+- **The update checker reaches real users**: everyone on `0.1.0` is told by `T-338`'s check, and
+  updates by hand (`REL-009`).
+- **The release notes are written for people who already have the application.**
 
 #### Acceptance criteria
 
-- [x] `T-343` and `T-347` complete and approved — 2026-09-17 and 2026-09-19
-- [ ] `TESTING.md` §8 run on both platforms, **item 6 excepted by the ruling above**, with item 5
-  carried out against `0.1.0`'s database rather than a fabricated one
-- [ ] The five steps of `RELEASE.md` followed, evidence recorded as `0.1.0`'s was
-- [ ] `main` back to a `.devN` version afterwards
+- [ ] **The README states `REQ-030` with its exclusions**, as three lists: what has a typed
+  control, what goes through the hatch, and what is refused, matching the audit
+- [ ] The changelog names `T-343` and `T-347`'s fixes, the bundled ffmpeg's move from 9.0.1-29 to
+  9.0.2-17 (`T-357`), and PySide6 held at 6.11 (`T-355`)
+- [ ] `TESTING.md` §8 on both platforms, **item 6 included**: the walk, by the 2026-09-17 ruling;
+  item 5 against `0.1.0`'s database
+- [ ] This release's pinned ffmpeg archive is attached to it (`OPS-001`, amended 2026-10-11)
+- [ ] `main`'s version names `0.2.0` before the release commit; it has read `0.1.1.dev0` since
+  `0.1.0`'s bump, and no `0.1.1` will exist
+- [ ] The five steps of `RELEASE.md` followed, and `main` back to a `.devN` version afterwards
+
+---
+
+### T-359 — Promote the options users reach for in the hatch
+
+**Status:** Proposed — filed 2026-10-11 by the maintainer's ruling: a Phase 4.5 deliverable, in
+the plan since 2026-08-07, that had no owning task.
+**Owner:** Implementer; the maintainer rules on what promotes
+**Priority:** Low, but it is what stops the hatch becoming the interface (`ARC-010`)
+**Phase:** Phase 4.5
+**Depends on:** `T-184`, complete
+**Relevant context:** `ARC-010` §2 and its *"the hatch becomes the roadmap"* consequence; `NFR-007`
+
+#### Scope
+
+**There is no telemetry, by `NFR-007`, so the evidence is what users report**: issues and
+discussions naming an option they type into the hatch. Put to the maintainer a written rule for
+what promotes an option, then apply it to the reports gathered by the end of the phase. Each
+option promoted becomes a typed-field task of its own, on the pattern `T-247`…`T-255` share.
+
+#### Acceptance criteria
+
+- [ ] A recorded ruling on what evidence promotes an option, with no telemetry
+- [ ] The reports reviewed before `T-358`, and each promotion filed as its own task, or none, with
+  the reason recorded
+
+---
+
+### T-360 — Keep each pinned build archive beside its release
+
+**Status:** Proposed — filed 2026-10-11 to carry `OPS-001`'s amendment of that day, ruled on
+`T357-R2`.
+**Owner:** Implementer; the maintainer confirms each upload to a published release
+**Priority:** Medium — `0.1.0`'s ffmpeg archive exists only on the maintainer's disk
+**Phase:** Phase 4.5
+**Depends on:** nothing. Lands before `T-358`.
+**Relevant context:** `OPS-001`, amended 2026-10-11; `T-357`; `packaging/fetch_ffmpeg.py`;
+`packaging/licenses/README.md`; `.github/workflows/release.yml`; `docs/RELEASE.md`
+
+#### Scope
+
+`0.1.0`'s original archive, `ffmpeg-n9.0.1-29-gad500d59cb-win64-lgpl-shared-9.0.zip`, hashes to
+`609245cc0a906c1423f2cdb96e27925302d375fe8024dcbc4b3f6aaf757a43ff` in the maintainer's ignored
+`packaging/vendor/ffmpeg/`, and BtbN no longer has it. Attach it to the `v0.1.0` release. Then
+make the fetcher take the release asset, by the same digest, when upstream no longer answers,
+and make each release attach the archive it bundled. The asset is the same LGPL build as the
+installer, with its own `LICENSE.txt`, so `LIC-001`'s obligations do not change.
+
+#### Acceptance criteria
+
+- [ ] `0.1.0`'s archive attached to `v0.1.0` at its recorded digest, with the maintainer's
+  confirmation, since it changes a published release
+- [ ] `fetch_ffmpeg.py` falls back to the release asset only at the pinned digest, and refuses it
+  otherwise; a test covers both, with no network
+- [ ] The release procedure attaches the bundled archive to each new release
+- [ ] `packaging/licenses/README.md` and `docs/RELEASE.md` say where the archive is kept
 
 ---
 
@@ -1116,62 +1218,6 @@ it; and apply the update in place, per platform. Whatever is chosen amends `REL-
   both platforms, with the failure path shown to the user
 - [ ] If built: a clean-machine run on each platform, updating a real earlier release to a newer one
 - [ ] `REQ-030`'s wording and the README's update section match what the application does
-
----
-
-### T-351 — With a playlist in the queue, a row's changes are signalled on the wrong row
-
-**Status:** Proposed. Filed 2026-09-24 by maintainer instruction, from the codebase audit of that
-date. This was shipped in `0.1.0`.
-**Owner:** Implementer
-**Priority:** High within the `0.1.0` debt. A screen reader hears less than the row shows whenever
-a playlist is in the queue (`NFR-005`), and repaint signals name another row or none at all.
-**Phase:** Phase 4.5 (`0.1.0` debt)
-**Depends on:** nothing
-**Effort:** Small, estimated. Translate at the model boundary, then audit every caller.
-**Relevant context:** `T-140` (the grouped playlist and `_visible`), `T126-R4` (the spoken row
-reads `SELECTOR_ROLE`), `T-344` (the busy tick), `UX-005` §3
-**Affected surfaces:** `ui/queue_view.py` (`QueueModel`) and its tests
-**Risk:** Medium. Repaint spans and the spoken row are easy to break silently in a way a green
-suite does not notice.
-**Required checks:** Ruff lint and format, `mypy src`, bare `mypy` and Windows-platform `mypy`,
-`tests/ui/test_queue_view.py`, `tests/ui/test_row_delegate.py`, `tests/ui/test_accessibility.py`,
-and the full UI suite.
-
-#### Evidence
-
-`QueueModel` has two numberings. `data()` and `rowCount()` use **visible** rows:
-`self._visible[index.row()]`, where a playlist header is inserted and the members of a collapsed
-playlist are left out. Four paths build a `QModelIndex` from `self._index_of` instead, which is the
-position in `self._rows`: `_on_job_changed` → `_emit_row_changed`, `_draw_pending`, `_tick_busy`
-and `_whole_row`. The two agree only while no playlist is grouped.
-
-A probe at `8857753`, using the fixtures in `tests/ui/test_queue_view.py`, put a three-entry
-playlist and one ordinary job `solo` in the queue:
-
-| State | `rowCount` | `_index_of[solo]` | `_visible_of[solo]` | A status change on `solo` signals |
-|---|---|---|---|---|
-| Collapsed | 2 | 3 | 1 | an **invalid** index (row 3 of 2) |
-| Expanded | 5 | 3 | 4 | row 3, which is a playlist entry |
-
-In both states `solo`'s spoken row (`AccessibleTextRole`) omits `Download as: best`, although its
-drawn row shows it. `_whole_row` read `SELECTOR_ROLE` from row 3.
-
-**Not established:** how visible the missed repaint is on a real display. Whole-viewport repaints on
-hover (`row_delegate._repaint`) may hide it.
-
-#### Acceptance criteria
-
-- [ ] Every `QModelIndex` the model builds for a job comes from its **visible** row. A member hidden
-      in a collapsed playlist signals its group's header, whose chip and segments summarise it, or
-      nothing, whichever is ruled in the implementation and stated there.
-- [ ] Regression tests with a grouped playlist ahead of an ordinary job, collapsed **and** expanded,
-      cover a status change, a progress span, the busy tick and the spoken row. Restoring
-      `_index_of` in any one of the four paths makes a test fail.
-- [ ] Every other `_index_of` read is audited. Reads that look up `_rows` by job id are correct and
-      stay; only index construction changes.
-- [ ] Nothing a queue without playlists draws or speaks changes. The existing queue, delegate and
-      accessibility tests pass unchanged.
 
 ---
 

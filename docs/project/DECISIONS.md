@@ -6,7 +6,7 @@ requirements or design — those live in `REQUIREMENTS.md` and `ARCHITECTURE.md`
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-10-10
+**Last updated:** 2026-10-11
 **Update when:** A durable choice is accepted, superseded, or deliberately rejected.
 **Does not contain:** Completion notes for routine work. Routine fixes go to `TASKS.md` and `CHANGELOG.md`.
 
@@ -48,7 +48,7 @@ Current requirements and architecture retain their own canonical authority.
 | [ARC-001](#arc-001--python--pyside6-qt-6-as-the-implementation-stack) | Python + PySide6 (Qt 6) as the implementation stack | Accepted | — |
 | [ARC-002](#arc-002--consume-yt-dlp-as-a-library-inside-one-isolated-child-process-per-job) | Consume yt-dlp as a library inside one isolated child process per job | Accepted | [ARC-003](#arc-003--versioned-in-arc-002-means-version-controlled-not-version-negotiated) |
 | [DAT-001](#dat-001--sqlite-for-queue-and-history-toml-for-settings) | SQLite for queue and history; TOML for settings | Accepted | [Amended 2026-08-06 (second, and current)](#amended-2026-08-06-second-and-current--there-is-no-history-to-store); [Amended 2026-08-06 (first, superseded)](#amended-2026-08-06-first-superseded--history-is-a-private-ledger-and-the-storage-choice-is-unchanged) |
-| [OPS-001](#ops-001--ffmpeg-is-an-external-dependency-detected-on-linux-bundled-on-windows) | ffmpeg is an external dependency: detected on Linux, bundled on Windows | Accepted | — |
+| [OPS-001](#ops-001--ffmpeg-is-an-external-dependency-detected-on-linux-bundled-on-windows) | ffmpeg is an external dependency: detected on Linux, bundled on Windows | Accepted | [Amended 2026-10-11](#amended-2026-10-11--the-pinned-build-is-kept-beside-each-release) |
 | [OPS-002](#ops-002--ship-a-pinned-yt-dlp-baseline-that-the-user-can-update-in-place) | Ship a pinned yt-dlp baseline that the user can update in place | Accepted | [Amended 2026-09-12](#amended-2026-09-12--the-three-versions-side-by-side-and-update-only-to-something-newer); [Amended 2026-08-27](#amended-2026-08-27--the-override-is-recovery-not-a-standing-choice) |
 | [REL-003](#rel-003--semver-and-the-first-release-is-010) | SemVer, and the first release is `0.1.0` | Accepted | [Clarified 2026-09-14](#clarified-2026-09-14--the-development-bump-follows-publication) |
 | [REL-004](#rel-004--the-linux-artifact-ships-as-an-appimage) | The Linux artifact ships as an AppImage | Accepted | — |
@@ -705,6 +705,30 @@ Detect-and-degrade rather than fail-at-merge-time matters: discovering the probl
 - Licensing: only an **LGPL** ffmpeg build may be bundled, and its license text must ship
   with it (`LIC-001`). A GPL build would relicense the distributed application.
 - Startup does an ffmpeg capability probe, and features gate on the result.
+
+### Amended 2026-10-11 — the pinned build is kept beside each release
+
+**Status:** **Accepted** — maintainer ruling of 2026-10-11, on `T357-R2`.
+**Amends:** how the bundled build is sourced (`packaging/fetch_ffmpeg.py`).
+
+**The problem.** The Windows build bundles an ffmpeg archive pinned by tag and digest from BtbN's
+releases, and BtbN keeps only the last 14 daily builds and each month's last build for two
+years. `0.1.0`'s pin, a daily, answered 404 by 2026-10-09, which failed the frozen Windows build
+(`T-357`). A recorded URL that upstream may delete does not make a release rebuildable. The only
+remaining copy of `0.1.0`'s archive is in the maintainer's ignored `packaging/vendor/ffmpeg/`.
+
+**What is ruled.** **Every pinned build archive is kept beside the release that bundles it**, as
+an asset of that GitHub release, and the fetcher accepts it from there by the same digest when
+upstream no longer has it. `0.1.0`'s archive is attached to `v0.1.0`. Month-end pins (`T-357`)
+stay, so upstream remains the first source while it lasts.
+
+**What it costs.** About 75 MB per release, and a fetcher change, carried by `T-360`. Its licence
+obligations are the ones bundling already carries (`LIC-001`): the asset is the same LGPL build,
+with its own `LICENSE.txt`, as the installer contains.
+
+**The alternatives, as they were put.** Relying on the local copy and two-year month-end pins
+leaves one disk as the only copy of `0.1.0`'s archive. Deferring to `0.2.0`'s release left that
+the same for months.
 
 ---
 

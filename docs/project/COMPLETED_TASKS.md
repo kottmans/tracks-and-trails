@@ -2,7 +2,7 @@
 
 **Purpose:** Running record of completed and cancelled tasks and their evidence.
 **Owner:** Task/status owner; Coordinator / Integrator during a parallel wave
-**Last updated:** 2026-10-10
+**Last updated:** 2026-10-11
 **Update when:** A task closes, reopens, or needs a dated correction or navigation update.
 
 [TASKS](TASKS.md) contains unfinished work. Move each newly Complete or Cancelled
@@ -41991,6 +41991,66 @@ green.
 here, so approval needs the `windows desktop` job to run the corrected helper and the third
 mutation against it. Same shape as `T-033`'s blocker: the code is done, the evidence is not
 producible locally.
+
+---
+
+### T-349 — The `0.1.1` patch release
+
+**Status:** **Cancelled — 2026-10-11, by the maintainer's ruling**
+([the amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-11-no-011-and-t-351-first)). `main`
+carries `T-184` since 2026-10-10, so a fixes-only `0.1.1` would need a release branch from
+`v0.1.0`; the maintainer chose to skip it. `T-343` and `T-347` ship in `0.2.0`, this entry's
+preparation moves to `T-358`, and `T357-R2` was ruled the same day (`OPS-001` amended, carried by
+`T-360`). *(Was Proposed:)* **ruled by the maintainer on 2026-09-17** with the Phase 4.5 order: the two
+`0.1.0` defects left open go out as a patch before the phase's own work starts
+([the order](IMPLEMENTATION_PLAN.md#order-2026-09-17)). **Amended the same evening**: the patch
+**no longer gates** the phase's work, *"even if it means skipping the interrim release"*. It is not
+cancelled and its preparation continues, so a tag stays one act away; whether it goes out at all is
+a later call.
+**Owner:** Implementer prepares; Maintainer tags and publishes
+**Priority:** Medium — it carries two Low-priority fixes, and it is the first update `0.1.0`'s users
+are told about by the checker they already have. **Not a blocker on `T-184`** since the amendment
+**Phase:** Phase 4.5 — stage 1
+**Depends on:** `T-343`, `T-347`; and, added 2026-10-10, `T-355` and `T-357`, without which a
+fresh build installs PySide6 6.12 and cannot fetch the Windows ffmpeg. The changelog should name
+the bundled ffmpeg's move from 9.0.1-29 to 9.0.2-17 (`T-357`). **Routed here by `T357-R2`
+(2026-10-10), a maintainer decision:** where verified build dependencies are kept, since BtbN's
+retention is finite and `0.1.0`'s recorded ffmpeg URL already answers 404. The original archive
+survives only in the maintainer's ignored `packaging/vendor/ffmpeg/`, hashing to the digest
+`0.1.0` recorded, so keep it until that is decided.
+**Relevant context:** `docs/RELEASE.md` (the five steps, and *patch releases carry fixes only*);
+`TESTING.md` §8 (the release gate); `REL-003` (SemVer); `REL-009` (the checker that tells users)
+
+#### Scope
+
+`0.1.1` from `main`, carrying `T-343` and `T-347` and nothing from stages 2 to 4. It is the second
+run of the release process while it is still fresh, and three things happen for the first time:
+
+- **`TESTING.md` §8 item 5 gets its first real use.** The migration check has never had a previous
+  release's database to open; `0.1.0` is the first there is one for. `tests/fixtures/schema_versions/`
+  holds the per-version fixtures the suite already uses, `v12.sql` being the newest.
+- **The update checker reaches real users.** Everyone on `0.1.0` is told, by `T-338`'s check, that
+  a newer release exists, and updates by hand (`REL-009` item 3).
+- **The release notes are written for people who already have the application**, rather than for
+  someone meeting it.
+
+#### The `§11` walk, ruled 2026-09-17
+
+**This release ships without `TESTING.md` §8 item 6**, and that is the maintainer's ruling rather
+than an omission: *"go with your recommendations, except for the acceptance walk. We'll do that at
+the end of 4.5 when everything is finished."* One walk, on the finished phase, closes `T328-R4`,
+`T-340`, `T-342`, `T-344` and Phase 4.5's own criterion together.
+
+**`0.1.0` was the first release to ship without it** (2026-09-16) and this is the second. Nothing
+user-facing says otherwise, and nothing here claims the criteria were checked.
+
+#### Acceptance criteria
+
+- [x] `T-343` and `T-347` complete and approved — 2026-09-17 and 2026-09-19
+- [ ] `TESTING.md` §8 run on both platforms, **item 6 excepted by the ruling above**, with item 5
+  carried out against `0.1.0`'s database rather than a fabricated one
+- [ ] The five steps of `RELEASE.md` followed, evidence recorded as `0.1.0`'s was
+- [ ] `main` back to a `.devN` version afterwards
 
 ---
 

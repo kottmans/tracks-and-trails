@@ -5,7 +5,8 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-09-11 — **§Phase 5's *Phase 4 approved* prerequisite relaxed for the start of
+**Last updated:** 2026-10-11 — §Phase 4.5 amended: no `0.1.1`, `T-351` first, and owners for
+the two deliverables that had none. Previously 2026-09-11 — **§Phase 5's *Phase 4 approved* prerequisite relaxed for the start of
 the work by maintainer ruling**, with the first release still conditional on that approval; its four
 gating decisions are taken (`REL-003`–`REL-006`). *(Earlier that day: §Phase 5 gained a task map
 (`T-317`–`T-328`) tying every deliverable and exit criterion to a filed task.)* *(2026-09-10: **Phase 4.5 resequenced to follow Phase 5** as a post-release
@@ -905,6 +906,21 @@ tag is one act away whenever it is wanted — and the walk ruling above is untou
 **It also relaxes *serial, one task at a time* across stages 1 and 2**, and only there. Within a
 stage the order below still holds, and every task still takes its review before the next starts.
 
+#### Amended 2026-10-11: no `0.1.1`, and `T-351` first
+
+Two rulings, both taken as recommended, after `T-184` landed on `main` on 2026-10-10:
+
+- **No `0.1.1`.** `T-349` cut the patch from `main` with fixes only, and `main` now carries `T-184`'s
+  feature. A release branch from `v0.1.0` would need `T-343`, `T-347`, `T-355` and `T-357`
+  cherry-picked across three weeks of change, and a second release gate, for two Low fixes. **The
+  maintainer chose to skip it**, as the amendment above allowed: both fixes ship in `0.2.0`,
+  `T-349` is Cancelled, and its preparation moves to `T-358`, the `0.2.0` release. Stage 1 ends
+  with its two fixes done.
+- **`T-351` runs before stage 3.** It was filed on 2026-09-24, after this order: a High defect in
+  the shipped `0.1.0`, where a queued playlist signals row changes on the wrong row and a screen
+  reader hears less than the row shows. `T-354` waits on it. Stage 3's own order is unchanged, and
+  `T-352`, `T-353` and `T-354` stay in stage 4.
+
 #### The stages
 
 Serial, one task at a time, which is what one development machine allows (`AGENTS.md` §9: one
@@ -930,11 +946,11 @@ the end-of-phase walk is the place to look at.
 | Deliverable | Owner | Risk |
 |---|---|---|
 | ~~**The `REQ-EXCL` ruling**~~ — **taken 2026-08-07 as `SEC-003`**: `--netrc` and client certs in, `-u`/`-p` out; `--impersonate` and `--xff` out; `--geo-verification-proxy` in; `--exec` out; `--download-archive` in as a user-named file; SponsorBlock in, opt-in, with `NFR-007` amended | `T-182` | **Complete.** It blocked the phase and no longer does. It also corrected `ARC-010` §3, which claimed containment reaches `--exec` |
-| ~~**The option audit**~~ — **written 2026-08-16**, `docs/YTDLP_OPTION_AUDIT.md`: 250 options, each in exactly one class, against a named yt-dlp version, with the application-owned class derived from `build_options` and drift-checked by `tests/unit/test_option_audit.py` | `T-183` | **In review.** It returned seven findings, four of which change how `T-184` must be built |
-| ~~**The fifteen unclassified options, ruled**~~ — **done 2026-08-16, `SEC-004`: all fifteen forbidden.** Code execution, a runtime-fetched component, TLS validation and three credentials, none covered by `SEC-003` | `T-256` | **In review.** Three proposed corrections to `SEC-003` itself are **still unruled** and block nothing |
-| **The escape hatch** (`REQ-031`): parsing, validation, containment, redaction, refusal list, precedence against typed fields | `T-184` | **High** — it is a new route to `T-034`'s containment boundary and `DAT-003`/`DAT-004`'s redaction boundary. Both are Critical-band if breached. **The refusal list keys on the value `parse_options` produces** — not on option strings and not on `dest`, since `--no-geo-bypass` shares the forbidden destination and normalizes to the safe value (audit Finding 4, as corrected by `T183-R1`) |
+| ~~**The option audit**~~ — **written 2026-08-16**, `docs/YTDLP_OPTION_AUDIT.md`: 250 options, each in exactly one class, against a named yt-dlp version, with the application-owned class derived from `build_options` and drift-checked by `tests/unit/test_option_audit.py` | `T-183` | **Complete**, approved with follow-ups 2026-08-17. Its seven findings, four of which changed how `T-184` was built, are dispositioned |
+| ~~**The fifteen unclassified options, ruled**~~ — **done 2026-08-16, `SEC-004`: all fifteen forbidden.** Code execution, a runtime-fetched component, TLS validation and three credentials, none covered by `SEC-003` | `T-256` | **Complete**, approved with follow-ups 2026-08-21. Its three proposed corrections to `SEC-003` were ruled the same day |
+| **The escape hatch** (`REQ-031`): parsing, validation, containment, redaction, refusal list, precedence against typed fields | `T-184` | **Complete**, approved 2026-10-10. **High** — it is a new route to `T-034`'s containment boundary and `DAT-003`/`DAT-004`'s redaction boundary. Both are Critical-band if breached. **The refusal list keys on the value `parse_options` produces** — not on option strings and not on `dest`, since `--no-geo-bypass` shares the forbidden destination and normalizes to the safe value (audit Finding 4, as corrected by `T183-R1`) |
 | **Typed fields, nine tasks over 44 options**: `T-247` selection · `T-248` filenames · `T-249` sidecar writers · `T-250` format depth · `T-251` subtitle depth · `T-252` download tuning · `T-253` reachability · `T-254` SponsorBlock · `T-255` extractor arguments | `T-247`…`T-255` | Medium — breadth, and `NFR-008`'s churn lands on every one of them. Each is independent of the others and of the hatch |
-| Promotion of the options users actually type into the hatch | from `T-184` | Low — but it is what stops the hatch becoming the interface |
+| Promotion of the options users actually type into the hatch | `T-359` (filed 2026-10-11; it had no owner) | Low — but it is what stops the hatch becoming the interface. With no telemetry (`NFR-007`), the evidence is what users report |
 
 ### Exit criteria
 
@@ -955,7 +971,8 @@ the end-of-phase walk is the place to look at.
 - Every typed control is keyboard-reachable and screen-reader-labelled (`NFR-005`) — this phase adds
   more controls than any other, and Phase 4's accessibility pass precedes it rather than covering it
 - The `REQ-030` claim is **stated in the README with its exclusions**, so the parity promise a user
-  reads matches the one the application keeps
+  reads matches the one the application keeps — owned by `T-358`, the `0.2.0` release (filed
+  2026-10-11; it had no owner)
 - **`REQUIREMENTS.md` §11's acceptance criteria walked on the `0.2.0` artifacts, on both platforms,
   and recorded** — added 2026-09-17 by the ruling above. It is `TESTING.md` §8 item 6, waived for
   `0.1.0` and `0.1.1`, and it closes `T328-R4` and the last criterion of `T-340`, `T-342` and

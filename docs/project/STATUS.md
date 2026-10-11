@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-10-10
+**Last updated:** 2026-10-11
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -39,10 +39,11 @@ task and review records it summarised.*
   Fedora host, Windows Sandbox, and the canary. **`T-326` is Complete**, approved 2026-09-17 on
   that replacement-candidate evidence ([record](reviews/T-326.md#2026-09-17--replacement-candidate-evidence-verdict)).
   The approval states the `§11` walk as still waived and unperformed rather than resolving it.
-- **Phase 4.5 (option coverage) is next, and its order was ruled on 2026-09-17**
-  ([the stages](IMPLEMENTATION_PLAN.md#order-2026-09-17)): a **`0.1.1` patch** (`T-343`, `T-347`,
-  released by `T-349`), then the **escape hatch `T-184` alone**, carrying `T-048`, then the **nine
-  typed-field tasks** `T-247`…`T-255`, then the `0.1.0` debt and **`0.2.0`**.
+- **Phase 4.5 (option coverage) is under way, in the order ruled on 2026-09-17** ([the
+  stages](IMPLEMENTATION_PLAN.md#order-2026-09-17)) **and amended on 2026-10-11** ([the
+  amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-11-no-011-and-t-351-first)): `T-343` and `T-347`
+  are done and ship in `0.2.0`, with no `0.1.1`; the escape hatch `T-184` is done; then `T-351`, the
+  nine typed-field tasks `T-247`…`T-255`, the rest of the `0.1.0` debt, and **`0.2.0`** (`T-358`).
 - **`T-343` is Complete**, approved 2026-09-17 ([record](reviews/T-343.md)) and **measured on the
   real Windows desktop** (run
   [`35276130787`](https://github.com/kottmans/tracks-and-trails/actions/runs/35276130787), 46
@@ -86,6 +87,12 @@ task and review records it summarised.*
   [`38088244998`](https://github.com/kottmans/tracks-and-trails/actions/runs/38088244998) passed
   every job on both platforms. Release readiness and the `0.2.0` acceptance walk are not approved by
   it, and `T-048` stays its own task.
+- **Four rulings taken 2026-10-11, all as recommended.** No `0.1.1` (`T-349` Cancelled); `T-351`
+  runs before `T-247`, as a High defect `0.1.0` shipped; verified build archives are kept beside
+  each release (`OPS-001` amended, carried by `T-360`); and the two deliverables that had no owner
+  are filed: the README's `REQ-030` statement within `T-358`, the `0.2.0` release, and promotion as
+  `T-359`. **`T-351` is next**, while the Reviewer checks the CI evidence for `T-355`, `T-356` and
+  `T-357`.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the
@@ -113,12 +120,13 @@ task and review records it summarised.*
 - **`T-348`'s shape is recommended** (2026-09-18): fetch, verify against the published
   `SHA256SUMS`, hand over. The release publishes no `.zsync`, so delta updating would need a release
   change, and in-place updating waits on signing.
-- **The `0.1.1` patch no longer gates the phase's work** (maintainer, 2026-09-17 evening: *"even if
-  it means skipping the interrim release"*). `T-184` may start before it ships; `T-349` stays filed
-  and prepared rather than cancelled
-  ([the amendment](IMPLEMENTATION_PLAN.md#amended-the-same-evening-the-patch-no-longer-gates-the-phases-work)).
-- **One acceptance walk closes the phase.** `TESTING.md` §8 item 6 is not run for `0.1.1` either,
-  by the maintainer's ruling: it happens once on the finished `0.2.0` build and closes `T328-R4`
+- **There is no `0.1.1`** (maintainer, 2026-10-11). `main` carries `T-184` since 2026-10-10, so a
+  fixes-only patch would need a release branch from `v0.1.0`; `T-349` is Cancelled, and its
+  preparation moved to `T-358`, the `0.2.0` release. The 2026-09-17 evening amendment had already
+  let the patch stop gating the phase ([that
+  amendment](IMPLEMENTATION_PLAN.md#amended-the-same-evening-the-patch-no-longer-gates-the-phases-work)).
+- **One acceptance walk closes the phase.** `TESTING.md` §8 item 6, waived for `0.1.0`, is
+  run once, by the maintainer's ruling: it happens once on the finished `0.2.0` build and closes `T328-R4`
   and the last criterion of `T-340`, `T-342` and `T-344`. `T-339` (Narrator) sits in the same
   sitting, and `T-348` gets a ruling in this phase rather than a build.
 
@@ -177,10 +185,11 @@ No Windows runtime, external download or release-gate result is claimed here.
   passed: `windows desktop` ran the desktop slice and the full suite, integration included, for the
   first Windows integration result since 2026-09-18, and `frozen windows` built the release artifact
   and ran its bundled ffmpeg. Both tasks are In Review with that evidence. `release.yml` uses the
-  same pin, so `0.1.1` depends on `T-357`.
-- **`0.1.0`'s ffmpeg archive survives only in the maintainer's ignored
-  `packaging/vendor/ffmpeg/`** (`T357-R2`): its recorded URL answers 404, and the copy there hashes
-  to the digest `0.1.0` recorded. Keep it until `T-349` settles where build dependencies are kept.
+  same pin, so `0.2.0` depends on `T-357`.
+- **`0.1.0`'s ffmpeg archive survives only in the maintainer's ignored `packaging/vendor/ffmpeg/`**
+  (`T357-R2`): its recorded URL answers 404, and the copy there hashes to the digest `0.1.0`
+  recorded. **Keep it until `T-360` attaches it to the `v0.1.0` release**, as `OPS-001`'s 2026-10-11
+  amendment rules.
 - **T-289 is Complete under the 2026-09-04 re-scope, and Phase 4 may exit over it**
   — the reserved decision was taken by the maintainer on 2026-09-11 (`P4EXIT-R3`):
   **bounded acceptance**, on the implemented pool/ownership guards rather than on an
