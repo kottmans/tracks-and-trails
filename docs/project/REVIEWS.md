@@ -2,7 +2,7 @@
 
 **Purpose:** Navigation to canonical task and shared-scope review records.
 **Owner:** Reviewer; Coordinator / Integrator owns shared routing during a wave.
-**Last updated:** 2026-10-10
+**Last updated:** 2026-10-11
 **Update when:** A review record is introduced or its navigation changes.
 
 ## Current navigation
@@ -99,6 +99,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | <a id="2026-08-14--t-244-expanded-child-verb-review"></a><a id="2026-08-14--t-244-correction-focused-re-review"></a><a id="2026-08-14--t-244-authorized-documentation-re-review"></a>[T-244](reviews/T-244.md) | T-244 | 3 |
 | <a id="2026-08-21--t-256-ruling-batch-review"></a><a id="2026-08-21--t256-r1r2-focused-correction-re-review"></a><a id="2026-08-21--t-256-authorized-record-only-focused-pass"></a>[T-256](reviews/T-256.md) | T-184, T-256, T-267 | 3 |
 | [T-184](reviews/T-184.md) | T-184; [eighth-round focused verification](reviews/T-184.md#2026-10-10--eighth-round-focused-verification), checked at 83749d7; approved; [maintainer ruling](reviews/T-184.md#2026-10-10--maintainer-ruling-on-the-remaining-validation-boundary) | 0 |
+| [T-351](reviews/T-351.md) | T-351 | 0 |
 | [T-355](reviews/T-355.md) | T-355 | 0 |
 | [T-356](reviews/T-356.md) | T-356 | 0 |
 | [T-357](reviews/T-357.md) | T-357 | 0 |
