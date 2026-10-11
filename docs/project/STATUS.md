@@ -96,9 +96,9 @@ task and review records it summarised.*
   more rulings the same day designed `T-247`** (`ARC-010` and `UX-015` amended): `-I` and *at most
   N* act when a playlist is expanded, a preset keeps a date as typed while each job freezes it, and
   one *Which items* group holds all seven controls. Mapping it found the hatch admitting, then
-  dropping, long spellings of options that already have a control. **`T-361`, the fix, and `T-247`
-  itself are built and with the Reviewer**: seven typed options, one *Which items* group, and the
-  typed-against-hatch dictionary check the phase's exit asks for.
+  dropping, long spellings of options that already have a control. **`T-361`, the fix, was approved
+  the same day** and is in COMPLETED_TASKS. `T-247` came back with four blockers,
+  `T247-R1`…`R4`, and is being corrected.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the
