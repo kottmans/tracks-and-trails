@@ -91,9 +91,9 @@ task and review records it summarised.*
   runs before `T-247`, as a High defect `0.1.0` shipped; verified build archives are kept beside
   each release (`OPS-001` amended, carried by `T-360`); and the two deliverables that had no owner
   are filed: the README's `REQ-030` statement within `T-358`, the `0.2.0` release, and promotion as
-  `T-359`. **`T-351` is built and with the Reviewer**
-  ([record](TASKS.md#t-351--with-a-playlist-in-the-queue-a-rows-changes-are-signalled-on-the-wrong-row)),
-  as is the CI evidence for `T-355`, `T-356` and `T-357`.
+  `T-359`. **`T-351` and `T-360` were built and approved the same day**, and `T-355`, `T-356` and
+  `T-357` closed on their CI evidence; all five are in [COMPLETED_TASKS](COMPLETED_TASKS.md).
+  **`T-247` is next**, the first typed field.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the
@@ -164,9 +164,9 @@ No Windows runtime, external download or release-gate result is claimed here.
   began requiring `PySide6_WebEngine` and `PySide6_Pdf` and the `LIC-001` gate refused them.
   **`T-355`** caps PySide6 below 6.12, and the push of `d18bcb8` passed every job in run
   [`38088244998`](https://github.com/kottmans/tracks-and-trails/actions/runs/38088244998). `T-355`
-  is In Review with that evidence
-  ([record](TASKS.md#t-355--pyside6-612-brings-webengine-and-pdf-into-the-bundled-tree)). Moving to
-  6.12 needs its own ruling.
+  closed on it, approved 2026-10-11
+  ([record](COMPLETED_TASKS.md#t-355--pyside6-612-brings-webengine-and-pdf-into-the-bundled-tree)).
+  Moving to 6.12 needs its own ruling.
 - **The `Commit messages` gate failed on that push**, run
   [`38088245029`](https://github.com/kottmans/tracks-and-trails/actions/runs/38088245029):
   `5314816`, a documentation commit no task covers, has no `Task:` trailer where the gate wants
@@ -185,12 +185,13 @@ No Windows runtime, external download or release-gate result is claimed here.
   deleted, which **`T-357`** repins to a month-end build kept for two years. At `d18bcb8` both
   passed: `windows desktop` ran the desktop slice and the full suite, integration included, for the
   first Windows integration result since 2026-09-18, and `frozen windows` built the release artifact
-  and ran its bundled ffmpeg. Both tasks are In Review with that evidence. `release.yml` uses the
-  same pin, so `0.2.0` depends on `T-357`.
+  and ran its bundled ffmpeg. Both closed on that evidence, approved 2026-10-11. `release.yml` uses
+  the same pin, so `0.2.0` depends on `T-357`.
 - **`0.1.0`'s ffmpeg archive is kept beside `v0.1.0`** (`T-360`, 2026-10-11): BtbN deleted it, and
   it is now a release asset at the digest `0.1.0` pinned, so the local copy is no longer the only
   one. The fetcher takes such a copy by the same digest when upstream fails, and each release
-  attaches its own (`OPS-001`, amended 2026-10-11). `T-360` is In Review.
+  attaches its own (`OPS-001`, amended 2026-10-11). `T-360` is Complete, approved 2026-10-11; a real
+  tagged release run waits for `T-358`.
 - **T-289 is Complete under the 2026-09-04 re-scope, and Phase 4 may exit over it**
   — the reserved decision was taken by the maintainer on 2026-09-11 (`P4EXIT-R3`):
   **bounded acceptance**, on the implemented pool/ownership guards rather than on an

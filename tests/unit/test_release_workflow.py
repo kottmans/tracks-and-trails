@@ -12,6 +12,9 @@ repository.
 
 from __future__ import annotations
 
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Final
 
@@ -442,3 +445,54 @@ def test_the_bundled_ffmpeg_archive_is_kept_beside_the_release() -> None:
     assert "-name 'ffmpeg-*.zip'" in text
     assert fnmatch.fnmatch(fetcher.FFMPEG_ARCHIVE, "ffmpeg-*.zip")
     assert "no ffmpeg archive" in text, "a release without its archive would still be drafted"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or shutil.which("bash") is None or shutil.which("sha256sum") is None,
+    reason="the draft job runs on Linux; a Windows shell may resolve `find` to another program",
+)
+@pytest.mark.parametrize("with_archive", [True, False], ids=["archive", "no-archive"])
+def test_the_draft_s_collection_step_fails_without_the_ffmpeg_archive(
+    tmp_path: Path, with_archive: bool
+) -> None:
+    """**`T360-R1`.** The workflow's own collection shell, run beside downloaded artifacts.
+
+    The check above found the guard's message in the text, and the Reviewer removed only its
+    `exit 1`: every workflow test still passed, and the weakened shell went on to write
+    `SHA256SUMS` for a release without its archive. Running the step is what tells a guard that
+    fails from one that only speaks.
+    """
+    script = next(
+        str(step["run"])
+        for step in steps("draft")
+        if step.get("name") == "Collect the artifacts and checksum them"
+    )
+    incoming = tmp_path / "incoming"
+    for name in (
+        "release-linux/Tracks_and_Trails-0.2.0-x86_64.AppImage",
+        "release-windows/Tracks-and-Trails-0.2.0-setup.exe",
+        *(
+            ["release-ffmpeg-archive/ffmpeg-n9.0.2-17-g2a571b6068-win64-lgpl-shared-9.0.zip"]
+            if with_archive
+            else []
+        ),
+    ):
+        (incoming / name).parent.mkdir(parents=True, exist_ok=True)
+        (incoming / name).write_bytes(name.encode())
+
+    finished = subprocess.run(
+        ["bash", "-e", "-o", "pipefail", "-c", script],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    sums = tmp_path / "release" / "SHA256SUMS"
+    if with_archive:
+        assert finished.returncode == 0, finished.stdout + finished.stderr
+        assert "ffmpeg-n9.0.2-17" in sums.read_text(encoding="utf-8"), "the archive is not summed"
+    else:
+        assert finished.returncode != 0, "a release without its ffmpeg archive was collected"
+        assert "no ffmpeg archive" in finished.stdout + finished.stderr
+        assert not sums.exists(), "the checksums were written for a release missing its archive"

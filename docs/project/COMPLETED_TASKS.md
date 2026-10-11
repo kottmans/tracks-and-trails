@@ -40769,6 +40769,409 @@ task says so rather than inventing one to satisfy a criterion.
 
 ---
 
+### T-351 — With a playlist in the queue, a row's changes are signalled on the wrong row
+
+**Status:** **Complete — approved 2026-10-11** at `df4835e`
+([record](reviews/T-351.md#2026-10-11--initial-queue-model-review)), with no findings. Native
+Windows execution and a real display are not verified. *(Was In Review:)* built 2026-10-11, first by the maintainer's ruling of that day, before
+stage 3's `T-247` ([the amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-11-no-011-and-t-351-first)).
+*(Was Ready, and before that Proposed:)* Filed 2026-09-24 by maintainer instruction, from the codebase audit of that
+date. This was shipped in `0.1.0`.
+**Owner:** Implementer
+**Priority:** High within the `0.1.0` debt. A screen reader hears less than the row shows whenever
+a playlist is in the queue (`NFR-005`), and repaint signals name another row or none at all.
+**Phase:** Phase 4.5 (`0.1.0` debt)
+**Depends on:** nothing
+**Effort:** Small, estimated. Translate at the model boundary, then audit every caller.
+**Relevant context:** `T-140` (the grouped playlist and `_visible`), `T126-R4` (the spoken row
+reads `SELECTOR_ROLE`), `T-344` (the busy tick), `UX-005` §3
+**Affected surfaces:** `ui/queue_view.py` (`QueueModel`) and its tests
+**Risk:** Medium. Repaint spans and the spoken row are easy to break silently in a way a green
+suite does not notice.
+**Required checks:** Ruff lint and format, `mypy src`, bare `mypy` and Windows-platform `mypy`,
+`tests/ui/test_queue_view.py`, `tests/ui/test_row_delegate.py`, `tests/ui/test_accessibility.py`,
+and the full UI suite.
+
+#### Evidence
+
+`QueueModel` has two numberings. `data()` and `rowCount()` use **visible** rows:
+`self._visible[index.row()]`, where a playlist header is inserted and the members of a collapsed
+playlist are left out. Four paths build a `QModelIndex` from `self._index_of` instead, which is the
+position in `self._rows`: `_on_job_changed` → `_emit_row_changed`, `_draw_pending`, `_tick_busy`
+and `_whole_row`. The two agree only while no playlist is grouped.
+
+A probe at `8857753`, using the fixtures in `tests/ui/test_queue_view.py`, put a three-entry
+playlist and one ordinary job `solo` in the queue:
+
+| State | `rowCount` | `_index_of[solo]` | `_visible_of[solo]` | A status change on `solo` signals |
+|---|---|---|---|---|
+| Collapsed | 2 | 3 | 1 | an **invalid** index (row 3 of 2) |
+| Expanded | 5 | 3 | 4 | row 3, which is a playlist entry |
+
+In both states `solo`'s spoken row (`AccessibleTextRole`) omits `Download as: best`, although its
+drawn row shows it. `_whole_row` read `SELECTOR_ROLE` from row 3.
+
+**Not established:** how visible the missed repaint is on a real display. Whole-viewport repaints on
+hover (`row_delegate._repaint`) may hide it.
+
+#### Acceptance criteria
+
+- [x] Every `QModelIndex` the model builds for a job comes from its **visible** row. A member hidden
+      in a collapsed playlist signals its group's header, whose chip and segments summarise it, or
+      nothing, whichever is ruled in the implementation and stated there. *Ruled below: a
+      status change signals the header, and progress or the busy tick signals nothing.*
+- [x] Regression tests with a grouped playlist ahead of an ordinary job, collapsed **and** expanded,
+      cover a status change, a progress span, the busy tick and the spoken row. Restoring
+      `_index_of` in any one of the four paths makes a test fail.
+- [x] Every other `_index_of` read is audited. Reads that look up `_rows` by job id are correct and
+      stay; only index construction changes.
+- [x] Nothing a queue without playlists draws or speaks changes. The existing queue, delegate and
+      accessibility tests pass unchanged.
+
+#### Built 2026-10-11
+
+**The ruling the criteria asked for.** A **status** change signals the job's own drawn row and,
+when it is in a drawn group, the group's header, because the header's chip, segments, detail line
+and verbs are all counted from its members' statuses. Closed, the member has no row and the header
+alone is signalled; open, one span covers both and the entries between them, never anything
+outside the group. **Progress and the busy tick** signal a job's drawn row or nothing: the header
+draws no bytes. A hidden entry's message is still kept, so it shows when the group opens, and the
+busy timer keeps running while any job is processing, drawn or not.
+
+| Path | Change | Tests | Mutation |
+|---|---|---|---|
+| `_whole_row` | Reads `SELECTOR_ROLE` from `_row_data`, `data`'s job-row half, split out so it needs no index | `test_the_spoken_row_reads_the_format_its_own_row_draws` (closed, open) | M1 |
+| `_on_job_changed` | `_rows_a_status_changes`: its own drawn row and its header, through `_emit_rows_changed` | `test_a_status_change_is_signalled_on_the_row_that_shows_it`; `test_an_entry_s_status_change_redraws_the_header_that_counts_it` (each closed, open) | M2, M5 |
+| `_draw_pending` | Appends the drawn row, or nothing | `test_progress_is_signalled_on_the_row_that_shows_it` (closed, open); `test_a_hidden_entry_s_progress_signals_nothing` | M3 |
+| `_tick_busy` | Signals drawn rows; runs while any job processes | `test_the_busy_tick_redraws_the_row_that_shows_it` (closed, open); `test_the_busy_tick_keeps_running_for_an_entry_inside_a_closed_playlist` | M4, M6 |
+
+**Reproduced first.** Before the fix all eleven first tests failed as the evidence above says:
+closed, `(-1, -1)`, an invalid index; open, row 3 for `solo`'s row 4; and the spoken row missing
+*Download as: best*. **The audit:** the remaining `_index_of` reads, in `job_for`,
+`displayed_progress`, `text_at`, `accessible_text_at`, `refresh`, `_on_progress`, `_on_job_changed`
+and `_draw_pending`, each look a row up in `_rows` by job id, which is correct, and stay. No other
+module builds an index from a job's position.
+
+**Mutations**, each applied in place and restored, the diff checked unchanged: M1 to M4 put
+`_index_of` back in one path each, M5 drops the header, M6 lets the tick count only drawn rows.
+**All six caught.**
+
+**Checks, 2026-10-11, on Linux** (project `.venv`): `ruff check .` and `ruff format --check .`
+(466 files); `mypy src` (69), bare `mypy` and `mypy --platform win32` (210 each);
+`tests/ui/test_queue_view.py` (148 passed); `tests/ui tests/unit` under `-n auto`, with
+`.venv/bin` on `PATH` and `TRACKSANDTRAILS_REQUIRE_FFMPEG=1`: **4,570 passed**, 22 skipped. The
+existing queue, delegate and accessibility tests pass unchanged. No Windows run, and the visible
+effect on a real display is still not established; whole-viewport repaints on hover may have hidden
+it.
+
+---
+
+### T-355 — PySide6 6.12 brings WebEngine and Pdf into the bundled tree
+
+**Status:** **Complete — approved 2026-10-11** at `8691fda`
+([record](reviews/T-355.md#2026-10-11--focused-ci-evidence-verification)): `T355-R1` resolved by run
+[`38088244998`](https://github.com/kottmans/tracks-and-trails/actions/runs/38088244998) at `d18bcb8`. *(Was In Review:)* the evidence `T355-R1` waits on was supplied 2026-10-10, run `38088244998`
+at `d18bcb8`, for the Reviewer to check. *(Was Blocked:)* reviewed 2026-10-10
+([record](reviews/T-355.md)): the cap is correct, and
+approval waits on `T355-R1`, a Linux CI pass at a pushed head, which waits on `T-184`'s approval
+and the push. *(Was In Review:)* the cap the maintainer chose on 2026-10-09.
+**Owner:** Implementer
+**Priority:** High — every CI run's Linux job has failed since PySide6 6.12.0 was published.
+**Phase:** Phase 4.5 (maintenance)
+**Relevant context:** `ARC-001`; `LIC-001`; [artifact_gates.py](../../packaging/artifact_gates.py)'s
+`LICENCE_FOR_DISTRIBUTION`; `test_every_bundled_python_distribution_has_its_licence_shipped`.
+**Affected surfaces:** `pyproject.toml`'s PySide6 range.
+**Risk:** Low — it keeps the 6.11 line both platforms were last verified on, and forgoes 6.12's
+fixes until 6.12 is evaluated.
+**Required checks:** a fresh resolve under the cap; CI's Linux test slice in that environment;
+Ruff lint and format; the placement check.
+
+#### Cause
+
+Scheduled runs [`37777459357`](https://github.com/kottmans/tracks-and-trails/actions/runs/37777459357)
+(2026-10-08) and [`37929286459`](https://github.com/kottmans/tracks-and-trails/actions/runs/37929286459)
+(2026-10-09) each fail one test of 4,427 in the Linux Tests step:
+*"bundled with no licence text named for it: ['pyside6-pdf', 'pyside6-webengine']"*. The hosted
+runner resolved `PySide6>=6.11,<7` to **6.12.0**, whose `pyside6` metapackage now also requires
+`PySide6_WebEngine` 6.12.0.140 (a 116.7 MB wheel) and `PySide6_Pdf` 6.12.0.140. `src/` imports only
+QtCore, QtGui, QtNetwork and QtWidgets. The maintainer's `.venv` still holds 6.11.1, so the gate
+passed locally.
+
+The gate was right. **Mapping both wheels to `Qt-LGPLv3.txt` was rejected**: WebEngine bundles
+Chromium under licences that no shipped text covers. **Depending on `PySide6_Essentials` directly**
+is the longer-term route, but it changes a runtime dependency (`ARC-001`, `AGENTS.md` §7) and needs
+a decision and Windows evidence, which cannot be gathered while `STARBASE` is offline.
+
+#### Change
+
+`"PySide6>=6.11,<6.12"`, with the reason beside it in `pyproject.toml`.
+
+#### Acceptance criteria
+
+- [x] A fresh `pip install -e ".[dev]"` resolves a 6.11 release and neither new wheel.
+- [x] CI's Linux test slice passes in that fresh environment, the licence gate included.
+- [x] A CI run at the commit passes its Linux job: [`38088244998`](https://github.com/kottmans/tracks-and-trails/actions/runs/38088244998) at `d18bcb8`, below.
+      *(Said, before `STARBASE` returned: Windows evidence waits on `STARBASE`.)*
+
+#### CI evidence, 2026-10-10
+
+Run [`38088244998`](https://github.com/kottmans/tracks-and-trails/actions/runs/38088244998), the push of `d18bcb8`, which contains `8691fda`; every job passed. **`linux`**
+([job](https://github.com/kottmans/tracks-and-trails/actions/runs/38088244998/job/114319170673)): a fresh hosted virtualenv resolved `pyside6<6.12,>=6.11` to **6.11.2**,
+with `PySide6_Essentials` and `PySide6_Addons` 6.11.2 and neither `PySide6_WebEngine` nor
+`PySide6_Pdf`; `test_every_bundled_python_distribution_has_its_licence_shipped` passed; unit and
+UI **4,558 passed**, 22 skipped; integration **520 passed**. **`windows desktop`**: the persistent
+virtualenv was rebuilt under a new key, `tt-venv-02643b87e8fa`, and resolved 6.11.2 as well.
+
+#### Evidence, 2026-10-09
+
+On the maintainer's Fedora machine, in a new virtualenv from `/usr/bin/python3.14` (3.14.8) with
+CI's own install command, the cap resolved **PySide6, PySide6_Essentials, PySide6_Addons and
+shiboken6 6.11.2**, and neither new wheel. CI's Linux Tests step, run there with
+`TRACKSANDTRAILS_REQUIRE_FFMPEG=1`:
+
+| Slice | Result |
+|---|---|
+| `pytest -n auto tests/unit tests/ui` | **4,501 passed**, 22 skipped; 80 s |
+| `pytest tests/integration` | **518 passed**; 653 s |
+| `test_artifact_gates.py -k licence`, the gate included | 5 passed |
+
+`ruff check .` and `ruff format --check .` passed (463 files), as did the placement and
+task-reading tests (82 passed). The working tree held only this task's three files afterwards.
+
+The counts differ from the failing runs because those ran at `origin/main` (`8857753`), twelve
+commits behind this one. The third criterion needs a push, and the push is held for `T-184`.
+
+**Moving to 6.12 needs its own ruling**: the dependency shape above, or licence coverage for
+everything the metapackage brings.
+
+### T-356 — The option-table generator writes its pipe to Ruff in the locale's encoding
+
+**Status:** **Complete — approved 2026-10-11** at `2d165db`
+([record](reviews/T-356.md#2026-10-11--focused-windows-ci-evidence-verification)): `T356-R1` resolved
+by the `windows desktop` job of that run. *(Was In Review:)* the evidence `T356-R1` waits on was supplied 2026-10-10, run `38088244998`
+at `d18bcb8`, for the Reviewer to check. *(Was Blocked:)* reviewed 2026-10-10
+([record](reviews/T-356.md)): approval waits on
+`T356-R1`, the `windows desktop` Full suite passing at a pushed head, integration included.
+*(Was In Review:)* filed and fixed on the maintainer's ruling of 2026-10-10.
+**Owner:** Implementer
+**Priority:** High — it fails the Windows unit suite, and that stops the Windows integration suite
+from running at all.
+**Phase:** Phase 4.5 (`T-184`'s generator)
+**Relevant context:** `T-184`; `REQ-031`; [ytdlp_option_table.py](../../tools/ytdlp_option_table.py)'s
+`_formatted`, introduced by `2046207` on 2026-09-19.
+**Affected surfaces:** `tools/ytdlp_option_table.py`; `tests/unit/test_option_table.py`.
+**Risk:** Low — one keyword on one call. The generated module is unchanged.
+**Required checks:** Ruff lint and format; `mypy src`, bare `mypy` and `mypy --platform win32`;
+`tests/unit/test_option_table.py`; the new test failing without the fix.
+
+#### Cause
+
+The first Windows run in three weeks, `windows desktop` in
+[`37929286459`](https://github.com/kottmans/tracks-and-trails/actions/runs/37929286459/job/113833312335)
+at `8857753` on 2026-10-09, failed one test in its Full suite step (1 failed, 4,404 passed):
+`test_the_generated_table_is_what_the_audit_says_today`, with *"ruff format refused the generated
+module: … stream did not contain valid UTF-8"*. `_formatted` pipes the module to
+`ruff format -` with `text=True` and no `encoding`, so Python writes it in the locale's encoding,
+which is cp1252 on `STARBASE`. The module has 24 lines with em dashes; Ruff reads stdin as UTF-8.
+The step stops at the first failing command, so the integration suite never ran.
+
+`STARBASE` was offline from 2026-09-18, the day before `2046207`, so this is the first Windows run
+the generator has had. Encoding the module as cp1252 and piping it to Ruff on Linux reproduces the
+exact message; UTF-8 formats cleanly.
+
+Of the repository's 97 text-mode `subprocess` calls without an `encoding`, this is the only one
+that writes `input`. The rest only decode output, which has passed on Windows; no wider sweep is
+filed.
+
+#### Change
+
+`encoding="utf-8"` on the call, which also decodes Ruff's UTF-8 output correctly. A new test,
+`test_the_formatter_is_handed_utf_8_whatever_the_locale`, runs `_formatted` in a child interpreter
+with UTF-8 mode and locale coercion off under `LC_ALL=C`, whose encoding is ASCII; Windows supplies
+its code page instead. Its probe passes the text through `!a`, because the first draft's literal
+em dash failed decoding the child's own command line, which proved nothing about the generator.
+
+#### Acceptance criteria
+
+- [x] The new test fails without the fix (*"'ascii' codec can't encode character '—'"*) and
+      passes with it. Checked both ways on 2026-10-10.
+- [x] `tests/unit/test_option_table.py` passes (11), and
+      `python tools/ytdlp_option_table.py --check` reports the module up to date.
+- [x] Ruff lint and format (463 files); `mypy src` (69), bare `mypy` (210) and
+      `mypy --platform win32` (210) pass.
+- [x] The `windows desktop` Full suite passes at a pushed head that includes this, integration
+      suite included: [`38088244998`](https://github.com/kottmans/tracks-and-trails/actions/runs/38088244998) at `d18bcb8`, below.
+
+#### CI evidence, 2026-10-10
+
+Run [`38088244998`](https://github.com/kottmans/tracks-and-trails/actions/runs/38088244998), the push of `d18bcb8`, which contains `2d165db`. **`windows desktop`**
+([job](https://github.com/kottmans/tracks-and-trails/actions/runs/38088244998/job/114319170645)) passed on `STARBASE`: the desktop slice **46 passed**; the Full suite's unit
+and UI **4,536 passed**, 42 skipped, among them `test_the_generated_table_is_what_the_audit_says_today`
+and `test_the_formatter_is_handed_utf_8_whatever_the_locale`; and its integration suite **515
+passed**, 5 skipped. That is the first Windows integration result since 2026-09-18.
+
+### T-357 — The pinned Windows ffmpeg was deleted upstream
+
+**Status:** **Complete — approved 2026-10-11** at `68a8c1f`
+([record](reviews/T-357.md#2026-10-11--focused-frozen-windows-evidence-verification)): `T357-R1`
+resolved by `frozen windows` in that run, and `T357-R2` by `OPS-001`'s amendment and the copy now
+attached to `v0.1.0`. *(Was In Review:)* the evidence `T357-R1` waits on was supplied 2026-10-10, run `38088244998`
+at `d18bcb8`, for the Reviewer to check. *(Was Blocked:)* reviewed 2026-10-10
+([record](reviews/T-357.md)): approval waits on
+`T357-R1`, `frozen windows` building and smoke-testing at a pushed head. `T357-R2`, keeping
+verified build dependencies, is routed to `T-349`, and was ruled on 2026-10-11: kept beside each
+release (`OPS-001` amended), carried by `T-360`. *(Was In Review:)* repinned on the
+maintainer's ruling of 2026-10-10.
+**Owner:** Implementer
+**Priority:** High — the frozen Windows build fails, and `release.yml` runs the same fetch, so
+`T-349`'s `0.1.1` cannot be built until this lands.
+**Phase:** Phase 4.5 (release readiness)
+**Relevant context:** `OPS-001`; `LIC-001`; `T-319`; `T-323`;
+[fetch_ffmpeg.py](../../packaging/fetch_ffmpeg.py);
+[the licence provenance](../../packaging/licenses/README.md#which-ffmpeg-and-how-its-licence-was-obtained).
+**Affected surfaces:** `packaging/fetch_ffmpeg.py`'s pin; `packaging/licenses/README.md`. The
+committed `ffmpeg-LGPL.txt` is unchanged.
+**Risk:** Medium — the Windows artifact bundles a newer ffmpeg point release, 9.0.2-17 in place of
+9.0.1-29, whose runtime behaviour no Windows run here has yet exercised.
+**Required checks:** the new archive's digest measured and compared with GitHub's; the fetcher
+run end to end on it; the LGPL build flags re-read; Ruff; packaging tests; frozen Windows at a
+pushed head.
+
+#### Cause
+
+`frozen windows` in
+[`37929286459`](https://github.com/kottmans/tracks-and-trails/actions/runs/37929286459/job/113833312372)
+failed in *Build the windowed release artifact*: `fetch_ffmpeg.py` got **HTTP 404** for
+`autobuild-2026-09-12-13-12`. The GitHub API answers 404 for that tag too. BtbN's README:
+*"The last build of each month is kept for two years. The last 14 daily builds are kept."* The
+pin was a daily build, so it was always going to expire. `0.1.0` was built from it, so `0.1.0`'s
+Windows artifact can no longer be rebuilt from its recorded URL either. Keeping a copy of the
+archive ourselves would remove the dependency on BtbN's retention; that is not filed, and it
+would need its own ruling.
+
+#### Change
+
+`autobuild-2026-09-30-13-08`, September's last build:
+`ffmpeg-n9.0.2-17-g2a571b6068-win64-lgpl-shared-9.0.zip`, 76,972,461 bytes, SHA-256
+`7157177b8a6cb2174c1650ba8c71b363f2c78cba5330f88c4c02cf5b2b880646`. It is kept until about 2028-09.
+The rationale for a month-end build is written beside the pin and in the licence README.
+
+#### Evidence, 2026-10-10
+
+- **Digest:** downloaded into an empty scratch directory, the archive hashed to the value above,
+  equal to the `sha256:` digest GitHub publishes for the asset.
+- **The fetcher, end to end:** `main()` with `VENDOR` pointed at that directory exited 0. It
+  verified the digest, found the archive's `LICENSE.txt` equal to the committed
+  `ffmpeg-LGPL.txt`, and extracted `ffmpeg.exe`, `ffprobe.exe` and seven DLLs, 157 MB. The nine
+  file names match the 9.0.1-29 build's, so no DLL's ABI version moved.
+- **LGPL, not GPL** (`LIC-001`), read from the binaries without running them: `ffmpeg.exe` and
+  `avutil-61.dll` carry a 99-flag configure line with `--enable-version3` and neither
+  `--enable-gpl` nor `--enable-nonfree`, and `avutil-61.dll` reports
+  *"LGPL version 3 or later"*.
+- Ruff lint and format; `mypy src`, bare `mypy` and `mypy --platform win32`;
+  `test_artifact_gates.py` and `test_build_scripts.py` (84 passed).
+- **CI's Linux test slice** on this tree, with `T-356` beneath it, in the project `.venv` (PySide6
+  6.11.1): `tests/integration` **518 passed**; `tests/unit tests/ui` **4,500 passed, 2 failed**,
+  22 skipped. Both failures were `test_the_command_the_gates_run_is_the_declared_one`, because the
+  run did not put `.venv/bin` on `PATH` and this machine has no other `ruff` or `mypy`. With it on
+  `PATH`, `test_toolchain_versions.py` passed (5).
+
+#### Acceptance criteria
+
+- [x] The pin names a build BtbN retains, with a measured digest that equals GitHub's.
+- [x] The fetcher accepts it: digest, licence text and the executables the app runs.
+- [x] The configure flags still satisfy `LIC-001`.
+- [x] `frozen windows` builds and smoke-tests the release artifact at a pushed head that includes
+      this: [`38088244998`](https://github.com/kottmans/tracks-and-trails/actions/runs/38088244998) at `d18bcb8`, below.
+
+#### CI evidence, 2026-10-10
+
+Run [`38088244998`](https://github.com/kottmans/tracks-and-trails/actions/runs/38088244998), the push of `d18bcb8`, which contains `68a8c1f`. **`frozen windows`**
+([job](https://github.com/kottmans/tracks-and-trails/actions/runs/38088244998/job/114319170550)) passed. `fetch_ffmpeg.py` downloaded the `autobuild-2026-09-30-13-08`
+archive, verified `7157177b…0646` and extracted 9 files, 157 MB; the release build took 115 s.
+Its probes on `dist-release` passed: spawn, yt-dlp, database, yt-dlp update and **ffmpeg**, which
+resolved the bundled `_internal\ffmpeg.exe` and reported it ok; the windowed check found no
+console. **One limit:** this job runs the artifact gates on the smoke build, `dist`, not on the
+release build.
+
+`CHANGELOG.md` keeps no unreleased section, so naming the ffmpeg change is recorded on `T-349`.
+
+### T-360 — Keep each pinned build archive beside its release
+
+**Status:** **Complete — approved 2026-10-11** at `948c83f`
+([record](reviews/T-360.md#2026-10-11--initial-archive-retention-review)). `T360-R1`, Low, is
+corrected in completion, as the record asked, by a test that runs the collection step. A real
+tagged release run is not verified; `T-358` is its first. *(Was In Review:)* built 2026-10-11, the maintainer's confirmation given for the upload.
+*(Was Proposed:)* filed 2026-10-11 to carry `OPS-001`'s amendment of that day, ruled on
+`T357-R2`.
+**Owner:** Implementer; the maintainer confirms each upload to a published release
+**Priority:** Medium — `0.1.0`'s ffmpeg archive exists only on the maintainer's disk
+**Phase:** Phase 4.5
+**Depends on:** nothing. Lands before `T-358`.
+**Relevant context:** `OPS-001`, amended 2026-10-11; `T-357`; `packaging/fetch_ffmpeg.py`;
+`packaging/licenses/README.md`; `.github/workflows/release.yml`; `docs/RELEASE.md`
+
+#### Scope
+
+`0.1.0`'s original archive, `ffmpeg-n9.0.1-29-gad500d59cb-win64-lgpl-shared-9.0.zip`, hashes to
+`609245cc0a906c1423f2cdb96e27925302d375fe8024dcbc4b3f6aaf757a43ff` in the maintainer's ignored
+`packaging/vendor/ffmpeg/`, and BtbN no longer has it. Attach it to the `v0.1.0` release. Then
+make the fetcher take the release asset, by the same digest, when upstream no longer answers,
+and make each release attach the archive it bundled. The asset is the same LGPL build as the
+installer, with its own `LICENSE.txt`, so `LIC-001`'s obligations do not change.
+
+#### Acceptance criteria
+
+- [x] `0.1.0`'s archive attached to `v0.1.0` at its recorded digest, with the maintainer's
+  confirmation, since it changes a published release
+- [x] `fetch_ffmpeg.py` falls back to the release asset only at the pinned digest, and refuses it
+  otherwise; a test covers both, with no network
+- [x] The release procedure attaches the bundled archive to each new release
+- [x] `packaging/licenses/README.md` and `docs/RELEASE.md` say where the archive is kept
+
+#### Built 2026-10-11
+
+- **`v0.1.0`.** The archive was re-hashed before upload, at `609245cc…a43ff` and 76,400,239 bytes,
+  then attached with `gh release upload`. GitHub records the asset at the same digest and size, and
+  downloading it back from the release's public URL hashed to the same value. The release's
+  published `SHA256SUMS` was left as it was.
+- **The fetcher.** `fetched()` asks BtbN, and on any `URLError` asks
+  `kept_url()`: `releases/download/v<version>/<archive>` on this repository, `v<version>` being
+  this tree's version without a development suffix. Both sources pass the same digest check. On
+  this development tree that names `v0.1.1`, which will never exist since `0.1.1` was skipped;
+  harmless while the month-end pin lives upstream, and `T-358`'s bump to `0.2.0` corrects it.
+- **The release workflow.** `build-windows` uploads `packaging/vendor/ffmpeg/ffmpeg-*-win64-lgpl-shared-*.zip`
+  as its own artifact, failing when there is none. `draft` collects it beside the AppImage and the
+  installer, checksums it into `SHA256SUMS` with them, and fails with *no ffmpeg archive* without it.
+- **The docs.** `packaging/licenses/README.md` says where the archive is kept, with `v0.1.0`'s
+  copy; `docs/RELEASE.md` says the archive is published with each release and left there.
+
+**Tests:** `tests/unit/test_fetch_ffmpeg.py`, four, with no network: the kept copy stands in when
+upstream answers 404; a copy one byte different is refused before anything is extracted or kept;
+upstream is asked first, and the copy not at all while it answers; the copy is looked for beside
+this tree's release. `test_the_bundled_ffmpeg_archive_is_kept_beside_the_release` in
+`test_release_workflow.py` matches the upload glob against the pin's real file name.
+
+**Mutations**, each applied in place and restored: no fallback (F1), the copy skipping the digest
+(F2), the wrong release tag (F3), the copy asked first (F4), the archive not uploaded (W1), and a
+draft without it passing (W2). **All six caught.**
+
+**Checks, 2026-10-11, on Linux:** `ruff check .` and `ruff format --check .` (467 files); `mypy src`
+(69), bare `mypy` and `mypy --platform win32` (211 each); the fetcher, release-workflow, artifact
+gate and build-script tests (117 passed). Not run: a real release workflow, which only a `v*` tag
+starts; `T-358` is its first run with this change.
+
+#### Completion, 2026-10-11
+
+**`T360-R1`.** `test_the_bundled_ffmpeg_archive_is_kept_beside_the_release` found the guard's
+message in the draft step's text, so removing only its `exit 1` left every workflow test
+passing. `test_the_draft_s_collection_step_fails_without_the_ffmpeg_archive` runs that step's
+own shell with bash beside downloaded artifacts: with the archive it writes `SHA256SUMS`
+naming it; without, it fails, says *no ffmpeg archive* and writes no checksums. Removing only
+the `exit 1` now fails it. It is skipped on Windows, where the draft job never runs.
+
+---
+
 ## Cancelled
 
 ### T-212 — The recorded checklist run: the built window against the agreed flow
