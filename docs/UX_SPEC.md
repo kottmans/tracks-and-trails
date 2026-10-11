@@ -9,7 +9,7 @@ listed in §10.
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active — created 2026-08-06 for `T-105`, at the start of Phase 3
-**Last updated:** 2026-09-27 — `UX-015` added §6's additional-options group. Before it, 2026-08-11:
+**Last updated:** 2026-10-11 — `UX-015`'s amendment added §6's *Which items* group. Before it, 2026-09-27: `UX-015` added §6's additional-options group. Before that, 2026-08-11:
 `T222-R2` demoted §6's scroll-region clause from `[D]` to `[P]`
 and opened it as `P-29`; the clause is built ahead of ratification on the reviewer's instruction.
 Before it, 2026-08-09: `UX-010` amended §2.2's group chip: a queue group's chip is
@@ -623,10 +623,24 @@ it: five checkboxes and one free list are different screens.
   recorded here rather than left to be discovered. What is open for the maintainer is whether
   scrolling is the right shape, not whether the clipping needs fixing. See §10.
 
+### Which items — `REQ-030`, ruled 2026-10-11 for `T-247`
+
+**[T]** *(ruled `UX-015`, amended 2026-10-11)* **One group, *Which items*, directly above the
+additional options**: the playlist items, *at most N*, the smallest and largest file, and the upload
+date on or after and on or before. The items are checked as the user types, in yt-dlp's `-I`
+grammar; a date accepts `YYYYMMDD` or yt-dlp's relative forms such as `today-2weeks`.
+
+**[T]** *(same)* The items and *at most* controls are **disabled, with the reason, for a single
+video**, because they choose among a playlist's entries.
+
+**[T]** *(`ARC-010`, amended 2026-10-11)* The items and *at most* seed the playlist picker's
+selection when a playlist is expanded, and the user can still change it. A date stays as typed
+in a preset and is fixed to real dates when a download is queued.
+
 ### Additional yt-dlp options — `REQ-031`, built by `T-184`
 
-**[T]** *(ruled `UX-015`)* **The fifth group**, *Additional yt-dlp options*, below *Subtitles* and
-always visible: a multi-line text box, with one line saying it takes options this screen has no
+**[T]** *(ruled `UX-015`)* **The last group**, *Additional yt-dlp options*, always visible, with *Which
+items* above it since 2026-10-11: a multi-line text box, with one line saying it takes options this screen has no
 control for.
 
 **[T]** *(ruled `UX-015`)* **Checked as the user types**, once typing pauses. Each refusal is a line

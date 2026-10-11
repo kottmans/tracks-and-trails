@@ -92,8 +92,12 @@ task and review records it summarised.*
   each release (`OPS-001` amended, carried by `T-360`); and the two deliverables that had no owner
   are filed: the README's `REQ-030` statement within `T-358`, the `0.2.0` release, and promotion as
   `T-359`. **`T-351` and `T-360` were built and approved the same day**, and `T-355`, `T-356` and
-  `T-357` closed on their CI evidence; all five are in [COMPLETED_TASKS](COMPLETED_TASKS.md).
-  **`T-247` is next**, the first typed field.
+  `T-357` closed on their CI evidence; all five are in [COMPLETED_TASKS](COMPLETED_TASKS.md). **Four
+  more rulings the same day designed `T-247`** (`ARC-010` and `UX-015` amended): `-I` and *at most
+  N* act when a playlist is expanded, a preset keeps a date as typed while each job freezes it, and
+  one *Which items* group holds all seven controls. Mapping it found the hatch admitting, then
+  dropping, long spellings of options that already have a control; **`T-361` fixes that first, then
+  `T-247`**.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the

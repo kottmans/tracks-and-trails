@@ -90,7 +90,7 @@ Current requirements and architecture retain their own canonical authority.
 | [OPS-009](#ops-009--where-each-ci-job-runs-now-that-starbase-is-back-and-minutes-are-metered) | Where each CI job runs, now that `STARBASE` is back and minutes are metered | Partly superseded | [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously); [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died); [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
 | [DAT-006](#dat-006--the-completion-ledger-what-it-stores-and-what-it-deliberately-does-not) | The completion ledger: what it stores, and what it deliberately does not | Withdrawn; purge ruling accepted | [Withdrawn 2026-08-06](#withdrawn-2026-08-06--there-is-no-ledger-so-there-is-nothing-to-decide); [Legacy-data ruling 2026-08-06](#legacy-data-ruling-2026-08-06--the-rows-already-written-are-purged-on-upgrade) |
 | [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch) | The queue does not run until it is started, and it is stopped at every launch | Accepted | [Amended 2026-09-12](#amended-2026-09-12--a-queue-with-nothing-left-to-do-stops-itself) |
-| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted); [Amended 2026-09-27](#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute); [Amended 2026-10-10](#amended-2026-10-10--a-long-option-is-typed-in-full) |
+| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted); [Amended 2026-09-27](#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute); [Amended 2026-10-10](#amended-2026-10-10--a-long-option-is-typed-in-full); [Amended 2026-10-11](#amended-2026-10-11--playlist-selection-acts-at-expansion-and-dates-freeze-when-queued) |
 | [UX-007](#ux-007--the-phase-3-surfaces-ruled-all-25-open-p-clauses) | The Phase 3 surfaces, ruled: all 25 open `[P]` clauses | Accepted | — |
 | [SEC-004](#sec-004--the-fifteen-options-sec-003-did-not-see-are-all-forbidden) | The fifteen options `SEC-003` did not see are all forbidden | Accepted | — |
 | [SEC-005](#sec-005----legacy-server-connect-is-forbidden-on-sec-004s-own-tls-reasoning) | `--legacy-server-connect` is forbidden, on `SEC-004`'s own TLS reasoning | Accepted | — |
@@ -104,7 +104,7 @@ Current requirements and architecture retain their own canonical authority.
 | [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu) | The row picks a preset; the per-row verbs are the row's own menu | Accepted | — |
 | [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) | The concurrency control leaves the toolbar for Settings | Accepted | — |
 | [UX-014](#ux-014--naming-is-a-setting-a-single-download-is-renamed-not-templated) | Naming is a setting; a single download is renamed, not templated | Accepted | — |
-| [UX-015](#ux-015--the-additional-options-field-the-editors-last-group-checked-as-you-type) | The additional-options field: the editor's last group, checked as you type | Accepted | — |
+| [UX-015](#ux-015--the-additional-options-field-the-editors-last-group-checked-as-you-type) | The additional-options field: the editor's last group, checked as you type | Accepted | [Amended 2026-10-11](#amended-2026-10-11--a-which-items-group-stands-above-the-hatch) |
 | [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button) | The row's menu says what it removes, and the ⋮ reads as a button | Accepted | — |
 | [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted; revision 2026-09-08.5 by amendment | [Status retention](#doc-007-status-retention); [running completed-task record](#doc-007-completed-tasks); [shared source and captured formatting](#doc-007-shared-source); [review storage](#doc-007-review-storage); [historical review migration](#doc-007-review-migration) |
 
@@ -5665,6 +5665,35 @@ the reviewer's recommendation, keeps full parity but leaves the hatch mirroring 
 class has now failed twice. Exact spellings now with a follow-up task to restore abbreviations
 was also offered, and was not chosen.
 
+### Amended 2026-10-11 — playlist selection acts at expansion, and dates freeze when queued
+
+**Status:** **Accepted** — maintainer rulings of 2026-10-11, on `T-247`.
+**Amends:** §1's typed fields, for the seven options `T-247` types.
+
+**The problem.** This application expands a playlist into one job per entry, and each job runs
+yt-dlp on that one video. yt-dlp's `-I/--playlist-items` and `--max-downloads` act on a playlist,
+so per job they mean nothing, and `--max-downloads 1` ends a finished download *Cancelled*. And
+yt-dlp resolves a relative date such as `today-2weeks` when it parses it, so a stored parse would
+freeze *the last two weeks* on the day a preset was saved.
+
+**What is ruled.**
+
+1. **`-I` and `--max-downloads` are preset fields applied when the add dialog expands a
+   playlist.** They seed the entry picker's selection, which the user can still change, and are
+   never sent to yt-dlp per entry. *At most N* is the first N chosen entries; unlike yt-dlp's
+   count it cannot know which of them a date or size filter will skip later.
+2. **A preset keeps a date as typed, and each job freezes it when queued.** `today-2weeks` stays
+   relative in the preset; the request carries the resolved `YYYYMMDD`, as `ARCHITECTURE.md` §8
+   freezes settings into a request, so a retry uses the window it was queued with.
+3. **The size and date filters act per job**, through yt-dlp, and an item they skip ends
+   *Cancelled* with its reason, as `UX-005`'s 2026-09-27 amendment already rules for the hatch.
+
+Once built, each of the seven is refused from the hatch for its control (`HAS_A_CONTROL`).
+
+**The alternatives, as they were put.** For `-I` and *at most*: per paste in the picker only, not
+saved in presets; or left untyped and refused, the picker covering them. For dates: resolving when
+the job runs, which moves the window under a queued or retried job.
+
 ---
 
 ## UX-007 — The Phase 3 surfaces, ruled: all 25 open `[P]` clauses
@@ -6844,6 +6873,22 @@ process on a lazy import, and a per-job value replaces the preset's.
 
 - `UX_SPEC.md` §6 transcribes both as `[T]` clauses.
 - A disabled button needs its reason beside it (`UX-005` §5), and the refusal list is that reason.
+
+### Amended 2026-10-11 — a *Which items* group stands above the hatch
+
+**Status:** **Accepted** — maintainer ruling of 2026-10-11, on `T-247`.
+**Amends:** §1, *the editor's fifth group*. The hatch stays the **last** group; the new group sits
+directly above it.
+
+**What is ruled.** One group, ***Which items***, holds all seven of `T-247`'s options: the
+playlist items (yt-dlp's `-I` grammar, checked as the user types), *at most N*, the smallest and
+largest file (a number and a unit), and the upload date, on or after and on or before, accepting
+yt-dlp's forms such as `today-2weeks`. The items and *at most* controls are disabled, with the
+reason, for a single video. Every control is a keyboard stop with a screen-reader name
+(`NFR-005`).
+
+**The alternative, as it was put.** Splitting by what each acts on: the items and *at most* in the
+playlist picker, the filters in the editor; truer to where each applies, and two places to look.
 
 ---
 

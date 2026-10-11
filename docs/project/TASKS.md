@@ -19,6 +19,90 @@ Nothing. `T-351`, `T-355`, `T-356`, `T-357` and `T-360` were approved on 2026-10
 
 ## Ready
 
+### T-361 — The hatch admits long spellings of options that have a control, then drops them
+
+**Status:** Ready — filed 2026-10-11 by the maintainer's ruling, to run before `T-247`.
+**Owner:** Implementer
+**Priority:** High — `REQ-031` forbids an option accepted and silently dropped, and the hatch does
+exactly that.
+**Phase:** Phase 4.5 (stage 3, before `T-247`)
+**Depends on:** nothing
+**Relevant context:** `REQ-031`; `ARC-010` §4; `T-184`; `tools/ytdlp_option_table.py`
+(`built_typed_options`, `derive_destinations`); `downloader/extra_options._reason_to_refuse`;
+`docs/YTDLP_OPTION_AUDIT.md`'s built table
+**Affected surfaces:** `tools/ytdlp_option_table.py`, the generated `downloader/option_table.py`,
+the audit's built table if its rows change, and their tests
+**Risk:** Medium — the generated table is what the hatch refuses from.
+
+#### Evidence
+
+Found 2026-10-11 while mapping `T-247`. The audit's built table lists one spelling per typed
+option (`-r`, `-R`, `-x`, `--embed-metadata`, …), and `TYPED_WITH_A_FIELD` holds exactly those.
+`_reason_to_refuse` matches the spelling typed, so another spelling of the same option is admitted;
+`derive_destinations` skips built options, so `hatch_options` then produces nothing for it. Measured
+at `d2480fa`: `--limit-rate 1M`, `--retries 3`, `--extract-audio`, `--add-metadata` and
+`--srt-langs en` are each **usable** with `hatch_options` returning `{}`, while `-r 1M`, `-R 3` and
+`-x` are refused for their control. `test_extra_options.py`'s docstring claiming `--limit-rate` is
+refused is false.
+
+#### Acceptance criteria
+
+- [ ] `TYPED_WITH_A_FIELD` holds **every spelling** of a built option, derived from yt-dlp's parser
+      rather than listed by hand, so a new typed field brings its aliases with it.
+- [ ] Each spelling measured above is refused for its control, and a test walks every spelling of
+      every built option through `admit`.
+- [ ] Any deprecated option that sets a built option's destination under another name is found
+      and either refused or recorded with its reason.
+- [ ] The generated table regenerates cleanly, and Ruff, both mypy platforms and the hatch's tests
+      pass.
+
+---
+
+### T-247 — Video selection: which items, how big, how old
+
+**Status:** Ready — **ruled 2026-10-11** (`ARC-010` and `UX-015` amended); after `T-361`. *(Was
+Proposed:)* filed 2026-08-16 by `T-183`
+**Priority:** High among the nine — playlist item selection is the most-asked-for of the 44
+**Options (7):** `-I/--playlist-items`, `--min-filesize`, `--max-filesize`, `--date`,
+`--datebefore`, `--dateafter`, `--max-downloads`
+**Specific criteria:** `-I`'s range grammar is parsed and refused at edit time, not handed to
+yt-dlp as a string; the three date options accept yt-dlp's own relative forms (`today-2weeks`) or
+refuse them with the reason; `--max-downloads` interacts with the queue's own counting and the
+interaction is asserted rather than assumed.
+
+#### Maintainer rulings, 2026-10-11 — the design, before the code
+
+Mapped first: this application expands a playlist into one job per entry, and each job runs yt-dlp
+on that one video with `noplaylist`. The maintainer took four rulings, all as recommended:
+
+1. **`-I` and `--max-downloads` are preset fields applied at expansion** (`ARC-010`, amended): they
+   seed the add dialog's `PlaylistSelection` when a playlist is probed, and again when the row's
+   preset changes, and never reach yt-dlp per entry. *At most N* keeps the first N of the entries
+   `-I` chose, in playlist order. The user's own picks after that are theirs.
+2. **Dates stay as typed in a preset and freeze in the job** (`ARC-010`, amended). The request
+   carries `YYYYMMDD`, resolved when the request is built from the preset; yt-dlp's strict date
+   grammar (`YYYYMMDD`, or `now`, `today`, `yesterday` and `date`, with an optional
+   `±N day/week/month/year`) is transcribed into `core/`, which may not import yt-dlp, and bound by
+   a test to yt-dlp's own `date_from_str` across a set of forms.
+3. **The size and date filters act per job**, on the download only, never the probe. The worker's
+   `NothingDownloadedError` condition, which its comment says `T-247` joins, treats a job these
+   skipped as skipped (*Cancelled* with yt-dlp's reason), not failed.
+4. **One *Which items* group** in the options editor, above the hatch (`UX-015`, amended): items
+   (checked as typed against yt-dlp's own `-I` parser, lazily, as the hatch is), *at most*, the
+   smallest and largest file as a number and a unit, and *uploaded on or after* and *on or before*.
+   `--date X` is both bounds at `X`, so two date fields carry three options. The items and *at
+   most* are disabled, with the reason, for a single video.
+
+Also settled for the build: **no migration file** is owed, against the shared criterion's
+*"each new field is a migration"*. The request is one JSON blob, and an old row without these keys
+loads with their defaults (`test_hatch_request.py`); that load is the round-trip test. Each new
+spelling joins the audit's built table, and `T-361`'s derivation brings `-I`'s alias
+`--playlist-items` with it. The *"same intent, same dictionary"* exit criterion gets the test the
+mapping found missing: the typed request's `build_options` against `parse_options` of the same
+options, key by key.
+
+---
+
 ### T-301 — Four UI tests break when the application font grows by one point
 
 **Status:** In Progress — **three of the four repaired 2026-09-10**; the fourth is diagnosed and
@@ -672,17 +756,6 @@ beats designing it against an imagined one.
 #### Out of scope
 
 - Any change to `T-014`'s current strict comparison, which is right until then
-
-### T-247 — Video selection: which items, how big, how old
-
-**Status:** Proposed — filed 2026-08-16 by `T-183`
-**Priority:** High among the nine — playlist item selection is the most-asked-for of the 44
-**Options (7):** `-I/--playlist-items`, `--min-filesize`, `--max-filesize`, `--date`,
-`--datebefore`, `--dateafter`, `--max-downloads`
-**Specific criteria:** `-I`'s range grammar is parsed and refused at edit time, not handed to
-yt-dlp as a string; the three date options accept yt-dlp's own relative forms (`today-2weeks`) or
-refuse them with the reason; `--max-downloads` interacts with the queue's own counting and the
-interaction is asserted rather than assumed.
 
 ### T-248 — Filename shaping and the modification time
 

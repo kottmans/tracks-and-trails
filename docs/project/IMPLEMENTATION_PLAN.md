@@ -920,6 +920,10 @@ Two rulings, both taken as recommended, after `T-184` landed on `main` on 2026-1
   the shipped `0.1.0`, where a queued playlist signals row changes on the wrong row and a screen
   reader hears less than the row shows. `T-354` waits on it. Stage 3's own order is unchanged, and
   `T-352`, `T-353` and `T-354` stay in stage 4.
+- **`T-361` runs before `T-247`** (ruled later the same day). Mapping `T-247` found the hatch
+  admitting long spellings of options that already have a control and then dropping them, which
+  `REQ-031` forbids; the fix decides how `T-247`'s own spellings are refused. `T-247`'s design was
+  ruled with it (`ARC-010` and `UX-015` amended 2026-10-11).
 
 #### The stages
 
