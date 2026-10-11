@@ -58,9 +58,17 @@ from tracks_and_trails.core.presets import (
     POST_PROCESSING_FIELDS,
     PRESET_OWNED_FIELDS,
     FormatChoice,
+    format_choice_of,
 )
+from tracks_and_trails.core.selection import size_words
 
-__all__ = ["FORMAT_PREFIX", "effective_format_text", "format_name", "preset_name_for"]
+__all__ = [
+    "FORMAT_PREFIX",
+    "derived_preset_name",
+    "effective_format_text",
+    "format_name",
+    "preset_name_for",
+]
 
 #: How a queue row states the format it is running as, once the control is gone (`UX-005` §6).
 #:
@@ -126,9 +134,21 @@ def format_name(choice: FormatChoice) -> str:
     is, and a name omitting the one number a user chose between is that gap one step smaller.
     """
     name = preset_name_for(choice) or _converting_preset_for(choice) or _base_preset_for(choice)
+    clauses = f"{_post_processing(choice)}{_which_items(choice)}{_extra_options(choice)}"
     if name is None:
-        return f"{choice.format_selector}{_post_processing(choice)}{_extra_options(choice)}"
-    return f"{name}{_bitrate(choice)}{_post_processing(choice)}{_extra_options(choice)}"
+        return f"{choice.format_selector}{clauses}"
+    return f"{name}{_bitrate(choice)}{clauses}"
+
+
+def derived_preset_name(preset: Preset) -> str:
+    """What a preset the options editor derived is called: `format_name`, plus its entry rule.
+
+    **The rule is not part of a `FormatChoice`** (`T-247`): `-I` and *at most N* act when a
+    playlist is expanded, and no request carries them. Two derived presets differing only in their
+    rule would therefore share a name, and the staging list decides *"this row already has that"*
+    by name, so choosing the second would silently keep the first's.
+    """
+    return f"{format_name(format_choice_of(preset))}{_entry_rule(preset)}"
 
 
 def _base_preset_for(choice: FormatChoice) -> str | None:
@@ -147,9 +167,18 @@ def _base_preset_for(choice: FormatChoice) -> str | None:
 
     **The additional yt-dlp options are set aside too** (`T-184`). No built-in carries any, so a
     preset with some matched nothing and its row read as the raw selector — `T140-R3`'s defect
-    again, through the newest field. `_extra_options` says they are there instead.
+    again, through the newest field. `_extra_options` says they are there instead. **So are the
+    size and date filters** (`T-247`), for the same reason, and `_which_items` says them.
     """
-    plain = replace(unadjusted(choice), extra_options="", extra_option_argv=())
+    plain = replace(
+        unadjusted(choice),
+        extra_options="",
+        extra_option_argv=(),
+        min_filesize=None,
+        max_filesize=None,
+        uploaded_after=None,
+        uploaded_before=None,
+    )
     if plain == choice:
         return None
     return preset_name_for(plain) or _converting_preset_for(plain)
@@ -201,6 +230,50 @@ def _post_processing(choice: FormatChoice) -> str:
     ]
     if embedded:
         parts.append(f"embedding {_joined(embedded)}")
+    return "".join(f" · {part}" for part in parts)
+
+
+def _which_items(choice: FormatChoice) -> str:
+    """What the size and date filters keep, and nothing when there are none (`T-247`).
+
+    A date is shown as held: a preset's `today-2weeks` as typed, a queued job's frozen day as a
+    date, because that is the day its window was fixed to.
+    """
+    parts: list[str] = []
+    smallest, largest = choice.min_filesize, choice.max_filesize
+    if smallest is not None and largest is not None:
+        parts.append(f"files of {size_words(smallest)} to {size_words(largest)}")
+    elif smallest is not None:
+        parts.append(f"files of at least {size_words(smallest)}")
+    elif largest is not None:
+        parts.append(f"files of at most {size_words(largest)}")
+    after, before = choice.uploaded_after, choice.uploaded_before
+    if after is not None and after == before:
+        parts.append(f"uploaded on {_day(after)}")
+    elif after is not None and before is not None:
+        parts.append(f"uploaded {_day(after)} to {_day(before)}")
+    elif after is not None:
+        parts.append(f"uploaded on or after {_day(after)}")
+    elif before is not None:
+        parts.append(f"uploaded on or before {_day(before)}")
+    return "".join(f" · {part}" for part in parts)
+
+
+def _day(text: str) -> str:
+    """`20260927` as `2026-09-27`; a relative form such as `today-2weeks` unchanged."""
+    if len(text) == 8 and text.isdigit():
+        return f"{text[:4]}-{text[4:6]}-{text[6:]}"
+    return text
+
+
+def _entry_rule(preset: Preset) -> str:
+    """Which of a playlist's entries the preset starts from, and nothing for *all* (`T-247`)."""
+    parts: list[str] = []
+    if preset.playlist_items is not None:
+        parts.append(f"items {preset.playlist_items}")
+    if preset.max_downloads is not None:
+        noun = "item" if preset.max_downloads == 1 else "items"
+        parts.append(f"at most {preset.max_downloads} {noun}")
     return "".join(f" · {part}" for part in parts)
 
 

@@ -81,12 +81,10 @@ options the hatch now refuses. No Windows run.
 
 ---
 
-## Ready
-
 ### T-247 — Video selection: which items, how big, how old
 
-**Status:** Ready — **ruled 2026-10-11** (`ARC-010` and `UX-015` amended); after `T-361`. *(Was
-Proposed:)* filed 2026-08-16 by `T-183`
+**Status:** In Review — built 2026-10-11. *(Was Ready — ruled 2026-10-11, `ARC-010` and `UX-015`
+amended, after `T-361`; was Proposed:)* filed 2026-08-16 by `T-183`
 **Priority:** High among the nine — playlist item selection is the most-asked-for of the 44
 **Options (7):** `-I/--playlist-items`, `--min-filesize`, `--max-filesize`, `--date`,
 `--datebefore`, `--dateafter`, `--max-downloads`
@@ -126,7 +124,67 @@ spelling joins the audit's built table, and `T-361`'s derivation brings `-I`'s a
 mapping found missing: the typed request's `build_options` against `parse_options` of the same
 options, key by key.
 
+#### Built 2026-10-11
+
+- **The model.** `Preset` gains `playlist_items` and `max_downloads`, its alone and named in
+  `models.EXPANSION_FIELDS`, and four fields it shares with `DownloadRequest`: `min_filesize`,
+  `max_filesize`, `uploaded_after` and `uploaded_before`. `-I` and the dates are checked by
+  `core/selection.py`, transcriptions of yt-dlp's `PlaylistEntries` and
+  `date_from_str(strict=True)` that `test_selection.py` runs against yt-dlp itself. Sizes and
+  *at most* must be positive, and the smallest file no larger than the largest. A request takes
+  only the `YYYYMMDD` of a real day.
+- **Freezing.** `to_request` resolves a preset's dates in UTC, as yt-dlp does; `preset_of` gives a
+  queued job's frozen days back, and request to preset to request is unchanged.
+- **Reaching yt-dlp.** `build_options` sets `min_filesize`, `max_filesize` and `daterange` after
+  the probe returns, so the probe sees none of them. **The exit criterion the mapping found
+  untested is asserted**: eight intents, typed through the preset and `to_request`, against
+  `parse_options` of the options they stand for, key by key. The worker's skip condition takes the
+  four filters beside the hatch. A window whose frozen days have crossed, which a preset mixing a
+  fixed and a relative date can produce as the days pass, ends *Cancelled* with that reason before
+  yt-dlp is asked, because `DateRange` refuses it; the model carries it rather than refusing, since
+  refusing would raise inside every caller of `to_request`.
+- **Expansion** (ruling 1). `PlaylistSelection.by_rule` seeds a playlist's entries when it is
+  probed, and the add dialog's refresh re-seeds any row whose effective preset now has a different
+  rule, an open picker included. A row whose rule is unchanged keeps what the user checked; the new
+  `Row.entry_rule` records what it was seeded from. **The `--max-downloads` interaction the
+  criteria ask about is asserted on the queue**: *at most N* never reaches yt-dlp, and Add queues
+  exactly the entries the rule chose.
+- **The editor** (ruling 4). *Which items* sits above the hatch: the items, *at most*, the
+  smallest and largest file, one *Sizes in* unit for both, and the two dates. Text is checked once
+  typing pauses and a number at once; refusals are listed by control, and OK and *Save as preset…*
+  are held while any stands. `choosing_entries=False`, passed for a single video and a queued job,
+  disables the items and *at most* with the reason and carries the preset's own. `format_name`
+  says the filters, and `derived_preset_name` adds the rule, so two presets differing only in it
+  do not share a name.
+- **The hatch.** The seven rows join the audit's built table, whose header now admits a `Preset`
+  field; `T-361`'s derivation adds `--playlist-items`. `NOT_SECRET_VALUES` loses the eight
+  spellings. The partition test now asserts that a task's rows are built together or not at all,
+  which still fails `T183-R4`'s swap, and holds the audit's *28 / 37* sentence to the tables.
+  `daterange` joins the emitted keys with no option string. `settings._toml_value` writes an
+  integer as one.
+- **Tests that used these spellings as examples moved to others**: `--age-limit -3`,
+  `-Sres:720`, `--http-chunk-size 10M`, and the integration size case to
+  `tests/integration/test_which_items.py`. **No admitted pair is known to reach the hatch's
+  *together* refusal now**: the date pair was the only one measured. yt-dlp's whole-line check is
+  tested on that pair directly, and the seam's naming with a stand-in parser.
+
+**Departures from the rulings' wording, for the Reviewer to weigh.** (1) The two sizes share one
+unit control rather than one each: on Linux a combo box announces its value unless a visible label
+names it (`T200-R7`), and a unit per size needed a second label inside each row. (2) Ruling 4 says
+`-I` is checked *"against yt-dlp's own `-I` parser, lazily, as the hatch is"*. It is checked once
+typing pauses, as the hatch is, but by the bound transcription, which the preset's validator and
+the expansion both need without yt-dlp.
+
+**Checks, 2026-10-11, on Linux:** `ruff check .` and `ruff format --check .`; `mypy src`, bare
+`mypy` and `mypy --platform win32`; `python tools/ytdlp_option_table.py --check`; `tests/unit
+tests/ui` under `-n auto`, **4,846 passed**, 21 skipped; `tests/integration` **527 passed**, the
+seven new ones in `test_which_items.py` among them, against real yt-dlp on `127.0.0.1`. **27
+mutations, all caught**, each on a copy of the tree with its targeted tests; the table is in the
+review handoff. No Windows run.
+
 ---
+
+## Ready
 
 ### T-301 — Four UI tests break when the application font grows by one point
 
@@ -711,7 +769,9 @@ option promoted becomes a typed-field task of its own, on the pattern `T-247`…
 the option lists come from: `docs/YTDLP_OPTION_AUDIT.md`. **44 options over nine tasks** — the
 typed class minus the 21 that already have a `DownloadRequest` field. Counted, and
 `tests/unit/test_option_audit.py` asserts the partition, so a task that quietly grows or drops an
-option fails a gate.)*
+option fails a gate. **`T-247` built its seven on 2026-10-11**, so the built table holds 28 and
+the other eight tasks 37; two of the seven are `Preset` fields, by `ARC-010`'s amendment that
+day.)*
 
 **The following is true of all nine.** Each still states its own `**Status:**`, because `T-096`'s
 gate reads that line per entry and a shared one would exempt nine tasks from the check that six

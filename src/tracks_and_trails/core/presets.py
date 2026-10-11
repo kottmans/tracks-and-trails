@@ -21,11 +21,16 @@ copies it. There is no second string to disagree with the first.
 ## Translation is a copy, not an interpretation
 
 Every field of `Preset` is a field of `DownloadRequest` under the same name
-(`core/models.py`). `to_request()` therefore copies them across and adds only what a preset
-cannot know: the URL and the output directory. `tests/unit/test_presets.py` derives that
-correspondence from both dataclasses rather than from a list, so a preset field that stops
-being carried fails the suite — this project's recurring defect is a value computed correctly
-and then not acted on, and a hand-maintained copy is where that starts.
+(`core/models.py`), but for the two `EXPANSION_FIELDS`, which act before there is a request.
+`to_request()` therefore copies them across and adds only what a preset cannot know: the URL and
+the output directory. `tests/unit/test_presets.py` derives that correspondence from both
+dataclasses rather than from a list, so a preset field that stops being carried fails the suite —
+this project's recurring defect is a value computed correctly and then not acted on, and a
+hand-maintained copy is where that starts.
+
+**Two fields are resolved rather than copied** (`T-247`): a preset's upload dates stay as typed,
+`today-2weeks` included, and the request carries the day each names on the day it is built
+(`ARC-010`, amended 2026-10-11).
 
 ## The validation boundary
 
@@ -53,6 +58,7 @@ from tracks_and_trails.core.models import (
     MediaKind,
     Preset,
 )
+from tracks_and_trails.core.selection import resolved_date
 
 #: `ARCHITECTURE.md` §8 puts every output path through `core/paths.py`; this is the template
 #: that gets rendered before it goes there. One constant rather than five copies, so the
@@ -451,6 +457,15 @@ class FormatChoice:
     extra_options: str = field(repr=False)
     extra_option_argv: tuple[str, ...] = field(repr=False)
 
+    #: Which items the download keeps (`T-247`), here because they are preset-owned. They do
+    #: describe what a download is: a job that skips files over 100 MiB is not the job that keeps
+    #: them. From a preset a date is as typed; from a request it is the frozen `YYYYMMDD`, so the
+    #: dialog and the queue each name the one they hold.
+    min_filesize: int | None
+    max_filesize: int | None
+    uploaded_after: str | None
+    uploaded_before: str | None
+
 
 def format_choice_of(source: DownloadRequest | Preset) -> FormatChoice:
     """Narrow a request **or a preset** to what describes the download (`T159-R1`).
@@ -527,9 +542,10 @@ def to_request(
 ) -> DownloadRequest:
     """Build the `DownloadRequest` this preset means, for `url` (`REQ-006`).
 
-    Every preset field is copied under its own name; `url` and `output_directory` are the two
-    things a preset cannot know. `overrides` carry the settings a preset does not fix — a proxy,
-    a rate limit, a cookie source, a rate cap.
+    Every preset field is copied under its own name, but for the upload dates, which are frozen
+    to the day they name, and the `EXPANSION_FIELDS`, which acted when the playlist was expanded;
+    `url` and `output_directory` are the two things a preset cannot know. `overrides` carry the
+    settings a preset does not fix — a proxy, a rate limit, a cookie source, a rate cap.
 
     **An override may not touch a field the preset owns** (`T015-R1`). Unrestricted overrides
     let a caller pass `format_selector="worst"` and receive exactly that while
@@ -579,10 +595,21 @@ def to_request(
         embed_thumbnail=preset.embed_thumbnail,
         embed_metadata=preset.embed_metadata,
         embed_chapters=preset.embed_chapters,
+        min_filesize=preset.min_filesize,
+        max_filesize=preset.max_filesize,
+        # **Resolved, not copied** (`ARC-010`, amended 2026-10-11): `today-2weeks` names a day, and
+        # the job keeps the day it named when it was queued, so a retry keeps its window.
+        uploaded_after=_frozen(preset.uploaded_after),
+        uploaded_before=_frozen(preset.uploaded_before),
         extra_options=preset.extra_options,
         extra_option_argv=preset.extra_option_argv,
     )
     return replace(request, **overrides) if overrides else request
+
+
+def _frozen(date: str | None) -> str | None:
+    """A preset's date as the `YYYYMMDD` it names today, in UTC as yt-dlp reads it."""
+    return resolved_date(date) if date is not None else None
 
 
 def needs_ffmpeg(preset: Preset) -> bool:

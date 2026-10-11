@@ -70,6 +70,7 @@ from tracks_and_trails.core.paths import (
     numbered_variant,
 )
 from tracks_and_trails.core.presets import selector_merges
+from tracks_and_trails.core.selection import empty_window
 from tracks_and_trails.downloader import process_tree
 from tracks_and_trails.downloader.environment import (
     FfmpegReport,
@@ -117,6 +118,11 @@ class NothingDownloadedError(Exception):
 
 #: What a skipped job says when yt-dlp printed nothing at all, which no measured skip does.
 NOTHING_DOWNLOADED: Final = "yt-dlp downloaded nothing for this item, because of its options."
+
+#: What a job says when its frozen upload dates have crossed (`T-247`), so no day is in its window.
+EMPTY_WINDOW: Final = (
+    "Nothing was downloaded: no upload date is on or after {after} and also on or before {before}."
+)
 
 
 class CancelSignal(Protocol):
@@ -1842,6 +1848,13 @@ def _extract(
 ) -> dict[str, Any]:
     from tracks_and_trails.core.logging import YtdlpLog, ytdlp_logger
 
+    if not probe_only and empty_window(request.uploaded_after, request.uploaded_before):
+        # **No day passes both ends, so no item can** (`T-247`). yt-dlp refuses such a `DateRange`
+        # outright, and a preset mixing a fixed date with a relative one can produce it as the days
+        # pass. It is the filters skipping the item, so it ends the way their skips do.
+        raise NothingDownloadedError(
+            EMPTY_WINDOW.format(after=request.uploaded_after, before=request.uploaded_before)
+        )
     log = YtdlpLog(ytdlp_logger())
     options = adapter.build_options(
         request,
@@ -1870,12 +1883,22 @@ def _extract(
     result = dict(info or {})
     # **A normal return that wrote nothing is yt-dlp skipping the item on the job's own options**
     # (`UX-005`, amended 2026-09-27). Decided on what exists, never on what yt-dlp said: its last
-    # line is only what the row shows. Asked only of a job with a hatch, which is the one route a
-    # selection option reaches a request today, so anything else that writes nothing still fails
-    # loudly; `T-247`'s typed selection fields join this condition when they exist.
-    if not probe_only and request.extra_option_argv and not _wrote_anything(result):
+    # line is only what the row shows. Asked only of a job that has such options — the hatch, or
+    # `T-247`'s typed filters — so anything else that writes nothing still fails loudly.
+    if not probe_only and _may_skip(request) and not _wrote_anything(result):
         raise NothingDownloadedError(_without_the_tag(log.last_line) or NOTHING_DOWNLOADED)
     return result
+
+
+def _may_skip(request: DownloadRequest) -> bool:
+    """Whether the job's own options can tell yt-dlp to pass over its item (`T-247`)."""
+    filters = (
+        request.min_filesize,
+        request.max_filesize,
+        request.uploaded_after,
+        request.uploaded_before,
+    )
+    return bool(request.extra_option_argv) or any(bound is not None for bound in filters)
 
 
 def _wrote_anything(result: Mapping[str, Any]) -> bool:

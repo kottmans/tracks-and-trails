@@ -38,6 +38,7 @@ from urllib.parse import urlsplit
 
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus, apply
+from tracks_and_trails.core.selection import date_problem, items_problem
 
 # --- field validation -----------------------------------------------------------------------
 #
@@ -253,6 +254,50 @@ def _require_optional_count(owner: str, name: str, value: object) -> None:
         _fail(owner, name, value, "an int or None")
     if value < 0:  # type: ignore[operator]
         raise ValueError(f"{owner}.{name} cannot be negative")
+
+
+def _require_optional_positive(owner: str, name: str, value: object) -> None:
+    """A positive `int` or `None` (`T-247`). Zero is refused: no file is zero bytes, and *at most
+    none* would choose nothing while looking like a limit."""
+    _require_optional_count(owner, name, value)
+    if value == 0:
+        raise ValueError(f"{owner}.{name} must be at least 1, or None for no limit")
+
+
+def _require_size_order(owner: str, smallest: int | None, largest: int | None) -> None:
+    """The smallest file a filter keeps may not be larger than the largest (`T-247`)."""
+    if smallest is not None and largest is not None and smallest > largest:
+        raise ValueError(
+            f"{owner}.min_filesize ({smallest}) is larger than {owner}.max_filesize ({largest}), "
+            "so no file could pass both"
+        )
+
+
+def _require_optional_items(owner: str, value: object) -> None:
+    """`None`, or yt-dlp's `-I` grammar as typed (`T-247`), refused with the reason."""
+    _require_optional_text(owner, "playlist_items", value)
+    if isinstance(value, str):
+        problem = items_problem(value)
+        if problem is not None:
+            raise ValueError(f"{owner}.playlist_items is {value!r}: {problem}")
+
+
+def _require_optional_date_text(owner: str, name: str, value: object) -> None:
+    """`None`, or a date as yt-dlp reads one: `YYYYMMDD`, or a relative form (`T-247`)."""
+    _require_optional_text(owner, name, value)
+    if isinstance(value, str):
+        problem = date_problem(value)
+        if problem is not None:
+            raise ValueError(f"{owner}.{name} is {value!r}: {problem}")
+
+
+def _require_optional_day(owner: str, name: str, value: object) -> None:
+    """`None`, or the `YYYYMMDD` of a day that exists: a request carries a date already frozen."""
+    _require_optional_text(owner, name, value)
+    if isinstance(value, str) and not (
+        len(value) == 8 and value.isascii() and value.isdigit() and date_problem(value) is None
+    ):
+        raise ValueError(f"{owner}.{name} must be the YYYYMMDD of a real day, not {value!r}")
 
 
 def _require_optional_duration(owner: str, name: str, value: object) -> None:
@@ -1044,6 +1089,22 @@ class DownloadRequest:
     embed_metadata: bool = False
     embed_chapters: bool = False
 
+    #: Which items this job keeps (`REQ-030`, `T-247`): yt-dlp's `--min-filesize`,
+    #: `--max-filesize` and its upload-date window, which `build_options` sets **on the download
+    #: only**. The probe has to describe the item whatever it is, so a filter there would hide the
+    #: very item the user is choosing a format for. An item they rule out ends *Cancelled* with
+    #: yt-dlp's reason, not failed (`ARC-010`, amended 2026-10-11).
+    #:
+    #: Sizes are bytes. **Dates are the `YYYYMMDD` frozen when the job was queued**, never a
+    #: relative form: `to_request` resolves a preset's `today-2weeks`, so a retry next week uses the
+    #: window the job was queued with, as every other setting here is frozen (`ARCHITECTURE.md`
+    #: §8). A window whose ends have crossed is carried rather than refused — see
+    #: `selection.empty_window` for how it can arise and what the worker does with it.
+    min_filesize: int | None = None
+    max_filesize: int | None = None
+    uploaded_after: str | None = None
+    uploaded_before: str | None = None
+
     #: Network options are carried, never logged as-is. `T-038` redacts at the handler level
     #: (`NFR-007`), which is why a proxy URL may safely live in the model.
     proxy: str | None = None
@@ -1131,6 +1192,11 @@ class DownloadRequest:
         )
         for flag in ("embed_thumbnail", "embed_metadata", "embed_chapters"):
             _require_flag("DownloadRequest", flag, getattr(self, flag))
+        for size in ("min_filesize", "max_filesize"):
+            _require_optional_positive("DownloadRequest", size, getattr(self, size))
+        _require_size_order("DownloadRequest", self.min_filesize, self.max_filesize)
+        for day in ("uploaded_after", "uploaded_before"):
+            _require_optional_day("DownloadRequest", day, getattr(self, day))
         _require_optional_text("DownloadRequest", "proxy", self.proxy)
         _require_credential_free_proxy(self.proxy)
         _require_optional_text("DownloadRequest", "cookies_from_browser", self.cookies_from_browser)
@@ -1153,10 +1219,15 @@ class Preset:
     (`T-015`), because deciding yt-dlp selector syntax inside a task reviewed for its domain
     model would put the two in the wrong places.
 
-    **Every field here is a field of `DownloadRequest` under the same name.** That is the whole
-    design: a preset is the subset of a request that a named choice fixes, and translation is a
-    copy rather than an interpretation. `tests/unit/test_presets.py` derives that correspondence
-    from both dataclasses, so a field added here and not carried across fails the suite.
+    **Every field here is a field of `DownloadRequest` under the same name**, but for `name`,
+    `built_in` and the two in `EXPANSION_FIELDS`. That is the whole design: a preset is the subset
+    of a request that a named choice fixes, and translation is a copy rather than an
+    interpretation. `tests/unit/test_presets.py` derives that correspondence from both
+    dataclasses, so a field added here and not carried across fails the suite.
+
+    **The two exceptions act before there is a request** (`ARC-010`, amended 2026-10-11). They
+    choose which of a playlist's entries become jobs, and each job is one entry, so a request has
+    nothing for them to act on.
     """
 
     name: str
@@ -1188,6 +1259,20 @@ class Preset:
     embed_thumbnail: bool = False
     embed_metadata: bool = False
     embed_chapters: bool = False
+    #: Which of a playlist's entries become jobs (`REQ-030`, `T-247`): yt-dlp's `-I` grammar as
+    #: typed, and *at most N*. **The preset's alone** — see `EXPANSION_FIELDS`. They seed the add
+    #: dialog's entry picker when a playlist is probed, and again when a row's preset changes to
+    #: one with a different rule; what the user then checks or unchecks is theirs. *At most N* is
+    #: the first N of the entries `playlist_items` chose, in playlist order.
+    playlist_items: str | None = None
+    max_downloads: int | None = None
+    #: Which items a job keeps, shared with the request under the same names. **A date stays as
+    #: typed here**, `today-2weeks` included, and `to_request` freezes it to the day it names on
+    #: the day the job is queued (`ARC-010`, amended 2026-10-11).
+    min_filesize: int | None = None
+    max_filesize: int | None = None
+    uploaded_after: str | None = None
+    uploaded_before: str | None = None
     #: The escape hatch this preset carries (`REQ-031`, `T-184`), the same shape as the request's.
     #:
     #: `REQ-031` says the field is **per preset and overridable per job**, and the maintainer ruled
@@ -1225,6 +1310,12 @@ class Preset:
         _require_one_container_change("Preset", self.remux_container, self.recode_container)
         for flag in ("embed_thumbnail", "embed_metadata", "embed_chapters"):
             _require_flag("Preset", flag, getattr(self, flag))
+        _require_optional_items("Preset", self.playlist_items)
+        for limit in ("max_downloads", "min_filesize", "max_filesize"):
+            _require_optional_positive("Preset", limit, getattr(self, limit))
+        _require_size_order("Preset", self.min_filesize, self.max_filesize)
+        for date in ("uploaded_after", "uploaded_before"):
+            _require_optional_date_text("Preset", date, getattr(self, date))
         _require_text_or_empty("Preset", "extra_options", self.extra_options)
         object.__setattr__(
             self,
@@ -1232,6 +1323,12 @@ class Preset:
             _as_option_argv("Preset", "extra_option_argv", self.extra_option_argv),
         )
         _require_flag("Preset", "built_in", self.built_in)
+
+
+#: The `Preset` fields no request has, because they act when a playlist is expanded into jobs
+#: (`ARC-010`, amended 2026-10-11, `T-247`). Named, so the exception to *every preset field is a
+#: request field* is a list a test can hold to the two dataclasses rather than a comment.
+EXPANSION_FIELDS: Final = frozenset({"playlist_items", "max_downloads"})
 
 
 @dataclass(frozen=True, slots=True)

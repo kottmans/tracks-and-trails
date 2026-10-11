@@ -27,7 +27,7 @@ import pytest
 import yt_dlp.version
 from yt_dlp.options import create_parser
 
-from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind
+from tracks_and_trails.core.models import EXPANSION_FIELDS, AudioCodec, DownloadRequest, MediaKind
 from tracks_and_trails.downloader.ytdlp_adapter import build_options
 
 YTDLP_VERSION: Final = yt_dlp.version.__version__
@@ -102,6 +102,11 @@ _FIELD_ON: Final = {
     "rate_limit_bytes": 1024,
     "retries": 0,
     "cookies_from_browser": "firefox",
+    # `T-247`'s filters, which `build_options` sets on the download only.
+    "min_filesize": 1024,
+    "max_filesize": 2048,
+    "uploaded_after": "20260101",
+    "uploaded_before": "20261231",
     # **The escape hatch, exercised with a key nothing else in this file uses** (`T-184`).
     #
     # It has to be here, or the completeness assertion below fails — but what it contributes is
@@ -323,9 +328,14 @@ def test_every_application_owned_row_names_a_key_build_options_really_sets() -> 
 
 
 def test_the_keys_with_no_command_line_route_are_the_ones_the_audit_names() -> None:
-    """Five emitted keys are library parameters; refusing them would refuse nothing."""
+    """Six emitted keys are library parameters; refusing them would refuse nothing.
+
+    `daterange` joined with `T-247`: yt-dlp builds it from `--date`, `--dateafter` and
+    `--datebefore`, whose own destinations are other names, and all three are typed and refused.
+    """
     routable = {option["dest"] for option in ALL_OPTIONS}
     assert sorted(EMITTED - routable) == [
+        "daterange",
         "logger",
         "no_color",
         "postprocessor_hooks",
@@ -749,9 +759,9 @@ def test_every_excluded_row_is_named_by_the_decision_it_cites() -> None:
 
 
 def _built_table() -> dict[str, str]:
-    """The typed options that already have a `DownloadRequest` field, read from the audit."""
+    """The typed options that already have a `DownloadRequest` or `Preset` field, from the audit."""
     text = AUDIT.read_text(encoding="utf-8")
-    header = text.index("| Option | `DownloadRequest` field |")
+    header = text.index("| Option | `DownloadRequest` or `Preset` field |")
     table = text[header : text.index("\n\n", header)]
     return {
         m.group(1): m.group(2)
@@ -768,9 +778,11 @@ def test_the_already_built_options_name_fields_the_model_really_has() -> None:
     """
     built = _built_table()
     assert built, "the audit states no already-built table"
-    fields = {f.name for f in dataclasses.fields(DownloadRequest)}
+    # **A `Preset` field only where no request has one** (`T-247`): `-I` and `--max-downloads` act
+    # when a playlist is expanded. Any other preset field is a request field under the same name.
+    fields = {f.name for f in dataclasses.fields(DownloadRequest)} | EXPANSION_FIELDS
     missing = {option: field for option, field in built.items() if field not in fields}
-    assert not missing, f"named a DownloadRequest field that does not exist: {missing}"
+    assert not missing, f"named a field the model does not have: {missing}"
 
 
 def test_the_typed_tasks_partition_the_typed_options_with_no_field_yet() -> None:
@@ -779,6 +791,7 @@ def test_the_typed_tasks_partition_the_typed_options_with_no_field_yet() -> None
         path.read_text(encoding="utf-8") for path in (TASKS, TASKS.with_name("COMPLETED_TASKS.md"))
     )
     assigned: list[str] = []
+    assigned_by: dict[str, list[str]] = {}
     for task in [f"T-{n}" for n in range(247, 256)]:
         start = text.index(f"### {task} —")
         block = text[start : text.index("\n**Specific criteria:**", start)]
@@ -788,7 +801,8 @@ def test_the_typed_tasks_partition_the_typed_options_with_no_field_yet() -> None
         assert len(entries) == int(stated.group(1)), (
             f"{task} says {stated.group(1)} options and lists {len(entries)}"
         )
-        assigned += [spelling for entry in entries for spelling in entry.split("/")]
+        assigned_by[task] = [spelling for entry in entries for spelling in entry.split("/")]
+        assigned += assigned_by[task]
 
     duplicated = sorted({o for o in assigned if assigned.count(o) > 1})
     assert not duplicated, f"claimed by more than one task: {duplicated}"
@@ -799,21 +813,39 @@ def test_the_typed_tasks_partition_the_typed_options_with_no_field_yet() -> None
     }
     assert not not_typed, f"assigned to a typed-field task and not classified typed: {not_typed}"
 
-    built = set(_built_table())
-    overlap = sorted(built & set(assigned))
-    assert not overlap, (
-        f"claimed by a typed-field task and already built: {overlap}. Building it twice is the "
-        f"swap T183-R4 found — the counts stay right and the work is wrong."
+    # Rows, not spellings: a row may read `-x` `--extract-audio` and either side may be named.
+    row_of = {spelling: strings for strings, _, _ in ROWS for spelling in strings}
+    built = {row_of[spelling] for spelling in _built_table()}
+    task_rows = {task: {row_of[s] for s in spellings} for task, spellings in assigned_by.items()}
+
+    # **A task's rows are built together or not at all** (`T-247`). This replaced an assertion
+    # that no task's option was built, which a task's own build would fail. `T183-R4`'s swap — an
+    # unbuilt option traded for a built one, the counts intact — still fails here: it leaves the
+    # task that lost a row half built.
+    partial = {
+        task: sorted(spelling for row in rows & built for spelling in row)
+        for task, rows in task_rows.items()
+        if rows & built and not rows <= built
+    }
+    assert not partial, (
+        f"tasks with some options built and some not: {partial}. Building it twice is the swap "
+        f"T183-R4 found — the counts stay right and the work is wrong."
     )
 
-    # Rows, not spellings: a row may read `-x` `--extract-audio` and either side may be named.
-    typed_rows = [strings for strings, cls, _ in ROWS if cls == "typed"]
-    unaccounted = [r for r in typed_rows if not (set(r) & set(assigned)) and not (set(r) & built)]
+    typed_rows = {strings for strings, cls, _ in ROWS if cls == "typed"}
+    claimed = set().union(*task_rows.values())
+    unaccounted = sorted(typed_rows - claimed - built)
     assert not unaccounted, (
         f"typed rows that no task claims and the built table does not list: {unaccounted}"
     )
-    claimed = [r for r in typed_rows if set(r) & set(assigned)]
-    assert len(claimed) == 44, f"the nine tasks cover {len(claimed)} typed rows, the audit says 44"
-    assert len(typed_rows) - len(claimed) == 21, (
-        f"{len(typed_rows) - len(claimed)} typed rows are already built, and the audit says 21"
+
+    # **The audit's sentence, held to the derivation** rather than to numbers written here too.
+    stated = re.search(
+        r"\*\*(\d+) typed rows: (\d+) already have a field, (\d+) do not\.\*\*",
+        AUDIT.read_text(encoding="utf-8"),
+    )
+    assert stated, "the audit no longer states the typed split in the shape this reads"
+    derived = (len(typed_rows), len(built), len(typed_rows - built))
+    assert tuple(int(n) for n in stated.groups()) == derived, (
+        f"the audit says {stated.group(0)!r}, and the tables hold {derived}"
     )

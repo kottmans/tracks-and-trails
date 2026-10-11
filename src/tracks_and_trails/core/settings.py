@@ -1464,6 +1464,10 @@ def _toml_value(value: Any) -> str:
     """One preset field, rendered. Only the shapes `Preset` can hold are handled."""
     if isinstance(value, bool):
         return "true" if value else "false"
+    if isinstance(value, int):
+        # After `bool`, which is an `int`. A size or a count (`T-247`) is a TOML integer, and the
+        # string the fallback below would write is a value `Preset` refuses on the way back in.
+        return str(value)
     if isinstance(value, tuple | list):
         return "[" + ", ".join(_toml_string(str(item)) for item in value) + "]"
     return _toml_string(str(value))

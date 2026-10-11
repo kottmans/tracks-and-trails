@@ -25,6 +25,8 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Self
 
+from tracks_and_trails.core.selection import chosen_positions
+
 
 class GroupCheck(StrEnum):
     """What the group header's tri-state checkbox says about its members (`P-5`).
@@ -73,6 +75,17 @@ class PlaylistSelection:
         silently drop the whole thing, which is a wrong download reached by doing nothing.
         """
         return cls(count=count, checked=frozenset(range(count)))
+
+    @classmethod
+    def by_rule(cls, count: int, items: str | None, at_most: int | None) -> Self:
+        """The entries a preset's rule chooses (`T-247`, `ARC-010` amended 2026-10-11).
+
+        `items` is yt-dlp's `-I` grammar and `at_most` keeps the first N of what it chose, in
+        playlist order; with neither, this is `all_of`. **A starting point, not a constraint**:
+        the user checks and unchecks from here, and what they choose is what is queued.
+        """
+        positions = chosen_positions(items, at_most, count)
+        return cls(count=count, checked=frozenset(position - 1 for position in positions))
 
     @classmethod
     def none_of(cls, count: int) -> Self:

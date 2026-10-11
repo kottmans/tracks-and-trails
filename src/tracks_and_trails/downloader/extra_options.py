@@ -92,8 +92,10 @@ BAD_VALUE: Final = "yt-dlp will not accept the value given for this option."
 
 #: What a user is told when each option is fine alone and they contradict one another.
 #:
-#: `--dateafter 20260920 --datebefore 20260901` asks for a window that ends before it starts.
-#: Neither option is wrong; the pair is.
+#: `--dateafter 20260920 --datebefore 20260901` asked for a window that ends before it starts:
+#: neither option was wrong, and the pair was. **No admitted pair is known to reach this since
+#: `T-247`** gave the dates a control, which refuses them here. It stays, because the whole line is
+#: what decides (`T184-R8`) and nothing here can list every combination yt-dlp will refuse.
 TOGETHER: Final = "These options are each valid, but yt-dlp will not accept them together."
 
 #: What a refusal names when it is about the whole field rather than one option.
@@ -429,7 +431,9 @@ def grouped(accepted: Sequence[str]) -> list[list[str]]:
 #: **`--default-search` and `--output-na-placeholder` left the list on 2026-09-27**: the Reviewer's
 #: entry-by-entry check found both take unrestricted text, so neither is in the families above.
 #: **`--limit-rate`, `--rate-limit`, `--retries` and `--srt-langs` left it on 2026-10-11**
-#: (`T-361`): each is an alias of an option with a control, refused before a value counts.
+#: (`T-361`): each is an alias of an option with a control, refused before a value counts. **So
+#: did `T-247`'s eight spellings the same day**, `-I`, `--playlist-items`, `--max-downloads`, the
+#: two sizes and the three dates, once each had a control.
 #:
 #: The reason it exists. Registering every argument, which the first correction did, redacted the
 #: ordinary vocabulary users type here: `--sub-format best` removed every `best` from the log,
@@ -446,9 +450,6 @@ NOT_SECRET_VALUES: Final = frozenset(
         "--convert-subs",
         "--convert-subtitles",
         "--convert-thumbnails",
-        "--date",
-        "--dateafter",
-        "--datebefore",
         "--download-sections",
         "--encoding",
         "--extractor-retries",
@@ -460,16 +461,11 @@ NOT_SECRET_VALUES: Final = frozenset(
         "--http-chunk-size",
         "--ies",
         "--use-extractors",
-        "--max-downloads",
-        "--max-filesize",
         "--merge-output-format",
-        "--min-filesize",
         "--min-sleep-interval",
         "--sleep-interval",
         "--sleep-requests",
         "--sleep-subtitles",
-        "--playlist-items",
-        "-I",
         "--remove-chapters",
         "--retry-sleep",
         "--socket-timeout",

@@ -4593,6 +4593,133 @@ def test_a_reprobe_of_a_different_length_starts_the_choice_again(
     assert row.entry_selection == PlaylistSelection.all_of(3)
 
 
+# --- a preset's entry rule seeds the choice (`T-247`, `ARC-010` amended 2026-10-11) ---------------
+
+#: A preset choosing entries 2 to 4 of a playlist, and at most two of those.
+RULED: Final = replace(
+    preset_registry.BEST_VIDEO,
+    name="Entries two to four, at most two",
+    built_in=False,
+    playlist_items="2:4",
+    max_downloads=2,
+)
+#: The same rule under another format, so a change between the two changes no rule.
+RULED_AUDIO: Final = replace(
+    preset_registry.AUDIO_ORIGINAL,
+    name="Audio, entries two to four, at most two",
+    built_in=False,
+    playlist_items="2:4",
+    max_downloads=2,
+)
+#: Positions 2 and 3, the first two of the three `2:4` chooses, as the picker's indices.
+RULED_CHOICE: Final = PlaylistSelection(count=7, checked=frozenset({1, 2}))
+WITH_RULES: Final = (*preset_registry.BUILT_IN_PRESETS, RULED, RULED_AUDIO)
+
+
+def test_a_preset_s_rule_chooses_the_entries_add_queues(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+    store: FakeStore,
+) -> None:
+    """The rule acts where a playlist becomes jobs, and is asserted on what is queued.
+
+    *At most two* keeps the first two of the entries `2:4` chose, in playlist order.
+    """
+    dialog, row = _staged_playlist(
+        dialogs, managers, spin, presets=WITH_RULES, default_preset=RULED.name
+    )
+    media = row.media
+    assert isinstance(media, MediaInfo)
+
+    assert row.entry_selection == RULED_CHOICE
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+    stored = [job for job in store.jobs.values() if job.playlist_id is not None]
+    assert [job.playlist_index for job in stored] == [1, 2], "the rule did not decide the jobs"
+    assert [job.url for job in stored] == [media.entries[1].url, media.entries[2].url]
+
+
+def test_a_preset_with_a_different_rule_chooses_again(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """Choosing the batch's preset after the read re-seeds a row whose rule changed."""
+    dialog, row = _staged_playlist(dialogs, managers, spin, presets=WITH_RULES)
+    assert row.entry_selection == PlaylistSelection.all_of(7)
+
+    choose_preset(dialog, RULED.name)
+    QApplication.processEvents()
+
+    assert row.entry_selection == RULED_CHOICE, "the new preset's rule was not applied"
+
+    choose_preset(dialog, preset_registry.BEST_VIDEO.name)
+    QApplication.processEvents()
+
+    assert row.entry_selection == PlaylistSelection.all_of(7), "leaving the rule kept it"
+
+
+def test_a_preset_with_the_same_rule_keeps_what_the_user_checked(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """A format change is not a rule change, so it must not undo the user's own choice."""
+    dialog, row = _staged_playlist(
+        dialogs, managers, spin, presets=WITH_RULES, default_preset=RULED.name
+    )
+    picked = PlaylistSelection.none_of(7).set(6, True)
+    dialog._on_entries_chosen(row, picked)
+
+    choose_preset(dialog, RULED_AUDIO.name)
+    QApplication.processEvents()
+
+    assert row.entry_selection == picked, "a preset with the same rule threw the user's choice away"
+
+
+def test_an_open_picker_shows_the_rule_a_preset_change_brings(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """The open picker is the row's choice while it is open, so it is re-seeded with the row.
+
+    Re-seeding only the row would leave the picker showing the old choice, and its next change
+    would write that back over the rule.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin, presets=WITH_RULES)
+    panel = _open_the_picker(dialog, row)
+
+    choose_preset(dialog, RULED.name)
+    QApplication.processEvents()
+
+    assert panel.picker.selection == RULED_CHOICE
+    panel.picker.model.set_checked((6,), True)
+    QApplication.processEvents()
+    assert row.entry_selection == RULED_CHOICE.set(6, True), "the picker wrote an old choice back"
+
+
+def test_a_rule_choosing_nothing_queues_nothing_from_the_playlist(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """Items past the end choose no entry, which is an empty choice, never *all* by default."""
+    beyond = replace(RULED, name="Entries fifty on", playlist_items="50:", max_downloads=None)
+    _dialog, row = _staged_playlist(
+        dialogs,
+        managers,
+        spin,
+        presets=(*preset_registry.BUILT_IN_PRESETS, beyond),
+        default_preset=beyond.name,
+    )
+
+    assert row.entry_selection == PlaylistSelection.none_of(7)
+
+
 def test_a_large_playlist_probe_leaves_the_dialog_responsive_and_cancellable(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],

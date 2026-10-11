@@ -15,7 +15,8 @@ transport-security downgrade had been missed. A focused re-review then found the
 permitted three mutations, the downstream `T-184` still carried the rejected design, and one of the
 ten policy refusals was not supported by evidence — all corrected. **Then the rulings landed**:
 `SEC-005` forbade the sixteenth option on 2026-08-21 and `SEC-003`'s amendment withdrew two
-permissions the same day. **The refusal list is 92.**
+permissions the same day. **The refusal list is 92.** **`T-247` built seven typed rows on
+2026-10-11**, so 28 of the 65 now have a control.
 
 *(**This header said 89 and named only `SEC-003` and `SEC-004` while the summary below said 92 and
 named `SEC-005`** — one document giving both the pre-ruling and post-ruling answer to the question
@@ -44,7 +45,7 @@ were wider than they were:
 | The option inventory | `yt_dlp.options.create_parser()` — the parser, not the README | Which options exist, their strings, their `dest` | **Yes** |
 | The application-owned keys | `build_options`, exercised over every branch | Which keys the application actually sets | **Yes**, both directions |
 | The forbidden options | `SEC-003` **with its 2026-08-21 amendment**, `SEC-004` and `SEC-005`, **both verdict sides parsed, later table winning** | That every option a decision forbids is `excluded`, that no option a decision **permits** is excluded, that no row is excluded without a decision behind it, and that a clause naming **both** verdicts is refused rather than resolved | **Yes** |
-| The typed decomposition | `docs/project/TASKS.md` § `T-247`…`T-255`, plus the **built table** below | That the nine tasks and the 21 built rows partition the typed class, and that each built row names a `DownloadRequest` field the model really has | **Yes** |
+| The typed decomposition | `docs/project/TASKS.md` and `COMPLETED_TASKS.md` § `T-247`…`T-255`, plus the **built table** below | That the nine tasks and the built rows partition the typed class, that a task's options are all built or none are, and that each built row names a `DownloadRequest` or `Preset` field the model really has | **Yes** |
 | **`typed` versus `hatch`** | **Judgement.** No user has asked for any of these | Which of the 158 user-owned options gets a control | **No** |
 
 > **`T183-R4` is why this table has a fourth column.** The section previously said the test
@@ -89,7 +90,7 @@ gap.
 
 | Class | Rows | What it means |
 |---|---|---|
-| `typed` | 65 | Gets a control, an owner task and a phase position. 21 already have one |
+| `typed` | 65 | Gets a control, an owner task and a phase position. 28 already have one |
 | `hatch` | 93 | Reachable through `REQ-031` only. Every row carries a reason |
 | `app:sets` | 19 | **`build_options` sets this key.** Derived, and drift-checked in both directions |
 | `app:plumbing` | 36 | It *is* the command line rather than a capability — `REQ-030`'s own words |
@@ -129,11 +130,14 @@ with a visible control.
 
 ### Why `app:sets` is not the same list as *what the application owns*
 
-`build_options` can emit **25 distinct keys** (24 before `T183-R1` added `geo_bypass`). Only
-**20 of them are reachable from the command line at all** — `logger`, `progress_hooks`, `postprocessor_hooks`, `postprocessors` and `no_color`
-are library parameters with no option string, so they can never be typed into the hatch and never
-need refusing. Deriving the refusal list from the emitted keys alone would therefore have produced
-five entries that refuse nothing.
+`build_options` can emit **28 distinct keys** (24 before `T183-R1` added `geo_bypass`, and 25
+before `T-247` added `min_filesize`, `max_filesize` and `daterange`). Only **22 of them are
+reachable from the command line at all** — `logger`, `progress_hooks`, `postprocessor_hooks`,
+`postprocessors`, `no_color` and `daterange` are library parameters with no option string, so they
+can never be typed into the hatch and never need refusing. Deriving the refusal list from the
+emitted keys alone would therefore have produced six entries that refuse nothing. *(`daterange` is
+what yt-dlp builds from `--date`, `--dateafter` and `--datebefore`, whose own destinations differ
+from it; all three are `typed`, built, and refused through the hatch for their control.)*
 
 The invariant the test actually enforces is the useful one, and it holds with no exceptions:
 
@@ -323,13 +327,14 @@ rather than guessed at here.
 
 ## The decomposition
 
-**65 typed rows: 21 already have a field, 44 do not.** Nothing is unassigned and nothing is in two
-tasks — counted, and the test asserts the partition.
+**65 typed rows: 28 already have a field, 37 do not.** Nothing is unassigned and nothing is in two
+tasks — counted, and the test asserts the partition. A task's rows join the built table when it
+builds them, all of them at once.
 
 | Task | Rows | What it adds |
 |---|---|---|
-| — | 21 | Already built: the format, audio, container, subtitle-language, embedding, proxy, rate-limit, retry and browser-cookie fields |
-| `T-247` | 7 | Video selection: which items, how big, how old |
+| — | 21 | Already built before these tasks: the format, audio, container, subtitle-language, embedding, proxy, rate-limit, retry and browser-cookie fields |
+| `T-247` | 7 | **Built 2026-10-11** — video selection: which items, how big, how old |
 | `T-248` | 7 | Filename shaping and the modification time |
 | `T-249` | 7 | The sidecar writers: description, info JSON and thumbnail files |
 | `T-250` | 4 | Format depth: sorting, checking and the merge container |
@@ -348,14 +353,17 @@ because `T183-R3` then found a sixteenth — `--legacy-server-connect` — which
 actually unblocked. Every typed-field task is independent of the rest and of the hatch.
 
 
-### The 21 typed options that already have a field
+### The 28 typed options that already have a field
 
 **`built` is stated here rather than inferred from what the nine tasks did not claim** —
 `T183-R4` showed that definition is circular: swapping an unbuilt option for a built one kept
-the counts intact and passed. Each row names the `DownloadRequest` field it uses, and the test
-asserts that field exists on the model, so this table cannot name a field the code does not have.
+the counts intact and passed. Each row names the field it uses, and the test asserts that field
+exists on the model, so this table cannot name a field the code does not have. **Two are `Preset`
+fields** (`T-247`): `-I` and `--max-downloads` act when a playlist is expanded into jobs, so no
+request carries them (`ARC-010`, amended 2026-10-11). `--date` sets both upload-date fields to
+one day, and is listed against the first.
 
-| Option | `DownloadRequest` field |
+| Option | `DownloadRequest` or `Preset` field |
 |---|---|
 | `--proxy` | `proxy` |
 | `-r` | `rate_limit_bytes` |
@@ -378,8 +386,16 @@ asserts that field exists on the model, so this table cannot name a field the co
 | `--no-embed-metadata` | `embed_metadata` |
 | `--embed-chapters` | `embed_chapters` |
 | `--no-embed-chapters` | `embed_chapters` |
+| `-I` | `playlist_items` |
+| `--max-downloads` | `max_downloads` |
+| `--min-filesize` | `min_filesize` |
+| `--max-filesize` | `max_filesize` |
+| `--date` | `uploaded_after` |
+| `--dateafter` | `uploaded_after` |
+| `--datebefore` | `uploaded_before` |
 
-**21 rows.** With the 44 across `T-247`…`T-255`, that is the typed class exactly.
+**28 rows**: the 21 built before these tasks, and `T-247`'s seven. With the 37 across
+`T-248`…`T-255`, that is the typed class exactly.
 
 ---
 

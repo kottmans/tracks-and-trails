@@ -156,6 +156,13 @@ class Row:
     #: and is a state the dialog reports rather than silently treating as *all*. The dialog fills
     #: this in when a probe returns entries, so the two cases stay distinguishable.
     entry_selection: object | None = None
+    #: The preset rule `entry_selection` was seeded from — its `-I` text and *at most N* — or
+    #: `None` before there is a selection (`T-247`, `ARC-010` amended 2026-10-11).
+    #:
+    #: **Kept so a preset change re-seeds only when the rule changed.** A row whose format changes
+    #: and whose rule does not keeps the entries the user checked; one whose new preset chooses
+    #: differently starts from what that preset chooses.
+    entry_rule: tuple[str | None, int | None] | None = None
     #: Why this row is a repeat, or `None` (`REQ-022`, `T-114`).
     #:
     #: **Recomputed on every refresh, never accumulated.** The queue changes underneath an open

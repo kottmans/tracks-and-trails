@@ -252,6 +252,14 @@ class PlaylistEntryModel(QAbstractTableModel):
         """The tri-state header, clicked. Partially checked resolves to *all* (`P-5`)."""
         self._apply(self._selection.select_all() if checked else self._selection.clear())
 
+    def replace_selection(self, selection: PlaylistSelection) -> None:
+        """Show `selection` instead: a row's preset changed to one with a different rule (`T-247`).
+
+        The open picker is the row's choice while it is open, so a re-seed that went only to the
+        row would be overwritten by the picker's next change.
+        """
+        self._apply(selection.with_count(len(self._entries)))
+
     def _apply(self, selection: PlaylistSelection) -> None:
         if selection == self._selection:
             return

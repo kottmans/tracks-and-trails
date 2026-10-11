@@ -156,9 +156,10 @@ def test_an_archived_item_under_break_on_existing_ends_cancelled_with_yt_dlp_s_r
     [
         ("--download-archive {archive}", "has already been recorded in the archive"),
         ("--match-filters title=nomatch", "does not pass filter"),
-        ("--max-filesize 1k", "larger than max-filesize"),
     ],
-    ids=["archive", "filter", "size"],
+    # The size case left with `T-247`, which gave `--max-filesize` a control and refuses it
+    # here; `tests/integration/test_which_items.py` asks the same of the typed filters.
+    ids=["archive", "filter"],
 )
 def test_an_item_the_user_s_own_selection_skips_ends_cancelled_with_yt_dlp_s_reason(
     serve: Callable[[bytes, str, str], str], tmp_path: Path, selection: str, said: str
@@ -252,8 +253,18 @@ def test_a_skip_is_named_in_yt_dlp_s_words_without_its_stage_tag(
     assert skipped.value.reason.startswith(shown), skipped.value.reason
 
 
+def test_a_job_with_only_a_typed_filter_that_writes_nothing_is_a_skip(tmp_path: Path) -> None:
+    """`T-247`: the typed size and date filters can skip an item too, with no hatch at all."""
+    said = "\r[download] File is larger than max-filesize (9 bytes > 1 bytes). Aborting."
+
+    with pytest.raises(worker_module.NothingDownloadedError) as skipped:
+        _extract_writing_nothing(tmp_path, said, max_filesize=1)
+
+    assert skipped.value.reason.startswith("File is"), skipped.value.reason
+
+
 def test_a_job_without_the_hatch_that_writes_nothing_is_not_called_a_skip(tmp_path: Path) -> None:
-    """No selection option can reach such a job, so nothing written is still a fault, loudly."""
+    """No selection option reaches such a job, so nothing written is still a fault, loudly."""
     result = _extract_writing_nothing(tmp_path, "[download] something went quietly wrong")
 
     assert result["id"] == "clip", "the worker's own failure path no longer saw this result"

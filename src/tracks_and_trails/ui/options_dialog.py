@@ -4,9 +4,13 @@
 container; recode container; embed thumbnail; embed metadata; embed chapters; embed or write
 subtitles with language selection. This is the one screen all seven are set on.
 
-**And `REQ-031`'s additional yt-dlp options, as the fifth group** (`UX-015`, `T-184`): a text box
+**And `REQ-031`'s additional yt-dlp options, as the last group** (`UX-015`, `T-184`): a text box
 for what no control here covers, checked as the user types once typing pauses. Refusals are listed
 under it, never repeating a value, and the accepting buttons are disabled while any stands.
+
+**Above it, *Which items*** (`UX-015` amended 2026-10-11, `T-247`): which of a playlist's entries
+become jobs, and the size and upload-date filters each job applies. Its refusals are listed the same
+way, and hold the same buttons.
 
 ## Reached two ways, and it is the same widget both times
 
@@ -77,6 +81,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPlainTextEdit,
@@ -84,6 +89,7 @@ from PySide6.QtWidgets import (
     QRadioButton,
     QScrollArea,
     QSizePolicy,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -92,8 +98,13 @@ from tracks_and_trails.core.models import AudioCodec, MediaKind, Preset, contain
 from tracks_and_trails.core.presets import (
     ALL_SUBTITLE_LANGUAGES,
     MP3_BITRATES,
-    format_choice_of,
     with_post_processing,
+)
+from tracks_and_trails.core.selection import (
+    SIZE_UNITS,
+    date_problem,
+    items_problem,
+    resolved_date,
 )
 from tracks_and_trails.downloader.environment import FfmpegFeature
 from tracks_and_trails.downloader.extra_options import (
@@ -102,7 +113,7 @@ from tracks_and_trails.downloader.extra_options import (
     options_for,
     refusal_lines,
 )
-from tracks_and_trails.ui.format_text import format_name
+from tracks_and_trails.ui.format_text import derived_preset_name
 
 __all__ = ["OptionsDialog"]
 
@@ -220,11 +231,43 @@ SUBTITLES_HINT: Final = "Chosen languages are written beside the file unless the
 EXTRA_OPTIONS_NAME: Final = "optionsExtraOptions"
 EXTRA_REFUSALS_NAME: Final = "optionsExtraRefusals"
 
-#: The fifth group, and the one line saying what it is for (`UX-015`, `docs/UX_SPEC.md` §6).
+#: The last group, and the one line saying what it is for (`UX-015`, `docs/UX_SPEC.md` §6).
 EXTRA_OPTIONS_TITLE: Final = "Additional yt-dlp options"
 EXTRA_OPTIONS_HINT: Final = (
     "For options this screen has no control for, written the way you would give them to yt-dlp."
 )
+
+#: The group above it (`UX-015`, amended 2026-10-11, `T-247`), and its controls' object names.
+WHICH_ITEMS_TITLE: Final = "Which items"
+PLAYLIST_ITEMS_NAME: Final = "optionsPlaylistItems"
+AT_MOST_NAME: Final = "optionsAtMost"
+ENTRIES_REASON_NAME: Final = "optionsEntriesReason"
+MIN_SIZE_NAME: Final = "optionsMinSize"
+MAX_SIZE_NAME: Final = "optionsMaxSize"
+SIZE_UNIT_NAME: Final = "optionsSizeUnit"
+UPLOADED_AFTER_NAME: Final = "optionsUploadedAfter"
+UPLOADED_BEFORE_NAME: Final = "optionsUploadedBefore"
+WHICH_ITEMS_REFUSALS_NAME: Final = "optionsWhichItemsRefusals"
+
+#: What the items field shows while empty: yt-dlp's `-I` grammar, by example.
+PLAYLIST_ITEMS_PLACEHOLDER: Final = "All of them, or for example 1:5,8 or -3:"
+#: What a date field shows while empty: the forms yt-dlp's strict date grammar takes.
+DATE_PLACEHOLDER: Final = "Any day, or YYYYMMDD, or for example today-2weeks"
+#: What the count and size controls read at zero, which stands for no limit at all.
+NO_LIMIT_TEXT: Final = "No limit"
+ANY_SIZE_TEXT: Final = "Any size"
+#: The unit a size starts in when the preset sets none.
+DEFAULT_SIZE_UNIT: Final = "MiB"
+
+#: Said beside the items and *at most* where there are no entries to choose between (`UX-015`).
+NO_ENTRIES_REASON: Final = (
+    "The items and at most choose among a playlist's entries, so they do nothing for a single "
+    "video."
+)
+#: Said where the two upload dates leave no day between them.
+CROSSED_DATES: Final = "The first upload date is later than the second, so no item could match."
+#: Said where the smallest file is larger than the largest.
+CROSSED_SIZES: Final = "The smallest file is larger than the largest, so no file could match."
 
 #: How long typing has to pause before the field is checked (`UX-015`). Long enough not to refuse
 #: an option at every keystroke of its name; short enough to answer before the user looks up.
@@ -293,7 +336,7 @@ class _OptionsBox(QPlainTextEdit):
 
 
 class OptionsDialog(QDialog):
-    """Set `REQ-010`'s seven options, and any additional ones, for one download or a preset.
+    """Set `REQ-010`'s seven options, which items to keep, and any additional options.
 
     Takes the `Preset` being edited and the languages the probe found, and answers with a derived
     preset. It never edits the preset it was given: `Preset` is frozen, and the caller decides
@@ -310,9 +353,15 @@ class OptionsDialog(QDialog):
         save_preset: PresetSink | None = None,
         ask_name: Callable[[], tuple[str, bool]] | None = None,
         ffmpeg_available: bool = True,
+        choosing_entries: bool = True,
     ) -> None:
         super().__init__(parent)
         self._preset = preset
+        #: **Whether there are entries to choose between** (`UX-015`, amended 2026-10-11). A preset
+        #: may be used for a playlist and a row may be one, so both default to `True`; a single
+        #: video and a queued job, which is one item, have none, and their items and *at most*
+        #: are disabled with the reason and carry the preset's own values (`T109-R2`).
+        self._choosing_entries = choosing_entries
         self._offered_languages = tuple(subtitle_languages)
         self._save_preset = save_preset
         #: **What this screen may offer** (`REQ-024`, `T-199`, `UX-005` §5). Every option on it
@@ -335,6 +384,8 @@ class OptionsDialog(QDialog):
             preset.extra_option_argv,
             True,
         )
+        #: Whether *Which items* as last checked may be used (`T-247`). Checked on opening, below.
+        self._selection_usable = True
         self._build()
         self._show_preset(preset)
         self._update_enabled()
@@ -428,6 +479,7 @@ class OptionsDialog(QDialog):
         stack.addWidget(self._build_container())
         stack.addWidget(self._build_embedding())
         stack.addWidget(self._build_subtitles())
+        stack.addWidget(self._build_which_items())
         stack.addWidget(self._build_extra_options())
 
         scroller = _OptionGroups(self)
@@ -593,8 +645,88 @@ class OptionsDialog(QDialog):
         layout.addWidget(self._subtitle_reason)
         return group
 
+    def _build_which_items(self) -> QWidget:
+        """*Which items*, directly above the hatch (`UX-015`, amended 2026-10-11, `T-247`).
+
+        **Every control is a form row, so each has a label as its buddy** (`NFR-005`). That is
+        why the two sizes share one unit rather than each carrying its own: on Linux a combo box
+        publishes its value where its name should be unless a label names it (`T200-R7`), and a
+        unit beside each size would have needed a second visible label inside each row.
+        """
+        group = QGroupBox(WHICH_ITEMS_TITLE, self)
+        form = QFormLayout(group)
+
+        self._items = QLineEdit(group)
+        self._items.setObjectName(PLAYLIST_ITEMS_NAME)
+        self._items.setAccessibleName("Playlist items")
+        self._items.setPlaceholderText(PLAYLIST_ITEMS_PLACEHOLDER)
+        form.addRow("Playlist items", self._items)
+
+        self._at_most = self._limit_box(group, AT_MOST_NAME, "At most this many items")
+        self._at_most.setSpecialValueText(NO_LIMIT_TEXT)
+        form.addRow("At most", self._at_most)
+
+        self._entries_reason = QLabel("", group)
+        self._entries_reason.setObjectName(ENTRIES_REASON_NAME)
+        self._entries_reason.setWordWrap(True)
+        form.addRow(self._entries_reason)
+
+        self._min_size = self._limit_box(group, MIN_SIZE_NAME, "Smallest file")
+        self._min_size.setSpecialValueText(ANY_SIZE_TEXT)
+        form.addRow("Smallest file", self._min_size)
+        self._max_size = self._limit_box(group, MAX_SIZE_NAME, "Largest file")
+        self._max_size.setSpecialValueText(ANY_SIZE_TEXT)
+        form.addRow("Largest file", self._max_size)
+        self._size_unit = QComboBox(group)
+        self._size_unit.setObjectName(SIZE_UNIT_NAME)
+        self._size_unit.setAccessibleName("Sizes in")
+        # Smallest first, as a person counts up; yt-dlp's `k`, `M` and `G` are these, in 1024s.
+        for unit, factor in reversed(SIZE_UNITS):
+            self._size_unit.addItem(unit, factor)
+        form.addRow("Sizes in", self._size_unit)
+
+        self._after = QLineEdit(group)
+        self._after.setObjectName(UPLOADED_AFTER_NAME)
+        self._after.setAccessibleName("Uploaded on or after")
+        self._after.setPlaceholderText(DATE_PLACEHOLDER)
+        form.addRow("Uploaded on or after", self._after)
+        self._before = QLineEdit(group)
+        self._before.setObjectName(UPLOADED_BEFORE_NAME)
+        self._before.setAccessibleName("Uploaded on or before")
+        self._before.setPlaceholderText(DATE_PLACEHOLDER)
+        form.addRow("Uploaded on or before", self._before)
+
+        self._selection_refusals = QLabel("", group)
+        self._selection_refusals.setObjectName(WHICH_ITEMS_REFUSALS_NAME)
+        self._selection_refusals.setWordWrap(True)
+        # A refusal may quote what the user typed in the items field, which is their text.
+        self._selection_refusals.setTextFormat(Qt.TextFormat.PlainText)
+        form.addRow(self._selection_refusals)
+
+        # **Text is checked once typing pauses, as the hatch is** (`UX-015`); a count, a size or a
+        # unit is one complete value per change, so it is checked at once.
+        self._selection_pause = QTimer(self)
+        self._selection_pause.setSingleShot(True)
+        self._selection_pause.setInterval(EXTRA_OPTIONS_PAUSE_MS)
+        self._selection_pause.timeout.connect(self._check_selection)
+        for typed in (self._items, self._after, self._before):
+            typed.textChanged.connect(self._selection_pause.start)
+        for box in (self._at_most, self._min_size, self._max_size):
+            box.valueChanged.connect(self._check_selection)
+        self._size_unit.currentIndexChanged.connect(self._check_selection)
+        return group
+
+    @staticmethod
+    def _limit_box(parent: QWidget, object_name: str, accessible_name: str) -> QSpinBox:
+        """A whole-number control whose zero reads as no limit at all."""
+        box = QSpinBox(parent)
+        box.setObjectName(object_name)
+        box.setAccessibleName(accessible_name)
+        box.setRange(0, 2**31 - 1)
+        return box
+
     def _build_extra_options(self) -> QWidget:
-        """The fifth group, below *Subtitles* and always visible (`UX-015`, `REQ-031`)."""
+        """The last group, below *Which items* and always visible (`UX-015`, `REQ-031`)."""
         group = QGroupBox(EXTRA_OPTIONS_TITLE, self)
         layout = QVBoxLayout(group)
 
@@ -690,6 +822,35 @@ class OptionsDialog(QDialog):
         self._extra.setPlainText(preset.extra_options)
         self._extra_pause.stop()
 
+        self._show_which_items(preset)
+
+    def _show_which_items(self, preset: Preset) -> None:
+        """Show the preset's own rule and filters, and check them at once (`T-247`).
+
+        **Checked on opening, not trusted**, for the hatch's reason: a relative date can have
+        crossed a fixed one since the preset was saved, and saying so here is better than the job
+        ending *Cancelled* for it later.
+        """
+        self._items.setText(preset.playlist_items or "")
+        self._at_most.setValue(preset.max_downloads or 0)
+        sizes = [size for size in (preset.min_filesize, preset.max_filesize) if size is not None]
+        # **One unit that holds both sizes exactly**, the largest that does, so what is shown is
+        # what the preset carries and an untouched OK writes back the same bytes.
+        factor = next(
+            (
+                factor
+                for _unit, factor in SIZE_UNITS
+                if sizes and all(size % factor == 0 for size in sizes)
+            ),
+            dict(SIZE_UNITS)[DEFAULT_SIZE_UNIT],
+        )
+        self._size_unit.setCurrentIndex(self._size_unit.findData(factor))
+        self._min_size.setValue((preset.min_filesize or 0) // factor)
+        self._max_size.setValue((preset.max_filesize or 0) // factor)
+        self._after.setText(preset.uploaded_after or "")
+        self._before.setText(preset.uploaded_before or "")
+        self._check_selection()
+
     # --- the additional-options field (`UX-015`, `REQ-031`) -----------------------------------
 
     def _check_extra_options(self) -> None:
@@ -716,6 +877,11 @@ class OptionsDialog(QDialog):
         self._extra_refusals.setText("\n".join(lines))
         # What a screen reader hears for the box: the refusals if there are any, or what it is for.
         self._extra.setAccessibleDescription(" ".join(lines) if lines else EXTRA_OPTIONS_HINT)
+        self._update_accepting()
+
+    def _update_accepting(self) -> None:
+        """The accepting buttons are live only while both checked groups may be used."""
+        usable = self._extra_checked[2] and self._selection_usable
         self._ok_button.setEnabled(usable)
         if self._save_preset is not None:
             self._save_button.setEnabled(usable)
@@ -734,10 +900,71 @@ class OptionsDialog(QDialog):
         """What the field's refusal list says. A method, so a test reads what the user reads."""
         return self._extra_refusals.text()
 
+    # --- *Which items* (`UX-015` amended 2026-10-11, `T-247`) ----------------------------------
+
+    def _check_selection(self) -> None:
+        """Check the group as it reads now, and list what is wrong with it under the controls."""
+        self._selection_pause.stop()
+        lines = self._selection_problems()
+        self._selection_usable = not lines
+        self._selection_refusals.setText("\n".join(lines))
+        self._update_accepting()
+
+    def _selection_problems(self) -> list[str]:
+        """Each refusal as a line, naming the control. yt-dlp's grammars decide; the words are ours.
+
+        **The dates are compared as they resolve today**, which is the day a job queued now would
+        freeze them to. A pair whose order changes with the day can still cross later, and the
+        worker answers that case (`selection.empty_window`).
+        """
+        lines: list[str] = []
+        items = self._items.text().strip()
+        if self._items.isEnabled() and items:
+            problem = items_problem(items)
+            if problem is not None:
+                lines.append(f"Playlist items: {problem}")
+        days: list[str] = []
+        for label, edit in (
+            ("Uploaded on or after", self._after),
+            ("Uploaded on or before", self._before),
+        ):
+            text = edit.text().strip()
+            if not text:
+                continue
+            problem = date_problem(text)
+            if problem is not None:
+                lines.append(f"{label}: {problem}")
+            else:
+                days.append(resolved_date(text))
+        if len(days) == 2 and days[0] > days[1]:
+            lines.append(CROSSED_DATES)
+        smallest, largest = self._typed_sizes()
+        if smallest is not None and largest is not None and smallest > largest:
+            lines.append(CROSSED_SIZES)
+        return lines
+
+    def _selection_ok(self) -> bool:
+        """Whether *Which items* may be used, checking it first if typing has not paused yet."""
+        if self._selection_pause.isActive():
+            self._check_selection()
+        return self._selection_usable
+
+    def selection_refusals_text(self) -> str:
+        """What the group's refusal list says. A method, so a test reads what the user reads."""
+        return self._selection_refusals.text()
+
+    def _typed_sizes(self) -> tuple[int | None, int | None]:
+        """The two sizes in bytes, `None` where the control reads *any size*."""
+        factor = int(self._size_unit.currentData())
+        return (
+            self._min_size.value() * factor or None,
+            self._max_size.value() * factor or None,
+        )
+
     # Qt's override name.
     def accept(self) -> None:
-        """Accept only a field that may be used, checked as it reads at this moment."""
-        if self._extra_options_usable():
+        """Accept only fields that may be used, checked as they read at this moment."""
+        if self._extra_options_usable() and self._selection_ok():
             super().accept()
 
     def _update_enabled(self) -> None:
@@ -767,6 +994,10 @@ class OptionsDialog(QDialog):
         self._languages.setEnabled(offered)
         self._embed_subtitles.setEnabled(offered)
         self._subtitle_reason.setText(SUBTITLES_HINT if offered else NO_SUBTITLES_REASON)
+
+        self._items.setEnabled(self._choosing_entries)
+        self._at_most.setEnabled(self._choosing_entries)
+        self._entries_reason.setText("" if self._choosing_entries else NO_ENTRIES_REASON)
 
         if not self._ffmpeg_available:
             self._withdraw_what_ffmpeg_performs()
@@ -812,8 +1043,8 @@ class OptionsDialog(QDialog):
         """
         if self._save_preset is None:  # pragma: no cover - the button only exists with a sink
             return
-        if not self._extra_options_usable():
-            # The refusals are already under the box; a preset is not saved with them in it.
+        if not (self._extra_options_usable() and self._selection_ok()):
+            # The refusals are already under their fields; a preset is not saved with them in it.
             return
         name, accepted = self._ask_name()
         if not accepted or not name.strip():
@@ -887,16 +1118,55 @@ class OptionsDialog(QDialog):
         codec, quality = self._chosen_audio()
         languages, embed = self._chosen_subtitles()
         extra_text, extra_argv = self._chosen_extra_options()
+        items, at_most = self._chosen_entry_rule()
+        smallest, largest, after, before = self._chosen_filters()
         derived = replace(
             derived,
             audio_codec=codec,
             audio_quality=quality,
             subtitle_languages=languages,
             embed_subtitles=embed,
+            playlist_items=items,
+            max_downloads=at_most,
+            min_filesize=smallest,
+            max_filesize=largest,
+            uploaded_after=after,
+            uploaded_before=before,
             extra_options=extra_text,
             extra_option_argv=extra_argv,
         )
-        return replace(derived, name=format_name(format_choice_of(derived)))
+        # **With its entry rule** (`T-247`): two presets differing only in it must not share a name.
+        return replace(derived, name=derived_preset_name(derived))
+
+    def _chosen_entry_rule(self) -> tuple[str | None, int | None]:
+        """The items and *at most* — or the preset's own, where they could not be chosen.
+
+        **Disabled for a single video, and a disabled control decides nothing** (`T109-R2`): the
+        preset's own rule is carried through, so editing a video's options does not erase the rule
+        a preset brings to the next playlist. A refused group answers the same way, as the hatch
+        does, since the accepting buttons are disabled while it stands.
+        """
+        if not (self._choosing_entries and self._selection_ok()):
+            return self._preset.playlist_items, self._preset.max_downloads
+        return self._items.text().strip() or None, self._at_most.value() or None
+
+    def _chosen_filters(self) -> tuple[int | None, int | None, str | None, str | None]:
+        """The two sizes in bytes and the two dates as typed — or the preset's own, if refused."""
+        if not self._selection_ok():
+            preset = self._preset
+            return (
+                preset.min_filesize,
+                preset.max_filesize,
+                preset.uploaded_after,
+                preset.uploaded_before,
+            )
+        smallest, largest = self._typed_sizes()
+        return (
+            smallest,
+            largest,
+            self._after.text().strip() or None,
+            self._before.text().strip() or None,
+        )
 
     def _chosen_extra_options(self) -> tuple[str, tuple[str, ...]]:
         """The text and the tokens it admitted, together — or the preset's own, if it is refused.

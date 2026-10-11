@@ -68,7 +68,8 @@ AUDIT_VERSION: Final = "{version}"
 OPTION_CLASSES: Final[dict[str, tuple[str, str]]] = {{
 {rows}}}
 
-#: The typed options that already have a control, spelling -> the `DownloadRequest` field.
+#: The typed options that already have a control, spelling -> the `DownloadRequest` or `Preset`
+#: field.
 #:
 #: `ARC-010` gives the visible control the win where both name the same user-owned key, so these
 #: are **refused** through the hatch and pointed at their control. A typed option that is still
@@ -146,7 +147,7 @@ def audit_rows() -> list[tuple[tuple[str, ...], str, str]]:
 
 
 def built_typed_options() -> dict[str, str]:
-    """The typed options that already have a `DownloadRequest` field, read from the audit.
+    """The typed options that already have a `DownloadRequest` or `Preset` field, from the audit.
 
     **Stated rather than inferred**, which is `T183-R4`'s correction: deriving "built" from what
     the nine typed tasks did not claim is circular, and swapping a built option for an unbuilt one
@@ -155,7 +156,7 @@ def built_typed_options() -> dict[str, str]:
     permitted, and only this table separates them.
     """
     text = AUDIT.read_text(encoding="utf-8")
-    header = text.index("| Option | `DownloadRequest` field |")
+    header = text.index("| Option | `DownloadRequest` or `Preset` field |")
     table = text[header : text.index("\n\n", header)]
     return {
         found.group(1): found.group(2)

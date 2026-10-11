@@ -457,7 +457,8 @@ OPTION_CLASSES: Final[dict[str, tuple[str, str]]] = {
     "--extract-audio": ("typed", "DownloadRequest.media_kind exists"),
 }
 
-#: The typed options that already have a control, spelling -> the `DownloadRequest` field.
+#: The typed options that already have a control, spelling -> the `DownloadRequest` or `Preset`
+#: field.
 #:
 #: `ARC-010` gives the visible control the win where both name the same user-owned key, so these
 #: are **refused** through the hatch and pointed at their control. A typed option that is still
@@ -470,12 +471,18 @@ TYPED_WITH_A_FIELD: Final[dict[str, str]] = {
     "--audio-format": "audio_codec",
     "--audio-quality": "audio_quality",
     "--cookies-from-browser": "cookies_from_browser",
+    "--date": "uploaded_after",
+    "--dateafter": "uploaded_after",
+    "--datebefore": "uploaded_before",
     "--embed-chapters": "embed_chapters",
     "--embed-metadata": "embed_metadata",
     "--embed-subs": "embed_subtitles",
     "--embed-thumbnail": "embed_thumbnail",
     "--extract-audio": "media_kind",
     "--limit-rate": "rate_limit_bytes",
+    "--max-downloads": "max_downloads",
+    "--max-filesize": "max_filesize",
+    "--min-filesize": "min_filesize",
     "--no-add-chapters": "embed_chapters",
     "--no-add-metadata": "embed_metadata",
     "--no-cookies-from-browser": "cookies_from_browser",
@@ -485,6 +492,7 @@ TYPED_WITH_A_FIELD: Final[dict[str, str]] = {
     "--no-embed-thumbnail": "embed_thumbnail",
     "--no-write-srt": "subtitle_languages",
     "--no-write-subs": "subtitle_languages",
+    "--playlist-items": "playlist_items",
     "--proxy": "proxy",
     "--rate-limit": "rate_limit_bytes",
     "--recode-video": "recode_container",
@@ -494,6 +502,7 @@ TYPED_WITH_A_FIELD: Final[dict[str, str]] = {
     "--sub-langs": "subtitle_languages",
     "--write-srt": "subtitle_languages",
     "--write-subs": "subtitle_languages",
+    "-I": "playlist_items",
     "-R": "retries",
     "-r": "rate_limit_bytes",
     "-x": "media_kind",
@@ -911,9 +920,6 @@ OPTION_KEYS: Final[dict[str, tuple[str, ...]]] = {
     "--convert-subs": ("postprocessors",),
     "--convert-subtitles": ("postprocessors",),
     "--convert-thumbnails": ("postprocessors",),
-    "--date": ("daterange",),
-    "--dateafter": ("daterange",),
-    "--datebefore": ("daterange",),
     "--default-search": ("default_search",),
     "--download-archive": ("download_archive",),
     "--download-sections": ("download_ranges",),
@@ -945,10 +951,7 @@ OPTION_KEYS: Final[dict[str, tuple[str, ...]]] = {
     "--live-from-start": ("live_from_start",),
     "--mark-watched": ("mark_watched",),
     "--match-filters": ("match_filter",),
-    "--max-downloads": ("max_downloads",),
-    "--max-filesize": ("max_filesize",),
     "--merge-output-format": ("merge_output_format",),
-    "--min-filesize": ("min_filesize",),
     "--min-sleep-interval": ("max_sleep_interval", "sleep_interval"),
     "--mtime": ("updatetime",),
     "--netrc": ("usenetrc",),
@@ -994,7 +997,6 @@ OPTION_KEYS: Final[dict[str, tuple[str, ...]]] = {
     "--output-na-placeholder": ("outtmpl_na_placeholder",),
     "--parse-metadata": ("postprocessors",),
     "--part": ("nopart",),
-    "--playlist-items": ("playlist_items",),
     "--prefer-free-formats": ("prefer_free_formats",),
     "--remove-chapters": ("postprocessors",),
     "--replace-in-metadata": ("postprocessors",),
@@ -1035,7 +1037,6 @@ OPTION_KEYS: Final[dict[str, tuple[str, ...]]] = {
     "--xattrs": ("postprocessors",),
     "-4": ("source_address",),
     "-6": ("source_address",),
-    "-I": ("playlist_items",),
     "-N": ("concurrent_fragment_downloads",),
     "-S": ("format_sort",),
     "-c": ("continuedl",),

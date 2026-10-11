@@ -1258,6 +1258,9 @@ class MainWindow(QMainWindow):
             # `REQ-024`, `T-199`: what ffmpeg performs is not offered when ffmpeg is absent, which
             # is the same answer the add dialog gates the same seven options on.
             ffmpeg_available=self._ffmpeg_available,
+            # A queued job is one item; its playlist, if it had one, was expanded when it was
+            # queued, so there are no entries left to choose between (`T-247`).
+            choosing_entries=False,
         )
         # `open`, not `exec`, for `_show_add_dialog`'s reason: a nested event loop is one a test
         # cannot leave, so the accepted branch below would be unreachable.

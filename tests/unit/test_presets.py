@@ -233,20 +233,24 @@ def test_the_two_models_actually_share_fields() -> None:
     assert len(SHARED_FIELDS) >= 6, SHARED_FIELDS
 
 
-#: Shared fields `to_request` does not simply copy. **None since `UX-014`**: naming left `Preset`,
-#: and it was the one field resolved rather than copied. Kept, and asserted empty, so a field that
-#: starts being derived in `to_request` is noticed rather than silently dropped from the copy test.
-RESOLVED_NOT_COPIED: frozenset[str] = frozenset()
+#: Shared fields `to_request` does not simply copy. **The two upload dates since `T-247`**: a preset
+#: keeps `today-2weeks` and the request the day it names (`ARC-010`, amended 2026-10-11). Empty from
+#: `UX-014`, when naming left `Preset`, until then. Kept and asserted, so a field that starts being
+#: derived in `to_request` is noticed rather than silently dropped from the copy test.
+RESOLVED_NOT_COPIED: frozenset[str] = frozenset({"uploaded_after", "uploaded_before"})
 
 
 def test_only_the_named_field_is_resolved_rather_than_copied() -> None:
-    """The exception above must stay exactly one field wide.
+    """The exception above must stay exactly as wide as it says.
 
     Every other shared field is a straight copy. If a future field starts being derived in
     `to_request`, the parametrised test below stops covering it — and this is what says so, rather
-    than the coverage disappearing silently.
+    than the coverage disappearing silently. **Asked of a preset with relative dates**, since no
+    built-in carries a date and a copy of `None` cannot differ from it.
     """
-    a_preset = presets.BUILT_IN_PRESETS[0]
+    a_preset = replace(
+        presets.BUILT_IN_PRESETS[0], uploaded_after="today-2weeks", uploaded_before="today"
+    )
     request = request_for(a_preset)
     differing = {
         name for name in SHARED_FIELDS if getattr(request, name) != getattr(a_preset, name)
@@ -454,6 +458,11 @@ def test_a_preset_owned_field_cannot_be_overridden(field_name: str) -> None:
         "embed_thumbnail": True,
         "embed_metadata": True,
         "embed_chapters": True,
+        # `T-247`'s filters: a job skipping files over a byte is not the preset that was shown.
+        "min_filesize": 1,
+        "max_filesize": 1,
+        "uploaded_after": "20260101",
+        "uploaded_before": "20260101",
     }
     assert field_name in sample, f"no hostile value written for {field_name}"
 

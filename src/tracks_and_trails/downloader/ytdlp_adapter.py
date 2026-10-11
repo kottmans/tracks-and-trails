@@ -40,6 +40,7 @@ from typing import Any, Final
 from yt_dlp.networking.exceptions import HTTPError, TransportError
 from yt_dlp.utils import (
     ContentTooShortError,
+    DateRange,
     DownloadCancelled,
     DownloadError,
     ExtractorError,
@@ -863,6 +864,22 @@ def build_options(
         # stub and no formats to choose from.
         options["extract_flat"] = "in_playlist"
         return options
+
+    # **Which items, on the download only** (`T-247`, `ARC-010` amended 2026-10-11). yt-dlp applies
+    # these where it decides whether to fetch the item, so on the probe they would hide the item
+    # the user is choosing a format for. Set after the hatch, so a typed value wins as `ARC-010`'s
+    # precedence rule says, although admission already refuses these spellings for their control.
+    #
+    # **`daterange` is yt-dlp's own `DateRange`**, which is what its command line builds from
+    # `--date`, `--dateafter` and `--datebefore`: an absent end is open, as the request's `None`
+    # is. The request carries frozen `YYYYMMDD` days, never a relative form, and the worker ends a
+    # job whose days have crossed before this is reached, since `DateRange` refuses that pair.
+    if request.min_filesize is not None:
+        options["min_filesize"] = request.min_filesize
+    if request.max_filesize is not None:
+        options["max_filesize"] = request.max_filesize
+    if request.uploaded_after is not None or request.uploaded_before is not None:
+        options["daterange"] = DateRange(request.uploaded_after, request.uploaded_before)
 
     if request.subtitle_languages:
         options["writesubtitles"] = True

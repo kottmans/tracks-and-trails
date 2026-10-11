@@ -78,17 +78,17 @@ def test_the_equals_form_is_the_same_option() -> None:
 def test_a_value_that_looks_like_an_option_is_still_a_value() -> None:
     """**Arity, not appearance**, decides what a word is.
 
-    `--playlist-items -3` is an option and its value. A scanner that called every `-`-leading word
-    an option would refuse the value as an unknown option, and the user would be told their own
+    `--age-limit -3` is an option and its value. A scanner that called every `-`-leading word an
+    option would refuse the value as an unknown option, and the user would be told their own
     argument does not exist. The parser's own table says how many values each option takes, and
-    building that table parses nothing.
+    building that table parses nothing. *(`--playlist-items -3` until `T-247` gave it a control.)*
     """
-    admission = admit("--playlist-items -3")
+    admission = admit("--age-limit -3")
 
     assert admission.usable, [
-        (refusal.option, refusal.reason) for refusal in admit("--playlist-items -3").refusals
+        (refusal.option, refusal.reason) for refusal in admit("--age-limit -3").refusals
     ]
-    assert admission.accepted == ("--playlist-items", "-3")
+    assert admission.accepted == ("--age-limit", "-3")
 
 
 def test_several_usable_options_are_kept_in_the_order_typed() -> None:
@@ -533,7 +533,8 @@ def test_a_path_absolute_once_yt_dlp_expands_it_is_accepted(
     ("text", "canonical"),
     [
         ("-N4", ("-N", "4")),
-        ("-I1:3", ("-I", "1:3")),
+        # A value that is not a number, attached; `-I1:3` until `T-247` gave `-I` a control.
+        ("-Sres:720", ("-S", "res:720")),
         ("-cN4", ("-c", "-N", "4")),
         ('--replace-in-metadata=title foo ""', ("--replace-in-metadata", "title", "foo", "")),
         ('"--add-headers=Referer: T184"', ("--add-headers", "Referer: T184")),
@@ -824,34 +825,62 @@ def test_the_next_option_is_still_decided_after_one_of_unknown_arity() -> None:
     assert [refusal.option for refusal in admission.refusals] == ["--video", "--exec"]
 
 
-def test_options_that_contradict_each_other_are_refused_together() -> None:
-    """`T184-R8`: each is valid alone, so asking one at a time accepted a field yt-dlp refuses.
+def test_yt_dlp_refuses_a_line_whose_options_are_each_valid_alone() -> None:
+    """`T184-R8`: each is valid alone, so asking one at a time accepted a line yt-dlp refuses.
 
-    `--dateafter 20260920 --datebefore 20260901` asks for a window that ends before it starts.
-    The seam said usable and the worker then refused it, which is the failure arriving after the
-    user has left the dialog.
+    `--dateafter 20260920 --datebefore 20260901` asks for a window that ends before it starts. The
+    seam said usable and the worker then refused it, which is the failure arriving after the user
+    has left the dialog. **Asked of the parser's check directly since `T-247`**, which refuses both
+    dates in the hatch for their control, so the pair no longer reaches it through admission.
     """
-    admission, argv = options_for("--dateafter 20260920 --datebefore 20260901")
+    from tracks_and_trails.downloader.ytdlp_adapter import unparseable
+
+    argv = ("--dateafter", "20260920", "--datebefore", "20260901")
+
+    assert unparseable(argv, [argv[:2], argv[2:]]) == (True, None)
+
+
+def _contradicting(monkeypatch: pytest.MonkeyPatch) -> None:
+    """yt-dlp refusing every line as a whole and no option alone: a contradiction, stood in.
+
+    **No admitted pair is known to contradict** since `T-247` refused the dates for their control,
+    and the seam still has to say what one is called.
+    """
+    from tracks_and_trails.downloader import ytdlp_adapter
+
+    monkeypatch.setattr(ytdlp_adapter, "unparseable", lambda _argv, _groups: (True, None))
+
+
+def test_options_that_contradict_each_other_are_refused_together(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The seam's half of `T184-R8`: a line refused with no option to blame is refused whole."""
+    _contradicting(monkeypatch)
+
+    admission, argv = options_for("--continue --fragment-retries 3")
 
     assert not admission.usable
     assert argv == ()
     assert [refusal.reason for refusal in admission.refusals] == [TOGETHER]
 
 
-def test_contradicting_options_are_named_by_spelling_and_never_by_value() -> None:
+def test_contradicting_options_are_named_by_spelling_and_never_by_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """`T184-R6`: when no option fails alone, the refusal named forty raw characters of the field.
 
     With a header first, that was `--add-headers "Authorization: Bearer SEC`, a credential cut
     short. The spellings are what the user needs to find and the only part that is safe to repeat.
     """
+    _contradicting(monkeypatch)
+
     admission, _ = options_for(
-        '--add-headers "Authorization: Bearer T184_TOGETHER_CANARY" '
-        "--dateafter 20260920 --datebefore 20260901"
+        '--add-headers "Authorization: Bearer T184_TOGETHER_CANARY" --fragment-retries 3'
     )
 
     [refusal] = admission.refusals
     assert refusal.reason == TOGETHER
-    assert refusal.option == "--add-headers, --dateafter, --datebefore"
+    assert refusal.option == "--add-headers, --fragment-retries"
     assert "CANARY" not in refusal.option
 
 

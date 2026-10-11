@@ -688,7 +688,8 @@ def test_a_path_the_hatch_names_is_redacted_however_short(registered: None) -> N
         (("--socket-timeout", "1000"), "1000"),
         (("--fixup", "never"), "never"),
         (("--convert-thumbnails", "webp"), "webp"),
-        (("--max-filesize", "100M"), "100M"),
+        # `--max-filesize 100M` until `T-247` gave it a control, which refuses it here.
+        (("--http-chunk-size", "10M"), "10M"),
         (("--sleep-requests", "1.25"), "1.25"),
         (("--fragment-retries=10",), "10"),
     ],

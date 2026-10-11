@@ -2393,6 +2393,9 @@ class AddUrlDialog(QDialog):
             # same answer this dialog already gates the format table's merge mode on (`P-13`), so
             # the two surfaces cannot disagree about the same fact.
             ffmpeg_available=self._ffmpeg_available,
+            # `UX-015`, amended 2026-10-11: which entries a playlist keeps is a question only a
+            # playlist has, so a single video's editor shows those two controls disabled.
+            choosing_entries=isinstance(media, MediaInfo) and bool(media.entries),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -2796,15 +2799,56 @@ class AddUrlDialog(QDialog):
         row.state = RowState.READY
         # **A fresh probe replaces the entries, so it replaces the choice made against them**
         # (`T-110`). A retry can return a playlist of a different length, and a selection of
-        # positions held over from the previous extraction would name different items. Everything
-        # chosen is the state `REQ-004` starts from — see `PlaylistSelection.all_of`.
-        row.entry_selection = (
-            PlaylistSelection.all_of(len(media.entries)) if media.entries else None
-        )
+        # positions held over from the previous extraction would name different items. The row's
+        # preset decides where it starts: everything, unless its rule chooses fewer (`T-247`).
+        self._seed_entries(row)
         # **No fetch is started here** (`T-119`). The row now knows a thumbnail URL; whether the
         # bytes are ever wanted is decided by whether the view paints the row. A probe result for
         # row four hundred of a paste costs nothing until row four hundred is on screen.
         self._refresh()
+
+    def _seed_entries(self, row: Row) -> None:
+        """Choose `row`'s entries as its effective preset's rule says (`T-247`, `ARC-010`).
+
+        `ARC-010`'s 2026-10-11 amendment: `-I` and *at most N* act here, where a playlist becomes
+        jobs, and never per job. With no rule this is every entry, `REQ-004`'s starting state.
+        """
+        media = row.media
+        if not isinstance(media, MediaInfo) or not media.entries:
+            row.entry_selection = None
+            row.entry_rule = None
+            return
+        preset = self.preset_for(row)
+        row.entry_rule = (preset.playlist_items, preset.max_downloads)
+        row.entry_selection = PlaylistSelection.by_rule(
+            len(media.entries), preset.playlist_items, preset.max_downloads
+        )
+
+    def _reseed_where_the_rule_changed(self) -> None:
+        """Re-seed each row whose preset now chooses entries differently (`T-247`).
+
+        **Every route that changes a row's preset ends in a refresh**, so this is asked there
+        rather than at each route: the batch control, the row's own, the options editor and an
+        abandoned panel's restore. A row whose rule is unchanged keeps what the user checked.
+
+        **An open picker is given the new selection too**, or its next change would write the old
+        one back over it.
+        """
+        for row in self._staging.visible:
+            if row.entry_rule is None:
+                continue
+            preset = self.preset_for(row)
+            if (preset.playlist_items, preset.max_downloads) == row.entry_rule:
+                continue
+            self._seed_entries(row)
+            panel = self._panel
+            seeded = row.entry_selection
+            if (
+                self._expanded is row
+                and isinstance(panel, PlaylistPanel)
+                and isinstance(seeded, PlaylistSelection)
+            ):
+                panel.picker.model.replace_selection(seeded)
 
     def _on_job_failed(self, job_id: str, kind: object, message: str) -> None:
         """Keep the extractor's message **verbatim** (`REQ-005`, `NFR-006`).
@@ -3302,6 +3346,8 @@ class AddUrlDialog(QDialog):
         expanded = self._expanded
         if expanded is not None and expanded not in self._staging.visible:
             self.close_panel(keep=False)
+
+        self._reseed_where_the_rule_changed()
 
         visible = self._staging.visible
         # **By identity, not by row number** (`T118-R14`). A value-only refresh no longer resets

@@ -26,11 +26,13 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QGroupBox,
     QLabel,
+    QLineEdit,
     QListWidget,
     QPlainTextEdit,
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QSpinBox,
     QWidget,
 )
 
@@ -40,6 +42,7 @@ from tracks_and_trails.core.presets import MP3_BITRATES
 from tracks_and_trails.downloader.environment import FfmpegFeature
 from tracks_and_trails.downloader.extra_options import BAD_VALUE, NEEDS_FFMPEG
 from tracks_and_trails.ui.options_dialog import (
+    AT_MOST_NAME,
     AUDIO_CODEC_NAME,
     AUDIO_QUALITY_NAME,
     CONTAINER_CHOICE_NAME,
@@ -48,21 +51,32 @@ from tracks_and_trails.ui.options_dialog import (
     CONTAINER_NOTE_NAME,
     CONTAINER_RECODE_NAME,
     CONTAINER_REMUX_NAME,
+    CROSSED_DATES,
+    CROSSED_SIZES,
     EMBED_CHAPTERS_NAME,
     EMBED_METADATA_NAME,
     EMBED_SUBTITLES_NAME,
     EMBED_THUMBNAIL_NAME,
+    ENTRIES_REASON_NAME,
     EXTRA_OPTIONS_NAME,
     EXTRA_OPTIONS_TITLE,
     FFMPEG_FEATURE_CONTROLS,
+    MAX_SIZE_NAME,
+    MIN_SIZE_NAME,
     NO_AUDIO_REASON,
+    NO_ENTRIES_REASON,
     NO_FFMPEG_REASON,
     NO_SINK_REASON,
     NO_SUBTITLES_REASON,
+    PLAYLIST_ITEMS_NAME,
     SAVE_PRESET_NAME,
     SAVE_PRESET_TEXT,
     SAVE_RESULT_NAME,
+    SIZE_UNIT_NAME,
     SUBTITLE_LANGUAGES_NAME,
+    UPLOADED_AFTER_NAME,
+    UPLOADED_BEFORE_NAME,
+    WHICH_ITEMS_TITLE,
     OptionsDialog,
 )
 
@@ -698,6 +712,8 @@ STILL_LIVE_WITHOUT_FFMPEG: Final = {
     # Choosing *which* subtitles is not embedding them. yt-dlp writes them beside the file with
     # no ffmpeg involved; only `embed_subtitles` needs it, and that checkbox is gated.
     SUBTITLE_LANGUAGES_NAME,
+    # *Which items* decides what is downloaded, before anything could be converted (`T-247`).
+    SIZE_UNIT_NAME,
 }
 
 
@@ -1169,8 +1185,11 @@ def typed(dialog: OptionsDialog, text: str, spin: Callable[..., bool]) -> None:
     assert checked, "the field was never checked after typing paused"
 
 
-def test_the_field_is_the_fifth_group_below_subtitles(editor: Callable[..., OptionsDialog]) -> None:
-    """`UX-015`: after the four `REQ-010` groups, in the scrolling region, always visible."""
+def test_the_field_is_the_last_group_below_which_items(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """`UX-015`: last, in the scrolling region, always visible; and since its 2026-10-11
+    amendment, with *Which items* directly above it and the four `REQ-010` groups above that."""
     dialog = editor()
     scroller = dialog.findChild(QScrollArea)
     assert scroller is not None
@@ -1183,7 +1202,7 @@ def test_the_field_is_the_fifth_group_below_subtitles(editor: Callable[..., Opti
         )
     ]
 
-    assert groups[-2:] == ["Subtitles", EXTRA_OPTIONS_TITLE], groups
+    assert groups[-3:] == ["Subtitles", WHICH_ITEMS_TITLE, EXTRA_OPTIONS_TITLE], groups
     assert extra_box(dialog).isVisibleTo(dialog)
 
 
@@ -1424,3 +1443,234 @@ def test_hidden_tokens_behind_empty_text_become_the_empty_pair(
     assert saved and saved[0].extra_option_argv == (), "Save as preset kept the hidden tokens"
     assert dialog.result() == QDialog.DialogCode.Accepted
     assert dialog.result_preset().extra_option_argv == (), "OK kept the hidden tokens"
+
+
+# --- *Which items* (`UX-015` amended 2026-10-11, `T-247`) -----------------------------------------
+
+#: A preset carrying every one of the group's six values. The smallest file is not a whole number of
+#: KiB, so the shared unit has to fall to bytes for the preset to come back unchanged.
+RULED: Final = replace(
+    preset_registry.BEST_VIDEO,
+    name="Ruled",
+    built_in=False,
+    playlist_items="2:4",
+    max_downloads=2,
+    min_filesize=1500,
+    max_filesize=2 * 1024**2,
+    uploaded_after="today-2weeks",
+    uploaded_before="20991231",
+)
+
+#: The group's controls that take text, and those that take a number.
+TEXT_CONTROLS: Final = (PLAYLIST_ITEMS_NAME, UPLOADED_AFTER_NAME, UPLOADED_BEFORE_NAME)
+NUMBER_CONTROLS: Final = (AT_MOST_NAME, MIN_SIZE_NAME, MAX_SIZE_NAME)
+
+
+def line(dialog: OptionsDialog, name: str) -> QLineEdit:
+    found = dialog.findChild(QLineEdit, name)
+    assert found is not None, f"no text field named {name}"
+    return found
+
+
+def number(dialog: OptionsDialog, name: str) -> QSpinBox:
+    found = dialog.findChild(QSpinBox, name)
+    assert found is not None, f"no number field named {name}"
+    return found
+
+
+def typed_into(dialog: OptionsDialog, name: str, text: str, spin: Callable[..., bool]) -> None:
+    """Type `text` into one of the group's text fields and wait out the pause."""
+    line(dialog, name).setText(text)
+    assert spin(lambda: not dialog._selection_pause.isActive(), timeout=5), "never checked"
+
+
+def test_which_items_opens_on_the_preset_s_own_values_and_gives_them_back(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """Opening and accepting must not change a preset: a relative date stays relative, and a
+    size that is not a whole number of KiB keeps its bytes."""
+    dialog = editor(RULED)
+
+    assert line(dialog, PLAYLIST_ITEMS_NAME).text() == "2:4"
+    assert line(dialog, UPLOADED_AFTER_NAME).text() == "today-2weeks"
+    assert combo(dialog, SIZE_UNIT_NAME).currentText() == "bytes"
+    assert dialog.selection_refusals_text() == ""
+    result = dialog.result_preset()
+    for field in (
+        "playlist_items",
+        "max_downloads",
+        "min_filesize",
+        "max_filesize",
+        "uploaded_after",
+        "uploaded_before",
+    ):
+        assert getattr(result, field) == getattr(RULED, field), field
+
+
+def test_typed_values_reach_the_preset_and_its_name(
+    editor: Callable[..., OptionsDialog], spin: Callable[..., bool]
+) -> None:
+    """Each control decides its field, and the name says the rule as well as the filters, so two
+    presets differing only in their rule do not answer to one name."""
+    dialog = editor()
+    typed_into(dialog, PLAYLIST_ITEMS_NAME, "1:5", spin)
+    number(dialog, AT_MOST_NAME).setValue(3)
+    combo(dialog, SIZE_UNIT_NAME).setCurrentIndex(combo(dialog, SIZE_UNIT_NAME).findText("MiB"))
+    number(dialog, MAX_SIZE_NAME).setValue(100)
+    typed_into(dialog, UPLOADED_AFTER_NAME, "20260101", spin)
+
+    result = dialog.result_preset()
+
+    assert (result.playlist_items, result.max_downloads) == ("1:5", 3)
+    assert (result.min_filesize, result.max_filesize) == (None, 100 * 1024**2)
+    assert (result.uploaded_after, result.uploaded_before) == ("20260101", None)
+    assert result.name == (
+        "Best video available · files of at most 100 MiB · uploaded on or after 2026-01-01"
+        " · items 1:5 · at most 3 items"
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "text", "said"),
+    [
+        (PLAYLIST_ITEMS_NAME, "1,,2", "Playlist items: "),
+        (PLAYLIST_ITEMS_NAME, "1:3:0", "Playlist items: "),
+        (UPLOADED_AFTER_NAME, "tomorrow", "Uploaded on or after: "),
+        (UPLOADED_BEFORE_NAME, "20250229", "Uploaded on or before: "),
+    ],
+)
+def test_what_yt_dlp_would_refuse_is_refused_where_it_is_typed(
+    editor: Callable[..., OptionsDialog],
+    spin: Callable[..., bool],
+    name: str,
+    text: str,
+    said: str,
+) -> None:
+    """Checked once typing pauses, named by its control, and OK held until it is fixed."""
+    dialog = editor()
+
+    typed_into(dialog, name, text, spin)
+
+    assert dialog.selection_refusals_text().startswith(said), dialog.selection_refusals_text()
+    assert not ok_button(dialog).isEnabled()
+    typed_into(dialog, name, "", spin)
+    assert dialog.selection_refusals_text() == ""
+    assert ok_button(dialog).isEnabled()
+
+
+def test_accepting_inside_the_pause_still_checks_the_group(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """*Enter* straight after typing would otherwise accept a date nobody had checked."""
+    dialog = editor()
+    line(dialog, UPLOADED_AFTER_NAME).setText("tomorrow")
+
+    dialog.accept()
+
+    assert dialog.result() != QDialog.DialogCode.Accepted, "a refused date was accepted"
+    assert dialog.selection_refusals_text().startswith("Uploaded on or after: ")
+
+
+def test_dates_that_leave_no_day_between_them_are_refused(
+    editor: Callable[..., OptionsDialog], spin: Callable[..., bool]
+) -> None:
+    """yt-dlp refuses such a window outright, so it is refused where it is written."""
+    dialog = editor()
+    typed_into(dialog, UPLOADED_AFTER_NAME, "today", spin)
+    typed_into(dialog, UPLOADED_BEFORE_NAME, "yesterday", spin)
+
+    assert dialog.selection_refusals_text() == CROSSED_DATES
+    assert not ok_button(dialog).isEnabled()
+
+
+def test_sizes_that_cross_are_refused_as_soon_as_they_do(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """A number is one whole value per change, so it is checked without waiting."""
+    dialog = editor()
+    number(dialog, MIN_SIZE_NAME).setValue(10)
+    number(dialog, MAX_SIZE_NAME).setValue(5)
+
+    assert dialog.selection_refusals_text() == CROSSED_SIZES
+    assert not ok_button(dialog).isEnabled()
+
+
+def test_a_single_video_s_editor_offers_no_rule_and_keeps_the_preset_s(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """`UX-015`, amended: disabled with the reason, and a disabled control decides nothing
+    (`T109-R2`), so editing one video's options does not erase what the preset brings to the next
+    playlist. The filters stay live: they act on a single video too."""
+    dialog = editor(RULED, choosing_entries=False)
+
+    assert not line(dialog, PLAYLIST_ITEMS_NAME).isEnabled()
+    assert not number(dialog, AT_MOST_NAME).isEnabled()
+    reason = dialog.findChild(QLabel, ENTRIES_REASON_NAME)
+    assert reason is not None and reason.text() == NO_ENTRIES_REASON
+    assert number(dialog, MIN_SIZE_NAME).isEnabled()
+    line(dialog, PLAYLIST_ITEMS_NAME).setText("9")
+    number(dialog, AT_MOST_NAME).setValue(0)
+
+    result = dialog.result_preset()
+
+    assert (result.playlist_items, result.max_downloads) == ("2:4", 2)
+
+
+def test_a_playlist_s_editor_offers_the_rule_without_a_reason(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    dialog = editor(RULED)
+
+    assert line(dialog, PLAYLIST_ITEMS_NAME).isEnabled()
+    assert number(dialog, AT_MOST_NAME).isEnabled()
+    reason = dialog.findChild(QLabel, ENTRIES_REASON_NAME)
+    assert reason is not None and reason.text() == ""
+
+
+def test_every_which_items_control_is_named_labelled_and_a_keyboard_stop(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """`NFR-005`. **A visible label is each control's buddy**, because on Linux a combo box
+    announces its value where its name should be unless a label names it (`T200-R7`)."""
+    dialog = editor()
+    controls: list[QWidget] = [
+        *(line(dialog, name) for name in TEXT_CONTROLS),
+        *(number(dialog, name) for name in NUMBER_CONTROLS),
+        combo(dialog, SIZE_UNIT_NAME),
+    ]
+    # `buddy()` is typed as never `None`, and is `None` for a label naming nothing.
+    buddies: dict[QWidget | None, str] = {
+        label.buddy(): label.text() for label in dialog.findChildren(QLabel)
+    }
+
+    for control in controls:
+        assert control.accessibleName(), control.objectName()
+        assert control.focusPolicy() & Qt.FocusPolicy.TabFocus, control.objectName()
+        assert buddies.get(control), f"{control.objectName()} has no label naming it"
+
+
+def test_which_items_stays_live_without_ffmpeg(editor: Callable[..., OptionsDialog]) -> None:
+    """Deciding what is downloaded needs no ffmpeg; nothing here is post-processing."""
+    dialog = editor(ffmpeg_available=False)
+
+    for name in TEXT_CONTROLS:
+        assert line(dialog, name).isEnabled(), name
+    for name in NUMBER_CONTROLS:
+        assert number(dialog, name).isEnabled(), name
+    assert combo(dialog, SIZE_UNIT_NAME).isEnabled()
+
+
+def test_save_as_preset_keeps_the_rule_and_the_filters(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """*Save as preset…* saves what the group shows, the rule included."""
+    saved: list[Preset] = []
+    dialog = editor(
+        RULED, save_preset=lambda preset: saved.append(preset), ask_name=lambda: ("Mine", True)
+    )
+
+    button = dialog.findChild(QPushButton, SAVE_PRESET_NAME)
+    assert button is not None
+    button.click()
+
+    assert saved and (saved[0].playlist_items, saved[0].uploaded_after) == ("2:4", "today-2weeks")

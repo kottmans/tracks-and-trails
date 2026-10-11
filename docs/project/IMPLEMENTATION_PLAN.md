@@ -854,7 +854,7 @@ with their help suppressed. Classified:
 
 | | |
 |---|---|
-| **65** get a typed control | **21 already have one**; the other **44** are nine tasks, `T-247`…`T-255` |
+| **65** get a typed control | **28 already have one**, `T-247`'s seven since 2026-10-11; the other **37** are eight tasks, `T-248`…`T-255` |
 | **93** are escape-hatch only | `T-184` |
 | **92** are refused | the application owns them (`app:sets`, `app:plumbing`, `app:policy`, `app:contained`), or `SEC-003`/`SEC-004`/`SEC-005` forbid them |
 | **0** are unclassified | ~~`--legacy-server-connect`, a transport-security downgrade the audit first missed (`T183-R3`)~~ — **ruled forbidden by `SEC-005` on 2026-08-21**, which unblocked `T-184` |
