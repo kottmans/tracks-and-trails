@@ -118,9 +118,38 @@ def test_the_picker_lists_every_entry_with_enough_to_choose_by(
     assert [cell(picker, row, TITLE_COLUMN) for row in range(7)] == [e.title for e in entries]
 
 
+def test_each_entry_shows_its_slot_in_the_playlist_gaps_and_all(qapp: QApplication) -> None:
+    """`T247-R1`. An unavailable item is left out of the rows and keeps its slot, so the numbers
+    shown are the playlist's own — the ones yt-dlp's `-I` means — and not the rows'."""
+    raw = {
+        "_type": "playlist",
+        "webpage_url": "https://example.invalid/list",
+        "title": "Gaps",
+        "entries": [
+            None,
+            {"url": "https://example.invalid/b", "title": "B"},
+            None,
+            {"url": "https://example.invalid/d", "title": "D"},
+        ],
+    }
+    media = adapter.project_media(raw, reachable=lambda _: False)
+    widget = PlaylistPicker(media.entries)
+    try:
+        assert [cell(widget, row, INDEX_COLUMN) for row in range(2)] == ["2", "4"]
+        spoken = widget.model.data(
+            widget.model.index(1, TITLE_COLUMN), Qt.ItemDataRole.AccessibleTextRole
+        )
+        assert str(spoken).startswith("4. D."), spoken
+    finally:
+        widget.close()
+        widget.deleteLater()
+
+
 def test_an_entry_with_no_duration_says_so_rather_than_showing_zero(qapp: QApplication) -> None:
     """`format_duration`'s rule, reached through this table: `None` is unknown, not zero."""
-    widget = PlaylistPicker((PlaylistEntry(url="https://example.invalid/x", title="No duration"),))
+    widget = PlaylistPicker(
+        (PlaylistEntry(url="https://example.invalid/x", title="No duration", position=1),)
+    )
     try:
         assert cell(widget, 0, DURATION_COLUMN) == "Unknown"
     finally:
@@ -399,7 +428,10 @@ def test_a_picker_opened_on_an_existing_selection_shows_it(
 def _picker_of(count: int) -> PlaylistPicker:
     entries = tuple(
         PlaylistEntry(
-            url=f"https://example.invalid/{i}", title=f"Track {i}", duration_seconds=200.0
+            url=f"https://example.invalid/{i}",
+            title=f"Track {i}",
+            position=i + 1,
+            duration_seconds=200.0,
         )
         for i in range(count)
     )

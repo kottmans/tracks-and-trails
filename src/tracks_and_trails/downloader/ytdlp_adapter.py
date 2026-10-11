@@ -456,6 +456,7 @@ def project_media(
         is_playlist=is_playlist,
         entry_count=_entry_count(info) if is_playlist else None,
         entries=_entries(info) if is_playlist else (),
+        slot_count=_slot_count(info) if is_playlist else None,
         subtitle_languages=_subtitle_languages(info),
     )
 
@@ -582,6 +583,8 @@ def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
             PlaylistEntry(
                 url=url,
                 title=title,
+                # The slot, not the place among survivors: `-I` counts slots (`T247-R1`).
+                position=position,
                 duration_seconds=_as_optional_float(item.get("duration")),
                 thumbnail_url=_entry_thumbnail(item),
                 media_id=_as_optional_str(item.get("id")),
@@ -599,6 +602,19 @@ def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
             ", ".join(dropped),
         )
     return tuple(projected)
+
+
+def _slot_count(info: Mapping[str, Any]) -> int | None:
+    """How many slots the extraction enumerated, the ones `_entries` drops included (`T247-R1`).
+
+    **The length yt-dlp's `PlaylistEntries` counts a negative `-I` back from**, measured at
+    2026.08.19: a `None` slot is still a slot there. `None` where `_entries` enumerates nothing,
+    for its reasons, so the two always describe the same extraction.
+    """
+    entries = info.get("entries")
+    if isinstance(entries, str | bytes) or not isinstance(entries, Sequence) or not entries:
+        return None
+    return len(entries)
 
 
 def _entry_count(info: Mapping[str, Any]) -> int | None:

@@ -2820,8 +2820,13 @@ class AddUrlDialog(QDialog):
             return
         preset = self.preset_for(row)
         row.entry_rule = (preset.playlist_items, preset.max_downloads)
+        # **The playlist's own slots, not the entries left after the unavailable were dropped**
+        # (`T247-R1`): the rule is yt-dlp's `-I`, which counts every slot it enumerated.
         row.entry_selection = PlaylistSelection.by_rule(
-            len(media.entries), preset.playlist_items, preset.max_downloads
+            tuple(entry.position for entry in media.entries),
+            media.slot_count if media.slot_count is not None else len(media.entries),
+            preset.playlist_items,
+            preset.max_downloads,
         )
 
     def _reseed_where_the_rule_changed(self) -> None:

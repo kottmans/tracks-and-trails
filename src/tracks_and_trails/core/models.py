@@ -33,12 +33,18 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import Enum, StrEnum
+from itertools import pairwise
 from typing import Any, ClassVar, Final, Self
 from urllib.parse import urlsplit
 
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus, apply
-from tracks_and_trails.core.selection import date_problem, items_problem
+from tracks_and_trails.core.selection import (
+    LARGEST_SIZE,
+    MOST_ITEMS,
+    date_problem,
+    items_problem,
+)
 
 # --- field validation -----------------------------------------------------------------------
 #
@@ -256,12 +262,19 @@ def _require_optional_count(owner: str, name: str, value: object) -> None:
         raise ValueError(f"{owner}.{name} cannot be negative")
 
 
-def _require_optional_positive(owner: str, name: str, value: object) -> None:
-    """A positive `int` or `None` (`T-247`). Zero is refused: no file is zero bytes, and *at most
-    none* would choose nothing while looking like a limit."""
+def _require_optional_positive(owner: str, name: str, value: object, most: int) -> None:
+    """`None`, or an `int` from 1 to `most` (`T-247`). Zero is refused: no file is zero bytes, and
+    *at most none* would choose nothing while looking like a limit.
+
+    **`most` is what the editor can show and give back unchanged** (`T247-R3`). The model held
+    values the options editor raised on while opening; a value no control can hold is refused
+    here instead, where a hand-edited preset is reported and set aside.
+    """
     _require_optional_count(owner, name, value)
     if value == 0:
         raise ValueError(f"{owner}.{name} must be at least 1, or None for no limit")
+    if isinstance(value, int) and value > most:
+        raise ValueError(f"{owner}.{name} must be at most {most}, not {value}")
 
 
 def _require_size_order(owner: str, smallest: int | None, largest: int | None) -> None:
@@ -843,6 +856,12 @@ class PlaylistEntry:
 
     url: str
     title: str
+    #: **Which slot of the playlist this was, counting the slots that were dropped** (`T247-R1`),
+    #: 1-based. The projection leaves out an item yt-dlp could not read (`T-281`), so an entry's
+    #: place in `MediaInfo.entries` is not its place in the playlist, and yt-dlp's `-I 2` names
+    #: the second slot whether or not it could be read. Required, so that no entry is placed by
+    #: where it happens to sit in a tuple.
+    position: int
     duration_seconds: float | None = None
     thumbnail_url: str | None = None
     #: The site's own id and channel for the item, where the flat extraction reports them — the
@@ -853,10 +872,33 @@ class PlaylistEntry:
     def __post_init__(self) -> None:
         _require_text("PlaylistEntry", "url", self.url)
         _require_text("PlaylistEntry", "title", self.title)
+        _require_count("PlaylistEntry", "position", self.position)
+        if self.position < 1:
+            raise ValueError("PlaylistEntry.position is 1-based, so it cannot be 0")
         _require_optional_duration("PlaylistEntry", "duration_seconds", self.duration_seconds)
         _require_optional_text("PlaylistEntry", "thumbnail_url", self.thumbnail_url)
         _require_optional_text("PlaylistEntry", "media_id", self.media_id)
         _require_optional_text("PlaylistEntry", "channel", self.channel)
+
+
+def _require_slots(entries: tuple[PlaylistEntry, ...], slot_count: int | None) -> None:
+    """Entries sit in their slots in order, inside the slots enumerated (`T247-R1`).
+
+    Strictly increasing, because the projection keeps the extraction's order and a slot holds one
+    entry; and `slot_count` is required once there are entries, since a negative `-I` position
+    counts back from it and guessing it from the last entry would miss dropped slots at the end.
+    """
+    if not entries:
+        return
+    if slot_count is None:
+        raise ValueError("MediaInfo.slot_count is required when there are entries")
+    positions = [entry.position for entry in entries]
+    if any(later <= earlier for earlier, later in pairwise(positions)):
+        raise ValueError(f"MediaInfo.entries are not in increasing slots: {positions}")
+    if positions[-1] > slot_count:
+        raise ValueError(
+            f"MediaInfo.entries reach slot {positions[-1]} of a playlist of {slot_count} slots"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -907,6 +949,12 @@ class MediaInfo:
     #: distinction and this preserves it rather than collapsing the two into one number.
     entries: tuple[PlaylistEntry, ...] = ()
 
+    #: **How many slots this extraction enumerated, the dropped ones included** (`T247-R1`), or
+    #: `None` when it enumerated none. Not `entry_count`, which is what the site reports, and not
+    #: `len(entries)`, which leaves out what yt-dlp could not read: this is the length yt-dlp's
+    #: own `PlaylistEntries` counts a negative `-I` position back from. Required with entries.
+    slot_count: int | None = None
+
     #: The subtitle languages this source publishes, in the order the extractor listed them
     #: (`REQ-010`, `T-109`, `docs/UX_SPEC.md` §6's `P-17`).
     #:
@@ -953,6 +1001,10 @@ class MediaInfo:
         _require_flag("MediaInfo", "is_live", self.is_live)
         _require_flag("MediaInfo", "is_playlist", self.is_playlist)
         _require_optional_count("MediaInfo", "entry_count", self.entry_count)
+        _require_optional_count("MediaInfo", "slot_count", self.slot_count)
+        _require_slots(self.entries, self.slot_count)
+        if self.slot_count is not None and not self.is_playlist:
+            raise ValueError("MediaInfo.slot_count is set on something that is not a playlist")
         if self.entries and not self.is_playlist:
             # Same rule as the count below, for the same reason: entries on something that is one
             # thing would be read as a playlist by anything that checks the list before the flag.
@@ -1193,7 +1245,7 @@ class DownloadRequest:
         for flag in ("embed_thumbnail", "embed_metadata", "embed_chapters"):
             _require_flag("DownloadRequest", flag, getattr(self, flag))
         for size in ("min_filesize", "max_filesize"):
-            _require_optional_positive("DownloadRequest", size, getattr(self, size))
+            _require_optional_positive("DownloadRequest", size, getattr(self, size), LARGEST_SIZE)
         _require_size_order("DownloadRequest", self.min_filesize, self.max_filesize)
         for day in ("uploaded_after", "uploaded_before"):
             _require_optional_day("DownloadRequest", day, getattr(self, day))
@@ -1311,8 +1363,9 @@ class Preset:
         for flag in ("embed_thumbnail", "embed_metadata", "embed_chapters"):
             _require_flag("Preset", flag, getattr(self, flag))
         _require_optional_items("Preset", self.playlist_items)
-        for limit in ("max_downloads", "min_filesize", "max_filesize"):
-            _require_optional_positive("Preset", limit, getattr(self, limit))
+        _require_optional_positive("Preset", "max_downloads", self.max_downloads, MOST_ITEMS)
+        for size in ("min_filesize", "max_filesize"):
+            _require_optional_positive("Preset", size, getattr(self, size), LARGEST_SIZE)
         _require_size_order("Preset", self.min_filesize, self.max_filesize)
         for date in ("uploaded_after", "uploaded_before"):
             _require_optional_date_text("Preset", date, getattr(self, date))

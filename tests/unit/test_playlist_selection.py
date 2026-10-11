@@ -19,7 +19,9 @@ from tracks_and_trails.ui.playlist_selection import (
 
 def entries(count: int) -> tuple[PlaylistEntry, ...]:
     return tuple(
-        PlaylistEntry(url=f"https://example.invalid/{index}", title=f"Track {index}")
+        PlaylistEntry(
+            url=f"https://example.invalid/{index}", title=f"Track {index}", position=index + 1
+        )
         for index in range(count)
     )
 

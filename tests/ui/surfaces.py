@@ -90,11 +90,16 @@ def screens_below_the_add_dialog() -> list[tuple[str, QWidget]]:
                 # `entries=()` was independently measured as zero rows, so the picker's check
                 # boxes — the controls that panel exists for — were audited nowhere.
                 entries=(
-                    PlaylistEntry(url="https://example.invalid/one#1", title="First entry"),
-                    PlaylistEntry(url="https://example.invalid/one#2", title="Second entry"),
+                    PlaylistEntry(
+                        url="https://example.invalid/one#1", title="First entry", position=1
+                    ),
+                    PlaylistEntry(
+                        url="https://example.invalid/one#2", title="Second entry", position=2
+                    ),
                 )
                 if playlist
                 else (),
+                slot_count=2 if playlist else None,
             ),
         )
 

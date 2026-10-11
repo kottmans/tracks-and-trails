@@ -21,7 +21,13 @@ from yt_dlp import parse_options
 from yt_dlp.utils import DateRange
 
 from tracks_and_trails.core import presets
-from tracks_and_trails.core.models import EXPANSION_FIELDS, DownloadRequest, Preset
+from tracks_and_trails.core.models import (
+    EXPANSION_FIELDS,
+    DownloadRequest,
+    MediaInfo,
+    PlaylistEntry,
+    Preset,
+)
 from tracks_and_trails.core.selection import empty_window, in_units, resolved_date, size_words
 from tracks_and_trails.core.settings import Settings, add_preset, load, save
 from tracks_and_trails.downloader import worker
@@ -81,6 +87,49 @@ def test_only_the_entry_rule_is_a_preset_s_alone() -> None:
 def test_a_preset_refuses_what_yt_dlp_would(field: str, value: object, said: str) -> None:
     """Refused when the preset is built, long before a job learns it when it runs."""
     with pytest.raises((TypeError, ValueError), match=said):
+        a_preset(**{field: value})
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("uploaded_after", "today-1000000days"),
+        ("uploaded_before", "today-" + "9" * 5000 + "days"),
+        ("playlist_items", "9" * 5000),
+        ("playlist_items", "1:3:" + "9" * 5000),
+    ],
+    ids=["date overflow", "date digits", "item digits", "step digits"],
+)
+def test_a_value_yt_dlp_cannot_read_is_refused_as_a_value(field: str, value: str) -> None:
+    """`T247-R2`: refused with `ValueError`, the model's word for a bad value, so every caller
+    that reports one reports these too; `OverflowError` escaped all of them."""
+    with pytest.raises(ValueError, match=field):
+        a_preset(**{field: value})
+
+
+def test_a_hand_edited_preset_yt_dlp_cannot_read_is_reported_and_set_aside(tmp_path: Path) -> None:
+    """`T247-R2`: `settings.load` raised instead of reporting the one preset it could not read."""
+    target = tmp_path / "settings.toml"
+    target.write_text(
+        '[[preset]]\nname = "Hand edited"\nformat_selector = "best"\nmedia_kind = "video"\n'
+        'uploaded_after = "today-1000000days"\n',
+        encoding="utf-8",
+    )
+
+    read = load(target)
+
+    assert read.problem is not None and "Hand edited" in read.problem.reason, read.problem
+    assert read.settings.presets == ()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("max_downloads", 2**31), ("min_filesize", 2**53 + 1), ("max_filesize", 2**60)],
+)
+def test_a_limit_beyond_what_the_editor_can_show_is_refused(field: str, value: int) -> None:
+    """`T247-R3`: the model held what the editor could not open. *At most* is bounded by the
+    editor's count and a size by the largest number yt-dlp's own size grammar reads exactly."""
+    with pytest.raises(ValueError, match=field):
         a_preset(**{field: value})
 
 
@@ -351,7 +400,95 @@ def test_a_row_written_before_the_filters_existed_still_loads() -> None:
 def test_a_rule_seeds_the_entries_it_chooses(
     items: str | None, at_most: int | None, checked: set[int]
 ) -> None:
-    assert PlaylistSelection.by_rule(7, items, at_most).checked == checked
+    assert PlaylistSelection.by_rule(tuple(range(1, 8)), 7, items, at_most).checked == checked
+
+
+#: Which slots of a playlist hold an entry: gaps at the start, in the middle, at the end, both
+#: ends, several, and none (`T247-R1`). `x` is an unavailable slot.
+GAPS: Final = ("x..", ".x.", "..x", "x.x", ".x.x.", "xx.x..x", "...", "x")
+RULE_ITEMS: Final = (
+    None,
+    "1",
+    "2",
+    "3",
+    "-1",
+    "-2",
+    "2:",
+    ":2",
+    "::-1",
+    "1,3",
+    "-3:",
+    "2:-2",
+    "::2",
+    "3,1,3",
+    "-100:2",
+)
+
+
+@pytest.mark.parametrize("at_most", [None, 1, 2])
+@pytest.mark.parametrize("items", RULE_ITEMS)
+@pytest.mark.parametrize("gaps", GAPS)
+def test_a_rule_chooses_the_entries_yt_dlp_s_own_slots_choose(
+    gaps: str, items: str | None, at_most: int | None
+) -> None:
+    """**yt-dlp is the oracle, with the gaps where it has them** (`T247-R1`, Critical).
+
+    yt-dlp's `PlaylistEntries` keeps an unavailable item's slot, so `-I` counts it; the picker's
+    rows leave it out. The rule therefore has to be read against the slots and mapped to the rows,
+    and an entry is chosen exactly when yt-dlp would select its slot. *At most N* then keeps the
+    first N of those in playlist order, as ruled.
+    """
+    from yt_dlp.utils import PlaylistEntries
+
+    slots = [None if mark == "x" else {"slot": number} for number, mark in enumerate(gaps, 1)]
+    positions = tuple(number for number, mark in enumerate(gaps, 1) if mark == ".")
+    entries = PlaylistEntries(None, {"entries": slots})
+    texts = PlaylistEntries.parse_playlist_items(items) if items else [slice(None)]
+    selected = sorted({number for index in texts for number, slot in entries[index] if slot})
+    expected = selected[:at_most] if at_most is not None else selected
+
+    seeded = PlaylistSelection.by_rule(positions, len(gaps), items, at_most)
+
+    assert [positions[row] for row in sorted(seeded.checked)] == expected
+
+
+def test_a_projected_playlist_keeps_each_entry_s_slot_and_counts_every_slot() -> None:
+    """The adapter's half (`T247-R1`): what it drops keeps its place in the count."""
+    from tracks_and_trails.downloader.ytdlp_adapter import project_media
+
+    raw = {
+        "_type": "playlist",
+        "webpage_url": URL,
+        "title": "Gaps",
+        "entries": [
+            {"url": "https://example.invalid/hidden", "title": None},
+            {"url": "https://example.invalid/b", "title": "B"},
+            None,
+            {"url": "https://example.invalid/d", "title": "D"},
+            None,
+        ],
+    }
+
+    media = project_media(raw, reachable=lambda _: False)
+
+    assert [(entry.title, entry.position) for entry in media.entries] == [("B", 2), ("D", 4)]
+    assert media.slot_count == 5
+
+
+@pytest.mark.parametrize(
+    ("positions", "slot_count", "said"),
+    [((2, 1), 3, "increasing"), ((1, 4), 3, "slot 4 of a playlist of 3"), ((1,), None, "required")],
+)
+def test_entries_out_of_their_slots_are_refused(
+    positions: tuple[int, ...], slot_count: int | None, said: str
+) -> None:
+    entries = tuple(
+        PlaylistEntry(url=f"https://example.invalid/{slot}", title="T", position=slot)
+        for slot in positions
+    )
+
+    with pytest.raises(ValueError, match=said):
+        MediaInfo(url=URL, title="T", is_playlist=True, entries=entries, slot_count=slot_count)
 
 
 def test_a_queued_job_is_named_with_the_days_it_was_frozen_to() -> None:

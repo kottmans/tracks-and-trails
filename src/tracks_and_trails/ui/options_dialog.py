@@ -101,10 +101,13 @@ from tracks_and_trails.core.presets import (
     with_post_processing,
 )
 from tracks_and_trails.core.selection import (
-    SIZE_UNITS,
+    MOST_ITEMS,
     date_problem,
     items_problem,
+    parsed_size,
     resolved_date,
+    size_problem,
+    size_text,
 )
 from tracks_and_trails.downloader.environment import FfmpegFeature
 from tracks_and_trails.downloader.extra_options import (
@@ -244,7 +247,6 @@ AT_MOST_NAME: Final = "optionsAtMost"
 ENTRIES_REASON_NAME: Final = "optionsEntriesReason"
 MIN_SIZE_NAME: Final = "optionsMinSize"
 MAX_SIZE_NAME: Final = "optionsMaxSize"
-SIZE_UNIT_NAME: Final = "optionsSizeUnit"
 UPLOADED_AFTER_NAME: Final = "optionsUploadedAfter"
 UPLOADED_BEFORE_NAME: Final = "optionsUploadedBefore"
 WHICH_ITEMS_REFUSALS_NAME: Final = "optionsWhichItemsRefusals"
@@ -253,11 +255,10 @@ WHICH_ITEMS_REFUSALS_NAME: Final = "optionsWhichItemsRefusals"
 PLAYLIST_ITEMS_PLACEHOLDER: Final = "All of them, or for example 1:5,8 or -3:"
 #: What a date field shows while empty: the forms yt-dlp's strict date grammar takes.
 DATE_PLACEHOLDER: Final = "Any day, or YYYYMMDD, or for example today-2weeks"
-#: What the count and size controls read at zero, which stands for no limit at all.
+#: What a size field shows while empty: yt-dlp's `--min-filesize` grammar, by example.
+SIZE_PLACEHOLDER: Final = "Any size, or for example 500M or 2G"
+#: What the count reads at zero, which stands for no limit at all.
 NO_LIMIT_TEXT: Final = "No limit"
-ANY_SIZE_TEXT: Final = "Any size"
-#: The unit a size starts in when the preset sets none.
-DEFAULT_SIZE_UNIT: Final = "MiB"
 
 #: Said beside the items and *at most* where there are no entries to choose between (`UX-015`).
 NO_ENTRIES_REASON: Final = (
@@ -648,10 +649,15 @@ class OptionsDialog(QDialog):
     def _build_which_items(self) -> QWidget:
         """*Which items*, directly above the hatch (`UX-015`, amended 2026-10-11, `T-247`).
 
-        **Every control is a form row, so each has a label as its buddy** (`NFR-005`). That is
-        why the two sizes share one unit rather than each carrying its own: on Linux a combo box
-        publishes its value where its name should be unless a label names it (`T200-R7`), and a
-        unit beside each size would have needed a second visible label inside each row.
+        **Every control is a form row, so each has a label as its buddy** (`NFR-005`).
+
+        **Each size is its own field, in yt-dlp's own grammar** (`T247-R3`): a number and a unit
+        letter, `500M`, counted in 1024s as `--min-filesize` counts them. They first shared one
+        unit control, which had to fall to bytes for a pair such as 1500 bytes and 2 GiB, and a
+        32-bit spin box then raised while the editor opened. A unit control beside each number
+        would have needed a second visible label in each row, since on Linux a combo box
+        announces its value where its name should be unless a label names it (`T200-R7`). Text
+        holds any size the model allows, exactly, and is checked like the dates beside it.
         """
         group = QGroupBox(WHICH_ITEMS_TITLE, self)
         form = QFormLayout(group)
@@ -671,19 +677,10 @@ class OptionsDialog(QDialog):
         self._entries_reason.setWordWrap(True)
         form.addRow(self._entries_reason)
 
-        self._min_size = self._limit_box(group, MIN_SIZE_NAME, "Smallest file")
-        self._min_size.setSpecialValueText(ANY_SIZE_TEXT)
+        self._min_size = self._text_field(group, MIN_SIZE_NAME, "Smallest file", SIZE_PLACEHOLDER)
         form.addRow("Smallest file", self._min_size)
-        self._max_size = self._limit_box(group, MAX_SIZE_NAME, "Largest file")
-        self._max_size.setSpecialValueText(ANY_SIZE_TEXT)
+        self._max_size = self._text_field(group, MAX_SIZE_NAME, "Largest file", SIZE_PLACEHOLDER)
         form.addRow("Largest file", self._max_size)
-        self._size_unit = QComboBox(group)
-        self._size_unit.setObjectName(SIZE_UNIT_NAME)
-        self._size_unit.setAccessibleName("Sizes in")
-        # Smallest first, as a person counts up; yt-dlp's `k`, `M` and `G` are these, in 1024s.
-        for unit, factor in reversed(SIZE_UNITS):
-            self._size_unit.addItem(unit, factor)
-        form.addRow("Sizes in", self._size_unit)
 
         self._after = QLineEdit(group)
         self._after.setObjectName(UPLOADED_AFTER_NAME)
@@ -703,26 +700,34 @@ class OptionsDialog(QDialog):
         self._selection_refusals.setTextFormat(Qt.TextFormat.PlainText)
         form.addRow(self._selection_refusals)
 
-        # **Text is checked once typing pauses, as the hatch is** (`UX-015`); a count, a size or a
-        # unit is one complete value per change, so it is checked at once.
+        # **Text is checked once typing pauses, as the hatch is** (`UX-015`); the count is one
+        # complete value per change, so it is checked at once.
         self._selection_pause = QTimer(self)
         self._selection_pause.setSingleShot(True)
         self._selection_pause.setInterval(EXTRA_OPTIONS_PAUSE_MS)
         self._selection_pause.timeout.connect(self._check_selection)
-        for typed in (self._items, self._after, self._before):
+        for typed in (self._items, self._min_size, self._max_size, self._after, self._before):
             typed.textChanged.connect(self._selection_pause.start)
-        for box in (self._at_most, self._min_size, self._max_size):
-            box.valueChanged.connect(self._check_selection)
-        self._size_unit.currentIndexChanged.connect(self._check_selection)
+        self._at_most.valueChanged.connect(self._check_selection)
         return group
 
     @staticmethod
+    def _text_field(
+        parent: QWidget, object_name: str, accessible_name: str, placeholder: str
+    ) -> QLineEdit:
+        field = QLineEdit(parent)
+        field.setObjectName(object_name)
+        field.setAccessibleName(accessible_name)
+        field.setPlaceholderText(placeholder)
+        return field
+
+    @staticmethod
     def _limit_box(parent: QWidget, object_name: str, accessible_name: str) -> QSpinBox:
-        """A whole-number control whose zero reads as no limit at all."""
+        """The count, whose zero reads as no limit, up to the most the model allows (`T247-R3`)."""
         box = QSpinBox(parent)
         box.setObjectName(object_name)
         box.setAccessibleName(accessible_name)
-        box.setRange(0, 2**31 - 1)
+        box.setRange(0, MOST_ITEMS)
         return box
 
     def _build_extra_options(self) -> QWidget:
@@ -833,20 +838,13 @@ class OptionsDialog(QDialog):
         """
         self._items.setText(preset.playlist_items or "")
         self._at_most.setValue(preset.max_downloads or 0)
-        sizes = [size for size in (preset.min_filesize, preset.max_filesize) if size is not None]
-        # **One unit that holds both sizes exactly**, the largest that does, so what is shown is
-        # what the preset carries and an untouched OK writes back the same bytes.
-        factor = next(
-            (
-                factor
-                for _unit, factor in SIZE_UNITS
-                if sizes and all(size % factor == 0 for size in sizes)
-            ),
-            dict(SIZE_UNITS)[DEFAULT_SIZE_UNIT],
-        )
-        self._size_unit.setCurrentIndex(self._size_unit.findData(factor))
-        self._min_size.setValue((preset.min_filesize or 0) // factor)
-        self._max_size.setValue((preset.max_filesize or 0) // factor)
+        # **In yt-dlp's grammar, exactly** (`T247-R3`): `size_text` names the largest unit that
+        # holds the size whole, so an untouched OK reads back the same bytes.
+        for field, size in (
+            (self._min_size, preset.min_filesize),
+            (self._max_size, preset.max_filesize),
+        ):
+            field.setText(size_text(size) if size is not None else "")
         self._after.setText(preset.uploaded_after or "")
         self._before.setText(preset.uploaded_before or "")
         self._check_selection()
@@ -938,8 +936,17 @@ class OptionsDialog(QDialog):
                 days.append(resolved_date(text))
         if len(days) == 2 and days[0] > days[1]:
             lines.append(CROSSED_DATES)
-        smallest, largest = self._typed_sizes()
-        if smallest is not None and largest is not None and smallest > largest:
+        sizes: list[int] = []
+        for label, field in (("Smallest file", self._min_size), ("Largest file", self._max_size)):
+            text = field.text().strip()
+            if not text:
+                continue
+            problem = size_problem(text)
+            if problem is not None:
+                lines.append(f"{label}: {problem}")
+            else:
+                sizes.append(self._size_of(field) or 0)
+        if len(sizes) == 2 and sizes[0] > sizes[1]:
             lines.append(CROSSED_SIZES)
         return lines
 
@@ -953,13 +960,11 @@ class OptionsDialog(QDialog):
         """What the group's refusal list says. A method, so a test reads what the user reads."""
         return self._selection_refusals.text()
 
-    def _typed_sizes(self) -> tuple[int | None, int | None]:
-        """The two sizes in bytes, `None` where the control reads *any size*."""
-        factor = int(self._size_unit.currentData())
-        return (
-            self._min_size.value() * factor or None,
-            self._max_size.value() * factor or None,
-        )
+    @staticmethod
+    def _size_of(field: QLineEdit) -> int | None:
+        """A size field's bytes, `None` where it is empty. Read only once it has been checked."""
+        text = field.text().strip()
+        return parsed_size(text) if text else None
 
     # Qt's override name.
     def accept(self) -> None:
@@ -1160,10 +1165,9 @@ class OptionsDialog(QDialog):
                 preset.uploaded_after,
                 preset.uploaded_before,
             )
-        smallest, largest = self._typed_sizes()
         return (
-            smallest,
-            largest,
+            self._size_of(self._min_size),
+            self._size_of(self._max_size),
             self._after.text().strip() or None,
             self._before.text().strip() or None,
         )

@@ -16,8 +16,10 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ### T-247 — Video selection: which items, how big, how old
 
-**Status:** In Review — built 2026-10-11. *(Was Ready — ruled 2026-10-11, `ARC-010` and `UX-015`
-amended, after `T-361`; was Proposed:)* filed 2026-08-16 by `T-183`
+**Status:** In Review — **correction 1 built 2026-10-11**, for the four blockers of the review of
+`616f665` ([record](reviews/T-247.md)); each awaits the Reviewer's verification. *(Was In Review:)*
+built 2026-10-11. *(Was Ready — ruled 2026-10-11, `ARC-010` and `UX-015` amended, after `T-361`;
+was Proposed:)* filed 2026-08-16 by `T-183`
 **Priority:** High among the nine — playlist item selection is the most-asked-for of the 44
 **Options (7):** `-I/--playlist-items`, `--min-filesize`, `--max-filesize`, `--date`,
 `--datebefore`, `--dateafter`, `--max-downloads`
@@ -114,6 +116,47 @@ tests/ui` under `-n auto`, **4,846 passed**, 21 skipped; `tests/integration` **5
 seven new ones in `test_which_items.py` among them, against real yt-dlp on `127.0.0.1`. **27
 mutations, all caught**, each on a copy of the tree with its targeted tests; the table is in the
 review handoff. No Windows run.
+
+#### Correction 1, 2026-10-11 — `T247-R1`…`R4`
+
+The review of `616f665` requested changes with one Critical and three High blockers. All four are
+corrected together. Each is reproduced by tests run against `616f665`'s source with the corrected
+tests, in a scratch copy, and the Reviewer marks them resolved. **Corrected, awaiting re-review.**
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T247-R1`, Critical — `-I` read against the entries left after unavailable ones were dropped, so for A, unavailable, C, `-I 2` queued C | `PlaylistEntry.position` is the entry's slot, counting dropped ones, and is required; `MediaInfo.slot_count` is every slot enumerated, required with entries, and the model refuses entries out of their slots. `chosen_positions` reads the rule against the slots and applies *at most N* to the available ones; `PlaylistSelection.by_rule` maps slots to rows. The picker's number column and its spoken row now show the slot | `test_a_rule_chooses_the_entries_yt_dlp_s_own_slots_choose`: yt-dlp's own `PlaylistEntries`, with `None` in the gaps, is the oracle over 8 gap patterns, 15 rules and 3 limits. `test_a_rule_counts_the_slots_yt_dlp_counts_and_queues_what_it_would`: gaps at the start, middle, end and both, real missing-title placeholders, through the real projection to the queued URLs — **36 of its 72 cases fail on `616f665`'s source**. Projection and picker tests beside them |
+| `T247-R2`, High — `today-1000000days` raised `OverflowError` through accept and `settings.load`; a 5,000-digit item was accepted; a 5,000-digit step raised | Every number in `-I` must be one `int()` reads, refused otherwise, including range numbers yt-dlp would silently read as absent. A relative date past the first year, or with an unreadable count, is refused with its own reason. Sizes are read by a transcription of `parse_bytes`, and one past a `float` is refused where yt-dlp raises | Tests for each in `test_selection.py`, `test_which_items.py` (model, and a hand-edited `settings.toml` reported and set aside) and `test_options_dialog.py` (OK and *Save as preset…* pressed inside the typing pause). On `616f665`'s source 9 of the model, settings and editor cases do not pass; the core tests failed in their first draft, 6 cases, before the size tests in the same file needed the new helpers |
+| `T247-R3`, High — 1 byte to 3 GiB, and the persistence test's own 1,500 bytes to 2 GiB, raised as the editor opened; so did `max_downloads=2**31` | **Each size is its own text field in yt-dlp's grammar**, `500M` or `2G`, shown exactly by `size_text` and read by `parsed_size`; the shared unit control is gone. The model bounds sizes at 2**53, the largest yt-dlp's `float` reading keeps exact, and *at most* at the count control's 2**31−1 | `test_every_value_the_model_holds_opens_and_comes_back_unchanged` at and beyond each former boundary, its four past the old controls not passing on `616f665`'s source; `test_a_size_is_shown_in_yt_dlp_s_grammar_and_reads_back_exactly` against `parse_bytes`; the model's limits refused, 3 failing there |
+| `T247-R4`, High — `-1000000000:3` walked every index on the GUI thread | `_walk` moves each end to the first in-range index on the step's lattice, so the work is bounded by the playlist; `range` keeps it exact for any integer size | Far ends checked against yt-dlp on a congruent near twin, in both directions, with a 50 ms bound; the dialog's re-seeding with `-10000000:3` under 0.5 s. At `616f665` each of the three reviewed shapes took over 2 s at ten million |
+
+**The second departure is replaced.** The shared size unit that ruling 4's *"a number and a unit"*
+was weighed against is gone: a size is now a number and a unit letter in one field, the grammar
+`--min-filesize` takes, which holds every size exactly and needs no unlabelled combo box. `-I`'s
+transcription stands, and the far-end, gap and unreadable-number tests are what now hold it to
+yt-dlp.
+
+**Sibling audit.** For R1's class, every place the compacted tuple stood for the playlist: the
+picker's number and spoken row are corrected here. **The queue's own position is not**:
+`_durable_jobs` gives a job `playlist_index` and the *Position* naming field from its place among
+the survivors, so with a gap a file can be named `02` where yt-dlp says `03`. That predates
+`T-247` and changes file names, so it is put to the maintainer rather than changed here. For R2,
+every value with a grammar is refused through `items_problem`, `date_problem` or `size_problem`,
+which the model, the editor and settings loading all call. For R3, every field of the group now
+holds every value the model allows. For R4, the only other per-value work is linear in the text.
+
+**Correction mutations, 20 of 20 caught**, each on a copy of the tree: the walk made correct but
+unbounded in either direction, unaligned in either, unclamped at either end; *at most* counting
+unavailable slots; rows matched by order; the adapter numbering survivors or counting them; each
+refusal removed; the model's limits and slot checks removed; the count control narrower than the
+model; the picker showing rows; sizes shown as raw bytes.
+
+**Checks, 2026-10-11, on Linux, after the correction:** `ruff check .` and `ruff format --check .`;
+`mypy src`, bare `mypy` and `mypy --platform win32`; `python tools/ytdlp_option_table.py --check`;
+`tests/unit tests/ui` under `-n auto`, **5,400 passed**, 21 skipped, on a quiet machine — an earlier
+run beside other test processes failed
+`test_a_paste_the_design_supports_stays_inside_the_interaction_budget` once at 1.07 s, and it then
+passed three times alone; `tests/integration` **527 passed**. No Windows run.
 
 ---
 

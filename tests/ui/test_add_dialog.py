@@ -2770,10 +2770,12 @@ def _probed_playlist(dialog: AddUrlDialog, *, title: str, count: int) -> None:
                 PlaylistEntry(
                     url=f"https://example.invalid/entry-{index}",
                     title=f"Track {index:02d}",
+                    position=index + 1,
                     duration_seconds=float(60 + index),
                 )
                 for index in range(count)
             ),
+            slot_count=count or None,
         ),
     )
 
@@ -4586,6 +4588,7 @@ def test_a_reprobe_of_a_different_length_starts_the_choice_again(
             title=media.title,
             is_playlist=True,
             entries=media.entries[:3],
+            slot_count=3,
         ),
     )
     QApplication.processEvents()
@@ -4718,6 +4721,118 @@ def test_a_rule_choosing_nothing_queues_nothing_from_the_playlist(
     )
 
     assert row.entry_selection == PlaylistSelection.none_of(7)
+
+
+#: Flat playlists with unavailable slots — at the start, in the middle and at the end — as yt-dlp
+#: hands them over: `None` where it read nothing, and a placeholder with an address and no title
+#: where it read only the id (`T-281`). `T247-R1`.
+HOLES: Final[dict[str, list[Any]]] = {
+    "start": [
+        None,
+        {"url": "https://example.invalid/b", "title": "B"},
+        {"url": "https://example.invalid/c", "title": "C"},
+    ],
+    "middle": [
+        {"url": "https://example.invalid/a", "title": "A"},
+        None,
+        {"url": "https://example.invalid/c", "title": "C"},
+    ],
+    "end": [
+        {"url": "https://example.invalid/a", "title": "A"},
+        {"url": "https://example.invalid/b", "title": "B"},
+        {"url": "https://example.invalid/x", "title": None},
+    ],
+    "both": [
+        {"url": "https://example.invalid/x", "title": None},
+        {"url": "https://example.invalid/b", "title": "B"},
+        None,
+        {"url": "https://example.invalid/d", "title": "D"},
+        None,
+    ],
+}
+
+
+def _what_yt_dlp_keeps(slots: list[Any], items: str, at_most: int | None) -> list[str]:
+    """The available URLs yt-dlp's own `PlaylistEntries` selects with `-I items`, in playlist
+    order, a slot once, the first `at_most` of them: the ruling's meaning of the rule."""
+    from yt_dlp.utils import PlaylistEntries
+
+    entries = PlaylistEntries(None, {"entries": slots})
+    chosen = sorted(
+        {
+            position
+            for index in PlaylistEntries.parse_playlist_items(items)
+            for position, entry in entries[index]
+            if entry and entry.get("title")
+        }
+    )
+    picked = [slots[position - 1]["url"] for position in chosen]
+    return picked[:at_most] if at_most is not None else picked
+
+
+@pytest.mark.parametrize("at_most", [None, 1])
+@pytest.mark.parametrize("items", ["1", "2", "3", "-1", "-2", "2:", ":2", "::-1", "1,3"])
+@pytest.mark.parametrize("holes", list(HOLES))
+def test_a_rule_counts_the_slots_yt_dlp_counts_and_queues_what_it_would(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+    store: FakeStore,
+    holes: str,
+    items: str,
+    at_most: int | None,
+) -> None:
+    """`T247-R1`, Critical. The rule was applied to the entries left after the unavailable ones
+    were dropped, so for A, unavailable, C, `-I 2` queued C. yt-dlp's own selection is the oracle,
+    and what is asserted is what reaches the queue."""
+    rule = replace(RULED, name="Ruled", playlist_items=items, max_downloads=at_most)
+    dialog = dialogs(
+        managers(), presets=(*preset_registry.BUILT_IN_PRESETS, rule), default_preset=rule.name
+    )
+    type_urls(dialog, "https://example.invalid/list")
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows) and dialog.rows[0].job_id is not None)
+    row = dialog.rows[0]
+    assert row.job_id is not None
+    raw = {
+        "_type": "playlist",
+        "webpage_url": "https://example.invalid/list",
+        "title": "Holes",
+        "entries": HOLES[holes],
+    }
+    dialog._on_media_probed(row.job_id, adapter.project_media(raw, reachable=lambda _: False))
+    expected = _what_yt_dlp_keeps(HOLES[holes], items, at_most)
+    media = row.media
+    assert isinstance(media, MediaInfo)
+    selection = row.entry_selection
+    assert isinstance(selection, PlaylistSelection)
+
+    assert [entry.url for entry in selection.chosen(media.entries)] == expected
+    if expected:
+        dialog.add_to_queue()
+        assert spin(lambda: bool(sink.submissions))
+        queued = [job.url for job in store.jobs.values() if job.playlist_id is not None]
+        assert queued == expected
+
+
+def test_a_far_rule_seeds_a_playlist_without_holding_up_the_dialog(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`T247-R4`: seeding runs on the GUI thread, and a range end ten million entries away walked
+    all of them first. Asserted through the dialog's own seeding and re-seeding."""
+    far = replace(RULED, name="Far", playlist_items="-10000000:3", max_downloads=1)
+    dialog, row = _staged_playlist(dialogs, managers, spin, presets=(*WITH_RULES, far))
+
+    started = time.perf_counter()
+    choose_preset(dialog, far.name)
+    QApplication.processEvents()
+    elapsed = time.perf_counter() - started
+
+    assert row.entry_selection == PlaylistSelection.none_of(7).set(0, True)
+    assert elapsed < 0.5, f"re-seeding took {elapsed:.2f} s"
 
 
 def test_a_large_playlist_probe_leaves_the_dialog_responsive_and_cancellable(
@@ -6400,9 +6515,10 @@ def test_the_remove_label_reads_every_playlist_shape() -> None:
         title="Two",
         is_playlist=True,
         entries=(
-            PlaylistEntry(url="https://a.invalid/1", title="One"),
-            PlaylistEntry(url="https://a.invalid/2", title="Two"),
+            PlaylistEntry(url="https://a.invalid/1", title="One", position=1),
+            PlaylistEntry(url="https://a.invalid/2", title="Two", position=2),
         ),
+        slot_count=2,
     )
     assert label(counted_by_hand) == "Remove this playlist (2 items)"
 

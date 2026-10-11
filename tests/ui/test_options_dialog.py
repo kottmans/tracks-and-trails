@@ -72,7 +72,6 @@ from tracks_and_trails.ui.options_dialog import (
     SAVE_PRESET_NAME,
     SAVE_PRESET_TEXT,
     SAVE_RESULT_NAME,
-    SIZE_UNIT_NAME,
     SUBTITLE_LANGUAGES_NAME,
     UPLOADED_AFTER_NAME,
     UPLOADED_BEFORE_NAME,
@@ -712,8 +711,6 @@ STILL_LIVE_WITHOUT_FFMPEG: Final = {
     # Choosing *which* subtitles is not embedding them. yt-dlp writes them beside the file with
     # no ffmpeg involved; only `embed_subtitles` needs it, and that checkbox is gated.
     SUBTITLE_LANGUAGES_NAME,
-    # *Which items* decides what is downloaded, before anything could be converted (`T-247`).
-    SIZE_UNIT_NAME,
 }
 
 
@@ -1448,7 +1445,7 @@ def test_hidden_tokens_behind_empty_text_become_the_empty_pair(
 # --- *Which items* (`UX-015` amended 2026-10-11, `T-247`) -----------------------------------------
 
 #: A preset carrying every one of the group's six values. The smallest file is not a whole number of
-#: KiB, so the shared unit has to fall to bytes for the preset to come back unchanged.
+#: KiB, so it has to be shown in bytes for the preset to come back unchanged.
 RULED: Final = replace(
     preset_registry.BEST_VIDEO,
     name="Ruled",
@@ -1462,8 +1459,14 @@ RULED: Final = replace(
 )
 
 #: The group's controls that take text, and those that take a number.
-TEXT_CONTROLS: Final = (PLAYLIST_ITEMS_NAME, UPLOADED_AFTER_NAME, UPLOADED_BEFORE_NAME)
-NUMBER_CONTROLS: Final = (AT_MOST_NAME, MIN_SIZE_NAME, MAX_SIZE_NAME)
+TEXT_CONTROLS: Final = (
+    PLAYLIST_ITEMS_NAME,
+    MIN_SIZE_NAME,
+    MAX_SIZE_NAME,
+    UPLOADED_AFTER_NAME,
+    UPLOADED_BEFORE_NAME,
+)
+NUMBER_CONTROLS: Final = (AT_MOST_NAME,)
 
 
 def line(dialog: OptionsDialog, name: str) -> QLineEdit:
@@ -1487,13 +1490,14 @@ def typed_into(dialog: OptionsDialog, name: str, text: str, spin: Callable[..., 
 def test_which_items_opens_on_the_preset_s_own_values_and_gives_them_back(
     editor: Callable[..., OptionsDialog],
 ) -> None:
-    """Opening and accepting must not change a preset: a relative date stays relative, and a
-    size that is not a whole number of KiB keeps its bytes."""
+    """Opening and accepting must not change a preset: a relative date stays relative, and each
+    size is shown in yt-dlp's own grammar, exactly — bytes where it is not a whole KiB."""
     dialog = editor(RULED)
 
     assert line(dialog, PLAYLIST_ITEMS_NAME).text() == "2:4"
     assert line(dialog, UPLOADED_AFTER_NAME).text() == "today-2weeks"
-    assert combo(dialog, SIZE_UNIT_NAME).currentText() == "bytes"
+    assert line(dialog, MIN_SIZE_NAME).text() == "1500"
+    assert line(dialog, MAX_SIZE_NAME).text() == "2M"
     assert dialog.selection_refusals_text() == ""
     result = dialog.result_preset()
     for field in (
@@ -1515,8 +1519,7 @@ def test_typed_values_reach_the_preset_and_its_name(
     dialog = editor()
     typed_into(dialog, PLAYLIST_ITEMS_NAME, "1:5", spin)
     number(dialog, AT_MOST_NAME).setValue(3)
-    combo(dialog, SIZE_UNIT_NAME).setCurrentIndex(combo(dialog, SIZE_UNIT_NAME).findText("MiB"))
-    number(dialog, MAX_SIZE_NAME).setValue(100)
+    typed_into(dialog, MAX_SIZE_NAME, "100M", spin)
     typed_into(dialog, UPLOADED_AFTER_NAME, "20260101", spin)
 
     result = dialog.result_preset()
@@ -1537,6 +1540,8 @@ def test_typed_values_reach_the_preset_and_its_name(
         (PLAYLIST_ITEMS_NAME, "1:3:0", "Playlist items: "),
         (UPLOADED_AFTER_NAME, "tomorrow", "Uploaded on or after: "),
         (UPLOADED_BEFORE_NAME, "20250229", "Uploaded on or before: "),
+        (MIN_SIZE_NAME, "2GB", "Smallest file: "),
+        (MAX_SIZE_NAME, "0", "Largest file: "),
     ],
 )
 def test_what_yt_dlp_would_refuse_is_refused_where_it_is_typed(
@@ -1583,13 +1588,13 @@ def test_dates_that_leave_no_day_between_them_are_refused(
     assert not ok_button(dialog).isEnabled()
 
 
-def test_sizes_that_cross_are_refused_as_soon_as_they_do(
-    editor: Callable[..., OptionsDialog],
+def test_sizes_that_cross_are_refused(
+    editor: Callable[..., OptionsDialog], spin: Callable[..., bool]
 ) -> None:
-    """A number is one whole value per change, so it is checked without waiting."""
+    """Compared in bytes, so `1G` above `5M` is caught whichever units were typed."""
     dialog = editor()
-    number(dialog, MIN_SIZE_NAME).setValue(10)
-    number(dialog, MAX_SIZE_NAME).setValue(5)
+    typed_into(dialog, MIN_SIZE_NAME, "1G", spin)
+    typed_into(dialog, MAX_SIZE_NAME, "5M", spin)
 
     assert dialog.selection_refusals_text() == CROSSED_SIZES
     assert not ok_button(dialog).isEnabled()
@@ -1607,7 +1612,7 @@ def test_a_single_video_s_editor_offers_no_rule_and_keeps_the_preset_s(
     assert not number(dialog, AT_MOST_NAME).isEnabled()
     reason = dialog.findChild(QLabel, ENTRIES_REASON_NAME)
     assert reason is not None and reason.text() == NO_ENTRIES_REASON
-    assert number(dialog, MIN_SIZE_NAME).isEnabled()
+    assert line(dialog, MIN_SIZE_NAME).isEnabled()
     line(dialog, PLAYLIST_ITEMS_NAME).setText("9")
     number(dialog, AT_MOST_NAME).setValue(0)
 
@@ -1636,7 +1641,6 @@ def test_every_which_items_control_is_named_labelled_and_a_keyboard_stop(
     controls: list[QWidget] = [
         *(line(dialog, name) for name in TEXT_CONTROLS),
         *(number(dialog, name) for name in NUMBER_CONTROLS),
-        combo(dialog, SIZE_UNIT_NAME),
     ]
     # `buddy()` is typed as never `None`, and is `None` for a label naming nothing.
     buddies: dict[QWidget | None, str] = {
@@ -1657,7 +1661,6 @@ def test_which_items_stays_live_without_ffmpeg(editor: Callable[..., OptionsDial
         assert line(dialog, name).isEnabled(), name
     for name in NUMBER_CONTROLS:
         assert number(dialog, name).isEnabled(), name
-    assert combo(dialog, SIZE_UNIT_NAME).isEnabled()
 
 
 def test_save_as_preset_keeps_the_rule_and_the_filters(
@@ -1674,3 +1677,68 @@ def test_save_as_preset_keeps_the_rule_and_the_filters(
     button.click()
 
     assert saved and (saved[0].playlist_items, saved[0].uploaded_after) == ("2:4", "today-2weeks")
+
+
+GIB: Final = 1024**3
+
+
+@pytest.mark.parametrize(
+    ("smallest", "largest", "at_most"),
+    [
+        (1, 3 * GIB, None),
+        (1500, 2 * GIB, None),
+        (None, 2**53, None),
+        (2**53 - 1, 2**53, None),
+        (None, None, 2**31 - 1),
+    ],
+    ids=["byte to 3 GiB", "persistence pair", "largest size", "odd near largest", "most items"],
+)
+def test_every_value_the_model_holds_opens_and_comes_back_unchanged(
+    editor: Callable[..., OptionsDialog],
+    smallest: int | None,
+    largest: int | None,
+    at_most: int | None,
+) -> None:
+    """`T247-R3`. A shared unit forced bytes onto 3 GiB and a 32-bit spin box raised while the
+    editor opened. Each bound is now its own field, and the model refuses what no field shows."""
+    preset = replace(RULED, min_filesize=smallest, max_filesize=largest, max_downloads=at_most)
+
+    dialog = editor(preset)
+    result = dialog.result_preset()
+
+    assert dialog.selection_refusals_text() == ""
+    assert (result.min_filesize, result.max_filesize) == (smallest, largest)
+    assert result.max_downloads == at_most
+
+
+@pytest.mark.parametrize(
+    ("name", "text", "said"),
+    [
+        (UPLOADED_AFTER_NAME, "today-1000000days", "Uploaded on or after: "),
+        (UPLOADED_BEFORE_NAME, "today-" + "9" * 5000 + "days", "Uploaded on or before: "),
+        (PLAYLIST_ITEMS_NAME, "9" * 5000, "Playlist items: "),
+        (PLAYLIST_ITEMS_NAME, "1:3:" + "9" * 5000, "Playlist items: "),
+        (MAX_SIZE_NAME, "9" * 400 + "Y", "Largest file: "),
+    ],
+    ids=["date overflow", "date digits", "item digits", "step digits", "size past a float"],
+)
+def test_what_yt_dlp_cannot_read_is_refused_on_an_immediate_accept_and_save(
+    editor: Callable[..., OptionsDialog], name: str, text: str, said: str
+) -> None:
+    """`T247-R2`: OK pressed inside the typing pause raised, or accepted a number yt-dlp refuses.
+    *Save as preset…* takes the same check and saves nothing."""
+    saved: list[Preset] = []
+    dialog = editor(
+        save_preset=lambda preset: saved.append(preset), ask_name=lambda: ("Kept", True)
+    )
+    line(dialog, name).setText(text)
+
+    save = dialog.findChild(QPushButton, SAVE_PRESET_NAME)
+    assert save is not None
+    save.click()
+    dialog.accept()
+
+    assert dialog.result() != QDialog.DialogCode.Accepted, "a value yt-dlp refuses was accepted"
+    assert not saved, "a value yt-dlp refuses was saved"
+    assert dialog.selection_refusals_text().startswith(said), dialog.selection_refusals_text()
+    assert not ok_button(dialog).isEnabled()

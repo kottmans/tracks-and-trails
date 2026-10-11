@@ -77,15 +77,27 @@ class PlaylistSelection:
         return cls(count=count, checked=frozenset(range(count)))
 
     @classmethod
-    def by_rule(cls, count: int, items: str | None, at_most: int | None) -> Self:
+    def by_rule(
+        cls,
+        positions: Sequence[int],
+        slot_count: int,
+        items: str | None,
+        at_most: int | None,
+    ) -> Self:
         """The entries a preset's rule chooses (`T-247`, `ARC-010` amended 2026-10-11).
 
-        `items` is yt-dlp's `-I` grammar and `at_most` keeps the first N of what it chose, in
-        playlist order; with neither, this is `all_of`. **A starting point, not a constraint**:
-        the user checks and unchecks from here, and what they choose is what is queued.
+        `positions` are the entries' slots in the playlist and `slot_count` how many slots the
+        extraction enumerated, the unavailable ones included (`T247-R1`): `items` is yt-dlp's
+        `-I`, which counts slots, so an unavailable second slot is what `-I 2` names and no entry
+        is chosen for it. `at_most` keeps the first N of the entries chosen, in playlist order;
+        with neither, this is `all_of`. **A starting point, not a constraint**: the user checks
+        and unchecks from here, and what they choose is what is queued.
         """
-        positions = chosen_positions(items, at_most, count)
-        return cls(count=count, checked=frozenset(position - 1 for position in positions))
+        chosen = set(chosen_positions(items, at_most, slot_count, available=set(positions)))
+        return cls(
+            count=len(positions),
+            checked=frozenset(row for row, slot in enumerate(positions) if slot in chosen),
+        )
 
     @classmethod
     def none_of(cls, count: int) -> Self:

@@ -180,8 +180,10 @@ class PlaylistEntryModel(QAbstractTableModel):
             return Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
         if role == Qt.ItemDataRole.DisplayRole:
             if index.column() == INDEX_COLUMN:
-                # One-based, because it is the position a user reads off a playlist page.
-                return str(row + 1)
+                # **The entry's slot in the playlist**, the position a user reads off its page and
+                # the number yt-dlp's `-I` means (`T247-R1`). Its row here can be smaller: an item
+                # yt-dlp could not read is left out, and its slot is not.
+                return str(entry.position)
             if index.column() == TITLE_COLUMN:
                 return entry.title
             if index.column() == DURATION_COLUMN:
@@ -193,7 +195,8 @@ class PlaylistEntryModel(QAbstractTableModel):
             # the title column would otherwise hear titles and never hear what they had picked.
             state = "chosen" if self._selection.is_checked(row) else "not chosen"
             return (
-                f"{row + 1}. {entry.title}. {_duration_text(entry.duration_seconds)}. {state}. "
+                f"{entry.position}. {entry.title}. {_duration_text(entry.duration_seconds)}. "
+                f"{state}. "
                 "Press Space to change."
             )
         return None
