@@ -14,14 +14,12 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
-Nothing. `T-351`, `T-355`, `T-356`, `T-357` and `T-360` were approved on 2026-10-11 and moved to
-[COMPLETED_TASKS](COMPLETED_TASKS.md), as `T-184` was the day before.
-
-## Ready
+`T-361` was built on 2026-10-11, before `T-247`.
 
 ### T-361 — The hatch admits long spellings of options that have a control, then drops them
 
-**Status:** Ready — filed 2026-10-11 by the maintainer's ruling, to run before `T-247`.
+**Status:** In Review — built 2026-10-11. *(Was Ready:)* filed 2026-10-11 by the maintainer's
+ruling, to run before `T-247`.
 **Owner:** Implementer
 **Priority:** High — `REQ-031` forbids an option accepted and silently dropped, and the hatch does
 exactly that.
@@ -47,16 +45,43 @@ refused is false.
 
 #### Acceptance criteria
 
-- [ ] `TYPED_WITH_A_FIELD` holds **every spelling** of a built option, derived from yt-dlp's parser
+- [x] `TYPED_WITH_A_FIELD` holds **every spelling** of a built option, derived from yt-dlp's parser
       rather than listed by hand, so a new typed field brings its aliases with it.
-- [ ] Each spelling measured above is refused for its control, and a test walks every spelling of
+- [x] Each spelling measured above is refused for its control, and a test walks every spelling of
       every built option through `admit`.
-- [ ] Any deprecated option that sets a built option's destination under another name is found
+- [x] Any deprecated option that sets a built option's destination under another name is found
       and either refused or recorded with its reason.
-- [ ] The generated table regenerates cleanly, and Ruff, both mypy platforms and the hatch's tests
+- [x] The generated table regenerates cleanly, and Ruff, both mypy platforms and the hatch's tests
       pass.
 
+#### Built 2026-10-11
+
+- **`built_spellings()`** in `tools/ytdlp_option_table.py` reads every spelling of each option the
+  audit's built table names from `create_parser()`, and `TYPED_WITH_A_FIELD` is generated from it.
+  The regenerated table gains exactly the eleven missing aliases: `--limit-rate`, `--rate-limit`,
+  `--retries`, `--extract-audio`, `--add-metadata`, `--no-add-metadata`, `--add-chapters`,
+  `--no-add-chapters`, `--write-srt`, `--no-write-srt` and `--srt-langs`.
+- **The third criterion, measured.** Every other option sharing a built option's destination is one
+  of these aliases; there is no deprecated option under another name. Recorded in the function.
+- **`NOT_SECRET_VALUES`** loses `--limit-rate`, `--rate-limit`, `--retries` and `--srt-langs`:
+  `test_only_admitted_options_are_exempt_and_no_credential_carrier_is` rightly failed on them once
+  they were refused. `test_an_ordinary_value_is_not_redacted_into_nonsense` fed `--retries 1000`
+  to the registry directly; its case is now `--socket-timeout 1000`. The false docstring in
+  `test_extra_options.py` now names `--proxy`.
+- **The test**, `test_every_spelling_of_an_option_with_a_control_is_refused_for_it`, finds the
+  aliases from yt-dlp's parser and the audit's hand-listed table, never from the generated table it
+  checks, and walks all 32 spellings through `admit`. **Against the old table, exactly the eleven
+  aliases fail**; against the new one all 32 pass.
+
+**Checks, 2026-10-11, on Linux:** `ruff check .` and `ruff format --check .`; `mypy src`, bare
+`mypy` and `mypy --platform win32`; `python tools/ytdlp_option_table.py --check`; `tests/unit
+tests/ui` under `-n auto` after the last edit, **4,613 passed**, 22 skipped; `tests/integration`
+**520 passed** on the generator change, before the four exemptions were removed, which only touches
+options the hatch now refuses. No Windows run.
+
 ---
+
+## Ready
 
 ### T-247 — Video selection: which items, how big, how old
 

@@ -461,8 +461,12 @@ OPTION_CLASSES: Final[dict[str, tuple[str, str]]] = {
 #:
 #: `ARC-010` gives the visible control the win where both name the same user-owned key, so these
 #: are **refused** through the hatch and pointed at their control. A typed option that is still
-#: waiting for its task is permitted, and only this table tells the two apart.
+#: waiting for its task is permitted, and only this table tells the two apart. **Every**
+#: spelling of such an option is a key (`T-361`): the hatch refuses by the string typed, so an
+#: alias missing here was admitted and then produced nothing, which `REQ-031` forbids.
 TYPED_WITH_A_FIELD: Final[dict[str, str]] = {
+    "--add-chapters": "embed_chapters",
+    "--add-metadata": "embed_metadata",
     "--audio-format": "audio_codec",
     "--audio-quality": "audio_quality",
     "--cookies-from-browser": "cookies_from_browser",
@@ -470,16 +474,25 @@ TYPED_WITH_A_FIELD: Final[dict[str, str]] = {
     "--embed-metadata": "embed_metadata",
     "--embed-subs": "embed_subtitles",
     "--embed-thumbnail": "embed_thumbnail",
+    "--extract-audio": "media_kind",
+    "--limit-rate": "rate_limit_bytes",
+    "--no-add-chapters": "embed_chapters",
+    "--no-add-metadata": "embed_metadata",
     "--no-cookies-from-browser": "cookies_from_browser",
     "--no-embed-chapters": "embed_chapters",
     "--no-embed-metadata": "embed_metadata",
     "--no-embed-subs": "embed_subtitles",
     "--no-embed-thumbnail": "embed_thumbnail",
+    "--no-write-srt": "subtitle_languages",
     "--no-write-subs": "subtitle_languages",
     "--proxy": "proxy",
+    "--rate-limit": "rate_limit_bytes",
     "--recode-video": "recode_container",
     "--remux-video": "remux_container",
+    "--retries": "retries",
+    "--srt-langs": "subtitle_languages",
     "--sub-langs": "subtitle_languages",
+    "--write-srt": "subtitle_languages",
     "--write-subs": "subtitle_languages",
     "-R": "retries",
     "-r": "rate_limit_bytes",

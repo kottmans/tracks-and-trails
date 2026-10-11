@@ -684,7 +684,8 @@ def test_a_path_the_hatch_names_is_redacted_however_short(registered: None) -> N
     ("argv", "word"),
     [
         (("--sub-format", "best"), "best"),
-        (("--retries", "1000"), "1000"),
+        # `--retries` was this case until `T-361` refused it, an alias of `-R`, which has a control.
+        (("--socket-timeout", "1000"), "1000"),
         (("--fixup", "never"), "never"),
         (("--convert-thumbnails", "webp"), "webp"),
         (("--max-filesize", "100M"), "100M"),

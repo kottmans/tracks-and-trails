@@ -139,12 +139,60 @@ def test_an_option_that_has_a_control_points_at_the_control() -> None:
 def test_a_typed_option_with_no_control_yet_is_usable() -> None:
     """The other half of the same rule, and the reason `typed` is an admitted class.
 
-    An option whose control has not been built is reachable by no other route. `--limit-rate` has
-    a field, so it is refused above; `--concurrent-fragments` does not, so it is usable here.
+    An option whose control has not been built is reachable by no other route. `--proxy` has a
+    field, so it is refused above; `--concurrent-fragments` does not, so it is usable here.
     """
     admission = admit("--concurrent-fragments 4")
 
     assert admission.usable, [(r.option, r.reason) for r in admission.refusals]
+
+
+def _every_spelling_of_a_built_option() -> list[tuple[str, int]]:
+    """Each spelling of each option the audit's built table names, with how many values it takes.
+
+    Read from yt-dlp's parser and the audit's hand-listed table, **not** from `TYPED_WITH_A_FIELD`,
+    which is what is being checked: a test reading the generated table would agree with it whatever
+    it said.
+    """
+    import importlib.util
+
+    from yt_dlp.options import create_parser
+
+    tool = Path(__file__).resolve().parents[2] / "tools" / "ytdlp_option_table.py"
+    specification = importlib.util.spec_from_file_location("ytdlp_option_table_t361", tool)
+    assert specification is not None and specification.loader is not None
+    generator = importlib.util.module_from_spec(specification)
+    sys.modules[specification.name] = generator
+    specification.loader.exec_module(generator)
+    listed = set(generator.built_typed_options())
+    found: list[tuple[str, int]] = []
+    for group in create_parser().option_groups:
+        for option in group.option_list:
+            spellings = (*option._short_opts, *option._long_opts)
+            if listed & set(spellings):
+                takes = option.nargs if option.takes_value() else 0
+                found.extend((spelling, takes or 0) for spelling in spellings)
+    return sorted(found)
+
+
+@pytest.mark.parametrize(("spelling", "takes"), _every_spelling_of_a_built_option())
+def test_every_spelling_of_an_option_with_a_control_is_refused_for_it(
+    spelling: str, takes: int
+) -> None:
+    """**`T-361`.** The hatch refused `-r` and admitted `--limit-rate`, the same parser option.
+
+    The built table names one spelling per option and the hatch refuses by the spelling typed, so
+    an alias was admitted; the generator skips a built option, so the hatch then produced nothing
+    for it, which `REQ-031` forbids. Measured at `d2480fa`: `--limit-rate`, `--retries`,
+    `--extract-audio`, `--add-metadata` and `--srt-langs` were all usable and all dropped.
+    """
+    text = shlex.join([spelling, *["1"] * takes])
+
+    refusals = admit(text).refusals
+
+    assert [(refusal.option, refusal.reason) for refusal in refusals] == [
+        (spelling, HAS_A_CONTROL)
+    ], f"{spelling} is not refused for its control"
 
 
 def test_an_option_no_ruling_covers_is_refused_rather_than_allowed() -> None:

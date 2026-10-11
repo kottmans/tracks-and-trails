@@ -72,7 +72,9 @@ OPTION_CLASSES: Final[dict[str, tuple[str, str]]] = {{
 #:
 #: `ARC-010` gives the visible control the win where both name the same user-owned key, so these
 #: are **refused** through the hatch and pointed at their control. A typed option that is still
-#: waiting for its task is permitted, and only this table tells the two apart.
+#: waiting for its task is permitted, and only this table tells the two apart. **Every**
+#: spelling of such an option is a key (`T-361`): the hatch refuses by the string typed, so an
+#: alias missing here was admitted and then produced nothing, which `REQ-031` forbids.
 TYPED_WITH_A_FIELD: Final[dict[str, str]] = {{
 {built}}}
 
@@ -160,6 +162,37 @@ def built_typed_options() -> dict[str, str]:
         for line in table.split("\n")[2:]
         if (found := re.match(r"^\| `([^`]+)` \| `([^`]+)` \|$", line.strip()))
     }
+
+
+def built_spellings() -> dict[str, str]:
+    """Every spelling of every option the audit's built table names, each mapped to its field.
+
+    **`T-361`.** The built table names one spelling per option, and the hatch refuses by the
+    spelling typed, so `--limit-rate`, the same parser option as the listed `-r`, was admitted; and
+    `derive_destinations` skips a built option, so the hatch then produced nothing for it, which is
+    `REQ-031`'s *accepted and silently dropped*. The aliases are read from yt-dlp's parser rather
+    than listed, so a new typed field brings all of them with it.
+
+    Measured at 2026.08.19: every other option sharing a built option's destination is one of its
+    aliases, so there is no deprecated option under another name to account for.
+    """
+    from yt_dlp.options import create_parser
+
+    parser = create_parser()
+    by_spelling = {
+        spelling: option
+        for group in parser.option_groups
+        for option in group.option_list
+        for spelling in _spellings(option)
+    }
+    found: dict[str, str] = {}
+    for spelling, field in built_typed_options().items():
+        option = by_spelling.get(spelling)
+        if option is None:
+            raise SystemExit(f"the audit's built table names {spelling}, which the parser lacks")
+        for alias in _spellings(option):
+            found[alias] = field
+    return found
 
 
 def parser_arity() -> dict[str, int]:
@@ -272,7 +305,7 @@ def derive_destinations() -> tuple[dict[str, tuple[str, ...]], list[str], list[s
     known = {spelling: option for option in options for spelling in _spellings(option)}
 
     classes = {spelling: group for spellings, group, _ in audit_rows() for spelling in spellings}
-    built = set(built_typed_options())
+    built = set(built_spellings())
 
     destinations: dict[str, tuple[str, ...]] = {}
     inert: list[str] = []
@@ -392,8 +425,7 @@ def rendered() -> str:
         for spelling in spellings:
             lines.append(_entry(spelling, group, reason))
     built = "".join(
-        f"    {spelling!r}: {field!r},\n"
-        for spelling, field in sorted(built_typed_options().items())
+        f"    {spelling!r}: {field!r},\n" for spelling, field in sorted(built_spellings().items())
     )
     arity = "".join(
         f"    {spelling!r}: {takes!r},\n" for spelling, takes in sorted(parser_arity().items())

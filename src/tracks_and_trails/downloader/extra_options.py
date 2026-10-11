@@ -428,6 +428,8 @@ def grouped(accepted: Sequence[str]) -> list[list[str]]:
 #:
 #: **`--default-search` and `--output-na-placeholder` left the list on 2026-09-27**: the Reviewer's
 #: entry-by-entry check found both take unrestricted text, so neither is in the families above.
+#: **`--limit-rate`, `--rate-limit`, `--retries` and `--srt-langs` left it on 2026-10-11**
+#: (`T-361`): each is an alias of an option with a control, refused before a value counts.
 #:
 #: The reason it exists. Registering every argument, which the first correction did, redacted the
 #: ordinary vocabulary users type here: `--sub-format best` removed every `best` from the log,
@@ -458,8 +460,6 @@ NOT_SECRET_VALUES: Final = frozenset(
         "--http-chunk-size",
         "--ies",
         "--use-extractors",
-        "--limit-rate",
-        "--rate-limit",
         "--max-downloads",
         "--max-filesize",
         "--merge-output-format",
@@ -471,12 +471,10 @@ NOT_SECRET_VALUES: Final = frozenset(
         "--playlist-items",
         "-I",
         "--remove-chapters",
-        "--retries",
         "--retry-sleep",
         "--socket-timeout",
         "--sponsorblock-mark",
         "--sponsorblock-remove",
-        "--srt-langs",
         "--sub-format",
         "--throttled-rate",
         "--trim-file-names",
