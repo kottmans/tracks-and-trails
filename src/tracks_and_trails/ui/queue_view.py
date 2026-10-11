@@ -63,7 +63,7 @@ no position sorts last on its id, which is what the scheduler does with one.
 
 import time
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, Final, Protocol
@@ -721,7 +721,16 @@ class QueueModel(QAbstractTableModel):
             # everything below — which reads `row.job` — would be answering about a job that does
             # not exist.
             return self._group_data(entry, role)
-        row = self._rows[entry]
+        return self._row_data(self._rows[entry], role, index.column())
+
+    def _row_data(self, row: _Row, role: int, column: int) -> Any:
+        """What a job's row answers for `role`, decided by the row and never by its position.
+
+        **Split out of `data` by `T-351`**, so the spoken row can ask what its own row draws without
+        building an index. `_whole_row` read `SELECTOR_ROLE` through `_index_of`, the job's place
+        in `_rows`, and that names another row of the table as soon as a playlist is grouped above
+        it: the drawn row said *Download as: best* and a screen reader heard nothing of it.
+        """
         if role == PRESET_CHOICES_ROLE and self._in_a_drawn_group(row):
             # **Entries inherit; they do not each choose** (`UX-005` row 13, `T140-R3`). Offering
             # each child its own editor let members of one playlist end up with different formats,
@@ -854,13 +863,13 @@ class QueueModel(QAbstractTableModel):
             )
 
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.ToolTipRole):
-            return self._text(row, index.column())
+            return self._text(row, column)
         if role == Qt.ItemDataRole.AccessibleTextRole:
-            if index.column() == JOB_COLUMN:
+            if column == JOB_COLUMN:
                 # The list draws column 0, so this is what a screen reader hears for the whole
                 # row — every field `REQ-014` names, not just the one the column happens to be.
                 return self._whole_row(row)
-            return self._accessible_text(row, index.column())
+            return self._accessible_text(row, column)
         return None
 
     def setData(
@@ -1185,8 +1194,8 @@ class QueueModel(QAbstractTableModel):
             else "",
         ]
         spoken[1:1] = [part for part in extra if part]
-        index = self._index_of.get(row.job.id)
-        drawn_format = "" if index is None else self.data(self.index(index, 0), SELECTOR_ROLE)
+        # The row's own answer, not one reached through an index (`T-351`).
+        drawn_format = self._row_data(row, SELECTOR_ROLE, JOB_COLUMN)
         if drawn_format:
             spoken.append(str(drawn_format))
         if row.job.status is JobStatus.FAILED:
@@ -1635,7 +1644,7 @@ class QueueModel(QAbstractTableModel):
             row.retire_live_state()
         if row.job.status is JobStatus.POST_PROCESSING:
             self._busy.start()
-        self._emit_row_changed(index)
+        self._emit_rows_changed(self._rows_a_status_changes(row))
 
     def _on_gate_changed(self, _running: bool) -> None:
         """Repaint the chips when the queue starts or stops (`T181-R1`).
@@ -1684,31 +1693,58 @@ class QueueModel(QAbstractTableModel):
             # is still the size. Only a message that counts bytes rewrites them.
             if message.step is None or message.downloaded_bytes is not None:
                 row.totals = (message.downloaded_bytes, message.total_bytes)
-            touched.append(index)
-        if touched:
-            # One span rather than one signal per row: the view repaints the intersection of the
-            # span with its viewport either way, and N signals is N times the work to say it.
-            self.dataChanged.emit(
-                self.index(min(touched), 0),
-                self.index(max(touched), len(COLUMN_HEADERS) - 1),
-            )
+            # **Its own drawn row, or nothing** (`T-351`). A member hidden in a closed playlist
+            # draws its bytes nowhere: the header counts statuses, never bytes. The message is
+            # kept above, so the entry shows it when the group opens.
+            shown = self._visible_of.get(row.job.id)
+            if shown is not None:
+                touched.append(shown)
+        # One span rather than one signal per row: the view repaints the intersection of the
+        # span with its viewport either way, and N signals is N times the work to say it.
+        self._emit_rows_changed(touched)
 
     def _tick_busy(self) -> None:
-        """Redraw every row that is processing, and stop once none is (`T-344`)."""
-        busy = [
-            index
-            for index, row in enumerate(self._rows)
-            if row.job.status is JobStatus.POST_PROCESSING
-        ]
-        if not busy:
+        """Redraw every row that is processing, and stop once none is (`T-344`).
+
+        **The timer runs while any job is processing, drawn or not** (`T-351`), and only drawn rows
+        are signalled. A processing entry inside a closed playlist moves nothing on screen, and the
+        tick must still be running when the group is opened.
+        """
+        processing = [row for row in self._rows if row.job.status is JobStatus.POST_PROCESSING]
+        if not processing:
             self._busy.stop()
             return
-        self.dataChanged.emit(
-            self.index(min(busy), 0), self.index(max(busy), len(COLUMN_HEADERS) - 1)
+        self._emit_rows_changed(
+            [shown for row in processing if (shown := self._visible_of.get(row.job.id)) is not None]
         )
 
-    def _emit_row_changed(self, index: int) -> None:
-        self.dataChanged.emit(self.index(index, 0), self.index(index, len(COLUMN_HEADERS) - 1))
+    def _rows_a_status_changes(self, row: _Row) -> list[int]:
+        """The drawn rows a status change on `row` alters: its own, and its group's header.
+
+        **`T-351`, and the ruling it asked for.** Every index this model builds comes from the
+        table's own numbering, `_visible_of`, and never from `_index_of`, the job's place in
+        `_rows`: the two agree only while no playlist is grouped, and with one grouped above, a
+        job's change signalled row 3 of 2 while closed and a playlist entry while open.
+
+        **A member's status change signals its header too**, because the header's chip, segments,
+        detail line and verbs are all counted from its members' statuses. Closed, the member has
+        no row and the header is all that changes. Open, one span covers both, and the entries
+        between them with it, but nothing outside the group.
+        """
+        rows: list[int] = []
+        shown = self._visible_of.get(row.job.id)
+        if shown is not None:
+            rows.append(shown)
+        if self._in_a_drawn_group(row) and row.job.playlist_id is not None:
+            rows.append(self._visible_of[row.job.playlist_id])
+        return rows
+
+    def _emit_rows_changed(self, rows: Sequence[int]) -> None:
+        """One span over drawn rows, or no signal at all when none is drawn."""
+        if rows:
+            self.dataChanged.emit(
+                self.index(min(rows), 0), self.index(max(rows), len(COLUMN_HEADERS) - 1)
+            )
 
     def detach(self) -> None:
         """Stop listening to the manager, and stop the timer.

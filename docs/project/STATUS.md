@@ -91,8 +91,9 @@ task and review records it summarised.*
   runs before `T-247`, as a High defect `0.1.0` shipped; verified build archives are kept beside
   each release (`OPS-001` amended, carried by `T-360`); and the two deliverables that had no owner
   are filed: the README's `REQ-030` statement within `T-358`, the `0.2.0` release, and promotion as
-  `T-359`. **`T-351` is next**, while the Reviewer checks the CI evidence for `T-355`, `T-356` and
-  `T-357`.
+  `T-359`. **`T-351` is built and with the Reviewer**
+  ([record](TASKS.md#t-351--with-a-playlist-in-the-queue-a-rows-changes-are-signalled-on-the-wrong-row)),
+  as is the CI evidence for `T-355`, `T-356` and `T-357`.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the

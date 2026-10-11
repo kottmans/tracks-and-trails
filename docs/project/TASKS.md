@@ -14,8 +14,104 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
-`T-184` was approved on 2026-10-10 and moved to [COMPLETED_TASKS](COMPLETED_TASKS.md). `T-355`,
-`T-356` and `T-357` return here with the CI evidence their reviews waited on.
+`T-184` was approved on 2026-10-10 and moved to [COMPLETED_TASKS](COMPLETED_TASKS.md). `T-351`
+was built on 2026-10-11, and `T-355`, `T-356` and `T-357` return here with the CI evidence their
+reviews waited on.
+
+### T-351 — With a playlist in the queue, a row's changes are signalled on the wrong row
+
+**Status:** In Review — built 2026-10-11, first by the maintainer's ruling of that day, before
+stage 3's `T-247` ([the amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-11-no-011-and-t-351-first)).
+*(Was Ready, and before that Proposed:)* Filed 2026-09-24 by maintainer instruction, from the codebase audit of that
+date. This was shipped in `0.1.0`.
+**Owner:** Implementer
+**Priority:** High within the `0.1.0` debt. A screen reader hears less than the row shows whenever
+a playlist is in the queue (`NFR-005`), and repaint signals name another row or none at all.
+**Phase:** Phase 4.5 (`0.1.0` debt)
+**Depends on:** nothing
+**Effort:** Small, estimated. Translate at the model boundary, then audit every caller.
+**Relevant context:** `T-140` (the grouped playlist and `_visible`), `T126-R4` (the spoken row
+reads `SELECTOR_ROLE`), `T-344` (the busy tick), `UX-005` §3
+**Affected surfaces:** `ui/queue_view.py` (`QueueModel`) and its tests
+**Risk:** Medium. Repaint spans and the spoken row are easy to break silently in a way a green
+suite does not notice.
+**Required checks:** Ruff lint and format, `mypy src`, bare `mypy` and Windows-platform `mypy`,
+`tests/ui/test_queue_view.py`, `tests/ui/test_row_delegate.py`, `tests/ui/test_accessibility.py`,
+and the full UI suite.
+
+#### Evidence
+
+`QueueModel` has two numberings. `data()` and `rowCount()` use **visible** rows:
+`self._visible[index.row()]`, where a playlist header is inserted and the members of a collapsed
+playlist are left out. Four paths build a `QModelIndex` from `self._index_of` instead, which is the
+position in `self._rows`: `_on_job_changed` → `_emit_row_changed`, `_draw_pending`, `_tick_busy`
+and `_whole_row`. The two agree only while no playlist is grouped.
+
+A probe at `8857753`, using the fixtures in `tests/ui/test_queue_view.py`, put a three-entry
+playlist and one ordinary job `solo` in the queue:
+
+| State | `rowCount` | `_index_of[solo]` | `_visible_of[solo]` | A status change on `solo` signals |
+|---|---|---|---|---|
+| Collapsed | 2 | 3 | 1 | an **invalid** index (row 3 of 2) |
+| Expanded | 5 | 3 | 4 | row 3, which is a playlist entry |
+
+In both states `solo`'s spoken row (`AccessibleTextRole`) omits `Download as: best`, although its
+drawn row shows it. `_whole_row` read `SELECTOR_ROLE` from row 3.
+
+**Not established:** how visible the missed repaint is on a real display. Whole-viewport repaints on
+hover (`row_delegate._repaint`) may hide it.
+
+#### Acceptance criteria
+
+- [x] Every `QModelIndex` the model builds for a job comes from its **visible** row. A member hidden
+      in a collapsed playlist signals its group's header, whose chip and segments summarise it, or
+      nothing, whichever is ruled in the implementation and stated there. *Ruled below: a
+      status change signals the header, and progress or the busy tick signals nothing.*
+- [x] Regression tests with a grouped playlist ahead of an ordinary job, collapsed **and** expanded,
+      cover a status change, a progress span, the busy tick and the spoken row. Restoring
+      `_index_of` in any one of the four paths makes a test fail.
+- [x] Every other `_index_of` read is audited. Reads that look up `_rows` by job id are correct and
+      stay; only index construction changes.
+- [x] Nothing a queue without playlists draws or speaks changes. The existing queue, delegate and
+      accessibility tests pass unchanged.
+
+#### Built 2026-10-11
+
+**The ruling the criteria asked for.** A **status** change signals the job's own drawn row and,
+when it is in a drawn group, the group's header, because the header's chip, segments, detail line
+and verbs are all counted from its members' statuses. Closed, the member has no row and the header
+alone is signalled; open, one span covers both and the entries between them, never anything
+outside the group. **Progress and the busy tick** signal a job's drawn row or nothing: the header
+draws no bytes. A hidden entry's message is still kept, so it shows when the group opens, and the
+busy timer keeps running while any job is processing, drawn or not.
+
+| Path | Change | Tests | Mutation |
+|---|---|---|---|
+| `_whole_row` | Reads `SELECTOR_ROLE` from `_row_data`, `data`'s job-row half, split out so it needs no index | `test_the_spoken_row_reads_the_format_its_own_row_draws` (closed, open) | M1 |
+| `_on_job_changed` | `_rows_a_status_changes`: its own drawn row and its header, through `_emit_rows_changed` | `test_a_status_change_is_signalled_on_the_row_that_shows_it`; `test_an_entry_s_status_change_redraws_the_header_that_counts_it` (each closed, open) | M2, M5 |
+| `_draw_pending` | Appends the drawn row, or nothing | `test_progress_is_signalled_on_the_row_that_shows_it` (closed, open); `test_a_hidden_entry_s_progress_signals_nothing` | M3 |
+| `_tick_busy` | Signals drawn rows; runs while any job processes | `test_the_busy_tick_redraws_the_row_that_shows_it` (closed, open); `test_the_busy_tick_keeps_running_for_an_entry_inside_a_closed_playlist` | M4, M6 |
+
+**Reproduced first.** Before the fix all eleven first tests failed as the evidence above says:
+closed, `(-1, -1)`, an invalid index; open, row 3 for `solo`'s row 4; and the spoken row missing
+*Download as: best*. **The audit:** the remaining `_index_of` reads, in `job_for`,
+`displayed_progress`, `text_at`, `accessible_text_at`, `refresh`, `_on_progress`, `_on_job_changed`
+and `_draw_pending`, each look a row up in `_rows` by job id, which is correct, and stay. No other
+module builds an index from a job's position.
+
+**Mutations**, each applied in place and restored, the diff checked unchanged: M1 to M4 put
+`_index_of` back in one path each, M5 drops the header, M6 lets the tick count only drawn rows.
+**All six caught.**
+
+**Checks, 2026-10-11, on Linux** (project `.venv`): `ruff check .` and `ruff format --check .`
+(466 files); `mypy src` (69), bare `mypy` and `mypy --platform win32` (210 each);
+`tests/ui/test_queue_view.py` (148 passed); `tests/ui tests/unit` under `-n auto`, with
+`.venv/bin` on `PATH` and `TRACKSANDTRAILS_REQUIRE_FFMPEG=1`: **4,570 passed**, 22 skipped. The
+existing queue, delegate and accessibility tests pass unchanged. No Windows run, and the visible
+effect on a real display is still not established; whole-viewport repaints on hover may have hidden
+it.
+
+---
 
 ### T-355 — PySide6 6.12 brings WebEngine and Pdf into the bundled tree
 
@@ -241,64 +337,6 @@ release build.
 `CHANGELOG.md` keeps no unreleased section, so naming the ffmpeg change is recorded on `T-349`.
 
 ## Ready
-
-### T-351 — With a playlist in the queue, a row's changes are signalled on the wrong row
-
-**Status:** Ready — **next, by the maintainer's ruling of 2026-10-11**: before stage 3's `T-247`
-([the amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-11-no-011-and-t-351-first)). *(Was
-Proposed:)* Filed 2026-09-24 by maintainer instruction, from the codebase audit of that
-date. This was shipped in `0.1.0`.
-**Owner:** Implementer
-**Priority:** High within the `0.1.0` debt. A screen reader hears less than the row shows whenever
-a playlist is in the queue (`NFR-005`), and repaint signals name another row or none at all.
-**Phase:** Phase 4.5 (`0.1.0` debt)
-**Depends on:** nothing
-**Effort:** Small, estimated. Translate at the model boundary, then audit every caller.
-**Relevant context:** `T-140` (the grouped playlist and `_visible`), `T126-R4` (the spoken row
-reads `SELECTOR_ROLE`), `T-344` (the busy tick), `UX-005` §3
-**Affected surfaces:** `ui/queue_view.py` (`QueueModel`) and its tests
-**Risk:** Medium. Repaint spans and the spoken row are easy to break silently in a way a green
-suite does not notice.
-**Required checks:** Ruff lint and format, `mypy src`, bare `mypy` and Windows-platform `mypy`,
-`tests/ui/test_queue_view.py`, `tests/ui/test_row_delegate.py`, `tests/ui/test_accessibility.py`,
-and the full UI suite.
-
-#### Evidence
-
-`QueueModel` has two numberings. `data()` and `rowCount()` use **visible** rows:
-`self._visible[index.row()]`, where a playlist header is inserted and the members of a collapsed
-playlist are left out. Four paths build a `QModelIndex` from `self._index_of` instead, which is the
-position in `self._rows`: `_on_job_changed` → `_emit_row_changed`, `_draw_pending`, `_tick_busy`
-and `_whole_row`. The two agree only while no playlist is grouped.
-
-A probe at `8857753`, using the fixtures in `tests/ui/test_queue_view.py`, put a three-entry
-playlist and one ordinary job `solo` in the queue:
-
-| State | `rowCount` | `_index_of[solo]` | `_visible_of[solo]` | A status change on `solo` signals |
-|---|---|---|---|---|
-| Collapsed | 2 | 3 | 1 | an **invalid** index (row 3 of 2) |
-| Expanded | 5 | 3 | 4 | row 3, which is a playlist entry |
-
-In both states `solo`'s spoken row (`AccessibleTextRole`) omits `Download as: best`, although its
-drawn row shows it. `_whole_row` read `SELECTOR_ROLE` from row 3.
-
-**Not established:** how visible the missed repaint is on a real display. Whole-viewport repaints on
-hover (`row_delegate._repaint`) may hide it.
-
-#### Acceptance criteria
-
-- [ ] Every `QModelIndex` the model builds for a job comes from its **visible** row. A member hidden
-      in a collapsed playlist signals its group's header, whose chip and segments summarise it, or
-      nothing, whichever is ruled in the implementation and stated there.
-- [ ] Regression tests with a grouped playlist ahead of an ordinary job, collapsed **and** expanded,
-      cover a status change, a progress span, the busy tick and the spoken row. Restoring
-      `_index_of` in any one of the four paths makes a test fail.
-- [ ] Every other `_index_of` read is audited. Reads that look up `_rows` by job id are correct and
-      stay; only index construction changes.
-- [ ] Nothing a queue without playlists draws or speaks changes. The existing queue, delegate and
-      accessibility tests pass unchanged.
-
----
 
 ### T-301 — Four UI tests break when the application font grows by one point
 

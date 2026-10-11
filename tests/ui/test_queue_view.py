@@ -4622,3 +4622,194 @@ def test_a_playlist_header_is_given_no_menu_zone_to_press(
     assert kinds["header"].isEmpty(), (
         f"the playlist header still offers a ⋮ at {kinds['header']}, and pressing it opens nothing"
     )
+
+
+# --- T-351: a row's changes are signalled on the row the table shows -----------------------------
+
+
+def _grouped_ahead_of_solo(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    *,
+    expanded: bool,
+) -> tuple[QueueView, list[tuple[int, int, bool]]]:
+    """A three-entry playlist grouped ahead of one ordinary job, and every span the model signals.
+
+    `T-351`'s probe: `solo` is row 3 of `_rows` and row 1 (closed) or 4 (open) of the table, so a
+    path that builds its index from `_rows` names an invalid row or a playlist entry. **A stopped
+    queue**, so the manager starts nothing and the only signals are the ones a test causes.
+    """
+    for job in _playlist_jobs(tmp_path, 3):
+        queue.add(job)
+    queue.add(make_job("solo", tmp_path, status=JobStatus.QUEUED, queue_position=3))
+    view = views(jobs=queue, manager=managers(running=False))
+    if expanded:
+        view.model.toggle_group("pl-1")
+    spans: list[tuple[int, int, bool]] = []
+    view.model.dataChanged.connect(
+        lambda top, bottom, *_: spans.append(
+            (top.row(), bottom.row(), top.isValid() and bottom.isValid())
+        )
+    )
+    return view, spans
+
+
+def _rows_in(spans: list[tuple[int, int, bool]]) -> set[int]:
+    assert all(valid for _, _, valid in spans), f"an invalid index was signalled: {spans}"
+    return {row for top, bottom, _ in spans for row in range(top, bottom + 1)}
+
+
+@pytest.mark.parametrize("expanded", [False, True], ids=["closed", "open"])
+def test_a_status_change_is_signalled_on_the_row_that_shows_it(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    expanded: bool,
+) -> None:
+    """`T-351`: closed, this signalled row 3 of 2, an invalid index; open, row 3, an entry."""
+    view, spans = _grouped_ahead_of_solo(queue, managers, views, tmp_path, expanded=expanded)
+    shown = view.model.row_of("solo")
+    assert shown == (4 if expanded else 1)
+
+    queue.update(replace(queue.jobs["solo"], status=JobStatus.RUNNING))
+    view.model._on_job_changed("solo", JobStatus.RUNNING.value)
+
+    assert _rows_in(spans) == {shown}, f"solo is row {shown}; the model signalled {spans}"
+
+
+@pytest.mark.parametrize("expanded", [False, True], ids=["closed", "open"])
+def test_progress_is_signalled_on_the_row_that_shows_it(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    expanded: bool,
+) -> None:
+    view, spans = _grouped_ahead_of_solo(queue, managers, views, tmp_path, expanded=expanded)
+
+    view.model._on_progress(
+        Progress(job_id="solo", stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=50, total_bytes=100)
+    )
+    view.model._draw_pending()
+
+    assert _rows_in(spans) == {view.model.row_of("solo")}, spans
+
+
+@pytest.mark.parametrize("expanded", [False, True], ids=["closed", "open"])
+def test_the_busy_tick_redraws_the_row_that_shows_it(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    expanded: bool,
+) -> None:
+    """`T-344`'s tick, which keeps a processing row moving, named rows by their place in `_rows`."""
+    view, spans = _grouped_ahead_of_solo(queue, managers, views, tmp_path, expanded=expanded)
+    queue.update(replace(queue.jobs["solo"], status=JobStatus.POST_PROCESSING))
+    view.model._on_job_changed("solo", JobStatus.POST_PROCESSING.value)
+    spans.clear()
+
+    view.model._tick_busy()
+
+    assert _rows_in(spans) == {view.model.row_of("solo")}, spans
+
+
+@pytest.mark.parametrize("expanded", [False, True], ids=["closed", "open"])
+def test_the_spoken_row_reads_the_format_its_own_row_draws(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    expanded: bool,
+) -> None:
+    """`T-351`: `_whole_row` read `SELECTOR_ROLE` from row 3 of the table, which was not `solo`'s.
+
+    The drawn row said *Download as: best* and a screen reader heard nothing about the format,
+    in both states, whenever a playlist sat above it (`NFR-005`).
+    """
+    view, _ = _grouped_ahead_of_solo(queue, managers, views, tmp_path, expanded=expanded)
+    row = view.model.index(view.model.row_of("solo") or 0, 0)
+    drawn = view.model.data(row, SELECTOR_ROLE)
+
+    spoken = view.model.data(row, Qt.ItemDataRole.AccessibleTextRole)
+
+    assert drawn, "solo draws no format line, so this would prove nothing"
+    assert str(drawn) in spoken, f"the row draws {drawn!r} and a screen reader hears {spoken!r}"
+
+
+@pytest.mark.parametrize("expanded", [False, True], ids=["closed", "open"])
+def test_an_entry_s_status_change_redraws_the_header_that_counts_it(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    expanded: bool,
+) -> None:
+    """The ruling `T-351` asked for: **a status change signals the group's header as well**.
+
+    The header's chip, segments, detail line and verbs are all counted from its members'
+    statuses, so an entry's new status changes what the header draws. Closed, the entry has no
+    row and the header is all that changes. Open, one span covers both, and so the entries between
+    them; nothing outside the group is signalled.
+    """
+    view, spans = _grouped_ahead_of_solo(queue, managers, views, tmp_path, expanded=expanded)
+
+    queue.update(replace(queue.jobs["entry-1"], status=JobStatus.RUNNING))
+    view.model._on_job_changed("entry-1", JobStatus.RUNNING.value)
+
+    header = view.model.row_of("pl-1")
+    signalled = _rows_in(spans)
+    assert header == 0
+    if expanded:
+        assert {header, view.model.row_of("entry-1")} <= signalled, spans
+        assert view.model.row_of("solo") not in signalled, f"solo was redrawn too: {spans}"
+    else:
+        assert signalled == {header}, spans
+
+
+def test_a_hidden_entry_s_progress_signals_nothing(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """Closed, an entry's bytes are drawn nowhere: the header counts statuses, never bytes.
+
+    The message is still kept, so the entry shows it when the group opens.
+    """
+    view, spans = _grouped_ahead_of_solo(queue, managers, views, tmp_path, expanded=False)
+    message = Progress(
+        job_id="entry-1", stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=5, total_bytes=10
+    )
+
+    view.model._on_progress(message)
+    view.model._draw_pending()
+
+    assert spans == [], f"a hidden entry's progress was signalled on {spans}"
+    assert view.model.displayed_progress("entry-1") == message
+
+
+def test_the_busy_tick_keeps_running_for_an_entry_inside_a_closed_playlist(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """Closed, a processing entry draws nothing, so the tick signals nothing; but it keeps running,
+    or the entry's moving bar would stand still from the moment the group is opened (`T-344`)."""
+    view, spans = _grouped_ahead_of_solo(queue, managers, views, tmp_path, expanded=False)
+    queue.update(replace(queue.jobs["entry-1"], status=JobStatus.POST_PROCESSING))
+    view.model._on_job_changed("entry-1", JobStatus.POST_PROCESSING.value)
+    spans.clear()
+
+    view.model._tick_busy()
+
+    assert spans == [], f"a hidden entry was redrawn: {spans}"
+    assert view.model._busy.isActive(), "the tick stopped while an entry was still processing"
+    view.model.toggle_group("pl-1")
+    spans.clear()
+    view.model._tick_busy()
+    assert _rows_in(spans) == {view.model.row_of("entry-1")}, spans
