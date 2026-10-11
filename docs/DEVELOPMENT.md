@@ -5,7 +5,7 @@
 **Owner:** Implementer / Documentation Maintainer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-09-08
+**Last updated:** 2026-10-11
 **Update when:** Setup, dependencies, or the local workflow change.
 **Does not contain:** What must be tested or which gates are required (`docs/project/TESTING.md`).
 
@@ -793,7 +793,7 @@ Machine-readable, last, after a blank line:
 
 | Trailer | Use |
 |---|---|
-| `Task:` | `T-0NN`, or `T-027..T-032` for a range. Omit only for work no task covers. |
+| `Task:` | `T-0NN`, or `T-027..T-032` for a range. For work no task covers, `Task: none - <reason>`. Never omit it: the commit-message gate fails a commit without one (`T-240`). |
 | `Refs:` | Decision or requirement IDs the commit turns on — `ARC-002`, `REQ-011`. |
 | `Review:` | Finding IDs closed by this commit — `T034-R5`, `T035-R3`. |
 
