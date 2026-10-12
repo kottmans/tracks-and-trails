@@ -924,6 +924,11 @@ Two rulings, both taken as recommended, after `T-184` landed on `main` on 2026-1
   admitting long spellings of options that already have a control and then dropping them, which
   `REQ-031` forbids; the fix decides how `T-247`'s own spellings are refused. `T-247`'s design was
   ruled with it (`ARC-010` and `UX-015` amended 2026-10-11).
+- **`T-362` runs right after `T-247`, before `T-249`** (ruled later the same day, as
+  recommended). `T-247`'s sibling audit found queued playlist files numbered among the readable
+  entries rather than by slot; the fix is small, reuses the slots `T-247` added, and would
+  otherwise ship wrong file names in `0.2.0`. The alternative put to the maintainer was stage 4,
+  beside `T-352`…`T-354`.
 
 #### The stages
 

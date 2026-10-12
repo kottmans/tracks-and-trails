@@ -745,7 +745,8 @@ option promoted becomes a typed-field task of its own, on the pattern `T-247`…
 ### T-362 — Number a playlist's queued entries by their slot in the playlist
 
 **Status:** Proposed — filed 2026-10-11 by the maintainer's ruling, from `T-247`'s sibling audit
-for `T247-R1`.
+for `T247-R1`. **Sequenced the same day: right after `T-247` is approved, before `T-249`**
+([the order](IMPLEMENTATION_PLAN.md#order-2026-09-17)).
 **Owner:** Implementer
 **Priority:** Medium — a wrong number in a file name, with a gap in the playlist as its trigger; no
 download is the wrong item
