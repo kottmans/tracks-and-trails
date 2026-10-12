@@ -417,6 +417,19 @@ def headline_text(row: Row) -> str:
     return media.title if isinstance(media, MediaInfo) else row.url
 
 
+#: What Add says when every row it could commit is a playlist enumerated with nothing readable.
+NOTHING_READABLE: Final = (
+    "Nothing in this playlist could be read, so there is nothing to add. yt-dlp found its entries "
+    "but could not open any of them."
+)
+
+
+def _nothing_readable(row: Row) -> bool:
+    """`row` is a playlist yt-dlp enumerated and could read none of (`T247-R1`)."""
+    media = row.media
+    return isinstance(media, MediaInfo) and media.slot_count is not None and not media.entries
+
+
 def entry_selection_of(row: Row) -> PlaylistSelection | None:
     """`row`'s playlist selection, or `None` when it has no entries to choose between.
 
@@ -2811,23 +2824,32 @@ class AddUrlDialog(QDialog):
         """Choose `row`'s entries as its effective preset's rule says (`T-247`, `ARC-010`).
 
         `ARC-010`'s 2026-10-11 amendment: `-I` and *at most N* act here, where a playlist becomes
-        jobs, and never per job. With no rule this is every entry, `REQ-004`'s starting state.
+        jobs, and never per job. With no rule this is every entry, `REQ-004`'s starting state. A
+        playlist with no entries has nothing to choose between; `_durable_jobs` decides what it is.
+
+        **The rule is kept only with the selection it produced** (`T247-R4`, second round). The
+        rule was recorded first, so when the calculation raised the row held the new rule and the
+        old checks, every later refresh saw the rule unchanged and skipped it, and Add queued what
+        the old rule had chosen. Both are assigned after the calculation, or neither is.
         """
         media = row.media
-        if not isinstance(media, MediaInfo) or not media.entries:
+        if not isinstance(media, MediaInfo) or media.slot_count is None or not media.entries:
             row.entry_selection = None
             row.entry_rule = None
             return
-        preset = self.preset_for(row)
-        row.entry_rule = (preset.playlist_items, preset.max_downloads)
+        rule = self._rule_of(row)
         # **The playlist's own slots, not the entries left after the unavailable were dropped**
         # (`T247-R1`): the rule is yt-dlp's `-I`, which counts every slot it enumerated.
-        row.entry_selection = PlaylistSelection.by_rule(
-            tuple(entry.position for entry in media.entries),
-            media.slot_count if media.slot_count is not None else len(media.entries),
-            preset.playlist_items,
-            preset.max_downloads,
+        selection = PlaylistSelection.by_rule(
+            tuple(entry.position for entry in media.entries), media.slot_count, *rule
         )
+        row.entry_selection = selection
+        row.entry_rule = rule
+
+    def _rule_of(self, row: Row) -> tuple[str | None, int | None]:
+        """The entry rule `row`'s effective preset brings."""
+        preset = self.preset_for(row)
+        return (preset.playlist_items, preset.max_downloads)
 
     def _reseed_where_the_rule_changed(self) -> None:
         """Re-seed each row whose preset now chooses entries differently (`T-247`).
@@ -2840,10 +2862,7 @@ class AddUrlDialog(QDialog):
         one back over it.
         """
         for row in self._staging.visible:
-            if row.entry_rule is None:
-                continue
-            preset = self.preset_for(row)
-            if (preset.playlist_items, preset.max_downloads) == row.entry_rule:
+            if row.entry_rule is None or self._rule_of(row) == row.entry_rule:
                 continue
             self._seed_entries(row)
             panel = self._panel
@@ -2989,8 +3008,13 @@ class AddUrlDialog(QDialog):
             # Submitting an empty batch would succeed, close the dialog and add nothing — the
             # user's choice honoured and their whole paste silently discarded. Said instead, with
             # the batch left on screen so unchecking everything is one keystroke from being undone.
+            #
+            # **Or with nothing readable in it** (`T247-R1`, second round), where there is nothing
+            # to check and the advice to open the playlist would send the user to an empty list.
             self._status.setText(
-                "Nothing is chosen. Open a playlist and choose the entries you want, "
+                NOTHING_READABLE
+                if all(_nothing_readable(row) for row in committable)
+                else "Nothing is chosen. Open a playlist and choose the entries you want, "
                 "or choose all of them."
             )
             return
@@ -3064,8 +3088,19 @@ class AddUrlDialog(QDialog):
         """
         media = row.media
         probed = media if isinstance(media, MediaInfo) else None
-        if probed is None or not probed.entries:
+        if probed is None or probed.slot_count is None:
             return [self._durable_job(row)]
+        if not probed.entries:
+            # **Enumerated, and nothing in it could be read** (`T247-R1`, second round). yt-dlp
+            # selects no available entry from such a playlist, so it is no job at all; queueing its
+            # whole URL, as one never enumerated is queued, set the preset's `-I` aside, since `-I`
+            # is never sent per job. `add_to_queue` says why when this leaves nothing to add.
+            return []
+        if row.entry_rule != self._rule_of(row):
+            # **Never the checks of a rule no longer in force** (`T247-R4`, second round). A refresh
+            # re-seeds on a rule change; if that has not happened, it happens here, and a failure
+            # stops Add rather than queueing what the previous rule chose.
+            self._seed_entries(row)
 
         # **Only the entries the user checked** (`REQ-004`, `T-110`). An unopened picker means all
         # of them — see `PlaylistSelection.all_of` — and an emptied one means none, which produces

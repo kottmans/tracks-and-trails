@@ -608,11 +608,16 @@ def _slot_count(info: Mapping[str, Any]) -> int | None:
     """How many slots the extraction enumerated, the ones `_entries` drops included (`T247-R1`).
 
     **The length yt-dlp's `PlaylistEntries` counts a negative `-I` back from**, measured at
-    2026.08.19: a `None` slot is still a slot there. `None` where `_entries` enumerates nothing,
-    for its reasons, so the two always describe the same extraction.
+    2026.08.19: a `None` slot is still a slot there.
+
+    **`0` and `None` are different answers** (`T247-R1`, second round). An empty list is an
+    enumeration that found nothing, and so is a list whose every slot `_entries` drops; `None` is
+    no enumeration at all — a generator `_entries` refuses to consume, or no list — which a
+    playlist downloads as its own URL (`T-137`). Collapsing the two queued an enumerated, unreadable
+    playlist as one job for its whole URL, so the preset's `-I` never applied.
     """
     entries = info.get("entries")
-    if isinstance(entries, str | bytes) or not isinstance(entries, Sequence) or not entries:
+    if isinstance(entries, str | bytes) or not isinstance(entries, Sequence):
         return None
     return len(entries)
 

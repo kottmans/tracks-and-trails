@@ -60,6 +60,18 @@ ITEMS: Final = (
     "-73:9:7",
     "102:1:-5",
 )
+
+#: Endpoints that `int()` reads and a `float` cannot hold (`T247-R4`, second round), where yt-dlp
+#: stops at once and so can be asked directly: an end at minus infinity going forwards, an end at
+#: plus infinity going backwards, a start beyond every slot going forwards. The directions where
+#: yt-dlp would walk without end are in `FAR`, against a walkable twin.
+BEYOND_A_FLOAT: Final = (
+    "1:-" + "9" * 400,
+    ":-" + "9" * 400,
+    "1:" + "9" * 400,
+    "5:" + "9" * 400 + ":-1",
+    "9" * 400 + ":",
+)
 BAD_ITEMS: Final = ("x", "1,,2", ",", "", "1:2:0", "1.5", "1;2", "a:b", "1:3:")
 COUNTS: Final = (0, 1, 5, 9)
 
@@ -94,6 +106,17 @@ def test_items_yt_dlp_refuses_are_refused(text: str) -> None:
         item_positions(text, 5)
 
 
+@pytest.mark.parametrize("count", COUNTS)
+@pytest.mark.parametrize(
+    "text", BEYOND_A_FLOAT, ids=lambda text: text.replace("9" * 400, "<400 nines>")
+)
+def test_an_endpoint_past_a_float_picks_what_yt_dlp_picks(text: str, count: int) -> None:
+    """`T247-R4`, second round: `1:-<400 nines>` is readable, its end is minus infinity as a
+    `float`, and the bounded walk raised `OverflowError` taking its ceiling."""
+    assert items_problem(text) is None
+    assert item_positions(text, count) == yt_dlp_positions(text, count)
+
+
 #: Endpoints far outside any playlist, each with a twin yt-dlp can afford to walk: congruent with
 #: it modulo the step and outside the playlist on the same side, so on a short playlist the two
 #: choose the same entries (`T247-R4`).
@@ -105,6 +128,11 @@ FAR: Final = (
     ("10000002:1:-5", "102:1:-5"),
     ("-1" + "0" * 100 + ":3", "-100:3"),
     ("1" + "0" * 100 + ":1:-1", "100:1:-1"),
+    # Past a float in the direction yt-dlp walks forever (`T247-R4`, second round).
+    ("-" + "9" * 400 + ":3", "-100:3"),
+    ("-1:-" + "9" * 400 + ":-1", "-1:-100:-1"),
+    (":-" + "9" * 400 + ":-1", ":-100:-1"),
+    ("9" * 400 + "::-1", "100::-1"),
 )
 
 

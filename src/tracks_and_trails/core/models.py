@@ -950,9 +950,11 @@ class MediaInfo:
     entries: tuple[PlaylistEntry, ...] = ()
 
     #: **How many slots this extraction enumerated, the dropped ones included** (`T247-R1`), or
-    #: `None` when it enumerated none. Not `entry_count`, which is what the site reports, and not
-    #: `len(entries)`, which leaves out what yt-dlp could not read: this is the length yt-dlp's
-    #: own `PlaylistEntries` counts a negative `-I` position back from. Required with entries.
+    #: `None` when it enumerated nothing at all. Not `entry_count`, which is what the site reports,
+    #: and not `len(entries)`, which leaves out what yt-dlp could not read: this is the length
+    #: yt-dlp's own `PlaylistEntries` counts a negative `-I` position back from. Required with
+    #: entries. **`0`, or a count with no entries, is a playlist known to hold nothing readable**,
+    #: which queues nothing; `None` is one never enumerated, which queues its own URL (`T-137`).
     slot_count: int | None = None
 
     #: The subtitle languages this source publishes, in the order the extractor listed them

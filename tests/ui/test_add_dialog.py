@@ -4816,6 +4816,151 @@ def test_a_rule_counts_the_slots_yt_dlp_counts_and_queues_what_it_would(
         assert queued == expected
 
 
+#: A playlist yt-dlp enumerated in full with nothing readable in it: no entry, a placeholder
+#: with an address and no title, and nothing at all (`T247-R1`, second round).
+NOTHING_READABLE: Final = {
+    "none": [None, None, None],
+    "placeholders": [
+        {"url": "https://example.invalid/x", "title": None},
+        {"url": "https://example.invalid/y", "title": None},
+    ],
+    "empty": [],
+}
+
+
+def _resolved_as(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    slots: object,
+    **overrides: Any,
+) -> tuple[AddUrlDialog, Row]:
+    """A dialog with one row, read as a playlist whose `entries` are `slots`, projected for real."""
+    dialog = dialogs(managers(), **overrides)
+    type_urls(dialog, "https://example.invalid/list")
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows) and dialog.rows[0].job_id is not None)
+    row = dialog.rows[0]
+    assert row.job_id is not None
+    raw = {"_type": "playlist", "webpage_url": row.url, "title": "Read", "entries": slots}
+    dialog._on_media_probed(row.job_id, adapter.project_media(raw, reachable=lambda _: False))
+    return dialog, row
+
+
+@pytest.mark.parametrize("ruled", [True, False], ids=["-I 2", "no rule"])
+@pytest.mark.parametrize("slots", list(NOTHING_READABLE))
+def test_a_playlist_read_with_nothing_readable_queues_nothing(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+    store: FakeStore,
+    slots: str,
+    ruled: bool,
+) -> None:
+    """`T247-R1`, second round, Critical. Enumerated with nothing readable, the playlist fell back
+    to one job for its whole URL, discarding the rule `-I` is never sent per job to apply. yt-dlp
+    selects no available entry here, so nothing is queued and Add says why."""
+    rule = replace(RULED, name="Second", playlist_items="2", max_downloads=None)
+    presets = (*preset_registry.BUILT_IN_PRESETS, rule)
+    dialog, _row = _resolved_as(
+        dialogs,
+        managers,
+        spin,
+        NOTHING_READABLE[slots],
+        presets=presets,
+        **({"default_preset": rule.name} if ruled else {}),
+    )
+
+    dialog.add_to_queue()
+    QApplication.processEvents()
+
+    assert not sink.submissions, "a playlist with nothing readable queued its whole URL"
+    assert not store.jobs
+    assert "could be read" in text_of(dialog, "statusMessage"), text_of(dialog, "statusMessage")
+
+
+def test_a_playlist_whose_entries_were_never_listed_is_still_one_job(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+    store: FakeStore,
+) -> None:
+    """The other side of that line (`T-137`): a lazy playlist yt-dlp did not enumerate is not known
+    to be empty, so it downloads as the user's URL, as it always has."""
+    dialog, row = _resolved_as(dialogs, managers, spin, iter(()))
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+
+    assert [job.url for job in store.jobs.values()] == [row.url]
+
+
+def test_a_rule_past_a_float_seeds_coherently_with_the_picker_open(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+    store: FakeStore,
+) -> None:
+    """`T247-R4`, second round, Critical. `1:-<400 nines>` raised after the new rule was cached, so
+    the old checks survived and Add queued A and C, which yt-dlp does not select."""
+    far = replace(RULED, name="Past a float", playlist_items="1:-" + "9" * 400, max_downloads=None)
+    dialog, row = _resolved_as(
+        dialogs, managers, spin, HOLES["middle"], presets=(*preset_registry.BUILT_IN_PRESETS, far)
+    )
+    panel = _open_the_picker(dialog, row)
+
+    choose_preset(dialog, far.name)
+    QApplication.processEvents()
+
+    assert row.entry_selection == PlaylistSelection.none_of(2)
+    assert panel.picker.selection == PlaylistSelection.none_of(2)
+    dialog.add_to_queue()
+    QApplication.processEvents()
+    assert not sink.submissions and not store.jobs, "entries yt-dlp does not select were queued"
+
+
+def test_a_rule_and_its_selection_are_kept_only_together(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If a rule's selection cannot be calculated, the row keeps neither half of it, and Add asks
+    again rather than queueing the checks the old rule left (`T247-R4`'s coherence half)."""
+    ruled = replace(RULED, name="Ruled again")
+    dialog, row = _resolved_as(
+        dialogs, managers, spin, HOLES["middle"], presets=(*preset_registry.BUILT_IN_PRESETS, ruled)
+    )
+    before = (row.entry_rule, row.entry_selection)
+
+    def unable(*_: object, **__: object) -> PlaylistSelection:
+        raise RuntimeError("stand-in for a calculation that fails")
+
+    monkeypatch.setattr(PlaylistSelection, "by_rule", unable)
+    # The batch's preset changes without the refresh it would start, so the failure reaches here
+    # rather than Qt's handler for a slot.
+    box = dialog.findChild(QComboBox, "presetChoice")
+    assert box is not None
+    box.blockSignals(True)
+    box.setCurrentText(ruled.name)
+    box.blockSignals(False)
+    with pytest.raises(RuntimeError):
+        dialog._reseed_where_the_rule_changed()
+
+    assert (row.entry_rule, row.entry_selection) == before, "half a rule was kept"
+    # The queue's own guard, asked directly: Add refreshes first today, and the guard is what
+    # still holds if it ever does not.
+    with pytest.raises(RuntimeError):
+        dialog._durable_jobs(row)
+    with pytest.raises(RuntimeError):
+        dialog.add_to_queue()
+    assert not sink.submissions, "Add queued the checks of a rule no longer in force"
+
+
 def test_a_far_rule_seeds_a_playlist_without_holding_up_the_dialog(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],

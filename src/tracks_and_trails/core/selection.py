@@ -138,6 +138,10 @@ def _walk(first: int | None, last: float | None, stride: int, count: int) -> Ite
     moving each end to the first in-range index on the step's own lattice, so the work is bounded
     by `count` whatever was typed. `range` keeps it exact for integers of any size, and an end is
     compared with a `float` only after `count` has bounded it.
+
+    **An end can be an infinity** (`T247-R4`, second round): `int()` reads `-<400 nines>`, and as a
+    `float` it is minus infinity. Each direction therefore stops before any rounding when its end
+    is already behind its start, which is also when yt-dlp's own loop never runs.
     """
     if first is None:
         start = 0 if stride > 0 else count - 1
@@ -151,6 +155,8 @@ def _walk(first: int | None, last: float | None, stride: int, count: int) -> Ite
         # Below the first entry, yt-dlp skips; at or past the last, it stops.
         if start < 0:
             start %= stride
+        if not stop > start:
+            return
         end = count if stop > count else math.ceil(stop)
         for index in range(start, end, stride):
             yield index + 1

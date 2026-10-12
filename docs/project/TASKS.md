@@ -16,9 +16,9 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ### T-247 — Video selection: which items, how big, how old
 
-**Status:** In Review — **correction 1 built 2026-10-11**, for the four blockers of the review of
-`616f665` ([record](reviews/T-247.md)); each awaits the Reviewer's verification. *(Was In Review:)*
-built 2026-10-11. *(Was Ready — ruled 2026-10-11, `ARC-010` and `UX-015` amended, after `T-361`;
+**Status:** In Review — **correction 2 built 2026-10-12**, for `T247-R1` and `R4`, both Critical
+and blocking; `R2` and `R3` were resolved by the Reviewer on 2026-10-12
+([record](reviews/T-247.md)). *(Was In Review:)* correction 1 built 2026-10-11; built 2026-10-11. *(Was Ready — ruled 2026-10-11, `ARC-010` and `UX-015` amended, after `T-361`;
 was Proposed:)* filed 2026-08-16 by `T-183`
 **Priority:** High among the nine — playlist item selection is the most-asked-for of the 44
 **Options (7):** `-I/--playlist-items`, `--min-filesize`, `--max-filesize`, `--date`,
@@ -158,6 +158,42 @@ model; the picker showing rows; sizes shown as raw bytes.
 run beside other test processes failed
 `test_a_paste_the_design_supports_stays_inside_the_interaction_budget` once at 1.07 s, and it then
 passed three times alone; `tests/integration` **527 passed**. No Windows run.
+
+#### Correction 2, 2026-10-12 — `T247-R1` and `R4`, the selection boundary
+
+**The verification of correction 1** ([record](reviews/T-247.md#2026-10-12--first-correction-focused-verification)),
+at `932cbe2`: `R2` and `R3` resolved. `R1` and `R4` open and both **Critical**, each with Add
+queueing what yt-dlp would not select. **Native Windows evidence now exists**: CI run
+[`38268247138`](https://github.com/kottmans/tracks-and-trails/actions/runs/38268247138) at
+`d9c7248`, which carries correction 1's source unchanged, passed on `STARBASE` with 5,376 unit and
+UI tests passed and 43 skipped, and 522 integration tests passed and 5 skipped. Since correction 1
+created a fresh serious defect, the Reviewer put the design to the maintainer, who chose on
+2026-10-12 to **revise the selection boundary within this task**
+([ruling](reviews/T-247.md#2026-10-12--maintainer-choice-for-the-next-correction)).
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T247-R1` — a playlist enumerated with nothing readable fell back to one job for its whole URL, so `-I` never applied | **Known-empty and never-listed are told apart by `slot_count`**: the adapter counts an empty list as `0` slots, `None` only for no enumeration. `_durable_jobs` queues one job only where `slot_count is None` (`T-137`), and none for a playlist enumerated with no entries. Add says *nothing in this playlist could be read* rather than advising the user to open an empty list | `test_a_playlist_read_with_nothing_readable_queues_nothing`, `None` slots, untitled placeholders and an empty list, with `-I 2` and with no rule, through the real projection to the queue: **all 6 fail on `932cbe2`**. `test_a_playlist_whose_entries_were_never_listed_is_still_one_job` is the control and passes on both |
+| `T247-R4` — `1:-<400 nines>` is readable, and its end as a `float` is minus infinity; the bounded walk raised taking its ceiling, after the new rule was cached, so the old checks survived and Add queued them | **The walk stops before any rounding when its end is already behind its start**, in either direction, which is also when yt-dlp's own loop never runs. **A rule is cached only with the selection it produced**: both are assigned after the calculation. **Add re-checks the pairing** before queueing a playlist, re-seeding if the rule in force differs, so a failure stops Add rather than queueing the previous rule's checks | `test_an_endpoint_past_a_float_picks_what_yt_dlp_picks` against yt-dlp directly: **8 of its 20 cases fail on `932cbe2`**, the two forward ends at minus infinity; the far ends past a float added to `FAR` pass there, and guard the bound. `test_a_rule_past_a_float_seeds_coherently_with_the_picker_open`, the reviewer's route through the preset combo with the picker open, to the queue: fails on `932cbe2`. `test_a_rule_and_its_selection_are_kept_only_together` forces the calculation to fail and asserts neither half is kept and neither Add nor its queue guard queues the old checks: fails on `932cbe2` |
+
+**Sibling audit.** For `R1`, every other reader of a playlist's entries: the remove label, the
+picker's availability, the editor's `choosing_entries` and the seeding all treat no entries as
+nothing to choose between, which is right for a known-empty playlist too; only the queue
+decided *one job*, and it is corrected. The entry count's use for the *Position* width is `T-362`'s.
+For `R4`, the only conversion of a typed number to a `float` is a range end; sizes already read an
+infinity as nothing, and dates stay integers. For the coherence, `_seed_entries` is the only place
+the rule is cached.
+
+**Correction mutations, 7 of 8 caught**, on a fresh copy: each direction's infinity stop removed;
+an empty list counted as no enumeration; the one-job fallback restored; the rule cached before its
+selection; Add's pairing check removed; Add's advice reverted. **The eighth survives and is
+equivalent**: removing the explicit *nothing readable, no jobs* return falls through to no chosen
+entries and the same empty result. It is kept for the reader and for the short circuit.
+
+**Checks, 2026-10-12, on Linux, after correction 2:** `ruff check .` and `ruff format --check .`;
+`mypy src`, bare `mypy` and `mypy --platform win32`; `python tools/ytdlp_option_table.py --check`;
+`tests/unit tests/ui` under `-n auto`, **5,445 passed**, 21 skipped; `tests/integration` **527
+passed**. No Windows run of this correction.
 
 ---
 

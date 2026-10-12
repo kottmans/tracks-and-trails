@@ -98,7 +98,10 @@ task and review records it summarised.*
   one *Which items* group holds all seven controls. Mapping it found the hatch admitting, then
   dropping, long spellings of options that already have a control. **`T-361`, the fix, was approved
   the same day** and is in COMPLETED_TASKS. `T-247` came back with four blockers,
-  `T247-R1`…`R4`; its first correction is built and with the Reviewer. Its sibling audit found
+  `T247-R1`…`R4`. Its first correction resolved `R2` and `R3` and passed native Windows CI on
+  `STARBASE`; `R1` and `R4` stayed open as Critical, and the maintainer chose on 2026-10-12 to
+  revise the selection boundary within the task. **The second correction is built and with the
+  Reviewer.** Its sibling audit found
   queued files numbered among the readable entries rather than by slot, filed as `T-362` by the
   maintainer's ruling, to run right after `T-247`. **`T-249`'s design was ruled the same day**
   (`DAT-003` and `UX-015` amended): mapping it found the options field's `--write-info-json` keeping
