@@ -163,6 +163,43 @@ passed three times alone; `tests/integration` **527 passed**. No Windows run.
 
 ## Ready
 
+### T-249 — The sidecar writers: description, info JSON and thumbnail files
+
+**Status:** Ready — **ruled 2026-10-11** (`DAT-003` and `UX-015` amended); after `T-362`.
+*(Was Proposed:)* filed 2026-08-16 by `T-183`
+**Options (7):** `--write-description`, `--no-write-description`, `--write-info-json`,
+`--no-write-info-json`, `--write-thumbnail`, `--no-write-thumbnail`, `--write-all-thumbnails`
+**Specific criteria:** every file these write lands inside the chosen directory, through `T-034`
+rather than beside it. **`--write-thumbnail` shares `writethumbnail` with the application**
+(`T-183` Finding 6): `build_options` sets it to embed and then delete, this control sets it to
+keep, and the resolution is one written rule with a test — the control is tri-state (off, one,
+all). **`--write-info-json` writes a file yt-dlp's own help calls personal information**, so
+`DAT-003`'s redaction question is asked of it before it ships, not after.
+
+
+#### Maintainer rulings, 2026-10-11 — the design, before the code
+
+Mapped first, with a real worker session. **Through the options field, `--write-info-json` already
+keeps a file that carries the session's cookie values and any typed request headers**: with a
+cookies file, every format's `cookies` field held the cookie, and `--add-headers "Authorization:
+Bearer …"` was in each format's `http_headers`. yt-dlp's *clean* step strips neither. Nothing
+shipped it, since `0.1.0` predates the field. Three rulings, all as recommended:
+
+1. **Strip them and keep the file** (`DAT-003`, amended): before an info JSON is moved into the
+   download folder, every `cookies` field and the request headers are removed, whichever route
+   asked for it. Everything else stays as yt-dlp writes it.
+2. **Fixed within this task**, not by an interim refusal: `main` is unreleased and `0.2.0` cannot
+   ship before this task.
+3. **One *Keep beside the file* group, directly below *Embed in the file*** (`UX-015`, amended):
+   two checkboxes and three thumbnail radio buttons, none, the best or all.
+
+Settled already, and not reopened: the thumbnail key is shared as a union, the user's keep
+surviving the application's embed (`ARC-010`, amended 2026-09-20); and a sidecar lands in the
+chosen folder with its media, which the options field's own work built (`claim_outputs`, the
+probe's file landed there).
+
+---
+
 ### T-301 — Four UI tests break when the application font grows by one point
 
 **Status:** In Progress — **three of the four repaired 2026-09-10**; the fourth is diagnosed and
@@ -863,18 +900,6 @@ filename options change what yt-dlp writes, and `--trim-filenames` can shorten a
 collision; the containment and collision tests are extended over each, and a test fails when the
 check is removed. `--windows-filenames` is asserted on **both** platforms — its whole purpose is a
 platform difference, and a Linux-only assertion proves nothing about it.
-
-### T-249 — The sidecar writers: description, info JSON and thumbnail files
-
-**Status:** Proposed — filed 2026-08-16 by `T-183`
-**Options (7):** `--write-description`, `--no-write-description`, `--write-info-json`,
-`--no-write-info-json`, `--write-thumbnail`, `--no-write-thumbnail`, `--write-all-thumbnails`
-**Specific criteria:** every file these write lands inside the chosen directory, through `T-034`
-rather than beside it. **`--write-thumbnail` shares `writethumbnail` with the application**
-(`T-183` Finding 6): `build_options` sets it to embed and then delete, this control sets it to
-keep, and the resolution is one written rule with a test — the control is tri-state (off, one,
-all). **`--write-info-json` writes a file yt-dlp's own help calls personal information**, so
-`DAT-003`'s redaction question is asked of it before it ships, not after.
 
 ### T-250 — Format depth: sorting, checking and the merge container
 

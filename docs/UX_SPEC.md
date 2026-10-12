@@ -9,7 +9,7 @@ listed in §10.
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active — created 2026-08-06 for `T-105`, at the start of Phase 3
-**Last updated:** 2026-10-11 — `UX-015`'s amendment added §6's *Which items* group. Before it, 2026-09-27: `UX-015` added §6's additional-options group. Before that, 2026-08-11:
+**Last updated:** 2026-10-11 — `UX-015`'s second amendment added §6's *Keep beside the file* group, after its first added *Which items*. Before it, 2026-09-27: `UX-015` added §6's additional-options group. Before that, 2026-08-11:
 `T222-R2` demoted §6's scroll-region clause from `[D]` to `[P]`
 and opened it as `P-29`; the clause is built ahead of ratification on the reviewer's instruction.
 Before it, 2026-08-09: `UX-010` amended §2.2's group chip: a queue group's chip is
@@ -622,6 +622,16 @@ it: five checkboxes and one free list are different screens.
   build a `[P]` clause until it is ratified, and this one is in the tree, so the exception is
   recorded here rather than left to be discovered. What is open for the maintainer is whether
   scrolling is the right shape, not whether the clipping needs fixing. See §10.
+
+### Keep beside the file — `REQ-030`, ruled 2026-10-11 for `T-249`
+
+**[T]** *(ruled `UX-015`, amended 2026-10-11, second)* **One group, *Keep beside the file*,
+directly below *Embed in the file***: the description and the info JSON as checkboxes, and the
+thumbnail as three radio buttons — none, the best one, all of them. Keeping a thumbnail does not
+stop it being embedded, and embedding does not stop it being kept.
+
+**[T]** *(`DAT-003`, amended 2026-10-11)* An info JSON is kept **without its cookies or request
+headers**, whichever route asked for it.
 
 ### Which items — `REQ-030`, ruled 2026-10-11 for `T-247`
 

@@ -65,7 +65,7 @@ Current requirements and architecture retain their own canonical authority.
 | [OPS-003](#ops-003--windows-verification-is-ci-only-until-a-real-windows-machine-exists) | Windows verification is CI-only until a real Windows machine exists | Partly superseded | [OPS-004](#ops-004--windows-ci-runners-provide-a-real-desktop-verify-against-it); [OPS-005](#ops-005--starbase-is-the-windows-verification-platform-hosted-only-findings-do-not-gate-the-phase) |
 | [ARC-003](#arc-003--versioned-in-arc-002-means-version-controlled-not-version-negotiated) | "Versioned" in `ARC-002` means version-controlled, not version-negotiated | Accepted | — |
 | [DAT-002](#dat-002--filename-sanitizing-promises-idempotence-not-uniqueness) | Filename sanitizing promises idempotence, not uniqueness | Accepted | — |
-| [DAT-003](#dat-003--a-stored-diagnostic-is-verbatim-cookie-paths-inside-one-are-accepted) | A stored diagnostic is verbatim; cookie paths inside one are accepted | Accepted | [Amended 2026-07-30](#amended-2026-07-30--the-boundary-is-provenance-and-the-table-above-overstated-it-t-049); [Amended 2026-08-10](#amended-2026-08-10--cookie-files-land-and-the-path-never-enters-the-model-t-197); [Amended 2026-09-26](#amended-2026-09-26--text-typed-into-the-options-field-is-stored-verbatim-like-a-url-t-184) |
+| [DAT-003](#dat-003--a-stored-diagnostic-is-verbatim-cookie-paths-inside-one-are-accepted) | A stored diagnostic is verbatim; cookie paths inside one are accepted | Accepted | [Amended 2026-07-30](#amended-2026-07-30--the-boundary-is-provenance-and-the-table-above-overstated-it-t-049); [Amended 2026-08-10](#amended-2026-08-10--cookie-files-land-and-the-path-never-enters-the-model-t-197); [Amended 2026-09-26](#amended-2026-09-26--text-typed-into-the-options-field-is-stored-verbatim-like-a-url-t-184); [Amended 2026-10-11](#amended-2026-10-11--cookie-contents-never-reach-a-file-the-application-keeps-t-249) |
 | [SEC-002](#sec-002--a-fixture-commits-values-only-for-the-fields-the-projection-reads) | A fixture commits values only for the fields the projection reads | Accepted | [Amended 2026-08-04](#amended-2026-08-04--a-playlist-entry-is-a-record-not-a-count) |
 | [ARC-004](#arc-004--a-probed-job-downloads-from-ready-the-download-re-extracts-it-does-not-re-probe) | A probed job downloads from `READY`; the download re-extracts, it does not re-probe | Accepted | — |
 | [ARC-005](#arc-005--the-gui-thread-never-waits-on-sqlite-one-writer-thread-owns-every-queue-write) | The GUI thread never waits on SQLite; one writer thread owns every queue write | Accepted | [Amended 2026-07-27](#amended-2026-07-27--every-queue-write-means-the-managers-too); [Amended 2026-07-28](#amended-2026-07-28--only-the-announcement-moved-was-not-true-and-callers-unchanged-cost-the-most) |
@@ -104,7 +104,7 @@ Current requirements and architecture retain their own canonical authority.
 | [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu) | The row picks a preset; the per-row verbs are the row's own menu | Accepted | — |
 | [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) | The concurrency control leaves the toolbar for Settings | Accepted | — |
 | [UX-014](#ux-014--naming-is-a-setting-a-single-download-is-renamed-not-templated) | Naming is a setting; a single download is renamed, not templated | Accepted | — |
-| [UX-015](#ux-015--the-additional-options-field-the-editors-last-group-checked-as-you-type) | The additional-options field: the editor's last group, checked as you type | Accepted | [Amended 2026-10-11](#amended-2026-10-11--a-which-items-group-stands-above-the-hatch) |
+| [UX-015](#ux-015--the-additional-options-field-the-editors-last-group-checked-as-you-type) | The additional-options field: the editor's last group, checked as you type | Accepted | [Amended 2026-10-11](#amended-2026-10-11--a-which-items-group-stands-above-the-hatch); [Amended 2026-10-11, second](#amended-2026-10-11-second--a-keep-beside-the-file-group-below-embed-in-the-file) |
 | [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button) | The row's menu says what it removes, and the ⋮ reads as a button | Accepted | — |
 | [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted; revision 2026-09-08.5 by amendment | [Status retention](#doc-007-status-retention); [running completed-task record](#doc-007-completed-tasks); [shared source and captured formatting](#doc-007-shared-source); [review storage](#doc-007-review-storage); [historical review migration](#doc-007-review-migration) |
 
@@ -2159,6 +2159,34 @@ no longer pending: cookie-file support, and constraining `cookies_from_browser`.
   then say so.
 - **Constraining `url`.** Still untaken, and still the remaining half of `T-049`'s caveat: a
   credential the user typed into a URL is in the database today, deliberately.
+
+### Amended 2026-10-11 — cookie contents never reach a file the application keeps (`T-249`)
+
+**Status:** **Accepted** — maintainer ruling of 2026-10-11, on `T-249`, as recommended.
+**Amends:** the scope list's *"Cookie contents — never in the database"*, which it widens.
+**Does not amend:** the 2026-09-26 amendment's rule for the options field in the database and in
+`settings.toml`, or `T-038`.
+
+**What was measured.** Mapping `T-249` on 2026-10-11, a real worker session at `4e6a802` with a
+cookies file and `--write-info-json` typed into the options field kept a `clip.info.json` beside
+the media whose every format carried the session cookie's value in a `cookies` field, and whose
+top level did too. A header typed through `--add-headers`, `Authorization: Bearer …`, was in each
+format's `http_headers`. yt-dlp writes both on purpose, so `--load-info-json` can replay a
+download, and its *clean* step strips neither; its own help says the file *"may contain personal
+information"*. Nothing had shipped it: `0.1.0` predates the options field.
+
+**What is ruled.** **Before an info JSON is moved into the download folder, the application
+removes every `cookies` field and the request headers from it**, whichever route asked for the
+file — `T-249`'s control or the options field. Everything else stays as yt-dlp writes it. So the
+scope list now reads: cookie contents never in the database, **and never in a file this
+application keeps**.
+
+**Fixed within `T-249`, not before it** (ruled the same day). `main` is unreleased, `0.2.0` cannot
+ship before `T-249`, and the exposure needs a cookies source and a typed `--write-info-json`.
+
+**The alternatives, as they were put.** Offering the info JSON only to a job with no cookies,
+which loses the file for every signed-in download; and writing it as yt-dlp does with a warning
+beside the control, which leaves a live session in any folder the user shares or uploads.
 
 ### Amended 2026-09-26 — text typed into the options field is stored verbatim, like a URL (`T-184`)
 
@@ -6889,6 +6917,21 @@ reason, for a single video. Every control is a keyboard stop with a screen-reade
 
 **The alternative, as it was put.** Splitting by what each acts on: the items and *at most* in the
 playlist picker, the filters in the editor; truer to where each applies, and two places to look.
+
+### Amended 2026-10-11, second — a *Keep beside the file* group below *Embed in the file*
+
+**Status:** **Accepted** — maintainer ruling of 2026-10-11, on `T-249`, as recommended.
+**Amends:** §1's groups. *Embed in the file* is followed directly by the new group; the order
+after it is unchanged.
+
+**What is ruled.** One group, ***Keep beside the file***, holds `T-249`'s seven options as three
+controls: the description and the info JSON as two checkboxes, and the thumbnail as three radio
+buttons — none, the best one, all of them. Radio buttons rather than a dropdown, because on Linux
+a combo box announces its value where its name should be (`T200-R7`). Keeping a thumbnail and
+embedding one combine as `ARC-010`'s 2026-09-20 amendment rules: a union, and the keep survives.
+
+**The alternative, as it was put.** The three inside *Embed in the file*, renamed *In and beside
+the file*: one fewer group, mixing what goes into the file with what is written next to it.
 
 ---
 
