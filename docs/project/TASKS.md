@@ -140,7 +140,8 @@ yt-dlp.
 picker's number and spoken row are corrected here. **The queue's own position is not**:
 `_durable_jobs` gives a job `playlist_index` and the *Position* naming field from its place among
 the survivors, so with a gap a file can be named `02` where yt-dlp says `03`. That predates
-`T-247` and changes file names, so it is put to the maintainer rather than changed here. For R2,
+`T-247` and changes file names, so it was put to the maintainer, who ruled it a task of its own:
+`T-362`. For R2,
 every value with a grammar is refused through `items_problem`, `date_problem` or `size_problem`,
 which the model, the editor and settings loading all call. For R3, every field of the group now
 holds every value the model allows. For R4, the only other per-value work is linear in the text.
@@ -740,6 +741,39 @@ option promoted becomes a typed-field task of its own, on the pattern `T-247`…
   the reason recorded
 
 ---
+
+### T-362 — Number a playlist's queued entries by their slot in the playlist
+
+**Status:** Proposed — filed 2026-10-11 by the maintainer's ruling, from `T-247`'s sibling audit
+for `T247-R1`.
+**Owner:** Implementer
+**Priority:** Medium — a wrong number in a file name, with a gap in the playlist as its trigger; no
+download is the wrong item
+**Phase:** Phase 4.5
+**Depends on:** `T-247`, whose correction gives each `PlaylistEntry` its `position` and
+`MediaInfo` its `slot_count`
+**Relevant context:** `T247-R1` ([record](reviews/T-247.md)); `T-281`, which leaves unavailable
+entries out; `UX-014`'s *Position* naming field; `UX-005` row 10
+**Affected surfaces:** `ui/add_dialog._durable_jobs`, `core/output_template.resolve_queue_fields`,
+the queue's ordering of a group by `Job.playlist_index`, and their tests
+
+#### Scope
+
+`_durable_jobs` gives each queued entry `playlist_index` and the *Position* naming field from its
+place among the entries left after the unavailable ones were dropped, and the width of the number
+from how many survived. With a gap, a file is named `02` where yt-dlp's own `playlist_index`, and
+since `T-247` the picker's number, say `03`. Number both from the entry's slot, and pad to the
+width of the slots enumerated. The ruling of 2026-10-11, as recommended, put this in its own task
+rather than in `T-247`'s re-review, because it changes file names that ruling never covered.
+
+#### Acceptance criteria
+
+- [ ] With gaps at the start, middle and end, each queued job's `playlist_index` and its rendered
+  *Position* equal the slot yt-dlp's `PlaylistEntries` gives the same entry
+- [ ] The padding width follows the slots enumerated, so a playlist of 120 slots with 99 readable
+  pads to three digits
+- [ ] A playlist with no gaps names its files exactly as it does today
+- [ ] The queue still orders a group's rows by playlist order
 
 *(**The nine typed-field tasks, `T-247` … `T-255`**, filed 2026-08-16 by `T-183`, which is where
 the option lists come from: `docs/YTDLP_OPTION_AUDIT.md`. **44 options over nine tasks** — the

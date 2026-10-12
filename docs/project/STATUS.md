@@ -98,7 +98,9 @@ task and review records it summarised.*
   one *Which items* group holds all seven controls. Mapping it found the hatch admitting, then
   dropping, long spellings of options that already have a control. **`T-361`, the fix, was approved
   the same day** and is in COMPLETED_TASKS. `T-247` came back with four blockers,
-  `T247-R1`…`R4`; its first correction is built and with the Reviewer.
+  `T247-R1`…`R4`; its first correction is built and with the Reviewer. Its sibling audit found
+  queued files numbered among the readable entries rather than by slot, filed as `T-362` by the
+  maintainer's ruling.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the
