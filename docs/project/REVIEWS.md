@@ -2,7 +2,7 @@
 
 **Purpose:** Navigation to canonical task and shared-scope review records.
 **Owner:** Reviewer; Coordinator / Integrator owns shared routing during a wave.
-**Last updated:** 2026-10-12
+**Last updated:** 2026-10-13
 **Update when:** A review record is introduced or its navigation changes.
 
 ## Current navigation
@@ -105,7 +105,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-357](reviews/T-357.md) | T-357 | 0 |
 | [T-360](reviews/T-360.md) | T-360 | 0 |
 | [T-361](reviews/T-361.md) | T-361 | 0 |
-| [T-247](reviews/T-247.md) | T-247; [first correction verification](reviews/T-247.md#2026-10-12--first-correction-focused-verification), 932cbe2; Changes requested | 0 |
+| [T-247](reviews/T-247.md) | T-247; [second correction verification](reviews/T-247.md#2026-10-13--second-correction-focused-verification), b7c1dc4 | 0 |
 | [September 2026 codebase audit](reviews/codebase-audit-2026-09.md) | T-351, T-352, T-353, T-354; independent audit at a7310d1 | 0 |
 | <a id="2026-08-17--t-257--t-259-windows-chain-review"></a><a id="2026-08-17--t-259-duration-report-correction-re-review"></a>[T-257](reviews/T-257.md) | T-257, T-259 | 2 |
 | <a id="2026-08-17--t-258-pre-bootstrap-containment-review"></a><a id="2026-08-17--t-258-focused-containment-correction-review"></a><a id="2026-08-17--t-258-lifecycle-wording-re-review"></a><a id="2026-08-17--t-258-second-focused-correction-re-review"></a><a id="2026-08-19--t-258-scanner-evidence-disposition"></a><a id="2026-08-21--t258-r10-authorised-record-only-re-review"></a>[T-258](reviews/T-258.md) | T-258 | 6 |
