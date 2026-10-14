@@ -58,6 +58,7 @@ from platformdirs import user_config_dir
 
 from tracks_and_trails.core.models import (
     AudioCodec,
+    KeptThumbnails,
     MediaKind,
     NetworkOptions,
     Preset,
@@ -1295,6 +1296,8 @@ def _preset_from(raw: Any) -> Preset:
         values["media_kind"] = MediaKind(values["media_kind"])
     if "audio_codec" in values:
         values["audio_codec"] = AudioCodec(values["audio_codec"])
+    if "keep_thumbnails" in values:
+        values["keep_thumbnails"] = KeptThumbnails(values["keep_thumbnails"])
     for name in ("post_processors", "subtitle_languages"):
         if name in values:
             values[name] = tuple(values[name])

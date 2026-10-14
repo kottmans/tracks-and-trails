@@ -20,7 +20,7 @@ from typing import Any
 
 import pytest
 
-from tracks_and_trails.core.models import DownloadRequest
+from tracks_and_trails.core.models import DownloadRequest, KeptThumbnails
 from tracks_and_trails.downloader.extra_options import (
     admit,
     options_for,
@@ -204,36 +204,31 @@ def test_the_application_keeps_its_probe_keys() -> None:
     assert probe["skip_download"] is True, "a hatch value overrode a key the probe path owns"
 
 
-def test_a_job_that_embeds_keeps_its_thumbnail_when_the_user_says_no() -> None:
+def test_a_job_that_embeds_writes_its_thumbnail_when_none_is_kept() -> None:
     """`ARC-010`'s amendment, through the real `build_options`.
 
-    `EmbedThumbnail` embeds a file that has to exist first (`T-109`). A user's
-    `--no-write-thumbnail` against a job that embeds would leave it with nothing to embed, which
-    is a key accepted and silently ineffective — so the union keeps the write.
+    `EmbedThumbnail` embeds a file that has to exist first (`T-109`). Keeping no thumbnail against
+    a job that embeds would leave it with nothing to embed, which is a key accepted and silently
+    ineffective — so the union keeps the write. *(Through the hatch's `--no-write-thumbnail` until
+    `T-249` gave the keep a control, which admission now refuses that spelling for.)*
     """
-    request = a_request(
-        embed_thumbnail=True,
-        extra_options="--no-write-thumbnail",
-        extra_option_argv=("--no-write-thumbnail",),
-    )
+    request = a_request(embed_thumbnail=True, keep_thumbnails=KeptThumbnails.NONE)
 
     options = build_options(request, BASE["output_template"])
 
     assert options["writethumbnail"] is True
 
 
-def test_a_kept_thumbnail_survives_the_embed_that_would_delete_it() -> None:
+@pytest.mark.parametrize("kept", [KeptThumbnails.BEST, KeptThumbnails.ALL])
+def test_a_kept_thumbnail_survives_the_embed_that_would_delete_it(kept: KeptThumbnails) -> None:
     """`T184-R11`: the real `EmbedThumbnail` deletes the cover unless told otherwise.
 
     A job that embeds **and** a user who asked to keep the picture both get what they asked for
     only if the spec carries `already_have_thumbnail`. Without it the union wrote the file and the
-    postprocessor removed it, and the download reported success with the thumbnail gone.
+    postprocessor removed it, and the download reported success with the thumbnail gone. The keep
+    is `T-249`'s control now, and was the hatch's `--write-thumbnail` before it.
     """
-    request = a_request(
-        embed_thumbnail=True,
-        extra_options="--write-thumbnail",
-        extra_option_argv=("--write-thumbnail",),
-    )
+    request = a_request(embed_thumbnail=True, keep_thumbnails=kept)
 
     options = build_options(request, BASE["output_template"])
     embed = [spec for spec in options["postprocessors"] if spec.get("key") == "EmbedThumbnail"]
@@ -381,13 +376,19 @@ def test_stored_options_the_audit_refuses_stop_the_build() -> None:
         build_options(request, BASE["output_template"])
 
 
-def test_a_user_asking_for_the_thumbnail_gets_it_without_embedding() -> None:
-    """The other direction: the application wanted no picture and the user does."""
-    request = a_request(extra_options="--write-thumbnail", extra_option_argv=("--write-thumbnail",))
+@pytest.mark.parametrize(
+    ("kept", "key"),
+    [(KeptThumbnails.BEST, "writethumbnail"), (KeptThumbnails.ALL, "write_all_thumbnails")],
+)
+def test_a_user_asking_for_the_thumbnail_gets_it_without_embedding(
+    kept: KeptThumbnails, key: str
+) -> None:
+    """The other direction: the application wanted no picture and the user does (`T-249`)."""
+    request = a_request(keep_thumbnails=kept)
 
     options = build_options(request, BASE["output_template"])
 
-    assert options["writethumbnail"] is True
+    assert options[key] is True
 
 
 def test_the_hatch_brings_no_processor_it_did_not_name() -> None:

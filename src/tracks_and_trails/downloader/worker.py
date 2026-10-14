@@ -711,6 +711,13 @@ def _run(
         # separating a subtitle from the file it belongs to. An output that cannot be placed raises,
         # and is caught below as a failed job: the two used to be claimed independently and a
         # sidecar failure was swallowed while the outcome said the download had worked.
+        # What the request asked to keep whose path the result does not report (`T184-R11`).
+        retained = retained_sidecars(
+            adapter.build_options(request, as_literal_template(staging / target.name)),
+            staging,
+            Path(target.name).stem,
+        )
+        strip_kept_info_json(retained, adapter)
         written, _kept = claim_outputs(
             result,
             staging=staging,
@@ -719,12 +726,7 @@ def _run(
             produced=produced,
             # What tells a deleted intermediate from a lost output — see `claim_outputs`.
             writing_subtitles=bool(request.subtitle_languages) and not request.embed_subtitles,
-            # What the hatch asked to keep whose path the result does not report (`T184-R11`).
-            retained=retained_sidecars(
-                adapter.build_options(request, as_literal_template(staging / target.name)),
-                staging,
-                Path(target.name).stem,
-            ),
+            retained=retained,
         )
         # **Discarded here, on the success path, and no longer in a `finally`** (`T-113`).
         # A `finally` threw the partial away whichever way the session ended, which is right for
@@ -1394,6 +1396,19 @@ def retained_sidecars(options: Mapping[str, Any], staging: Path, stem: str) -> t
     )
 
 
+def strip_kept_info_json(retained: Sequence[Path], adapter: Any) -> None:
+    """Strip each info JSON about to be claimed, whatever stripped it before (`T-249`).
+
+    **The guarantee behind the hook.** `info_json_stripper` cleans the file the moment yt-dlp
+    writes it, which depends on yt-dlp recording its path; a yt-dlp override that does not would
+    otherwise move a file with the session's cookies into the download folder. Stripping is
+    idempotent, so a file already clean is rewritten unchanged (`DAT-003`, amended 2026-10-11).
+    """
+    for path in retained:
+        if path.name.endswith(".info.json") and path.is_file():
+            adapter.strip_info_json(path)
+
+
 def _recorded_paths(entries: Any, key: str = "filepath") -> Iterator[Path]:
     """Every `key` in `entries` that names a file, however yt-dlp shaped the collection."""
     values = entries.values() if isinstance(entries, Mapping) else entries or ()
@@ -1879,6 +1894,9 @@ def _extract(
         else adapter.ffmpeg_progress(resolved.module, reporter.ffmpeg_position)
     )
     with positions, resolved.module.YoutubeDL(options) as ydl:
+        if not probe_only and options.get("writeinfojson"):
+            # **Stripped as soon as it is written** (`DAT-003`, amended 2026-10-11, `T-249`).
+            ydl.add_post_processor(adapter.info_json_stripper(), when="before_dl")
         info = ydl.extract_info(request.url, download=not probe_only)
     result = dict(info or {})
     # **A normal return that wrote nothing is yt-dlp skipping the item on the job's own options**

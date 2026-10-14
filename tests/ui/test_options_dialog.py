@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 )
 
 from tracks_and_trails.core import presets as preset_registry
-from tracks_and_trails.core.models import AudioCodec, Preset
+from tracks_and_trails.core.models import AudioCodec, KeptThumbnails, Preset
 from tracks_and_trails.core.presets import MP3_BITRATES
 from tracks_and_trails.downloader.environment import FfmpegFeature
 from tracks_and_trails.downloader.extra_options import BAD_VALUE, NEEDS_FFMPEG
@@ -61,6 +61,12 @@ from tracks_and_trails.ui.options_dialog import (
     EXTRA_OPTIONS_NAME,
     EXTRA_OPTIONS_TITLE,
     FFMPEG_FEATURE_CONTROLS,
+    INFO_JSON_NOTE,
+    INFO_JSON_NOTE_NAME,
+    KEEP_BESIDE_TITLE,
+    KEEP_DESCRIPTION_NAME,
+    KEEP_INFO_JSON_NAME,
+    KEEP_THUMBNAILS,
     MAX_SIZE_NAME,
     MIN_SIZE_NAME,
     NO_AUDIO_REASON,
@@ -711,6 +717,11 @@ STILL_LIVE_WITHOUT_FFMPEG: Final = {
     # Choosing *which* subtitles is not embedding them. yt-dlp writes them beside the file with
     # no ffmpeg involved; only `embed_subtitles` needs it, and that checkbox is gated.
     SUBTITLE_LANGUAGES_NAME,
+    # *Keep beside the file* keeps what yt-dlp fetched, as it fetched it (`T-249`); converting
+    # a thumbnail is the hatch's `--convert-thumbnails`, refused with ffmpeg absent there.
+    KEEP_DESCRIPTION_NAME,
+    KEEP_INFO_JSON_NAME,
+    *(name for _kept, name, _text in KEEP_THUMBNAILS),
 }
 
 
@@ -1742,3 +1753,111 @@ def test_what_yt_dlp_cannot_read_is_refused_on_an_immediate_accept_and_save(
     assert not saved, "a value yt-dlp refuses was saved"
     assert dialog.selection_refusals_text().startswith(said), dialog.selection_refusals_text()
     assert not ok_button(dialog).isEnabled()
+
+
+# --- *Keep beside the file* (`UX-015` amended 2026-10-11, second, `T-249`) ---------------------
+
+#: A preset keeping all three kinds of file, the thumbnails all of them.
+KEEPING: Final = replace(
+    preset_registry.BEST_VIDEO,
+    name="Keeping",
+    built_in=False,
+    write_description=True,
+    write_info_json=True,
+    keep_thumbnails=KeptThumbnails.ALL,
+)
+
+
+def keep_radio(dialog: OptionsDialog, kept: KeptThumbnails) -> QRadioButton:
+    name = next(name for choice, name, _text in KEEP_THUMBNAILS if choice is kept)
+    return radio(dialog, name)
+
+
+def test_the_kept_files_group_sits_directly_below_embed_in_the_file(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """`UX-015`, amended 2026-10-11, second: below *Embed in the file*, the order after it kept."""
+    dialog = editor()
+    scroller = dialog.findChild(QScrollArea)
+    assert scroller is not None and scroller.widget() is not None
+    groups = [
+        child.title()
+        for child in scroller.widget().findChildren(
+            QGroupBox, options=Qt.FindChildOption.FindDirectChildrenOnly
+        )
+    ]
+
+    embed = groups.index("Embed in the file")
+    assert groups[embed + 1 : embed + 3] == [KEEP_BESIDE_TITLE, "Subtitles"], groups
+
+
+def test_the_kept_files_open_on_the_preset_s_own_and_come_back(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """Opening and accepting must not change what a preset keeps."""
+    dialog = editor(KEEPING)
+
+    assert box(dialog, KEEP_DESCRIPTION_NAME).isChecked()
+    assert box(dialog, KEEP_INFO_JSON_NAME).isChecked()
+    assert keep_radio(dialog, KeptThumbnails.ALL).isChecked()
+    result = dialog.result_preset()
+    assert (result.write_description, result.write_info_json, result.keep_thumbnails) == (
+        True,
+        True,
+        KeptThumbnails.ALL,
+    )
+
+
+@pytest.mark.parametrize("kept", list(KeptThumbnails))
+def test_each_thumbnail_choice_is_one_click_and_the_others_let_go(
+    editor: Callable[..., OptionsDialog], kept: KeptThumbnails
+) -> None:
+    """Three choices of one: choosing one leaves the other two unchosen."""
+    dialog = editor(KEEPING)
+
+    keep_radio(dialog, kept).click()
+
+    assert dialog.result_preset().keep_thumbnails is kept
+    assert [keep_radio(dialog, other).isChecked() for other in KeptThumbnails] == [
+        other is kept for other in KeptThumbnails
+    ]
+
+
+def test_what_is_kept_is_named_and_the_rule_is_not_mistaken_for_it(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """The derived preset says what it keeps, so it never shares a name with the catalogue's."""
+    dialog = editor()
+    box(dialog, KEEP_DESCRIPTION_NAME).click()
+    keep_radio(dialog, KeptThumbnails.BEST).click()
+
+    assert dialog.result_preset().name == (
+        "Best video available · keeping the description and the thumbnail"
+    )
+
+
+def test_the_info_json_says_what_is_taken_out_of_it(editor: Callable[..., OptionsDialog]) -> None:
+    """`DAT-003`, amended 2026-10-11: the file differs from yt-dlp's, and the screen says how,
+    in words a screen reader hears with the checkbox."""
+    dialog = editor()
+    note = dialog.findChild(QLabel, INFO_JSON_NOTE_NAME)
+
+    assert note is not None and note.text() == INFO_JSON_NOTE
+    assert box(dialog, KEEP_INFO_JSON_NAME).accessibleDescription() == INFO_JSON_NOTE
+
+
+def test_every_kept_file_control_names_itself_and_takes_the_keyboard(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """`NFR-005`. Each radio button says its whole choice, so none relies on a group label."""
+    dialog = editor()
+    controls: list[QWidget] = [
+        box(dialog, KEEP_DESCRIPTION_NAME),
+        box(dialog, KEEP_INFO_JSON_NAME),
+        *(keep_radio(dialog, kept) for kept in KeptThumbnails),
+    ]
+
+    for control in controls:
+        assert isinstance(control, QCheckBox | QRadioButton)
+        assert control.text().strip(), control.objectName()
+        assert control.focusPolicy() & Qt.FocusPolicy.TabFocus, control.objectName()

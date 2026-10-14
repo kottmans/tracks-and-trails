@@ -16,7 +16,7 @@ permitted three mutations, the downstream `T-184` still carried the rejected des
 ten policy refusals was not supported by evidence — all corrected. **Then the rulings landed**:
 `SEC-005` forbade the sixteenth option on 2026-08-21 and `SEC-003`'s amendment withdrew two
 permissions the same day. **The refusal list is 92.** **`T-247` built seven typed rows on
-2026-10-11**, so 28 of the 65 now have a control.
+2026-10-11, and `T-249` seven more on 2026-10-14**, so 35 of the 65 now have a control.
 
 *(**This header said 89 and named only `SEC-003` and `SEC-004` while the summary below said 92 and
 named `SEC-005`** — one document giving both the pre-ruling and post-ruling answer to the question
@@ -90,7 +90,7 @@ gap.
 
 | Class | Rows | What it means |
 |---|---|---|
-| `typed` | 65 | Gets a control, an owner task and a phase position. 28 already have one |
+| `typed` | 65 | Gets a control, an owner task and a phase position. 35 already have one |
 | `hatch` | 93 | Reachable through `REQ-031` only. Every row carries a reason |
 | `app:sets` | 19 | **`build_options` sets this key.** Derived, and drift-checked in both directions |
 | `app:plumbing` | 36 | It *is* the command line rather than a capability — `REQ-030`'s own words |
@@ -130,14 +130,16 @@ with a visible control.
 
 ### Why `app:sets` is not the same list as *what the application owns*
 
-`build_options` can emit **28 distinct keys** (24 before `T183-R1` added `geo_bypass`, and 25
-before `T-247` added `min_filesize`, `max_filesize` and `daterange`). Only **22 of them are
-reachable from the command line at all** — `logger`, `progress_hooks`, `postprocessor_hooks`,
-`postprocessors`, `no_color` and `daterange` are library parameters with no option string, so they
-can never be typed into the hatch and never need refusing. Deriving the refusal list from the
-emitted keys alone would therefore have produced six entries that refuse nothing. *(`daterange` is
-what yt-dlp builds from `--date`, `--dateafter` and `--datebefore`, whose own destinations differ
-from it; all three are `typed`, built, and refused through the hatch for their control.)*
+`build_options` can emit **31 distinct keys** (24 before `T183-R1` added `geo_bypass`, 25
+before `T-247` added `min_filesize`, `max_filesize` and `daterange`, and 28 before `T-249` added
+`writedescription`, `writeinfojson` and `write_all_thumbnails`). Only **24 of them are reachable
+from the command line at all** — `logger`, `progress_hooks`, `postprocessor_hooks`,
+`postprocessors`, `no_color`, `daterange` and `write_all_thumbnails` are library parameters with no
+option string, so they can never be typed into the hatch and never need refusing. Deriving the
+refusal list from the emitted keys alone would therefore have produced seven entries that refuse
+nothing. *(`daterange` is what yt-dlp builds from `--date`, `--dateafter` and `--datebefore`, and
+`write_all_thumbnails` what it builds from `--write-all-thumbnails`, whose destination is
+`writethumbnail`; all are `typed`, built, and refused through the hatch for their control.)*
 
 The invariant the test actually enforces is the useful one, and it holds with no exceptions:
 
@@ -327,7 +329,7 @@ rather than guessed at here.
 
 ## The decomposition
 
-**65 typed rows: 28 already have a field, 37 do not.** Nothing is unassigned and nothing is in two
+**65 typed rows: 35 already have a field, 30 do not.** Nothing is unassigned and nothing is in two
 tasks — counted, and the test asserts the partition. A task's rows join the built table when it
 builds them, all of them at once.
 
@@ -336,7 +338,7 @@ builds them, all of them at once.
 | — | 21 | Already built before these tasks: the format, audio, container, subtitle-language, embedding, proxy, rate-limit, retry and browser-cookie fields |
 | `T-247` | 7 | **Built 2026-10-11** — video selection: which items, how big, how old |
 | `T-248` | 7 | Filename shaping and the modification time |
-| `T-249` | 7 | The sidecar writers: description, info JSON and thumbnail files |
+| `T-249` | 7 | **Built 2026-10-14** — the sidecar writers: description, info JSON and thumbnail files |
 | `T-250` | 4 | Format depth: sorting, checking and the merge container |
 | `T-251` | 4 | Subtitle depth: automatic captions, format and conversion |
 | `T-252` | 7 | Download tuning and the whole retry policy |
@@ -353,7 +355,7 @@ because `T183-R3` then found a sixteenth — `--legacy-server-connect` — which
 actually unblocked. Every typed-field task is independent of the rest and of the hatch.
 
 
-### The 28 typed options that already have a field
+### The 35 typed options that already have a field
 
 **`built` is stated here rather than inferred from what the nine tasks did not claim** —
 `T183-R4` showed that definition is circular: swapping an unbuilt option for a built one kept
@@ -393,9 +395,16 @@ one day, and is listed against the first.
 | `--date` | `uploaded_after` |
 | `--dateafter` | `uploaded_after` |
 | `--datebefore` | `uploaded_before` |
+| `--write-description` | `write_description` |
+| `--no-write-description` | `write_description` |
+| `--write-info-json` | `write_info_json` |
+| `--no-write-info-json` | `write_info_json` |
+| `--write-thumbnail` | `keep_thumbnails` |
+| `--no-write-thumbnail` | `keep_thumbnails` |
+| `--write-all-thumbnails` | `keep_thumbnails` |
 
-**28 rows**: the 21 built before these tasks, and `T-247`'s seven. With the 37 across
-`T-248`…`T-255`, that is the typed class exactly.
+**35 rows**: the 21 built before these tasks, `T-247`'s seven and `T-249`'s seven. With the 30
+across `T-248` and `T-250`…`T-255`, that is the typed class exactly.
 
 ---
 

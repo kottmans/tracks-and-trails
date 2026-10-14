@@ -14,12 +14,10 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
-## Ready
-
 ### T-249 — The sidecar writers: description, info JSON and thumbnail files
 
-**Status:** Ready — **ruled 2026-10-11** (`DAT-003` and `UX-015` amended); after `T-362`.
-*(Was Proposed:)* filed 2026-08-16 by `T-183`
+**Status:** In Review — built 2026-10-14. *(Was Ready:)* ruled 2026-10-11 (`DAT-003` and
+`UX-015` amended), after `T-362`. *(Was Proposed:)* filed 2026-08-16 by `T-183`
 **Options (7):** `--write-description`, `--no-write-description`, `--write-info-json`,
 `--no-write-info-json`, `--write-thumbnail`, `--no-write-thumbnail`, `--write-all-thumbnails`
 **Specific criteria:** every file these write lands inside the chosen directory, through `T-034`
@@ -51,7 +49,60 @@ surviving the application's embed (`ARC-010`, amended 2026-09-20); and a sidecar
 chosen folder with its media, which the options field's own work built (`claim_outputs`, the
 probe's file landed there).
 
+#### Built 2026-10-14
+
+- **Three fields, shared by `Preset` and `DownloadRequest`**: `write_description`,
+  `write_info_json` and `keep_thumbnails`, a `KeptThumbnails` of `none`, `best` or `all`. They are
+  copied by `to_request`, kept in `FormatChoice`, and read back as the enum from `settings.toml`
+  and from a job's stored request. An older row without them keeps nothing.
+- **`build_options` asks for each on the download only**: `writedescription`, `writeinfojson`,
+  and `writethumbnail` for the best thumbnail or `write_all_thumbnails` for all of them. yt-dlp's
+  own key for `--write-all-thumbnails` is separate, and no option string names it. The embed's
+  `already_have_thumbnail` now follows the keep, which completes `ARC-010`'s 2026-09-20 union.
+  **Six intents are held to `parse_options`**, key by key. Embedding is left out of that
+  comparison: there the application sets `writethumbnail` itself so there is a picture to embed,
+  which yt-dlp's command line arranges differently with the same result; the union tests hold
+  that.
+- **The info JSON is stripped twice, by design** (ruling 1). A `before_dl` postprocessor strips
+  the file the moment yt-dlp writes it, because yt-dlp writes it before downloading. So the copy
+  in staging is clean for the whole download, and stays clean when a failed attempt keeps staging
+  for its resume (`T-113`). The worker strips again before claiming, so a yt-dlp that does not
+  record the path cannot move secrets into the folder. `without_secrets` removes every `cookies`
+  and `http_headers` key at any depth. The file is rewritten through a sibling and replaced
+  atomically, and one that cannot be read raises rather than being kept as it is.
+- **The editor's *Keep beside the file* group** sits directly below *Embed in the file*
+  (ruling 3): two checkboxes, a line under the info JSON saying what is taken out of it, and
+  three radio buttons that each name their whole choice. None needs ffmpeg, so none is
+  withdrawn without it. The format description adds *keeping the description, the info JSON
+  and the thumbnail*, and these three are set aside when finding the built-in a download
+  starts from.
+- **The hatch.** The seven spellings join the audit's built table, now 35 rows against 30
+  unbuilt. Admission refuses all seven for their control, `--write-info-json` included, which
+  closes ruling 2's interim route through the options field. `write_all_thumbnails` joins the
+  library-only keys. `merge_thumbnail` stays as the union's written rule, though no admitted
+  spelling now reaches it.
+- **Tests that used these spellings through the hatch moved to the fields**:
+  `test_retained_sidecars.py`, whose page now carries a description too, and three of
+  `test_hatch_request.py`'s thumbnail cases. They test the same claim, reached the way a user now
+  asks.
+- **New tests.** `test_kept_beside.py` covers the model, storage, the mapping and the stripping.
+  `test_kept_info_json.py` uses real yt-dlp with a cookies file and a typed `Authorization`
+  header, on three routes: the kept file after success; the staging file after a failed
+  download; and success with the hook replaced by one that does nothing. The editor tests cover
+  placement, opening and coming back, the radio buttons, the name, the note and the keyboard.
+- **Mutations, 14 of 14 caught**, on a copy of the tree. Each of the four keys removed; the
+  embed deleting a kept thumbnail; `http_headers` kept; either stripping pass removed; the preset
+  not carrying the keep; either enum read back as a bare string; the editor ignoring its radio
+  buttons; the name clause emptied; the built-in match not setting the three aside.
+
+**Checks, 2026-10-14, on Linux:** `ruff check .` and `ruff format --check .`; `mypy src`, bare
+`mypy` and `mypy --platform win32`; `python tools/ytdlp_option_table.py --check`; `tests/unit
+tests/ui` under `-n auto`, **5,503 passed**, 21 skipped; `tests/integration` **530 passed**, the
+three new info JSON cases among them. No Windows run.
+
 ---
+
+## Ready
 
 ### T-301 — Four UI tests break when the application font grows by one point
 
@@ -636,9 +687,9 @@ option promoted becomes a typed-field task of its own, on the pattern `T-247`…
 the option lists come from: `docs/YTDLP_OPTION_AUDIT.md`. **44 options over nine tasks** — the
 typed class minus the 21 that already have a `DownloadRequest` field. Counted, and
 `tests/unit/test_option_audit.py` asserts the partition, so a task that quietly grows or drops an
-option fails a gate. **`T-247` built its seven on 2026-10-11**, so the built table holds 28 and
-the other eight tasks 37; two of the seven are `Preset` fields, by `ARC-010`'s amendment that
-day.)*
+option fails a gate. **`T-247` built its seven on 2026-10-11 and `T-249` its seven on
+2026-10-14**, so the built table holds 35 and the other seven tasks 30; two of `T-247`'s are
+`Preset` fields, by `ARC-010`'s amendment that day.)*
 
 **The following is true of all nine.** Each still states its own `**Status:**`, because `T-096`'s
 gate reads that line per entry and a shared one would exempt nine tasks from the check that six

@@ -28,6 +28,7 @@ import codecs
 import contextlib
 import functools
 import importlib
+import json
 import logging
 import os
 import re
@@ -54,6 +55,7 @@ from tracks_and_trails.core.errors import TRANSIENT_CONTEXT_KEY, ErrorKind, Fail
 from tracks_and_trails.core.models import (
     DownloadRequest,
     FormatInfo,
+    KeptThumbnails,
     MediaInfo,
     MediaKind,
     PlaylistEntry,
@@ -913,11 +915,28 @@ def build_options(
         # embeds nothing. That is `T012-R5`'s defect exactly — a key accepted, and silently
         # ineffective — one option along.
         #
-        # The picture is **not** kept: `already_have_thumbnail` is left False in the spec below,
-        # so yt-dlp deletes it after embedding. `REQ-010` asks to embed a thumbnail, not to write
-        # one beside the media, and a stray `.jpg` in the output directory is not what was asked
-        # for.
+        # The picture is **not** kept unless the user asks: `already_have_thumbnail` follows
+        # `keep_thumbnails` in the spec below, so yt-dlp deletes it after embedding otherwise.
+        # `REQ-010` asks to embed a thumbnail, not to write one beside the media.
         options["writethumbnail"] = True
+
+    # **Thumbnails kept beside the media** (`T-249`), the user's half of the union `ARC-010`'s
+    # 2026-09-20 amendment rules: written when either asks, and kept when the user does.
+    # `write_all_thumbnails` is yt-dlp's own key for `--write-all-thumbnails`, which sets the
+    # same destination as `--write-thumbnail` on the command line and is read apart from it.
+    if request.keep_thumbnails is KeptThumbnails.BEST:
+        options["writethumbnail"] = True
+    elif request.keep_thumbnails is KeptThumbnails.ALL:
+        options["write_all_thumbnails"] = True
+
+    # **The description and the info JSON, on the download only** (`T-249`). yt-dlp writes both
+    # when it processes the item, which a probe never does; `retained_sidecars` reads these keys
+    # to claim the files, and the worker strips an info JSON before it does (`DAT-003`, amended
+    # 2026-10-11).
+    if request.write_description:
+        options["writedescription"] = True
+    if request.write_info_json:
+        options["writeinfojson"] = True
 
     # The one key the application and the user share, settled as `ARC-010`'s 2026-09-20 amendment
     # rules: written when either asks, and the user's request to keep it survives.
@@ -1167,6 +1186,69 @@ def _default_postprocessors() -> tuple[dict[str, Any], ...]:
     return tuple(_command_line_defaults().get("postprocessors", ()))
 
 
+#: The keys of an info JSON that carry the session's secrets (`DAT-003`, amended 2026-10-11).
+#:
+#: **Measured at 2026.08.19, on 2026-10-11.** yt-dlp writes `cookies`, the cookie values its jar
+#: holds for a format's address, into every format and at the top level, so `--load-info-json` can
+#: replay the download; and `http_headers`, which carry any header typed through `--add-headers`,
+#: `Authorization` included. Its *clean* step strips neither. Both are removed wherever they occur,
+#: since a field's depth is the extractor's choice.
+INFO_JSON_SECRETS: Final = frozenset({"cookies", "http_headers"})
+
+
+def without_secrets(value: Any) -> Any:
+    """`value`, a decoded info JSON, with every `INFO_JSON_SECRETS` key removed at any depth."""
+    if isinstance(value, dict):
+        return {
+            key: without_secrets(item)
+            for key, item in value.items()
+            if key not in INFO_JSON_SECRETS
+        }
+    if isinstance(value, list):
+        return [without_secrets(item) for item in value]
+    return value
+
+
+def strip_info_json(path: Path) -> None:
+    """Rewrite the info JSON at `path` without its cookies or request headers (`T-249`).
+
+    `DAT-003`, amended 2026-10-11: cookie contents never reach a file this application keeps.
+    **Replaced, not edited in place**: the stripped text goes to a sibling, which then replaces
+    the original atomically, so no reader ever finds half a file. Written as yt-dlp writes it, UTF-8
+    without escaping. **An unreadable file raises** rather than being kept as it is: a file this
+    cannot read is one it cannot vouch for.
+    """
+    stripped = without_secrets(json.loads(path.read_text(encoding="utf-8")))
+    sibling = path.with_name(f"{path.name}.stripping")
+    sibling.write_text(json.dumps(stripped, ensure_ascii=False), encoding="utf-8")
+    sibling.replace(path)
+
+
+def info_json_stripper() -> Any:
+    """A `before_dl` postprocessor that strips the info JSON yt-dlp has just written (`T-249`).
+
+    **At the moment it is written, not when the files are claimed.** `YoutubeDL.process_info`
+    writes the info JSON, records its path as `infojson_filename`, then runs the `before_dl`
+    processors and only then downloads, measured at 2026.08.19. Stripping here means the file in
+    staging is clean for the whole download, and stays clean when a failed attempt keeps staging
+    for its resume (`T-113`). The worker strips again before claiming, for a yt-dlp that does
+    not record the path.
+    """
+    from yt_dlp.postprocessor.common import PostProcessor
+
+    class InfoJsonStripper(PostProcessor):  # type: ignore[misc]
+        # `processed`, not `info`: yt-dlp sets `infojson_filename` while processing the item, so
+        # no extraction has it, and `tests/unit/test_fixtures.py` reads `info.get` as a projection
+        # read that a captured fixture must keep.
+        def run(self, processed: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
+            written = processed.get("infojson_filename")
+            if isinstance(written, str) and Path(written).is_file():
+                strip_info_json(Path(written))
+            return [], processed
+
+    return InfoJsonStripper()
+
+
 def merge_thumbnail(options: dict[str, Any], hatch: dict[str, Any]) -> None:
     """Settle `writethumbnail`, the one key the application and the user share (Finding 6).
 
@@ -1178,7 +1260,11 @@ def merge_thumbnail(options: dict[str, Any], hatch: dict[str, Any]) -> None:
     The amendment says the two intents are not in conflict. The application writes the thumbnail
     *in order to embed it*; a user asking to keep it changes only the deletion. So the thumbnail
     is written when **either** asks, and the user's request to keep it survives — which is the
-    `already_have_thumbnail` half, and `T-249`'s control when it exists.
+    `already_have_thumbnail` half.
+
+    **Since `T-249` the keep is a control**, `keep_thumbnails`, and admission refuses the hatch's
+    three thumbnail spellings for it. This union is still the written rule for the key, and the
+    control reaches it through `build_options` directly.
     """
     if "writethumbnail" not in hatch:
         return
@@ -1373,8 +1459,10 @@ def build_postprocessors(
         # **Keyed on what the *user* asked for, not on `writethumbnail`.** The application sets
         # that key itself whenever it embeds, purely so there is a picture to embed, so reading it
         # here would keep the file for every embedding job — which `REQ-010` does not ask for and
-        # `T-109` deliberately decided against. The keep comes from the hatch or it does not come.
-        specs.append({"key": "EmbedThumbnail", "already_have_thumbnail": keep_thumbnail})
+        # `T-109` deliberately decided against. The keep comes from `keep_thumbnails` (`T-249`)
+        # or from the hatch, or it does not come.
+        kept = keep_thumbnail or request.keep_thumbnails is not KeptThumbnails.NONE
+        specs.append({"key": "EmbedThumbnail", "already_have_thumbnail": kept})
     specs.extend({"key": name} for name in request.post_processors)
 
     resolved: list[dict[str, Any]] = []

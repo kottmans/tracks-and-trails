@@ -23,6 +23,7 @@ from tracks_and_trails.core import presets
 from tracks_and_trails.core.models import (
     AudioCodec,
     DownloadRequest,
+    KeptThumbnails,
     MediaKind,
     NetworkOptions,
     Preset,
@@ -458,6 +459,10 @@ def test_a_preset_owned_field_cannot_be_overridden(field_name: str) -> None:
         "embed_thumbnail": True,
         "embed_metadata": True,
         "embed_chapters": True,
+        # `T-249`'s kept files: a job that keeps its info JSON is not the preset that was shown.
+        "write_description": True,
+        "write_info_json": True,
+        "keep_thumbnails": KeptThumbnails.ALL,
         # `T-247`'s filters: a job skipping files over a byte is not the preset that was shown.
         "min_filesize": 1,
         "max_filesize": 1,

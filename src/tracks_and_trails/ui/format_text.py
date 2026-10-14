@@ -52,7 +52,7 @@ bitrate control set to 320 — trading this gap for a contradiction.
 from dataclasses import fields, replace
 from typing import Final
 
-from tracks_and_trails.core.models import AudioCodec, Preset
+from tracks_and_trails.core.models import AudioCodec, KeptThumbnails, Preset
 from tracks_and_trails.core.presets import (
     BUILT_IN_PRESETS,
     POST_PROCESSING_FIELDS,
@@ -134,7 +134,10 @@ def format_name(choice: FormatChoice) -> str:
     is, and a name omitting the one number a user chose between is that gap one step smaller.
     """
     name = preset_name_for(choice) or _converting_preset_for(choice) or _base_preset_for(choice)
-    clauses = f"{_post_processing(choice)}{_which_items(choice)}{_extra_options(choice)}"
+    clauses = (
+        f"{_post_processing(choice)}{_kept_beside(choice)}{_which_items(choice)}"
+        f"{_extra_options(choice)}"
+    )
     if name is None:
         return f"{choice.format_selector}{clauses}"
     return f"{name}{_bitrate(choice)}{clauses}"
@@ -168,12 +171,16 @@ def _base_preset_for(choice: FormatChoice) -> str | None:
     **The additional yt-dlp options are set aside too** (`T-184`). No built-in carries any, so a
     preset with some matched nothing and its row read as the raw selector — `T140-R3`'s defect
     again, through the newest field. `_extra_options` says they are there instead. **So are the
-    size and date filters** (`T-247`), for the same reason, and `_which_items` says them.
+    size and date filters** (`T-247`) and the files kept beside the media (`T-249`), for the same
+    reason, and `_which_items` and `_kept_beside` say them.
     """
     plain = replace(
         unadjusted(choice),
         extra_options="",
         extra_option_argv=(),
+        write_description=False,
+        write_info_json=False,
+        keep_thumbnails=KeptThumbnails.NONE,
         min_filesize=None,
         max_filesize=None,
         uploaded_after=None,
@@ -231,6 +238,21 @@ def _post_processing(choice: FormatChoice) -> str:
     if embedded:
         parts.append(f"embedding {_joined(embedded)}")
     return "".join(f" · {part}" for part in parts)
+
+
+def _kept_beside(choice: FormatChoice) -> str:
+    """Which files are kept beside the media, and nothing when none is (`T-249`)."""
+    kept = [
+        label
+        for label, wanted in (
+            ("the description", choice.write_description),
+            ("the info JSON", choice.write_info_json),
+            ("the thumbnail", choice.keep_thumbnails is KeptThumbnails.BEST),
+            ("every thumbnail", choice.keep_thumbnails is KeptThumbnails.ALL),
+        )
+        if wanted
+    ]
+    return f" · keeping {_joined(kept)}" if kept else ""
 
 
 def _which_items(choice: FormatChoice) -> str:

@@ -546,6 +546,20 @@ class MediaKind(StrEnum):
     AUDIO = "audio"
 
 
+class KeptThumbnails(StrEnum):
+    """Which of the source's thumbnails are kept beside the file (`T-249`).
+
+    yt-dlp's `--write-thumbnail` and `--write-all-thumbnails`, which set one key between them, as
+    the three radio buttons `UX-015`'s second amendment of 2026-10-11 rules. A kept thumbnail and
+    an embedded one combine as a union (`ARC-010`, amended 2026-09-20): embedding writes the
+    picture, and keeping it stops the embed deleting it afterwards.
+    """
+
+    NONE = "none"
+    BEST = "best"
+    ALL = "all"
+
+
 class AudioCodec(StrEnum):
     """The audio codec a request asks for (`REQ-010`'s "chosen codec").
 
@@ -1142,6 +1156,13 @@ class DownloadRequest:
     embed_thumbnail: bool = False
     embed_metadata: bool = False
     embed_chapters: bool = False
+    #: Files kept beside the media (`T-249`, `UX-015` amended 2026-10-11, second): the source's
+    #: description, its info JSON and its thumbnails. **An info JSON is kept without its cookies or
+    #: request headers** (`DAT-003`, amended 2026-10-11): yt-dlp writes both into it, and the
+    #: worker removes them before the file leaves staging.
+    write_description: bool = False
+    write_info_json: bool = False
+    keep_thumbnails: KeptThumbnails = KeptThumbnails.NONE
 
     #: Which items this job keeps (`REQ-030`, `T-247`): yt-dlp's `--min-filesize`,
     #: `--max-filesize` and its upload-date window, which `build_options` sets **on the download
@@ -1246,6 +1267,9 @@ class DownloadRequest:
         )
         for flag in ("embed_thumbnail", "embed_metadata", "embed_chapters"):
             _require_flag("DownloadRequest", flag, getattr(self, flag))
+        for flag in ("write_description", "write_info_json"):
+            _require_flag("DownloadRequest", flag, getattr(self, flag))
+        _require_enum("DownloadRequest", "keep_thumbnails", self.keep_thumbnails, KeptThumbnails)
         for size in ("min_filesize", "max_filesize"):
             _require_optional_positive("DownloadRequest", size, getattr(self, size), LARGEST_SIZE)
         _require_size_order("DownloadRequest", self.min_filesize, self.max_filesize)
@@ -1313,6 +1337,13 @@ class Preset:
     embed_thumbnail: bool = False
     embed_metadata: bool = False
     embed_chapters: bool = False
+    #: Files kept beside the media (`T-249`, `UX-015` amended 2026-10-11, second): the source's
+    #: description, its info JSON and its thumbnails. **An info JSON is kept without its cookies or
+    #: request headers** (`DAT-003`, amended 2026-10-11): yt-dlp writes both into it, and the
+    #: worker removes them before the file leaves staging.
+    write_description: bool = False
+    write_info_json: bool = False
+    keep_thumbnails: KeptThumbnails = KeptThumbnails.NONE
     #: Which of a playlist's entries become jobs (`REQ-030`, `T-247`): yt-dlp's `-I` grammar as
     #: typed, and *at most N*. **The preset's alone** — see `EXPANSION_FIELDS`. They seed the add
     #: dialog's entry picker when a playlist is probed, and again when a row's preset changes to
@@ -1364,6 +1395,9 @@ class Preset:
         _require_one_container_change("Preset", self.remux_container, self.recode_container)
         for flag in ("embed_thumbnail", "embed_metadata", "embed_chapters"):
             _require_flag("Preset", flag, getattr(self, flag))
+        for flag in ("write_description", "write_info_json"):
+            _require_flag("Preset", flag, getattr(self, flag))
+        _require_enum("Preset", "keep_thumbnails", self.keep_thumbnails, KeptThumbnails)
         _require_optional_items("Preset", self.playlist_items)
         _require_optional_positive("Preset", "max_downloads", self.max_downloads, MOST_ITEMS)
         for size in ("min_filesize", "max_filesize"):

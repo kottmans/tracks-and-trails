@@ -1,4 +1,8 @@
-"""Files the escape hatch asks to keep survive the worker's cleanup (`T-184`, `T184-R11`).
+"""Files a download asks to keep survive the worker's cleanup (`T-184`, `T184-R11`, `T-249`).
+
+**Asked for through `T-249`'s typed fields since 2026-10-14.** These measured the escape hatch's
+`--write-thumbnail` and `--write-info-json`, which admission now refuses for their control; the
+claim they test is the same one, reached the way a user now asks for these files.
 
 The reviewer found a real download writing a thumbnail and an info file and then **deleting both**,
 while the job reported success with only the media. `_discard_staging` removes whatever
@@ -31,7 +35,7 @@ import pytest
 from yt_dlp import YoutubeDL
 from yt_dlp.postprocessor import get_postprocessor
 
-from tracks_and_trails.core.models import DownloadRequest
+from tracks_and_trails.core.models import DownloadRequest, KeptThumbnails
 from tracks_and_trails.core.paths import UnsafePathError
 from tracks_and_trails.downloader import ytdlp_adapter as adapter
 from tracks_and_trails.downloader.worker import claim_outputs, retained_sidecars
@@ -47,7 +51,9 @@ def _handler(host: str) -> type[BaseHTTPRequestHandler]:
         f'<html><head><meta property="og:video" content="http://{host}/clip.mp4">'
         f'<meta property="og:video:type" content="video/mp4">'
         f'<meta property="og:image" content="http://{host}/cover.jpg">'
-        f'<meta property="og:title" content="Probe clip"></head><body>x</body></html>'
+        f'<meta property="og:title" content="Probe clip">'
+        f'<meta property="og:description" content="What the clip is about">'
+        f"</head><body>x</body></html>"
     ).encode()
 
     class Handler(BaseHTTPRequestHandler):
@@ -103,15 +109,14 @@ def watch_url() -> Iterator[str]:
         thread.join(timeout=5)
 
 
-def _download(url: str, staging: Path, text: str, argv: tuple[str, ...]) -> Any:
+def _download(url: str, staging: Path, **kept: Any) -> Any:
     """One real download into `staging`, through this application's own options."""
     request = DownloadRequest(
         url=url,
         output_directory=str(staging),
         format_selector="best",
         output_template="clip.%(ext)s",
-        extra_options=text,
-        extra_option_argv=argv,
+        **kept,
     )
     options = adapter.build_options(request, str(staging / "clip.%(ext)s"))
     with (
@@ -135,10 +140,16 @@ def test_a_thumbnail_and_an_info_file_the_user_asked_for_are_kept(
     _request, options, result = _download(
         watch_url,
         staging,
-        "--write-thumbnail --write-info-json",
-        ("--write-thumbnail", "--write-info-json"),
+        write_description=True,
+        write_info_json=True,
+        keep_thumbnails=KeptThumbnails.BEST,
     )
-    assert sorted(p.name for p in staging.iterdir()) == ["clip.info.json", "clip.jpg", "clip.mp4"]
+    assert sorted(p.name for p in staging.iterdir()) == [
+        "clip.description",
+        "clip.info.json",
+        "clip.jpg",
+        "clip.mp4",
+    ]
 
     written, kept = claim_outputs(
         result,
@@ -152,24 +163,24 @@ def test_a_thumbnail_and_an_info_file_the_user_asked_for_are_kept(
 
     landed = sorted(p.name for p in downloads.iterdir())
     assert written.name == "clip.mp4"
-    assert landed == ["clip.info.json", "clip.jpg", "clip.mp4"], (
+    assert landed == ["clip.description", "clip.info.json", "clip.jpg", "clip.mp4"], (
         f"a file the user asked to keep did not land beside the media: {landed}"
     )
-    assert {path.name for path in kept} == {"clip.info.json", "clip.jpg"}
+    assert {path.name for path in kept} == {"clip.description", "clip.info.json", "clip.jpg"}
 
 
 def test_a_download_that_asked_for_nothing_extra_keeps_nothing_extra(
     watch_url: str, tmp_path: Path
 ) -> None:
     """The control, and the half `T184-R11` warns against: *"do not simply keep every staging
-    intermediate"*. With no hatch, the media lands alone.
+    intermediate"*. Asking to keep nothing, the media lands alone.
     """
     staging = tmp_path / "staging"
     staging.mkdir()
     downloads = tmp_path / "downloads"
     downloads.mkdir()
 
-    _request, options, result = _download(watch_url, staging, "", ())
+    _request, options, result = _download(watch_url, staging)
 
     written, kept = claim_outputs(
         result,
@@ -200,9 +211,7 @@ def test_the_family_keeps_one_name_when_the_media_name_is_taken(
     downloads.mkdir()
     (downloads / "clip.mp4").write_bytes(b"taken")
 
-    _request, options, result = _download(
-        watch_url, staging, "--write-thumbnail", ("--write-thumbnail",)
-    )
+    _request, options, result = _download(watch_url, staging, keep_thumbnails=KeptThumbnails.BEST)
 
     written, kept = claim_outputs(
         result,

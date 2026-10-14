@@ -8,9 +8,14 @@ subtitles with language selection. This is the one screen all seven are set on.
 for what no control here covers, checked as the user types once typing pauses. Refusals are listed
 under it, never repeating a value, and the accepting buttons are disabled while any stands.
 
-**Above it, *Which items*** (`UX-015` amended 2026-10-11, `T-247`): which of a playlist's entries
-become jobs, and the size and upload-date filters each job applies. Its refusals are listed the same
-way, and hold the same buttons.
+**Below *Embed in the file*, *Keep beside the file*** (`UX-015` amended 2026-10-11, second,
+`T-249`): the description and the info JSON as checkboxes, and the thumbnail as none, the best
+or all of them. An info JSON is kept without its cookies or request headers (`DAT-003`, amended
+2026-10-11), and the group says so.
+
+**Above the hatch, *Which items*** (`UX-015` amended 2026-10-11, `T-247`): which of a playlist's
+entries become jobs, and the size and upload-date filters each job applies. Its refusals are listed
+the same way, and hold the same buttons.
 
 ## Reached two ways, and it is the same widget both times
 
@@ -94,7 +99,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from tracks_and_trails.core.models import AudioCodec, MediaKind, Preset, containers_for
+from tracks_and_trails.core.models import (
+    AudioCodec,
+    KeptThumbnails,
+    MediaKind,
+    Preset,
+    containers_for,
+)
 from tracks_and_trails.core.presets import (
     ALL_SUBTITLE_LANGUAGES,
     MP3_BITRATES,
@@ -153,6 +164,20 @@ EMBED_CHAPTERS_NAME: Final = "optionsEmbedChapters"
 SUBTITLE_LANGUAGES_NAME: Final = "optionsSubtitleLanguages"
 
 EMBED_SUBTITLES_NAME: Final = "optionsEmbedSubtitles"
+
+#: The group below *Embed in the file* (`UX-015`, amended 2026-10-11, second, `T-249`).
+KEEP_BESIDE_TITLE: Final = "Keep beside the file"
+KEEP_DESCRIPTION_NAME: Final = "optionsKeepDescription"
+KEEP_INFO_JSON_NAME: Final = "optionsKeepInfoJson"
+INFO_JSON_NOTE_NAME: Final = "optionsInfoJsonNote"
+#: One radio button per choice, each saying the whole choice so a screen reader needs no context.
+KEEP_THUMBNAILS: Final = (
+    (KeptThumbnails.NONE, "optionsKeepNoThumbnail", "Keep no thumbnail"),
+    (KeptThumbnails.BEST, "optionsKeepBestThumbnail", "Keep the best thumbnail"),
+    (KeptThumbnails.ALL, "optionsKeepEveryThumbnail", "Keep every thumbnail"),
+)
+#: Said under the info JSON, because the file differs from what yt-dlp alone would write.
+INFO_JSON_NOTE: Final = "Sign-in cookies and request headers are removed from it before it is kept."
 SAVE_PRESET_NAME: Final = "optionsSavePreset"
 SAVE_RESULT_NAME: Final = "optionsSaveResult"
 
@@ -479,6 +504,7 @@ class OptionsDialog(QDialog):
         stack.addWidget(self._build_audio())
         stack.addWidget(self._build_container())
         stack.addWidget(self._build_embedding())
+        stack.addWidget(self._build_kept_beside())
         stack.addWidget(self._build_subtitles())
         stack.addWidget(self._build_which_items())
         stack.addWidget(self._build_extra_options())
@@ -618,6 +644,34 @@ class OptionsDialog(QDialog):
         self._embed_chapters.setObjectName(EMBED_CHAPTERS_NAME)
         for box in (self._embed_thumbnail, self._embed_metadata, self._embed_chapters):
             layout.addWidget(box)
+        return group
+
+    def _build_kept_beside(self) -> QWidget:
+        """*Keep beside the file*, directly below *Embed in the file* (`T-249`).
+
+        **Radio buttons for the thumbnail, not a dropdown** (`UX-015`, amended 2026-10-11,
+        second): each names itself, where a combo box on Linux announces its value in place of
+        its name (`T200-R7`). None of these needs ffmpeg: they keep what yt-dlp fetched.
+        """
+        group = QGroupBox(KEEP_BESIDE_TITLE, self)
+        layout = QVBoxLayout(group)
+        self._keep_description = QCheckBox("The description", group)
+        self._keep_description.setObjectName(KEEP_DESCRIPTION_NAME)
+        layout.addWidget(self._keep_description)
+        self._keep_info_json = QCheckBox("The info JSON, everything yt-dlp read about it", group)
+        self._keep_info_json.setObjectName(KEEP_INFO_JSON_NAME)
+        self._keep_info_json.setAccessibleDescription(INFO_JSON_NOTE)
+        layout.addWidget(self._keep_info_json)
+        note = QLabel(INFO_JSON_NOTE, group)
+        note.setObjectName(INFO_JSON_NOTE_NAME)
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        self._keep_thumbnail: dict[KeptThumbnails, QRadioButton] = {}
+        for kept, name, text in KEEP_THUMBNAILS:
+            button = QRadioButton(text, group)
+            button.setObjectName(name)
+            layout.addWidget(button)
+            self._keep_thumbnail[kept] = button
         return group
 
     def _build_subtitles(self) -> QWidget:
@@ -812,6 +866,9 @@ class OptionsDialog(QDialog):
         self._embed_metadata.setChecked(preset.embed_metadata)
         self._embed_chapters.setChecked(preset.embed_chapters)
         self._embed_subtitles.setChecked(preset.embed_subtitles)
+        self._keep_description.setChecked(preset.write_description)
+        self._keep_info_json.setChecked(preset.write_info_json)
+        self._keep_thumbnail[preset.keep_thumbnails].setChecked(True)
         # **`all` is a selector, not a language** (`T109-R1`). It means *every subtitle this source
         # publishes*, so displaying it means every offered language checked. Compared as a set
         # against the literals, a preset carrying `("all",)` matched nothing the probe found and an
@@ -1131,6 +1188,9 @@ class OptionsDialog(QDialog):
             audio_quality=quality,
             subtitle_languages=languages,
             embed_subtitles=embed,
+            write_description=self._keep_description.isChecked(),
+            write_info_json=self._keep_info_json.isChecked(),
+            keep_thumbnails=self._chosen_thumbnails(),
             playlist_items=items,
             max_downloads=at_most,
             min_filesize=smallest,
@@ -1142,6 +1202,13 @@ class OptionsDialog(QDialog):
         )
         # **With its entry rule** (`T-247`): two presets differing only in it must not share a name.
         return replace(derived, name=derived_preset_name(derived))
+
+    def _chosen_thumbnails(self) -> KeptThumbnails:
+        """Which thumbnails the radio buttons keep. One is always checked; none means *none*."""
+        return next(
+            (kept for kept, button in self._keep_thumbnail.items() if button.isChecked()),
+            KeptThumbnails.NONE,
+        )
 
     def _chosen_entry_rule(self) -> tuple[str | None, int | None]:
         """The items and *at most* — or the preset's own, where they could not be chosen.

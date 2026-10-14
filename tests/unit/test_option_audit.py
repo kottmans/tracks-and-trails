@@ -27,7 +27,13 @@ import pytest
 import yt_dlp.version
 from yt_dlp.options import create_parser
 
-from tracks_and_trails.core.models import EXPANSION_FIELDS, AudioCodec, DownloadRequest, MediaKind
+from tracks_and_trails.core.models import (
+    EXPANSION_FIELDS,
+    AudioCodec,
+    DownloadRequest,
+    KeptThumbnails,
+    MediaKind,
+)
 from tracks_and_trails.downloader.ytdlp_adapter import build_options
 
 YTDLP_VERSION: Final = yt_dlp.version.__version__
@@ -102,6 +108,11 @@ _FIELD_ON: Final = {
     "rate_limit_bytes": 1024,
     "retries": 0,
     "cookies_from_browser": "firefox",
+    # `T-249`'s kept files, on the download only. `ALL` is the case that sets a key of its own;
+    # `BEST` shares `writethumbnail` with `embed_thumbnail`, already turned on above.
+    "write_description": True,
+    "write_info_json": True,
+    "keep_thumbnails": KeptThumbnails.ALL,
     # `T-247`'s filters, which `build_options` sets on the download only.
     "min_filesize": 1024,
     "max_filesize": 2048,
@@ -328,10 +339,12 @@ def test_every_application_owned_row_names_a_key_build_options_really_sets() -> 
 
 
 def test_the_keys_with_no_command_line_route_are_the_ones_the_audit_names() -> None:
-    """Six emitted keys are library parameters; refusing them would refuse nothing.
+    """Seven emitted keys are library parameters; refusing them would refuse nothing.
 
     `daterange` joined with `T-247`: yt-dlp builds it from `--date`, `--dateafter` and
     `--datebefore`, whose own destinations are other names, and all three are typed and refused.
+    `write_all_thumbnails` joined with `T-249`, built from `--write-all-thumbnails`, whose
+    destination is `writethumbnail`.
     """
     routable = {option["dest"] for option in ALL_OPTIONS}
     assert sorted(EMITTED - routable) == [
@@ -341,6 +354,7 @@ def test_the_keys_with_no_command_line_route_are_the_ones_the_audit_names() -> N
         "postprocessor_hooks",
         "postprocessors",
         "progress_hooks",
+        "write_all_thumbnails",
     ]
 
 

@@ -55,6 +55,7 @@ from typing import Any, Final
 from tracks_and_trails.core.models import (
     AudioCodec,
     DownloadRequest,
+    KeptThumbnails,
     MediaKind,
     Preset,
 )
@@ -440,6 +441,12 @@ class FormatChoice:
     embed_metadata: bool
     embed_chapters: bool
 
+    #: The files kept beside the media (`T-249`): a job that keeps its info JSON produces a
+    #: different download from one that does not, so they are part of what it is.
+    write_description: bool
+    write_info_json: bool
+    keep_thumbnails: KeptThumbnails
+
     #: The escape hatch (`T-184`), here because it is preset-owned and the field set must equal
     #: `PRESET_OWNED_FIELDS`. It does describe what a download **is**, which is this type's test:
     #: a job carrying `--write-thumbnail` produces a different download from one that does not.
@@ -595,6 +602,9 @@ def to_request(
         embed_thumbnail=preset.embed_thumbnail,
         embed_metadata=preset.embed_metadata,
         embed_chapters=preset.embed_chapters,
+        write_description=preset.write_description,
+        write_info_json=preset.write_info_json,
+        keep_thumbnails=preset.keep_thumbnails,
         min_filesize=preset.min_filesize,
         max_filesize=preset.max_filesize,
         # **Resolved, not copied** (`ARC-010`, amended 2026-10-11): `today-2weeks` names a day, and
