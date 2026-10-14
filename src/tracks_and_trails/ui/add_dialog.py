@@ -3131,7 +3131,9 @@ class AddUrlDialog(QDialog):
             if folder and not names_the_playlist
             else self._output_directory
         )
-        count = len(probed.entries)
+        # **Padded to the slots enumerated** (`T-362`), so a playlist of 120 slots with 99 readable
+        # still numbers `005`, as the slot it names.
+        count = probed.slot_count
         return [
             Job(
                 id=str(uuid.uuid4()),
@@ -3147,7 +3149,7 @@ class AddUrlDialog(QDialog):
                         # *Playlist* and *Position* written in here, where they are known.
                         default_output_template=output_template.resolve_queue_fields(
                             self._default_output_template,
-                            position=index + 1,
+                            position=entry.position,
                             count=count,
                             playlist=probed.title,
                             duration_seconds=entry.duration_seconds,
@@ -3161,16 +3163,18 @@ class AddUrlDialog(QDialog):
                 thumbnail_url=entry.thumbnail_url,
                 duration_seconds=entry.duration_seconds,
                 playlist_id=playlist_id,
-                # **The entry's own position, not its position among the chosen ones** — see
-                # `PlaylistSelection.chosen_with_index`.
-                playlist_index=index,
+                # **The entry's slot in the playlist, 0-based as this field has always been**
+                # (`T-362`): not its place among the chosen entries, and not among the readable
+                # ones either. With a gap those differ, and yt-dlp, the picker and the file name
+                # all count the gap.
+                playlist_index=entry.position - 1,
                 playlist_title=probed.title,
                 media_id=entry.media_id,
                 channel=entry.channel,
                 site=probed.site,
                 created_at=datetime.now().astimezone(),
             )
-            for index, entry in chosen
+            for _row, entry in chosen
         ]
 
     def _durable_job(self, row: Row) -> Job:

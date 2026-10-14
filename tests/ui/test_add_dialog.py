@@ -4961,6 +4961,83 @@ def test_a_rule_and_its_selection_are_kept_only_together(
     assert not sink.submissions, "Add queued the checks of a rule no longer in force"
 
 
+# --- T-362: a queued entry is numbered by its slot in the playlist ------------------------------
+
+#: A naming pattern that puts *Position* in the file name and nothing else of the playlist's.
+POSITION_NAMING: Final = "%(playlist_index)s - %(title)s.%(ext)s"
+
+
+def _slots_yt_dlp_numbers(slots: list[Any]) -> dict[str, int]:
+    """Each readable entry's URL, with the 1-based slot yt-dlp's own `PlaylistEntries` gives it."""
+    from yt_dlp.utils import PlaylistEntries
+
+    entries = PlaylistEntries(None, {"entries": slots})
+    return {
+        entry["url"]: number
+        for number, entry in entries[slice(None)]
+        if entry and entry.get("title")
+    }
+
+
+@pytest.mark.parametrize("holes", list(HOLES))
+def test_a_queued_entry_is_numbered_by_its_slot_in_the_playlist(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+    store: FakeStore,
+    holes: str,
+) -> None:
+    """`T-362`. With a gap, an entry was numbered among the readable ones, so its file was `02`
+    where yt-dlp, and the picker since `T-247`, say `03`. Both the stored position and the name
+    are the slot now, and the queue still runs a group in playlist order."""
+    slots = HOLES[holes]
+    dialog, _row = _resolved_as(
+        dialogs, managers, spin, slots, default_output_template=POSITION_NAMING
+    )
+    slot_of = _slots_yt_dlp_numbers(slots)
+    width = max(2, len(str(len(slots))))
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+    submitted = sink.submissions[-1]
+
+    assert [job.playlist_index + 1 for job in submitted if job.playlist_index is not None] == [
+        slot_of[job.url] for job in submitted
+    ]
+    assert [job.request.output_template for job in submitted] == [
+        f"{slot_of[job.url]:0{width}d} - %(title)s.%(ext)s" for job in submitted
+    ]
+    in_queue = sorted(store.jobs.values(), key=lambda job: job.queue_position or 0)
+    assert [slot_of[job.url] for job in in_queue] == sorted(slot_of.values()), (
+        "the group no longer runs in playlist order"
+    )
+
+
+def test_the_position_is_padded_to_the_slots_the_playlist_has(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+) -> None:
+    """`T-362`: 120 slots with 99 readable pad to three digits, as yt-dlp would number them.
+    The width came from the 99 that survived, so a file was `05` where the playlist says `005`."""
+    slots: list[Any] = [
+        {"url": f"https://example.invalid/{n}", "title": f"Track {n}"} for n in range(1, 100)
+    ]
+    slots += [None] * 21
+    dialog, _row = _resolved_as(
+        dialogs, managers, spin, slots, default_output_template=POSITION_NAMING
+    )
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+    submitted = sink.submissions[-1]
+
+    assert submitted[4].request.output_template == "005 - %(title)s.%(ext)s"
+    assert submitted[-1].request.output_template == "099 - %(title)s.%(ext)s"
+
+
 def test_a_far_rule_seeds_a_playlist_without_holding_up_the_dialog(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],

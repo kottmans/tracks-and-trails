@@ -152,12 +152,12 @@ class PlaylistSelection:
         return not self.checked
 
     def chosen_with_index[T](self, entries: Sequence[T]) -> tuple[tuple[int, T], ...]:
-        """The checked entries **with the positions they hold in the playlist**, in order.
+        """The checked entries **with the row each holds among the entries**, in order.
 
-        The position is carried rather than re-derived because it is what `Job.playlist_index`
-        means — *"where it sat in it"* — and a user who queues entries three and eight has queued
-        entries three and eight, not entries one and two. Renumbering would make the queue's own
-        record of a playlist disagree with the playlist.
+        A user who checks the third and the eighth row has chosen those two, not the first two:
+        the rows are carried so that nothing renumbers the choice. **A row is not the entry's slot
+        in the playlist** once yt-dlp has dropped an unreadable item; `PlaylistEntry.position` is
+        that, and it is what a queued job is numbered by (`T-362`).
 
         Refuses a sequence this selection was not made against. A selection of seven applied to a
         tuple of five would quietly enqueue a different set of items than the one on screen, which
