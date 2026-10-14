@@ -102,7 +102,8 @@ task and review records it summarised.*
   `STARBASE`; `R1` and `R4` stayed open as Critical, and the maintainer chose on 2026-10-12 to
   revise the selection boundary within the task. **The second correction was approved on
   2026-10-13** at `b7c1dc4`, and `T-247` is in COMPLETED_TASKS; native Windows at that head is
-  unverified. **`T-362` is built and with the Reviewer**; `T-249` follows its approval. Its sibling audit found
+  unverified. **`T-362` was approved on 2026-10-14** at `4fa990b` and is in COMPLETED_TASKS;
+  `T-249` is being built. Its sibling audit found
   queued files numbered among the readable entries rather than by slot, filed as `T-362` by the
   maintainer's ruling, to run right after `T-247`. **`T-249`'s design was ruled the same day**
   (`DAT-003` and `UX-015` amended): mapping it found the options field's `--write-info-json` keeping

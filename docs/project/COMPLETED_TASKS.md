@@ -41424,6 +41424,79 @@ passed**. No Windows run of this correction.
 
 ---
 
+### T-362 — Number a playlist's queued entries by their slot in the playlist
+
+**Status:** **Complete — approved 2026-10-14** at `4fa990b`
+([record](reviews/T-362.md#2026-10-14--initial-playlist-slot-numbering-review)), with no change
+requested. Native Windows is unverified. *(Was In Review:)* built 2026-10-13. *(Was Proposed:)*
+filed 2026-10-11 by the maintainer's
+ruling, from `T-247`'s sibling audit for `T247-R1`; sequenced the same day right after `T-247` is
+approved, before `T-249` ([the order](IMPLEMENTATION_PLAN.md#order-2026-09-17)).
+**Owner:** Implementer
+**Priority:** Medium — a wrong number in a file name, with a gap in the playlist as its trigger; no
+download is the wrong item
+**Phase:** Phase 4.5
+**Depends on:** `T-247`, whose correction gives each `PlaylistEntry` its `position` and
+`MediaInfo` its `slot_count`
+**Relevant context:** `T247-R1` ([record](reviews/T-247.md)); `T-281`, which leaves unavailable
+entries out; `UX-014`'s *Position* naming field; `UX-005` row 10
+**Affected surfaces:** `ui/add_dialog._durable_jobs`, `core/output_template.resolve_queue_fields`,
+the queue's ordering of a group by `Job.playlist_index`, and their tests
+
+#### Scope
+
+`_durable_jobs` gives each queued entry `playlist_index` and the *Position* naming field from its
+place among the entries left after the unavailable ones were dropped, and the width of the number
+from how many survived. With a gap, a file is named `02` where yt-dlp's own `playlist_index`, and
+since `T-247` the picker's number, say `03`. Number both from the entry's slot, and pad to the
+width of the slots enumerated. The ruling of 2026-10-11, as recommended, put this in its own task
+rather than in `T-247`'s re-review, because it changes file names that ruling never covered.
+
+#### Acceptance criteria
+
+- [x] With gaps at the start, middle and end, each queued job's `playlist_index` and its rendered
+  *Position* equal the slot yt-dlp's `PlaylistEntries` gives the same entry
+- [x] The padding width follows the slots enumerated, so a playlist of 120 slots with 99 readable
+  pads to three digits
+- [x] A playlist with no gaps names its files exactly as it does today
+- [x] The queue still orders a group's rows by playlist order
+
+#### Built 2026-10-13
+
+- **`_durable_jobs` numbers each queued entry by `PlaylistEntry.position`**, the slot `T-247` gave
+  it: `playlist_index` stores the slot 0-based, as the field always has, and *Position* renders it
+  1-based. The width comes from `MediaInfo.slot_count`, not from how many entries survived.
+- **`chosen_with_index`'s docstring is corrected**: it called its index the entry's position in the
+  playlist, which it stopped being once yt-dlp's unreadable items were dropped.
+- **The tests take yt-dlp as the oracle.**
+  `test_a_queued_entry_is_numbered_by_its_slot_in_the_playlist` runs gaps at the start, in the
+  middle, at the end and at both ends through the real projection. It compares each queued job's
+  stored and rendered position with the slot yt-dlp's `PlaylistEntries` gives the same URL, and
+  the group's queue order with playlist order.
+  `test_the_position_is_padded_to_the_slots_the_playlist_has` is the 120-slot case. Before the
+  change, **4 of the 5 cases fail**; the gap at the end renumbers nothing and passes both ways.
+  The existing four-entry naming test is the *no gaps, unchanged* control.
+- **Mutations, 3 of 3 caught**, on a copy of the tree: the stored position, the rendered position
+  and the width, each taken from the row again.
+
+**Sibling audit, and one limit.** The other reader is the queue's rename reset, which renders a
+job's name afresh from the setting. It already reads `playlist_index + 1`, so it now renders the
+slot. **Its width is still an estimate**, as it was before: the job does not carry the playlist's
+slot count, so the reset pads to the larger of the group's size and the highest slot still queued.
+For a playlist whose last slots are no longer in the queue, that can pad narrower than queueing
+did, `05` beside `005`. Carrying the count would be a schema change, which this task's scope did not
+ask for. **The review found it broader**
+([scope note](reviews/T-362.md#scope-note--reset-padding-can-narrow-before-any-jobs-leave)): it
+narrows at once when the playlist's last slots were unreadable, and when the user chose only a
+leading subset, which happened before this task too. Every reset still renders the right slot. No
+task is filed for it and no risk is accepted by this record.
+
+**Checks, 2026-10-13, on Linux:** `ruff check .` and `ruff format --check .`; `mypy src`, bare
+`mypy` and `mypy --platform win32`; `tests/unit tests/ui` under `-n auto`, **5,450 passed**, 21
+skipped; `tests/integration` **527 passed**. No Windows run.
+
+---
+
 ## Cancelled
 
 ### T-212 — The recorded checklist run: the built window against the agreed flow
