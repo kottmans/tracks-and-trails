@@ -922,9 +922,11 @@ OPTION_KEYS: Final[dict[str, tuple[str, ...]]] = {
     "--client-certificate": ("client_certificate",),
     "--client-certificate-key": ("client_certificate_key",),
     "--compat-options": (
+        "compat_opts",
+        "allow_multiple_audio_streams",
+        "allow_multiple_video_streams",
         "allow_playlist_files",
         "clean_infojson",
-        "compat_opts",
         "format_sort",
         "ignoreerrors",
         "updatetime",
@@ -1076,6 +1078,81 @@ EFFECT_UNKNOWN: Final[frozenset[str]] = frozenset(
         "--max-sleep-interval",
     }
 )
+
+#: `--compat-options`' values, each with why it is refused, or `None` where admitted (`T-363`).
+#:
+#: **Decided value by value, because the option is a bag of unrelated switches.** It is admitted as
+#: a whole, and one of its values turns off yt-dlp's unsafe-extension check for the entire process
+#: while another rewrites a file's name. So each value is parsed alone, here, and classed by what
+#: that parse changes: `safety` for a value yt-dlp names `allow-unsafe-*` or one that switched its
+#: extension check off; `app` for one that sets a key this application sets itself, where it would
+#: do nothing; `control` for one that sets a key a built control owns. A value that reaches a
+#: control's key today is refused the day that control is built, by regenerating this.
+COMPAT_VALUES: Final[dict[str, str | None]] = {
+    "abort-on-error": None,
+    "allow-unsafe-exec-expansion": "safety",
+    "allow-unsafe-ext": "safety",
+    "embed-metadata": None,
+    "embed-thumbnail-atomicparsley": None,
+    "filename": "app",
+    "filename-sanitization": None,
+    "format-sort": None,
+    "format-spec": None,
+    "list-formats": None,
+    "manifest-filesize-approx": None,
+    "mtime-by-default": None,
+    "multistreams": None,
+    "no-attach-info-json": None,
+    "no-certifi": None,
+    "no-clean-infojson": None,
+    "no-direct-merge": None,
+    "no-external-downloader-progress": None,
+    "no-keep-subs": None,
+    "no-live-chat": None,
+    "no-playlist-metafiles": None,
+    "no-youtube-channel-redirect": None,
+    "no-youtube-prefer-utc-upload-date": None,
+    "no-youtube-unavailable-videos": None,
+    "playlist-index": None,
+    "playlist-match-filter": None,
+    "prefer-legacy-http-handler": None,
+    "prefer-vp9-sort": None,
+    "seperate-video-versions": None,
+}
+
+#: yt-dlp's names for groups of compatibility values, expanded as its own parser expands them.
+COMPAT_ALIASES: Final[dict[str, tuple[str, ...]]] = {
+    "2021": ("2022", "no-certifi", "filename-sanitization"),
+    "2022": (
+        "2023",
+        "no-external-downloader-progress",
+        "playlist-match-filter",
+        "prefer-legacy-http-handler",
+        "manifest-filesize-approx",
+    ),
+    "2023": ("2024", "prefer-vp9-sort"),
+    "2024": ("2025", "mtime-by-default"),
+    "2025": (),
+    "youtube-dl": (
+        "all",
+        "-multistreams",
+        "-playlist-match-filter",
+        "-manifest-filesize-approx",
+        "-allow-unsafe-ext",
+        "-prefer-vp9-sort",
+        "-allow-unsafe-exec-expansion",
+    ),
+    "youtube-dlc": (
+        "all",
+        "-no-youtube-channel-redirect",
+        "-no-live-chat",
+        "-playlist-match-filter",
+        "-manifest-filesize-approx",
+        "-allow-unsafe-ext",
+        "-prefer-vp9-sort",
+        "-allow-unsafe-exec-expansion",
+    ),
+}
 
 #: Postprocessor key -> the position yt-dlp itself gives it (`T184-R10`).
 #:

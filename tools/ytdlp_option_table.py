@@ -120,6 +120,22 @@ EFFECT_UNKNOWN: Final[frozenset[str]] = frozenset(
 {unknown}    }}
 )
 
+#: `--compat-options`' values, each with why it is refused, or `None` where admitted (`T-363`).
+#:
+#: **Decided value by value, because the option is a bag of unrelated switches.** It is admitted as
+#: a whole, and one of its values turns off yt-dlp's unsafe-extension check for the entire process
+#: while another rewrites a file's name. So each value is parsed alone, here, and classed by what
+#: that parse changes: `safety` for a value yt-dlp names `allow-unsafe-*` or one that switched its
+#: extension check off; `app` for one that sets a key this application sets itself, where it would
+#: do nothing; `control` for one that sets a key a built control owns. A value that reaches a
+#: control's key today is refused the day that control is built, by regenerating this.
+COMPAT_VALUES: Final[dict[str, str | None]] = {{
+{compat}}}
+
+#: yt-dlp's names for groups of compatibility values, expanded as its own parser expands them.
+COMPAT_ALIASES: Final[dict[str, tuple[str, ...]]] = {{
+{compat_aliases}}}
+
 #: Postprocessor key -> the position yt-dlp itself gives it (`T184-R10`).
 #:
 #: **Dependency order, read from yt-dlp rather than assumed.** `ModifyChapters` has to run before
@@ -291,6 +307,96 @@ def _candidate_pairs(option: object, known: dict[str, object]) -> list[tuple[lis
     return tried
 
 
+def _measured(option: object, known: dict[str, object]) -> tuple[list[str], bool]:
+    """The keys `option` changes, and whether any pair of its values could be parsed at all."""
+    parsed = False
+    for first, second in _candidate_pairs(option, known):
+        try:
+            before, after = _quietly(first), _quietly(second)
+        except BaseException:  # noqa: S112 - a value this pair cannot supply; try the next
+            # `BaseException`, because `optparse` raises `SystemExit` for a bad value as readily
+            # as it raises an error, and a probe that let that through would take the generator
+            # with it. An unusable pair is the expected case.
+            continue
+        parsed = True
+        keys = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+        if keys:
+            return keys, True
+    return [], parsed
+
+
+def _keys_of(spellings: set[str]) -> set[str]:
+    """Every key the options with these spellings change, measured as `_measured` measures."""
+    from yt_dlp.options import create_parser
+
+    parser = create_parser()
+    options = [option for group in parser.option_groups for option in group.option_list]
+    known = {spelling: option for option in options for spelling in _spellings(option)}
+    found: set[str] = set()
+    for option in options:
+        if set(_spellings(option)) & spellings:
+            found.update(_measured(option, known)[0])
+    return found
+
+
+#: yt-dlp's own prefix for a compatibility value that switches a safety check off (`T-363`).
+_UNSAFE_PREFIX: Final = "allow-unsafe-"
+
+
+def compat_values() -> tuple[dict[str, str | None], dict[str, tuple[str, ...]], tuple[str, ...]]:
+    """Each `--compat-options` value's verdict, the aliases, and the keys an admitted one carries.
+
+    **Each value parsed alone, and the process put back after it** (`T-363`). yt-dlp's
+    `validate_options` switches its unsafe-extension check off for the whole process when it reads
+    `allow-unsafe-ext`, and `set_compat_opts` rewrites the default format order for
+    `prefer-vp9-sort`; both are restored here so one value's parse cannot colour the next.
+    """
+    from yt_dlp.options import create_parser
+    from yt_dlp.utils import FormatSorter
+    from yt_dlp.utils._utils import _UnsafeExtensionError
+
+    option = create_parser().get_option("--compat-options")
+    arguments = option.callback_kwargs  # type: ignore[union-attr]
+    allowed = sorted(arguments["allowed_values"])
+    aliases = {name: tuple(items) for name, items in sorted(arguments["aliases"].items())}
+
+    rows = audit_rows()
+    controlled = _keys_of(set(built_spellings()))
+    owned = _keys_of(
+        {spelling for spellings, group, _ in rows if group == "app:sets" for spelling in spellings}
+    )
+    nothing = _quietly([])
+    verdicts: dict[str, str | None] = {}
+    carried: set[str] = set()
+    for value in allowed:
+        kept = (FormatSorter.default, _UnsafeExtensionError._enabled)
+        try:
+            parsed = _quietly(["--compat-options", value])
+            unsafe = not _UnsafeExtensionError._enabled
+        finally:
+            FormatSorter.default, _UnsafeExtensionError._enabled = kept
+        keys = {
+            key
+            for key in set(nothing) | set(parsed)
+            if key != "compat_opts"
+            and not key.startswith("_")
+            and nothing.get(key) != parsed.get(key)
+        }
+        if value.startswith(_UNSAFE_PREFIX) or unsafe:
+            verdicts[value] = "safety"
+        elif keys & owned:
+            # **Before `control`**: a key this application sets itself overrides any route to it.
+            # `outtmpl` is both — `--embed-thumbnail` blanks the playlist thumbnail's template as
+            # it parses — and `filename` would otherwise be sent to a setting that cannot do it.
+            verdicts[value] = "app"
+        elif keys & controlled:
+            verdicts[value] = "control"
+        else:
+            verdicts[value] = None
+            carried |= keys
+    return verdicts, aliases, ("compat_opts", *sorted(carried))
+
+
 def derive_destinations() -> tuple[dict[str, tuple[str, ...]], list[str], list[str]]:
     """What each admitted option changes in the option dictionary, measured rather than assumed.
 
@@ -316,21 +422,8 @@ def derive_destinations() -> tuple[dict[str, tuple[str, ...]], list[str], list[s
         group = classes.get(_canonical(option))
         if group not in _ADMITTED or any(spelling in built for spelling in spellings):
             continue
-        keys: list[str] = []
-        parsed = False
-        for first, second in _candidate_pairs(option, known):
-            try:
-                before, after = _quietly(first), _quietly(second)
-            except BaseException:  # noqa: S112 - a value this pair cannot supply; try the next
-                # `BaseException`, because `optparse` raises `SystemExit` for a bad value as
-                # readily as it raises an error, and a probe that let that through would take the
-                # generator with it. Nothing is logged: an unusable pair is the expected case,
-                # and the pairs that never work are reported by name as `EFFECT_UNKNOWN`.
-                continue
-            parsed = True
-            keys = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
-            if keys:
-                break
+        # The pairs that never parse are reported by name as `EFFECT_UNKNOWN`.
+        keys, parsed = _measured(option, known)
         if keys:
             for spelling in spellings:
                 destinations[spelling] = tuple(keys)
@@ -432,6 +525,12 @@ def rendered() -> str:
         f"    {spelling!r}: {takes!r},\n" for spelling, takes in sorted(parser_arity().items())
     )
     destinations, inert, unknown = derive_destinations()
+    verdicts, aliases, carried = compat_values()
+    # **`--compat-options` carries what its admitted values change** (`T-363`), measured value by
+    # value. Two values of one option, the measure every other option gets, found the keys that
+    # `youtube-dl` and `filename` differ in, which left out `multistreams`' two: admitted, and then
+    # dropped by the merge.
+    destinations["--compat-options"] = carried
     keys = "".join(
         f"    {spelling!r}: {found!r},\n" for spelling, found in sorted(destinations.items())
     )
@@ -444,6 +543,10 @@ def rendered() -> str:
             keys=keys,
             inert="".join(f"        {spelling!r},\n" for spelling in inert),
             unknown="".join(f"        {spelling!r},\n" for spelling in unknown),
+            compat="".join(f"    {value!r}: {verdict!r},\n" for value, verdict in verdicts.items()),
+            compat_aliases="".join(
+                f"    {name!r}: {items!r},\n" for name, items in aliases.items()
+            ),
             order="".join(
                 f"    {key!r}: {rank},\n" for rank, key in enumerate(postprocessor_order())
             ),

@@ -231,12 +231,11 @@ captions for `all`) and `UX-015` (subtitle depth inside *Subtitles*).
 passed**, 21 skipped; `tests/integration` **537 passed**. No Windows run, and `STARBASE` was offline.
 
 
-## Ready
-
 ### T-363 — The options field can write outside the chosen folder, and switch off a safety check
 
-**Status:** Ready — filed 2026-10-15 by the maintainer's ruling, to run next, before `T-250` and
-before `T-364`. Found 2026-10-14 while mapping `T-248` and `T-250`.
+**Status:** In Review — built 2026-10-15, ahead of `T-249`'s and `T-251`'s reviews by the
+maintainer's ruling that day. *(Was Ready:)* filed 2026-10-15 by the maintainer's ruling, to run
+next, before `T-250` and before `T-364`. Found 2026-10-14 while mapping `T-248` and `T-250`.
 **Owner:** Implementer
 **Priority:** Critical — `TESTING.md` §14 names *writing outside the directory the user chose*.
 `main` only: `0.1.0` predates the options field.
@@ -297,6 +296,63 @@ tests
 #### Out of scope
 
 - `T-248`'s controls themselves, and its other questions (the Windows pair, where shaping lives).
+
+#### Built 2026-10-15
+
+- **The breach.** `build_options` keeps `trim_file_name` and `windowsfilenames`
+  (`RENDER_ONLY_KEYS`) off the download pass. They still act on the probe pass, where
+  `_validated_target` renders the user's template and contains it, so the name is shaped once and
+  the path it became is handed to yt-dlp untouched. The claim's source check stays as the second
+  line.
+- **The values, decided one by one.** `tools/ytdlp_option_table.py` parses each `--compat-options`
+  value alone, restoring yt-dlp's process-wide state after each, and classes it: *safety* where
+  yt-dlp names it `allow-unsafe-*` or it switched the extension check off (`allow-unsafe-ext`,
+  `allow-unsafe-exec-expansion`); *app* where it sets a key `app:sets` owns (`filename`, which sets
+  `outtmpl`); *control* where it sets a key a built control owns (none today: `format-sort` and
+  `mtime-by-default` reach `T-250`'s and `T-248`'s keys, and are refused the day those are built,
+  by regenerating). The table carries `COMPAT_VALUES` and `COMPAT_ALIASES`, and the option's keys
+  are now what its admitted values change.
+- **Admission** resolves the values the whole line leaves chosen — aliases, `all`, `-` removals,
+  case and spaces, a second option adding to the first — as yt-dlp's `orderedSet_from_options`
+  does, and refuses before anything is parsed, naming the value and why. A value yt-dlp does not
+  know is left to its parser. `all,-allow-unsafe-ext,-allow-unsafe-exec-expansion,-filename` is
+  usable.
+- **The GUI's process is left as it was.** `prefer-vp9-sort` stays admitted, and parsing it
+  rewrites yt-dlp's default format order for every later `YoutubeDL`; that is its effect in a job's
+  own process. The editor's check (`unparseable`) and the offer's ffmpeg question
+  (`hatch_requires_ffmpeg`) now parse inside `process_state_kept`, which puts back the format
+  order and the extension check.
+- **Also fixed:** `multistreams` was admitted and then dropped, because the option's keys were
+  measured from two other values; its two keys are now carried (`REQ-031`).
+- **The audit** says, under the classes, that this option is decided value by value.
+- **Tests.** `test_compat_options.py`: shaping reaches the render and never the download; yt-dlp's
+  own `prepare_filename` writes where the worker contained it, for the three measured breaches;
+  the resolution held to `parse_options` over twelve inputs; each refused value and its reason;
+  harmless values usable; every `allow-unsafe-*` refused; `multistreams` carried; the editor and the
+  offer leaving the process as it was; and the generator's rule refusing `format-sort` and
+  `mtime-by-default` once their controls exist. `test_shaping_containment.py` runs four real worker
+  sessions on `127.0.0.1` into a plain folder and one named `Talks: 2026`, and asserts the only
+  thing written is the download, in the chosen folder.
+- **Mutations, 12 of 12 caught**, on copies of the tree: shaping left on the download pass, or
+  only trim kept off it; compat values never refused; a removal ignored; only the last occurrence
+  resolved; the state not put back, or either parse unguarded; the generator forgetting the
+  unsafe names, not checking the application's keys, or measuring the option by two values again;
+  and `multistreams`' keys dropped from the table. **Restoring `8b0aad6`'s download pass fails all
+  four real sessions and all three naming cases** — and the run wrote
+  `/tmp/pytest-. 2 of the set.mp4`, outside its test directory, which was removed.
+
+**Limit against the fourth criterion.** A value is refused as doing nothing only where its whole
+effect is a key the application sets. Most values act at run time through `compat_opts`, which a
+parse cannot measure, so a value such as `list-formats`, which this application never exercises,
+stays admitted. Measuring that needs a run per value and is not done here.
+
+**Checks, 2026-10-15, on Linux, base `e6c58ed`:** `ruff check .` and `ruff format --check .` (482
+files); `mypy src` (70), bare `mypy` and `mypy --platform win32` (221 each); the table check up to
+date; `tests/unit tests/ui` under `-n auto`, **5,618 passed**, 21 skipped; `tests/integration`
+**541 passed**. No Windows run: the fix is platform-independent yt-dlp code, and `STARBASE` is
+offline.
+
+## Ready
 
 ### T-364 — Fragmented downloads retry, and never finish with a piece missing
 

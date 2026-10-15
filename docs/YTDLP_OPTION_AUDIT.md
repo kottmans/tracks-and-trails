@@ -154,6 +154,20 @@ The invariant the test actually enforces is the useful one, and it holds with no
 and names a key the application now sets, because refusing the option and supplying the safe
 default are different jobs and `REQ-EXCL-002` needs both.)*
 
+### `--compat-options` is decided value by value
+
+**`hatch` as an option, and its values classed one by one** (`T-363`, ruled 2026-10-15). The option
+is a bag of unrelated switches: at 2026.08.19 one value, `allow-unsafe-ext`, switches yt-dlp's
+unsafe-extension check off for the whole process as it is parsed, `filename` rewrites a name the
+application sets, and `format-sort` and `mtime-by-default` reach keys `T-250` and `T-248` will give
+controls. The rows above cannot say that, so the generator parses each value alone and classes it
+by what the parse changes: refused as **unsafe** where yt-dlp names it `allow-unsafe-*` or it
+switched the extension check off, as **the application's** where it sets a key `app:sets` owns, and
+as **a control's** where it sets a key a built control owns; admitted otherwise, carrying exactly
+the keys it changes. The hatch resolves aliases, `all` and `-` removals the way yt-dlp does, and
+refuses before anything is parsed. A value that reaches a planned control is admitted until that
+control is built, and regenerating then refuses it.
+
 ---
 
 ## Findings

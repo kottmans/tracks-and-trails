@@ -37,7 +37,7 @@ from __future__ import annotations
 import os
 import re
 import shlex
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -45,6 +45,8 @@ from typing import Final
 from tracks_and_trails.core.models import Preset
 from tracks_and_trails.core.presets import needs_ffmpeg as fields_need_ffmpeg
 from tracks_and_trails.downloader.option_table import (
+    COMPAT_ALIASES,
+    COMPAT_VALUES,
     EFFECT_UNKNOWN,
     NO_OBSERVABLE_EFFECT,
     OPTION_ARITY,
@@ -128,6 +130,23 @@ ABBREVIATED: Final = "Type the option's whole name."
 
 #: How many names an abbreviation's refusal lists before it gives a count instead.
 _NAMES_LISTED: Final = 3
+
+#: The option whose values are decided one by one (`T-363`).
+COMPAT_OPTIONS: Final = "--compat-options"
+
+#: Why a compatibility value is refused, by the verdict `option_table.COMPAT_VALUES` gives it, most
+#: serious first. **They name the value**, which is one of yt-dlp's own words and never a secret.
+COMPAT_REFUSALS: Final = {
+    "safety": "The compatibility value {value} turns off a safety check yt-dlp makes.",
+    "app": (
+        "The compatibility value {value} changes something this application decides itself, so "
+        "here it would do nothing."
+    ),
+    "control": (
+        "The compatibility value {value} changes something there is a setting for. Use the "
+        "setting instead, so the value is shown to you."
+    ),
+}
 
 #: What a user is told when an option that takes no value is given one with `=`.
 TAKES_NO_VALUE: Final = "This option takes no value."
@@ -246,6 +265,7 @@ def admit(text: str) -> Admission:
 
     accepted: list[str] = []
     refusals: list[Refusal] = []
+    compat: list[_Occurrence] = []
     for read in _read(tokens):
         if isinstance(read, str):
             # A bare word is a URL or a stray value. The field takes options; the URL has its own
@@ -274,12 +294,79 @@ def admit(text: str) -> Admission:
             refusals.append(Refusal(read.typed, NOT_A_FULL_PATH))
             continue
 
+        if read.spelling == COMPAT_OPTIONS:
+            compat.append(read)
         accepted.extend((read.spelling, *read.values))
+
+    # **Decided on the values the whole line leaves chosen**, as yt-dlp's parser would hold them:
+    # `all,-allow-unsafe-ext` is fine, and a second `--compat-options` adds to the first.
+    compat_refusal = _compat_refusal(compat)
+    if compat_refusal is not None:
+        refusals.append(compat_refusal)
 
     if refusals:
         # Nothing is offered from a field that has a refusal in it. See `Admission`.
         return Admission((), tuple(refusals))
     return Admission(tuple(accepted), ())
+
+
+def _compat_refusal(occurrences: Sequence[_Occurrence]) -> Refusal | None:
+    """Why the compatibility values these options leave chosen may not be used, or `None` (`T-363`).
+
+    **Before anything is parsed, and that is the point.** yt-dlp switches its unsafe-extension
+    check off for the whole process **while it parses** `allow-unsafe-ext`, and the editor checks
+    the field in the GUI's own process; a refusal issued after the parse would come too late. A
+    value yt-dlp does not know is left to the parser, which refuses the option without quoting it.
+    """
+    if not occurrences:
+        return None
+    try:
+        chosen = resolved_compat_values(value for read in occurrences for value in read.values)
+    except ValueError:
+        return None
+    verdicts = [(value, COMPAT_VALUES[value]) for value in chosen if COMPAT_VALUES.get(value)]
+    if not verdicts:
+        return None
+    worst = list(COMPAT_REFUSALS)
+    value, verdict = min(verdicts, key=lambda found: worst.index(str(found[1])))
+    reason = COMPAT_REFUSALS[str(verdict)].format(value=value)
+    return Refusal(occurrences[-1].typed, reason)
+
+
+def resolved_compat_values(texts: Iterable[str]) -> tuple[str, ...]:
+    """The compatibility values `texts` leave chosen, as yt-dlp's parser resolves them.
+
+    yt-dlp's `_set_from_options_callback` and `orderedSet_from_options`, transcribed: each text is
+    split on commas, lower-cased and stripped; `all` and the aliases expand; a leading `-` takes a
+    value away; and each occurrence starts from what the ones before it chose.
+    `tests/unit/test_compat_options.py` holds this to `parse_options` itself. Raises `ValueError`
+    for a value yt-dlp does not know, as it does.
+    """
+    chosen: list[str] = []
+    for text in texts:
+        chosen = _compat_chosen([item.lower().strip() for item in text.split(",")], chosen)
+    return tuple(chosen)
+
+
+def _compat_chosen(items: Sequence[str], start: Sequence[str]) -> list[str]:
+    known = tuple(COMPAT_VALUES)
+    chosen = list(start)
+    for item in items:
+        discard = item.startswith("-")
+        name = item[1:] if discard else item
+        if name == "all" or name in COMPAT_ALIASES:
+            expanded = known if name == "all" else COMPAT_ALIASES[name]
+            if discard:
+                expanded = tuple(i[1:] if i.startswith("-") else f"-{i}" for i in expanded)
+            chosen = _compat_chosen(expanded, chosen)
+            continue
+        if name not in known:
+            raise ValueError(name)
+        if discard:
+            chosen = [value for value in chosen if value != name]
+        else:
+            chosen.append(name)
+    return list(dict.fromkeys(chosen))
 
 
 def _a_full_path(spelling: str, path: str) -> bool:

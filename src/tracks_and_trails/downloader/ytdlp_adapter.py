@@ -895,6 +895,17 @@ def build_options(
     hatch = hatch_options(request.extra_options, request.extra_option_argv)
     options.update({key: value for key, value in hatch.items() if key != "writethumbnail"})
 
+    if not probe_only:
+        # **Shaping acts where the name is rendered, never on the path it became** (`T-363`).
+        # `_validated_target` renders the user's template on the probe pass, where these act on
+        # the name, and contains the result; the download pass is then handed that path as a
+        # literal. yt-dlp applies both to whatever it is handed, so here they reshaped the whole
+        # absolute path: a trim of 15 turned `/home/sean/Videos/.tracks-and-trails-staging-…/
+        # Vol. 2 of the set.mp4` into `/home/sean/Vide. 2 of the set.mp4`, and Windows names
+        # renamed a folder called `Talks: 2026`. Both measured on `8b0aad6`.
+        for key in RENDER_ONLY_KEYS:
+            options.pop(key, None)
+
     if probe_only:
         options["skip_download"] = True
         # **A playlist is enumerated flatly** (`T-137`). Without this yt-dlp extracts every entry
@@ -985,6 +996,12 @@ def build_options(
     return options
 
 
+#: Keys that shape a file name, which act on the rendered name and never on the download's path
+#: (`T-363`). yt-dlp applies them to the whole path it is handed, and the download pass is handed
+#: the contained absolute path as a literal, so there they would reshape its folders.
+RENDER_ONLY_KEYS: Final = frozenset({"trim_file_name", "windowsfilenames"})
+
+
 #: What compiling a pattern the user typed raises (`T184-R8`, eighth round).
 #:
 #: `re.compile` raises `OverflowError` for a repeat count past its limit (`a{4294967296}`) and
@@ -999,7 +1016,39 @@ _UNCOMPILABLE: Final = (re.error, OverflowError, RecursionError)
 _REFUSED_BY_YT_DLP: Final = (SystemExit, OptParseError, *_UNCOMPILABLE)
 
 
+@contextlib.contextmanager
+def process_state_kept() -> Iterator[None]:
+    """Put back what parsing the user's options changes for the whole process (`T-363`).
+
+    **Parsing is not free of effects.** yt-dlp's parser rewrites the default format order for the
+    compatibility value `prefer-vp9-sort` and switches its unsafe-extension check off for
+    `allow-unsafe-ext`, both on classes every later `YoutubeDL` reads. In a job's own process that
+    is the option doing its work. In the GUI's, where the editor and the offer ask their questions,
+    it would change every check made after it, so these two are put back. Admission refuses
+    `allow-unsafe-ext` before anything is parsed; this is the second line, for the one admitted
+    value with a process-wide effect and any refused value that reaches a parse some other way.
+    """
+    from yt_dlp.utils import FormatSorter
+    from yt_dlp.utils._utils import _UnsafeExtensionError
+
+    kept = (FormatSorter.default, _UnsafeExtensionError._enabled)
+    try:
+        yield
+    finally:
+        FormatSorter.default, _UnsafeExtensionError._enabled = kept
+
+
 def unparseable(argv: Sequence[str], groups: Sequence[Sequence[str]]) -> tuple[bool, str | None]:
+    """Whether yt-dlp refuses `argv` as a whole, and which option to point the user at.
+
+    Asked by the editor, in the GUI's process, so whatever the parse changes for the whole process
+    is put back (`T-363`). See `_unparseable`.
+    """
+    with process_state_kept():
+        return _unparseable(argv, groups)
+
+
+def _unparseable(argv: Sequence[str], groups: Sequence[Sequence[str]]) -> tuple[bool, str | None]:
     """Whether yt-dlp refuses `argv` as a whole, and which option to point the user at.
 
     **The whole ordered command line decides** (`T184-R8`). Asking about each option alone gets
@@ -1340,7 +1389,9 @@ def hatch_requires_ffmpeg(text: str, argv: Sequence[str]) -> bool:
     if not argv and not text.strip():
         return False
     try:
-        hatch = hatch_options(text, argv)
+        # Asked by the offer in the GUI's process as well as by the worker (`T-363`).
+        with process_state_kept():
+            hatch = hatch_options(text, argv)
     except UnusableOptionsError:
         return False
     return _performed_by_ffmpeg(hatch.get("postprocessors", [])) or _cuts_sections(

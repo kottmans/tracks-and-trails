@@ -191,7 +191,8 @@ No Windows runtime, external download or release-gate result is claimed here.
   process, and fragmented downloads ending *Done* with a fragment missing, in `0.1.0` too.
   **Ruled 2026-10-15, as recommended:** both are fixed next, before `T-250` — the breach and the
   `--compat-options` values as [`T-363`](TASKS.md#t-363--the-options-field-can-write-outside-the-chosen-folder-and-switch-off-a-safety-check),
-  then the fragments as [`T-364`](TASKS.md#t-364--fragmented-downloads-retry-and-never-finish-with-a-piece-missing),
+  **built the same day and with the Reviewer**, then the fragments as
+  [`T-364`](TASKS.md#t-364--fragmented-downloads-retry-and-never-finish-with-a-piece-missing),
   shipping in `0.2.0`.
 - **CI is green again.** Its Linux job failed from 2026-10-08, when PySide6 6.12.0's metapackage
   began requiring `PySide6_WebEngine` and `PySide6_Pdf` and the `LIC-001` gate refused them.
