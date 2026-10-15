@@ -680,6 +680,39 @@ slowdown is not. Merely waiting longer for a format control is insufficient once
 - [ ] All nine existing geometry cases retain their assertions and pass with the relevant combined
       suites. Record failing gates honestly; a successful `tail` is not a successful pytest run.
 
+#### Investigated 2026-10-14 — cause confirmed, a fix prototyped, nothing applied
+
+Investigated overnight at the maintainer's request, **as investigation only**: this task is not
+scheduled in Phase 4.5's order, so nothing here changes the repository's tests. All work was on
+copies of `8b0aad6`; the prototype applies cleanly at `3275a36` too, and is kept as an ignored
+file, `docs/project/handoffs/2026-10-14-T350-prototype.diff`.
+
+- **The cause is the one recorded above, now deterministic.** Delivering events until the probe
+  session was released failed all nine geometry cases (exit 1), each row going `FAILED` about
+  0.65 s after staging with the real worker's DNS error; the same delay with
+  `child_never_returning` passed all nine. In unloaded runs no callback reached a test, so the
+  race is latent and load-dependent.
+- **The exposure is wider than the nine.** All 38 `_staged` callers (51 items) start the shipping
+  worker against `example.invalid`, 43 of them failing under the delay. **Nineteen more tests
+  (100 items) do the same through `_two_resolved_rows`, `_resolved_as`, `_probed_playlist` and
+  inline**, and fail under it too; some of those also start durable probes and downloads, whose
+  NETWORK failures do schedule automatic retries. No other `tests/ui` file starts the real worker,
+  checked statically and by tracing spawns at run time (151 items at `HEAD`).
+- **The prototype meets all four criteria for `_staged`.** A module-level child answers a probe with
+  the fixture's formats and finishes, and `_staged` waits for the manager to be idle, so the
+  fixture can no longer start the real probe; a new regression test over the three geometry
+  fixtures opens the editor after everything has arrived. Restoring `HEAD`'s `_staged` fails the
+  regression test while **the nine still pass** — the nine alone never caught it. Checks on the
+  copy: Ruff clean; nine plus regression 12 passed; `tests/ui` 1,645 passed; integration and UI
+  2,175 passed; the full suite under `-n 4` **6,032 passed**, 25 skipped, all exit 0. Bare and
+  Windows-platform `mypy` failed only on `T-249`'s pre-existing error, fixed since in `bfda7c9`.
+- **Not fixed, and for this task's scope to decide:** the nineteen sibling tests above (the same
+  child, or a controlled default for the module's `managers` fixture, which changes every default
+  user); the module docstring's claim that the network is faked (Low); and three latent test-network
+  routes found on the way — `test_app_launch.py`'s subprocess outside the GitHub guard,
+  `QuietYtdlp` not stubbing `check_latest_version`, and `test_queue_view.py` building a real
+  thumbnail loader for rows it never paints (all Low).
+
 ---
 
 ### T-302 — Nothing detects orphaned workers automatically on either platform
