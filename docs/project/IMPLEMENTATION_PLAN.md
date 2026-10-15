@@ -951,6 +951,11 @@ field's `--compat-options` values that disable a safety check or reach a control
 into it; and the fragment defect becomes `T-364`, next after `T-363`, on `T-252`'s recommended
 first two answers, shipping in `0.2.0`. Stage 3's own order is otherwise unchanged.
 
+**And the gate is relaxed again, for `T-363` alone** (ruled later the same day, as recommended):
+it is built while `T-249` and `T-251` are still with the Reviewer, because the breach has been on
+`origin/main` since `T-184` was pushed on 2026-10-10. It is reviewed on its own head like any task;
+`T-364` keeps the gate.
+
 #### The stages
 
 Serial, one task at a time, which is what one development machine allows (`AGENTS.md` §9: one
