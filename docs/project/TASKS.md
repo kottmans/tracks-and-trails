@@ -899,6 +899,54 @@ collision; the containment and collision tests are extended over each, and a tes
 check is removed. `--windows-filenames` is asserted on **both** platforms — its whole purpose is a
 platform difference, and a Linux-only assertion proves nothing about it.
 
+#### Mapped 2026-10-14 — the design, before the code
+
+Mapped against `8b0aad6` with fourteen real worker sessions on `127.0.0.1`; probes in the
+implementer's scratch notes.
+
+- **On unreleased `main`, `--trim-filenames` and `--windows-filenames` in the options field make
+  yt-dlp write outside the chosen folder.** The worker renders and contains the name once, then
+  hands yt-dlp the absolute staging path as a literal template, and yt-dlp applies both options
+  again to the **whole path**: a trim keeps the first N characters of it, and Windows names
+  replace a reserved character in any folder of it. Measured in sessions: a trim of 80 wrote
+  `…/tmp/claude-1000/-mnt-storage-…-tracks-and-tra. 2 of the set.mp4`, eight levels above the
+  chosen folder; a trim of 201 created a sibling folder; a folder named `Talks: 2026` became
+  `Talks# 2026/…`. Reproduced independently with yt-dlp's `prepare_filename`: for
+  `/home/sean/Videos`, a trim of 15 names `/home/sean/Vide. 2 of the set.mp4`. The claim's
+  source check then fails the job, **after** the file and any folder exist, and nothing removes
+  them. **Critical guess** (`TESTING.md` §14: *writing outside the directory the user chose*).
+- Medium: the `REQ-011` preview ignores shaping typed in the options field; `--no-windows-filenames`
+  lets a title's backslash through, which `core/paths` then splits into a folder (*AC\DC live* →
+  `AC/DC live.mp4`), or blames the user's template for a title's text.
+- `--windows-filenames` otherwise only swaps `#` for `_` in typed text, since `DAT-002` already
+  enforces Windows-legal names on both platforms, and both spellings are no-ops on Windows (read).
+  A trim can merge two names, which `T-046` numbers (measured). yt-dlp's file date is off by
+  default and the application never sets it; `--mtime` dated a file to `Last-Modified`.
+- `--compat-options mtime-by-default`, and its bundles, reach `updatetime` through the options
+  field, which neither `T-361`'s derivation nor the destination test sees.
+- **Adjacent, outside this task:** `--compat-options all` or `allow-unsafe-ext` turns off yt-dlp's
+  unsafe-extension check **for the whole process**, and the edit-time check alone does it in the
+  GUI process (`exe` refused, then accepted after checking `--compat-options all`). **High guess.**
+  `--compat-options filename` is admitted and does nothing, `REQ-031`'s *accepted and dropped*
+  (Medium guess).
+
+**Questions for the maintainer** (recommended first):
+
+1. **When the breach is fixed.** A small task now, before `T-250`, as `T-361` ran before `T-247`:
+   the download pass stops carrying `trim_file_name` and `windowsfilenames`, which keep acting
+   where the name is rendered, and the sessions become regression tests; Linux evidence suffices.
+   / Within this task at its slot (it waits on `STARBASE`). / Refuse the spellings now and lift the
+   refusal here.
+2. **The Windows pair.** Reclassified `app:policy` and refused, since `DAT-002` already owns
+   Windows-legal names; this task then builds five options. / A checkbox for
+   `--windows-filenames` only. / Both, as yt-dlp's tri-state (`core/paths` would stop splitting
+   titles on `\`, a `T-034` boundary).
+3. **Where shaping and the date live.** In Settings beside *How files are named*, frozen into the
+   request as the template is (`UX-014` amended). / Preset fields in a *File names* group. / Split.
+4. **A `--compat-options` value reaching a control's key** — `mtime-by-default` here, `format-sort`
+   for `T-250`, one ruling for both. Refused at edit time naming the control, derived per value
+   from yt-dlp's parser. / yt-dlp's precedence. / The control wins silently (`REQ-031` forbids).
+
 ### T-250 — Format depth: sorting, checking and the merge container
 
 **Status:** Proposed — filed 2026-08-16 by `T-183`
@@ -908,6 +956,46 @@ platform difference, and a Linux-only assertion proves nothing about it.
 fields rather than passed through; `--check-formats` costs a request per format and the format
 table's probe budget is stated (`T-161`'s per-entry lesson); `--merge-output-format` and
 `remux_container` are two ways to name a container and the precedence between them is written down.
+
+#### Mapped 2026-10-14 — the design, before the code
+
+Mapped against `8b0aad6` on a real YouTube probe and downloads; probes in the implementer's
+scratch notes.
+
+- **No defect at `HEAD` for the four**, but building them breaks a recorded invariant:
+  `--check-all-formats` and `--format-sort-reset` are other options sharing the typed
+  destinations, so `T-361`'s recorded claim that only aliases share a built option's destination
+  stops being true, and the audit's drift test fails on both once the keys are emitted.
+  `--compat-options format-sort` is a third route into the sort (`T-248`'s question 4).
+- **A sort never changes a format chosen from the table** (IDs resolve the same under four sorts);
+  it moves the built-ins' selectors and reorders the probe's list.
+- **yt-dlp refuses nothing about a sort's meaning**: an unknown field logs a deprecation and is
+  ignored, `res:abc` silently sets no limit, and **`vcodec:nonsense` silently picks a different
+  format**. Its field table is a class-level dict an unknown field writes into, so the vocabulary
+  must be read in a fresh process.
+- **Checking costs**: 3 requests to read a URL normally, 5 with `--check-formats`, **79 over 12.9 s
+  with `--check-all-formats`**, 44 of them thumbnail checks — and the options field applies to the
+  add dialog's own read, so such a preset makes each pasted URL about ten times slower. Check
+  downloads write to `/tmp`, or with `--windows-filenames` to the worker's working directory
+  (Medium guess).
+- **A remux or recode runs after the merge**, so it decides the final container and a merge
+  container becomes an intermediate (two passes); merging into `avi` failed *Conversion failed!*
+  after the download was paid for.
+
+**Questions for the maintainer** (recommended first):
+
+1. **How far the sort check goes.** Fields and limits, against a transcription bound to yt-dlp by
+   a fresh-process drift test, deprecated aliases refused naming the replacement. / Fields only. /
+   Ask yt-dlp lazily in the GUI process.
+2. **The check's positions and phase.** Four radio buttons — yt-dlp decides, the chosen formats,
+   every format, never — on the download only, `--check-all-formats` becoming typed (five options).
+   / Three, with `--check-all-formats` an application policy. / Four, on both phases.
+3. **Merge container and remux.** A separate merge choice with a written precedence (recode, remux,
+   merge, yt-dlp), set to the remux's container when it fits so there is one pass, offering
+   *fall back to mkv*. / Exclusive in the model. / No merge control.
+4. **Where they go.** A *Choosing the format* group at the top for the sort and the check, disabled
+   for a format chosen from the table, and the merge choice in *Container* (`UX-015`). / The format
+   dialog. / One *Format* group.
 
 ### T-252 — Download tuning and the retry policy the settings screen shows
 
@@ -930,6 +1018,59 @@ here by name, so this task is where the difference between them stops needing a 
 `-N` interacts with the pool's own concurrency (`ARC-007`, `CONCURRENCY_MAXIMUM = 16`) and the
 interaction is measured rather than assumed.
 
+#### Mapped 2026-10-14 — the design, before the code
+
+Mapped against `8b0aad6` with the worker's own `run_session`, a local HLS stream and a scripted
+server that fails chosen requests; probes are in the implementer's scratch notes, not the
+repository.
+
+- **A fragmented download can end *Done* with a fragment missing — in `0.1.0` as on `main`.** One
+  503 on fragment 3 of a 12-second stream: the job ended `Succeeded` with 250 of 300 video frames
+  (155,465 bytes against 185,873), and yt-dlp's `Skipping fragment 3` reached no row. A 403 did
+  the same with retries set to 3. yt-dlp's own command line, on its defaults, retried both and
+  delivered the whole file. The cause is two library defaults the command line overrides:
+  `fragment_retries` absent is zero, and `skip_unavailable_fragments` is on. `v0.1.0`'s
+  `build_options` and pin are the same. **Severity guess Critical** under §14's *silent wrong
+  result*, at least High given the narrow trigger.
+- **`retries` absent is zero as well**, not only `fragment_retries` (`downloader/http.py:360`,
+  read). Ten is the *command line's* default. So Settings' *The downloader's own* means no retries:
+  one 503 partway through a progressive transfer failed the job as `EXTRACTOR_ERROR`, which the
+  queue's automatic retry (NETWORK only) never takes. With retries 3 it succeeded. **Medium guess.**
+- **The settings screen's retry text is untrue three ways at `HEAD`**: pieces retry zero times by
+  default; the setting does govern a fragment's 5xx and connection errors (each fragment is
+  fetched by an HTTP downloader built from the same params); only a 4xx or an incomplete read falls
+  to the fragment count.
+- **This entry's *most of YouTube* is wrong here**: all three built-ins chose `https` formats on a
+  YouTube probe, so `retries` is the one that matters there. Fragments matter on HLS and DASH
+  sites and on every `--live-from-start` capture.
+- **Two hatch defects with `--download-sections`.** Two ranges are admitted and the second
+  overwrites the first in the one output path (`Deleting existing file`, job `Succeeded`): a
+  `REQ-031` defect, **High guess**. And it aborts *"ffmpeg is not installed"* whenever ffmpeg is
+  reached through `ffmpeg_location` rather than `PATH`, because yt-dlp's ffmpeg *downloader* reads
+  only `PATH` unless its command line sets a class attribute; that is how the Windows installer
+  finds its bundled copy (inferred, not run on Windows). **Medium guess, High once a control ships.**
+- **`-N` multiplies with the pool**: one job at `-N 4` peaked at 4 concurrent requests, three jobs
+  at 12; the worst case is 16 × N and yt-dlp sets no ceiling. `--socket-timeout -1` passes edit
+  time and fails the job (`T184-R8`'s class, Low).
+
+**Questions for the maintainer** (recommended first):
+
+1. **What *nobody chose* sends for `retries` and `fragment_retries`.** yt-dlp's command-line
+   defaults, read from `parse_options([])` at the pin and held there by a test, shown as *10 — the
+   downloader's own*; changes behaviour for `0.1.0` users, which the changelog says. / Numbers
+   chosen in `core/settings.py` (a second copy of a library default, which `T-196` declined). /
+   Leave them absent and relabel the default *No retries*.
+2. **A fragment still missing after its retries.** `skip_unavailable_fragments=False`, so the
+   attempt fails and the job's own retry resumes from staging, with the hatch's
+   `--skip-unavailable-fragments` kept as the user's opt-in (a second shared key, an `ARC-010`
+   amendment). / Keep the skip and mark the job *Done, incomplete* (log parsing, a new outcome). /
+   Only restore the counts (still silent after eleven failures).
+3. **Where the seven live.** Fragment retries, extractor retries, socket timeout and `-N` (capped
+   at 8) in *Settings › Network* beside the retry count; sections and live-from-start per preset in
+   a *Which part* group below *Which items* (`UX-015`). / All seven per preset. / All in Settings.
+4. **Several sections.** One file per section, named by the stem and a section suffix, claimed as
+   one family. / Refuse a second section (narrows `REQ-030`). / Join them (a new ffmpeg step).
+
 ### T-253 — Network reachability: address family and politeness delays
 
 **Status:** Proposed — filed 2026-08-16 by `T-183`
@@ -937,6 +1078,40 @@ interaction is measured rather than assumed.
 **Specific criteria:** `-4` and `-6` share yt-dlp's `source_address` and are mutually exclusive —
 `DownloadRequest` makes that unrepresentable rather than validating it; `--max-sleep-interval` is
 refused without `--sleep-interval`, which is yt-dlp's own rule, and it is refused at edit time.
+
+#### Mapped 2026-10-14 — the design, before the code
+
+Mapped against `8b0aad6` on a machine with no IPv6 route; probes in the implementer's scratch
+notes.
+
+- **No defect at `HEAD`**, and one gap: `--max-sleep-interval` is refused as *cannot tell what
+  this would change* because the table generator runs each option alone, so a randomized delay is
+  unreachable (`REQ-030`, Low).
+- **`-4`, `-6` and the hatch's `--source-address` all write `source_address`**, the last typed
+  winning. Once `-4`/`-6` have a control, a typed `--source-address` beside them would be admitted
+  and overridden — the `REQ-031` shape — unless the build decides.
+- **`-6` with no IPv6 fails as NETWORK**, so the queue retries it three times before the user sees
+  why. The family reaches yt-dlp's traffic only: thumbnails and update checks read neither it nor
+  the proxy.
+- **yt-dlp's library enforces none of the command line's pairing rules** (max without min, max
+  below min, negatives): `{max: 1.5}` slept, so the typed fields must check themselves.
+- **The sleep is per file**, so a merged download sleeps twice; **a sleeping job sends nothing**, so
+  its row reads *Downloading* throughout; **a cancel during a sleep is never cooperative** (noticed
+  only when the sleep ended), so the manager's escalation always answers it; and **three jobs
+  started within 0.17 s of each other**, so with the pool the delay spaces nothing between jobs.
+
+**Questions for the maintainer** (recommended first):
+
+1. **The address family and `--source-address`.** One radio group in *Settings › Network* —
+   Automatic, IPv4 only, IPv6 only, *From this address* — absorbing `--source-address` (an audit
+   change; the task grows to five options). / Three choices in Settings, `--source-address` left in
+   the hatch and a disagreement refused at queue time. / Three choices per preset.
+2. **What the delay means with several downloads at once.** yt-dlp's meaning, in *Settings ›
+   Network* beside the speed limit, saying that downloads running together do not take turns. / A
+   queue-level gap between starts (new manager behaviour; parity fails). / Per preset.
+3. **What the row says while a job waits.** A *Waiting* stage from yt-dlp's `Sleeping N seconds`
+   line, pinned by a test (a new `Stage` member). / Nothing; the control's note says so. / The
+   application sleeps itself (one wait per job; parity fails).
 
 ### T-254 — SponsorBlock, opt-in per preset
 
@@ -948,6 +1123,45 @@ permitted this and `NFR-007` was amended to name SponsorBlock as a third permitt
 while the option is off. The category lists are validated against yt-dlp's own. `--sponsorblock-api`
 is **excluded** — `SEC-003` declined a configurable endpoint — and this task does not reopen it.
 
+#### Mapped 2026-10-14 — the design, before the code
+
+Mapped against `8b0aad6` on real YouTube downloads, with a loopback server standing in for the
+SponsorBlock API where the request had to be read; probes in the implementer's scratch notes.
+
+- **Through the options field on unreleased `main`, *Embed metadata* plus `--sponsorblock-mark`
+  produces a file with no metadata.** The option implies a second `FFmpegMetadata` that writes
+  chapters only, appended after the application's own, and it rewrites the file from a chapters
+  map, dropping every tag the first wrote: the control run had `title=Me at the zoo`, the hatch
+  run none. **High guess.**
+- **The lookup carries every header typed through `--add-headers`**, `Authorization` included,
+  captured on loopback; a youtube.com cookie was not sent. The four-character hash prefix
+  `SEC-003` ruled on still holds. **High guess, Critical where the header is a credential.**
+- **The hatch already turns SponsorBlock on with nothing saying what is sent, on the probe as
+  well**: one lookup each from the staging probe, the session's probe and the download, three per
+  queued video. **Medium guess.**
+- Low: `--sponsorblock-chapter-title` and `--no-sponsorblock` are refused as *changes nothing*
+  although each changes something beside a mark; `--sponsorblock-mark -sponsor` is admitted and
+  builds nothing (`T012-R5`'s shape).
+- SponsorBlock acts on YouTube alone, so the local integration pages can never fail a *no request
+  while off* test; an offline guard through `run_all_pps('after_filter')` with requests refused
+  works. A removal is ffmpeg work, and without ffmpeg the download finishes and then fails, so
+  `REQ-024`'s gate is load-bearing. Two `ModifyChapters` passes leave a stale SponsorBlock chapter,
+  so the build must compose one with the hatch's `--remove-chapters`.
+
+**Questions for the maintainer** (recommended first):
+
+1. **What a preset holds.** Per category, *leave*, *mark as a chapter* or *cut out*, stored as two
+   disjoint tuples, in one *SponsorBlock (YouTube only)* group below *Keep beside the file* (eleven
+   radio groups). / Two checkbox lists (an overlap rule). / One switch (no per-category choice).
+2. **Marking and *Chapters*.** While anything is marked, *Chapters* shows checked and held, and one
+   `FFmpegMetadata` carries both (the structural fix for the metadata loss). / Marking disabled
+   until *Chapters* is ticked. / Implied in `build_options` only.
+3. **Typed headers on the lookup.** Look up without them, through a subclass whose session carries
+   only the network settings (overrides a private method; feasibility unverified). / Refuse
+   `--add-headers` while SponsorBlock is on. / Say so and amend `NFR-007`.
+4. **When `HEAD`'s defects close.** Within this task, as `T-249`'s did (`main` is unreleased). / An
+   interim refusal of the two spellings now.
+
 ### T-255 — Per-extractor arguments
 
 **Status:** Proposed — filed 2026-08-16 by `T-183`
@@ -957,6 +1171,46 @@ is **excluded** — `SEC-003` declined a configurable endpoint — and this task
 as the string the user typed; an unknown extractor key is refused **with the reason** rather than
 accepted and ignored, which is `T012-R5`'s defect exactly; values are redacted under `DAT-004` like
 any other text this application supplies, because an extractor argument can carry a token.
+
+#### Mapped 2026-10-14 — the design, before the code
+
+Mapped against `8b0aad6` on real YouTube requests, with every request outside YouTube's hosts
+refused unsent; probes in the implementer's scratch notes.
+
+- **Unruled and admitted on unreleased `main`: two arguments choose the host requests go to.**
+  `youtube:innertube_host=H` sent all four player requests to `H` (measured, refused unsent), with
+  a signed-in session's authorization computed for it (read); `tiktok:api_hostname=H` copies the
+  TikTok session cookie onto `H` (read, not run). `SEC-003` declined a configurable SponsorBlock
+  endpoint because *its typo is a new network destination*; nothing covers these. **High guess,
+  Critical once signed in.**
+- **Any key and argument is admitted and an unknown one silently ignored** — `T012-R5` live
+  (`nosuchie:anything=1`, `youtube:nosucharg=1`). **A repeated `--extractor-args` for one
+  extractor keeps only the last.** **Medium guesses.**
+- Lower: `generic:impersonate` is `SEC-003`'s forbidden `--impersonate` as an argument, inert only
+  while curl_cffi is absent; `youtube-ejs:dev=true` turns off yt-dlp's checks on the solver script
+  it executes (read); `zan:split_angles=true` makes ffmpeg re-encode where `requires_ffmpeg`
+  cannot see it (read).
+- **The key space is not the extractor list**: `twitch`, `jiosaavn`, `wrestleuniverse`,
+  `stacommu`, `youtube-ejs`, `youtubepot-*` and `youtubejsc-*` are read and are not extractor keys,
+  and no extractor declares its argument names. Token-carrying arguments include `po_token`,
+  `visitor_data`, `hls_key`, `device_id` and `client_id`; stored, they are secrets at rest, which
+  meets `DAT-003`'s reopening condition. The entry's `DAT-004` is withdrawn since 2026-08-01;
+  `DAT-003`'s `T-049` amendment and `ARC-010`'s 2026-09-26 rule are what bind.
+
+**Questions for the maintainer** (recommended first; the first is a security ruling):
+
+1. **Which pairs are forbidden.** Four families on `SEC-003`'s and `SEC-004`'s reasoning:
+   configurable endpoints, impersonation, and the solver's developer switches; everything else,
+   `hls_key` included, permitted (the documented `innertube_host=studio.youtube.com` workaround is
+   lost). / Endpoints only. / Everything, as the user's own text.
+2. **What *unknown* is checked against.** A generated allowlist of key and argument pairs from the
+   pinned source, drift-tested like `option_table.py` (plugin keys refused). / Extractor keys only
+   (refuses working `twitch` arguments). / A short hand-written list.
+3. **Storing token values.** Verbatim, with `DAT-003`'s provenance row amended to name the field and
+   values registered for redaction except fixed vocabularies. / Kept out of storage (no retry after
+   a restart). / The system keyring (a new runtime dependency).
+4. **The editor.** One *Extractor arguments* group above the hatch, one `KEY:ARG=V;…` per line,
+   checked as typed and shown back merged and normalized. / A table. / Named YouTube controls.
 
 ### T-339 — Hear Narrator read the Windows application
 

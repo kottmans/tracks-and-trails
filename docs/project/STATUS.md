@@ -182,6 +182,14 @@ No Windows runtime, external download or release-gate result is claimed here.
 
 ## Current risks and external blockers
 
+- **A containment breach on unreleased `main`, found 2026-10-14 while mapping `T-248`.**
+  `--trim-filenames` or `--windows-filenames` typed in the options field makes yt-dlp reshape the
+  whole staging path, and a download can land outside the chosen folder; the job then fails, and
+  the stray file stays. Critical by `TESTING.md` §14's wording; `0.1.0` predates the field. When it
+  is fixed is the maintainer's to rule ([`T-248`](TASKS.md#t-248--filename-shaping-and-the-modification-time)).
+  The same mapping round found the field able to switch off yt-dlp's unsafe-extension check for
+  the whole process, and `T-252`'s found fragmented downloads ending *Done* with a fragment
+  missing in `0.1.0` too.
 - **CI is green again.** Its Linux job failed from 2026-10-08, when PySide6 6.12.0's metapackage
   began requiring `PySide6_WebEngine` and `PySide6_Pdf` and the `LIC-001` gate refused them.
   **`T-355`** caps PySide6 below 6.12, and the push of `d18bcb8` passed every job in run
