@@ -90,7 +90,7 @@ Current requirements and architecture retain their own canonical authority.
 | [OPS-009](#ops-009--where-each-ci-job-runs-now-that-starbase-is-back-and-minutes-are-metered) | Where each CI job runs, now that `STARBASE` is back and minutes are metered | Partly superseded | [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously); [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died); [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
 | [DAT-006](#dat-006--the-completion-ledger-what-it-stores-and-what-it-deliberately-does-not) | The completion ledger: what it stores, and what it deliberately does not | Withdrawn; purge ruling accepted | [Withdrawn 2026-08-06](#withdrawn-2026-08-06--there-is-no-ledger-so-there-is-nothing-to-decide); [Legacy-data ruling 2026-08-06](#legacy-data-ruling-2026-08-06--the-rows-already-written-are-purged-on-upgrade) |
 | [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch) | The queue does not run until it is started, and it is stopped at every launch | Accepted | [Amended 2026-09-12](#amended-2026-09-12--a-queue-with-nothing-left-to-do-stops-itself) |
-| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted); [Amended 2026-09-27](#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute); [Amended 2026-10-10](#amended-2026-10-10--a-long-option-is-typed-in-full); [Amended 2026-10-11](#amended-2026-10-11--playlist-selection-acts-at-expansion-and-dates-freeze-when-queued); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-acts-on-chosen-languages-and-never-captions-for-all) |
+| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted); [Amended 2026-09-27](#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute); [Amended 2026-10-10](#amended-2026-10-10--a-long-option-is-typed-in-full); [Amended 2026-10-11](#amended-2026-10-11--playlist-selection-acts-at-expansion-and-dates-freeze-when-queued); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-acts-on-chosen-languages-and-never-captions-for-all); [Amended 2026-10-15, second](#amended-2026-10-15-second--the-sort-is-checked-whole-the-check-runs-on-the-download-and-containers-have-an-order) |
 | [UX-007](#ux-007--the-phase-3-surfaces-ruled-all-25-open-p-clauses) | The Phase 3 surfaces, ruled: all 25 open `[P]` clauses | Accepted | — |
 | [SEC-004](#sec-004--the-fifteen-options-sec-003-did-not-see-are-all-forbidden) | The fifteen options `SEC-003` did not see are all forbidden | Accepted | — |
 | [SEC-005](#sec-005----legacy-server-connect-is-forbidden-on-sec-004s-own-tls-reasoning) | `--legacy-server-connect` is forbidden, on `SEC-004`'s own TLS reasoning | Accepted | — |
@@ -104,7 +104,7 @@ Current requirements and architecture retain their own canonical authority.
 | [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu) | The row picks a preset; the per-row verbs are the row's own menu | Accepted | — |
 | [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) | The concurrency control leaves the toolbar for Settings | Accepted | — |
 | [UX-014](#ux-014--naming-is-a-setting-a-single-download-is-renamed-not-templated) | Naming is a setting; a single download is renamed, not templated | Accepted | — |
-| [UX-015](#ux-015--the-additional-options-field-the-editors-last-group-checked-as-you-type) | The additional-options field: the editor's last group, checked as you type | Accepted | [Amended 2026-10-11](#amended-2026-10-11--a-which-items-group-stands-above-the-hatch); [Amended 2026-10-11, second](#amended-2026-10-11-second--a-keep-beside-the-file-group-below-embed-in-the-file); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-inside-subtitles) |
+| [UX-015](#ux-015--the-additional-options-field-the-editors-last-group-checked-as-you-type) | The additional-options field: the editor's last group, checked as you type | Accepted | [Amended 2026-10-11](#amended-2026-10-11--a-which-items-group-stands-above-the-hatch); [Amended 2026-10-11, second](#amended-2026-10-11-second--a-keep-beside-the-file-group-below-embed-in-the-file); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-inside-subtitles); [Amended 2026-10-15, second](#amended-2026-10-15-second--a-choosing-the-format-group-at-the-top) |
 | [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button) | The row's menu says what it removes, and the ⋮ reads as a button | Accepted | — |
 | [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted; revision 2026-09-08.5 by amendment | [Status retention](#doc-007-status-retention); [running completed-task record](#doc-007-completed-tasks); [shared source and captured formatting](#doc-007-shared-source); [review storage](#doc-007-review-storage); [historical review migration](#doc-007-review-migration) |
 
@@ -5752,6 +5752,36 @@ Once built, each of the seven spellings is refused from the hatch for its contro
 which leaves `--sub-format`'s other preferences unreachable; conversion only, with `--sub-format`
 moved to the hatch. For `all`: narrowing it silently to the subtitle languages.
 
+### Amended 2026-10-15, second — the sort is checked whole, the check runs on the download, and containers have an order
+
+**Status:** **Accepted** — maintainer rulings of 2026-10-15, on `T-250`, as recommended, before
+its code.
+**Amends:** §1's typed fields, for `T-250`'s options; and the audit's classes, by one row.
+
+**The problem.** yt-dlp accepts any sort text and acts on what it reads: an unknown field is
+ignored with a deprecation line, `res:abc` sets no limit, and `vcodec:nonsense` silently picks a
+different format. Checking every format costs 79 requests and 12.9 s against 3 for one video. And
+a remux or recode runs after the merge, so it decides the final container, while a merge
+container the streams cannot enter fails only after the download.
+
+**What is ruled.**
+
+1. **The sort is checked field by field and limit by limit** against a transcription of yt-dlp's
+   vocabulary in `core/`, bound to the pin by a test run in a fresh process (yt-dlp's field table
+   is class state an unknown field writes into). A deprecated alias is refused naming its
+   replacement.
+2. **The format check has four positions** — yt-dlp decides, the chosen formats, every format,
+   never — and acts **on the download only**, so reading a URL keeps its cost. `--check-all-formats`
+   moves from `hatch` to `typed`, so `T-250` types five options.
+3. **The containers have one written order**: recode, then remux, then the merge container, then
+   yt-dlp's choice. When the remux names a container the merger takes, the merge uses it too, one
+   pass instead of two, as yt-dlp's `-t mp4` does; the merge choice is offered only while neither
+   change is chosen, and includes *fall back to mkv*.
+
+**The alternatives, as they were put.** Fields only, or asking yt-dlp in the GUI process; three
+positions with *every format* refused as policy, or four on both phases; merge and remux exclusive,
+or no merge control.
+
 ---
 
 ## UX-007 — The Phase 3 surfaces, ruled: all 25 open `[P]` clauses
@@ -6980,6 +7010,20 @@ subtitles* from *no subtitles, only automatic captions*. Radio buttons for the r
 **The alternatives, as they were put.** A checkbox only, applied to the chosen subtitle languages,
 which offers nothing where a source has captions and no subtitles; or a second list beside the
 first.
+
+### Amended 2026-10-15, second — a *Choosing the format* group at the top
+
+**Status:** **Accepted** — maintainer ruling of 2026-10-15, on `T-250`, as recommended.
+**Amends:** §1's groups. A new group comes first; *Container* grows.
+
+**What is ruled.** ***Choosing the format***, above *Audio*, holds the sort, as a text field checked
+as typed, and the format check, as four radio buttons. Both are disabled, with the reason, for a
+row whose format was chosen from the table, since a sort never changes an exact format id
+(measured). The merge container is a choice inside *Container*, beside the remux it yields to.
+
+**The alternatives, as they were put.** The sort and the check beside the format table, which
+presets would need again elsewhere; or one *Format* group holding all three, which hides the merge
+choice's order behind the remux.
 
 ---
 

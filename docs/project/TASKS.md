@@ -1108,7 +1108,9 @@ recommended. Questions 2 and 3 are open.
 
 ### T-250 — Format depth: sorting, checking and the merge container
 
-**Status:** Proposed — filed 2026-08-16 by `T-183`
+**Status:** Proposed — **design ruled 2026-10-15, all four questions as recommended** (`ARC-010`
+and `UX-015` amended, second, that day); runs after `T-363` and `T-364`. Filed 2026-08-16 by
+`T-183`
 **Options (4):** `-S/--format-sort`, `--check-formats`, `--no-check-formats`,
 `--merge-output-format`
 **Specific criteria:** `--format-sort`'s field grammar is validated against yt-dlp's own accepted
@@ -1140,6 +1142,10 @@ scratch notes.
 - **A remux or recode runs after the merge**, so it decides the final container and a merge
   container becomes an intermediate (two passes); merging into `avi` failed *Conversion failed!*
   after the download was paid for.
+
+**Ruled 2026-10-15: all four as recommended.** Building them moves `--check-all-formats` to
+`typed`, makes `--format-sort-reset` the typed counterpart of clearing the sort, and corrects
+`T-361`'s recorded claim that only aliases share a built option's destination.
 
 **Questions for the maintainer** (recommended first):
 
