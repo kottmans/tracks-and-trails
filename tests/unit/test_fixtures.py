@@ -312,6 +312,8 @@ ALLOWED_INFO_KEYS = frozenset(
         # `capture._keep_subtitles` commits nothing under them. The nesting check below still
         # applies to the map itself, which is why it is listed here rather than special-cased.
         "subtitles",
+        # `T-251`: the caption map, read and committed the same way, keys only.
+        "automatic_captions",
         "thumbnail",
         "title",
         "upload_date",

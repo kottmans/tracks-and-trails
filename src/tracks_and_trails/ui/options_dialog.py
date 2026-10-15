@@ -13,6 +13,11 @@ under it, never repeating a value, and the accepting buttons are disabled while 
 or all of them. An info JSON is kept without its cookies or request headers (`DAT-003`, amended
 2026-10-11), and the group says so.
 
+**In *Subtitles*, their depth** (`T-251`, built 2026-10-14 on the implementer's recommended
+design, which the maintainer has yet to rule): automatic captions where a chosen language has no
+subtitles, offered after the subtitles and marked; the format to fetch them in; and a conversion,
+which ffmpeg performs.
+
 **Above the hatch, *Which items*** (`UX-015` amended 2026-10-11, `T-247`): which of a playlist's
 entries become jobs, and the size and upload-date filters each job applies. Its refusals are listed
 the same way, and hold the same buttons.
@@ -100,14 +105,16 @@ from PySide6.QtWidgets import (
 )
 
 from tracks_and_trails.core.models import (
+    ALL_SUBTITLE_LANGUAGES,
     AudioCodec,
     KeptThumbnails,
     MediaKind,
     Preset,
+    SubtitleFormat,
     containers_for,
+    subtitle_format_problem,
 )
 from tracks_and_trails.core.presets import (
-    ALL_SUBTITLE_LANGUAGES,
     MP3_BITRATES,
     with_post_processing,
 )
@@ -165,6 +172,23 @@ SUBTITLE_LANGUAGES_NAME: Final = "optionsSubtitleLanguages"
 
 EMBED_SUBTITLES_NAME: Final = "optionsEmbedSubtitles"
 
+#: Subtitle depth (`T-251`): the caption checkbox, the format preference and its refusals, and one
+#: radio button per conversion, each naming its whole choice as `KEEP_THUMBNAILS` does.
+AUTOMATIC_CAPTIONS_NAME: Final = "optionsAutomaticCaptions"
+SUBTITLE_FORMAT_NAME: Final = "optionsSubtitleFormat"
+SUBTITLE_FORMAT_REFUSALS_NAME: Final = "optionsSubtitleFormatRefusals"
+CONVERT_SUBTITLES: Final = (
+    (None, "optionsConvertSubtitlesKeep", "Keep the format they arrive in"),
+    (SubtitleFormat.SRT, "optionsConvertSubtitlesSrt", "Convert them to SRT"),
+    (SubtitleFormat.VTT, "optionsConvertSubtitlesVtt", "Convert them to VTT"),
+    (SubtitleFormat.ASS, "optionsConvertSubtitlesAss", "Convert them to ASS"),
+    (SubtitleFormat.LRC, "optionsConvertSubtitlesLrc", "Convert them to LRC"),
+)
+#: How a language offered only as an automatic caption is listed, after the subtitles.
+CAPTION_SUFFIX: Final = " (automatic captions)"
+#: What the format field shows while empty: yt-dlp's `--sub-format` grammar, by example.
+SUBTITLE_FORMAT_PLACEHOLDER: Final = "The site's own choice, or for example srt/vtt/best"
+
 #: The group below *Embed in the file* (`UX-015`, amended 2026-10-11, second, `T-249`).
 KEEP_BESIDE_TITLE: Final = "Keep beside the file"
 KEEP_DESCRIPTION_NAME: Final = "optionsKeepDescription"
@@ -207,6 +231,8 @@ FFMPEG_FEATURE_CONTROLS: Final[dict[FfmpegFeature, tuple[str, ...]]] = {
         EMBED_CHAPTERS_NAME,
         EMBED_SUBTITLES_NAME,
     ),
+    # Every conversion, and not *keep*, which asks for no ffmpeg work (`T-251`).
+    FfmpegFeature.SUBTITLES: tuple(name for wanted, name, _ in CONVERT_SUBTITLES if wanted),
 }
 
 #: Said once, where the controls it explains are (`NFR-006`, `REQ-024`).
@@ -233,6 +259,14 @@ NO_SINK_REASON: Final = "These options cannot be saved as a preset from here."
 NO_AUDIO_REASON: Final = "This download keeps its video, so there is no audio track to convert."
 NO_BITRATE_REASON: Final = "A bitrate applies to MP3. Other codecs carry their own quality scale."
 NO_SUBTITLES_REASON: Final = "This source publishes no subtitles."
+#: Said where the probe found automatic captions and no subtitles (`T-251`): *no subtitles* and
+#: *no subtitles a person wrote* are different answers, and this is the second.
+CAPTIONS_ONLY_REASON: Final = (
+    "This source publishes no subtitles, only automatic captions. Use automatic captions to "
+    "choose them."
+)
+#: Said after the hint while captions are listed and cannot yet be chosen (`T-251`).
+CAPTIONS_HINT: Final = "Languages marked automatic captions are chosen once those are used."
 
 #: What the container section says about its two verbs (`T-286`).
 #:
@@ -374,6 +408,7 @@ class OptionsDialog(QDialog):
         preset: Preset,
         *,
         subtitle_languages: Sequence[str] = (),
+        caption_languages: Sequence[str] = (),
         parent: QWidget | None = None,
         title: str = "Options for this download",
         save_preset: PresetSink | None = None,
@@ -389,6 +424,12 @@ class OptionsDialog(QDialog):
         #: are disabled with the reason and carry the preset's own values (`T109-R2`).
         self._choosing_entries = choosing_entries
         self._offered_languages = tuple(subtitle_languages)
+        #: The languages the probe found only as automatic captions (`T-251`), listed after the
+        #: subtitles and checkable only while automatic captions are used. A language in both is
+        #: listed once, as a subtitle, which is the one yt-dlp takes for it.
+        self._offered_captions = tuple(
+            language for language in caption_languages if language not in self._offered_languages
+        )
         self._save_preset = save_preset
         #: **What this screen may offer** (`REQ-024`, `T-199`, `UX-005` §5). Every option on it
         #: except *keep what arrives* is post-processing, and post-processing is ffmpeg's — so
@@ -412,6 +453,8 @@ class OptionsDialog(QDialog):
         )
         #: Whether *Which items* as last checked may be used (`T-247`). Checked on opening, below.
         self._selection_usable = True
+        #: Whether the subtitle format preference as last checked may be used (`T-251`).
+        self._subtitle_format_usable = True
         self._build()
         self._show_preset(preset)
         self._update_enabled()
@@ -675,6 +718,18 @@ class OptionsDialog(QDialog):
         return group
 
     def _build_subtitles(self) -> QWidget:
+        """The languages, then how they are taken, embedded, fetched and converted (`T-251`).
+
+        **Automatic captions are listed after the subtitles, each marked**, and can be checked
+        only while *Use automatic captions* is: a caption is fetched under that option alone, so a
+        checked caption without it would be a control that does nothing (`T-075`). The checkbox
+        is yt-dlp's `--write-auto-subs` exactly, so a preset saved with it takes a caption for a
+        language another source publishes no subtitles in.
+
+        **The conversion is radio buttons, as *Keep beside the file*'s thumbnails are** (`UX-015`,
+        amended 2026-10-11, second): each names its whole choice, where a combo box on Linux
+        announces its value in place of its name (`T200-R7`).
+        """
         group = QGroupBox("Subtitles", self)
         layout = QVBoxLayout(group)
 
@@ -685,15 +740,57 @@ class OptionsDialog(QDialog):
         # **Checkboxes rather than a multi-select highlight** (`P-17`, `NFR-005`). A selection
         # highlight is conveyed by colour, which `NFR-005` forbids as the only distinction, and a
         # screen reader announces a checked item without being asked what the colour means.
-        for language in self._offered_languages:
-            item = QListWidgetItem(language, self._languages)
+        #
+        # **The language is the item's data, and the text is what is said about it** (`T-251`):
+        # a caption reads `fr (automatic captions)`, and the request carries `fr`.
+        for language, label in (
+            *((language, language) for language in self._offered_languages),
+            *((language, f"{language}{CAPTION_SUFFIX}") for language in self._offered_captions),
+        ):
+            item = QListWidgetItem(label, self._languages)
+            item.setData(Qt.ItemDataRole.UserRole, language)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Unchecked)
         layout.addWidget(self._languages)
 
+        self._automatic_captions = QCheckBox(
+            "Use automatic captions where a language has no subtitles", group
+        )
+        self._automatic_captions.setObjectName(AUTOMATIC_CAPTIONS_NAME)
+        self._automatic_captions.toggled.connect(self._gate_captions)
+        layout.addWidget(self._automatic_captions)
+
         self._embed_subtitles = QCheckBox("Embed them in the file", group)
         self._embed_subtitles.setObjectName(EMBED_SUBTITLES_NAME)
         layout.addWidget(self._embed_subtitles)
+
+        # A form row, so the field has a label as its buddy (`NFR-005`).
+        form = QFormLayout()
+        self._subtitle_format = self._text_field(
+            group, SUBTITLE_FORMAT_NAME, "Fetch them as", SUBTITLE_FORMAT_PLACEHOLDER
+        )
+        form.addRow("Fetch them as", self._subtitle_format)
+        layout.addLayout(form)
+        self._subtitle_format_refusals = QLabel("", group)
+        self._subtitle_format_refusals.setObjectName(SUBTITLE_FORMAT_REFUSALS_NAME)
+        self._subtitle_format_refusals.setWordWrap(True)
+        # A refusal may quote what the user typed, which is their text.
+        self._subtitle_format_refusals.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self._subtitle_format_refusals)
+        # Checked once typing pauses, as *Which items* is (`UX-015`): `srt/` is on its way to
+        # `srt/vtt`, and refusing it at that keystroke would be refusing the user mid-word.
+        self._subtitle_format_pause = QTimer(self)
+        self._subtitle_format_pause.setSingleShot(True)
+        self._subtitle_format_pause.setInterval(EXTRA_OPTIONS_PAUSE_MS)
+        self._subtitle_format_pause.timeout.connect(self._check_subtitle_format)
+        self._subtitle_format.textChanged.connect(self._subtitle_format_pause.start)
+
+        self._convert_subtitles: dict[SubtitleFormat | None, QRadioButton] = {}
+        for wanted, name, text in CONVERT_SUBTITLES:
+            button = QRadioButton(text, group)
+            button.setObjectName(name)
+            layout.addWidget(button)
+            self._convert_subtitles[wanted] = button
 
         self._subtitle_reason = QLabel("", group)
         self._subtitle_reason.setWordWrap(True)
@@ -873,12 +970,22 @@ class OptionsDialog(QDialog):
         # publishes*, so displaying it means every offered language checked. Compared as a set
         # against the literals, a preset carrying `("all",)` matched nothing the probe found and an
         # untouched accept then answered with no languages at all.
+        #
+        #
+        # **A caption stays checked only while automatic captions are used** (`T-251`), and
+        # `_gate_captions` is that one rule, which `_update_enabled` applies once the languages are
+        # shown. So `all` is every subtitle and no caption: a preset carrying it never uses
+        # captions, which the model refuses beside it.
+        self._automatic_captions.setChecked(preset.automatic_captions)
+        self._subtitle_format.setText(preset.subtitle_format or "")
+        self._convert_subtitles[preset.convert_subtitles].setChecked(True)
         everything = ALL_SUBTITLE_LANGUAGES in preset.subtitle_languages
         wanted = set(preset.subtitle_languages)
         for index in range(self._languages.count()):
             item = self._languages.item(index)
-            checked = everything or item.text() in wanted
+            checked = everything or self._language_of(item) in wanted
             item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+        self._check_subtitle_format()
 
         # The preset's own text, shown without starting the pause: showing it is not typing it.
         self._extra.setPlainText(preset.extra_options)
@@ -935,8 +1042,8 @@ class OptionsDialog(QDialog):
         self._update_accepting()
 
     def _update_accepting(self) -> None:
-        """The accepting buttons are live only while both checked groups may be used."""
-        usable = self._extra_checked[2] and self._selection_usable
+        """The accepting buttons are live only while every checked field may be used."""
+        usable = self._extra_checked[2] and self._selection_usable and self._subtitle_format_usable
         self._ok_button.setEnabled(usable)
         if self._save_preset is not None:
             self._save_button.setEnabled(usable)
@@ -954,6 +1061,31 @@ class OptionsDialog(QDialog):
     def extra_refusals_text(self) -> str:
         """What the field's refusal list says. A method, so a test reads what the user reads."""
         return self._extra_refusals.text()
+
+    # --- the subtitle format preference (`T-251`) ----------------------------------------------
+
+    def _check_subtitle_format(self) -> None:
+        """Check the preference as it reads now, and say under it what is wrong with it."""
+        self._subtitle_format_pause.stop()
+        text = self._subtitle_format.text().strip()
+        problem = (
+            subtitle_format_problem(text) if text and self._subtitle_format.isEnabled() else None
+        )
+        self._subtitle_format_usable = problem is None
+        self._subtitle_format_refusals.setText(
+            "" if problem is None else f"Fetch them as: {problem}"
+        )
+        self._update_accepting()
+
+    def _subtitle_format_ok(self) -> bool:
+        """Whether the preference may be used, checking it first if typing has not paused yet."""
+        if self._subtitle_format_pause.isActive():
+            self._check_subtitle_format()
+        return self._subtitle_format_usable
+
+    def subtitle_format_refusals_text(self) -> str:
+        """What the preference's refusal says. A method, so a test reads what the user reads."""
+        return self._subtitle_format_refusals.text()
 
     # --- *Which items* (`UX-015` amended 2026-10-11, `T-247`) ----------------------------------
 
@@ -1026,7 +1158,7 @@ class OptionsDialog(QDialog):
     # Qt's override name.
     def accept(self) -> None:
         """Accept only fields that may be used, checked as they read at this moment."""
-        if self._extra_options_usable() and self._selection_ok():
+        if self._extra_options_usable() and self._selection_ok() and self._subtitle_format_ok():
             super().accept()
 
     def _update_enabled(self) -> None:
@@ -1052,10 +1184,18 @@ class OptionsDialog(QDialog):
 
         self._container_choice.setEnabled(not self._container_keep.isChecked())
 
-        offered = bool(self._offered_languages)
-        self._languages.setEnabled(offered)
-        self._embed_subtitles.setEnabled(offered)
-        self._subtitle_reason.setText(SUBTITLES_HINT if offered else NO_SUBTITLES_REASON)
+        # **Subtitles or captions are something to choose** (`T-251`); with neither, every
+        # subtitle control carries the preset's own, as the list always has (`T109-R2`).
+        offered = bool(self._offered_languages or self._offered_captions)
+        for control in (
+            self._languages,
+            self._embed_subtitles,
+            self._automatic_captions,
+            self._subtitle_format,
+            *self._convert_subtitles.values(),
+        ):
+            control.setEnabled(offered)
+        self._gate_captions()
 
         self._items.setEnabled(self._choosing_entries)
         self._at_most.setEnabled(self._choosing_entries)
@@ -1063,6 +1203,36 @@ class OptionsDialog(QDialog):
 
         if not self._ffmpeg_available:
             self._withdraw_what_ffmpeg_performs()
+
+    def _gate_captions(self, *_: object) -> None:
+        """Captions are checkable only while automatic captions are used (`T-251`).
+
+        **Unchecked as well as disabled** when the box is cleared: a caption left checked would
+        be a language shown as chosen that yt-dlp would never fetch.
+        """
+        usable = self._automatic_captions.isChecked()
+        for index in range(self._languages.count()):
+            item = self._languages.item(index)
+            if self._language_of(item) not in self._offered_captions:
+                continue
+            if usable:
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEnabled)
+            else:
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+                item.setCheckState(Qt.CheckState.Unchecked)
+        self._say_why_subtitles()
+
+    def _say_why_subtitles(self) -> None:
+        """The line under *Subtitles*, which tells no subtitles from only captions (`T-251`)."""
+        if self._offered_languages:
+            text = SUBTITLES_HINT
+            if self._offered_captions and not self._automatic_captions.isChecked():
+                text = f"{text} {CAPTIONS_HINT}"
+        elif self._offered_captions:
+            text = CAPTIONS_ONLY_REASON
+        else:
+            text = NO_SUBTITLES_REASON
+        self._subtitle_reason.setText(text)
 
     def _withdraw_what_ffmpeg_performs(self) -> None:
         """Disable every control `FFMPEG_FEATURE_CONTROLS` names, and say why once.
@@ -1105,7 +1275,9 @@ class OptionsDialog(QDialog):
         """
         if self._save_preset is None:  # pragma: no cover - the button only exists with a sink
             return
-        if not (self._extra_options_usable() and self._selection_ok()):
+        if not (
+            self._extra_options_usable() and self._selection_ok() and self._subtitle_format_ok()
+        ):
             # The refusals are already under their fields; a preset is not saved with them in it.
             return
         name, accepted = self._ask_name()
@@ -1138,12 +1310,18 @@ class OptionsDialog(QDialog):
             return AudioCodec.ORIGINAL
 
     def chosen_languages(self) -> tuple[str, ...]:
-        """The checked languages, in the order the source listed them."""
+        """The checked languages, in the order the source listed them: subtitles, then captions."""
         return tuple(
-            self._languages.item(index).text()
+            self._language_of(self._languages.item(index))
             for index in range(self._languages.count())
             if self._languages.item(index).checkState() is Qt.CheckState.Checked
         )
+
+    @staticmethod
+    def _language_of(item: QListWidgetItem) -> str:
+        """The language an entry stands for, which a caption's text adds a word to (`T-251`)."""
+        language = item.data(Qt.ItemDataRole.UserRole)
+        return language if isinstance(language, str) else item.text()
 
     def result_preset(self) -> Preset:
         """The preset the user has described — derived, never the one that was passed in.
@@ -1179,6 +1357,7 @@ class OptionsDialog(QDialog):
         )
         codec, quality = self._chosen_audio()
         languages, embed = self._chosen_subtitles()
+        automatic, subtitle_format, conversion = self._chosen_subtitle_depth(languages)
         extra_text, extra_argv = self._chosen_extra_options()
         items, at_most = self._chosen_entry_rule()
         smallest, largest, after, before = self._chosen_filters()
@@ -1188,6 +1367,9 @@ class OptionsDialog(QDialog):
             audio_quality=quality,
             subtitle_languages=languages,
             embed_subtitles=embed,
+            automatic_captions=automatic,
+            subtitle_format=subtitle_format,
+            convert_subtitles=conversion,
             write_description=self._keep_description.isChecked(),
             write_info_json=self._keep_info_json.isChecked(),
             keep_thumbnails=self._chosen_thumbnails(),
@@ -1202,6 +1384,28 @@ class OptionsDialog(QDialog):
         )
         # **With its entry rule** (`T-247`): two presets differing only in it must not share a name.
         return replace(derived, name=derived_preset_name(derived))
+
+    def _chosen_subtitle_depth(
+        self, languages: tuple[str, ...]
+    ) -> tuple[bool, str | None, SubtitleFormat | None]:
+        """Captions, the format and the conversion — or the preset's own (`T-251`).
+
+        **The preset's own where the list was disabled**, as `_chosen_subtitles` answers
+        (`T109-R2`): nothing could be chosen, so nothing is changed. **And none of them where no
+        language is chosen**: each acts only on the chosen languages, so carried alone they would
+        be settings that do nothing, which `build_options` would not pass to yt-dlp either.
+        """
+        if not self._languages.isEnabled():
+            preset = self._preset
+            return preset.automatic_captions, preset.subtitle_format, preset.convert_subtitles
+        if not languages:
+            return False, None, None
+        text = self._subtitle_format.text().strip()
+        conversion = next(
+            (wanted for wanted, button in self._convert_subtitles.items() if button.isChecked()),
+            None,
+        )
+        return self._automatic_captions.isChecked(), text or None, conversion
 
     def _chosen_thumbnails(self) -> KeptThumbnails:
         """Which thumbnails the radio buttons keep. One is always checked; none means *none*."""

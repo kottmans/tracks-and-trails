@@ -560,6 +560,49 @@ class KeptThumbnails(StrEnum):
     ALL = "all"
 
 
+class SubtitleFormat(StrEnum):
+    """What written subtitles are converted to (`T-251`): yt-dlp's `--convert-subs`.
+
+    **Exactly the formats yt-dlp's converter takes**, `FFmpegSubtitlesConvertorPP.SUPPORTED_EXTS`
+    at the pinned version, and `tests/unit/test_subtitle_depth.py` holds the two equal. Converting
+    is ffmpeg's work, so a request carrying one needs ffmpeg before a byte moves (`REQ-024`).
+    """
+
+    SRT = "srt"
+    VTT = "vtt"
+    ASS = "ass"
+    LRC = "lrc"
+
+
+#: yt-dlp's selector for *every subtitle this source publishes*, named rather than spelled.
+#:
+#: **A selector, not a language code**, and the distinction is load-bearing (`T109-R1`). The
+#: options editor holds the languages a probe actually found, and matching this against those
+#: literals finds nothing — so a preset promising all of them displayed as none chosen, and an
+#: untouched accept answered with none. Anything comparing a preset's languages to a real list has
+#: to ask about this value first, which is why it stopped being a bare string in a tuple.
+#:
+#: Here rather than in `core/presets.py` since `T-251`, because the models refuse it beside
+#: automatic captions and cannot import the module that imports them.
+ALL_SUBTITLE_LANGUAGES: Final = "all"
+
+#: `--sub-format`'s grammar as this application accepts it (`T-251`): file extensions in yt-dlp's
+#: lower case, or `best`, joined by `/` in order of preference. yt-dlp itself takes any text and
+#: falls back to the last format the site lists, with a warning, when nothing matches — so a typo
+#: would be a preference that silently never applied, and it is refused where it is typed.
+_SUBTITLE_PREFERENCE: Final = re.compile(r"[a-z0-9]+(?:/[a-z0-9]+)*")
+
+
+def subtitle_format_problem(text: str) -> str | None:
+    """Why `text` is not a subtitle format preference, in words for the editor, or `None`."""
+    if _SUBTITLE_PREFERENCE.fullmatch(text):
+        return None
+    return (
+        "write file extensions in lower case, separated by /, in the order you prefer them, "
+        "for example srt/vtt/best"
+    )
+
+
 class AudioCodec(StrEnum):
     """The audio codec a request asks for (`REQ-010`'s "chosen codec").
 
@@ -694,6 +737,31 @@ def _require_container(owner: str, name: str, value: object) -> None:
             "refuses anything else at post-processing time, which is after the download has "
             "already been paid for"
         )
+
+
+def _require_subtitle_depth(owner: str, value: Any) -> None:
+    """`T-251`'s three fields, on a `DownloadRequest` or a `Preset`, which share their names.
+
+    **Automatic captions are refused beside `all`** (`T-251`, measured 2026-10-14). yt-dlp merges
+    the caption map into the subtitle map before it reads the languages, so `all` then names every
+    caption the site lists: a YouTube video with five subtitle languages listed 160 automatic
+    captions, nearly all of them machine translations, and each is a request to the site. The
+    built-in *Video with embedded subtitles* carries `all`, so this is one checkbox away; the
+    editor never produces it, and a stored value that did would fail here rather than at the site.
+    """
+    _require_flag(owner, "automatic_captions", value.automatic_captions)
+    if value.automatic_captions and ALL_SUBTITLE_LANGUAGES in value.subtitle_languages:
+        raise ValueError(
+            f"{owner}.automatic_captions cannot be combined with every subtitle language "
+            f"({ALL_SUBTITLE_LANGUAGES!r}): yt-dlp would fetch every automatic caption the site "
+            "lists, which on YouTube is about 160 machine translations. Name the languages"
+        )
+    _require_optional_text(owner, "subtitle_format", value.subtitle_format)
+    if value.subtitle_format is not None:
+        problem = subtitle_format_problem(value.subtitle_format)
+        if problem is not None:
+            raise ValueError(f"{owner}.subtitle_format {value.subtitle_format!r}: {problem}")
+    _require_optional_enum(owner, "convert_subtitles", value.convert_subtitles, SubtitleFormat)
 
 
 def _require_one_container_change(owner: str, remux: str | None, recode: str | None) -> None:
@@ -985,6 +1053,15 @@ class MediaInfo:
     #: rather than drawing an empty list the user can pick nothing from.
     subtitle_languages: tuple[str, ...] = ()
 
+    #: The languages this source offers **only** as automatic captions (`T-251`), in the order the
+    #: extractor listed them: the caption map's keys less those already above.
+    #:
+    #: **Apart from the subtitles, because they are a different answer.** *No subtitles* and *no
+    #: subtitles a person wrote* are not the same thing to tell a user, and a caption is fetched
+    #: only under `automatic_captions`, so the editor offers these behind that checkbox. A language
+    #: with both is listed once, above: yt-dlp takes the subtitles for it whatever is asked.
+    caption_languages: tuple[str, ...] = ()
+
     def __post_init__(self) -> None:
         _require_text("MediaInfo", "url", self.url, "it is the url this describes")
         _require_text(
@@ -1003,11 +1080,10 @@ class MediaInfo:
         object.__setattr__(
             self, "entries", _as_tuple_of("MediaInfo", "entries", self.entries, PlaylistEntry)
         )
-        object.__setattr__(
-            self,
-            "subtitle_languages",
-            _as_tuple_of("MediaInfo", "subtitle_languages", self.subtitle_languages, str),
-        )
+        for name in ("subtitle_languages", "caption_languages"):
+            object.__setattr__(
+                self, name, _as_tuple_of("MediaInfo", name, getattr(self, name), str)
+            )
         _require_optional_duration("MediaInfo", "duration_seconds", self.duration_seconds)
         _require_optional_text("MediaInfo", "uploader", self.uploader)
         _require_optional_upload_date("MediaInfo", self.upload_date)
@@ -1115,6 +1191,15 @@ class DownloadRequest:
     post_processors: tuple[str, ...] = ()
     subtitle_languages: tuple[str, ...] = ()
     embed_subtitles: bool = False
+    #: Subtitle depth (`T-251`). `automatic_captions` is `--write-auto-subs`: a chosen language
+    #: with no subtitles is taken from the site's automatic captions, and one with subtitles is
+    #: not, which is yt-dlp's own precedence. `subtitle_format` is `--sub-format`, the preference
+    #: among the formats the site offers, and `convert_subtitles` is `--convert-subs`, which
+    #: ffmpeg performs. **Never automatic captions for `all`**: yt-dlp would take every caption
+    #: the site lists, which on YouTube is about 160 machine translations.
+    automatic_captions: bool = False
+    subtitle_format: str | None = None
+    convert_subtitles: SubtitleFormat | None = None
 
     #: `REQ-010`'s chosen codec and quality. Only meaningful when `media_kind` is AUDIO.
     #:
@@ -1252,6 +1337,7 @@ class DownloadRequest:
                 self, name, _as_tuple_of("DownloadRequest", name, getattr(self, name), str)
             )
         _require_flag("DownloadRequest", "embed_subtitles", self.embed_subtitles)
+        _require_subtitle_depth("DownloadRequest", self)
         _require_enum("DownloadRequest", "audio_codec", self.audio_codec, AudioCodec)
         _require_optional_text("DownloadRequest", "audio_quality", self.audio_quality)
         if self.audio_quality is not None and not _is_ytdlp_quality(self.audio_quality):
@@ -1327,6 +1413,11 @@ class Preset:
     #: express them cannot ask for them.
     subtitle_languages: tuple[str, ...] = ()
     embed_subtitles: bool = False
+    #: Subtitle depth (`T-251`), as on `DownloadRequest`: automatic captions where a chosen
+    #: language has no subtitles, the preferred format among the site's, and a conversion.
+    automatic_captions: bool = False
+    subtitle_format: str | None = None
+    convert_subtitles: SubtitleFormat | None = None
 
     #: `REQ-010`'s other five, added by `T-109`. Every one of them is a field of
     #: `DownloadRequest` under the same name, which is what makes them preset-owned: a preset is
@@ -1390,6 +1481,7 @@ class Preset:
                 f"not {self.audio_quality!r}"
             )
         _require_flag("Preset", "embed_subtitles", self.embed_subtitles)
+        _require_subtitle_depth("Preset", self)
         _require_container("Preset", "remux_container", self.remux_container)
         _require_container("Preset", "recode_container", self.recode_container)
         _require_one_container_change("Preset", self.remux_container, self.recode_container)

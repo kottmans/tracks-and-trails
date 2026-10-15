@@ -33,6 +33,7 @@ from tracks_and_trails.core.models import (
     DownloadRequest,
     KeptThumbnails,
     MediaKind,
+    SubtitleFormat,
 )
 from tracks_and_trails.downloader.ytdlp_adapter import build_options
 
@@ -99,6 +100,11 @@ _FIELD_ON: Final = {
     "post_processors": ("FFmpegThumbnailsConvertor",),
     "subtitle_languages": ("en",),
     "embed_subtitles": True,
+    # `T-251`'s depth, which acts only where languages are chosen: each alone sets nothing, and
+    # the case with every field on is the one that reaches `writeautomaticsub` and the format.
+    "automatic_captions": True,
+    "subtitle_format": "srt/best",
+    "convert_subtitles": SubtitleFormat.SRT,
     "embed_thumbnail": True,
     "embed_metadata": True,
     "embed_chapters": True,

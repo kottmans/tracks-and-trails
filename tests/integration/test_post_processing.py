@@ -40,7 +40,7 @@ from typing import Any, Final
 import pytest
 
 from tests.integration.test_end_to_end import build_hls, build_media, streams_in
-from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind
+from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind, SubtitleFormat
 from tracks_and_trails.downloader import worker as worker_module
 from tracks_and_trails.downloader.environment import FfmpegReport
 from tracks_and_trails.downloader.protocol import Failed, SessionKind, Succeeded
@@ -506,6 +506,55 @@ def test_a_staging_directory_is_still_removed_after_its_subtitles_are_kept(
     assert leftovers == [], f"the staging directory outlived the download: {leftovers}"
 
 
+@pytest.mark.parametrize("conversion", [SubtitleFormat.SRT, SubtitleFormat.ASS])
+def test_a_converted_subtitle_is_kept_and_the_one_it_came_from_is_not(
+    output: Path, playlist_url: Callable[[], str], conversion: SubtitleFormat
+) -> None:
+    """**`T-251`'s conversion, as a file.** The presentation publishes WebVTT; the request asks for
+    its German subtitle as `conversion`. yt-dlp converts before the download and records the new
+    path in `requested_subtitles`, and that record is what the worker claims from — so the file
+    that lands is the converted one, in the converted format, and the WebVTT it came from is gone.
+    A claim reading the old path would fail the job as a missing subtitle; one keeping both would
+    leave a file nobody asked for.
+    """
+    written = download(
+        request_for(
+            playlist_url(),
+            output,
+            subtitle_languages=("de",),
+            convert_subtitles=conversion,
+        )
+    )
+
+    beside = sorted(path.name for path in output.iterdir() if path.name != written.name)
+    assert beside == [f"{written.stem}.de.{conversion.value}"], beside
+    text = (output / beside[0]).read_text(encoding="utf-8")
+    assert "hallo untertitel" in text, text
+    assert not text.startswith("WEBVTT"), "the file is named for the conversion and still WebVTT"
+    if conversion is SubtitleFormat.SRT:
+        assert "00:00:00,000 --> " in text, text
+
+
+def test_a_converted_subtitle_is_the_one_embedded(
+    output: Path, ffmpeg: tuple[str, str], playlist_url: Callable[[], str]
+) -> None:
+    """Converting runs before the download, so embedding takes the converted file and leaves
+    nothing beside the media (`T-251`, `REQ-010`'s *embed or write*)."""
+    written = download(
+        request_for(
+            playlist_url(),
+            output,
+            subtitle_languages=("de",),
+            embed_subtitles=True,
+            convert_subtitles=SubtitleFormat.SRT,
+        )
+    )
+
+    subtitles = [s for s in streams_in(ffmpeg[1], written) if s.get("codec_type") == "subtitle"]
+    assert len(subtitles) == 1, subtitles
+    assert sorted(path.name for path in output.iterdir()) == [written.name]
+
+
 # --- options that combine, and the refusal that precedes all of them --------------------------
 
 
@@ -558,6 +607,11 @@ def test_options_that_combine_produce_one_file_carrying_every_one_of_them(
         pytest.param({"embed_chapters": True}, id="chapters"),
         pytest.param(
             {"subtitle_languages": ("en",), "embed_subtitles": True}, id="embed-subtitles"
+        ),
+        # `T-251`: a conversion is ffmpeg's work even when nothing is embedded.
+        pytest.param(
+            {"subtitle_languages": ("en",), "convert_subtitles": SubtitleFormat.SRT},
+            id="convert-subtitles",
         ),
     ],
 )

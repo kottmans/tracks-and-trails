@@ -460,6 +460,7 @@ def project_media(
         entries=_entries(info) if is_playlist else (),
         slot_count=_slot_count(info) if is_playlist else None,
         subtitle_languages=_subtitle_languages(info),
+        caption_languages=_caption_languages(info),
     )
 
 
@@ -472,9 +473,10 @@ def _subtitle_languages(info: Mapping[str, Any]) -> tuple[str, ...]:
     a language is asked for; yt-dlp picks the variant.
 
     **`automatic_captions` is deliberately not merged in.** It is a separate map fetched under a
-    separate option (`writeautomaticsub`), which `REQ-010` does not name — so a language offered
-    from it would be one this application asks for and never receives, producing a file with no
-    subtitles and no error. That is the `T-075` shape: a control that appears to do nothing.
+    separate option (`writeautomaticsub`), so a language offered from it here would be one asked
+    for and never received unless that option is on, producing a file with no subtitles and no
+    error — the `T-075` shape, a control that appears to do nothing. `_caption_languages` reads
+    it apart, and the editor offers it behind the option (`T-251`).
 
     Order is the extractor's own. Sorting would look tidier and would put `ar` above `en` for an
     English source that also publishes Arabic, which is not the order the site thought its
@@ -487,6 +489,24 @@ def _subtitle_languages(info: Mapping[str, Any]) -> tuple[str, ...]:
     if not isinstance(subtitles, Mapping):
         return ()
     return tuple(str(language) for language in subtitles if str(language))
+
+
+def _caption_languages(info: Mapping[str, Any]) -> tuple[str, ...]:
+    """The languages this source offers only as automatic captions (`T-251`), in its own order.
+
+    **The caption map's keys less the subtitle map's.** yt-dlp takes a language's subtitles over
+    its caption whenever both exist and both are asked for (`YoutubeDL.process_subtitles`), so a
+    language in both is offered once, as subtitles. Measured 2026-10-14 on a YouTube video with
+    five subtitle languages: the caption map held 160 keys — those five again, `en-orig`, and
+    machine translations into nearly every other language YouTube has.
+    """
+    captions = info.get("automatic_captions")
+    if not isinstance(captions, Mapping):
+        return ()
+    subtitled = set(_subtitle_languages(info))
+    return tuple(
+        str(language) for language in captions if str(language) and str(language) not in subtitled
+    )
 
 
 def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
@@ -907,6 +927,14 @@ def build_options(
     if request.subtitle_languages:
         options["writesubtitles"] = True
         options["subtitleslangs"] = list(request.subtitle_languages)
+        # **Subtitle depth, only where languages are chosen** (`T-251`). yt-dlp with no languages
+        # named takes English, or the first it finds, so a caption flag or a format preference set
+        # alone would fetch a file nobody chose. A chosen language with subtitles keeps them: the
+        # caption is used only for one without, which is yt-dlp's own precedence.
+        if request.automatic_captions:
+            options["writeautomaticsub"] = True
+        if request.subtitle_format is not None:
+            options["subtitlesformat"] = request.subtitle_format
 
     if request.embed_thumbnail:
         # **`EmbedThumbnail` embeds a file that has to exist first** (`T-109`). yt-dlp's own
@@ -1396,8 +1424,10 @@ def build_postprocessors(
     decides what its own command line means. Each step feeds the next, so the sequence is a
     contract rather than a style:
 
-    1. **`FFmpegExtractAudio`** first, because everything after it should act on the audio file
-       rather than on the container it came out of.
+    0. **`FFmpegSubtitlesConvertor`** (`T-251`), which runs *before* the download, on the
+       subtitles yt-dlp has just written, so whatever follows sees the converted files.
+    1. **`FFmpegExtractAudio`** first among the rest, because everything after it should act on
+       the audio file rather than on the container it came out of.
     2. **`FFmpegVideoRemuxer`**, then **`FFmpegVideoConvertor`** — the container is settled before
        anything is written into it. `DownloadRequest` refuses to carry both.
     3. **`FFmpegEmbedSubtitle`**, before metadata: yt-dlp's own comment notes the subtitles must
@@ -1423,6 +1453,17 @@ def build_postprocessors(
     from yt_dlp.postprocessor import get_postprocessor
 
     specs: list[dict[str, Any]] = []
+    if request.subtitle_languages and request.convert_subtitles is not None:
+        # **Before the download, as yt-dlp's own command line schedules it** (`T-251`), so the
+        # converted file is the one `FFmpegEmbedSubtitle` embeds or the worker claims. It replaces
+        # each written subtitle with the converted one, in `requested_subtitles` as on disk.
+        specs.append(
+            {
+                "key": "FFmpegSubtitlesConvertor",
+                "format": request.convert_subtitles.value,
+                "when": "before_dl",
+            }
+        )
     if request.media_kind is MediaKind.AUDIO:
         # `preferredcodec` is what makes the MP3 preset differ from best/original (`T012-R5`).
         # Omitting it leaves yt-dlp's default of "best", which *keeps* the source codec — so

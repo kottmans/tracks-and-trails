@@ -27,6 +27,7 @@ from tracks_and_trails.core.models import (
     MediaKind,
     NetworkOptions,
     Preset,
+    SubtitleFormat,
 )
 
 URL = "https://example.com/watch?v=abc"
@@ -448,6 +449,10 @@ def test_a_preset_owned_field_cannot_be_overridden(field_name: str) -> None:
         "post_processors": ("FFmpegMetadata",),
         "subtitle_languages": ("en",),
         "embed_subtitles": True,
+        # `T-251`'s depth: a job taking captions or converting to SRT is not the preset shown.
+        "automatic_captions": True,
+        "subtitle_format": "srt",
+        "convert_subtitles": SubtitleFormat.SRT,
         "audio_codec": AudioCodec.FLAC,
         "audio_quality": "0",
         # `REQ-010`'s other five (`T-109`). Each one changes what the finished file *is*, so an

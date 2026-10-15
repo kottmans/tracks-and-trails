@@ -53,11 +53,13 @@ from dataclasses import dataclass, field, fields, replace
 from typing import Any, Final
 
 from tracks_and_trails.core.models import (
+    ALL_SUBTITLE_LANGUAGES,
     AudioCodec,
     DownloadRequest,
     KeptThumbnails,
     MediaKind,
     Preset,
+    SubtitleFormat,
 )
 from tracks_and_trails.core.selection import resolved_date
 
@@ -82,15 +84,6 @@ MP3_QUALITY: Final = "192"
 #: Stops at 128 deliberately. Below that MP3 is audibly poor for music, and a control that offers
 #: a choice nobody should make is a control that has to be explained rather than read.
 MP3_BITRATES: Final[tuple[str, ...]] = ("320", "256", "192", "160", "128")
-
-#: yt-dlp's selector for *every subtitle this source publishes*, named rather than spelled.
-#:
-#: **A selector, not a language code**, and the distinction is load-bearing (`T109-R1`). The
-#: options editor holds the languages a probe actually found, and matching this against those
-#: literals finds nothing — so a preset promising all of them displayed as none chosen, and an
-#: untouched accept answered with none. Anything comparing a preset's languages to a real list has
-#: to ask about this value first, which is why it stopped being a bare string in a tuple.
-ALL_SUBTITLE_LANGUAGES: Final = "all"
 
 #: The subtitle languages the embedded-subtitles preset asks for.
 #:
@@ -430,6 +423,11 @@ class FormatChoice:
     audio_quality: str | None
     subtitle_languages: tuple[str, ...]
     embed_subtitles: bool
+    #: Subtitle depth (`T-251`): a job taking automatic captions, or converting its subtitles to
+    #: SRT, produces different files from one that does not.
+    automatic_captions: bool
+    subtitle_format: str | None
+    convert_subtitles: SubtitleFormat | None
     post_processors: tuple[str, ...]
 
     #: `REQ-010`'s remaining five, joined here by `T-109` because they joined `Preset`. Listed
@@ -595,6 +593,9 @@ def to_request(
         post_processors=preset.post_processors,
         subtitle_languages=preset.subtitle_languages,
         embed_subtitles=preset.embed_subtitles,
+        automatic_captions=preset.automatic_captions,
+        subtitle_format=preset.subtitle_format,
+        convert_subtitles=preset.convert_subtitles,
         audio_codec=preset.audio_codec,
         audio_quality=preset.audio_quality,
         remux_container=preset.remux_container,
@@ -642,6 +643,8 @@ def needs_ffmpeg(preset: Preset) -> bool:
     The conditions mirror `build_postprocessors`' own, in the same order, so the two read as the
     same list.
     """
+    if preset.subtitle_languages and preset.convert_subtitles is not None:
+        return True
     if preset.media_kind is MediaKind.AUDIO:
         return True
     if preset.remux_container is not None or preset.recode_container is not None:

@@ -62,6 +62,7 @@ from tracks_and_trails.core.models import (
     MediaKind,
     NetworkOptions,
     Preset,
+    SubtitleFormat,
     looks_like_a_path,
     parse_browser_specification,
     proxy_refusal,
@@ -1298,6 +1299,8 @@ def _preset_from(raw: Any) -> Preset:
         values["audio_codec"] = AudioCodec(values["audio_codec"])
     if "keep_thumbnails" in values:
         values["keep_thumbnails"] = KeptThumbnails(values["keep_thumbnails"])
+    if values.get("convert_subtitles") is not None:
+        values["convert_subtitles"] = SubtitleFormat(values["convert_subtitles"])
     for name in ("post_processors", "subtitle_languages"):
         if name in values:
             values[name] = tuple(values[name])

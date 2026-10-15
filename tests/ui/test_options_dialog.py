@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QListWidgetItem,
     QPlainTextEdit,
     QPushButton,
     QRadioButton,
@@ -37,7 +38,13 @@ from PySide6.QtWidgets import (
 )
 
 from tracks_and_trails.core import presets as preset_registry
-from tracks_and_trails.core.models import AudioCodec, KeptThumbnails, Preset
+from tracks_and_trails.core.models import (
+    ALL_SUBTITLE_LANGUAGES,
+    AudioCodec,
+    KeptThumbnails,
+    Preset,
+    SubtitleFormat,
+)
 from tracks_and_trails.core.presets import MP3_BITRATES
 from tracks_and_trails.downloader.environment import FfmpegFeature
 from tracks_and_trails.downloader.extra_options import BAD_VALUE, NEEDS_FFMPEG
@@ -45,12 +52,17 @@ from tracks_and_trails.ui.options_dialog import (
     AT_MOST_NAME,
     AUDIO_CODEC_NAME,
     AUDIO_QUALITY_NAME,
+    AUTOMATIC_CAPTIONS_NAME,
+    CAPTION_SUFFIX,
+    CAPTIONS_HINT,
+    CAPTIONS_ONLY_REASON,
     CONTAINER_CHOICE_NAME,
     CONTAINER_KEEP_NAME,
     CONTAINER_NOTE,
     CONTAINER_NOTE_NAME,
     CONTAINER_RECODE_NAME,
     CONTAINER_REMUX_NAME,
+    CONVERT_SUBTITLES,
     CROSSED_DATES,
     CROSSED_SIZES,
     EMBED_CHAPTERS_NAME,
@@ -78,7 +90,10 @@ from tracks_and_trails.ui.options_dialog import (
     SAVE_PRESET_NAME,
     SAVE_PRESET_TEXT,
     SAVE_RESULT_NAME,
+    SUBTITLE_FORMAT_NAME,
+    SUBTITLE_FORMAT_REFUSALS_NAME,
     SUBTITLE_LANGUAGES_NAME,
+    SUBTITLES_HINT,
     UPLOADED_AFTER_NAME,
     UPLOADED_BEFORE_NAME,
     WHICH_ITEMS_TITLE,
@@ -452,7 +467,7 @@ def test_the_embedded_subtitles_preset_survives_being_opened_and_accepted(
     derived preset names them, which is the same download stated precisely.
     """
     preset = preset_registry.VIDEO_WITH_SUBTITLES
-    assert preset.subtitle_languages == (preset_registry.ALL_SUBTITLE_LANGUAGES,), (
+    assert preset.subtitle_languages == (ALL_SUBTITLE_LANGUAGES,), (
         "this test is about the `all` selector and the preset no longer carries it"
     )
 
@@ -722,6 +737,10 @@ STILL_LIVE_WITHOUT_FFMPEG: Final = {
     KEEP_DESCRIPTION_NAME,
     KEEP_INFO_JSON_NAME,
     *(name for _kept, name, _text in KEEP_THUMBNAILS),
+    # Subtitle depth (`T-251`): captions and the format preference are fetched as yt-dlp fetches
+    # any subtitle, and *keep the format* asks for nothing; only a conversion is ffmpeg's work.
+    AUTOMATIC_CAPTIONS_NAME,
+    next(name for wanted, name, _text in CONVERT_SUBTITLES if wanted is None),
 }
 
 
@@ -1779,10 +1798,11 @@ def test_the_kept_files_group_sits_directly_below_embed_in_the_file(
     """`UX-015`, amended 2026-10-11, second: below *Embed in the file*, the order after it kept."""
     dialog = editor()
     scroller = dialog.findChild(QScrollArea)
-    assert scroller is not None and scroller.widget() is not None
+    content = scroller.widget() if scroller is not None else None
+    assert content is not None
     groups = [
         child.title()
-        for child in scroller.widget().findChildren(
+        for child in content.findChildren(
             QGroupBox, options=Qt.FindChildOption.FindDirectChildrenOnly
         )
     ]
@@ -1861,3 +1881,289 @@ def test_every_kept_file_control_names_itself_and_takes_the_keyboard(
         assert isinstance(control, QCheckBox | QRadioButton)
         assert control.text().strip(), control.objectName()
         assert control.focusPolicy() & Qt.FocusPolicy.TabFocus, control.objectName()
+
+
+# --- subtitle depth (`T-251`, on the implementer's recommended design of 2026-10-14) ----------
+
+#: What a probe found: two subtitle languages, and captions in one of them and two others.
+SUBTITLED: Final = ("en", "de")
+CAPTIONED: Final = ("en", "fr", "en-orig")
+
+#: A preset using all three, in a language this probe has subtitles in.
+DEEP: Final = replace(
+    preset_registry.BEST_VIDEO,
+    name="Deep",
+    built_in=False,
+    subtitle_languages=("de",),
+    automatic_captions=True,
+    subtitle_format="srt/best",
+    convert_subtitles=SubtitleFormat.ASS,
+)
+
+
+def convert_radio(dialog: OptionsDialog, wanted: SubtitleFormat | None) -> QRadioButton:
+    name = next(name for choice, name, _text in CONVERT_SUBTITLES if choice is wanted)
+    return radio(dialog, name)
+
+
+def language_list(dialog: OptionsDialog) -> QListWidget:
+    found = dialog.findChild(QListWidget, SUBTITLE_LANGUAGES_NAME)
+    assert found is not None
+    return found
+
+
+def entry(dialog: OptionsDialog, text: str) -> QListWidgetItem:
+    found = language_list(dialog).findItems(text, Qt.MatchFlag.MatchExactly)
+    assert len(found) == 1, f"no single entry reads {text!r}"
+    return found[0]
+
+
+def entries(dialog: OptionsDialog) -> list[str]:
+    languages = language_list(dialog)
+    return [languages.item(index).text() for index in range(languages.count())]
+
+
+def test_captions_follow_the_subtitles_marked_and_a_language_with_both_is_listed_once(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """*No subtitles* and *no subtitles a person wrote* are different answers (`T-251`)."""
+    dialog = editor(subtitle_languages=SUBTITLED, caption_languages=CAPTIONED)
+
+    assert entries(dialog) == ["en", "de", f"fr{CAPTION_SUFFIX}", f"en-orig{CAPTION_SUFFIX}"]
+
+
+def test_a_caption_is_chosen_only_while_automatic_captions_are_used(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """A caption checked without the option would be a language yt-dlp never fetches (`T-075`),
+    so it cannot be checked until the option is, and clearing the option clears it."""
+    dialog = editor(subtitle_languages=SUBTITLED, caption_languages=CAPTIONED)
+    french = entry(dialog, f"fr{CAPTION_SUFFIX}")
+    captions = box(dialog, AUTOMATIC_CAPTIONS_NAME)
+
+    assert not french.flags() & Qt.ItemFlag.ItemIsEnabled
+    captions.click()
+    assert french.flags() & Qt.ItemFlag.ItemIsEnabled
+    french.setCheckState(Qt.CheckState.Checked)
+    chosen = dialog.result_preset()
+    assert (chosen.subtitle_languages, chosen.automatic_captions) == (("fr",), True)
+
+    captions.click()
+    assert french.checkState() is Qt.CheckState.Unchecked
+    assert not french.flags() & Qt.ItemFlag.ItemIsEnabled
+    assert dialog.result_preset().subtitle_languages == ()
+
+
+@pytest.mark.parametrize(
+    ("subtitled", "captioned", "said"),
+    [
+        pytest.param((), ("fr",), CAPTIONS_ONLY_REASON, id="only captions"),
+        pytest.param((), (), NO_SUBTITLES_REASON, id="neither"),
+        pytest.param(("en",), ("fr",), f"{SUBTITLES_HINT} {CAPTIONS_HINT}", id="both"),
+        pytest.param(("en",), (), SUBTITLES_HINT, id="only subtitles"),
+    ],
+)
+def test_the_group_says_which_kind_of_subtitle_the_source_has(
+    editor: Callable[..., OptionsDialog],
+    subtitled: tuple[str, ...],
+    captioned: tuple[str, ...],
+    said: str,
+) -> None:
+    dialog = editor(subtitle_languages=subtitled, caption_languages=captioned)
+
+    assert said in _labels(dialog)
+
+
+def test_a_source_with_only_captions_offers_them(editor: Callable[..., OptionsDialog]) -> None:
+    """The case captions exist for: no person wrote subtitles, and the site made some."""
+    dialog = editor(caption_languages=("en",))
+
+    assert language_list(dialog).isEnabled()
+    box(dialog, AUTOMATIC_CAPTIONS_NAME).click()
+    entry(dialog, f"en{CAPTION_SUFFIX}").setCheckState(Qt.CheckState.Checked)
+
+    chosen = dialog.result_preset()
+    assert (chosen.subtitle_languages, chosen.automatic_captions) == (("en",), True)
+
+
+def test_every_subtitle_from_the_built_in_is_not_every_caption(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """**`all` checks the subtitles and no caption**, and naming them is what lets the user add
+    captions: the model refuses captions beside `all`, which would be about 160 of them."""
+    dialog = editor(
+        preset_registry.VIDEO_WITH_SUBTITLES,
+        subtitle_languages=SUBTITLED,
+        caption_languages=CAPTIONED,
+    )
+    assert entry(dialog, "en").checkState() is Qt.CheckState.Checked
+    assert entry(dialog, f"fr{CAPTION_SUFFIX}").checkState() is Qt.CheckState.Unchecked
+
+    box(dialog, AUTOMATIC_CAPTIONS_NAME).click()
+    entry(dialog, f"fr{CAPTION_SUFFIX}").setCheckState(Qt.CheckState.Checked)
+    chosen = dialog.result_preset()
+
+    assert chosen.subtitle_languages == ("en", "de", "fr")
+    assert chosen.automatic_captions
+
+
+def test_the_depth_opens_on_the_preset_s_own_and_comes_back(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """Opening and accepting must not change how a preset takes its subtitles."""
+    dialog = editor(DEEP, subtitle_languages=SUBTITLED, caption_languages=CAPTIONED)
+
+    assert box(dialog, AUTOMATIC_CAPTIONS_NAME).isChecked()
+    assert line(dialog, SUBTITLE_FORMAT_NAME).text() == "srt/best"
+    assert convert_radio(dialog, SubtitleFormat.ASS).isChecked()
+    chosen = dialog.result_preset()
+    assert (
+        chosen.subtitle_languages,
+        chosen.automatic_captions,
+        chosen.subtitle_format,
+        chosen.convert_subtitles,
+    ) == (("de",), True, "srt/best", SubtitleFormat.ASS)
+
+
+def test_with_nothing_offered_the_preset_s_own_depth_is_carried(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """A queued job and the preset manager have no probe: nothing could be chosen (`T109-R2`)."""
+    dialog = editor(DEEP)
+
+    for name in (AUTOMATIC_CAPTIONS_NAME, SUBTITLE_FORMAT_NAME):
+        control = dialog.findChild(QWidget, name)
+        assert control is not None and not control.isEnabled(), name
+    chosen = dialog.result_preset()
+    assert (chosen.automatic_captions, chosen.subtitle_format, chosen.convert_subtitles) == (
+        True,
+        "srt/best",
+        SubtitleFormat.ASS,
+    )
+
+
+def test_with_nothing_offered_even_a_preset_with_no_language_keeps_its_own_depth(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """**Untouched, not tidied** (`T109-R2`): nothing could be chosen, so nothing is changed,
+    even where the depth acts on no language. Clearing it is for a user who unticked them."""
+    dialog = editor(replace(DEEP, subtitle_languages=()))
+
+    chosen = dialog.result_preset()
+
+    assert (chosen.automatic_captions, chosen.subtitle_format, chosen.convert_subtitles) == (
+        True,
+        "srt/best",
+        SubtitleFormat.ASS,
+    )
+
+
+def test_with_no_language_chosen_the_depth_is_not_kept(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """Each acts only on chosen languages, so alone they would be settings that do nothing."""
+    dialog = editor(DEEP, subtitle_languages=SUBTITLED)
+    entry(dialog, "de").setCheckState(Qt.CheckState.Unchecked)
+
+    chosen = dialog.result_preset()
+
+    assert (chosen.automatic_captions, chosen.subtitle_format, chosen.convert_subtitles) == (
+        False,
+        None,
+        None,
+    )
+
+
+@pytest.mark.parametrize("wanted", [None, *SubtitleFormat])
+def test_each_conversion_is_one_click_and_the_others_let_go(
+    editor: Callable[..., OptionsDialog], wanted: SubtitleFormat | None
+) -> None:
+    dialog = editor(DEEP, subtitle_languages=SUBTITLED)
+
+    convert_radio(dialog, wanted).click()
+
+    assert dialog.result_preset().convert_subtitles is wanted
+    assert [convert_radio(dialog, other).isChecked() for other in (None, *SubtitleFormat)] == [
+        other is wanted for other in (None, *SubtitleFormat)
+    ]
+
+
+def test_a_format_preference_yt_dlp_would_ignore_is_refused_where_it_is_typed(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """yt-dlp takes any text and falls back without a word, so `SRT` would never apply. Refused
+    on an immediate OK and save, inside the typing pause, as *Which items* is (`T247-R2`)."""
+    saved: list[Preset] = []
+    dialog = editor(
+        DEEP,
+        subtitle_languages=SUBTITLED,
+        save_preset=lambda preset: saved.append(preset),
+        ask_name=lambda: ("Kept", True),
+    )
+    line(dialog, SUBTITLE_FORMAT_NAME).setText("SRT")
+
+    save = dialog.findChild(QPushButton, SAVE_PRESET_NAME)
+    assert save is not None
+    save.click()
+    dialog.accept()
+
+    assert dialog.result() != QDialog.DialogCode.Accepted
+    assert not saved
+    refusals = dialog.findChild(QLabel, SUBTITLE_FORMAT_REFUSALS_NAME)
+    assert refusals is not None and refusals.text().startswith("Fetch them as: ")
+    assert dialog.subtitle_format_refusals_text() == refusals.text()
+    assert not ok_button(dialog).isEnabled()
+
+    line(dialog, SUBTITLE_FORMAT_NAME).setText("srt/vtt")
+    dialog.accept()
+    assert dialog.result() == QDialog.DialogCode.Accepted
+    assert dialog.result_preset().subtitle_format == "srt/vtt"
+
+
+def test_without_ffmpeg_only_the_conversion_is_withdrawn(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """`REQ-024`: a conversion is ffmpeg's work; captions and a preferred format are not."""
+    dialog = editor(
+        subtitle_languages=SUBTITLED, caption_languages=CAPTIONED, ffmpeg_available=False
+    )
+
+    for wanted in SubtitleFormat:
+        assert not convert_radio(dialog, wanted).isEnabled(), wanted
+    assert convert_radio(dialog, None).isEnabled()
+    assert box(dialog, AUTOMATIC_CAPTIONS_NAME).isEnabled()
+    assert line(dialog, SUBTITLE_FORMAT_NAME).isEnabled()
+
+
+def test_every_depth_control_names_itself_and_takes_the_keyboard(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """`NFR-005`. Each radio button says its whole choice; the field has a label as its buddy."""
+    dialog = editor(subtitle_languages=SUBTITLED, caption_languages=CAPTIONED)
+    controls: list[QWidget] = [
+        box(dialog, AUTOMATIC_CAPTIONS_NAME),
+        *(convert_radio(dialog, wanted) for wanted in (None, *SubtitleFormat)),
+    ]
+    for control in controls:
+        assert isinstance(control, QCheckBox | QRadioButton)
+        assert control.text().strip(), control.objectName()
+        assert control.focusPolicy() & Qt.FocusPolicy.TabFocus, control.objectName()
+
+    field = line(dialog, SUBTITLE_FORMAT_NAME)
+    assert field.accessibleName() == "Fetch them as"
+    assert any(label.buddy() is field for label in dialog.findChildren(QLabel))
+
+
+def test_the_depth_sits_inside_the_subtitles_group(editor: Callable[..., OptionsDialog]) -> None:
+    """Where `UX-015` would be amended to put it, if the maintainer rules as recommended."""
+    dialog = editor(subtitle_languages=SUBTITLED)
+    group = next(g for g in dialog.findChildren(QGroupBox) if g.title() == "Subtitles")
+
+    names = {
+        AUTOMATIC_CAPTIONS_NAME,
+        SUBTITLE_FORMAT_NAME,
+        SUBTITLE_FORMAT_REFUSALS_NAME,
+        *(name for _wanted, name, _text in CONVERT_SUBTITLES),
+    }
+    inside = {child.objectName() for child in group.findChildren(QWidget)}
+    assert names <= inside, sorted(names - inside)

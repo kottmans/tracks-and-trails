@@ -63,6 +63,8 @@ CONSUMED_TOP_LEVEL: Final = (
     "original_url",
     "playlist_count",
     "subtitles",
+    # `T-251`: the languages offered only as captions. Keys only, as `subtitles` above.
+    "automatic_captions",
     "thumbnail",
     "title",
     "uploader",
@@ -230,7 +232,7 @@ def keep_consumed(info: Mapping[str, Any]) -> dict[str, Any]:
             # playlist that expands into jobs reads four fields per entry. Everything else about
             # an entry is still dropped, by the same allowlist mechanism as everywhere else.
             kept[key] = [_keep_entry(item) for item in value]
-        elif key == "subtitles" and isinstance(value, Mapping):
+        elif key in {"subtitles", "automatic_captions"} and isinstance(value, Mapping):
             kept[key] = _keep_subtitles(value)
         elif key == "id":
             kept[key] = FIXTURE_ID
@@ -248,7 +250,8 @@ def _keep_subtitles(value: Mapping[str, Any]) -> dict[str, list[Any]]:
     open-ended namespace `SEC-002` was escalated over, arriving through a field nobody thought of
     as a namespace.
 
-    `_subtitle_languages` reads the keys and never looks inside, so the values are not merely
+    `_subtitle_languages` and `_caption_languages` (`T-251`) read the keys of the two maps and
+    never look inside, so the values are not merely
     sanitized here — there is nothing under them a reader wants. The **shape** is kept, an empty
     list per language, so a fixture is still a faithful sample of what yt-dlp hands the
     projection and the projection is exercised through its real path rather than an easier one.

@@ -684,7 +684,8 @@ def test_a_path_the_hatch_names_is_redacted_however_short(registered: None) -> N
 @pytest.mark.parametrize(
     ("argv", "word"),
     [
-        (("--sub-format", "best"), "best"),
+        # `--sub-format best` was this case until `T-251` gave it a control, refused in the hatch.
+        (("--merge-output-format", "mkv"), "mkv"),
         # `--retries` was this case until `T-361` refused it, an alias of `-R`, which has a control.
         (("--socket-timeout", "1000"), "1000"),
         (("--fixup", "never"), "never"),

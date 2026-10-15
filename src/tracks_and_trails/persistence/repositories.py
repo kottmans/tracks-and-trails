@@ -31,7 +31,13 @@ from typing import Any, Final
 
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import REORDERABLE, TERMINAL, JobStatus
-from tracks_and_trails.core.models import AudioCodec, DownloadRequest, KeptThumbnails, MediaKind
+from tracks_and_trails.core.models import (
+    AudioCodec,
+    DownloadRequest,
+    KeptThumbnails,
+    MediaKind,
+    SubtitleFormat,
+)
 from tracks_and_trails.core.models import Job as JobModel
 
 #: Statuses that cannot still be true at startup (`ARCHITECTURE.md` §5).
@@ -150,6 +156,8 @@ def _deserialize_request(raw: str) -> DownloadRequest:
         payload["audio_codec"] = AudioCodec(payload["audio_codec"])
     if "keep_thumbnails" in payload:
         payload["keep_thumbnails"] = KeptThumbnails(payload["keep_thumbnails"])
+    if payload.get("convert_subtitles") is not None:
+        payload["convert_subtitles"] = SubtitleFormat(payload["convert_subtitles"])
     return DownloadRequest(**{name: payload[name] for name in _REQUEST_FIELDS if name in payload})
 
 

@@ -135,8 +135,8 @@ def format_name(choice: FormatChoice) -> str:
     """
     name = preset_name_for(choice) or _converting_preset_for(choice) or _base_preset_for(choice)
     clauses = (
-        f"{_post_processing(choice)}{_kept_beside(choice)}{_which_items(choice)}"
-        f"{_extra_options(choice)}"
+        f"{_post_processing(choice)}{_subtitle_depth(choice)}{_kept_beside(choice)}"
+        f"{_which_items(choice)}{_extra_options(choice)}"
     )
     if name is None:
         return f"{choice.format_selector}{clauses}"
@@ -171,13 +171,17 @@ def _base_preset_for(choice: FormatChoice) -> str | None:
     **The additional yt-dlp options are set aside too** (`T-184`). No built-in carries any, so a
     preset with some matched nothing and its row read as the raw selector — `T140-R3`'s defect
     again, through the newest field. `_extra_options` says they are there instead. **So are the
-    size and date filters** (`T-247`) and the files kept beside the media (`T-249`), for the same
-    reason, and `_which_items` and `_kept_beside` say them.
+    size and date filters** (`T-247`), the files kept beside the media (`T-249`) and the subtitle
+    depth (`T-251`), for the same reason, and `_which_items`, `_kept_beside` and `_subtitle_depth`
+    say them.
     """
     plain = replace(
         unadjusted(choice),
         extra_options="",
         extra_option_argv=(),
+        automatic_captions=False,
+        subtitle_format=None,
+        convert_subtitles=None,
         write_description=False,
         write_info_json=False,
         keep_thumbnails=KeptThumbnails.NONE,
@@ -237,6 +241,18 @@ def _post_processing(choice: FormatChoice) -> str:
     ]
     if embedded:
         parts.append(f"embedding {_joined(embedded)}")
+    return "".join(f" · {part}" for part in parts)
+
+
+def _subtitle_depth(choice: FormatChoice) -> str:
+    """How the subtitles are taken and written, and nothing when as yt-dlp would (`T-251`)."""
+    parts: list[str] = []
+    if choice.automatic_captions:
+        parts.append("with automatic captions")
+    if choice.subtitle_format is not None:
+        parts.append(f"subtitles fetched as {choice.subtitle_format}")
+    if choice.convert_subtitles is not None:
+        parts.append(f"subtitles converted to {choice.convert_subtitles.value.upper()}")
     return "".join(f" · {part}" for part in parts)
 
 

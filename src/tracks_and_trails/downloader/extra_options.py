@@ -434,6 +434,8 @@ def grouped(accepted: Sequence[str]) -> list[list[str]]:
 #: (`T-361`): each is an alias of an option with a control, refused before a value counts. **So
 #: did `T-247`'s eight spellings the same day**, `-I`, `--playlist-items`, `--max-downloads`, the
 #: two sizes and the three dates, once each had a control.
+#: **`--convert-subs`, its two aliases and `--sub-format` left it on 2026-10-14** (`T-251`), for
+#: the same reason.
 #:
 #: The reason it exists. Registering every argument, which the first correction did, redacted the
 #: ordinary vocabulary users type here: `--sub-format best` removed every `best` from the log,
@@ -446,9 +448,6 @@ NOT_SECRET_VALUES: Final = frozenset(
         "--compat-options",
         "--concurrent-fragments",
         "-N",
-        "--convert-sub",
-        "--convert-subs",
-        "--convert-subtitles",
         "--convert-thumbnails",
         "--download-sections",
         "--encoding",
@@ -471,7 +470,6 @@ NOT_SECRET_VALUES: Final = frozenset(
         "--socket-timeout",
         "--sponsorblock-mark",
         "--sponsorblock-remove",
-        "--sub-format",
         "--throttled-rate",
         "--trim-file-names",
         "--trim-filenames",

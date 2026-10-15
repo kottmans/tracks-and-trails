@@ -2400,6 +2400,8 @@ class AddUrlDialog(QDialog):
         dialog = OptionsDialog(
             self.preset_for(row),
             subtitle_languages=(media.subtitle_languages if isinstance(media, MediaInfo) else ()),
+            # `T-251`: the languages offered only as automatic captions, listed after those.
+            caption_languages=(media.caption_languages if isinstance(media, MediaInfo) else ()),
             save_preset=self._save_preset,
             parent=self,
             # `REQ-024`, `T-199`: what ffmpeg performs is not offered when ffmpeg is absent. The

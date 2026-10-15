@@ -69,6 +69,8 @@ class FfmpegFeature(Enum):
     AUDIO = "extracting or converting audio"
     CONTAINER = "remuxing and recoding"
     EMBED = "embedding thumbnails, metadata, chapters and subtitles"
+    #: `--convert-subs` (`T-251`), which yt-dlp performs with `FFmpegSubtitlesConvertorPP`.
+    SUBTITLES = "converting subtitles to another format"
 
 
 #: Features that need ffmpeg, named in the terms a user would recognise (`REQ-024`, `REQ-010`).

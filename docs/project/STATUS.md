@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-10-11
+**Last updated:** 2026-10-14
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -103,7 +103,14 @@ task and review records it summarised.*
   revise the selection boundary within the task. **The second correction was approved on
   2026-10-13** at `b7c1dc4`, and `T-247` is in COMPLETED_TASKS; native Windows at that head is
   unverified. **`T-362` was approved on 2026-10-14** at `4fa990b` and is in COMPLETED_TASKS.
-  **`T-249` is built and with the Reviewer.** Its sibling audit found
+  **`T-249` is built and with the Reviewer.** **`T-251` was built the same night, ahead of that
+  review and on the implementer's recommended design**, by the maintainer's instruction
+  ([the amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-14-t-251-may-be-built-before-t-249s-review-returns));
+  its three design questions are unruled, so the build is provisional, and it is with the
+  Reviewer too. Mapping it found the options field able to ask for every automatic caption a
+  site lists, about 160 on YouTube, through `--write-auto-subs` and the built-in's `all`, on
+  unreleased `main`; closed within the task. The rest of stage 3 was mapped ahead the same
+  night, so its rulings can be taken together. `T-247`'s sibling audit found
   queued files numbered among the readable entries rather than by slot, filed as `T-362` by the
   maintainer's ruling, to run right after `T-247`. **`T-249`'s design was ruled the same day**
   (`DAT-003` and `UX-015` amended): mapping it found the options field's `--write-info-json` keeping
