@@ -111,11 +111,11 @@ test is unchanged in what it asserts and is narrowed through a local in `T-251`'
 
 ### T-251 — Subtitle depth: automatic captions, format and conversion
 
-**Status:** In Review — **built 2026-10-14 on the implementer's recommended design, which the
-maintainer has not ruled.** Built ahead of `T-249`'s review by the maintainer's instruction that
-evening ([the amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-14-t-251-may-be-built-before-t-249s-review-returns));
-anything ruled differently is rework within this task. *(Was Proposed:)* filed 2026-08-16 by
-`T-183`
+**Status:** In Review — built 2026-10-14 on the implementer's recommended design, ahead of
+`T-249`'s review by the maintainer's instruction that evening
+([the amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-14-t-251-may-be-built-before-t-249s-review-returns)).
+**All three design questions were ruled on 2026-10-15 as recommended**, so the build stands as
+built (`ARC-010` and `UX-015` amended 2026-10-15). *(Was Proposed:)* filed 2026-08-16 by `T-183`
 **Options (4):** `--write-auto-subs`, `--no-write-auto-subs`, `--sub-format`, `--convert-subs`
 **Specific criteria:** `--convert-subs` installs an ffmpeg post-processor, so `requires_ffmpeg`
 answers true for it and the user is told **before** the bytes are spent (`REQ-024`); automatic
@@ -150,8 +150,9 @@ captured subtitle maps; the probes are in the implementer's scratch notes, not t
 
 #### Questions for the maintainer, and what was built meanwhile
 
-Each was built as recommended and is **provisional until ruled**. The `UX-015` and `ARC-010`
-amendments they imply are not written into `DECISIONS.md` yet; they follow the ruling.
+Each was built as recommended, provisionally. **Ruled 2026-10-15: all three as recommended**, and
+the amendments they imply are written: `ARC-010` (subtitle depth acts on chosen languages, and never
+captions for `all`) and `UX-015` (subtitle depth inside *Subtitles*).
 
 1. **How are automatic captions offered?**
    - **(Recommended, built)** In the same language list, after the subtitles, each marked

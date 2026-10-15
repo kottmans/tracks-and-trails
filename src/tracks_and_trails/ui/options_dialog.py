@@ -13,10 +13,9 @@ under it, never repeating a value, and the accepting buttons are disabled while 
 or all of them. An info JSON is kept without its cookies or request headers (`DAT-003`, amended
 2026-10-11), and the group says so.
 
-**In *Subtitles*, their depth** (`T-251`, built 2026-10-14 on the implementer's recommended
-design, which the maintainer has yet to rule): automatic captions where a chosen language has no
-subtitles, offered after the subtitles and marked; the format to fetch them in; and a conversion,
-which ffmpeg performs.
+**In *Subtitles*, their depth** (`UX-015` amended 2026-10-15, `T-251`): automatic captions where
+a chosen language has no subtitles, offered after the subtitles and marked; the format to fetch
+them in; and a conversion, which ffmpeg performs.
 
 **Above the hatch, *Which items*** (`UX-015` amended 2026-10-11, `T-247`): which of a playlist's
 entries become jobs, and the size and upload-date filters each job applies. Its refusals are listed

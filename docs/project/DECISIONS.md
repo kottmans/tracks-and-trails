@@ -6,7 +6,7 @@ requirements or design — those live in `REQUIREMENTS.md` and `ARCHITECTURE.md`
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-10-11
+**Last updated:** 2026-10-15
 **Update when:** A durable choice is accepted, superseded, or deliberately rejected.
 **Does not contain:** Completion notes for routine work. Routine fixes go to `TASKS.md` and `CHANGELOG.md`.
 
@@ -90,7 +90,7 @@ Current requirements and architecture retain their own canonical authority.
 | [OPS-009](#ops-009--where-each-ci-job-runs-now-that-starbase-is-back-and-minutes-are-metered) | Where each CI job runs, now that `STARBASE` is back and minutes are metered | Partly superseded | [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously); [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died); [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
 | [DAT-006](#dat-006--the-completion-ledger-what-it-stores-and-what-it-deliberately-does-not) | The completion ledger: what it stores, and what it deliberately does not | Withdrawn; purge ruling accepted | [Withdrawn 2026-08-06](#withdrawn-2026-08-06--there-is-no-ledger-so-there-is-nothing-to-decide); [Legacy-data ruling 2026-08-06](#legacy-data-ruling-2026-08-06--the-rows-already-written-are-purged-on-upgrade) |
 | [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch) | The queue does not run until it is started, and it is stopped at every launch | Accepted | [Amended 2026-09-12](#amended-2026-09-12--a-queue-with-nothing-left-to-do-stops-itself) |
-| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted); [Amended 2026-09-27](#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute); [Amended 2026-10-10](#amended-2026-10-10--a-long-option-is-typed-in-full); [Amended 2026-10-11](#amended-2026-10-11--playlist-selection-acts-at-expansion-and-dates-freeze-when-queued) |
+| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted); [Amended 2026-09-27](#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute); [Amended 2026-10-10](#amended-2026-10-10--a-long-option-is-typed-in-full); [Amended 2026-10-11](#amended-2026-10-11--playlist-selection-acts-at-expansion-and-dates-freeze-when-queued); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-acts-on-chosen-languages-and-never-captions-for-all) |
 | [UX-007](#ux-007--the-phase-3-surfaces-ruled-all-25-open-p-clauses) | The Phase 3 surfaces, ruled: all 25 open `[P]` clauses | Accepted | — |
 | [SEC-004](#sec-004--the-fifteen-options-sec-003-did-not-see-are-all-forbidden) | The fifteen options `SEC-003` did not see are all forbidden | Accepted | — |
 | [SEC-005](#sec-005----legacy-server-connect-is-forbidden-on-sec-004s-own-tls-reasoning) | `--legacy-server-connect` is forbidden, on `SEC-004`'s own TLS reasoning | Accepted | — |
@@ -104,7 +104,7 @@ Current requirements and architecture retain their own canonical authority.
 | [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu) | The row picks a preset; the per-row verbs are the row's own menu | Accepted | — |
 | [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) | The concurrency control leaves the toolbar for Settings | Accepted | — |
 | [UX-014](#ux-014--naming-is-a-setting-a-single-download-is-renamed-not-templated) | Naming is a setting; a single download is renamed, not templated | Accepted | — |
-| [UX-015](#ux-015--the-additional-options-field-the-editors-last-group-checked-as-you-type) | The additional-options field: the editor's last group, checked as you type | Accepted | [Amended 2026-10-11](#amended-2026-10-11--a-which-items-group-stands-above-the-hatch); [Amended 2026-10-11, second](#amended-2026-10-11-second--a-keep-beside-the-file-group-below-embed-in-the-file) |
+| [UX-015](#ux-015--the-additional-options-field-the-editors-last-group-checked-as-you-type) | The additional-options field: the editor's last group, checked as you type | Accepted | [Amended 2026-10-11](#amended-2026-10-11--a-which-items-group-stands-above-the-hatch); [Amended 2026-10-11, second](#amended-2026-10-11-second--a-keep-beside-the-file-group-below-embed-in-the-file); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-inside-subtitles) |
 | [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button) | The row's menu says what it removes, and the ⋮ reads as a button | Accepted | — |
 | [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted; revision 2026-09-08.5 by amendment | [Status retention](#doc-007-status-retention); [running completed-task record](#doc-007-completed-tasks); [shared source and captured formatting](#doc-007-shared-source); [review storage](#doc-007-review-storage); [historical review migration](#doc-007-review-migration) |
 
@@ -5722,6 +5722,36 @@ Once built, each of the seven is refused from the hatch for its control (`HAS_A_
 saved in presets; or left untyped and refused, the picker covering them. For dates: resolving when
 the job runs, which moves the window under a queued or retried job.
 
+### Amended 2026-10-15 — subtitle depth acts on chosen languages, and never captions for `all`
+
+**Status:** **Accepted** — maintainer rulings of 2026-10-15, on `T-251`, as recommended; built the
+night before on the recommendations, by the ruling that let it be built ahead of `T-249`'s review.
+**Amends:** §1's typed fields, for the four options `T-251` types.
+
+**The problem.** yt-dlp merges a site's automatic captions into its subtitles before it reads the
+languages, so `all` with captions names every caption: 160 on one YouTube video, nearly all
+machine translations, each a request. With no language named, yt-dlp takes English, so a caption
+flag alone fetches a file nobody chose. And `--sub-format` accepts any text, falling back without
+a word when nothing matches.
+
+**What is ruled.**
+
+1. **One field per yt-dlp option**: `automatic_captions` (`--write-auto-subs`), `subtitle_format`
+   (`--sub-format`, in yt-dlp's own `/`-separated grammar, refused at edit time otherwise) and
+   `convert_subtitles` (`--convert-subs`, the formats yt-dlp's converter takes). No precedence rule
+   is needed between them.
+2. **They reach yt-dlp only with chosen languages**, and a conversion runs before the download, as
+   yt-dlp's own command line schedules it.
+3. **Automatic captions beside `all` are refused by the model**, so no preset or request holds them.
+   `all` means every subtitle and no caption.
+
+Once built, each of the seven spellings is refused from the hatch for its control
+(`HAS_A_CONTROL`).
+
+**The alternatives, as they were put.** One *Subtitle files as* choice setting both format keys,
+which leaves `--sub-format`'s other preferences unreachable; conversion only, with `--sub-format`
+moved to the hatch. For `all`: narrowing it silently to the subtitle languages.
+
 ---
 
 ## UX-007 — The Phase 3 surfaces, ruled: all 25 open `[P]` clauses
@@ -6932,6 +6962,24 @@ embedding one combine as `ARC-010`'s 2026-09-20 amendment rules: a union, and th
 
 **The alternative, as it was put.** The three inside *Embed in the file*, renamed *In and beside
 the file*: one fewer group, mixing what goes into the file with what is written next to it.
+
+### Amended 2026-10-15 — subtitle depth inside *Subtitles*
+
+**Status:** **Accepted** — maintainer ruling of 2026-10-15, on `T-251`, as recommended.
+**Amends:** §1's groups. No group is added; *Subtitles* grows.
+
+**What is ruled.** In the existing *Subtitles* group, in this order: the language list, now listing
+the languages a source offers **only as automatic captions** after its subtitles, each marked
+*(automatic captions)*; a checkbox, *Use automatic captions where a language has no subtitles*,
+which a marked language needs before it can be checked; *Embed them in the file*; a *Fetch them as*
+field in yt-dlp's grammar, checked as typed; and five radio buttons from *Keep the format they
+arrive in* to *Convert them to LRC*, withdrawn without ffmpeg. The line under the group tells *no
+subtitles* from *no subtitles, only automatic captions*. Radio buttons for the reason
+*Keep beside the file* has them (`T200-R7`).
+
+**The alternatives, as they were put.** A checkbox only, applied to the chosen subtitle languages,
+which offers nothing where a source has captions and no subtitles; or a second list beside the
+first.
 
 ---
 

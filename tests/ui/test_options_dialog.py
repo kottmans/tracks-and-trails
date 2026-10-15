@@ -1883,7 +1883,7 @@ def test_every_kept_file_control_names_itself_and_takes_the_keyboard(
         assert control.focusPolicy() & Qt.FocusPolicy.TabFocus, control.objectName()
 
 
-# --- subtitle depth (`T-251`, on the implementer's recommended design of 2026-10-14) ----------
+# --- subtitle depth (`UX-015` amended 2026-10-15, `T-251`) -----------------------------------
 
 #: What a probe found: two subtitle languages, and captions in one of them and two others.
 SUBTITLED: Final = ("en", "de")
@@ -2155,7 +2155,7 @@ def test_every_depth_control_names_itself_and_takes_the_keyboard(
 
 
 def test_the_depth_sits_inside_the_subtitles_group(editor: Callable[..., OptionsDialog]) -> None:
-    """Where `UX-015` would be amended to put it, if the maintainer rules as recommended."""
+    """Where `UX-015`'s amendment of 2026-10-15 puts it: inside the existing group."""
     dialog = editor(subtitle_languages=SUBTITLED)
     group = next(g for g in dialog.findChildren(QGroupBox) if g.title() == "Subtitles")
 

@@ -342,7 +342,7 @@ builds them, all of them at once.
 | `T-248` | 7 | Filename shaping and the modification time |
 | `T-249` | 7 | **Built 2026-10-14** — the sidecar writers: description, info JSON and thumbnail files |
 | `T-250` | 4 | Format depth: sorting, checking and the merge container |
-| `T-251` | 4 | **Built 2026-10-14**, on the implementer's recommended design — subtitle depth: automatic captions, format and conversion |
+| `T-251` | 4 | **Built 2026-10-14** — subtitle depth: automatic captions, format and conversion |
 | `T-252` | 7 | Download tuning and the whole retry policy |
 | `T-253` | 4 | Network reachability: address family and politeness delays |
 | `T-254` | 3 | SponsorBlock, opt-in per preset |

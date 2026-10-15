@@ -2,9 +2,9 @@
 
 Three typed fields for four of yt-dlp's options, shared by presets and requests, set on the
 download only and only where languages are chosen, and held here to yt-dlp's own `parse_options`
-of the options they stand for. Built on the implementer's recommended design of 2026-10-14, which
-the maintainer has yet to rule; the refusal of automatic captions beside `all` comes from a
-measurement rather than a preference, and the probe case below carries its shape.
+of the options they stand for (`ARC-010`, amended 2026-10-15). The refusal of automatic captions
+beside `all` comes from a measurement rather than a preference, and the probe case below carries
+its shape.
 """
 
 from __future__ import annotations

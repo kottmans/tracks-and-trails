@@ -106,8 +106,8 @@ task and review records it summarised.*
   **`T-249` is built and with the Reviewer.** **`T-251` was built the same night, ahead of that
   review and on the implementer's recommended design**, by the maintainer's instruction
   ([the amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-14-t-251-may-be-built-before-t-249s-review-returns));
-  its three design questions are unruled, so the build is provisional, and it is with the
-  Reviewer too. Mapping it found the options field able to ask for every automatic caption a
+  its three design questions were ruled as recommended on 2026-10-15 (`ARC-010` and `UX-015`
+  amended), so the build stands, and it is with the Reviewer too. Mapping it found the options field able to ask for every automatic caption a
   site lists, about 160 on YouTube, through `--write-auto-subs` and the built-in's `all`, on
   unreleased `main`; closed within the task. The rest of stage 3 was mapped ahead the same
   night, so its rulings can be taken together. `T-247`'s sibling audit found
