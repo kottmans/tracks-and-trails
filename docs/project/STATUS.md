@@ -173,10 +173,11 @@ recoverable from `e3b2c8f`; how often `T-350`'s race failed each of those runs i
 control"* with the real worker's DNS error in the log, which is the cause its 2026-10-14
 investigation confirmed.
 
-**CI is red at the pushed `8b0aad6`**: run
+**CI was red at the pushed `8b0aad6`**: run
 [`38672888953`](https://github.com/kottmans/tracks-and-trails/actions/runs/38672888953)'s `linux`
 job failed at *Types, tests included*, the bare `mypy` error above, and its two Windows jobs are
-queued on `STARBASE`, which is offline. The fix is in `bfda7c9`, not pushed.
+queued on `STARBASE`, which is offline. The fix, `bfda7c9`, was pushed on 2026-10-15 with
+`ea5c787`.
 
 No Windows runtime, external download or release-gate result is claimed here.
 
@@ -185,11 +186,13 @@ No Windows runtime, external download or release-gate result is claimed here.
 - **A containment breach on unreleased `main`, found 2026-10-14 while mapping `T-248`.**
   `--trim-filenames` or `--windows-filenames` typed in the options field makes yt-dlp reshape the
   whole staging path, and a download can land outside the chosen folder; the job then fails, and
-  the stray file stays. Critical by `TESTING.md` §14's wording; `0.1.0` predates the field. When it
-  is fixed is the maintainer's to rule ([`T-248`](TASKS.md#t-248--filename-shaping-and-the-modification-time)).
-  The same mapping round found the field able to switch off yt-dlp's unsafe-extension check for
-  the whole process, and `T-252`'s found fragmented downloads ending *Done* with a fragment
-  missing in `0.1.0` too.
+  the stray file stays. Critical by `TESTING.md` §14's wording; `0.1.0` predates the field. The
+  same round found the field able to switch off yt-dlp's unsafe-extension check for the whole
+  process, and fragmented downloads ending *Done* with a fragment missing, in `0.1.0` too.
+  **Ruled 2026-10-15, as recommended:** both are fixed next, before `T-250` — the breach and the
+  `--compat-options` values as [`T-363`](TASKS.md#t-363--the-options-field-can-write-outside-the-chosen-folder-and-switch-off-a-safety-check),
+  then the fragments as [`T-364`](TASKS.md#t-364--fragmented-downloads-retry-and-never-finish-with-a-piece-missing),
+  shipping in `0.2.0`.
 - **CI is green again.** Its Linux job failed from 2026-10-08, when PySide6 6.12.0's metapackage
   began requiring `PySide6_WebEngine` and `PySide6_Pdf` and the `LIC-001` gate refused them.
   **`T-355`** caps PySide6 below 6.12, and the push of `d18bcb8` passed every job in run

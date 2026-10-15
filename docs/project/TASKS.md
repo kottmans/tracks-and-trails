@@ -232,6 +232,124 @@ passed**, 21 skipped; `tests/integration` **537 passed**. No Windows run, and `S
 
 ## Ready
 
+### T-363 — The options field can write outside the chosen folder, and switch off a safety check
+
+**Status:** Ready — filed 2026-10-15 by the maintainer's ruling, to run next, before `T-250` and
+before `T-364`. Found 2026-10-14 while mapping `T-248` and `T-250`.
+**Owner:** Implementer
+**Priority:** Critical — `TESTING.md` §14 names *writing outside the directory the user chose*.
+`main` only: `0.1.0` predates the options field.
+**Phase:** Phase 4.5 (stage 3, before `T-250`)
+**Depends on:** nothing
+**Relevant context:** `T-034`; `T-046`; `ARC-010` §§3–4; `REQ-031`; `T-361`;
+[`T-248`'s mapping](#t-248--filename-shaping-and-the-modification-time) and `T-250`'s;
+`downloader/worker.py` (`_validated_target`, `as_literal_template`, `claim_outputs`);
+`downloader/ytdlp_adapter.build_options`; `downloader/extra_options`
+**Affected surfaces:** `build_options`, the hatch's admission and its generated table, and their
+tests
+**Risk:** High — the containment boundary and the hatch's refusal rules.
+
+#### Evidence
+
+- **The breach.** The worker renders and contains a name once, then hands yt-dlp the absolute
+  staging path as a literal template; yt-dlp applies `--trim-filenames` and `--windows-filenames`
+  again to that **whole path**. Measured in real sessions at `8b0aad6`: a trim of 80 wrote eight
+  levels above the chosen folder; a trim of 201 created a sibling folder; a trim of 189 wrote
+  inside the folder but outside staging, past `T-046`'s reservation; a folder `Talks: 2026`
+  became `Talks# 2026/…`. Reproduced with yt-dlp's `prepare_filename`: for `/home/sean/Videos` a
+  trim of 15 names `/home/sean/Vide. 2 of the set.mp4`. The claim's source check fails the job
+  only after the file and folders exist, and nothing removes them.
+- **The safety switch.** `--compat-options all` or `allow-unsafe-ext` turns off yt-dlp's
+  unsafe-extension check **for the whole process** (yt-dlp: *"compat option changes global state
+  destructively; only allow from cli"*). Measured: `exe` refused, then accepted after the
+  edit-time check of `--compat-options all` ran in the same process — the GUI's.
+- **Values reaching a control's key.** `mtime-by-default` and its bundles set `updatetime`, and
+  `format-sort` and its bundles set `format_sort`, which `T-361`'s alias derivation and the
+  destination test both miss because the option's destination is `compat_opts`.
+  `--compat-options filename` is admitted and does nothing (`REQ-031`).
+
+#### Maintainer rulings, 2026-10-15
+
+1. **Fixed now, as its own task**, before `T-250`, as `T-361` ran before `T-247`; Linux evidence
+   suffices, since yt-dlp's `_prepare_filename` is the same on every platform.
+2. **The `--compat-options` values are folded in**: a value that disables a safety check, or sets a
+   key a control owns, is refused at edit time with its reason, derived value by value from
+   yt-dlp's own parser; harmless values stay admitted. This answers `T-248`'s question 4 and
+   `T-250`'s third route into the sort.
+
+#### Acceptance criteria
+
+- [ ] The download pass never carries `trim_file_name` or `windowsfilenames`; they act where the
+      name is rendered and contained, and nowhere else.
+- [ ] The measured sessions are regression tests on `127.0.0.1` that fail at `8b0aad6` and pass,
+      and a mutation restoring either key on the download pass is caught **before** the claim's
+      source check, which stays as the second line.
+- [ ] No `--compat-options` value that disables a safety check, or sets a key a control owns, is
+      admitted; each is refused with its reason, derived from yt-dlp's parser so a new value is
+      classified rather than missed, and the edit-time check never changes yt-dlp's process-wide
+      state in the GUI.
+- [ ] `--compat-options filename` and any other value with no effect here is refused rather than
+      dropped (`REQ-031`).
+- [ ] The generated table regenerates cleanly, and Ruff, both mypy platforms and the hatch's and
+      worker's tests pass.
+
+#### Out of scope
+
+- `T-248`'s controls themselves, and its other questions (the Windows pair, where shaping lives).
+
+### T-364 — Fragmented downloads retry, and never finish with a piece missing
+
+**Status:** Ready — filed 2026-10-15 by the maintainer's ruling, to run after `T-363` and before
+`T-250`. Found 2026-10-14 while mapping `T-252`. Ships in `0.2.0`; there is no `0.1.1`.
+**Owner:** Implementer
+**Priority:** Critical guess — a silent wrong result in the shipped `0.1.0`: a download reported
+*Done* whose file is missing media.
+**Phase:** Phase 4.5 (stage 3, before `T-250`)
+**Depends on:** `T-363`
+**Relevant context:** [`T-252`'s mapping](#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows);
+`T-196`; `UX-002`; `ARCHITECTURE.md` §8; `downloader/ytdlp_adapter.build_options`;
+`ui/settings_dialog.py` (`NETWORK_EXPLANATION`, the retries default); `core/settings.py`
+**Affected surfaces:** `build_options`, the settings screen's retry text and default label, the
+`retries` docstrings, the changelog, and their tests
+**Risk:** Medium — behaviour changes for `0.1.0`'s users.
+
+#### Evidence
+
+Measured at `8b0aad6` with the worker's `run_session` against a local 12-second HLS stream: one 503
+on fragment 3 ended `Succeeded` with 250 of 300 video frames, and a 403 did the same with retries
+set to 3. yt-dlp's command line, on its own defaults, delivered the whole file in both cases.
+yt-dlp the library reads absent `retries` and `fragment_retries` as zero, where its command line
+sends ten, and skips a missing fragment by default. One 503 in a progressive transfer failed the
+job as `EXTRACTOR_ERROR`, which the automatic retry never takes. `v0.1.0`'s `build_options` and pin
+are the same. The settings screen's account of retries is untrue in three ways at `HEAD`.
+
+#### Maintainer ruling, 2026-10-15
+
+**Its own task, next after `T-363`, on `T-252`'s recommended answers to its first two questions**:
+when nobody chose a count, `build_options` sends yt-dlp's command-line defaults, read from
+`parse_options([])` at the pin and held there by a test, and the screen says the number; and a
+fragment still missing after its retries fails the attempt (`skip_unavailable_fragments=False`),
+so the job's own retry resumes it from staging, with the options field's
+`--skip-unavailable-fragments` kept as the user's explicit opt-in.
+
+#### Acceptance criteria
+
+- [ ] With no count chosen, the download sends `retries` and `fragment_retries` equal to yt-dlp's
+      command-line defaults at the pin, and a test fails when the pin's defaults change.
+- [ ] A local fragmented stream with a 503 and with a 403 on one fragment delivers every frame, and
+      a fragment that never arrives fails the attempt rather than ending *Done*.
+- [ ] The failure a job's automatic retry can take is classified so it takes it, or the reason it
+      cannot is recorded.
+- [ ] `--skip-unavailable-fragments` typed in the options field still skips, as the user's choice,
+      and that sharing of one key is written down as `ARC-010`'s rule for `writethumbnail` is.
+- [ ] The settings screen, its default label, the `retries` docstrings and the settings file's
+      comment say what is true; the changelog tells `0.1.0` users their downloads now retry.
+
+#### Out of scope
+
+- `T-252`'s controls for fragment retries, extractor retries, the socket timeout, `-N`, sections
+  and live-from-start, and its questions 3 and 4.
+
 ### T-301 — Four UI tests break when the application font grows by one point
 
 **Status:** In Progress — **three of the four repaired 2026-09-10**; the fourth is diagnosed and
@@ -967,6 +1085,9 @@ implementer's scratch notes.
   `--compat-options filename` is admitted and does nothing, `REQ-031`'s *accepted and dropped*
   (Medium guess).
 
+**Ruled 2026-10-15:** question 1 as recommended, as `T-363`, which also takes question 4 as
+recommended. Questions 2 and 3 are open.
+
 **Questions for the maintainer** (recommended first):
 
 1. **When the breach is fixed.** A small task now, before `T-250`, as `T-361` ran before `T-247`:
@@ -1089,6 +1210,9 @@ repository.
 - **`-N` multiplies with the pool**: one job at `-N 4` peaked at 4 concurrent requests, three jobs
   at 12; the worst case is 16 × N and yt-dlp sets no ceiling. `--socket-timeout -1` passes edit
   time and fails the job (`T184-R8`'s class, Low).
+
+**Ruled 2026-10-15:** the shipped defect is fixed first, as `T-364`, on questions 1 and 2 as
+recommended. Questions 3 and 4 are open.
 
 **Questions for the maintainer** (recommended first):
 

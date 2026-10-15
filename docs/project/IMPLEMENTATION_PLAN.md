@@ -942,6 +942,15 @@ the task, and nothing about `T-251` is approved until its own review. The rest o
 its order and its gate. The same instruction asked for the remaining stage-3 tasks to be mapped
 ahead, so their design questions can be ruled together.
 
+#### Amended 2026-10-15: `T-363` and `T-364` before `T-250`
+
+Mapping stage 3 overnight found a containment breach through the options field on unreleased
+`main` and a silent wrong result in the shipped `0.1.0`. **Three rulings, all as recommended**:
+the breach is fixed now as `T-363`, before `T-250`, as `T-361` ran before `T-247`; the options
+field's `--compat-options` values that disable a safety check or reach a control's key are folded
+into it; and the fragment defect becomes `T-364`, next after `T-363`, on `T-252`'s recommended
+first two answers, shipping in `0.2.0`. Stage 3's own order is otherwise unchanged.
+
 #### The stages
 
 Serial, one task at a time, which is what one development machine allows (`AGENTS.md` §9: one
