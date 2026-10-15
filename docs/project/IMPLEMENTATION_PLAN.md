@@ -930,6 +930,18 @@ Two rulings, both taken as recommended, after `T-184` landed on `main` on 2026-1
   otherwise ship wrong file names in `0.2.0`. The alternative put to the maintainer was stage 4,
   beside `T-352`…`T-354`.
 
+#### Amended 2026-10-14: `T-251` may be built before `T-249`'s review returns
+
+Asked what could be done overnight, the maintainer took the option the implementer **did not**
+recommend: build `T-251` while `T-249` is still with the Reviewer, **on the implementer's
+recommended design**, marked provisional until the maintainer rules on it. This relaxes *every
+task still takes its review before the next starts* for `T-251` alone, the way the 2026-09-17
+evening amendment relaxed it across stages 1 and 2. What it does **not** change: `T-251`'s design
+questions are still the maintainer's to rule; anything ruled differently becomes rework within
+the task, and nothing about `T-251` is approved until its own review. The rest of stage 3 keeps
+its order and its gate. The same instruction asked for the remaining stage-3 tasks to be mapped
+ahead, so their design questions can be ruled together.
+
 #### The stages
 
 Serial, one task at a time, which is what one development machine allows (`AGENTS.md` §9: one
