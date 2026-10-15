@@ -706,6 +706,10 @@ file, `docs/project/handoffs/2026-10-14-T350-prototype.diff`.
   copy: Ruff clean; nine plus regression 12 passed; `tests/ui` 1,645 passed; integration and UI
   2,175 passed; the full suite under `-n 4` **6,032 passed**, 25 skipped, all exit 0. Bare and
   Windows-platform `mypy` failed only on `T-249`'s pre-existing error, fixed since in `bfda7c9`.
+- **How often it has failed a full serial run**, all as *"row 0 offered no format control"*: 1 at
+  `428f65d`, 6 at `78a5f9f`, 4 at `a7310d1` and 5 at `T-184`'s sixth round (2026-09-26 and 27),
+  and 4 at `3275a36` (2026-10-15), with the DNS error in the log. Parallel runs under `-n auto`
+  have not shown it.
 - **Not fixed, and for this task's scope to decide:** the nineteen sibling tests above (the same
   child, or a controlled default for the module's `managers` fixture, which changes every default
   user); the module docstring's claim that the network is faked (Low); and three latent test-network

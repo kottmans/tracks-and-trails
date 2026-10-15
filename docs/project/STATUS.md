@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-10-14
+**Last updated:** 2026-10-15
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -155,28 +155,28 @@ task and review records it summarised.*
 
 ## Verification
 
-*Refreshed 2026-09-27, for `T-184`'s six correction rounds and its interface stage, on Linux with the
-project `.venv` (Python 3.14.7, yt-dlp 2026.08.19).* The previous section described `T-300`'s
-documentation follow-up; its results are kept in
-[T-300](COMPLETED_TASKS.md#t-300--agentsmd-is-628-lines-and-is-loaded-on-every-task).
+*Refreshed 2026-10-15, at `3275a36` (code unchanged at `e3b2c8f`), on Linux with the project
+`.venv` (yt-dlp 2026.08.19).* The previous snapshot, for `T-184`'s correction rounds, is
+recoverable from `e3b2c8f`; how often `T-350`'s race failed each of those runs is kept in
+[its entry](TASKS.md#t-350--a-staged-format-fixture-races-a-real-probe-and-loses-its-format-control).
 
-| Check | Third round (`428f65d`) | Fourth round (`78a5f9f`) | Fifth round (`52ace9a`) | Interface stage (`a7310d1`) | Sixth round |
-|---|---|---|---|---|---|
-| `ruff check .`; `ruff format --check .` | Passed; 461 files | Passed; 462 | Passed; 462 | Passed; 462 | Passed; 463 |
-| `mypy src`; bare `mypy`; `mypy --platform win32` | Passed; 69, 209, 209 | Passed; 69, 210, 210 | Passed; 69, 210, 210 | Passed; 69, 210, 210 | Passed; 69, 210, 210 |
-| `pytest tests/unit tests/integration` | In the full suite | In the full suite | **3,500 passed**, 19 skipped; 722 s | In the full suite | In the full suite |
-| Full `pytest -q -p no:cacheprovider` | **1 failed, 4,948 passed**; 3,091 s | **6 failed, 4,959 passed**; 3,575 s | Not run on that tree alone | **4 failed, 4,987 passed**; 3,421 s | **5 failed, 5,014 passed**; 3,642 s |
-| Repo root before and after | Unchanged | Unchanged | Unchanged | Unchanged | Unchanged |
+| Check | Result |
+|---|---|
+| `ruff check .`; `ruff format --check .` | Passed; 480 files (at `bfda7c9`, `T-251`'s gate) |
+| `mypy src`; bare `mypy`; `mypy --platform win32` | Passed; 70, 219, 219 (at `bfda7c9`). **Bare and Windows-platform `mypy` failed at `8b0aad6`**, on one `T-249` test, fixed in `bfda7c9` |
+| `tests/unit tests/ui` under `-n auto`; `tests/integration` | **5,583 passed**, 21 skipped; **537 passed** (at `bfda7c9`) |
+| Full `pytest -q -p no:cacheprovider`, serial | **4 failed, 6,116 passed**, 21 skipped, 2 deselected; 2,216 s |
+| Repo root before and after | Unchanged |
 
-Every full run also skipped 22 and deselected 2. **Every failure in them is `T-350`'s race**: cases
-of `test_the_mounted_format_panel_fits_the_dialog_it_asked_for`, each failing with *"row 0 offered
-no format control"*. The nine cases passed alone after each run. None of these rounds changes the
-add dialog or the probe of a request with no hatch.
+**All four failures are `T-350`'s race**, cases of
+`test_the_mounted_format_panel_fits_the_dialog_it_asked_for` failing *"row 0 offered no format
+control"* with the real worker's DNS error in the log, which is the cause its 2026-10-14
+investigation confirmed.
 
-**The seventh round (2026-10-10)** ran the default suite as CI runs it rather than this serial
-command: unit and UI under `-n auto`, **4,529 passed**, 22 skipped; integration **520 passed**; no
-`T-350` failure appeared. Its other checks are in the
-[task entry](COMPLETED_TASKS.md#maintainer-ruling-2026-10-10--exact-long-spellings-then-the-seventh-round).
+**CI is red at the pushed `8b0aad6`**: run
+[`38672888953`](https://github.com/kottmans/tracks-and-trails/actions/runs/38672888953)'s `linux`
+job failed at *Types, tests included*, the bare `mypy` error above, and its two Windows jobs are
+queued on `STARBASE`, which is offline. The fix is in `bfda7c9`, not pushed.
 
 No Windows runtime, external download or release-gate result is claimed here.
 
