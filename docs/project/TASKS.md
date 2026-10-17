@@ -16,8 +16,11 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ### T-249 — The sidecar writers: description, info JSON and thumbnail files
 
-**Status:** In Review — built 2026-10-14. *(Was Ready:)* ruled 2026-10-11 (`DAT-003` and
-`UX-015` amended), after `T-362`. *(Was Proposed:)* filed 2026-08-16 by `T-183`
+**Status:** In Review — correction 1 built 2026-10-17, awaiting the focused re-review of
+`T249-R1`. Changes requested 2026-10-16 at `8b0aad6`, one Critical blocker
+([record](reviews/T-249.md#2026-10-16--initial-sidecar-writer-review)); built 2026-10-14.
+*(Was Ready:)* ruled 2026-10-11 (`DAT-003` and `UX-015` amended), after `T-362`. *(Was
+Proposed:)* filed 2026-08-16 by `T-183`
 **Options (7):** `--write-description`, `--no-write-description`, `--write-info-json`,
 `--no-write-info-json`, `--write-thumbnail`, `--no-write-thumbnail`, `--write-all-thumbnails`
 **Specific criteria:** every file these write lands inside the chosen directory, through `T-034`
@@ -107,11 +110,59 @@ It reports one error, `tests/ui/test_options_dialog.py`, in this task's
 clean `git archive` of `8b0aad6`. The line above recorded it as passing, which it did not; the
 test is unchanged in what it asserts and is narrowed through a local in `T-251`'s commit.
 
+#### Correction 1, 2026-10-17 — `T249-R1`
+
+The review of `8b0aad6` requested changes with one Critical blocker; the Reviewer also verified
+the bare-`mypy` correction at `bfda7c9` and asked for nothing more on it. **Corrected, awaiting
+re-review.** The correction is on `44d35ff`, whose worker and adapter are `530f114`'s.
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T249-R1`, Critical — a `before_dl` processor failing ahead of the stripper left the cookie and the header in the staging info JSON kept for the resume | **The secrets are never written.** `keep_secrets_out` replaces the `before_dl` hook: it wraps the session `YoutubeDL`'s `sanitize_info`, which every info JSON yt-dlp writes goes through at the pin, so no ordering can bypass it and no file holds the secrets at any moment. The worker strips again, as a second line: before claiming, as before, and now **when the download attempt fails or is cancelled**, removing a staged info JSON it cannot read rather than raising over the job's own reason | `test_a_conversion_that_fails_before_the_download_keeps_no_secret_in_staging`, the review's localhost reproduction through `T-251`'s typed SRT conversion of malformed TTML, with the cookies file and the typed `Authorization` header: **fails at `44d35ff`**, both secrets in `clip (1).info.json`. Run three ways: both lines, `keep_secrets_out` alone, the worker's line alone. `test_without_keep_secrets_out_the_file_is_still_stripped_before_it_is_kept` holds the claim's line alone. Unit tests hold the wrapper over clean and `--no-clean-info-json` serializing, leaving other instances alone, and the staged strip never raising |
+
+**Sibling audit, and a second route it found.** Every way yt-dlp writes an info JSON at the pin
+goes through the instance's `sanitize_info`, so each route below is covered by the one wrapper:
+
+- **`--embed-info-json`, admitted through the options field, attached an unstripped info JSON
+  inside the kept MKV** of a download that succeeded: `FFmpegMetadataPP` writes it through its
+  downloader's `sanitize_info` and attaches it, so no strip of a sidecar could reach it. Reproduced
+  with the real worker on `127.0.0.1` at `44d35ff`, both secrets in the kept file. Same ruling,
+  same class: *never in a file this application keeps*. Now
+  `test_an_info_json_embedded_in_the_file_carries_no_cookie_and_no_header`, which **fails at
+  `44d35ff`** and checks the attachment is still there.
+- The other `before_dl` processor at the pin, `--convert-thumbnails` (admitted), and any failure
+  between the write and the download, including the admitted link-file writers, which run after
+  the info JSON and return early when they fail.
+- A playlist's own info JSON (`_write_info_json('playlist')`), and `--no-clean-info-json`, which
+  keeps `requested_formats` with their headers; stripping is at any depth.
+- A worker killed between the write and the download: the file was never written with them.
+- The probe writes no info JSON. `--use-postprocessor`, `--exec`, `--load-info-json`,
+  `--print-to-file`, `--print` and `--dump-json` are refused already.
+
+**Correction mutations, 9 of 9 caught**, each on a fresh copy of the tree: the wrapper doing
+nothing; applied only with `writeinfojson`; stripping the top level only; changing every
+`YoutubeDL` rather than the session's; no strip on the failure path; the staged strip doing
+nothing, raising on an unreadable file, or keeping it; no strip before claiming.
+
+**Stand-ins.** Three test modules stand in for yt-dlp or the adapter around `_extract`, and each
+gained the name the worker now calls. The worker does not step around a `YoutubeDL` without
+`sanitize_info`: a yt-dlp lacking it fails the job loudly rather than writing the secrets.
+
+**Checks, 2026-10-17, on Linux, after the correction**, with the project `.venv` on `PATH`:
+`ruff check .` and `ruff format --check .` (485 files); `mypy src` (70), bare `mypy` and `mypy
+--platform win32` (221 each); the table check up to date; `tests/unit tests/ui` under `-n auto`,
+**5,620 passed**, 21 skipped; `tests/integration` **545 passed**. An earlier run without the
+`.venv` on `PATH` failed the two toolchain checks, which test exactly that. No Windows run.
+
 ---
 
 ### T-251 — Subtitle depth: automatic captions, format and conversion
 
-**Status:** In Review — built 2026-10-14 on the implementer's recommended design, ahead of
+**Status:** In Review — **blocked 2026-10-16 at `bfda7c9` on `T249-R1` alone**
+([record](reviews/T-251.md#2026-10-16--initial-subtitle-depth-review)): its typed conversion is a
+route to that Critical, so it is corrected in `T-249`, whose correction 1 (2026-10-17) adds this
+route's regression; nothing else was asked of this task. Built 2026-10-14 on the implementer's
+recommended design, ahead of
 `T-249`'s review by the maintainer's instruction that evening
 ([the amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-14-t-251-may-be-built-before-t-249s-review-returns)).
 **All three design questions were ruled on 2026-10-15 as recommended**, so the build stands as

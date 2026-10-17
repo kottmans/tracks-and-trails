@@ -371,6 +371,9 @@ def test_the_worker_hands_cookies_to_the_probe_as_well_as_the_download() -> None
             seen.update(options)
             return {}
 
+        @staticmethod
+        def keep_secrets_out(_ydl: object) -> None: ...
+
     class _Ydl:
         def __init__(self, _options: object) -> None: ...
         def __enter__(self) -> _Ydl:

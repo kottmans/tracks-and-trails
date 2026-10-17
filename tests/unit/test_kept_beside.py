@@ -8,21 +8,22 @@ cookie values and any typed request header into it, and the file is kept without
 
 from __future__ import annotations
 
+import copy
 import json
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Final
 
 import pytest
-from yt_dlp import parse_options
+from yt_dlp import YoutubeDL, parse_options
 
 from tracks_and_trails.core import presets
 from tracks_and_trails.core.models import DownloadRequest, KeptThumbnails, Preset
 from tracks_and_trails.core.settings import Settings, add_preset, load, save
-from tracks_and_trails.downloader import worker
+from tracks_and_trails.downloader import worker, ytdlp_adapter
 from tracks_and_trails.downloader.ytdlp_adapter import (
     build_options,
-    info_json_stripper,
+    keep_secrets_out,
     strip_info_json,
     without_secrets,
 )
@@ -222,22 +223,24 @@ def test_an_info_json_that_cannot_be_read_is_not_kept_as_it_is(tmp_path: Path) -
         strip_info_json(path)
 
 
-def test_the_processor_strips_the_file_yt_dlp_says_it_wrote(tmp_path: Path) -> None:
-    """The `before_dl` hook: `process_info` records `infojson_filename` before it runs."""
-    path = tmp_path / "clip.info.json"
-    path.write_text(json.dumps(WRITTEN), encoding="utf-8")
+@pytest.mark.parametrize("clean", [True, False], ids=["clean", "--no-clean-info-json"])
+def test_the_session_s_yt_dlp_serializes_no_cookie_and_no_header(clean: bool) -> None:
+    """`keep_secrets_out` (`T249-R1`): every info JSON yt-dlp writes goes through the instance's
+    `sanitize_info`, so the secrets are gone before any file exists. Only that instance changes."""
+    with YoutubeDL({"quiet": True}) as ydl, YoutubeDL({"quiet": True}) as other:
+        keep_secrets_out(ydl)
 
-    files, processed = info_json_stripper().run({"infojson_filename": str(path)})
+        serialized = ydl.sanitize_info(copy.deepcopy(WRITTEN), clean)
+        untouched = other.sanitize_info(copy.deepcopy(WRITTEN), clean)
 
-    assert files == [] and processed["infojson_filename"] == str(path)
-    assert "SECRET" not in path.read_text(encoding="utf-8")
+    assert "SECRET" not in json.dumps(serialized)
+    assert serialized["title"] == "Clip — café" and serialized["formats"][0]["url"] == URL
+    assert "SECRET" in json.dumps(untouched), "another session's yt-dlp was changed"
 
 
 def test_the_worker_strips_what_it_is_about_to_claim_and_nothing_else(tmp_path: Path) -> None:
-    """The guarantee behind the hook: a yt-dlp that recorded no path still has its file stripped.
-    A description is the user's text, and is not touched."""
-    from tracks_and_trails.downloader import ytdlp_adapter
-
+    """The second line behind `keep_secrets_out`: a yt-dlp whose writers bypass it still has the
+    file stripped. A description is the user's text, and is not touched."""
     info = tmp_path / "clip.info.json"
     info.write_text(json.dumps(WRITTEN), encoding="utf-8")
     description = tmp_path / "clip.description"
@@ -247,3 +250,22 @@ def test_the_worker_strips_what_it_is_about_to_claim_and_nothing_else(tmp_path: 
 
     assert "SECRET" not in info.read_text(encoding="utf-8")
     assert description.read_text(encoding="utf-8") == "cookies: session=SECRET_COOKIE"
+
+
+def test_a_failed_attempt_leaves_every_staged_info_json_stripped_or_gone(tmp_path: Path) -> None:
+    """`strip_staged_info_json` (`T249-R1`): the second line for staging kept after a failure. It
+    runs while the job's own exception is on its way out, so it never raises: a file it cannot read
+    is removed, and the partial download beside it is left for the resume."""
+    item = tmp_path / "clip.info.json"
+    item.write_text(json.dumps(WRITTEN), encoding="utf-8")
+    unreadable = tmp_path / "set.info.json"
+    unreadable.write_text('{"cookies": "session=SECRET', encoding="utf-8")
+    partial = tmp_path / "clip.mp4.part"
+    partial.write_bytes(b"\0" * 16)
+
+    worker.strip_staged_info_json(tmp_path, ytdlp_adapter)
+    worker.strip_staged_info_json(tmp_path / "never-opened", ytdlp_adapter)
+
+    assert "SECRET" not in item.read_text(encoding="utf-8")
+    assert not unreadable.exists()
+    assert partial.read_bytes() == b"\0" * 16

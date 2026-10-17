@@ -113,6 +113,8 @@ class _Adapter:
         self.entered.append(on_position)
         yield True
 
+    def keep_secrets_out(self, _ydl: object) -> None: ...
+
 
 class _Ydl:
     def __init__(self, _options: object) -> None: ...

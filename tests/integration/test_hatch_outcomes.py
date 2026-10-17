@@ -210,6 +210,10 @@ def _extract_writing_nothing(tmp_path: Path, said: str, **hatch: Any) -> dict[st
             self._options["logger"].debug(said)
             return {"id": "clip", "_filename": str(tmp_path / "clip.mp4")}
 
+        @staticmethod
+        def sanitize_info(info: Any, remove_private_keys: bool = False) -> Any:
+            return info
+
     # A name nothing can import, so `ffmpeg_progress` steps aside rather than patching it.
     module = ModuleType("t184_stand_in_ytdlp")
     module.YoutubeDL = WritesNothing  # type: ignore[attr-defined]

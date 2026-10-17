@@ -1301,29 +1301,28 @@ def strip_info_json(path: Path) -> None:
     sibling.replace(path)
 
 
-def info_json_stripper() -> Any:
-    """A `before_dl` postprocessor that strips the info JSON yt-dlp has just written (`T-249`).
+def keep_secrets_out(ydl: Any) -> None:
+    """Make `ydl` serialize every info JSON without its cookies or request headers (`T249-R1`).
 
-    **At the moment it is written, not when the files are claimed.** `YoutubeDL.process_info`
-    writes the info JSON, records its path as `infojson_filename`, then runs the `before_dl`
-    processors and only then downloads, measured at 2026.08.19. Stripping here means the file in
-    staging is clean for the whole download, and stays clean when a failed attempt keeps staging
-    for its resume (`T-113`). The worker strips again before claiming, for a yt-dlp that does
-    not record the path.
+    **Before the file exists, not after it is written.** Every info JSON yt-dlp produces goes
+    through the instance's `sanitize_info`, measured at 2026.08.19: the file `--write-info-json`
+    keeps (`_write_info_json`, item and playlist alike), and the one `--embed-info-json` attaches
+    inside an MKV (`FFmpegMetadataPP`, through its downloader). So no file holds the secrets for any
+    moment, and no failure can leave one that does. A `before_dl` hook that stripped the file
+    after it was written ran after any processor registered ahead of it: a subtitle conversion
+    that failed there kept both secrets in staging for the resume, and the attachment was never
+    reached at all. The download itself reads the info dict, never this copy of it.
+
+    An instance attribute, because `sanitize_info` is a static method and only this session's
+    `YoutubeDL` is changed. The worker still strips each info JSON in staging itself, for a yt-dlp
+    whose writers stop calling it.
     """
-    from yt_dlp.postprocessor.common import PostProcessor
+    serialize = ydl.sanitize_info
 
-    class InfoJsonStripper(PostProcessor):  # type: ignore[misc]
-        # `processed`, not `info`: yt-dlp sets `infojson_filename` while processing the item, so
-        # no extraction has it, and `tests/unit/test_fixtures.py` reads `info.get` as a projection
-        # read that a captured fixture must keep.
-        def run(self, processed: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
-            written = processed.get("infojson_filename")
-            if isinstance(written, str) and Path(written).is_file():
-                strip_info_json(Path(written))
-            return [], processed
+    def sanitize_info(info_dict: Any, remove_private_keys: bool = False) -> Any:
+        return without_secrets(serialize(info_dict, remove_private_keys))
 
-    return InfoJsonStripper()
+    ydl.sanitize_info = sanitize_info
 
 
 def merge_thumbnail(options: dict[str, Any], hatch: dict[str, Any]) -> None:

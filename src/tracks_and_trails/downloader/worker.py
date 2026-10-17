@@ -687,22 +687,28 @@ def _run(
         # next one writes and yt-dlp continues from it. Created here rather than by
         # `staging_directory`, so asking where a job's partial *would* be costs nothing.
         staging = open_staging(directory, job_id)
-        result = _extract(
-            adapter,
-            request,
-            resolved,
-            reporter,
-            probe_only=False,
-            # Literal, not a second template — see `as_literal_template`.
-            output_template=as_literal_template(staging / target.name),
-            # `OPS-001`: yt-dlp must use the binary the worker gated on, not its own lookup.
-            ffmpeg_location=ffmpeg.path,
-            cookie_file=cookie_file,
-            # Safe **because the directory is this job's alone**. Nothing of the user's is in
-            # it, so an overwrite can only ever replace this job's own intermediate files —
-            # which is what the flag is for, and is no longer a claim about the output folder.
-            overwrites=True,
-        )
+        try:
+            result = _extract(
+                adapter,
+                request,
+                resolved,
+                reporter,
+                probe_only=False,
+                # Literal, not a second template — see `as_literal_template`.
+                output_template=as_literal_template(staging / target.name),
+                # `OPS-001`: yt-dlp must use the binary the worker gated on, not its own lookup.
+                ffmpeg_location=ffmpeg.path,
+                cookie_file=cookie_file,
+                # Safe **because the directory is this job's alone**. Nothing of the user's is in
+                # it, so an overwrite can only ever replace this job's own intermediate files —
+                # which is what the flag is for, and is no longer a claim about the output folder.
+                overwrites=True,
+            )
+        except BaseException:
+            # A failed or cancelled attempt keeps staging for its resume (`T-113`), and with it
+            # any info JSON written so far (`T249-R1`).
+            strip_staged_info_json(staging, adapter)
+            raise
         produced = _written_path(result, staging / target.name)
         # **The media and everything the user asked to keep, claimed as one family** (`T046-R3`,
         # `T-109`, `T109-R3`, `T109-R4`). The destination keeps the *final* extension, not the
@@ -1399,14 +1405,34 @@ def retained_sidecars(options: Mapping[str, Any], staging: Path, stem: str) -> t
 def strip_kept_info_json(retained: Sequence[Path], adapter: Any) -> None:
     """Strip each info JSON about to be claimed, whatever stripped it before (`T-249`).
 
-    **The guarantee behind the hook.** `info_json_stripper` cleans the file the moment yt-dlp
-    writes it, which depends on yt-dlp recording its path; a yt-dlp override that does not would
-    otherwise move a file with the session's cookies into the download folder. Stripping is
-    idempotent, so a file already clean is rewritten unchanged (`DAT-003`, amended 2026-10-11).
+    **The second line behind `keep_secrets_out`**, which works only while yt-dlp's writers call
+    the instance's `sanitize_info`; a yt-dlp override whose writers do not would otherwise move a
+    file with the session's cookies into the download folder. Stripping is idempotent, so a file
+    already clean is rewritten unchanged (`DAT-003`, amended 2026-10-11).
     """
     for path in retained:
         if path.name.endswith(".info.json") and path.is_file():
             adapter.strip_info_json(path)
+
+
+def strip_staged_info_json(staging: Path, adapter: Any) -> None:
+    """Strip every info JSON a failed or cancelled attempt leaves in staging (`T249-R1`).
+
+    The same second line as `strip_kept_info_json`, for the attempt that does not reach the claim.
+    **Never raises**: it runs while another exception is on its way out, and that one is the
+    job's reason. A file that cannot be stripped is removed instead. yt-dlp writes it again on
+    the resume, so nothing is lost, and a file this cannot read is one it cannot vouch for.
+    """
+    try:
+        staged = list(staging.glob("*.info.json"))
+    except OSError:
+        return
+    for path in staged:
+        try:
+            adapter.strip_info_json(path)
+        except Exception:  # whatever the reason, the file is not kept as it is
+            with suppress(OSError):
+                path.unlink()
 
 
 def _recorded_paths(entries: Any, key: str = "filepath") -> Iterator[Path]:
@@ -1894,9 +1920,9 @@ def _extract(
         else adapter.ffmpeg_progress(resolved.module, reporter.ffmpeg_position)
     )
     with positions, resolved.module.YoutubeDL(options) as ydl:
-        if not probe_only and options.get("writeinfojson"):
-            # **Stripped as soon as it is written** (`DAT-003`, amended 2026-10-11, `T-249`).
-            ydl.add_post_processor(adapter.info_json_stripper(), when="before_dl")
+        # **Never written with the session's secrets** (`DAT-003`, amended 2026-10-11, `T249-R1`),
+        # whichever option asked for an info JSON, so it is not keyed on `writeinfojson`.
+        adapter.keep_secrets_out(ydl)
         info = ydl.extract_info(request.url, download=not probe_only)
     result = dict(info or {})
     # **A normal return that wrote nothing is yt-dlp skipping the item on the job's own options**
