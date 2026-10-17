@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-10-15
+**Last updated:** 2026-10-17
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -116,6 +116,19 @@ task and review records it summarised.*
   (`DAT-003` and `UX-015` amended): mapping it found the options field's `--write-info-json` keeping
   the session's cookies and typed headers in a file beside the media, on unreleased `main`; the file
   is to be kept with them stripped, fixed within `T-249`.
+- **The three reviews returned on 2026-10-16, and none approved** ([T-249](reviews/T-249.md),
+  [T-251](reviews/T-251.md), [T-363](reviews/T-363.md)). **`T249-R1`, Critical**: a subtitle
+  conversion failing before the download kept the session's cookie and typed `Authorization`
+  header in the staging info JSON kept for the resume. `T-251`'s typed conversion is one route to
+  it, so `T-251` is blocked on that finding alone. **`T363-R1`, Critical**: naming what needs ffmpeg
+  in the editor parsed options outside the guard and could switch the GUI's unsafe-extension check
+  off; **`T363-R2`, Medium**: compatibility values that do nothing here were admitted. **Both
+  corrections were built on 2026-10-17**, one commit each, and await focused re-review. yt-dlp now
+  writes no info JSON with the secrets in it, and the worker strips staging when an attempt fails;
+  every admitted compatibility value is classified in the audit, twelve refused as doing nothing
+  here. **`T249-R1`'s sibling audit found `--embed-info-json` putting both secrets inside the kept
+  MKV** of a download that succeeded, on unreleased `main`; the same correction closes it. `T-364`
+  stays gated on all three approvals.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the
@@ -155,20 +168,20 @@ task and review records it summarised.*
 
 ## Verification
 
-*Refreshed 2026-10-15, at `3275a36` (code unchanged at `e3b2c8f`), on Linux with the project
-`.venv` (yt-dlp 2026.08.19).* The previous snapshot, for `T-184`'s correction rounds, is
-recoverable from `e3b2c8f`; how often `T-350`'s race failed each of those runs is kept in
+*Refreshed 2026-10-17, at `T-363`'s correction on `9e917ec`, on Linux with the project `.venv` on
+`PATH` (yt-dlp 2026.08.19).* The previous snapshot, at `3275a36`, is recoverable from `44d35ff`;
+how often `T-350`'s race failed each run is kept in
 [its entry](TASKS.md#t-350--a-staged-format-fixture-races-a-real-probe-and-loses-its-format-control).
 
 | Check | Result |
 |---|---|
-| `ruff check .`; `ruff format --check .` | Passed; 480 files (at `bfda7c9`, `T-251`'s gate) |
-| `mypy src`; bare `mypy`; `mypy --platform win32` | Passed; 70, 219, 219 (at `bfda7c9`). **Bare and Windows-platform `mypy` failed at `8b0aad6`**, on one `T-249` test, fixed in `bfda7c9` |
-| `tests/unit tests/ui` under `-n auto`; `tests/integration` | **5,583 passed**, 21 skipped; **537 passed** (at `bfda7c9`) |
-| Full `pytest -q -p no:cacheprovider`, serial | **4 failed, 6,116 passed**, 21 skipped, 2 deselected; 2,216 s |
-| Repo root before and after | Unchanged |
+| `ruff check .`; `ruff format --check .` | Passed; 485 files |
+| `mypy src`; bare `mypy`; `mypy --platform win32` | Passed; 70, 221, 221 |
+| `python tools/ytdlp_option_table.py --check` | Up to date |
+| `tests/unit tests/ui` under `-n auto`; `tests/integration` | **5,671 passed**, 21 skipped; **545 passed**. At `9e917ec`, `T-249`'s correction alone: 5,620 and 545 |
+| Full `pytest -q -p no:cacheprovider`, serial | Not rerun. Last at `3275a36`: **4 failed, 6,116 passed**, 21 skipped, 2 deselected; 2,216 s |
 
-**All four failures are `T-350`'s race**, cases of
+**All four serial failures at `3275a36` were `T-350`'s race**, cases of
 `test_the_mounted_format_panel_fits_the_dialog_it_asked_for` failing *"row 0 offered no format
 control"* with the real worker's DNS error in the log, which is the cause its 2026-10-14
 investigation confirmed.
@@ -193,7 +206,8 @@ No Windows runtime, external download or release-gate result is claimed here.
   `--compat-options` values as [`T-363`](TASKS.md#t-363--the-options-field-can-write-outside-the-chosen-folder-and-switch-off-a-safety-check),
   **built the same day and with the Reviewer**, then the fragments as
   [`T-364`](TASKS.md#t-364--fragmented-downloads-retry-and-never-finish-with-a-piece-missing),
-  shipping in `0.2.0`.
+  shipping in `0.2.0`. `T-363`'s review on 2026-10-16 upheld the containment fix and found
+  `T363-R1` and `T363-R2`; both were corrected on 2026-10-17 and are back with the Reviewer.
 - **CI is green again.** Its Linux job failed from 2026-10-08, when PySide6 6.12.0's metapackage
   began requiring `PySide6_WebEngine` and `PySide6_Pdf` and the `LIC-001` gate refused them.
   **`T-355`** caps PySide6 below 6.12, and the push of `d18bcb8` passed every job in run

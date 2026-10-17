@@ -128,7 +128,9 @@ EFFECT_UNKNOWN: Final[frozenset[str]] = frozenset(
 #: that parse changes: `safety` for a value yt-dlp names `allow-unsafe-*` or one that switched its
 #: extension check off; `app` for one that sets a key this application sets itself, where it would
 #: do nothing; `control` for one that sets a key a built control owns. A value that reaches a
-#: control's key today is refused the day that control is built, by regenerating this.
+#: control's key today is refused the day that control is built, by regenerating this. `inert`,
+#: from the audit's table rather than the parse, for one that changes nothing this application
+#: does, refused where it is named directly (`T363-R2`).
 COMPAT_VALUES: Final[dict[str, str | None]] = {{
 {compat}}}
 
@@ -342,6 +344,41 @@ def _keys_of(spellings: set[str]) -> set[str]:
 #: yt-dlp's own prefix for a compatibility value that switches a safety check off (`T-363`).
 _UNSAFE_PREFIX: Final = "allow-unsafe-"
 
+#: The audit's table of what each admitted compatibility value does here, and one of its rows.
+_COMPAT_HEADER: Final = "| Value | Here | Why |"
+_COMPAT_ROW: Final = re.compile(r"^\| `([a-z0-9-]+)` \| `(effect|inert)` \| (.+?) \|$")
+
+
+def compat_rulings() -> dict[str, str]:
+    """Each admitted compatibility value, `effect` or `inert`, from the audit (`T363-R2`).
+
+    **Stated rather than derived**, for `NO_OBSERVABLE_EFFECT`'s reason: most values act at run
+    time through `compat_opts`, where a parse sees nothing, so whether one does anything here is a
+    reading of yt-dlp against what this application reaches, written down with its reason.
+    """
+    text = AUDIT.read_text(encoding="utf-8")
+    header = text.index(_COMPAT_HEADER)
+    table = text[header : text.index("\n\n", header)]
+    return {
+        found.group(1): found.group(2)
+        for line in table.split("\n")[2:]
+        if (found := _COMPAT_ROW.match(line.strip()))
+    }
+
+
+def read_by_yt_dlp(value: str) -> bool:
+    """Whether any of yt-dlp's own code reads compatibility `value`, beyond the parser's list."""
+    import yt_dlp
+
+    package = Path(yt_dlp.__file__).parent
+    quoted = (f"'{value}'", f'"{value}"')
+    return any(
+        spelling in path.read_text(encoding="utf-8")
+        for path in package.rglob("*.py")
+        if path != package / "options.py"
+        for spelling in quoted
+    )
+
 
 def compat_values() -> tuple[dict[str, str | None], dict[str, tuple[str, ...]], tuple[str, ...]]:
     """Each `--compat-options` value's verdict, the aliases, and the keys an admitted one carries.
@@ -350,6 +387,12 @@ def compat_values() -> tuple[dict[str, str | None], dict[str, tuple[str, ...]], 
     `validate_options` switches its unsafe-extension check off for the whole process when it reads
     `allow-unsafe-ext`, and `set_compat_opts` rewrites the default format order for
     `prefer-vp9-sort`; both are restored here so one value's parse cannot colour the next.
+
+    **A value the parse admits is then looked up in the audit** (`T363-R2`), which says whether it
+    does anything here. One with no row stops the generator, so a value a new yt-dlp brings is
+    classified rather than admitted by default; so does one called `effect` that nothing in yt-dlp
+    reads and whose parse changes no key. An `inert` value still carries its keys, for a bundle
+    that brings it along.
     """
     from yt_dlp.options import create_parser
     from yt_dlp.utils import FormatSorter
@@ -366,6 +409,10 @@ def compat_values() -> tuple[dict[str, str | None], dict[str, tuple[str, ...]], 
         {spelling for spellings, group, _ in rows if group == "app:sets" for spelling in spellings}
     )
     nothing = _quietly([])
+    rulings = compat_rulings()
+    unknown = sorted(set(rulings) - set(allowed))
+    if unknown:
+        raise SystemExit(f"the audit classifies compatibility values yt-dlp lacks: {unknown}")
     verdicts: dict[str, str | None] = {}
     carried: set[str] = set()
     for value in allowed:
@@ -392,7 +439,18 @@ def compat_values() -> tuple[dict[str, str | None], dict[str, tuple[str, ...]], 
         elif keys & controlled:
             verdicts[value] = "control"
         else:
-            verdicts[value] = None
+            ruling = rulings.get(value)
+            if ruling is None:
+                raise SystemExit(
+                    f"--compat-options {value} is admitted and the audit does not say whether it "
+                    f"does anything here; add its row under {_COMPAT_HEADER!r}"
+                )
+            if ruling == "effect" and not keys and not read_by_yt_dlp(value):
+                raise SystemExit(
+                    f"the audit says --compat-options {value} has an effect, but nothing in yt-dlp "
+                    "reads it and its parse changes no key"
+                )
+            verdicts[value] = "inert" if ruling == "inert" else None
             carried |= keys
     return verdicts, aliases, ("compat_opts", *sorted(carried))
 

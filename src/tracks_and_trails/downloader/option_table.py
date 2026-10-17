@@ -1087,37 +1087,39 @@ EFFECT_UNKNOWN: Final[frozenset[str]] = frozenset(
 #: that parse changes: `safety` for a value yt-dlp names `allow-unsafe-*` or one that switched its
 #: extension check off; `app` for one that sets a key this application sets itself, where it would
 #: do nothing; `control` for one that sets a key a built control owns. A value that reaches a
-#: control's key today is refused the day that control is built, by regenerating this.
+#: control's key today is refused the day that control is built, by regenerating this. `inert`,
+#: from the audit's table rather than the parse, for one that changes nothing this application
+#: does, refused where it is named directly (`T363-R2`).
 COMPAT_VALUES: Final[dict[str, str | None]] = {
-    "abort-on-error": None,
+    "abort-on-error": "inert",
     "allow-unsafe-exec-expansion": "safety",
     "allow-unsafe-ext": "safety",
     "embed-metadata": None,
-    "embed-thumbnail-atomicparsley": None,
+    "embed-thumbnail-atomicparsley": "inert",
     "filename": "app",
     "filename-sanitization": None,
     "format-sort": None,
-    "format-spec": None,
-    "list-formats": None,
+    "format-spec": "inert",
+    "list-formats": "inert",
     "manifest-filesize-approx": None,
     "mtime-by-default": None,
     "multistreams": None,
-    "no-attach-info-json": None,
-    "no-certifi": None,
+    "no-attach-info-json": "inert",
+    "no-certifi": "inert",
     "no-clean-infojson": None,
     "no-direct-merge": None,
-    "no-external-downloader-progress": None,
-    "no-keep-subs": None,
+    "no-external-downloader-progress": "inert",
+    "no-keep-subs": "inert",
     "no-live-chat": None,
     "no-playlist-metafiles": None,
     "no-youtube-channel-redirect": None,
-    "no-youtube-prefer-utc-upload-date": None,
+    "no-youtube-prefer-utc-upload-date": "inert",
     "no-youtube-unavailable-videos": None,
-    "playlist-index": None,
+    "playlist-index": "inert",
     "playlist-match-filter": None,
-    "prefer-legacy-http-handler": None,
+    "prefer-legacy-http-handler": "inert",
     "prefer-vp9-sort": None,
-    "seperate-video-versions": None,
+    "seperate-video-versions": "inert",
 }
 
 #: yt-dlp's names for groups of compatibility values, expanded as its own parser expands them.

@@ -146,6 +146,10 @@ COMPAT_REFUSALS: Final = {
         "The compatibility value {value} changes something there is a setting for. Use the "
         "setting instead, so the value is shown to you."
     ),
+    "inert": (
+        "The compatibility value {value} changes nothing this application does, so it would be "
+        "accepted and then do nothing."
+    ),
 }
 
 #: What a user is told when an option that takes no value is given one with `=`.
@@ -317,20 +321,50 @@ def _compat_refusal(occurrences: Sequence[_Occurrence]) -> Refusal | None:
     check off for the whole process **while it parses** `allow-unsafe-ext`, and the editor checks
     the field in the GUI's own process; a refusal issued after the parse would come too late. A
     value yt-dlp does not know is left to the parser, which refuses the option without quoting it.
+    The other verdicts refuse a value however it was reached; one that does nothing here is refused
+    only where it is named (`_named_and_inert`).
     """
     if not occurrences:
         return None
+    texts = [value for read in occurrences for value in read.values]
     try:
-        chosen = resolved_compat_values(value for read in occurrences for value in read.values)
+        chosen = resolved_compat_values(texts)
     except ValueError:
         return None
-    verdicts = [(value, COMPAT_VALUES[value]) for value in chosen if COMPAT_VALUES.get(value)]
+    verdicts = [
+        (value, verdict)
+        for value in chosen
+        if (verdict := COMPAT_VALUES.get(value)) and verdict != "inert"
+    ]
+    verdicts.extend((name, "inert") for name in _named_and_inert(texts, chosen))
     if not verdicts:
         return None
     worst = list(COMPAT_REFUSALS)
     value, verdict = min(verdicts, key=lambda found: worst.index(str(found[1])))
     reason = COMPAT_REFUSALS[str(verdict)].format(value=value)
     return Refusal(occurrences[-1].typed, reason)
+
+
+def _named_and_inert(texts: Sequence[str], chosen: Sequence[str]) -> list[str]:
+    """The names typed in `texts` that change nothing this application does (`T363-R2`).
+
+    **Named, not brought along.** A value typed by name that does nothing here is refused, as
+    `REQ-031` refuses any option that would be accepted and dropped. One that `all` or a year's
+    bundle brings along is not: the bundle does something, and refusing it for a passenger would
+    make every bundle unusable. A bundle bringing nothing that does anything is refused by its own
+    name, `2025` at 2026.08.19. A value taken away again later in the line is the user's own
+    cancellation, as `allow-unsafe-ext` taken away is, and is left alone.
+    """
+    named: dict[str, None] = {}
+    for text in texts:
+        for item in (part.lower().strip() for part in text.split(",")):
+            if item in COMPAT_ALIASES:
+                brought = resolved_compat_values([item])
+                if all(COMPAT_VALUES.get(value) == "inert" for value in brought):
+                    named[item] = None
+            elif COMPAT_VALUES.get(item) == "inert" and item in chosen:
+                named[item] = None
+    return list(named)
 
 
 def resolved_compat_values(texts: Iterable[str]) -> tuple[str, ...]:

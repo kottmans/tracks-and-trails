@@ -160,13 +160,54 @@ default are different jobs and `REQ-EXCL-002` needs both.)*
 is a bag of unrelated switches: at 2026.08.19 one value, `allow-unsafe-ext`, switches yt-dlp's
 unsafe-extension check off for the whole process as it is parsed, `filename` rewrites a name the
 application sets, and `format-sort` and `mtime-by-default` reach keys `T-250` and `T-248` will give
-controls. The rows above cannot say that, so the generator parses each value alone and classes it
-by what the parse changes: refused as **unsafe** where yt-dlp names it `allow-unsafe-*` or it
-switched the extension check off, as **the application's** where it sets a key `app:sets` owns, and
-as **a control's** where it sets a key a built control owns; admitted otherwise, carrying exactly
-the keys it changes. The hatch resolves aliases, `all` and `-` removals the way yt-dlp does, and
-refuses before anything is parsed. A value that reaches a planned control is admitted until that
-control is built, and regenerating then refuses it.
+controls. The rows above cannot say that, so the generator parses each value alone and classes it by
+what the parse changes: refused as **unsafe** where yt-dlp names it `allow-unsafe-*` or it switched
+the extension check off, as **the application's** where it sets a key `app:sets` owns, and as **a
+control's** where it sets a key a built control owns; admitted otherwise, carrying exactly the keys
+it changes, unless the table below finds it does nothing here. The hatch resolves aliases, `all` and
+`-` removals the way yt-dlp does, and refuses before anything is parsed. A value that reaches a
+planned control is admitted until that control is built, and regenerating then refuses it.
+
+#### What each admitted value does here
+
+**A value none of the three refuses is still refused when it does nothing here** (`T363-R2`,
+corrected 2026-10-17), which is `REQ-031`'s *accepted and then dropped*, and the 2026-09-20 ruling
+behind `NO_OBSERVABLE_EFFECT`. A parse cannot decide that: most values act at run time through
+`compat_opts`, so each is read where yt-dlp reads it at 2026.08.19 and judged against what this
+application can reach. **A value named directly is refused when it is `inert`.** One that `all` or
+a year's bundle brings along is not, since the bundle does something; a bundle that brings nothing
+that does is refused by its own name, as `2025` is, empty at this release. A value taken away again
+with `-` is the user's own cancellation and is left alone. The generator stops while an admitted
+value has no row here, so a new value is classified rather than admitted by default.
+
+| Value | Here | Why |
+|---|---|---|
+| `abort-on-error` | `inert` | Sets `ignoreerrors` to false, which every read of it at this release treats as absent, and `build_options` leaves it absent; the options it acts beside are `app:policy` |
+| `embed-metadata` | `effect` | Embedded metadata takes the description as its comment rather than the address (`FFmpegMetadataPP`), whenever `embed_metadata` embeds |
+| `embed-thumbnail-atomicparsley` | `inert` | Prefers AtomicParsley to mutagen for an MP4 cover; mutagen is not installed with this application, so AtomicParsley is tried first either way |
+| `filename-sanitization` | `effect` | The rendered name is sanitized the older way, `a/b` becoming `a_b` rather than `a⧸b` (`prepare_outtmpl`), on the pass that renders it |
+| `format-sort` | `effect` | Adds youtube-dl's default to `format_sort`, `T-250`'s key; refused once that control is built |
+| `format-spec` | `inert` | Changes only the format chosen when none is given; this application gives one on both passes, from a selector the model requires |
+| `list-formats` | `inert` | Changes only the console format table, which this application never prints (`--list-formats` is `app:plumbing`) |
+| `manifest-filesize-approx` | `effect` | Estimates a size for a manifest's formats, which the sort and the size filters read |
+| `mtime-by-default` | `effect` | Sets `updatetime`, `T-248`'s key; refused once that control is built |
+| `multistreams` | `effect` | Sets both `allow_multiple_*_streams` keys, which merging reads |
+| `no-attach-info-json` | `inert` | Read only while the command line builds the processor of `--embed-metadata` or `--embed-chapters`, both refused for their controls; the application's own embedding never reads it, and yt-dlp ignores it beside `--embed-info-json` |
+| `no-certifi` | `inert` | Prefers the system's certificates to certifi's; certifi is not installed with this application, so the system's are used either way |
+| `no-clean-infojson` | `effect` | Keeps yt-dlp's private fields in a kept info JSON, its secrets still taken out (`T-249`) |
+| `no-direct-merge` | `effect` | Changes how a partial download (`--download-sections`, admitted) or a merge through ffmpeg is fetched |
+| `no-external-downloader-progress` | `inert` | Not read anywhere in yt-dlp 2026.08.19 |
+| `no-keep-subs` | `inert` | Read only while the command line builds the processor of `--embed-subs`, refused for its control; the application's own embedding never reads it |
+| `no-live-chat` | `effect` | Leaves live chat, comments and danmaku out of the subtitles any extractor lists, which the probe offers |
+| `no-playlist-metafiles` | `effect` | Sets `allow_playlist_files`, read when a playlist that could not be listed downloads as one job (`T-137`) |
+| `no-youtube-channel-redirect` | `effect` | Changes what YouTube's tab extractor returns for a channel's address |
+| `no-youtube-prefer-utc-upload-date` | `inert` | Not read anywhere in yt-dlp 2026.08.19 |
+| `no-youtube-unavailable-videos` | `effect` | Stops YouTube's playlists being reloaded with their unavailable entries |
+| `playlist-index` | `inert` | Changes an entry's index only once the playlist is reordered, and the options that reorder it are `app:policy` (`--playlist-random`, `--lazy-playlist`) |
+| `playlist-match-filter` | `effect` | Applies `--match-filters`, admitted, to a playlist as well as to its items |
+| `prefer-legacy-http-handler` | `inert` | Prefers the urllib request handler, the only one without `requests` or `curl_cffi`, neither installed with this application |
+| `prefer-vp9-sort` | `effect` | Changes the default format order for the process, and YouTube's own preference |
+| `seperate-video-versions` | `inert` | Not read anywhere in yt-dlp 2026.08.19 |
 
 ---
 

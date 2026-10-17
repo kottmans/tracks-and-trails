@@ -284,8 +284,11 @@ passed**, 21 skipped; `tests/integration` **537 passed**. No Windows run, and `S
 
 ### T-363 — The options field can write outside the chosen folder, and switch off a safety check
 
-**Status:** In Review — built 2026-10-15, ahead of `T-249`'s and `T-251`'s reviews by the
-maintainer's ruling that day. *(Was Ready:)* filed 2026-10-15 by the maintainer's ruling, to run
+**Status:** In Review — correction 1 built 2026-10-17, awaiting the focused re-review of
+`T363-R1` and `T363-R2`. Changes requested 2026-10-16 at `530f114`, one Critical and one Medium
+blocker ([record](reviews/T-363.md#2026-10-16--initial-containment-and-compatibility-review)).
+Built 2026-10-15, ahead of `T-249`'s and `T-251`'s reviews by the maintainer's ruling that day.
+*(Was Ready:)* filed 2026-10-15 by the maintainer's ruling, to run
 next, before `T-250` and before `T-364`. Found 2026-10-14 while mapping `T-248` and `T-250`.
 **Owner:** Implementer
 **Priority:** Critical — `TESTING.md` §14 names *writing outside the directory the user chose*.
@@ -395,13 +398,70 @@ tests
 **Limit against the fourth criterion.** A value is refused as doing nothing only where its whole
 effect is a key the application sets. Most values act at run time through `compat_opts`, which a
 parse cannot measure, so a value such as `list-formats`, which this application never exercises,
-stays admitted. Measuring that needs a run per value and is not done here.
+stays admitted. Measuring that needs a run per value and is not done here. *(The review held
+this short of the criterion, `T363-R2`; correction 1 below classifies every value instead.)*
 
 **Checks, 2026-10-15, on Linux, base `e6c58ed`:** `ruff check .` and `ruff format --check .` (482
 files); `mypy src` (70), bare `mypy` and `mypy --platform win32` (221 each); the table check up to
 date; `tests/unit tests/ui` under `-n auto`, **5,618 passed**, 21 skipped; `tests/integration`
 **541 passed**. No Windows run: the fix is platform-independent yt-dlp code, and `STARBASE` is
 offline.
+
+#### Correction 1, 2026-10-17 — `T363-R1` and `T363-R2`
+
+The review of `530f114` requested changes with one Critical and one Medium blocker; both are
+corrected together. **Corrected, awaiting re-review.** The correction is on `9e917ec`, `T-249`'s
+correction, which leaves this task's admission and parses as `530f114` had them.
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T363-R1`, Critical — the missing-ffmpeg attribution parsed each option alone outside the guard, so opening the editor without ffmpeg on an admitted line that names `allow-unsafe-ext` and takes it away switched the GUI's extension check off, and `prefer-vp9-sort` changed its format order | `options_needing_ffmpeg` parses inside `process_state_kept`, as the editor's check and the offer's question do. **The parses are listed, not sampled**: a test reads the adapter and the worker for every call to yt-dlp's parser and holds them to five functions, each with why it is safe in the GUI's process, so a new route fails until someone looks at it | `test_naming_what_needs_ffmpeg_leaves_the_process_as_it_was`, the review's three lines through `options_for` and `ffmpeg_refusals`, with `exe` still refused afterwards: **all three fail at `9e917ec`**. `test_opening_without_ffmpeg_leaves_yt_dlp_s_process_state_alone`, the real dialog offscreen opening the preset: **both cases fail there**. An attribution raising after its parse still leaves the state as it was |
+| `T363-R2`, Medium — runtime-only values with no effect here were admitted, `list-formats` and the empty `2025`; criterion 4 unmet | **Every admitted value is classified in the audit, with its reason** (*What each admitted value does here*): 14 act here, 12 do not. The generator reads the table into `COMPAT_VALUES` as `inert`, and **stops** on an admitted value with no row, or on one called `effect` that nothing in yt-dlp reads and whose parse changes no key. Admission refuses an `inert` value where it is **named**, and a bundle bringing nothing that acts (`2025`), saying it *changes nothing this application does*. A value `all` or a year's bundle brings along, and one named and taken away again, stay usable | Each of the 12 refused by name, `2025` refused; `2021`, `2022`, `2024`, `all,-…` and the cancellations usable; eight runtime-only values that act stay usable. The generator's two stops each tested. The count, bundle, generator and unread-value tests **fail at `9e917ec`** |
+
+**How the twelve were judged**, each by where yt-dlp 2026.08.19 reads it:
+
+- **Read nowhere**: `no-external-downloader-progress`, `no-youtube-prefer-utc-upload-date`,
+  `seperate-video-versions`.
+- **A choice between a package this application does not install and what is used without it**:
+  `no-certifi` (certifi), `embed-thumbnail-atomicparsley` (mutagen), `prefer-legacy-http-handler`
+  (requests or curl_cffi; urllib is the only handler).
+- **Acting only beside options already refused**: `no-keep-subs` (`--embed-subs`'s processor),
+  `no-attach-info-json` (that of `--embed-metadata` or `--embed-chapters`), `playlist-index`
+  (after `--playlist-random` or `--lazy-playlist`), and `abort-on-error`, which sets `ignoreerrors`
+  false where every read treats false as absent and `build_options` leaves it absent.
+- **On a path this application never takes**: `list-formats` (the console table) and `format-spec`
+  (the format chosen when none is given).
+
+Each kind's evidence is a test: the unread values found by scanning yt-dlp; the four packages
+absent and urllib alone; the companion options refused; every pass naming a format and leaving
+`ignoreerrors` absent. **And the other side, values that act although their parse changes no
+key**: `filename-sanitization` changes the name the probe pass renders, `a⧸b` to `a_b`, and
+`embed-metadata` changes the comment the application's own metadata processor writes, both
+through real yt-dlp with the application's options.
+
+**Limits.** The classification reads yt-dlp at the pin against what this application ships. A
+dependency that brought certifi, mutagen or another request handler would change three rows, and
+the package test fails then; a new yt-dlp value stops the generator.
+
+**Sibling audit, `T363-R1`.** yt-dlp's parser writes two process-wide values at the pin, the
+default format order and the extension check, both in `parse_options`. The GUI reaches a parse
+three ways, the editor's check, the offer's ffmpeg question and the attribution, now all guarded;
+`hatch_options` parses unguarded only in a job's own process, where the effect is the option
+working, and its one GUI caller guards it. The other two parses read nothing typed or use
+`parseOpts`, which writes neither value.
+
+**Correction mutations, 10 of 10 caught**, each on a fresh copy of the tree: the attribution
+unguarded; the guard putting back only the format order; a named `inert` value admitted; the empty
+bundle admitted; a passenger refused; a cancellation refused; the generator admitting an
+unclassified value, dropping its contradiction check, ignoring `inert` rows, or taking every value
+as read.
+
+**Checks, 2026-10-17, on Linux, after the correction**, with the project `.venv` on `PATH`:
+`ruff check .` and `ruff format --check .` (485 files); `mypy src` (70), bare `mypy` and `mypy
+--platform win32` (221 each); the table check up to date; `tests/unit tests/ui` under `-n auto`,
+**5,671 passed**, 21 skipped; `tests/integration` **545 passed**. The first Ruff run failed on
+three long lines and the big solidus in a new test, corrected and rerun with both mypy runs and the
+three option modules (118 passed); no source changed after the suites ran. No Windows run.
 
 ## Ready
 

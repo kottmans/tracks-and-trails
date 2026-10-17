@@ -47,7 +47,7 @@ from tracks_and_trails.core.models import (
 )
 from tracks_and_trails.core.presets import MP3_BITRATES
 from tracks_and_trails.downloader.environment import FfmpegFeature
-from tracks_and_trails.downloader.extra_options import BAD_VALUE, NEEDS_FFMPEG
+from tracks_and_trails.downloader.extra_options import BAD_VALUE, NEEDS_FFMPEG, options_for
 from tracks_and_trails.ui.options_dialog import (
     AT_MOST_NAME,
     AUDIO_CODEC_NAME,
@@ -1412,6 +1412,36 @@ def test_options_that_need_ffmpeg_are_refused_where_typed_without_it(
 
     assert dialog.extra_refusals_text() == f"--split-chapters: {NEEDS_FFMPEG}"
     assert not ok_button(dialog).isEnabled()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "--compat-options allow-unsafe-ext --compat-options -allow-unsafe-ext --split-chapters",
+        "--compat-options prefer-vp9-sort --split-chapters",
+    ],
+)
+def test_opening_without_ffmpeg_leaves_yt_dlp_s_process_state_alone(
+    editor: Callable[..., OptionsDialog], text: str
+) -> None:
+    """`T363-R1`, the review's route: a preset carrying an admitted line, opened without ffmpeg.
+    Naming `--split-chapters` parsed each option alone, so the first line switched the GUI's own
+    extension check off and the second changed its default format order."""
+    from yt_dlp.utils import FormatSorter
+    from yt_dlp.utils._utils import _UnsafeExtensionError
+
+    admission, argv = options_for(text)
+    assert admission.usable, admission.refusals
+    preset = replace(preset_registry.BEST_VIDEO, extra_options=text, extra_option_argv=argv)
+    kept = (FormatSorter.default, _UnsafeExtensionError._enabled)
+    try:
+        dialog = editor(preset, ffmpeg_available=False)
+        after = (FormatSorter.default, _UnsafeExtensionError._enabled)
+    finally:
+        FormatSorter.default, _UnsafeExtensionError._enabled = kept
+
+    assert dialog.extra_refusals_text() == f"--split-chapters: {NEEDS_FFMPEG}"
+    assert after == kept, "opening the editor changed yt-dlp's process-wide state"
 
 
 def test_the_same_options_are_accepted_where_ffmpeg_is(

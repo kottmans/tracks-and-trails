@@ -1025,8 +1025,10 @@ def process_state_kept() -> Iterator[None]:
     `allow-unsafe-ext`, both on classes every later `YoutubeDL` reads. In a job's own process that
     is the option doing its work. In the GUI's, where the editor and the offer ask their questions,
     it would change every check made after it, so these two are put back. Admission refuses
-    `allow-unsafe-ext` before anything is parsed; this is the second line, for the one admitted
-    value with a process-wide effect and any refused value that reaches a parse some other way.
+    `allow-unsafe-ext` before anything is parsed when the whole line leaves it chosen, but a line
+    that names it and takes it away again is admitted, and a parse of one option alone still sees
+    it (`T363-R1`). So **every parse of the user's options in the GUI's process runs inside this**;
+    `tests/unit/test_compat_options.py` holds the list of parses to that.
     """
     from yt_dlp.utils import FormatSorter
     from yt_dlp.utils._utils import _UnsafeExtensionError
@@ -1413,6 +1415,18 @@ def _cuts_sections(ranges: object) -> bool:
 
 
 def options_needing_ffmpeg(argv: Sequence[str]) -> tuple[str, ...]:
+    """Which admitted options each install work ffmpeg performs, to name them where typed.
+
+    Asked by the editor without ffmpeg, in the GUI's process, so whatever the parses change for the
+    whole process is put back (`T363-R1`). **One option at a time is exactly the danger**: a line
+    that names `allow-unsafe-ext` and takes it away again is admitted, and parsing its first
+    `--compat-options` alone switched the GUI's extension check off. See `_options_needing_ffmpeg`.
+    """
+    with process_state_kept():
+        return _options_needing_ffmpeg(argv)
+
+
+def _options_needing_ffmpeg(argv: Sequence[str]) -> tuple[str, ...]:
     """Which admitted options each install work ffmpeg performs, to name them where typed.
 
     Attribution only, asked one option at a time; whether the field needs ffmpeg is
