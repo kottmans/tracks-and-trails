@@ -108,7 +108,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-247](reviews/T-247.md) | T-247; [second correction verification](reviews/T-247.md#2026-10-13--second-correction-focused-verification), b7c1dc4 | 0 |
 | [T-362](reviews/T-362.md) | T-362; initial queue-time numbering and padding, bd643ae to 4fa990b | 0 |
 | [T-249](reviews/T-249.md) | T-249; [focused privacy correction verification](reviews/T-249.md#2026-10-18--focused-privacy-correction-verification), 9e917ec | 0 |
-| [T-251](reviews/T-251.md) | T-251 | 0 |
+| [T-251](reviews/T-251.md) | T-251; [focused typed conversion verification](reviews/T-251.md#2026-10-18--focused-typed-conversion-verification), 9e917ec | 0 |
 | [T-363](reviews/T-363.md) | T-363 | 0 |
 | [September 2026 codebase audit](reviews/codebase-audit-2026-09.md) | T-351, T-352, T-353, T-354; independent audit at a7310d1 | 0 |
 | <a id="2026-08-17--t-257--t-259-windows-chain-review"></a><a id="2026-08-17--t-259-duration-report-correction-re-review"></a>[T-257](reviews/T-257.md) | T-257, T-259 | 2 |
