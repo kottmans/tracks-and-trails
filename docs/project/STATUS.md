@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-10-17
+**Last updated:** 2026-10-18
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -103,11 +103,11 @@ task and review records it summarised.*
   revise the selection boundary within the task. **The second correction was approved on
   2026-10-13** at `b7c1dc4`, and `T-247` is in COMPLETED_TASKS; native Windows at that head is
   unverified. **`T-362` was approved on 2026-10-14** at `4fa990b` and is in COMPLETED_TASKS.
-  **`T-249` is built and with the Reviewer.** **`T-251` was built the same night, ahead of that
+  **`T-249` was built next.** **`T-251` was built the same night, ahead of that
   review and on the implementer's recommended design**, by the maintainer's instruction
   ([the amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-14-t-251-may-be-built-before-t-249s-review-returns));
   its three design questions were ruled as recommended on 2026-10-15 (`ARC-010` and `UX-015`
-  amended), so the build stands, and it is with the Reviewer too. Mapping it found the options field able to ask for every automatic caption a
+  amended), so the build stood. Mapping it found the options field able to ask for every automatic caption a
   site lists, about 160 on YouTube, through `--write-auto-subs` and the built-in's `all`, on
   unreleased `main`; closed within the task. The rest of stage 3 was mapped ahead the same
   night, so its rulings can be taken together. `T-247`'s sibling audit found
@@ -116,19 +116,21 @@ task and review records it summarised.*
   (`DAT-003` and `UX-015` amended): mapping it found the options field's `--write-info-json` keeping
   the session's cookies and typed headers in a file beside the media, on unreleased `main`; the file
   is to be kept with them stripped, fixed within `T-249`.
-- **The three reviews returned on 2026-10-16, and none approved** ([T-249](reviews/T-249.md),
-  [T-251](reviews/T-251.md), [T-363](reviews/T-363.md)). **`T249-R1`, Critical**: a subtitle
-  conversion failing before the download kept the session's cookie and typed `Authorization`
-  header in the staging info JSON kept for the resume. `T-251`'s typed conversion is one route to
-  it, so `T-251` is blocked on that finding alone. **`T363-R1`, Critical**: naming what needs ffmpeg
-  in the editor parsed options outside the guard and could switch the GUI's unsafe-extension check
-  off; **`T363-R2`, Medium**: compatibility values that do nothing here were admitted. **Both
-  corrections were built on 2026-10-17**, one commit each, and await focused re-review. yt-dlp now
-  writes no info JSON with the secrets in it, and the worker strips staging when an attempt fails;
-  every admitted compatibility value is classified in the audit, twelve refused as doing nothing
-  here. **`T249-R1`'s sibling audit found `--embed-info-json` putting both secrets inside the kept
-  MKV** of a download that succeeded, on unreleased `main`; the same correction closes it. `T-364`
-  stays gated on all three approvals.
+- **`T-249`, `T-251` and `T-363` are Complete, all approved on 2026-10-18** after one correction
+  round each, and are in [COMPLETED_TASKS](COMPLETED_TASKS.md): `T-249` and `T-251` at `9e917ec`,
+  `T-363` at `dcb0f52`; native Windows at both heads is unverified. Their first reviews, on
+  2026-10-16, approved none ([T-249](reviews/T-249.md), [T-251](reviews/T-251.md),
+  [T-363](reviews/T-363.md)). **`T249-R1`, Critical**: a subtitle conversion failing before the
+  download kept the session's cookie and typed `Authorization` header in the staging info JSON kept
+  for the resume; `T-251`'s typed conversion was one route to it, so `T-251` waited on that finding
+  alone. **`T363-R1`, Critical**: naming what needs ffmpeg in the editor parsed options outside the
+  guard and could switch the GUI's unsafe-extension check off; **`T363-R2`, Medium**: compatibility
+  values that do nothing here were admitted. yt-dlp now writes no info JSON with the secrets in it,
+  and the worker strips staging when an attempt fails; every admitted compatibility value is
+  classified in the audit, twelve refused as doing nothing here, which the Reviewer accepted against
+  the pinned runtime. **`T249-R1`'s sibling audit found `--embed-info-json` putting both secrets
+  inside the kept MKV** of a download that succeeded, on unreleased `main`; the same correction
+  closed it. **`T-364` is next**, its gate cleared.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the
@@ -203,11 +205,10 @@ No Windows runtime, external download or release-gate result is claimed here.
   same round found the field able to switch off yt-dlp's unsafe-extension check for the whole
   process, and fragmented downloads ending *Done* with a fragment missing, in `0.1.0` too.
   **Ruled 2026-10-15, as recommended:** both are fixed next, before `T-250` — the breach and the
-  `--compat-options` values as [`T-363`](TASKS.md#t-363--the-options-field-can-write-outside-the-chosen-folder-and-switch-off-a-safety-check),
-  **built the same day and with the Reviewer**, then the fragments as
+  `--compat-options` values as [`T-363`](COMPLETED_TASKS.md#t-363--the-options-field-can-write-outside-the-chosen-folder-and-switch-off-a-safety-check),
+  **Complete, approved 2026-10-18** at `dcb0f52` after one correction round, then the fragments as
   [`T-364`](TASKS.md#t-364--fragmented-downloads-retry-and-never-finish-with-a-piece-missing),
-  shipping in `0.2.0`. `T-363`'s review on 2026-10-16 upheld the containment fix and found
-  `T363-R1` and `T363-R2`; both were corrected on 2026-10-17 and are back with the Reviewer.
+  shipping in `0.2.0` and next.
 - **CI is green again.** Its Linux job failed from 2026-10-08, when PySide6 6.12.0's metapackage
   began requiring `PySide6_WebEngine` and `PySide6_Pdf` and the `LIC-001` gate refused them.
   **`T-355`** caps PySide6 below 6.12, and the push of `d18bcb8` passed every job in run
