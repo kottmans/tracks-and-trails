@@ -74,7 +74,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from tracks_and_trails.core.models import BROWSER_NAMES, NetworkOptions, proxy_refusal
+from tracks_and_trails.core.models import (
+    BROWSER_NAMES,
+    MOST_NAME_CHARACTERS,
+    FileNaming,
+    NetworkOptions,
+    proxy_refusal,
+)
 from tracks_and_trails.core.output_template import (
     OFFERED_FIELDS,
     OutputPreview,
@@ -98,20 +104,25 @@ __all__ = [
     "DEFAULT_RETRIES_LABEL",
     "DOWNLOAD_DIRECTORY_PROBLEM_NAME",
     "FFMPEG_ON_PATH_NOTE",
+    "LAST_MODIFIED_NAME",
     "NETWORK_EXPLANATION",
     "NO_COOKIES_NOTE",
     "NO_RATE_LIMIT_LABEL",
+    "NO_TRIM_LABEL",
     "PROXY_NAME",
     "PROXY_NOTE_NAME",
     "RATE_LIMIT_NAME",
     "RATE_LIMIT_STEP_BYTES",
     "REQ_023_SETTINGS",
+    "RESTRICT_NAMES_HINT",
+    "RESTRICT_NAMES_NAME",
     "RETRIES_NAME",
     "SETTINGS_STILL_TO_COME",
     "STEP_BUTTON_PROPERTY",
     "STEP_DOWN_LABEL",
     "STEP_UP_LABEL",
     "THEME_LABELS",
+    "TRIM_NAMES_NAME",
     "YTDLP_NOTE_NAME",
     "YTDLP_REVERT_LABEL",
     "YTDLP_REVERT_NAME",
@@ -155,6 +166,27 @@ NAMING_HINT: Final = "Type the name and use Add a field; a / makes a subfolder."
 UNSHOWN_TEMPLATE_NOTE: Final = (
     "Your saved naming uses template codes this screen cannot show as fields. It stays in force "
     "until you type a name here."
+)
+
+#: How a name is shaped and a file dated, beside the name it shapes (`T-248`).
+RESTRICT_NAMES_NAME: Final = "settingsRestrictNames"
+RESTRICT_NAMES_LABEL: Final = "Plain file names: no spaces, accents or symbols"
+#: Measured at 2026.08.19: *Café & Crème* becomes `Cafe_Creme`, and a Japanese title `_`.
+RESTRICT_NAMES_HINT: Final = (
+    "Accents are dropped and spaces become underscores, so Café & Crème becomes Cafe_Creme. A "
+    "title in a script without Latin letters keeps none of them."
+)
+TRIM_NAMES_NAME: Final = "settingsTrimNames"
+TRIM_NAMES_LABEL: Final = "Longest file name"
+NO_TRIM_LABEL: Final = "No limit"
+TRIM_NAMES_HINT: Final = (
+    "Counted before the extension, with any folders the name makes. Two names cut to the same "
+    "text are numbered. The example above shows the result."
+)
+LAST_MODIFIED_NAME: Final = "settingsUseLastModified"
+LAST_MODIFIED_LABEL: Final = "Date each file by when the site last changed it"
+LAST_MODIFIED_HINT: Final = (
+    "Otherwise a file is dated when it finished downloading, as it is when a site does not say."
 )
 
 #: Shown under the folder when no folder has been chosen. **It names the actual path**, because
@@ -477,6 +509,8 @@ class SettingsDialog(QDialog):
         on_output_template_chosen: Callable[[str], None] | None = None,
         refuse_template: Callable[[str], str | None] | None = None,
         preview_template: Callable[[str], OutputPreview | None] | None = None,
+        naming: FileNaming | None = None,
+        on_naming_chosen: Callable[[FileNaming], None] | None = None,
         on_ytdlp_update: Callable[[], None] | None = None,
         on_ytdlp_revert: Callable[[], None] | None = None,
         on_ytdlp_check: Callable[[], None] | None = None,
@@ -533,6 +567,11 @@ class SettingsDialog(QDialog):
         #: (`UX-014`). Injected for `refuse_template`'s reason; `None` shows no example.
         self._preview_template = preview_template
         self._on_output_template_chosen = on_output_template_chosen
+        #: `T-248`: held whole, for `_network`'s reason.
+        self._naming = naming if naming is not None else FileNaming()
+        self._on_naming_chosen = on_naming_chosen
+        #: The template the example was last shown for, shown again when the shape changes.
+        self._example_template = output_template
         self._on_ytdlp_update = on_ytdlp_update
         self._on_ytdlp_revert = on_ytdlp_revert
         #: Whether the yt-dlp in use came from the user's own copy, so reverting means something.
@@ -945,6 +984,7 @@ class SettingsDialog(QDialog):
         self._show_naming_example(self._output_template)
         # **Checked as it is typed, written only when it is usable** (`P-23`, `T-195`).
         self._template_field.textChanged.connect(self._on_template_text)
+        self._add_shaping_controls(box, layout)
 
         preset_label = QLabel("Preset a newly pasted URL starts with", box)
         preset_label.setWordWrap(True)
@@ -984,6 +1024,79 @@ class SettingsDialog(QDialog):
         )
         layout.addWidget(self._preset_note)
 
+    def _add_shaping_controls(self, box: QGroupBox, layout: QVBoxLayout) -> None:
+        """How the name is shaped and the file dated, under the name (`T-248`).
+
+        **Question 3's answer, as ruled on 2026-10-19**: a preference beside the
+        name, frozen into each request as the template is. Each control writes the whole
+        `FileNaming`, and the example above is shown again, since two of the three change it.
+        **Disabled, never hidden**, when composition wired no writer, for the network section's
+        reason.
+        """
+        writable = self._on_naming_chosen is not None
+        self._restrict_names = QCheckBox(RESTRICT_NAMES_LABEL, box)
+        self._restrict_names.setObjectName(RESTRICT_NAMES_NAME)
+        self._restrict_names.setAccessibleName(RESTRICT_NAMES_LABEL)
+        self._restrict_names.setToolTip(RESTRICT_NAMES_HINT)
+        self._restrict_names.setAccessibleDescription(RESTRICT_NAMES_HINT)
+        self._restrict_names.setChecked(self._naming.restrict_filenames)
+        self._restrict_names.setEnabled(writable)
+        self._restrict_names.toggled.connect(self._on_restrict_names)
+        layout.addWidget(self._restrict_names)
+
+        trim_row = QHBoxLayout()
+        trim_label = QLabel(TRIM_NAMES_LABEL, box)
+        trim_label.setWordWrap(True)
+        trim_row.addWidget(trim_label)
+        self._trim_names = QSpinBox(box)
+        self._trim_names.setObjectName(TRIM_NAMES_NAME)
+        self._trim_names.setAccessibleName(TRIM_NAMES_LABEL)
+        self._trim_names.setToolTip(TRIM_NAMES_HINT)
+        self._trim_names.setAccessibleDescription(TRIM_NAMES_HINT)
+        trim_label.setBuddy(self._trim_names)
+        # **Zero is *no limit***, stored as no value, as the rate limit's is; the ceiling is the
+        # model's, read rather than restated.
+        self._trim_names.setRange(0, MOST_NAME_CHARACTERS)
+        self._trim_names.setSpecialValueText(NO_TRIM_LABEL)
+        self._trim_names.setSuffix(" characters")
+        self._trim_names.setValue(self._naming.trim_filenames or 0)
+        self._trim_names.setEnabled(writable)
+        self._trim_names.valueChanged.connect(self._on_trim_names)
+        trim_row.addWidget(self._trim_names)
+        trim_row.addStretch(1)
+        layout.addLayout(trim_row)
+
+        self._last_modified = QCheckBox(LAST_MODIFIED_LABEL, box)
+        self._last_modified.setObjectName(LAST_MODIFIED_NAME)
+        self._last_modified.setAccessibleName(LAST_MODIFIED_LABEL)
+        self._last_modified.setToolTip(LAST_MODIFIED_HINT)
+        self._last_modified.setAccessibleDescription(LAST_MODIFIED_HINT)
+        self._last_modified.setChecked(self._naming.use_last_modified)
+        self._last_modified.setEnabled(writable)
+        self._last_modified.toggled.connect(self._on_last_modified)
+        layout.addWidget(self._last_modified)
+
+    def _on_restrict_names(self, checked: bool) -> None:
+        self._remember_naming(replace(self._naming, restrict_filenames=checked))
+
+    def _on_trim_names(self, length: int) -> None:
+        self._remember_naming(replace(self._naming, trim_filenames=length or None))
+
+    def _on_last_modified(self, checked: bool) -> None:
+        self._remember_naming(replace(self._naming, use_last_modified=checked))
+
+    def _remember_naming(self, naming: FileNaming) -> None:
+        """Hold the change, hand it to composition, then show the example under it (`T-248`).
+
+        **Handed over before the example is asked for**: the example is rendered through the
+        window, which reads the naming in force, so asking first would show the old shape.
+        """
+        if naming == self._naming or self._on_naming_chosen is None:
+            return
+        self._naming = naming
+        self._on_naming_chosen(naming)
+        self._show_naming_example(self._example_template)
+
     def _on_preset_index(self, index: int) -> None:
         if self._on_default_preset_chosen is None or index < 0:
             return
@@ -1002,6 +1115,7 @@ class SettingsDialog(QDialog):
         The extension is not the user's to choose and is always added, so showing `.ext` here only
         draws attention to a word nobody can change.
         """
+        self._example_template = template
         preview = (
             self._preview_template(template or self._shipped_template)
             if self._preview_template is not None

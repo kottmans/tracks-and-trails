@@ -1175,6 +1175,43 @@ class MediaInfo:
             )
 
 
+#: The most characters a file's name may be shortened to (`T-248`), the 255 a file name may hold
+#: on every filesystem this application targets. yt-dlp keeps the extension beyond it.
+MOST_NAME_CHARACTERS: Final = 255
+
+
+@dataclass(frozen=True, slots=True)
+class FileNaming:
+    """How a file's name is shaped and dated beyond its template (`T-248`).
+
+    **Its questions 2 and 3, ruled on 2026-10-19, both as recommended.**
+    Question 3's: a Settings preference beside *How files are named*, frozen into the request when
+    it is queued, as the template is (`UX-014`), so `DownloadRequest` carries the same three fields
+    under the same names. Question 2's: `--windows-filenames` is refused, since `DAT-002` already
+    makes every name Windows-legal on both platforms, which leaves these three.
+
+    `restrict_filenames` is `--restrict-filenames`: plain letters, digits and a few marks only.
+    `trim_filenames` is `--trim-filenames`, the most characters a name keeps before its extension,
+    or `None` for no limit. Both act where the name is rendered and contained, never on the path it
+    became (`T-363`). `use_last_modified` is `--mtime`: each file dated by the server's
+    `Last-Modified`, which yt-dlp leaves off unless asked.
+    """
+
+    restrict_filenames: bool = False
+    trim_filenames: int | None = None
+    use_last_modified: bool = False
+
+    def __post_init__(self) -> None:
+        _require_naming("FileNaming", self)
+
+
+def _require_naming(owner: str, value: Any) -> None:
+    """`FileNaming`'s three fields, on it or on a `DownloadRequest`, which shares their names."""
+    _require_flag(owner, "restrict_filenames", value.restrict_filenames)
+    _require_optional_positive(owner, "trim_filenames", value.trim_filenames, MOST_NAME_CHARACTERS)
+    _require_flag(owner, "use_last_modified", value.use_last_modified)
+
+
 @dataclass(frozen=True, slots=True)
 class NetworkOptions:
     """The three network settings `REQ-023` names, as one value (`T-196`).
@@ -1254,6 +1291,11 @@ class DownloadRequest:
     format_sort: str | None = None
     check_formats: FormatCheck = FormatCheck.DEFAULT
     merge_container: str | None = None
+    #: How the name is shaped and the file dated (`T-248`), frozen from Settings when
+    #: the job is queued, as the template is; see `FileNaming`, which shares the three names.
+    restrict_filenames: bool = False
+    trim_filenames: int | None = None
+    use_last_modified: bool = False
 
     #: Tuples rather than lists throughout: a frozen dataclass with a mutable field is only
     #: shallowly frozen, and these travel between processes.
@@ -1404,6 +1446,7 @@ class DownloadRequest:
         _require_text("DownloadRequest", "output_template", self.output_template)
         _require_enum("DownloadRequest", "media_kind", self.media_kind, MediaKind)
         _require_format_depth("DownloadRequest", self)
+        _require_naming("DownloadRequest", self)
         for name in ("post_processors", "subtitle_languages"):
             object.__setattr__(
                 self, name, _as_tuple_of("DownloadRequest", name, getattr(self, name), str)

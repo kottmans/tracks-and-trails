@@ -57,7 +57,9 @@ from typing import Any, Final
 from platformdirs import user_config_dir
 
 from tracks_and_trails.core.models import (
+    MOST_NAME_CHARACTERS,
     AudioCodec,
+    FileNaming,
     FormatCheck,
     KeptThumbnails,
     MediaKind,
@@ -113,6 +115,14 @@ _LOCATION_KEY: Final = "location"
 #: table, like every setting that is not a queue setting.
 _UPDATES_TABLE: Final = "updates"
 _CHECK_AUTOMATICALLY_KEY: Final = "check_automatically"
+
+#: `T-248`'s keys: how a name is shaped and a file dated, beside *How files are named*. Their own
+#: table, written only when one differs from its default, so a file from an older build and a file
+#: that never changed them read the same.
+_NAMING_TABLE: Final = "naming"
+_RESTRICT_KEY: Final = "restrict_filenames"
+_TRIM_KEY: Final = "trim_filenames"
+_LAST_MODIFIED_KEY: Final = "use_last_modified"
 
 #: `T-197`'s key: a cookies file, for authenticated access to content the user already has
 #: (`REQ-026`). Its own table, like the others.
@@ -350,6 +360,10 @@ class Settings:
     #: *each Settings gets its own* without anyone having to check the frozen-ness first.
     network: NetworkOptions = field(default_factory=NetworkOptions)
 
+    #: How a name is shaped and a file dated (`T-248`). **Frozen into each request
+    #: when it is queued**, as `output_template` is, so a queued job keeps what it was queued with.
+    naming: FileNaming = field(default_factory=FileNaming)
+
     #: Whether a newer release is looked for once a day without being asked (`T-338`).
     #: **On unless switched off**, by the maintainer's ruling on 2026-09-13, so the file stores it
     #: only when it is off. *Help → Check for Updates* works either way.
@@ -389,6 +403,10 @@ class Settings:
                 f"{CONCURRENCY_MAXIMUM} (`ARC-007`). Each concurrent download is a spawned "
                 "worker process, so a caller asking for more than this has a bug rather than a "
                 "preference — a file asking for it is clamped instead."
+            )
+        if not isinstance(self.naming, FileNaming):
+            raise TypeError(
+                f"Settings.naming must be a FileNaming, not a {type(self.naming).__name__}"
             )
         if not isinstance(self.network, NetworkOptions):
             raise TypeError(
@@ -980,6 +998,46 @@ def _network_from(table: dict[str, Any]) -> tuple[NetworkOptions, str | None]:
     return options, ("\n".join(reasons) if reasons else None)
 
 
+def _naming_from(table: dict[str, Any]) -> tuple[FileNaming, str | None]:
+    """The `[naming]` table as one value, and everything it had to discard (`T-248`).
+
+    **Read key by key**, for `_network_from`'s reason: a length typed as `"80"` must not cost the
+    user their plain names. **Never raises.** A length past `MOST_NAME_CHARACTERS` is clamped and
+    reported, as a retry count past its ceiling is; `0` is yt-dlp's own spelling of *no limit*
+    and is read as that, silently.
+    """
+    reasons: list[str] = []
+
+    def flag(key: str) -> bool:
+        raw = table.get(key)
+        if raw is None or isinstance(raw, bool):
+            return bool(raw)
+        reasons.append(f"{_NAMING_TABLE}.{key} is {raw!r}, which is not true or false. It is off.")
+        return False
+
+    restrict = flag(_RESTRICT_KEY)
+    dated = flag(_LAST_MODIFIED_KEY)
+    raw = table.get(_TRIM_KEY)
+    trim: int | None = None
+    if raw is None:
+        pass
+    elif isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
+        reasons.append(
+            f"{_NAMING_TABLE}.{_TRIM_KEY} is {raw!r}, which is not a number of characters. "
+            "File names are not shortened."
+        )
+    elif raw > MOST_NAME_CHARACTERS:
+        trim = MOST_NAME_CHARACTERS
+        reasons.append(
+            f"{_NAMING_TABLE}.{_TRIM_KEY} is {raw}, which is longer than a file name can be. "
+            f"{MOST_NAME_CHARACTERS} is in use."
+        )
+    elif raw > 0:
+        trim = raw
+    naming = FileNaming(restrict_filenames=restrict, trim_filenames=trim, use_last_modified=dated)
+    return naming, ("\n".join(reasons) if reasons else None)
+
+
 def _theme_from(raw: Any) -> tuple[str, str | None]:
     """Coerce a stored theme name. **Never raises.**
 
@@ -1200,6 +1258,8 @@ def load(path: Path | None = None) -> SettingsFile:
     ffmpeg_location, location_reason = _ffmpeg_location_from(ffmpeg_table.get(_LOCATION_KEY))
     network_table, network_table_reason = _section_of(document, _NETWORK_TABLE)
     network, network_reason = _network_from(network_table)
+    naming_table, naming_table_reason = _section_of(document, _NAMING_TABLE)
+    naming, naming_reason = _naming_from(naming_table)
     updates_table, updates_table_reason = _section_of(document, _UPDATES_TABLE)
     check_for_updates, updates_reason = _check_for_updates_from(
         updates_table.get(_CHECK_AUTOMATICALLY_KEY)
@@ -1227,6 +1287,8 @@ def load(path: Path | None = None) -> SettingsFile:
                 both_reason,
                 network_table_reason,
                 network_reason,
+                naming_table_reason,
+                naming_reason,
                 updates_table_reason,
                 updates_reason,
             )
@@ -1243,6 +1305,7 @@ def load(path: Path | None = None) -> SettingsFile:
             cookie_file=cookie_file,
             cookie_browser=cookie_browser,
             network=network,
+            naming=naming,
             check_for_updates=check_for_updates,
         )
         if not parts:
@@ -1822,6 +1885,29 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             if written
             else ""
         )
+        naming_pairs = [
+            (_RESTRICT_KEY, "true" if settings.naming.restrict_filenames else None),
+            (
+                _TRIM_KEY,
+                None
+                if settings.naming.trim_filenames is None
+                else str(settings.naming.trim_filenames),
+            ),
+            (_LAST_MODIFIED_KEY, "true" if settings.naming.use_last_modified else None),
+        ]
+        naming_comments = {
+            _RESTRICT_KEY: '# Plain file names: ASCII letters and digits, with no spaces or "&".',
+            _TRIM_KEY: "# The most characters a file name keeps before its extension, "
+            f"1 to {MOST_NAME_CHARACTERS}. Delete the line for no limit.",
+            _LAST_MODIFIED_KEY: "# Date each file by when the site says it last changed.",
+        }
+        named = [(key, value) for key, value in naming_pairs if value is not None]
+        naming_lines = (
+            f"\n\n[{_NAMING_TABLE}]\n"
+            + "".join(f"{naming_comments[key]}\n{key} = {value}\n" for key, value in named)
+            if named
+            else ""
+        )
         appearance_lines = (
             f"\n\n[{_APPEARANCE_TABLE}]\n"
             f"# The window's palette: {' or '.join(THEME_NAMES)}.\n"
@@ -1849,6 +1935,7 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             f"{cookie_lines}"
             f"{ffmpeg_lines}"
             f"{network_lines}"
+            f"{naming_lines}"
             f"{updates_lines}"
             f"{appearance_lines}" + "".join(_preset_lines(preset) for preset in settings.presets),
             encoding="utf-8",
@@ -1943,6 +2030,14 @@ def with_network_options(settings: Settings, options: NetworkOptions) -> Setting
             retries=None if options.retries is None else min(options.retries, RETRIES_MAXIMUM),
         ),
     )
+
+
+def with_file_naming(settings: Settings, naming: FileNaming) -> Settings:
+    """`settings` shaping and dating names as `naming` says (`T-248`).
+
+    No bound to apply: `FileNaming` refused a length no control can show before this was called.
+    """
+    return replace(settings, naming=naming)
 
 
 def with_update_checks(settings: Settings, enabled: bool) -> Settings:

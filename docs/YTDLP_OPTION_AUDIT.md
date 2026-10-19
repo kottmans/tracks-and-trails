@@ -15,9 +15,10 @@ transport-security downgrade had been missed. A focused re-review then found the
 permitted three mutations, the downstream `T-184` still carried the rejected design, and one of the
 ten policy refusals was not supported by evidence — all corrected. **Then the rulings landed**:
 `SEC-005` forbade the sixteenth option on 2026-08-21 and `SEC-003`'s amendment withdrew two
-permissions the same day. **The refusal list is 92.** **`T-247` built seven typed rows on
-2026-10-11, `T-249` seven more on 2026-10-14, `T-251` four the same day and `T-250` six on
-2026-10-18**, two of them moved from `hatch` by its ruling, so 45 of the 67 now have a control.
+permissions the same day. **The refusal list is 94.** **`T-247` built seven typed rows on
+2026-10-11, `T-249` seven more on 2026-10-14, `T-251` four the same day, `T-250` six on
+2026-10-18 and `T-248` five on 2026-10-19**, two of `T-250`'s moved from `hatch` by its ruling and
+`T-248`'s Windows pair moved to `app:policy` by its ruling, so 50 of the 65 now have a control.
 
 *(**This header said 89 and named only `SEC-003` and `SEC-004` while the summary below said 92 and
 named `SEC-005`** — one document giving both the pre-ruling and post-ruling answer to the question
@@ -91,11 +92,11 @@ gap.
 
 | Class | Rows | What it means |
 |---|---|---|
-| `typed` | 67 | Gets a control, an owner task and a phase position. 45 already have one |
+| `typed` | 65 | Gets a control, an owner task and a phase position. 50 already have one |
 | `hatch` | 91 | Reachable through `REQ-031` only. Every row carries a reason |
 | `app:sets` | 19 | **`build_options` sets this key.** Derived, and drift-checked in both directions |
 | `app:plumbing` | 36 | It *is* the command line rather than a capability — `REQ-030`'s own words |
-| `app:policy` | 10 | **The application owns the behaviour, and its model cannot represent the outcome** |
+| `app:policy` | 12 | **The application owns the behaviour, and its model cannot represent the outcome** |
 | `app:contained` | 1 | It redirects where files land, and `T-034` owns that |
 | `excluded` | 26 | Forbidden — 8 by `SEC-003`, **15 by `SEC-004`**, 2 by `SEC-003`'s 2026-08-21 amendment, **1 by `SEC-005`** |
 | `unruled` | **0** | No decision covers it, and the audit refuses to invent one. **Empty since 2026-08-21**, and the class stays defined: a heading that disappears when it empties is one nobody notices coming back |
@@ -125,7 +126,7 @@ deadline is a class that gets skipped. Counts here are **recounted from the tabl
 adjusted by hand — and a test asserts they agree.)*
 
 **The refusal list is `app:sets` + `app:contained` + `app:plumbing` + `app:policy` + `excluded` —
-92 rows**, and it is the list `T-184` enforces. `typed` is not refused: where a typed field and the hatch name the same
+94 rows**, and it is the list `T-184` enforces. `typed` is not refused: where a typed field and the hatch name the same
 user-owned key, `ARC-010`'s precedence rule applies and the typed field wins, because it is the one
 with a visible control.
 
@@ -168,7 +169,8 @@ default are different jobs and `REQ-EXCL-002` needs both.)*
 is a bag of unrelated switches: at 2026.08.19 one value, `allow-unsafe-ext`, switches yt-dlp's
 unsafe-extension check off for the whole process as it is parsed, `filename` rewrites a name the
 application sets, and `format-sort` and `mtime-by-default` reach keys `T-250` and `T-248` give
-controls; `T-250`'s was built on 2026-10-18, so `format-sort` is refused for it now. The rows above cannot say that, so the generator parses each value alone and classes it by
+controls; `T-250`'s was built on 2026-10-18 and `T-248`'s on 2026-10-19, so both are refused for
+them now, and so are the year bundles `2021` to `2024`, which bring `mtime-by-default`. The rows above cannot say that, so the generator parses each value alone and classes it by
 what the parse changes: refused as **unsafe** where yt-dlp names it `allow-unsafe-*` or it switched
 the extension check off, as **the application's** where it sets a key `app:sets` owns, and as **a
 control's** where it sets a key a built control owns; admitted otherwise, carrying exactly the keys
@@ -197,7 +199,6 @@ value has no row here, so a new value is classified rather than admitted by defa
 | `format-spec` | `inert` | Changes only the format chosen when none is given; this application gives one on both passes, from a selector the model requires |
 | `list-formats` | `inert` | Changes only the console format table, which this application never prints (`--list-formats` is `app:plumbing`) |
 | `manifest-filesize-approx` | `effect` | Estimates a size for a manifest's formats, which the sort and the size filters read |
-| `mtime-by-default` | `effect` | Sets `updatetime`, `T-248`'s key; refused once that control is built |
 | `multistreams` | `effect` | Sets both `allow_multiple_*_streams` keys, which merging reads |
 | `no-attach-info-json` | `inert` | Read only while the command line builds the processor of `--embed-metadata` or `--embed-chapters`, both refused for their controls; the application's own embedding never reads it, and yt-dlp ignores it beside `--embed-info-json` |
 | `no-certifi` | `inert` | Prefers the system's certificates to certifi's; certifi is not installed with this application, so the system's are used either way |
@@ -393,7 +394,7 @@ rather than guessed at here.
 
 ## The decomposition
 
-**67 typed rows: 45 already have a field, 22 do not.** Nothing is unassigned and nothing is in two
+**65 typed rows: 50 already have a field, 15 do not.** Nothing is unassigned and nothing is in two
 tasks — counted, and the test asserts the partition. A task's rows join the built table when it
 builds them, all of them at once.
 
@@ -401,7 +402,7 @@ builds them, all of them at once.
 |---|---|---|
 | — | 21 | Already built before these tasks: the format, audio, container, subtitle-language, embedding, proxy, rate-limit, retry and browser-cookie fields |
 | `T-247` | 7 | **Built 2026-10-11** — video selection: which items, how big, how old |
-| `T-248` | 7 | Filename shaping and the modification time |
+| `T-248` | 5 | **Built 2026-10-19** — filename shaping and the modification time; the Windows pair moved to `app:policy` by its ruling |
 | `T-249` | 7 | **Built 2026-10-14** — the sidecar writers: description, info JSON and thumbnail files |
 | `T-250` | 6 | **Built 2026-10-18** — format depth: sorting, checking and the merge container; two rows moved from `hatch` by its ruling |
 | `T-251` | 4 | **Built 2026-10-14** — subtitle depth: automatic captions, format and conversion |
@@ -419,7 +420,7 @@ because `T183-R3` then found a sixteenth — `--legacy-server-connect` — which
 actually unblocked. Every typed-field task is independent of the rest and of the hatch.
 
 
-### The 45 typed options that already have a field
+### The 50 typed options that already have a field
 
 **`built` is stated here rather than inferred from what the nine tasks did not claim** —
 `T183-R4` showed that definition is circular: swapping an unbuilt option for a built one kept
@@ -476,9 +477,18 @@ one day, and is listed against the first.
 | `--check-all-formats` | `check_formats` |
 | `--no-check-formats` | `check_formats` |
 | `--merge-output-format` | `merge_container` |
+| `--restrict-filenames` | `restrict_filenames` |
+| `--no-restrict-filenames` | `restrict_filenames` |
+| `--trim-filenames` | `trim_filenames` |
+| `--mtime` | `use_last_modified` |
+| `--no-mtime` | `use_last_modified` |
 
-**45 rows**: the 21 built before these tasks, `T-247`'s seven, `T-249`'s seven, `T-251`'s four
-and `T-250`'s six. With the 22 across `T-248` and `T-252`…`T-255`, that is the typed class exactly.
+**50 rows**: the 21 built before these tasks, `T-247`'s seven, `T-249`'s seven, `T-251`'s four,
+`T-250`'s six and `T-248`'s five. With the 15 across `T-252`…`T-255`, that is the typed class
+exactly. *(`T-248`'s Windows pair moved to `app:policy` by its 2026-10-19 ruling:
+`DAT-002` already makes every name Windows-legal on both platforms, so `--windows-filenames` only
+swapped `#` for `_` in typed text, and `--no-windows-filenames` let a title's backslash through for
+`core/paths` to split into a folder.)*
 *(`--format-sort-reset` clears the sort, which the control does by leaving it empty, and
 `--check-all-formats` is the check's *every format*: both set a destination the control owns, so
 `ARC-010`'s 2026-10-15 amendment, second, moved them from `hatch` with it.)*
@@ -627,7 +637,7 @@ aliases and its `--no-` counterpart wherever they share one entry.
 | `-w` `--no-overwrites` | `app:sets` | build_options sets overwrites; T-046's reservation owns it |
 | `--no-part` | `hatch` | Counterpart of --part; same interaction |
 | `--no-restrict-filenames` | `typed` | Counterpart of --restrict-filenames |
-| `--no-windows-filenames` | `typed` | Counterpart of --windows-filenames |
+| `--no-windows-filenames` | `app:policy` | Would let a title's backslash through, which then splits it into a folder; every name is made Windows-legal (DAT-002, T-248) |
 | `--no-write-comments` `--no-get-comments` | `hatch` | Counterpart of --write-comments |
 | `--no-write-description` | `typed` | Counterpart of --write-description |
 | `--no-write-info-json` | `typed` | Counterpart of --write-info-json |
@@ -639,7 +649,7 @@ aliases and its `--no-` counterpart wherever they share one entry.
 | `--restrict-filenames` | `typed` | T-183 names it thin |
 | `--rm-cache-dir` | `app:plumbing` | A maintenance command, not a download option |
 | `--trim-filenames` `--trim-file-names` | `typed` | T-183 names it thin |
-| `--windows-filenames` | `typed` | T-183 names it thin |
+| `--windows-filenames` | `app:policy` | Every name is already made Windows-legal, on both platforms (DAT-002, T-248) |
 | `--write-comments` `--get-comments` | `hatch` | Expensive extraction nobody has asked for |
 | `--write-description` | `typed` | T-183 names the metadata writers thin |
 | `--write-info-json` | `typed` | T-183 names the metadata writers thin |

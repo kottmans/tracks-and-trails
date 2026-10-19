@@ -127,6 +127,7 @@ from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import (
     AudioCodec,
     DownloadRequest,
+    FileNaming,
     Job,
     MediaInfo,
     NetworkOptions,
@@ -1436,6 +1437,7 @@ class AddUrlDialog(QDialog):
         ffmpeg_available: bool = True,
         default_cookie_browser: Callable[[], str | None] | None = None,
         default_network: Callable[[], NetworkOptions] | None = None,
+        default_naming: Callable[[], FileNaming] | None = None,
         queued_urls: QueuedUrls | None = None,
         save_preset: PresetSink | None = None,
         manage_presets: Callable[[], object] | None = None,
@@ -1523,6 +1525,9 @@ class AddUrlDialog(QDialog):
         #: value, for the reason `presets` is one: this dialog outlives any single answer, and
         #: the Settings screen can be used while it is open.
         self._default_network = default_network
+        #: How names are shaped and files dated (`T-248`), read when a request is
+        #: built for `default_network`'s reason.
+        self._default_naming = default_naming
         #: The one row that is open, by identity (`T-108`, `T-110`). At most one, and at most one
         #: panel on it: two open tables would be two answers to *"which formats are we looking
         #: at"*, and the list would spend most of its height on them. The playlist picker shares
@@ -3243,7 +3248,12 @@ class AddUrlDialog(QDialog):
         `T197-R4` is that finding: the cookie browser was stamped in `_request_for` alone, and
         every child of an expanded playlist went out unauthenticated.
         """
-        return self._with_default_network(self._with_default_cookie_browser(request))
+        frozen = self._with_default_network(self._with_default_cookie_browser(request))
+        if self._default_naming is None:
+            return frozen
+        # **The setting, whole** (`T-248`): nothing else gives a request a naming,
+        # since a preset carries none and the options field refuses the three spellings.
+        return preset_registry.with_naming(frozen, self._default_naming())
 
     def _with_default_network(self, request: DownloadRequest) -> DownloadRequest:
         """Fill in the Settings network options where the request states none (`T-196`).

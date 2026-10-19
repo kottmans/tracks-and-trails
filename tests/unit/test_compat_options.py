@@ -6,6 +6,10 @@ the contained absolute path as a literal, and yt-dlp reshaped its folders. And *
 was admitted as a whole** though one of its values switches yt-dlp's unsafe-extension check off for
 the entire process, one rewrites a file's name the application owns, and two reach keys that
 controls are planned for.
+
+*(Since `T-248`, built on 2026-10-19, the trim reaches the adapter as a request field
+rather than as typed text, and the Windows pair is refused in the field as `app:policy`. The
+breach these tests hold shut is the same one, by the route that remains.)*
 """
 
 from __future__ import annotations
@@ -52,7 +56,7 @@ STAGING: Final = CHOSEN / ".tracks-and-trails-staging-0123456789abcdef0123456789
 TITLE: Final = "Vol. 2 of the set"
 
 
-def a_request(text: str, directory: Path = CHOSEN) -> DownloadRequest:
+def a_request(text: str, directory: Path = CHOSEN, **fields: Any) -> DownloadRequest:
     admission, argv = options_for(text)
     assert admission.usable, admission.refusals
     return DownloadRequest(
@@ -62,6 +66,7 @@ def a_request(text: str, directory: Path = CHOSEN) -> DownloadRequest:
         output_template="%(title)s.%(ext)s",
         extra_options=text,
         extra_option_argv=argv,
+        **fields,
     )
 
 
@@ -78,36 +83,52 @@ def unchanged_process() -> Iterator[None]:
 # --- shaping acts on the name, not on the path it became ---------------------------------------
 
 
-@pytest.mark.parametrize(
-    "text", ["--trim-filenames 15", "--trim-file-names 30", "--windows-filenames"]
-)
-def test_shaping_reaches_the_render_and_never_the_download(text: str) -> None:
-    request = a_request(text)
+@pytest.mark.parametrize("length", [15, 30])
+def test_shaping_reaches_the_render_and_never_the_download(length: int) -> None:
+    request = a_request("", trim_filenames=length)
 
     rendered = build_options(request, request.output_template, probe_only=True)
     downloaded = build_options(request, as_literal_template(STAGING / f"{TITLE}.mp4"))
 
-    assert RENDER_ONLY_KEYS & set(rendered), "the name is no longer shaped where it is rendered"
+    assert rendered["trim_file_name"] == length, "the name is no longer shaped where it is rendered"
     assert not RENDER_ONLY_KEYS & set(downloaded)
 
 
+@pytest.mark.parametrize("text", ["--windows-filenames", "--no-windows-filenames"])
+def test_the_windows_pair_is_refused_on_every_platform(text: str) -> None:
+    """`T-248`'s question 2, ruled 2026-10-19: `app:policy`, since `DAT-002` makes every name
+    Windows-legal on both platforms. **The refusal is decided by the table alone**, so it holds on
+    Windows as on Linux, which the task's criteria ask of anything about this pair."""
+    [refusal] = admit(text).refusals
+
+    assert refusal.option == text
+    assert "Windows-legal" in refusal.reason
+
+
 @pytest.mark.parametrize(
-    ("text", "chosen"),
+    ("fields", "chosen"),
     [
         # Measured at `8b0aad6`: `/home/someone/Vide. 2 of the set.mp4`, beside the folder.
-        pytest.param("--trim-filenames 15", CHOSEN, id="trim above the folder"),
+        pytest.param({"trim_filenames": 15}, CHOSEN, id="trim above the folder"),
         # Measured: inside the folder but outside staging, past `T-046`'s reservation.
-        pytest.param("--trim-filenames 50", CHOSEN, id="trim into the staging name"),
-        # Measured: the folder renamed `Talks# 2026`, which does not exist.
-        pytest.param("--windows-filenames", Path("/home/someone/Talks: 2026"), id="windows names"),
+        pytest.param({"trim_filenames": 50}, CHOSEN, id="trim into the staging name"),
+        # The restriction stays on the download pass, where it acts on no literal text: a folder
+        # with a space and a colon in it is left as it is.
+        pytest.param(
+            {"restrict_filenames": True},
+            Path("/home/someone/Talks: 2026"),
+            id="plain names",
+        ),
     ],
 )
-def test_yt_dlp_writes_the_download_where_it_was_contained(text: str, chosen: Path) -> None:
+def test_yt_dlp_writes_the_download_where_it_was_contained(
+    fields: dict[str, Any], chosen: Path
+) -> None:
     """**The breach, through yt-dlp's own naming.** The worker hands the download pass the
     contained path as a literal; whatever yt-dlp makes of it is where the bytes go."""
     staging = chosen / STAGING.name
     contained = staging / f"{TITLE}.mp4"
-    request = a_request(text, chosen)
+    request = a_request("", chosen, **fields)
 
     with YoutubeDL(
         {**build_options(request, as_literal_template(contained)), "quiet": True}
@@ -165,6 +186,11 @@ def test_a_value_yt_dlp_does_not_know_is_left_to_its_parser() -> None:
         ("--compat-options all", "safety", "allow-unsafe-exec-expansion"),
         ("--compat-options filename", "app", "filename"),
         ("--compat-options youtube-dl", "app", "filename"),
+        # `T-248` built the file date's control on 2026-10-19, and every year's
+        # bundle from 2021 to 2024 brings the value that reaches its key.
+        ("--compat-options mtime-by-default", "control", "mtime-by-default"),
+        ("--compat-options 2024", "control", "mtime-by-default"),
+        ("--compat-options 2021", "control", "mtime-by-default"),
         ("--compat-options no-live-chat --compat-options allow-unsafe-ext", "safety", None),
     ],
 )
@@ -185,11 +211,11 @@ def test_a_value_that_would_do_harm_or_nothing_is_refused_with_its_reason(
     "text",
     [
         "--compat-options no-live-chat",
-        "--compat-options 2021",
+        "--compat-options 2021,-mtime-by-default",
         "--compat-options all,-allow-unsafe-ext,-allow-unsafe-exec-expansion,-filename,"
-        "-format-sort",
+        "-format-sort,-mtime-by-default",
         "--compat-options all --compat-options -allow-unsafe-ext,-allow-unsafe-exec-expansion,"
-        "-filename,-format-sort",
+        "-filename,-format-sort,-mtime-by-default",
     ],
 )
 def test_harmless_values_stay_usable(text: str) -> None:
@@ -220,7 +246,9 @@ def test_an_admitted_value_s_keys_are_carried_rather_than_dropped() -> None:
 
 
 @pytest.mark.usefixtures("unchanged_process")
-@pytest.mark.parametrize("text", ["--compat-options prefer-vp9-sort", "--compat-options 2023"])
+@pytest.mark.parametrize(
+    "text", ["--compat-options prefer-vp9-sort", "--compat-options 2023,-mtime-by-default"]
+)
 def test_the_editor_s_check_leaves_the_process_as_it_was(text: str) -> None:
     """`prefer-vp9-sort` is admitted, and parsing it rewrites the default format order for every
     later `YoutubeDL`. The editor's check and the offer's ffmpeg question both parse in the GUI."""
@@ -244,7 +272,7 @@ WITHOUT_FFMPEG: Final = (
     "--compat-options prefer-vp9-sort --split-chapters",
     "--compat-options allow-unsafe-ext --compat-options -allow-unsafe-ext --split-chapters",
     "--compat-options all --compat-options -allow-unsafe-ext,-allow-unsafe-exec-expansion,"
-    "-filename,-format-sort --split-chapters",
+    "-filename,-format-sort,-mtime-by-default --split-chapters",
 )
 
 
@@ -342,10 +370,11 @@ def test_a_bundle_that_brings_nothing_that_acts_is_refused_by_its_own_name() -> 
 @pytest.mark.parametrize(
     "text",
     [
-        # Bundles that bring something that acts, beside a passenger that does not.
-        "--compat-options 2021",
-        "--compat-options 2022",
-        "--compat-options 2024",
+        # Bundles that bring something that acts, beside a passenger that does not, with the
+        # value that reaches the file date's control taken away (`T-248`).
+        "--compat-options 2021,-mtime-by-default",
+        "--compat-options 2022,-mtime-by-default",
+        "--compat-options 2023,-mtime-by-default",
         # A value named and taken away again: the user's own cancellation.
         "--compat-options list-formats,-list-formats",
         "--compat-options list-formats --compat-options -list-formats",
@@ -504,7 +533,7 @@ def test_a_value_reaching_a_built_control_s_key_is_refused_once_that_control_exi
 ) -> None:
     """`format-sort` and `mtime-by-default` reach `T-250`'s and `T-248`'s keys, and each was
     admitted until its control existed. Building one must refuse them by regenerating, with no list
-    to remember to edit: `T-250`'s did, on 2026-10-18."""
+    to remember to edit: `T-250`'s did, on 2026-10-18, and `T-248`'s on 2026-10-19."""
     tool = _tool()
     built: dict[str, Any] = dict(tool.built_spellings())
     monkeypatch.setattr(
@@ -519,5 +548,7 @@ def test_a_value_reaching_a_built_control_s_key_is_refused_once_that_control_exi
     assert verdicts["mtime-by-default"] == "control"
     assert verdicts["no-live-chat"] is None
     assert "format_sort" not in carried
-    # `T-250` built the sort's control on 2026-10-18, and regenerating refused the value for it.
+    # `T-250` built the sort's control on 2026-10-18, and regenerating refused the value for it;
+    # `T-248` built the file date's on 2026-10-19.
     assert COMPAT_VALUES["format-sort"] == "control"
+    assert COMPAT_VALUES["mtime-by-default"] == "control"

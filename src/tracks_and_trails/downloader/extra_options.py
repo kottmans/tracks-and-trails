@@ -589,8 +589,6 @@ NOT_SECRET_VALUES: Final = frozenset(
         "--sponsorblock-mark",
         "--sponsorblock-remove",
         "--throttled-rate",
-        "--trim-file-names",
-        "--trim-filenames",
         "--wait-for-video",
     }
 )

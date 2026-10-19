@@ -1419,6 +1419,7 @@ class DownloadManager(QObject):
             rendered = adapter.render_output_template(
                 template,
                 output_template.template_values(media, output_template.UNDECIDED_EXTENSION),
+                adapter.shaping_options(request),
             )
             target = contained_output_path(Path(request.output_directory), rendered)
             path = worker.previewed_path(target, request)

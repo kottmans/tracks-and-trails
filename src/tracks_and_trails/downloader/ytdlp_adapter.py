@@ -941,6 +941,12 @@ def build_options(
     merge = merge_container_for(request)
     if merge is not None:
         options["merge_output_format"] = merge
+    # **The name's shape, on both passes** (`T-248`). The probe pass renders the name
+    # `_validated_target` contains, so these act there, before containment. The download pass drops
+    # the trim with the other `RENDER_ONLY_KEYS` below and keeps the restriction, which yt-dlp
+    # applies to a field's text and never to literal text, so the path it is handed stays as
+    # validated while a chapter's title in `_chapter_template` is shaped like the media's.
+    options.update(shaping_options(request))
     if request.cookies_from_browser:
         # **The four-tuple yt-dlp parses, not the string the user typed** (`T197-R2`). Its
         # `_parse_browser_specification(browser_name, profile, keyring, container)` refuses an
@@ -1025,6 +1031,11 @@ def build_options(
         options["max_filesize"] = request.max_filesize
     if request.uploaded_after is not None or request.uploaded_before is not None:
         options["daterange"] = DateRange(request.uploaded_after, request.uploaded_before)
+    # **The file's date, on the download only** (`T-248`). yt-dlp dates what it writes
+    # by the server's `Last-Modified` only when asked, as its command line has since 2025; a merge
+    # or a conversion keeps the oldest input's date, so the finished file carries it.
+    if request.use_last_modified:
+        options["updatetime"] = True
 
     if request.subtitle_languages:
         options["writesubtitles"] = True
@@ -1108,6 +1119,24 @@ def merge_container_for(request: DownloadRequest) -> str | None:
     if request.remux_container in MERGE_CONTAINERS:
         return request.remux_container
     return request.merge_container
+
+
+def shaping_options(request: DownloadRequest) -> dict[str, Any]:
+    """The keys that shape `request`'s rendered name (`T-248`).
+
+    **One derivation for the write and the preview**, so `REQ-011`'s example cannot show a name
+    the download does not take: `build_options` sends these and the preview's renderer takes them.
+    """
+    options: dict[str, Any] = {}
+    if request.restrict_filenames:
+        options["restrictfilenames"] = True
+    if request.trim_filenames is not None:
+        options["trim_file_name"] = request.trim_filenames
+    return options
+
+
+#: Every key `shaping_options` can send, which the preview sets on each render (`T-248`).
+SHAPING_KEYS: Final = frozenset({"restrictfilenames", "trim_file_name"})
 
 
 #: Keys that shape a file name, which act on the rendered name and never on the download's path
@@ -1814,7 +1843,9 @@ def template_syntax_error(template: str) -> str | None:
     return None if error is None else str(error)
 
 
-def render_output_template(template: str, values: Mapping[str, Any]) -> str:
+def render_output_template(
+    template: str, values: Mapping[str, Any], shaping: Mapping[str, Any] = MappingProxyType({})
+) -> str:
     """Render `template` against `values`, through yt-dlp's own mechanism.
 
     The same call `worker._validated_target` makes — `prepare_filename` with an explicit template —
@@ -1824,8 +1855,15 @@ def render_output_template(template: str, values: Mapping[str, Any]) -> str:
 
     `dict(values)` because yt-dlp adds derived fields to the mapping it is given (`duration_string`,
     `epoch`), and a caller's projection is not this function's to grow.
+
+    **`shaping` is `shaping_options` of the request being previewed** (`T-248`). yt-dlp reads both
+    keys from its parameters as it renders, so they are set on the shared renderer, **every key on
+    every call**, and one preview's shape cannot reach the next.
     """
-    return str(_preview_renderer().prepare_filename(dict(values), outtmpl=template))
+    renderer = _preview_renderer()
+    for key in SHAPING_KEYS:
+        renderer.params[key] = shaping.get(key)
+    return str(renderer.prepare_filename(dict(values), outtmpl=template))
 
 
 # --- ffmpeg's position while a post-processing step runs (`T-344`) -----------------------------

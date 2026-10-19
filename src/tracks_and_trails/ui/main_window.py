@@ -54,7 +54,14 @@ from tracks_and_trails import __version__
 from tracks_and_trails.core import output_template, presets, settings
 from tracks_and_trails.core.app_updates import is_newer
 from tracks_and_trails.core.job_state import REORDERABLE
-from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo, NetworkOptions, Preset
+from tracks_and_trails.core.models import (
+    DownloadRequest,
+    FileNaming,
+    Job,
+    MediaInfo,
+    NetworkOptions,
+    Preset,
+)
 from tracks_and_trails.core.output_template import OutputPreview
 from tracks_and_trails.core.paths import APP_SLUG
 from tracks_and_trails.core.settings import SettingsProblem
@@ -568,6 +575,10 @@ class MainWindow(QMainWindow):
         shipped_template: str = "",
         on_default_preset_chosen: Callable[[str], None] | None = None,
         on_output_template_chosen: Callable[[str], None] | None = None,
+        #: `T-248`: how names are shaped and files dated, read live for
+        #: `default_network`'s reason, and its writer.
+        naming: Callable[[], FileNaming] | None = None,
+        on_naming_chosen: Callable[[FileNaming], None] | None = None,
         #: yt-dlp's version and the two actions `REQ-025` asks for (`T-198`). Injected because
         #: it spawns children and reaches the network, neither of which a window owns.
         ytdlp: YtdlpService | None = None,
@@ -626,6 +637,8 @@ class MainWindow(QMainWindow):
         self._shipped_template = shipped_template
         self._on_default_preset_chosen = on_default_preset_chosen
         self._on_output_template_chosen = on_output_template_chosen
+        self._naming = naming
+        self._on_naming_chosen = on_naming_chosen
         self._ytdlp = ytdlp
         if ytdlp is not None:
             # Connected once, on the window rather than on the screen: the screen is rebuilt every
@@ -980,7 +993,7 @@ class MainWindow(QMainWindow):
         """Write `preset` onto a queued job, keeping what a preset does not own.
 
         **One route, three callers** (`T-315`). The row's preset control, its *Options…* and its
-        *Choose specific formats…* all end here, so the two carried-over fields below cannot be
+        *Choose specific formats…* all end here, so what is carried over below cannot be
         remembered on one path and forgotten on another — which is exactly the shape of the defect
         each was written for.
         """
@@ -989,25 +1002,27 @@ class MainWindow(QMainWindow):
         job = self._queue.model.job_for(job_id)
         if job is None:
             return
+        # **The new format, the old connection** (`T197-R4`). A preset describes a format; a
+        # request rebuilt from one alone drops the browser the job was bound to when it was
+        # queued, which `DAT-003` makes a binding rather than a preference.
+        rebuilt = presets.with_connection_of(
+            presets.to_request(
+                preset,
+                url=job.request.url,
+                output_directory=job.request.output_directory,
+                # **The new format, the old *naming*** — the same argument as the connection
+                # below, one field over (`T-195`, `UX-014`). Retargeting changes what is
+                # downloaded, not what the file is called, and a preset carries no naming, so
+                # without this the row would fall back to the template this application ships:
+                # discarding both the user's Settings pattern and any rename on the row.
+                default_output_template=job.request.output_template,
+            ),
+            job.request,
+        )
         self._manager.retarget(
             job_id,
-            # **The new format, the old connection** (`T197-R4`). A preset describes a format; a
-            # request rebuilt from one alone drops the browser the job was bound to when it was
-            # queued, which `DAT-003` makes a binding rather than a preference.
-            presets.with_connection_of(
-                presets.to_request(
-                    preset,
-                    url=job.request.url,
-                    output_directory=job.request.output_directory,
-                    # **The new format, the old *naming*** — the same argument as the connection
-                    # below, one field over (`T-195`, `UX-014`). Retargeting changes what is
-                    # downloaded, not what the file is called, and a preset carries no naming, so
-                    # without this the row would fall back to the template this application ships:
-                    # discarding both the user's Settings pattern and any rename on the row.
-                    default_output_template=job.request.output_template,
-                ),
-                job.request,
-            ),
+            # **And the old shape and date** (`T-248`), frozen with the template.
+            presets.with_naming(rebuilt, presets.naming_of(job.request)),
             then=self.refresh_queue,
             otherwise=self._report_transiently,
         )
@@ -1058,6 +1073,10 @@ class MainWindow(QMainWindow):
             output_directory=str(self._output_directory),
             default_output_template=resolved,
         )
+        # **Shaped as the naming in force shapes it** (`T-248`), read when asked, so
+        # the screen's example follows a change to the shape the moment composition stores it.
+        if self._naming is not None:
+            request = presets.with_naming(request, self._naming())
         return self._manager.preview_output_path(request, _TEMPLATE_PROBE)
 
     def _show_item_menu(self, job_id: str) -> QMenu | None:
@@ -1586,6 +1605,7 @@ class MainWindow(QMainWindow):
             # `T-196`: the network options a request inherits, read when the request is built
             # rather than when this dialog opened — the settings screen can be used while it is up.
             default_network=self._default_network,
+            default_naming=self._naming,
             # `P-13`: the merge mode is drawn only where a merge could actually run (`REQ-024`).
             ffmpeg_available=self._ffmpeg_available,
             # `REQ-022`, `T-114`: what the queue holds now, read from the rows the table already
@@ -2221,6 +2241,8 @@ class MainWindow(QMainWindow):
             on_output_template_chosen=self._on_output_template_chosen,
             refuse_template=self._refuse_template,
             preview_template=self._preview_template,
+            naming=self._naming() if self._naming is not None else None,
+            on_naming_chosen=self._on_naming_chosen,
             on_ytdlp_update=None if self._ytdlp is None else self._ytdlp.install_latest_version,
             on_ytdlp_revert=None if self._ytdlp is None else self._ytdlp.revert,
             on_ytdlp_check=None if self._ytdlp is None else self._ytdlp.check_latest_version,

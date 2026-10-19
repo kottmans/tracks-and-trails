@@ -56,6 +56,7 @@ from tracks_and_trails.core.models import (
     ALL_SUBTITLE_LANGUAGES,
     AudioCodec,
     DownloadRequest,
+    FileNaming,
     FormatCheck,
     KeptThumbnails,
     MediaKind,
@@ -666,6 +667,21 @@ def needs_ffmpeg(preset: Preset) -> bool:
     # this module cannot ask which. Treated as needing ffmpeg, which errs towards withdrawing an
     # offer rather than making one that would be refused (`UX-005` §5).
     return bool(preset.post_processors)
+
+
+def naming_of(request: DownloadRequest) -> FileNaming:
+    """The naming `request` was queued with (`T-248`)."""
+    return FileNaming(**{item.name: getattr(request, item.name) for item in fields(FileNaming)})
+
+
+def with_naming(request: DownloadRequest, naming: FileNaming) -> DownloadRequest:
+    """`request`, shaping and dating its file as `naming` says (`T-248`).
+
+    **Every field of `FileNaming`, by name**, which `DownloadRequest` shares: a field added there is
+    carried here without a list to forget it from, `with_connection_of`'s hazard.
+    """
+    carried = {item.name: getattr(naming, item.name) for item in fields(FileNaming)}
+    return replace(request, **carried)
 
 
 def with_connection_of(request: DownloadRequest, source: DownloadRequest) -> DownloadRequest:

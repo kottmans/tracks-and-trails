@@ -65,7 +65,13 @@ from tracks_and_trails.core import settings as core_settings
 from tracks_and_trails.core.app_updates import UPDATE_CHECK_FILENAME, read_last_check
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
-from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo, NetworkOptions
+from tracks_and_trails.core.models import (
+    DownloadRequest,
+    FileNaming,
+    Job,
+    MediaInfo,
+    NetworkOptions,
+)
 from tracks_and_trails.core.paths import thumbnail_cache_path
 from tracks_and_trails.core.settings import SettingsProblem
 from tracks_and_trails.downloader import app_update_service
@@ -97,11 +103,15 @@ from tracks_and_trails.ui.row_delegate import PRESET_ROLE
 from tracks_and_trails.ui.row_verbs import Verb
 from tracks_and_trails.ui.settings_dialog import (
     DEFAULT_PRESET_NAME,
+    LAST_MODIFIED_NAME,
+    NAMING_EXAMPLE_NAME,
     OUTPUT_TEMPLATE_NAME,
     OUTPUT_TEMPLATE_NOTE_NAME,
     PROXY_NAME,
     RATE_LIMIT_NAME,
+    RESTRICT_NAMES_NAME,
     RETRIES_NAME,
+    TRIM_NAMES_NAME,
     YTDLP_CHECK_NAME,
     YTDLP_REVERT_NAME,
     YTDLP_UPDATE_NAME,
@@ -3689,7 +3699,8 @@ def test_retargeting_through_the_window_keeps_the_jobs_cookie_binding(
 ) -> None:
     """**The evidence note's other half**: `with_connection_of` was proven in isolation, and
     nothing proved `_retarget_job` actually calls it. This retargets a real queued job through the
-    window's own handler and reads the store back.
+    window's own handler and reads the store back. *(`T-248`: the naming the job was
+    frozen with is held to the same route.)*
     """
     database = tmp_path / "retarget.sqlite3"
     connection = db.connect(database)
@@ -3700,6 +3711,9 @@ def test_retargeting_through_the_window_keeps_the_jobs_cookie_binding(
         format_selector="bestvideo+bestaudio/best",
         output_template="%(title)s.%(ext)s",
         cookies_from_browser="firefox:Work",
+        restrict_filenames=True,
+        trim_filenames=40,
+        use_last_modified=True,
     )
     repository.append([Job(id="bound-1", url=bound.url, request=bound, queue_position=0)])
     connection.close()
@@ -3720,6 +3734,9 @@ def test_retargeting_through_the_window_keeps_the_jobs_cookie_binding(
     assert after is not None
     assert after.request.cookies_from_browser == "firefox:Work", (
         "retargeting through the window dropped the browser the job was bound to at queue time"
+    )
+    assert presets.naming_of(after.request) == presets.naming_of(bound), (
+        "retargeting through the window dropped the naming the job was frozen with"
     )
 
 
@@ -4007,6 +4024,57 @@ def test_a_proxy_and_a_rate_limit_set_on_the_screen_reach_the_options_yt_dlp_get
     options = adapter.build_options(built, "o.%(ext)s")
     assert options["proxy"] == "http://proxy.invalid:8080"
     assert options["ratelimit"] == 512 * 1024
+
+
+def test_the_naming_set_on_the_screen_reaches_the_options_yt_dlp_gets(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """**`T-248`**, held to `T196-R4`'s whole crossing: screen → file → request →
+    options, starting at the controls a user touches. The example under the name follows too."""
+    settings_file = tmp_path / "settings.toml"
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    screen = _settings_screen(composition)
+    try:
+        restrict = screen.findChild(QCheckBox, RESTRICT_NAMES_NAME)
+        trim = screen.findChild(QSpinBox, TRIM_NAMES_NAME)
+        dated = screen.findChild(QCheckBox, LAST_MODIFIED_NAME)
+        example = screen.findChild(QLabel, NAMING_EXAMPLE_NAME)
+        assert restrict is not None and trim is not None
+        assert dated is not None and example is not None
+        before = example.text()
+        restrict.setChecked(True)
+        trim.setValue(6)
+        dated.setChecked(True)
+        QApplication.processEvents()
+        after = example.text()
+    finally:
+        screen.close()
+        QApplication.processEvents()
+
+    assert after != before and len(Path(after.removeprefix("For example: ")).name) <= 6, after
+    chosen = FileNaming(restrict_filenames=True, trim_filenames=6, use_last_modified=True)
+    assert core_settings.load(settings_file).settings.naming == chosen
+
+    dialog = composition.window.open_add_dialog()
+    assert dialog is not None
+    try:
+        type_urls(dialog, "https://composed.invalid/naming")
+        dialog.resolve()
+        assert spin(lambda: bool(dialog.rows) and dialog.rows[0].committable, timeout=60), (
+            f"the URL never resolved: {dialog.status_text()}"
+        )
+        built = dialog._request_for(dialog.rows[0])
+    finally:
+        dialog.close()
+        QApplication.processEvents()
+
+    assert presets.naming_of(built) == chosen
+    rendered = adapter.build_options(built, built.output_template, probe_only=True)
+    assert (rendered["restrictfilenames"], rendered["trim_file_name"]) == (True, 6)
+    assert adapter.build_options(built, "o.%(ext)s")["updatetime"] is True
 
 
 def test_no_keystroke_of_a_credentialed_proxy_reaches_the_file_or_a_job(

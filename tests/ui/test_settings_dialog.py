@@ -22,6 +22,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialogButtonBox,
     QGroupBox,
@@ -38,7 +39,7 @@ from PySide6.QtWidgets import (
 
 from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core import settings as core_settings
-from tracks_and_trails.core.models import NetworkOptions
+from tracks_and_trails.core.models import MOST_NAME_CHARACTERS, FileNaming, NetworkOptions
 from tracks_and_trails.core.output_template import OFFERED_FIELDS, OutputPreview
 from tracks_and_trails.core.presets import DEFAULT_OUTPUT_TEMPLATE
 from tracks_and_trails.ui import theme
@@ -49,25 +50,30 @@ from tracks_and_trails.ui.preset_manager import (
     SET_DEFAULT_NAME,
     PresetManager,
 )
+from tracks_and_trails.ui.screen_fit import WINDOW_CHROME
 from tracks_and_trails.ui.settings_dialog import (
     ADD_FIELD_NAME,
     DEFAULT_PRESET_NAME,
     DEFAULT_RETRIES_LABEL,
     DOWNLOAD_DIRECTORY_PROBLEM_NAME,
+    LAST_MODIFIED_NAME,
     NAMING_EXAMPLE_NAME,
     NO_COOKIES_NOTE,
     NO_RATE_LIMIT_LABEL,
+    NO_TRIM_LABEL,
     OUTPUT_TEMPLATE_NAME,
     OUTPUT_TEMPLATE_NOTE_NAME,
     PROXY_NAME,
     PROXY_NOTE_NAME,
     RATE_LIMIT_NAME,
     RATE_LIMIT_STEP_BYTES,
+    RESTRICT_NAMES_NAME,
     RETRIES_NAME,
     SETTINGS_SCROLL_NAME,
     SETTINGS_STILL_TO_COME,
     STEP_DOWN_LABEL,
     STEP_UP_LABEL,
+    TRIM_NAMES_NAME,
     UNSHOWN_TEMPLATE_NOTE,
     YTDLP_RECOVERY_NOTE,
     YTDLP_RECOVERY_NOTE_NAME,
@@ -1686,9 +1692,15 @@ def test_the_screen_opens_no_taller_than_the_display(
         f"the screen opens {screen.height()}px tall on a {room.height()}px display"
     )
     sections = control(screen, QWidget, "settingsSections")
-    assert screen.height() > sections.sizeHint().height() // 2, (
+    # **The smaller of the content and the room, within the frame** (`T-301`'s record, repaired by
+    # `T-248`). This asked for more than half the content's height, which no screen can give once
+    # the content is more than twice the display: three more rows under the name made that true at
+    # the default font, 1,576 pixels of sections against 752 of room.
+    within_frame = room.height() - WINDOW_CHROME
+    assert screen.height() >= min(sections.sizeHint().height(), within_frame), (
         f"it opens at {screen.height()}px against sections wanting "
-        f"{sections.sizeHint().height()}px — that is the scroll area's own hint, not the content's"
+        f"{sections.sizeHint().height()}px and {within_frame}px of room — that is the scroll "
+        "area's own hint, not the content's"
     )
 
 
@@ -1883,3 +1895,87 @@ def test_the_screen_is_called_preferences(
     """Maintainer direction: *Settings → Preferences*, not *Settings → Settings*."""
     screen, _ = screens()
     assert screen.windowTitle() == "Preferences"
+
+
+# --- T-248: how a name is shaped and a file dated, beside the name ----------------------------
+
+
+def test_the_shaping_controls_open_on_the_naming_in_force(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    screen, _ = screens(
+        naming=FileNaming(restrict_filenames=True, trim_filenames=60, use_last_modified=True),
+        on_naming_chosen=lambda _naming: None,
+    )
+
+    assert control(screen, QCheckBox, RESTRICT_NAMES_NAME).isChecked()
+    trim = control(screen, QSpinBox, TRIM_NAMES_NAME)
+    assert trim.value() == 60
+    assert trim.maximum() == MOST_NAME_CHARACTERS
+    assert control(screen, QCheckBox, LAST_MODIFIED_NAME).isChecked()
+
+
+def test_no_limit_is_said_in_words_and_stored_as_none(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    chosen: list[FileNaming] = []
+    screen, _ = screens(naming=FileNaming(trim_filenames=40), on_naming_chosen=chosen.append)
+    trim = control(screen, QSpinBox, TRIM_NAMES_NAME)
+
+    trim.setValue(0)
+
+    assert trim.text() == NO_TRIM_LABEL
+    assert chosen == [FileNaming()]
+
+
+def test_each_control_writes_the_whole_naming(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """A change to one keeps the other two as they were (`T195-R1`'s rule, for `_network`)."""
+    chosen: list[FileNaming] = []
+    screen, _ = screens(on_naming_chosen=chosen.append)
+
+    control(screen, QCheckBox, RESTRICT_NAMES_NAME).setChecked(True)
+    control(screen, QSpinBox, TRIM_NAMES_NAME).setValue(30)
+    control(screen, QCheckBox, LAST_MODIFIED_NAME).setChecked(True)
+
+    assert chosen == [
+        FileNaming(restrict_filenames=True),
+        FileNaming(restrict_filenames=True, trim_filenames=30),
+        FileNaming(restrict_filenames=True, trim_filenames=30, use_last_modified=True),
+    ]
+
+
+def test_the_example_is_shown_again_after_the_shape_is_handed_over(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """The window renders the example with the naming in force, so the screen hands the change
+    over first and asks after: the other order would show the shape before the change."""
+    in_force = [FileNaming()]
+
+    def preview(template: str) -> OutputPreview:
+        shape = "plain" if in_force[0].restrict_filenames else "as typed"
+        return OutputPreview(path=f"/downloads/{shape}.ext")
+
+    screen, _ = screens(
+        output_template="",
+        shipped_template=DEFAULT_OUTPUT_TEMPLATE,
+        preview_template=preview,
+        on_naming_chosen=lambda naming: in_force.__setitem__(0, naming),
+    )
+    example = control(screen, QLabel, NAMING_EXAMPLE_NAME)
+    assert example.text() == "For example: /downloads/as typed"
+
+    control(screen, QCheckBox, RESTRICT_NAMES_NAME).setChecked(True)
+
+    assert example.text() == "For example: /downloads/plain"
+
+
+def test_the_shaping_controls_are_disabled_with_nothing_behind_them(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    screen, _ = screens()
+
+    assert not control(screen, QCheckBox, RESTRICT_NAMES_NAME).isEnabled()
+    assert not control(screen, QSpinBox, TRIM_NAMES_NAME).isEnabled()
+    assert not control(screen, QCheckBox, LAST_MODIFIED_NAME).isEnabled()

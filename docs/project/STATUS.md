@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-10-18
+**Last updated:** 2026-10-19
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -146,6 +146,10 @@ task and review records it summarised.*
   draws no ring, and the next key draws it on the control the click focused. **And `T-301`**: the
   last of its four font-sensitive tests was the test, measured by bisecting and tracing — the list
   re-laid itself out between two requests and put a row under a stale probe point — and is repaired.
+  **And `T-248`**, built overnight on the recommended answers to its questions 2 and 3, which the
+  maintainer ruled as recommended the next morning (`UX-014` amended): the Windows pair refused as
+  `app:policy`, and the name's shaping and the file's date set in Settings under the name, frozen
+  into each request as the template is. Containment runs after the shaping.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the

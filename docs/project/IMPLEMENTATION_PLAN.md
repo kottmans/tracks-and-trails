@@ -5,7 +5,7 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-10-18 — §Phase 4.5 amended: work continues while reviews are pending.
+**Last updated:** 2026-10-19 — §Phase 4.5: `T-248` built and ruled; the audit's counts.
 Previously 2026-10-11 — §Phase 4.5 amended: no `0.1.1`, `T-351` first, and owners for
 the two deliverables that had none. Previously 2026-09-11 — **§Phase 5's *Phase 4 approved* prerequisite relaxed for the start of
 the work by maintainer ruling**, with the first release still conditional on that approval; its four
@@ -855,9 +855,9 @@ with their help suppressed. Classified:
 
 | | |
 |---|---|
-| **67** get a typed control | **45 already have one**, `T-247`'s seven since 2026-10-11, `T-249`'s and `T-251`'s since 2026-10-14 and `T-250`'s six since 2026-10-18; the other **22** are five tasks, `T-248` and `T-252`…`T-255` |
+| **65** get a typed control | **50 already have one**, `T-247`'s seven since 2026-10-11, `T-249`'s and `T-251`'s since 2026-10-14, `T-250`'s six since 2026-10-18 and `T-248`'s five since 2026-10-19; the other **15** are four tasks, `T-252`…`T-255` |
 | **91** are escape-hatch only | `T-184`. Two moved to typed with `T-250`, by its ruling |
-| **92** are refused | the application owns them (`app:sets`, `app:plumbing`, `app:policy`, `app:contained`), or `SEC-003`/`SEC-004`/`SEC-005` forbid them |
+| **94** are refused | the application owns them (`app:sets`, `app:plumbing`, `app:policy`, `app:contained`), or `SEC-003`/`SEC-004`/`SEC-005` forbid them. Two moved here from typed with `T-248`, by its ruling: the Windows pair |
 | **0** are unclassified | ~~`--legacy-server-connect`, a transport-security downgrade the audit first missed (`T183-R3`)~~ — **ruled forbidden by `SEC-005` on 2026-08-21**, which unblocked `T-184` |
 
 *(**The hatch row read 95 until 2026-09-18**, and the audit has always said **93**: its class table,
@@ -982,7 +982,7 @@ independent of each other and of the hatch, so stage 3 is where a second Linux m
 |---|---|---|
 | **1 — the `0.1.1` patch** | `T-343`, `T-347`, then `T-349` | Patch-sized, no option surface touched. `RELEASE.md`: patch releases carry fixes only |
 | **2 — the escape hatch, alone** | `T-184`, carrying `T-048` | It is what makes `REQ-030` true before any typed field exists: the 93 hatch-only options and the 44 not yet typed all become reachable the day it lands. It runs alone because it is the phase's one High-risk task, a new route to two Critical-band boundaries (`T-034`'s containment, `DAT-003`/`DAT-004`'s redaction). Its migration is expected to be the first that transforms stored values, which is the condition `T-048` has waited on since Phase 2 |
-| **3 — the typed fields** | `T-247`, `T-249`, `T-251`, `T-250`, `T-248`, `T-252`, `T-253`, `T-254`, `T-255` | Ordered by what users ask for first, then by shared machinery, then by risk to existing boundaries. `T-247`'s `-I` grammar is the first parse-and-refuse-at-edit-time control and the later tasks reuse it; `T-249` needs `DAT-003`'s redaction question answered before `--write-info-json` ships; `T-248` wants `STARBASE` free, because `--windows-filenames` has to be asserted on both platforms; `T-255` is last by the audit's own ranking |
+| **3 — the typed fields** | `T-247`, `T-249`, `T-251`, `T-250`, `T-248`, `T-252`, `T-253`, `T-254`, `T-255` | Ordered by what users ask for first, then by shared machinery, then by risk to existing boundaries. `T-247`'s `-I` grammar is the first parse-and-refuse-at-edit-time control and the later tasks reuse it; `T-249` needs `DAT-003`'s redaction question answered before `--write-info-json` ships; `T-248` wants `STARBASE` free, because `--windows-filenames` has to be asserted on both platforms *(ruled 2026-10-19 to refuse the pair as `app:policy`, a refusal the table decides on either platform, and built that day)*; `T-255` is last by the audit's own ranking |
 | **4 — the `0.1.0` debt and the exit** | `T-339`, `T-348`'s ruling, the walk that closes `T-340`, `T-342`, `T-344` and `T328-R4`, then the `0.2.0` release | What the waived `§11` walk would have found is carried here by the 2026-09-16 ruling. Two of these need a person at a Windows desktop, so they are one sitting |
 
 Two things hold across the whole of stage 3. **`NFR-008`'s churn**: every task adds keys to

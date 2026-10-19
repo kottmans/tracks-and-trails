@@ -6,7 +6,7 @@ requirements or design — those live in `REQUIREMENTS.md` and `ARCHITECTURE.md`
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-10-18
+**Last updated:** 2026-10-19
 **Update when:** A durable choice is accepted, superseded, or deliberately rejected.
 **Does not contain:** Completion notes for routine work. Routine fixes go to `TASKS.md` and `CHANGELOG.md`.
 
@@ -103,7 +103,7 @@ Current requirements and architecture retain their own canonical authority.
 | [UX-010](#ux-010--a-queue-groups-chip-is-progress-done-of-total) | A queue group's chip is progress: done of total | Accepted | — |
 | [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu) | The row picks a preset; the per-row verbs are the row's own menu | Accepted | — |
 | [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) | The concurrency control leaves the toolbar for Settings | Accepted | — |
-| [UX-014](#ux-014--naming-is-a-setting-a-single-download-is-renamed-not-templated) | Naming is a setting; a single download is renamed, not templated | Accepted | — |
+| [UX-014](#ux-014--naming-is-a-setting-a-single-download-is-renamed-not-templated) | Naming is a setting; a single download is renamed, not templated | Accepted | [Amended 2026-10-19](#amended-2026-10-19--the-names-shape-and-the-files-date-sit-beside-the-name) |
 | [UX-015](#ux-015--the-additional-options-field-the-editors-last-group-checked-as-you-type) | The additional-options field: the editor's last group, checked as you type | Accepted | [Amended 2026-10-11](#amended-2026-10-11--a-which-items-group-stands-above-the-hatch); [Amended 2026-10-11, second](#amended-2026-10-11-second--a-keep-beside-the-file-group-below-embed-in-the-file); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-inside-subtitles); [Amended 2026-10-15, second](#amended-2026-10-15-second--a-choosing-the-format-group-at-the-top) |
 | [UX-016](#ux-016--the-focus-ring-is-drawn-for-the-keyboard-not-for-a-click) | The focus ring is drawn for the keyboard, not for a click | Accepted | — |
 | [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button) | The row's menu says what it removes, and the ⋮ reads as a button | Accepted | — |
@@ -6958,6 +6958,22 @@ collision and containment rules, left out; *Show in folder* is the route.
   now changes the setting, or renames that item by hand.
 - **Per-preset naming.** A user who kept an *Audio* preset naming files differently loses that on
   upgrade; the setting names everything.
+
+### Amended 2026-10-19 — the name's shape and the file's date sit beside the name
+
+**Status:** **Accepted** — maintainer ruling of 2026-10-19, on `T-248`'s question 3, as recommended.
+**Amends:** §1. *How files are named* grows; nothing moves to presets.
+
+**What is ruled.** Three preferences under the name and its example: *Plain file names*
+(`--restrict-filenames`), *Longest file name*, counted before the extension, with zero shown as
+*No limit* (`--trim-filenames`), and *Date each file by when the site last changed it* (`--mtime`).
+Like the name, they are **frozen into each request when it is queued**: a queued job keeps the
+shape it was queued with, a retarget keeps it too, and a preset carries none. The example under the
+name shows the shape the download will take. *(Built overnight on this answer, before the ruling,
+under the plan's 2026-10-18 amendment; the ruling kept it as built.)*
+
+**The alternatives, as they were put.** Preset fields in a *File names* group, which would bring
+back the per-preset naming §1 gave up; or a split between the two.
 
 ---
 

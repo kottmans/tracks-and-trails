@@ -101,6 +101,11 @@ _FIELD_ON: Final = {
     "format_sort": "res:720",
     "check_formats": FormatCheck.EVERY,
     "merge_container": "mp4/mkv",
+    # `T-248`'s shaping on both passes, the trim then dropped from the download's, and the file's
+    # date on the download only.
+    "restrict_filenames": True,
+    "trim_filenames": 80,
+    "use_last_modified": True,
     "audio_codec": AudioCodec.MP3,
     "audio_quality": "192",
     "post_processors": ("FFmpegThumbnailsConvertor",),

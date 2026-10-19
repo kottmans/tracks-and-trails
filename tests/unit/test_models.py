@@ -19,6 +19,7 @@ from tracks_and_trails.core.models import (
     BROWSER_NAMES,
     KEYRING_NAMES,
     DownloadRequest,
+    FileNaming,
     FormatInfo,
     Job,
     MediaInfo,
@@ -270,6 +271,9 @@ def valid_kwargs(request_: DownloadRequest) -> dict[type, dict[str, object]]:
         # own retry count*, which is what a settings file that says nothing about the network
         # means.
         NetworkOptions: {},
+        # Every field defaulted (`T-248`): the empty value is *names as rendered, no
+        # limit, dated when written*. Its two flags may not be `None`, so the sweep covers them.
+        FileNaming: {},
     }
 
 

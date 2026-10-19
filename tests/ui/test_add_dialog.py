@@ -79,6 +79,7 @@ from tracks_and_trails.core.logging import job_log_path
 from tracks_and_trails.core.models import (
     AudioCodec,
     DownloadRequest,
+    FileNaming,
     FormatInfo,
     Job,
     MediaInfo,
@@ -6857,6 +6858,27 @@ def test_the_network_options_are_read_when_the_request_is_built(
     assert (first, second) == (1, 5), (
         f"the dialog read the network options once and reused them: {first}, {second}"
     )
+
+
+def test_a_queued_request_inherits_the_naming_in_force(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-248`**: frozen into every request as the template is, playlist entries
+    included, and read when the request is built rather than when the dialog opened."""
+    in_force = [FileNaming(restrict_filenames=True, trim_filenames=40, use_last_modified=True)]
+    dialog, _ = resolved(dialogs, managers, spin, PLAYLIST, default_naming=lambda: in_force[0])
+    row = dialog.rows[0]
+
+    jobs = dialog._durable_jobs(row)
+
+    assert len(jobs) > 1, f"{len(jobs)} job(s) — this playlist did not expand"
+    wrong = [job.url for job in jobs if preset_registry.naming_of(job.request) != in_force[0]]
+    assert not wrong, f"{len(wrong)} queued requests did not inherit the naming: {wrong[:3]}"
+
+    in_force[0] = FileNaming()
+    assert preset_registry.naming_of(dialog._durable_jobs(row)[0].request) == FileNaming()
 
 
 # --- T-295: one guard keyed on the row and swallowed the other two verbs -----------------------

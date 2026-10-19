@@ -51,7 +51,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from tracks_and_trails import __version__
 from tracks_and_trails.core import settings as settings_module
-from tracks_and_trails.core.models import NetworkOptions, Preset
+from tracks_and_trails.core.models import FileNaming, NetworkOptions, Preset
 from tracks_and_trails.core.presets import DEFAULT_OUTPUT_TEMPLATE
 from tracks_and_trails.core.settings import Settings as AppSettings
 
@@ -982,6 +982,16 @@ def compose(
         held.settings = chosen  # `T195-R1`, for `choose_default_preset`'s reason.
         remember(chosen, "the output template")
 
+    def choose_file_naming(naming: FileNaming) -> None:
+        """How names are shaped and files dated, from the settings screen (`T-248`).
+
+        Applied before it is saved, for `choose_default_preset`'s reason, and bound into each
+        request when it is queued (`ARCHITECTURE.md` §8), as the output template is.
+        """
+        chosen = app_settings.with_file_naming(held.settings, naming)
+        held.settings = chosen
+        remember(chosen, "how files are named")
+
     def choose_cookie_file(path: Path | None) -> None:
         """Use a cookies file for sites the user is signed in to, or none (`REQ-026`, `T-197`).
 
@@ -1271,6 +1281,9 @@ def compose(
         network=settings.network,
         default_network=lambda: held.settings.network,
         on_network_chosen=choose_network,
+        # `T-248`: read live for `default_network`'s reason.
+        naming=lambda: held.settings.naming,
+        on_naming_chosen=choose_file_naming,
         ffmpeg_location=settings.ffmpeg_location,
         ffmpeg_summary=ffmpeg.summary(),
         ffmpeg_bundled=bundled_ffmpeg() is not None,
