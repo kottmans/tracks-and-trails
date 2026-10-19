@@ -1242,7 +1242,8 @@ claimed as one family.
 
 ### T-253 — Network reachability: address family and politeness delays
 
-**Status:** Proposed — filed 2026-08-16 by `T-183`
+**Status:** Proposed — **design ruled 2026-10-19, all three questions as recommended** (`ARC-010`
+amended that day). Filed 2026-08-16 by `T-183`
 **Options (4):** `-4/--force-ipv4`, `-6/--force-ipv6`, `--sleep-interval`, `--max-sleep-interval`
 **Specific criteria:** `-4` and `-6` share yt-dlp's `source_address` and are mutually exclusive —
 `DownloadRequest` makes that unrepresentable rather than validating it; `--max-sleep-interval` is
@@ -1268,6 +1269,13 @@ notes.
   its row reads *Downloading* throughout; **a cancel during a sleep is never cooperative** (noticed
   only when the sleep ended), so the manager's escalation always answers it; and **three jobs
   started within 0.17 s of each other**, so with the pool the delay spaces nothing between jobs.
+
+**Ruled 2026-10-19: all three as recommended.** The address family is one radio group in
+*Settings › Network* — Automatic, IPv4 only, IPv6 only, *From this address* — so building it moves
+`--source-address` from `hatch` to `typed` and the task types five options. The delay keeps
+yt-dlp's meaning, per file, beside the speed limit, and the control says that downloads running
+together do not take turns. A sleeping job shows a *Waiting* stage, read from yt-dlp's
+`Sleeping N seconds` line and held to it by a test.
 
 **Questions for the maintainer** (recommended first):
 
