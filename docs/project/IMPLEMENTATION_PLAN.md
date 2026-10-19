@@ -5,7 +5,8 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-10-11 — §Phase 4.5 amended: no `0.1.1`, `T-351` first, and owners for
+**Last updated:** 2026-10-18 — §Phase 4.5 amended: work continues while reviews are pending.
+Previously 2026-10-11 — §Phase 4.5 amended: no `0.1.1`, `T-351` first, and owners for
 the two deliverables that had none. Previously 2026-09-11 — **§Phase 5's *Phase 4 approved* prerequisite relaxed for the start of
 the work by maintainer ruling**, with the first release still conditional on that approval; its four
 gating decisions are taken (`REL-003`–`REL-006`). *(Earlier that day: §Phase 5 gained a task map
@@ -955,6 +956,21 @@ first two answers, shipping in `0.2.0`. Stage 3's own order is otherwise unchang
 it is built while `T-249` and `T-251` are still with the Reviewer, because the breach has been on
 `origin/main` since `T-184` was pushed on 2026-10-10. It is reviewed on its own head like any task;
 `T-364` keeps the gate.
+
+#### Amended 2026-10-18: the work continues while reviews are pending
+
+Asked what could be done overnight, the maintainer chose to have `T-250` built while `T-364` is
+still with the Reviewer, to have the two Ready tasks outside this phase's order built too, `T-304`
+and the rest of `T-301`, and beyond that to *"continue working tasks until you can't, we'll have
+codex review everything tomorrow"*: each task in a commit of its own, pushed once its gates pass.
+So the gate is relaxed for the night's work, not for one task. Each task is still built on its own
+head and reviewed on its own, and nothing is approved by being built; a finding in an earlier
+review that reaches a later task becomes rework there.
+
+**Open design questions are not settled by building.** A task whose questions are still open is
+built on the implementer's recommended answers and marked provisional until the maintainer rules,
+as `T-251` was; one whose open question is a security ruling is not assumed, and waits. Stage 3's
+order is unchanged: `T-250`, then `T-248`, `T-252`, `T-253`, `T-254` and `T-255`.
 
 #### The stages
 
