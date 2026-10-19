@@ -48,6 +48,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -102,7 +103,10 @@ from tracks_and_trails.ui.queue_view import PROGRESS_COLUMN, SIZE_COLUMN
 from tracks_and_trails.ui.row_delegate import PRESET_ROLE
 from tracks_and_trails.ui.row_verbs import Verb
 from tracks_and_trails.ui.settings_dialog import (
+    CONCURRENT_FRAGMENTS_NAME,
     DEFAULT_PRESET_NAME,
+    EXTRACTOR_RETRIES_NAME,
+    FRAGMENT_RETRIES_NAME,
     LAST_MODIFIED_NAME,
     NAMING_EXAMPLE_NAME,
     OUTPUT_TEMPLATE_NAME,
@@ -111,6 +115,7 @@ from tracks_and_trails.ui.settings_dialog import (
     RATE_LIMIT_NAME,
     RESTRICT_NAMES_NAME,
     RETRIES_NAME,
+    SOCKET_TIMEOUT_NAME,
     TRIM_NAMES_NAME,
     YTDLP_CHECK_NAME,
     YTDLP_REVERT_NAME,
@@ -4024,6 +4029,66 @@ def test_a_proxy_and_a_rate_limit_set_on_the_screen_reach_the_options_yt_dlp_get
     options = adapter.build_options(built, "o.%(ext)s")
     assert options["proxy"] == "http://proxy.invalid:8080"
     assert options["ratelimit"] == 512 * 1024
+
+
+def test_the_connection_set_on_the_screen_reaches_the_options_yt_dlp_gets(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """**`T-252`**, held to `T196-R4`'s whole crossing: screen → file → request → options, from
+    the four controls a user touches, and the window hands the screen yt-dlp's own numbers."""
+    from yt_dlp import parse_options
+
+    settings_file = tmp_path / "settings.toml"
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    screen = _settings_screen(composition)
+    try:
+        fragment = screen.findChild(QSpinBox, FRAGMENT_RETRIES_NAME)
+        extractor = screen.findChild(QSpinBox, EXTRACTOR_RETRIES_NAME)
+        timeout = screen.findChild(QDoubleSpinBox, SOCKET_TIMEOUT_NAME)
+        pieces = screen.findChild(QSpinBox, CONCURRENT_FRAGMENTS_NAME)
+        assert fragment is not None and extractor is not None
+        assert timeout is not None and pieces is not None
+        assert fragment.specialValueText() == (
+            f"{parse_options([]).ydl_opts['fragment_retries']} — the downloader's own"
+        )
+        fragment.setValue(4)
+        extractor.setValue(0)
+        timeout.setValue(7.5)
+        pieces.setValue(3)
+        QApplication.processEvents()
+    finally:
+        screen.close()
+        QApplication.processEvents()
+
+    stored = core_settings.load(settings_file).settings.network
+    assert (
+        stored.fragment_retries,
+        stored.extractor_retries,
+        stored.socket_timeout,
+        stored.concurrent_fragments,
+    ) == (4, 0, 7.5, 3), f"not persisted: {stored}"
+
+    dialog = composition.window.open_add_dialog()
+    assert dialog is not None
+    try:
+        type_urls(dialog, "https://composed.invalid/connection")
+        dialog.resolve()
+        assert spin(lambda: bool(dialog.rows) and dialog.rows[0].committable, timeout=60), (
+            f"the URL never resolved: {dialog.status_text()}"
+        )
+        built = dialog._request_for(dialog.rows[0])
+    finally:
+        dialog.close()
+        QApplication.processEvents()
+
+    options = adapter.build_options(built, "o.%(ext)s")
+    assert options["fragment_retries"] == 4
+    assert options["extractor_retries"] == 0
+    assert options["socket_timeout"] == 7.5
+    assert options["concurrent_fragment_downloads"] == 3
 
 
 def test_the_naming_set_on_the_screen_reaches_the_options_yt_dlp_gets(

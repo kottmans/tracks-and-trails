@@ -119,6 +119,7 @@ from tracks_and_trails.core.presets import (
     MP3_BITRATES,
     with_post_processing,
 )
+from tracks_and_trails.core.sections import sections_from_text, sections_problem
 from tracks_and_trails.core.selection import (
     MOST_ITEMS,
     date_problem,
@@ -257,6 +258,19 @@ SAVE_RESULT_NAME: Final = "optionsSaveResult"
 
 #: Which controls each `FfmpegFeature` owns on this screen (`REQ-024`, `T-199`, `UX-005` §5).
 #:
+#: The group below *Which items* (`UX-015`, amended 2026-10-19, `T-252`), and its controls.
+WHICH_PART_TITLE: Final = "Which part"
+SECTIONS_NAME: Final = "optionsSections"
+LIVE_FROM_START_NAME: Final = "optionsLiveFromStart"
+WHICH_PART_REFUSALS_NAME: Final = "optionsWhichPartRefusals"
+#: What the sections field is for, in yt-dlp's grammar by example (`core/sections.py`).
+SECTIONS_HINT: Final = (
+    "Only part of each video, one section per line: a pattern matching chapter titles, such as "
+    "intro, or a time range, such as *1:30-2:45 or *10:00-inf. Each section is saved as its own "
+    "file. Leave it empty for the whole video."
+)
+LIVE_FROM_START_LABEL: Final = "Fetch a live stream from its start, not from now"
+
 #: **The mapping is here, and the test walks the enum.** `UX-005` §5 — nothing is drawn that would
 #: be refused — was three quarters untrue on this dialog: the format table hid its merge mode
 #: without ffmpeg (`P-13`) and this screen went on offering audio conversion, remuxing and
@@ -283,6 +297,8 @@ FFMPEG_FEATURE_CONTROLS: Final[dict[FfmpegFeature, tuple[str, ...]]] = {
     ),
     # Every conversion, and not *keep*, which asks for no ffmpeg work (`T-251`).
     FfmpegFeature.SUBTITLES: tuple(name for wanted, name, _ in CONVERT_SUBTITLES if wanted),
+    # A section is ffmpeg's download (`T-252`); live from the start asks for no ffmpeg of its own.
+    FfmpegFeature.SECTIONS: (SECTIONS_NAME,),
 }
 
 #: Said once, where the controls it explains are (`NFR-006`, `REQ-024`).
@@ -512,6 +528,8 @@ class OptionsDialog(QDialog):
         self._subtitle_format_usable = True
         #: Whether the format sort as last checked may be used (`T-250`).
         self._format_sort_usable = True
+        #: Whether the sections as last checked may be used (`T-252`).
+        self._part_usable = True
         self._build()
         self._show_preset(preset)
         self._update_enabled()
@@ -608,6 +626,7 @@ class OptionsDialog(QDialog):
         stack.addWidget(self._build_kept_beside())
         stack.addWidget(self._build_subtitles())
         stack.addWidget(self._build_which_items())
+        stack.addWidget(self._build_which_part())
         stack.addWidget(self._build_extra_options())
 
         scroller = _OptionGroups(self)
@@ -1011,8 +1030,49 @@ class OptionsDialog(QDialog):
         box.setRange(0, MOST_ITEMS)
         return box
 
+    def _build_which_part(self) -> QWidget:
+        """Which part of each item is downloaded (`T-252`, `UX-015` amended 2026-10-19).
+
+        **One section per line**, in yt-dlp's grammar and checked once typing pauses, as the
+        hatch is: a chapter pattern may contain any character, a comma included, so a line is the
+        one separator no section can contain. Withdrawn without ffmpeg, which cuts every section.
+        """
+        group = QGroupBox(WHICH_PART_TITLE, self)
+        layout = QVBoxLayout(group)
+
+        hint = QLabel(SECTIONS_HINT, group)
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        self._sections = _OptionsBox(group)
+        self._sections.setObjectName(SECTIONS_NAME)
+        self._sections.setAccessibleName("Sections")
+        self._sections.setAccessibleDescription(SECTIONS_HINT)
+        self._sections.setTabChangesFocus(True)
+        self._sections.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        hint.setBuddy(self._sections)
+        layout.addWidget(self._sections)
+
+        self._part_refusals = QLabel("", group)
+        self._part_refusals.setObjectName(WHICH_PART_REFUSALS_NAME)
+        self._part_refusals.setWordWrap(True)
+        # A refusal quotes the section as typed, which is the user's text.
+        self._part_refusals.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self._part_refusals)
+
+        self._live_from_start = QCheckBox(LIVE_FROM_START_LABEL, group)
+        self._live_from_start.setObjectName(LIVE_FROM_START_NAME)
+        layout.addWidget(self._live_from_start)
+
+        self._part_pause = QTimer(self)
+        self._part_pause.setSingleShot(True)
+        self._part_pause.setInterval(EXTRA_OPTIONS_PAUSE_MS)
+        self._part_pause.timeout.connect(self._check_part)
+        self._sections.textChanged.connect(self._part_pause.start)
+        return group
+
     def _build_extra_options(self) -> QWidget:
-        """The last group, below *Which items* and always visible (`UX-015`, `REQ-031`)."""
+        """The last group, below *Which part* and always visible (`UX-015`, `REQ-031`)."""
         group = QGroupBox(EXTRA_OPTIONS_TITLE, self)
         layout = QVBoxLayout(group)
 
@@ -1131,6 +1191,14 @@ class OptionsDialog(QDialog):
         self._extra_pause.stop()
 
         self._show_which_items(preset)
+        self._show_which_part(preset)
+
+    def _show_which_part(self, preset: Preset) -> None:
+        """Show the preset's sections and live choice, and check the sections at once (`T-252`)."""
+        self._sections.setPlainText("\n".join(preset.download_sections))
+        self._part_pause.stop()
+        self._live_from_start.setChecked(preset.live_from_start)
+        self._check_part()
 
     def _show_which_items(self, preset: Preset) -> None:
         """Show the preset's own rule and filters, and check them at once (`T-247`).
@@ -1187,6 +1255,7 @@ class OptionsDialog(QDialog):
             and self._selection_usable
             and self._subtitle_format_usable
             and self._format_sort_usable
+            and self._part_usable
         )
         self._ok_button.setEnabled(usable)
         if self._save_preset is not None:
@@ -1253,6 +1322,30 @@ class OptionsDialog(QDialog):
     def format_sort_refusals_text(self) -> str:
         """What the sort's refusal says. A method, so a test reads what the user reads."""
         return self._format_sort_refusals.text()
+
+    # --- *Which part* (`UX-015` amended 2026-10-19, `T-252`) -----------------------------------
+
+    def _check_part(self) -> None:
+        """Check the sections as they read now, and say under them what is wrong."""
+        self._part_pause.stop()
+        problem = (
+            sections_problem(sections_from_text(self._sections.toPlainText()))
+            if self._sections.isEnabled()
+            else None
+        )
+        self._part_usable = problem is None
+        self._part_refusals.setText("" if problem is None else f"Sections: {problem}")
+        self._update_accepting()
+
+    def _part_ok(self) -> bool:
+        """Whether the sections may be used, checking them first if typing has not paused yet."""
+        if self._part_pause.isActive():
+            self._check_part()
+        return self._part_usable
+
+    def part_refusals_text(self) -> str:
+        """What the sections' refusal says. A method, so a test reads what the user reads."""
+        return self._part_refusals.text()
 
     # --- *Which items* (`UX-015` amended 2026-10-11, `T-247`) ----------------------------------
 
@@ -1330,6 +1423,7 @@ class OptionsDialog(QDialog):
             and self._selection_ok()
             and self._subtitle_format_ok()
             and self._format_sort_ok()
+            and self._part_ok()
         ):
             super().accept()
 
@@ -1546,6 +1640,7 @@ class OptionsDialog(QDialog):
         items, at_most = self._chosen_entry_rule()
         smallest, largest, after, before = self._chosen_filters()
         format_sort, check_formats = self._chosen_format_depth()
+        sections = self._chosen_sections()
         derived = replace(
             derived,
             format_sort=format_sort,
@@ -1567,6 +1662,8 @@ class OptionsDialog(QDialog):
             max_filesize=largest,
             uploaded_after=after,
             uploaded_before=before,
+            download_sections=sections,
+            live_from_start=self._live_from_start.isChecked(),
             extra_options=extra_text,
             extra_option_argv=extra_argv,
         )
@@ -1618,6 +1715,16 @@ class OptionsDialog(QDialog):
             return self._preset.merge_container
         merge = self._merge_container.currentData()
         return None if merge is None else str(merge)
+
+    def _chosen_sections(self) -> tuple[str, ...]:
+        """The sections typed, or the preset's own where they were withdrawn or refused (`T-252`).
+
+        Withdrawn without ffmpeg, and a disabled control decides nothing (`T109-R2`): the preset's
+        own sections are carried rather than erased by an edit that could not see them.
+        """
+        if not (self._sections.isEnabled() and self._part_ok()):
+            return self._preset.download_sections
+        return sections_from_text(self._sections.toPlainText())
 
     def _chosen_thumbnails(self) -> KeptThumbnails:
         """Which thumbnails the radio buttons keep. One is always checked; none means *none*."""

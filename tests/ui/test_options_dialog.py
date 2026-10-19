@@ -85,6 +85,7 @@ from tracks_and_trails.ui.options_dialog import (
     KEEP_DESCRIPTION_NAME,
     KEEP_INFO_JSON_NAME,
     KEEP_THUMBNAILS,
+    LIVE_FROM_START_NAME,
     MAX_SIZE_NAME,
     MERGE_AUDIO_REASON,
     MERGE_CONTAINER_NAME,
@@ -100,6 +101,7 @@ from tracks_and_trails.ui.options_dialog import (
     SAVE_PRESET_NAME,
     SAVE_PRESET_TEXT,
     SAVE_RESULT_NAME,
+    SECTIONS_NAME,
     SUBTITLE_FORMAT_NAME,
     SUBTITLE_FORMAT_REFUSALS_NAME,
     SUBTITLE_LANGUAGES_NAME,
@@ -107,6 +109,8 @@ from tracks_and_trails.ui.options_dialog import (
     UPLOADED_AFTER_NAME,
     UPLOADED_BEFORE_NAME,
     WHICH_ITEMS_TITLE,
+    WHICH_PART_REFUSALS_NAME,
+    WHICH_PART_TITLE,
     OptionsDialog,
 )
 
@@ -754,6 +758,9 @@ STILL_LIVE_WITHOUT_FFMPEG: Final = {
     # *Choosing the format* (`T-250`): sorting and trying formats decide which file is fetched,
     # before anything is processed; neither asks ffmpeg for anything.
     *(name for _wanted, name, _text in CHECK_FORMATS),
+    # *Which part* (`T-252`): fetching a live stream from its start asks ffmpeg for nothing of its
+    # own; merging what it fetches is `MERGE`'s, gated where the merge is chosen.
+    LIVE_FROM_START_NAME,
 }
 
 
@@ -1225,11 +1232,11 @@ def typed(dialog: OptionsDialog, text: str, spin: Callable[..., bool]) -> None:
     assert checked, "the field was never checked after typing paused"
 
 
-def test_the_field_is_the_last_group_below_which_items(
+def test_the_field_is_the_last_group_below_which_part(
     editor: Callable[..., OptionsDialog],
 ) -> None:
-    """`UX-015`: last, in the scrolling region, always visible; and since its 2026-10-11
-    amendment, with *Which items* directly above it and the four `REQ-010` groups above that."""
+    """`UX-015`: last, in the scrolling region, always visible; since its 2026-10-11 amendment
+    with *Which items* above it, and since 2026-10-19 *Which part* between the two (`T-252`)."""
     dialog = editor()
     scroller = dialog.findChild(QScrollArea)
     assert scroller is not None
@@ -1242,7 +1249,12 @@ def test_the_field_is_the_last_group_below_which_items(
         )
     ]
 
-    assert groups[-3:] == ["Subtitles", WHICH_ITEMS_TITLE, EXTRA_OPTIONS_TITLE], groups
+    assert groups[-4:] == [
+        "Subtitles",
+        WHICH_ITEMS_TITLE,
+        WHICH_PART_TITLE,
+        EXTRA_OPTIONS_TITLE,
+    ], groups
     assert extra_box(dialog).isVisibleTo(dialog)
 
 
@@ -1250,15 +1262,15 @@ def test_the_field_opens_on_the_preset_s_own_text(editor: Callable[..., OptionsD
     """Opening the editor must not be a way to lose options typed last time."""
     preset = replace(
         preset_registry.BEST_VIDEO,
-        extra_options="--fragment-retries 7",
-        extra_option_argv=("--fragment-retries", "7"),
+        extra_options="--file-access-retries 7",
+        extra_option_argv=("--file-access-retries", "7"),
     )
 
     dialog = editor(preset)
 
-    assert extra_box(dialog).toPlainText() == "--fragment-retries 7"
+    assert extra_box(dialog).toPlainText() == "--file-access-retries 7"
     assert ok_button(dialog).isEnabled()
-    assert dialog.result_preset().extra_option_argv == ("--fragment-retries", "7")
+    assert dialog.result_preset().extra_option_argv == ("--file-access-retries", "7")
 
 
 def test_an_admitted_option_travels_with_the_tokens_it_produced(
@@ -1267,13 +1279,13 @@ def test_an_admitted_option_travels_with_the_tokens_it_produced(
     """The text a user sees and the tokens that run are one pair (`T184-R5`)."""
     dialog = editor()
 
-    typed(dialog, "--fragment-retries 7 --continue", spin)
+    typed(dialog, "--file-access-retries 7 --continue", spin)
     chosen = dialog.result_preset()
 
     assert dialog.extra_refusals_text() == ""
     assert ok_button(dialog).isEnabled()
-    assert chosen.extra_options == "--fragment-retries 7 --continue"
-    assert chosen.extra_option_argv == ("--fragment-retries", "7", "--continue")
+    assert chosen.extra_options == "--file-access-retries 7 --continue"
+    assert chosen.extra_option_argv == ("--file-access-retries", "7", "--continue")
     assert chosen.name.endswith("with additional yt-dlp options"), chosen.name
 
 
@@ -1306,7 +1318,7 @@ def test_mending_the_field_makes_it_acceptable_again(
     dialog = editor()
     typed(dialog, "--exec x", spin)
 
-    typed(dialog, "--fragment-retries 3", spin)
+    typed(dialog, "--file-access-retries 3", spin)
 
     assert dialog.extra_refusals_text() == ""
     assert ok_button(dialog).isEnabled()
@@ -1336,7 +1348,8 @@ _TOO_DEEP: Final = "(" * 500 + "a" + ")" * 500
         pytest.param("--match-filters", f"title~={_TOO_MANY}", id="match-filters-overflow"),
         pytest.param("--break-match-filters", f"title~={_TOO_DEEP}", id="break-filters-recursion"),
         pytest.param("--remove-chapters", _TOO_MANY, id="remove-chapters-overflow"),
-        pytest.param("--download-sections", _TOO_DEEP, id="download-sections-recursion"),
+        # *(`--download-sections` was a case until `T-252` gave it a control; the sections'
+        # patterns are checked in `core/sections.py` and held there.)*
     ],
 )
 def test_a_pattern_that_cannot_compile_is_refused_in_the_editor(
@@ -1421,7 +1434,7 @@ def test_options_that_need_ffmpeg_are_refused_where_typed_without_it(
     """`T184-R14`: said under the box and named, rather than offered and refused by the worker."""
     dialog = editor(ffmpeg_available=False)
 
-    typed(dialog, "--split-chapters --fragment-retries 3", spin)
+    typed(dialog, "--split-chapters --file-access-retries 3", spin)
 
     assert dialog.extra_refusals_text() == f"--split-chapters: {NEEDS_FFMPEG}"
     assert not ok_button(dialog).isEnabled()
@@ -1469,21 +1482,21 @@ def test_the_same_options_are_accepted_where_ffmpeg_is(
 
 
 @pytest.mark.parametrize("ffmpeg_available", [False, True])
-def test_a_section_download_is_refused_where_typed_only_without_ffmpeg(
-    editor: Callable[..., OptionsDialog], spin: Callable[..., bool], ffmpeg_available: bool
+def test_a_section_download_is_offered_only_where_ffmpeg_is(
+    editor: Callable[..., OptionsDialog], ffmpeg_available: bool
 ) -> None:
     """`T184-R14`, seventh round: downloading part of an item is ffmpeg's work too.
 
     The editor accepted `--download-sections` with no ffmpeg and no refusal, because only
-    post-processors were counted, and yt-dlp aborted the job.
+    post-processors were counted, and yt-dlp aborted the job. *(Typed since `T-252`, which refuses
+    the spelling in the field: the sections control is withdrawn instead, and a preset's own
+    sections are carried rather than erased by an edit that could not see them.)*
     """
-    dialog = editor(ffmpeg_available=ffmpeg_available)
+    preset = replace(preset_registry.BEST_VIDEO, download_sections=("*1-2",))
+    dialog = editor(preset, ffmpeg_available=ffmpeg_available)
 
-    typed(dialog, '--download-sections "*1-2" --fragment-retries 3', spin)
-
-    expected = "" if ffmpeg_available else f"--download-sections: {NEEDS_FFMPEG}"
-    assert dialog.extra_refusals_text() == expected
-    assert ok_button(dialog).isEnabled() is ffmpeg_available
+    assert sections_box(dialog).isEnabled() is ffmpeg_available
+    assert dialog.result_preset().download_sections == ("*1-2",)
 
 
 @pytest.mark.parametrize("shown", ["", "   "])
@@ -2381,3 +2394,98 @@ def test_the_new_controls_are_named_and_reached_by_the_keyboard(
     for control in controls:
         assert control.accessibleName() or isinstance(control, QRadioButton), control.objectName()
         assert control.focusPolicy() & Qt.FocusPolicy.TabFocus, control.objectName()
+
+
+# --- *Which part* (`T-252`, `UX-015` amended 2026-10-19) -----------------------------------------
+
+
+def sections_box(dialog: OptionsDialog) -> QPlainTextEdit:
+    found = dialog.findChild(QPlainTextEdit, SECTIONS_NAME)
+    assert found is not None, "the dialog has no sections field"
+    return found
+
+
+def typed_sections(dialog: OptionsDialog, text: str, spin: Callable[..., bool]) -> None:
+    """Put `text` in the sections field and wait out the pause, as a user's typing ends."""
+    sections_box(dialog).setPlainText(text)
+    assert spin(lambda: not dialog._part_pause.isActive(), timeout=5), "never checked"
+
+
+def part_refusals(dialog: OptionsDialog) -> str:
+    found = dialog.findChild(QLabel, WHICH_PART_REFUSALS_NAME)
+    assert found is not None
+    return found.text()
+
+
+def test_which_part_opens_on_the_preset_s_own_and_gives_them_back(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """One section per line, and opening then accepting changes nothing."""
+    preset = replace(
+        preset_registry.BEST_VIDEO,
+        download_sections=("intro", "*1:00-2:00,3:00-inf"),
+        live_from_start=True,
+    )
+    dialog = editor(preset)
+
+    assert sections_box(dialog).toPlainText() == "intro\n*1:00-2:00,3:00-inf"
+    live = dialog.findChild(QCheckBox, LIVE_FROM_START_NAME)
+    assert live is not None and live.isChecked()
+    chosen = dialog.result_preset()
+    assert chosen.download_sections == preset.download_sections
+    assert chosen.live_from_start is True
+
+
+def test_a_section_yt_dlp_would_refuse_is_refused_where_typed(
+    editor: Callable[..., OptionsDialog], spin: Callable[..., bool]
+) -> None:
+    """`T-252`'s criterion: the grammar is parsed and refused at edit time, with the reason, and
+    the accepting buttons wait for it to be mended."""
+    dialog = editor()
+
+    typed_sections(dialog, "intro\n*1:00-abc", spin)
+
+    assert part_refusals(dialog).startswith("Sections: '*1:00-abc' is not a time range")
+    assert not ok_button(dialog).isEnabled()
+
+    typed_sections(dialog, "intro\n  *1:00-2:00  \n\n", spin)
+
+    assert part_refusals(dialog) == ""
+    assert ok_button(dialog).isEnabled()
+    assert dialog.result_preset().download_sections == ("intro", "*1:00-2:00")
+
+
+def test_a_range_that_ends_before_it_starts_is_refused(
+    editor: Callable[..., OptionsDialog], spin: Callable[..., bool]
+) -> None:
+    """Stricter than yt-dlp, which hands ffmpeg a negative length."""
+    dialog = editor()
+
+    typed_sections(dialog, "*2:00-1:00", spin)
+
+    assert "ends before it starts" in part_refusals(dialog)
+    assert not ok_button(dialog).isEnabled()
+
+
+def test_enter_inside_the_pause_checks_the_sections_first(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """`UX-015`'s rule for the hatch, here too: OK pressed before the pause ends must not accept
+    sections nobody checked."""
+    dialog = editor()
+    sections_box(dialog).setPlainText("(intro")
+
+    dialog.accept()
+
+    assert dialog.result() != QDialog.DialogCode.Accepted
+    assert part_refusals(dialog).startswith("Sections: '(intro' is not a chapter pattern")
+
+
+def test_the_derived_name_says_which_part(editor: Callable[..., OptionsDialog]) -> None:
+    """Two presets differing only in their sections must not share a name (`T-159`)."""
+    preset = replace(preset_registry.BEST_VIDEO, download_sections=("*1-2",), live_from_start=True)
+
+    name = editor(preset).result_preset().name
+
+    assert "section *1-2" in name
+    assert "live from the start" in name

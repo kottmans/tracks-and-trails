@@ -479,7 +479,7 @@ def test_the_options_an_inert_value_would_act_beside_are_refused(option: str) ->
 def test_every_pass_names_a_format_and_leaves_errors_to_the_library(probe_only: bool) -> None:
     """`format-spec` changes only the format chosen when none is given; `abort-on-error` sets
     `ignoreerrors` false, which yt-dlp reads as it reads the key absent."""
-    request = a_request("--fragment-retries 3")
+    request = a_request("--file-access-retries 3")
     options = build_options(request, "%(title)s.%(ext)s", probe_only=probe_only)
 
     assert options["format"] == "best"
@@ -490,7 +490,7 @@ def test_filename_sanitization_changes_the_name_this_application_renders() -> No
     """Reachability: the hatch's `compat_opts` reach the pass that renders the name."""
     information = {"id": "a/b..", "title": "x", "ext": "mp4"}
     names = []
-    for text in ("--fragment-retries 3", "--compat-options filename-sanitization"):
+    for text in ("--file-access-retries 3", "--compat-options filename-sanitization"):
         options = build_options(a_request(text), "%(id)s.%(ext)s", probe_only=True)
         with YoutubeDL(options) as ydl:
             names.append(ydl.prepare_filename(dict(information)))
@@ -505,7 +505,7 @@ def test_embed_metadata_changes_what_this_application_embeds() -> None:
 
     information = {"id": "x", "title": "x", "description": "about it", "webpage_url": "https://e"}
     comments = []
-    for text in ("--fragment-retries 3", "--compat-options embed-metadata"):
+    for text in ("--file-access-retries 3", "--compat-options embed-metadata"):
         request = replace(a_request(text), embed_metadata=True)
         with YoutubeDL(build_options(request, "%(title)s.%(ext)s")) as ydl:
             [embedder] = [pp for pp in ydl._pps["post_process"] if isinstance(pp, FFmpegMetadataPP)]

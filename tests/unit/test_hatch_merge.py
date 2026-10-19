@@ -36,14 +36,15 @@ def hatch_for(text: str) -> dict[str, Any]:
 def test_an_explicit_value_equal_to_the_default_is_still_carried() -> None:
     """`T184-R1`, as the one case that makes the whole design necessary.
 
-    `--fragment-retries 10` is what yt-dlp would have done anyway, so the parse produces exactly
-    the default dictionary and a diff against it is **empty**. The key would then be absent, and
-    `RetryManager(self.params.get('fragment_retries') or 0)` turns absent into zero: the user asks
-    for ten retries and gets none. Carrying the destination regardless is the fix.
+    `--file-access-retries 3` is what yt-dlp would have done anyway, so the parse produces exactly
+    the default dictionary and a diff against it is **empty**, and the key would be absent. The case
+    was `--fragment-retries 10` until `T-252` gave it a setting, and that is why it mattered:
+    `RetryManager(self.params.get('fragment_retries') or 0)` turns absent into zero, so the user
+    asked for ten retries and got none. Carrying the destination regardless is the fix.
     """
-    carried = hatch_for("--fragment-retries 10")
+    carried = hatch_for("--file-access-retries 3")
 
-    assert carried == {"fragment_retries": 10}, (
+    assert carried == {"file_access_retries": 3}, (
         "an explicit value equal to the default was dropped, which is the defect T184-R1 names"
     )
 
@@ -59,9 +60,9 @@ def test_the_negation_carries_the_other_value() -> None:
 
 
 def test_several_options_each_carry_their_own_destination() -> None:
-    carried = hatch_for("--continue --concurrent-fragments 4")
+    carried = hatch_for("--continue --file-access-retries 5")
 
-    assert carried == {"continuedl": True, "concurrent_fragment_downloads": 4}
+    assert carried == {"continuedl": True, "file_access_retries": 5}
 
 
 def test_nothing_typed_produces_nothing() -> None:
@@ -76,15 +77,15 @@ def test_only_the_destinations_of_the_options_named_are_carried() -> None:
     parser's own defaults drifting between releases. The result is keyed on what the user actually
     named.
     """
-    carried = hatch_for("--concurrent-fragments 4")
+    carried = hatch_for("--http-chunk-size 10M")
 
-    assert set(carried) == set(OPTION_KEYS["--concurrent-fragments"])
+    assert set(carried) == set(OPTION_KEYS["--http-chunk-size"])
     assert "continuedl" not in carried, "a key nobody asked for came along with the answer"
 
 
 def test_the_equals_form_reaches_the_same_destination() -> None:
     """Admission keeps `--opt=value` as one word, so the merge has to read it as one."""
-    assert hatch_for("--fragment-retries=7") == {"fragment_retries": 7}
+    assert hatch_for("--file-access-retries=7") == {"file_access_retries": 7}
 
 
 def test_an_option_the_parser_refuses_stops_the_job_rather_than_running_it() -> None:
@@ -95,7 +96,9 @@ def test_an_option_the_parser_refuses_stops_the_job_rather_than_running_it() -> 
     the job fails with a reason, which is the honest answer when the options cannot be honoured.
     """
     with pytest.raises(UnusableOptionsError):
-        hatch_options("--fragment-retries not-a-number", ("--fragment-retries", "not-a-number"))
+        hatch_options(
+            "--file-access-retries not-a-number", ("--file-access-retries", "not-a-number")
+        )
 
 
 def test_stored_options_that_the_audit_now_refuses_stop_the_job() -> None:
@@ -112,7 +115,7 @@ def test_stored_options_that_the_audit_now_refuses_stop_the_job() -> None:
 def test_stored_tokens_that_disagree_with_their_text_stop_the_job() -> None:
     """The other half of `T184-R5`: the text a user was shown must be the text that runs."""
     with pytest.raises(UnusableOptionsError):
-        hatch_options("--continue", ("--continue", "--fragment-retries", "10"))
+        hatch_options("--continue", ("--continue", "--file-access-retries", "10"))
 
 
 def test_no_saved_token_is_repeated_in_the_reason() -> None:

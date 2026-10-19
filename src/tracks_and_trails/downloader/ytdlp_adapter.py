@@ -26,6 +26,7 @@ listed explicitly rather than quietly absent, so a reader can tell "not applicab
 
 import codecs
 import contextlib
+import contextvars
 import functools
 import importlib
 import json
@@ -40,6 +41,7 @@ from typing import Any, Final
 
 from yt_dlp.networking.exceptions import HTTPError, TransportError
 from yt_dlp.utils import (
+    OUTTMPL_TYPES,
     ContentTooShortError,
     DateRange,
     DownloadCancelled,
@@ -49,6 +51,7 @@ from yt_dlp.utils import (
     PostProcessingError,
     ThrottledDownload,
     UnsupportedError,
+    download_range_func,
 )
 
 from tracks_and_trails.core.errors import TRANSIENT_CONTEXT_KEY, ErrorKind, FailureDetail
@@ -65,6 +68,7 @@ from tracks_and_trails.core.models import (
     parse_browser_specification,
 )
 from tracks_and_trails.core.paths import APP_SLUG
+from tracks_and_trails.core.sections import FROM_URL, parsed_ranges, sectioned_stem, writes_several
 from tracks_and_trails.downloader.option_table import OPTION_KEYS, POSTPROCESSOR_ORDER
 
 #: This module's own log name, under the application's tree so `configure_logging`'s redacting
@@ -163,6 +167,32 @@ def unwrap(error: BaseException) -> BaseException:
 
 
 @contextlib.contextmanager
+def ffmpeg_for_its_downloader(ytdlp: Any, location: Path | None) -> Iterator[None]:
+    """Tell yt-dlp's ffmpeg **downloader** where ffmpeg is, as its command line does (`T-252`).
+
+    **The option reaches the post-processors and not the downloader's check.** Downloading a
+    section is ffmpeg's work, and `process_info` first asks `FFmpegFD.available()`, which builds a
+    post-processor with no `YoutubeDL` and so reads only a context variable. yt-dlp's command line
+    sets that variable from `--ffmpeg-location`, and its library never does, so with ffmpeg found
+    anywhere but `PATH` — the Windows installer's bundled copy, a location set in Settings — every
+    section aborted: *"You have requested downloading the video partially, but ffmpeg is not
+    installed"*. Measured at 2026.08.19 with `PATH` emptied, and fixed by setting it the same way.
+
+    Reset on exit. A yt-dlp without the variable, or no location, changes nothing.
+    """
+    postprocessor = getattr(getattr(ytdlp, "postprocessor", None), "FFmpegPostProcessor", None)
+    variable = getattr(postprocessor, "_ffmpeg_location", None)
+    if location is None or not isinstance(variable, contextvars.ContextVar):
+        yield
+        return
+    token = variable.set(str(location))
+    try:
+        yield
+    finally:
+        variable.reset(token)
+
+
+@contextlib.contextmanager
 def retries_given_up(ytdlp: Any) -> Iterator[list[BaseException]]:
     """Collect the error each fatal retry loop gives up on, for as long as this lasts (`T-364`).
 
@@ -226,6 +256,26 @@ def default_retries() -> int:
     What `build_options` sends then (`T-364`), read at the pin, for the Settings screen to show.
     """
     return int(_command_line_defaults()["retries"])
+
+
+def connection_defaults() -> Mapping[str, float]:
+    """What `T-252`'s four settings are when nobody chose, read at the pin, for the Settings screen.
+
+    The command line's own for the two retry counts and the pieces fetched at once, which the
+    library reads the same way when the key is absent. The timeout is the networking layer's,
+    since the command line leaves it unset. Keyed by `NetworkOptions`' field names.
+    """
+    from yt_dlp.networking.common import DEFAULT_TIMEOUT
+
+    defaults = _command_line_defaults()
+    return MappingProxyType(
+        {
+            "fragment_retries": int(defaults["fragment_retries"]),
+            "extractor_retries": int(defaults["extractor_retries"]),
+            "socket_timeout": float(DEFAULT_TIMEOUT),
+            "concurrent_fragments": int(defaults["concurrent_fragment_downloads"]),
+        }
+    )
 
 
 def extractor_message(error: BaseException) -> str:
@@ -835,6 +885,64 @@ def _chapter_template(output_template: str) -> str:
     return output_template[: len(output_template) - len(name)] + chapter
 
 
+class NumberedSections(download_range_func):  # type: ignore[misc]
+    """`--download-sections`, with every section numbered in the order yt-dlp yields them (`T-252`).
+
+    **yt-dlp numbers only a chapter**: its `section_number` is the matched chapter's index, and a
+    time range has none, so two ranges named by the number would share one name and the second
+    would overwrite the first, which is what the options field did with two ranges until this task
+    (measured 2026-10-14). Each yielded section is numbered from 1 instead: chapter matches, then
+    ranges, then the address's own range, which is yt-dlp's order.
+
+    **Its equality is yt-dlp's own**, which compares the patterns and the ranges, so the typed field
+    is held to `parse_options` by comparing the two.
+    """
+
+    def __call__(self, info_dict: Any, ydl: Any) -> Iterator[dict[str, Any]]:
+        for number, section in enumerate(super().__call__(info_dict, ydl), start=1):
+            yield {**section, "index": number} if section else section
+
+
+def numbered_sections(sections: Sequence[str]) -> NumberedSections:
+    """The `download_ranges` yt-dlp's command line builds from these sections, numbered.
+
+    Parsed by `core/sections.py`'s transcription, which the model already held each section to, so
+    a section reaching here is one yt-dlp's command line accepts.
+    """
+    chapters = [re.compile(section) for section in sections if not section.startswith("*")]
+    ranges = [
+        list(span)
+        for section in sections
+        if section.startswith("*") and section != FROM_URL
+        for span in parsed_ranges(section) or ()
+    ]
+    return NumberedSections(chapters, ranges, FROM_URL in sections)
+
+
+def _section_template(output_template: str) -> str:
+    """The media's own name with each section's number after the stem (`T-252`).
+
+    `_chapter_template`'s shape: the worker's literal, contained path with only its file name's
+    stem extended, so every section lands in the same directory by construction.
+    """
+    name = os.path.split(output_template)[1]
+    stem, dot, extension = name.rpartition(".")
+    numbered = (
+        f"{sectioned_stem(stem, '%(section_number)s')}.{extension}"
+        if dot and stem
+        else sectioned_stem(name, "%(section_number)s")
+    )
+    return output_template[: len(output_template) - len(name)] + numbered
+
+
+#: The sidecar templates kept on the base name when sections number the media (`T-252`). The
+#: playlist ones are left alone, since a download here is one item, and the chapter template has its
+#: own derivation.
+_BASE_NAMED: Final = frozenset(
+    kind for kind in OUTTMPL_TYPES if kind != "chapter" and not kind.startswith("pl_")
+)
+
+
 def build_options(
     request: DownloadRequest,
     output_template: str,
@@ -923,9 +1031,26 @@ def build_options(
     # bytes per second is not a thing anyone means. Here it is: dropped by truthiness, "never
     # retry" would silently become the default of ten.
     options["retries"] = request.retries if request.retries is not None else defaults["retries"]
-    # **`fragment_retries` has no setting yet** (`T-252` owns it), so it is always the command
-    # line's; a `--fragment-retries` in the options field is merged below and wins.
-    options["fragment_retries"] = defaults["fragment_retries"]
+    # **The rest of the retry policy and the connection's tuning** (`T-252`), on both passes like
+    # `retries`, since the probe reads the page and fetches over the same connection. A piece's
+    # retries fall back to the command line's ten, as `retries` does; the other three are left out
+    # while nobody chose, because the library's own reading of an absent key is the command line's
+    # (three retries of the page, yt-dlp's 20-second timeout, one piece at a time), read at the pin.
+    options["fragment_retries"] = (
+        request.fragment_retries
+        if request.fragment_retries is not None
+        else defaults["fragment_retries"]
+    )
+    if request.extractor_retries is not None:
+        options["extractor_retries"] = request.extractor_retries
+    if request.socket_timeout is not None:
+        options["socket_timeout"] = request.socket_timeout
+    if request.concurrent_fragments is not None:
+        options["concurrent_fragment_downloads"] = request.concurrent_fragments
+    # **From the start, on both passes** (`T-252`): yt-dlp's live extractors offer different
+    # formats for a stream fetched from its beginning, so the probe has to ask the same question.
+    if request.live_from_start:
+        options["live_from_start"] = True
     # **A fragment still missing after its retries fails the attempt** (`T-364`). The library skips
     # it by default and the job ended *Done* with seconds of the media gone (250 of 300 frames,
     # measured at `8b0aad6`). Failing instead keeps staging, and the job's own retry resumes it.
@@ -1036,6 +1161,22 @@ def build_options(
     # or a conversion keeps the oldest input's date, so the finished file carries it.
     if request.use_last_modified:
         options["updatetime"] = True
+    # **Which part, on the download only** (`T-252`, `ARC-010` amended 2026-10-19). yt-dlp asks for
+    # the sections when it processes the item, which a probe never does, and a chapter pattern
+    # that matches nothing would otherwise be reported while the user is still choosing a format.
+    if request.download_sections:
+        options["download_ranges"] = numbered_sections(request.download_sections)
+        if writes_several(request.download_sections):
+            # **One file per section, the sidecars once** (ruled 2026-10-19, question 4). The media
+            # template gains each section's number, so two sections can no longer share a name;
+            # every other template keeps the base name, so the description, the info JSON, the
+            # subtitles and the thumbnail are written once for the item rather than per section,
+            # and claimed with the sections as one family.
+            options["outtmpl"] = {
+                **options["outtmpl"],
+                **dict.fromkeys(_BASE_NAMED, output_template),
+                "default": _section_template(output_template),
+            }
 
     if request.subtitle_languages:
         options["writesubtitles"] = True
@@ -1508,8 +1649,14 @@ def requires_ffmpeg(request: DownloadRequest) -> bool:
     # `--split-chapters` and `--convert-thumbnails png` — both ffmpeg work, both admitted —
     # answered "no ffmpeg needed", and the user learned otherwise after the bytes were spent,
     # which is the whole point of `REQ-024` asking before.
-    return _performed_by_ffmpeg(build_postprocessors(request)) or hatch_requires_ffmpeg(
-        request.extra_options, request.extra_option_argv
+    # **A section is ffmpeg's download** (`T-252`): yt-dlp sends any item with a `section_start` to
+    # its ffmpeg downloader, or aborts when there is none (`YoutubeDL.process_info`, read at
+    # 2026.08.19). A chapter pattern or `*from-url` counts as well, since what it cuts depends on
+    # the item. The hatch answered this for `--download-sections` until the control refused it.
+    return (
+        bool(request.download_sections)
+        or _performed_by_ffmpeg(build_postprocessors(request))
+        or hatch_requires_ffmpeg(request.extra_options, request.extra_option_argv)
     )
 
 
@@ -1525,10 +1672,10 @@ def hatch_requires_ffmpeg(text: str, argv: Sequence[str]) -> bool:
     Stored options that no longer admit count as none: the job fails on them with its own reason
     when its dictionary is built, and this answers for the part that is still readable.
 
-    **Downloading counts as well as post-processing** (`T184-R14`, seventh round). This read only
-    `postprocessors`, so `--download-sections "*1-2"` was offered with ffmpeg absent and yt-dlp
-    then aborted: *"You have requested downloading the video partially, but ffmpeg is not
-    installed"*. See `_cuts_sections`.
+    **Downloading counted as well as post-processing** (`T184-R14`, seventh round): this read only
+    `postprocessors`, so `--download-sections "*1-2"` was offered with ffmpeg absent and yt-dlp then
+    aborted. *(Since `T-252` that spelling is refused here for its control, so nothing the hatch
+    admits sets `download_ranges`, and `requires_ffmpeg` reads the request's sections instead.)*
     """
     if not argv and not text.strip():
         return False
@@ -1538,23 +1685,7 @@ def hatch_requires_ffmpeg(text: str, argv: Sequence[str]) -> bool:
             hatch = hatch_options(text, argv)
     except UnusableOptionsError:
         return False
-    return _performed_by_ffmpeg(hatch.get("postprocessors", [])) or _cuts_sections(
-        hatch.get("download_ranges")
-    )
-
-
-def _cuts_sections(ranges: object) -> bool:
-    """Whether `download_ranges` asks yt-dlp to download only part of an item, which needs ffmpeg.
-
-    yt-dlp gives each requested range a `section_start`, and its downloader choice sends any item
-    with one to the ffmpeg downloader, or aborts when ffmpeg is missing (`YoutubeDL.process_info`,
-    read at 2026.08.19). **Every parse carries a `download_range_func`**, an empty one when
-    nothing was asked, so this asks what it holds rather than whether it is there: chapter
-    patterns, time ranges, or `*from-url`. Its `__eq__` ignores the last, so it is not compared
-    with the default. A chapter pattern that matches nothing cuts nothing, and is still counted,
-    because what it matches depends on the item.
-    """
-    return any(getattr(ranges, part, None) for part in ("chapters", "ranges", "from_info"))
+    return _performed_by_ffmpeg(hatch.get("postprocessors", []))
 
 
 def options_needing_ffmpeg(argv: Sequence[str]) -> tuple[str, ...]:
@@ -1587,9 +1718,7 @@ def _options_needing_ffmpeg(argv: Sequence[str]) -> tuple[str, ...]:
         except _REFUSED_BY_YT_DLP:
             continue
         specs = parsed.get("postprocessors", [])
-        if _performed_by_ffmpeg([spec for spec in specs if spec not in defaults]) or (
-            _cuts_sections(parsed.get("download_ranges"))
-        ):
+        if _performed_by_ffmpeg([spec for spec in specs if spec not in defaults]):
             named[chunk[0]] = None
     return tuple(named)
 

@@ -27,6 +27,7 @@ durable records belong with their schema, not in this module — is why it is wo
 (`T-176`).
 """
 
+import math
 import os
 import re
 from collections.abc import Sequence
@@ -40,6 +41,7 @@ from urllib.parse import urlsplit
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.format_sort import format_sort_problem
 from tracks_and_trails.core.job_state import JobStatus, apply
+from tracks_and_trails.core.sections import sections_problem
 from tracks_and_trails.core.selection import (
     LARGEST_SIZE,
     MOST_ITEMS,
@@ -1212,13 +1214,59 @@ def _require_naming(owner: str, value: Any) -> None:
     _require_flag(owner, "use_last_modified", value.use_last_modified)
 
 
+#: The most pieces of a stream one download fetches at once (`T-252`, `ARC-010` amended
+#: 2026-10-19). **Each download is its own process** (`ARC-002`), so the pool multiplies this: one
+#: job at `-N 4` held 4 requests open and three jobs held 12, measured on 2026-10-14, and yt-dlp
+#: sets no ceiling of its own.
+MOST_CONCURRENT_FRAGMENTS: Final = 8
+
+
+def _require_connection(owner: str, value: Any) -> None:
+    """`T-252`'s four connection settings, on `NetworkOptions` or on a request, which shares them.
+
+    **`None` is *nobody chose*** in all four, and the key is then the downloader's own: the command
+    line's ten fragment retries (`T-364`), three extractor retries, a 20-second timeout and one
+    piece at a time. Zero retries is a real answer. A timeout has to be a positive number of
+    seconds, since yt-dlp's library takes zero or less and then fails the job (`T184-R8`'s class).
+    """
+    _require_optional_count(owner, "fragment_retries", value.fragment_retries)
+    _require_optional_count(owner, "extractor_retries", value.extractor_retries)
+    timeout = value.socket_timeout
+    if timeout is not None:
+        if isinstance(timeout, bool) or not isinstance(timeout, int | float):
+            _fail(owner, "socket_timeout", timeout, "a number of seconds or None")
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError(f"{owner}.socket_timeout must be a positive number of seconds")
+    _require_optional_positive(
+        owner, "concurrent_fragments", value.concurrent_fragments, MOST_CONCURRENT_FRAGMENTS
+    )
+
+
+def _require_part(owner: str, value: Any) -> None:
+    """Which part of the item is downloaded, on a preset or a request (`T-252`).
+
+    The sections are checked by `core/sections.py`'s transcription of yt-dlp's grammar, so a
+    hand-edited preset with a range yt-dlp would refuse is set aside when it is read, rather than
+    failing the job it is chosen for.
+    """
+    problem = sections_problem(value.download_sections)
+    if problem is not None:
+        raise ValueError(f"{owner}.download_sections: {problem}")
+    _require_flag(owner, "live_from_start", value.live_from_start)
+
+
 @dataclass(frozen=True, slots=True)
 class NetworkOptions:
-    """The three network settings `REQ-023` names, as one value (`T-196`).
+    """The network settings, as one value (`T-196`, `T-252`).
 
-    **A value object rather than three loose fields**, because they are set together, stored
-    together under one `[network]` table, and travel together onto a request. Loose fields would
-    make every one of those three places a list to keep in step.
+    `REQ-023` names the first three; `T-252` adds four that tune the connection, ruled Settings
+    rather than preset fields (`ARC-010`, amended 2026-10-19): retries of a refused piece and of
+    reading the page, how long a silent server is waited for, and how many pieces are fetched at
+    once.
+
+    **A value object rather than loose fields**, because they are set together, stored together
+    under one `[network]` table, and travel together onto a request. Loose fields would make every
+    one of those places a list to keep in step.
 
     **It lives here rather than in `core/settings.py`** for the reason `ARC-007` gives about the
     concurrency limit: what the settings layer holds is a *value*, and the value's shape is a
@@ -1252,6 +1300,12 @@ class NetworkOptions:
     #: Retries **inside one download attempt**, or `None` for the count yt-dlp's command line
     #: uses. Not the job-level retry — see `DownloadRequest.retries`, which this is copied onto.
     retries: int | None = None
+    #: `T-252`'s four, each copied onto the request field of the same name; see
+    #: `_require_connection` for what `None` means in each.
+    fragment_retries: int | None = None
+    extractor_retries: int | None = None
+    socket_timeout: float | None = None
+    concurrent_fragments: int | None = None
 
     def __post_init__(self) -> None:
         _require_optional_text("NetworkOptions", "proxy", self.proxy)
@@ -1264,6 +1318,7 @@ class NetworkOptions:
                 "and falls back to None (T-196)."
             )
         _require_optional_count("NetworkOptions", "retries", self.retries)
+        _require_connection("NetworkOptions", self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1375,6 +1430,15 @@ class DownloadRequest:
     max_filesize: int | None = None
     uploaded_after: str | None = None
     uploaded_before: str | None = None
+    #: Which part of the item is downloaded (`T-252`, `ARC-010` amended 2026-10-19), a preset's
+    #: like the fields above. `download_sections` is `--download-sections`, one section per entry:
+    #: a chapter pattern, `*` and time ranges, or `*from-url`, checked by `core/sections.py`.
+    #: **Several sections write one file each**, named by the stem and a section suffix and claimed
+    #: as one family. Cutting a section is ffmpeg's work. `live_from_start` is `--live-from-start`:
+    #: a live stream is fetched from its beginning rather than from now, which changes the formats
+    #: the probe finds, so it acts on both passes.
+    download_sections: tuple[str, ...] = ()
+    live_from_start: bool = False
 
     #: Network options are carried, never logged as-is. `T-038` redacts at the handler level
     #: (`NFR-007`), which is why a proxy URL may safely live in the model.
@@ -1398,6 +1462,16 @@ class DownloadRequest:
     #: how `rate_limit_bytes` is read one field up, where zero and unset genuinely mean the same
     #: thing — would silently turn "never retry" into "retry ten times".
     retries: int | None = None
+    #: The rest of the retry policy and the connection's tuning (`T-252`), frozen from Settings
+    #: when the job is queued, as `retries` is. `fragment_retries` is `--fragment-retries`, the
+    #: retries of a piece of a stream the server refuses; `extractor_retries` is
+    #: `--extractor-retries`, of reading the page; `socket_timeout` is `--socket-timeout`, seconds
+    #: a silent server is waited for; `concurrent_fragments` is `-N`, pieces fetched at once, at
+    #: most `MOST_CONCURRENT_FRAGMENTS`. `None` is the downloader's own in every one.
+    fragment_retries: int | None = None
+    extractor_retries: int | None = None
+    socket_timeout: float | None = None
+    concurrent_fragments: int | None = None
     #: Which browser's cookies to use — a **browser name**, and since `T-197` by construction
     #: rather than by intent (`REQ-026`, `DAT-003`).
     #:
@@ -1447,10 +1521,11 @@ class DownloadRequest:
         _require_enum("DownloadRequest", "media_kind", self.media_kind, MediaKind)
         _require_format_depth("DownloadRequest", self)
         _require_naming("DownloadRequest", self)
-        for name in ("post_processors", "subtitle_languages"):
+        for name in ("post_processors", "subtitle_languages", "download_sections"):
             object.__setattr__(
                 self, name, _as_tuple_of("DownloadRequest", name, getattr(self, name), str)
             )
+        _require_part("DownloadRequest", self)
         _require_flag("DownloadRequest", "embed_subtitles", self.embed_subtitles)
         _require_subtitle_depth("DownloadRequest", self)
         _require_enum("DownloadRequest", "audio_codec", self.audio_codec, AudioCodec)
@@ -1482,6 +1557,7 @@ class DownloadRequest:
         _require_browser_name("DownloadRequest", "cookies_from_browser", self.cookies_from_browser)
         _require_optional_count("DownloadRequest", "rate_limit_bytes", self.rate_limit_bytes)
         _require_optional_count("DownloadRequest", "retries", self.retries)
+        _require_connection("DownloadRequest", self)
         _require_text_or_empty("DownloadRequest", "extra_options", self.extra_options)
         object.__setattr__(
             self,
@@ -1568,6 +1644,9 @@ class Preset:
     max_filesize: int | None = None
     uploaded_after: str | None = None
     uploaded_before: str | None = None
+    #: Which part of the item is downloaded (`T-252`); see `DownloadRequest.download_sections`.
+    download_sections: tuple[str, ...] = ()
+    live_from_start: bool = False
     #: The escape hatch this preset carries (`REQ-031`, `T-184`), the same shape as the request's.
     #:
     #: `REQ-031` says the field is **per preset and overridable per job**, and the maintainer ruled
@@ -1588,8 +1667,9 @@ class Preset:
         _require_text("Preset", "format_selector", self.format_selector)
         _require_enum("Preset", "media_kind", self.media_kind, MediaKind)
         _require_format_depth("Preset", self)
-        for name in ("post_processors", "subtitle_languages"):
+        for name in ("post_processors", "subtitle_languages", "download_sections"):
             object.__setattr__(self, name, _as_tuple_of("Preset", name, getattr(self, name), str))
+        _require_part("Preset", self)
         _require_enum("Preset", "audio_codec", self.audio_codec, AudioCodec)
         _require_optional_text("Preset", "audio_quality", self.audio_quality)
         if self.audio_quality is not None and not _is_ytdlp_quality(self.audio_quality):

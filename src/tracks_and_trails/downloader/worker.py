@@ -70,6 +70,7 @@ from tracks_and_trails.core.paths import (
     numbered_variant,
 )
 from tracks_and_trails.core.presets import selector_merges
+from tracks_and_trails.core.sections import sectioned_stem, unsectioned_name, writes_several
 from tracks_and_trails.core.selection import empty_window
 from tracks_and_trails.downloader import process_tree
 from tracks_and_trails.downloader.environment import (
@@ -709,7 +710,11 @@ def _run(
             # any info JSON written so far (`T249-R1`).
             strip_staged_info_json(staging, adapter)
             raise
-        produced = _written_path(result, staging / target.name)
+        stem = Path(target.name).stem
+        # **One file per section, when the request can write several** (`T-252`, `ARC-010` amended
+        # 2026-10-19): each named by the stem and its section's number, all claimed together.
+        sections = _section_files(result) if writes_several(request.download_sections) else ()
+        produced = sections[0] if sections else _written_path(result, staging / target.name)
         # **The media and everything the user asked to keep, claimed as one family** (`T046-R3`,
         # `T-109`, `T109-R3`, `T109-R4`). The destination keeps the *final* extension, not the
         # template's — that is the name the user will see and the one that has to be free — and the
@@ -721,18 +726,21 @@ def _run(
         retained = retained_sidecars(
             adapter.build_options(request, as_literal_template(staging / target.name)),
             staging,
-            Path(target.name).stem,
+            stem,
         )
         strip_kept_info_json(retained, adapter)
         written, _kept = claim_outputs(
             result,
             staging=staging,
-            stem=Path(target.name).stem,
-            target=target.with_name(produced.name),
+            stem=stem,
+            # A sectioned family is numbered on the base name, `Clip (2) (section 1).mp4`, so the
+            # target is the stem with the media's extension rather than the first section's name.
+            target=target.with_name(f"{stem}{produced.suffix}" if sections else produced.name),
             produced=produced,
             # What tells a deleted intermediate from a lost output — see `claim_outputs`.
             writing_subtitles=bool(request.subtitle_languages) and not request.embed_subtitles,
             retained=retained,
+            sections=sections,
         )
         # **Discarded here, on the success path, and no longer in a `finally`** (`T-113`).
         # A `finally` threw the partial away whichever way the session ended, which is right for
@@ -1536,8 +1544,16 @@ def claim_outputs(
     produced: Path,
     writing_subtitles: bool,
     retained: Sequence[Path] = (),
+    sections: Sequence[Path] = (),
 ) -> tuple[Path, tuple[Path, ...]]:
     """Move the media **and every requested sidecar** out of staging, under one shared name.
+
+    **`sections` is every file a sectioned download wrote**, `produced` first (`T-252`): each is
+    named by `stem` and its section's number, and all of them join the family, numbered together on
+    the base name. The sidecars were written once under the base name, and yt-dlp records a
+    subtitle under the section's name it was written to before the move, so a recorded sidecar is
+    read under its base name (`core.sections.unsectioned_name`). Empty for an ordinary download,
+    which is claimed exactly as before.
 
     Returns `(written, kept)`. Raises `UnsafePathError` when the outputs the request asked for
     cannot all be placed — which `_run` turns into a failed job, and which leaves the staging
@@ -1586,9 +1602,19 @@ def claim_outputs(
     # it before the reservation loop is what makes *"without leaving reservations"* true by
     # construction rather than by unwinding.
     sidecars = requested_sidecars(result, retained)
+    if sections:
+        based = (s.path.with_name(unsectioned_name(s.path.name, stem)) for s in sidecars)
+        # Deduplicated by path: a family that named one file twice could never be reserved.
+        sidecars = tuple(
+            {
+                path: Sidecar(path, path.is_file(), s.required)
+                for path, s in zip(based, sidecars, strict=True)
+            }.values()
+        )
+    media = list(sections) or [produced]
     outside = [
         path
-        for path, exists in ((produced, True), *((s.path, s.exists) for s in sidecars))
+        for path, exists in (*((m, True) for m in media), *((s.path, s.exists) for s in sidecars))
         if exists and not _inside(path, staging)
     ]
     if outside:
@@ -1608,9 +1634,16 @@ def claim_outputs(
             )
     present = [s.path for s in sidecars if s.exists]
     suffixes = [_sidecar_suffix(path.name, stem) for path in present]
+    # Each section's own suffix after the base stem, ` (section 2).mp4`; for one file, the
+    # candidate itself, as it always was.
+    media_suffixes = [_sidecar_suffix(path.name, stem) for path in sections]
 
     for candidate in _candidates(target):
-        family = [candidate, *(candidate.with_name(f"{candidate.stem}{s}") for s in suffixes)]
+        named = (candidate.with_name(f"{candidate.stem}{s}") for s in media_suffixes)
+        family = [
+            *(named if sections else (candidate,)),
+            *(candidate.with_name(f"{candidate.stem}{s}") for s in suffixes),
+        ]
         reserved: list[Path] = []
         candidate.parent.mkdir(parents=True, exist_ok=True)
         for member in family:
@@ -1623,7 +1656,7 @@ def claim_outputs(
             for member in reserved:
                 release_output_path(member)
             continue
-        sources = [produced, *present]
+        sources = [*media, *present]
         placed: list[tuple[Path, Path]] = []
         try:
             for source, destination in zip(sources, family, strict=True):
@@ -1877,8 +1910,20 @@ def previewed_path(target: Path, request: DownloadRequest) -> Path:
     postprocessor chain will actually produce on the name, so an MP3 request does not preview
     `Clip.webm`; `free_output_path` then shows the numbered variant the write would take, because a
     resolution applied silently afterwards means the user is shown one filename and gets another.
+
+    **A request that can write several sections previews its first** (`T-252`): `Clip (section
+    1).mp4`, numbered on the base name as the claim numbers the family.
     """
-    return free_output_path(postprocessed_name(target, request))
+    named = postprocessed_name(target, request)
+    if not writes_several(request.download_sections):
+        return free_output_path(named)
+    for candidate in _candidates(named):
+        first = candidate.with_name(f"{sectioned_stem(candidate.stem, 1)}{candidate.suffix}")
+        if not first.exists():
+            return first
+    raise UnsafePathError(
+        f"{str(named)!r} and {MAX_COLLISION_ATTEMPTS} numbered alternatives are all taken"
+    )
 
 
 def _extract(
@@ -1931,7 +1976,20 @@ def _extract(
     retrying: contextlib.AbstractContextManager[list[BaseException]] = (
         contextlib.nullcontext([]) if probe_only else adapter.retries_given_up(resolved.module)
     )
-    with positions, retrying as given_up, resolved.module.YoutubeDL(options) as ydl:
+    # **The ffmpeg this session gated on, for the downloader that cuts sections too** (`T-252`):
+    # `build_options` tells yt-dlp's post-processors, and its downloader's check reads only what
+    # the command line would have set. A probe downloads nothing.
+    downloading_with: contextlib.AbstractContextManager[None] = (
+        contextlib.nullcontext()
+        if probe_only
+        else adapter.ffmpeg_for_its_downloader(resolved.module, ffmpeg_location)
+    )
+    with (
+        positions,
+        retrying as given_up,
+        downloading_with,
+        resolved.module.YoutubeDL(options) as ydl,
+    ):
         # **Never written with the session's secrets** (`DAT-003`, amended 2026-10-11, `T249-R1`),
         # whichever option asked for an info JSON, so it is not keyed on `writeinfojson`.
         adapter.keep_secrets_out(ydl)
@@ -1951,14 +2009,23 @@ def _extract(
 
 
 def _may_skip(request: DownloadRequest) -> bool:
-    """Whether the job's own options can tell yt-dlp to pass over its item (`T-247`)."""
+    """Whether the job's own options can tell yt-dlp to pass over its item (`T-247`).
+
+    **A chapter pattern can match nothing** (`T-252`): yt-dlp then downloads no section and says
+    *There are no chapters matching the regex*, which is the job's own choice, so it ends Cancelled
+    with that reason as a filter's skip does.
+    """
     filters = (
         request.min_filesize,
         request.max_filesize,
         request.uploaded_after,
         request.uploaded_before,
     )
-    return bool(request.extra_option_argv) or any(bound is not None for bound in filters)
+    return (
+        bool(request.extra_option_argv)
+        or bool(request.download_sections)
+        or any(bound is not None for bound in filters)
+    )
 
 
 def _wrote_anything(result: Mapping[str, Any]) -> bool:
@@ -1977,6 +2044,20 @@ def _without_the_tag(line: str | None) -> str | None:
         return None
     tag, separator, rest = line.partition("] ")
     return rest.strip() if tag.startswith("[") and separator else line
+
+
+def _section_files(result: Mapping[str, Any]) -> tuple[Path, ...]:
+    """Every file a sectioned download wrote, in yt-dlp's order, which is the sections' (`T-252`).
+
+    One `requested_downloads` entry per section, each with its own `filepath`; an entry naming no
+    file that exists wrote nothing to claim.
+    """
+    found: dict[Path, None] = {}
+    for entry in result.get("requested_downloads") or ():
+        recorded = entry.get("filepath") or entry.get("_filename")
+        if recorded and Path(str(recorded)).is_file():
+            found[Path(str(recorded))] = None
+    return tuple(found)
 
 
 def _written_path(result: dict[str, Any], target: Path) -> Path:

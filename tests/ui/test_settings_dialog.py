@@ -13,7 +13,7 @@ line of this application's own behaviour on both answers, chosen and cancelled.
 import os
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 from PySide6.QtCore import QRect, Qt
@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QGroupBox,
     QLabel,
     QLineEdit,
@@ -53,9 +54,13 @@ from tracks_and_trails.ui.preset_manager import (
 from tracks_and_trails.ui.screen_fit import WINDOW_CHROME
 from tracks_and_trails.ui.settings_dialog import (
     ADD_FIELD_NAME,
+    CONCURRENT_FRAGMENTS_NAME,
+    CONCURRENT_FRAGMENTS_NOTE,
     DEFAULT_PRESET_NAME,
     DEFAULT_RETRIES_LABEL,
     DOWNLOAD_DIRECTORY_PROBLEM_NAME,
+    EXTRACTOR_RETRIES_NAME,
+    FRAGMENT_RETRIES_NAME,
     LAST_MODIFIED_NAME,
     NAMING_EXAMPLE_NAME,
     NO_COOKIES_NOTE,
@@ -71,6 +76,7 @@ from tracks_and_trails.ui.settings_dialog import (
     RETRIES_NAME,
     SETTINGS_SCROLL_NAME,
     SETTINGS_STILL_TO_COME,
+    SOCKET_TIMEOUT_NAME,
     STEP_DOWN_LABEL,
     STEP_UP_LABEL,
     TRIM_NAMES_NAME,
@@ -1979,3 +1985,159 @@ def test_the_shaping_controls_are_disabled_with_nothing_behind_them(
     assert not control(screen, QCheckBox, RESTRICT_NAMES_NAME).isEnabled()
     assert not control(screen, QSpinBox, TRIM_NAMES_NAME).isEnabled()
     assert not control(screen, QCheckBox, LAST_MODIFIED_NAME).isEnabled()
+
+
+# --- T-252: the rest of the retry policy and the connection's tuning ---------------------------
+
+
+#: What the window hands the screen: yt-dlp's own numbers, read at the pin.
+CONNECTION_DEFAULTS: Final = {
+    "fragment_retries": 10,
+    "extractor_retries": 3,
+    "socket_timeout": 20.0,
+    "concurrent_fragments": 1,
+}
+
+
+def test_the_connection_controls_open_on_the_values_in_force(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    screen, _ = screens(
+        network=NetworkOptions(
+            fragment_retries=4, extractor_retries=0, socket_timeout=7.5, concurrent_fragments=3
+        ),
+        on_network_chosen=lambda _options: None,
+    )
+
+    assert control(screen, QSpinBox, FRAGMENT_RETRIES_NAME).value() == 4
+    assert control(screen, QSpinBox, EXTRACTOR_RETRIES_NAME).value() == 0
+    assert control(screen, QDoubleSpinBox, SOCKET_TIMEOUT_NAME).value() == 7.5
+    assert control(screen, QSpinBox, CONCURRENT_FRAGMENTS_NAME).value() == 3
+
+
+def test_nobody_choosing_says_the_downloader_s_own_number_and_stores_nothing(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """Each control's *nobody chose* is words with the number in them, never a bare value that
+    would be a different instruction, and choosing it stores no value at all."""
+    chosen: list[NetworkOptions] = []
+    screen, _ = screens(
+        network=NetworkOptions(
+            fragment_retries=4, extractor_retries=2, socket_timeout=9.0, concurrent_fragments=3
+        ),
+        on_network_chosen=chosen.append,
+        connection_defaults=CONNECTION_DEFAULTS,
+    )
+    fragment = control(screen, QSpinBox, FRAGMENT_RETRIES_NAME)
+    extractor = control(screen, QSpinBox, EXTRACTOR_RETRIES_NAME)
+    timeout = control(screen, QDoubleSpinBox, SOCKET_TIMEOUT_NAME)
+    pieces = control(screen, QSpinBox, CONCURRENT_FRAGMENTS_NAME)
+
+    fragment.setValue(-1)
+    extractor.setValue(-1)
+    timeout.setValue(0)
+    pieces.setValue(1)
+
+    assert chosen[-1] == NetworkOptions()
+    assert fragment.text() == "10 — the downloader's own"
+    assert extractor.text() == "3 — the downloader's own"
+    assert timeout.text() == "20 s — the downloader's own"
+    assert pieces.text() == "1 — the downloader's own"
+
+
+def test_zero_retries_is_stored_as_zero(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    chosen: list[NetworkOptions] = []
+    screen, _ = screens(on_network_chosen=chosen.append)
+
+    control(screen, QSpinBox, FRAGMENT_RETRIES_NAME).setValue(0)
+    control(screen, QSpinBox, EXTRACTOR_RETRIES_NAME).setValue(0)
+
+    assert chosen[-1].fragment_retries == 0
+    assert chosen[-1].extractor_retries == 0
+
+
+def test_each_control_reaches_only_its_own_setting_and_keeps_the_others(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """`T195-R1`'s rule across the four: each edit is built from the value in force."""
+    chosen: list[NetworkOptions] = []
+    screen, _ = screens(network=NetworkOptions(retries=2), on_network_chosen=chosen.append)
+
+    control(screen, QSpinBox, FRAGMENT_RETRIES_NAME).setValue(5)
+    control(screen, QSpinBox, EXTRACTOR_RETRIES_NAME).setValue(6)
+    control(screen, QDoubleSpinBox, SOCKET_TIMEOUT_NAME).setValue(12.5)
+    control(screen, QSpinBox, CONCURRENT_FRAGMENTS_NAME).setValue(8)
+
+    assert chosen[-1] == NetworkOptions(
+        retries=2,
+        fragment_retries=5,
+        extractor_retries=6,
+        socket_timeout=12.5,
+        concurrent_fragments=8,
+    )
+
+
+def test_the_ranges_are_the_settings_layer_s(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """A stored value has to be one the control can show, and nothing past the ruled cap."""
+    from tracks_and_trails.core.models import MOST_CONCURRENT_FRAGMENTS
+    from tracks_and_trails.core.settings import RETRIES_MAXIMUM, SOCKET_TIMEOUT_MAXIMUM
+
+    screen, _ = screens(on_network_chosen=lambda _options: None)
+
+    for name in (FRAGMENT_RETRIES_NAME, EXTRACTOR_RETRIES_NAME):
+        assert control(screen, QSpinBox, name).maximum() == RETRIES_MAXIMUM
+    assert control(screen, QDoubleSpinBox, SOCKET_TIMEOUT_NAME).maximum() == SOCKET_TIMEOUT_MAXIMUM
+    pieces = control(screen, QSpinBox, CONCURRENT_FRAGMENTS_NAME)
+    assert (pieces.minimum(), pieces.maximum()) == (1, MOST_CONCURRENT_FRAGMENTS)
+
+
+def test_the_retries_read_as_one_policy_and_not_the_whole_of_it(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """**`T-252`'s criterion**: three counts named by what each retries, and the section says
+    that waiting between retries and retrying a file the computer could not write are elsewhere,
+    since `--retry-sleep` and `--file-access-retries` stay in the options field."""
+    screen, _ = screens(on_network_chosen=lambda _options: None)
+
+    for name, what in (
+        (RETRIES_NAME, "file transfer"),
+        (FRAGMENT_RETRIES_NAME, "piece the server refuses"),
+        (EXTRACTOR_RETRIES_NAME, "reading the page"),
+    ):
+        announced = control(screen, QSpinBox, name).accessibleName().lower()
+        assert what in announced and "attempt" in announced, announced
+    said = control(screen, QLabel, "networkExplanation").text().lower()
+    assert "waiting between retries" in said and "additional options" in said, said
+
+
+def test_the_pieces_control_says_the_pool_multiplies_it(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """Measured on 2026-10-14 rather than assumed: three jobs at 4 held 12 requests open."""
+    screen, _ = screens(on_network_chosen=lambda _options: None)
+
+    pieces = control(screen, QSpinBox, CONCURRENT_FRAGMENTS_NAME)
+
+    assert pieces.accessibleDescription() == CONCURRENT_FRAGMENTS_NOTE
+    assert "multiply" in CONCURRENT_FRAGMENTS_NOTE
+
+
+def test_show_network_options_shows_the_four_without_writing_them_back(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    chosen: list[NetworkOptions] = []
+    screen, _ = screens(on_network_chosen=chosen.append)
+    shown = NetworkOptions(
+        fragment_retries=1, extractor_retries=2, socket_timeout=3.5, concurrent_fragments=4
+    )
+
+    screen.show_network_options(shown)
+
+    assert chosen == [], "redisplaying wrote the value back"
+    assert control(screen, QSpinBox, FRAGMENT_RETRIES_NAME).value() == 1
+    assert control(screen, QDoubleSpinBox, SOCKET_TIMEOUT_NAME).value() == 3.5
+    assert control(screen, QSpinBox, CONCURRENT_FRAGMENTS_NAME).value() == 4

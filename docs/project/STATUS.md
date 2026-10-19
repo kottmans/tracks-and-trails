@@ -155,6 +155,12 @@ task and review records it summarised.*
   four, the first a security ruling forbidding the extractor-argument pairs that choose a request's
   host, impersonate, or switch off the solver's checks (`SEC-003` amended). Nothing in the stage
   waits on a decision now, unless `T-254`'s lookup without typed headers cannot be built cleanly.
+- **`T-252` was built the same day, on its rulings**, at the maintainer's request: the rest of the
+  retry policy and the connection's tuning in *Settings › Network*, and a *Which part* group for
+  download sections and live-from-start. Several sections write one file each, and a section now
+  works with ffmpeg found only through its location, which aborted every section on the Windows
+  installer's bundled ffmpeg (inferred; measured on Linux with `PATH` emptied). It is with the
+  Reviewer.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the

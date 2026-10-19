@@ -119,6 +119,10 @@ class _Adapter:
     def retries_given_up(self, _module: object) -> Iterator[list[BaseException]]:
         yield []
 
+    @contextlib.contextmanager
+    def ffmpeg_for_its_downloader(self, _module: object, _location: object) -> Iterator[None]:
+        yield
+
     def attribute_given_up(self, _error: BaseException, _given_up: object) -> None: ...
 
 

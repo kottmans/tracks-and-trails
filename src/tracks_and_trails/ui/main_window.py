@@ -2227,6 +2227,10 @@ class MainWindow(QMainWindow):
             # The number *the downloader's own* stands for (`T-364`), asked through the manager
             # because only it may ask yt-dlp; `None` without one, and the screen says no number.
             default_retries=None if self._manager is None else self._manager.default_retries(),
+            # And `T-252`'s four, by the same route and for the same reason.
+            connection_defaults=(
+                None if self._manager is None else self._manager.connection_defaults()
+            ),
             on_ffmpeg_location_chosen=self._on_ffmpeg_location_chosen,
             on_concurrency_chosen=self._concurrency_chosen,
             # **Read when the screen opens, not cached at startup** (`T-195`). *Set as default* in

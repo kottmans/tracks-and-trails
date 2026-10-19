@@ -56,23 +56,23 @@ def test_an_option_the_audit_puts_in_the_hatch_is_usable() -> None:
 
 def test_an_option_that_takes_a_value_keeps_it() -> None:
     """The value is not a stray word. `T184-R1`'s trap lives on this option, in the next half."""
-    admission = admit("--fragment-retries 10")
+    admission = admit("--file-access-retries 10")
 
     assert admission.usable
-    assert admission.accepted == ("--fragment-retries", "10")
+    assert admission.accepted == ("--file-access-retries", "10")
 
 
 def test_the_equals_form_is_the_same_option() -> None:
     """A user may write either, and a boundary that only understood one would be porous.
 
     **Stored canonically since the 2026-09-27 redesign**: the option in full and its values as
-    separate tokens, which is what `--fragment-retries 10` means to yt-dlp as well. Every consumer
-    after admission then reads one spelling.
+    separate tokens, which is what `--file-access-retries 10` means to yt-dlp as well. Every
+    consumer after admission then reads one spelling.
     """
-    admission = admit("--fragment-retries=10")
+    admission = admit("--file-access-retries=10")
 
     assert admission.usable
-    assert admission.accepted == ("--fragment-retries", "10")
+    assert admission.accepted == ("--file-access-retries", "10")
 
 
 def test_a_value_that_looks_like_an_option_is_still_a_value() -> None:
@@ -92,10 +92,10 @@ def test_a_value_that_looks_like_an_option_is_still_a_value() -> None:
 
 
 def test_several_usable_options_are_kept_in_the_order_typed() -> None:
-    admission = admit("--continue --fragment-retries 3")
+    admission = admit("--continue --file-access-retries 3")
 
     assert admission.usable
-    assert admission.accepted == ("--continue", "--fragment-retries", "3")
+    assert admission.accepted == ("--continue", "--file-access-retries", "3")
 
 
 # --- what may not, and what the user is told ---------------------------------------------------
@@ -140,9 +140,10 @@ def test_a_typed_option_with_no_control_yet_is_usable() -> None:
     """The other half of the same rule, and the reason `typed` is an admitted class.
 
     An option whose control has not been built is reachable by no other route. `--proxy` has a
-    field, so it is refused above; `--concurrent-fragments` does not, so it is usable here.
+    field, so it is refused above; `--sleep-interval` does not until `T-253` builds one, so it is
+    usable here. *(`--concurrent-fragments` was this case until `T-252` built its setting.)*
     """
-    admission = admit("--concurrent-fragments 4")
+    admission = admit("--sleep-interval 5")
 
     assert admission.usable, [(r.option, r.reason) for r in admission.refusals]
 
@@ -239,7 +240,7 @@ def test_an_option_whose_effect_cannot_be_measured_is_refused() -> None:
 def test_an_option_with_a_measured_destination_is_still_usable() -> None:
     """The control for the two above: refusing the unprovable did not refuse everything."""
     assert admit("--continue").usable
-    assert admit("--fragment-retries 10").usable
+    assert admit("--file-access-retries 10").usable
 
 
 def test_a_word_that_is_not_an_option_is_refused() -> None:
@@ -258,9 +259,9 @@ def test_an_option_yt_dlp_does_not_have_is_refused() -> None:
 
 def test_an_option_missing_its_value_is_refused() -> None:
     """At edit time, which is the point: the bytes are not spent yet."""
-    option, reason = only_refusal("--fragment-retries")
+    option, reason = only_refusal("--file-access-retries")
 
-    assert option == "--fragment-retries"
+    assert option == "--file-access-retries"
     assert "value" in reason
 
 
@@ -291,7 +292,7 @@ def test_one_refusal_refuses_the_whole_field() -> None:
     something they did not write. Every refusal is collected, so one trip through the dialog shows
     everything that is wrong, and nothing is usable until none of it is.
     """
-    admission = admit('--continue --exec "touch /tmp/x" --fragment-retries 3')
+    admission = admit('--continue --exec "touch /tmp/x" --file-access-retries 3')
 
     assert not admission.usable
     assert admission.accepted == (), "a field with a refusal in it still offered options to run"
@@ -336,7 +337,7 @@ def test_a_config_file_is_refused_without_being_read(tmp_path: Path) -> None:
     file. This asserts the file is untouched, using a path that records being opened.
     """
     secret = tmp_path / "config.conf"
-    secret.write_text("--fragment-retries 37\n", encoding="utf-8")
+    secret.write_text("--file-access-retries 37\n", encoding="utf-8")
     before = secret.stat().st_atime_ns
 
     option, reason = only_refusal(f"--config-locations {secret}")
@@ -376,7 +377,7 @@ def test_the_option_table_is_pinned_data_rather_than_a_live_parser() -> None:
     arity = option_arity()
 
     assert arity["--continue"] == 0, "a flag was recorded as taking a value"
-    assert arity["--fragment-retries"] == 1, "an option with a value was recorded as a flag"
+    assert arity["--file-access-retries"] == 1, "an option with a value was recorded as a flag"
     assert "--exec" in arity, "the table does not cover the options it has to refuse"
 
 
@@ -392,7 +393,7 @@ def test_admitting_options_pulls_in_no_yt_dlp() -> None:
     source = (
         "import sys;"
         "from tracks_and_trails.downloader.extra_options import admit;"
-        "admit('--continue --fragment-retries 5 --exec x');"
+        "admit('--continue --file-access-retries 5 --exec x');"
         "print('yt_dlp' in sys.modules)"
     )
     finished = subprocess.run(
@@ -406,20 +407,20 @@ def test_admitting_options_pulls_in_no_yt_dlp() -> None:
 
 def test_the_one_call_the_interface_makes_gives_both_halves() -> None:
     """`options_for` is what the dialog calls: the refusals to show, and the tokens to store."""
-    admission, argv = options_for("--continue --fragment-retries 10")
+    admission, argv = options_for("--continue --file-access-retries 10")
 
     assert admission.usable
-    assert argv == ("--continue", "--fragment-retries", "10")
+    assert argv == ("--continue", "--file-access-retries", "10")
 
 
 @pytest.mark.parametrize(
     ("text", "option"),
     [
-        ("--fragment-retries nope", "--fragment-retries"),
-        ("--concurrent-fragments 0", "--concurrent-fragments"),
+        ("--file-access-retries nope", "--file-access-retries"),
+        ("--http-chunk-size nope", "--http-chunk-size"),
         # **And the valid option beside it goes too** — the field is refused whole, so a user is
         # never left with half of what they typed running.
-        ("--fragment-retries 7 --concurrent-fragments 0", "--concurrent-fragments"),
+        ("--file-access-retries 7 --http-chunk-size nope", "--http-chunk-size"),
     ],
 )
 def test_a_value_the_parser_will_not_take_is_refused_at_the_seam(text: str, option: str) -> None:
@@ -532,10 +533,9 @@ def test_a_path_absolute_once_yt_dlp_expands_it_is_accepted(
 @pytest.mark.parametrize(
     ("text", "canonical"),
     [
-        ("-N4", ("-N", "4")),
-        # *A value that is not a number, attached* was `-I1:3`, then `-Sres:720`; `T-247` and
-        # `T-250` gave both a control, and no admitted short option takes text any more.
-        ("-cN4", ("-c", "-N", "4")),
+        # *An attached short value* and *a cluster* were `-N4` and `-cN4` here until `T-252` gave
+        # `-N` a setting; no admitted short option takes a value any more, so the two are held by
+        # `test_an_attached_short_value_is_read_as_yt_dlp_reads_it_even_when_refused` below.
         ('--replace-in-metadata=title foo ""', ("--replace-in-metadata", "title", "foo", "")),
         ('"--add-headers=Referer: T184"', ("--add-headers", "Referer: T184")),
     ],
@@ -761,15 +761,16 @@ def test_a_filter_pattern_yt_dlp_can_compile_is_still_accepted(text: str) -> Non
 _TOO_MANY: Final = "a{4294967296}"
 _TOO_DEEP: Final = "(" * 500 + "a" + ")" * 500
 
-#: Each spelling that carries a pattern, with each failure: the two filters, and the two options
-#: whose patterns yt-dlp compiles while it parses, outside its own `re.error` handling.
+#: Each spelling that carries a pattern, with each failure: the two filters, and the option whose
+#: patterns yt-dlp compiles while it parses, outside its own `re.error` handling.
+#: *(`--download-sections` was the second such option until `T-252` built its control, which
+#: checks its patterns in `core/sections.py` and is tested there.)*
 UNCOMPILABLE: Final = [
     pytest.param(option, f"{prefix}{pattern}", pattern, raised, id=f"{option}-{raised.__name__}")
     for option, prefix in (
         ("--match-filters", "title~="),
         ("--break-match-filters", "title~="),
         ("--remove-chapters", ""),
-        ("--download-sections", ""),
     )
     for pattern, raised in ((_TOO_MANY, OverflowError), (_TOO_DEEP, RecursionError))
 ]
@@ -857,7 +858,7 @@ def test_options_that_contradict_each_other_are_refused_together(
     """The seam's half of `T184-R8`: a line refused with no option to blame is refused whole."""
     _contradicting(monkeypatch)
 
-    admission, argv = options_for("--continue --fragment-retries 3")
+    admission, argv = options_for("--continue --file-access-retries 3")
 
     assert not admission.usable
     assert argv == ()
@@ -875,26 +876,26 @@ def test_contradicting_options_are_named_by_spelling_and_never_by_value(
     _contradicting(monkeypatch)
 
     admission, _ = options_for(
-        '--add-headers "Authorization: Bearer T184_TOGETHER_CANARY" --fragment-retries 3'
+        '--add-headers "Authorization: Bearer T184_TOGETHER_CANARY" --file-access-retries 3'
     )
 
     [refusal] = admission.refusals
     assert refusal.reason == TOGETHER
-    assert refusal.option == "--add-headers, --fragment-retries"
+    assert refusal.option == "--add-headers, --file-access-retries"
     assert "CANARY" not in refusal.option
 
 
 def test_an_option_repeated_with_a_good_value_last_is_accepted() -> None:
     """The other direction of the same finding, and the reason the whole line has to decide.
 
-    The real command line takes the last value, so `--fragment-retries nope --fragment-retries 7`
-    is seven retries. Asking one option at a time refused it on the first, which would have
-    rejected a field yt-dlp accepts.
+    The real command line takes the last value, so `--file-access-retries nope
+    --file-access-retries 7` is seven retries. Asking one option at a time refused it on the
+    first, which would have rejected a field yt-dlp accepts.
     """
-    admission, argv = options_for("--fragment-retries nope --fragment-retries 7")
+    admission, argv = options_for("--file-access-retries nope --file-access-retries 7")
 
     assert admission.usable, [(r.option, r.reason) for r in admission.refusals]
-    assert argv == ("--fragment-retries", "nope", "--fragment-retries", "7")
+    assert argv == ("--file-access-retries", "nope", "--file-access-retries", "7")
 
 
 def test_the_refusal_for_a_bad_value_does_not_repeat_the_value() -> None:
@@ -957,3 +958,18 @@ def test_the_refusals_read_as_lines_a_person_can_be_shown() -> None:
 
     assert len(lines) == 1
     assert lines[0].startswith("--exec: ")
+
+
+@pytest.mark.parametrize("text", ["-N4", "-cN4"])
+def test_an_attached_short_value_is_read_as_yt_dlp_reads_it_even_when_refused(text: str) -> None:
+    """`T184-R8`'s attached value and cluster, held through the refusal since `T-252` built `-N`.
+
+    The refusal names `-N` alone: the seam read `-N4` as `-N` with the value `4`, and `-cN4` as
+    `-c` then that, which is optparse's reading. A tokenizer that kept `-N4` whole would name an
+    option yt-dlp does not have, and one that split `-cN4` wrongly would name `-4`.
+    """
+    admission, argv = options_for(text)
+
+    assert argv == ()
+    assert [refusal.option for refusal in admission.refusals] == ["-N"]
+    assert admission.refusals[0].reason == HAS_A_CONTROL

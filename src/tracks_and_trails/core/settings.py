@@ -47,6 +47,7 @@ show one, and `save()` writes the file that control edits. `ARC-008` decided it;
 deleted rather than amended, because it described behaviour that no longer exists.)*
 """
 
+import math
 import os
 import tomllib
 from contextlib import suppress
@@ -57,6 +58,7 @@ from typing import Any, Final
 from platformdirs import user_config_dir
 
 from tracks_and_trails.core.models import (
+    MOST_CONCURRENT_FRAGMENTS,
     MOST_NAME_CHARACTERS,
     AudioCodec,
     FileNaming,
@@ -146,6 +148,11 @@ _NETWORK_TABLE: Final = "network"
 _PROXY_KEY: Final = "proxy"
 _RATE_LIMIT_KEY: Final = "rate_limit_bytes"
 _RETRIES_KEY: Final = "retries"
+#: `T-252`'s four, under the names `NetworkOptions` gives them.
+_FRAGMENT_RETRIES_KEY: Final = "fragment_retries"
+_EXTRACTOR_RETRIES_KEY: Final = "extractor_retries"
+_SOCKET_TIMEOUT_KEY: Final = "socket_timeout"
+_CONCURRENT_FRAGMENTS_KEY: Final = "concurrent_fragments"
 
 #: The band of rate limits this application will hold, in bytes per second (`T-196`).
 #:
@@ -181,6 +188,12 @@ RATE_LIMIT_MAXIMUM_BYTES: Final = (2**31 - 1) * 1024
 #: has already failed, so a hundred is generous for any real intent and low enough that `1000`
 #: does not survive. Clamped and reported, like the rate limit above.
 RETRIES_MAXIMUM: Final = 100
+
+#: The longest a silent server is waited for, in seconds (`T-252`).
+#:
+#: `RETRIES_MAXIMUM`'s reasoning again: a catcher for an extra digit. yt-dlp waits 20 seconds, and
+#: ten minutes is longer than anyone means a connection to hang before it counts as dropped.
+SOCKET_TIMEOUT_MAXIMUM: Final = 600
 
 #: The first line every cookies jar this application can use carries (`T197-R5`).
 #:
@@ -430,10 +443,19 @@ class Settings:
                 "the band the settings screen can display. A file outside it is clamped and "
                 "reported instead."
             )
-        if self.network.retries is not None and self.network.retries > RETRIES_MAXIMUM:
+        for name in (_RETRIES_KEY, _FRAGMENT_RETRIES_KEY, _EXTRACTOR_RETRIES_KEY):
+            count = getattr(self.network, name)
+            if count is not None and count > RETRIES_MAXIMUM:
+                raise ValueError(
+                    f"Settings.network.{name} is {count}; the ceiling is {RETRIES_MAXIMUM}. A "
+                    "file asking for more is clamped and reported instead."
+                )
+        timeout = self.network.socket_timeout
+        if timeout is not None and timeout > SOCKET_TIMEOUT_MAXIMUM:
             raise ValueError(
-                f"Settings.network.retries is {self.network.retries}; the ceiling is "
-                f"{RETRIES_MAXIMUM}. A file asking for more is clamped and reported instead."
+                f"Settings.network.socket_timeout is {timeout}; the ceiling is "
+                f"{SOCKET_TIMEOUT_MAXIMUM} seconds. A file asking for more is clamped and "
+                "reported instead."
             )
 
 
@@ -954,7 +976,7 @@ def _rate_limit_from(raw: Any) -> tuple[int | None, str | None]:
     return raw, None
 
 
-def _retries_from(raw: Any) -> tuple[int | None, str | None]:
+def _retries_from(raw: Any, key: str = _RETRIES_KEY) -> tuple[int | None, str | None]:
     """Coerce a stored retry count. **Never raises** (`T-196`).
 
     `_rate_limit_from`'s shape with one difference that is the whole point: **zero is valid
@@ -962,23 +984,73 @@ def _retries_from(raw: Any) -> tuple[int | None, str | None]:
     per second is not a real speed. Absent means yt-dlp's own default, which this module
     deliberately does not know — writing 10 here would be a second copy of a library's default,
     and a wrong one the day it changes.
+
+    **Three keys read this way since `T-252`**: the transfer's, a refused piece's and the page's.
     """
     if raw is None:
         return None, None
     if isinstance(raw, bool) or not isinstance(raw, int):
         return None, (
-            f"{_NETWORK_TABLE}.{_RETRIES_KEY} is {raw!r}, which is not a whole number. The "
+            f"{_NETWORK_TABLE}.{key} is {raw!r}, which is not a whole number. The "
             "downloader's own retry count is in use."
         )
     if raw < 0:
         return None, (
-            f"{_NETWORK_TABLE}.{_RETRIES_KEY} is {raw}, which is not a number of retries. The "
+            f"{_NETWORK_TABLE}.{key} is {raw}, which is not a number of retries. The "
             "downloader's own retry count is in use."
         )
     if raw > RETRIES_MAXIMUM:
         return RETRIES_MAXIMUM, (
-            f"{_NETWORK_TABLE}.{_RETRIES_KEY} is {raw}, which is more than this application "
+            f"{_NETWORK_TABLE}.{key} is {raw}, which is more than this application "
             f"holds. {RETRIES_MAXIMUM} is in use."
+        )
+    return raw, None
+
+
+def _timeout_from(raw: Any) -> tuple[float | None, str | None]:
+    """Coerce a stored socket timeout, in seconds. **Never raises** (`T-252`).
+
+    Zero or less is refused rather than read as *wait for ever*: yt-dlp's library takes it and the
+    job then fails, and the absent key is how a file says *the downloader's own*.
+    """
+    key = f"{_NETWORK_TABLE}.{_SOCKET_TIMEOUT_KEY}"
+    if raw is None:
+        return None, None
+    if isinstance(raw, bool) or not isinstance(raw, int | float) or not math.isfinite(raw):
+        return None, (
+            f"{key} is {raw!r}, which is not a number of seconds. The downloader's own timeout "
+            "is in use."
+        )
+    if raw <= 0:
+        return None, (
+            f"{key} is {raw}, which is not a time to wait. The downloader's own timeout is in use."
+        )
+    if raw > SOCKET_TIMEOUT_MAXIMUM:
+        return float(SOCKET_TIMEOUT_MAXIMUM), (
+            f"{key} is {raw}, which is longer than this application waits. "
+            f"{SOCKET_TIMEOUT_MAXIMUM} seconds is in use."
+        )
+    return float(raw), None
+
+
+def _fragments_from(raw: Any) -> tuple[int | None, str | None]:
+    """Coerce a stored count of pieces fetched at once. **Never raises** (`T-252`).
+
+    Past `MOST_CONCURRENT_FRAGMENTS`, the ruled cap, it is clamped and reported, as a retry count
+    past its ceiling is.
+    """
+    key = f"{_NETWORK_TABLE}.{_CONCURRENT_FRAGMENTS_KEY}"
+    if raw is None:
+        return None, None
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 1:
+        return None, (
+            f"{key} is {raw!r}, which is not a number of pieces. One at a time, the downloader's "
+            "own, is in use."
+        )
+    if raw > MOST_CONCURRENT_FRAGMENTS:
+        return MOST_CONCURRENT_FRAGMENTS, (
+            f"{key} is {raw}, which is more than this application fetches at once. "
+            f"{MOST_CONCURRENT_FRAGMENTS} is in use."
         )
     return raw, None
 
@@ -986,15 +1058,43 @@ def _retries_from(raw: Any) -> tuple[int | None, str | None]:
 def _network_from(table: dict[str, Any]) -> tuple[NetworkOptions, str | None]:
     """The `[network]` table as one value, and everything it had to discard (`T-196`).
 
-    **The three are read independently**, for the reason `load()` reads `[queue]` and
+    **Each key is read independently**, for the reason `load()` reads `[queue]` and
     `[[preset]]` independently: a rate limit somebody typed as `"1M"` must not cost the user
     their proxy, and every reason that applies is reported rather than the first one found.
     """
     proxy, proxy_reason = _proxy_from(table.get(_PROXY_KEY))
     rate_limit, rate_reason = _rate_limit_from(table.get(_RATE_LIMIT_KEY))
     retries, retries_reason = _retries_from(table.get(_RETRIES_KEY))
-    reasons = [reason for reason in (proxy_reason, rate_reason, retries_reason) if reason]
-    options = NetworkOptions(proxy=proxy, rate_limit_bytes=rate_limit, retries=retries)
+    fragment_retries, fragment_reason = _retries_from(
+        table.get(_FRAGMENT_RETRIES_KEY), _FRAGMENT_RETRIES_KEY
+    )
+    extractor_retries, extractor_reason = _retries_from(
+        table.get(_EXTRACTOR_RETRIES_KEY), _EXTRACTOR_RETRIES_KEY
+    )
+    timeout, timeout_reason = _timeout_from(table.get(_SOCKET_TIMEOUT_KEY))
+    fragments, fragments_reason = _fragments_from(table.get(_CONCURRENT_FRAGMENTS_KEY))
+    reasons = [
+        reason
+        for reason in (
+            proxy_reason,
+            rate_reason,
+            retries_reason,
+            fragment_reason,
+            extractor_reason,
+            timeout_reason,
+            fragments_reason,
+        )
+        if reason
+    ]
+    options = NetworkOptions(
+        proxy=proxy,
+        rate_limit_bytes=rate_limit,
+        retries=retries,
+        fragment_retries=fragment_retries,
+        extractor_retries=extractor_retries,
+        socket_timeout=timeout,
+        concurrent_fragments=fragments,
+    )
     return options, ("\n".join(reasons) if reasons else None)
 
 
@@ -1367,7 +1467,7 @@ def _preset_from(raw: Any) -> Preset:
         values["convert_subtitles"] = SubtitleFormat(values["convert_subtitles"])
     if "check_formats" in values:
         values["check_formats"] = FormatCheck(values["check_formats"])
-    for name in ("post_processors", "subtitle_languages"):
+    for name in ("post_processors", "subtitle_languages", "download_sections"):
         if name in values:
             values[name] = tuple(values[name])
     return Preset(**values, built_in=False)
@@ -1869,6 +1969,16 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
                 _RETRIES_KEY,
                 None if settings.network.retries is None else str(settings.network.retries),
             ),
+            # `T-252`'s four, each absent while nobody chose, as the three above are.
+            *(
+                (key, None if (value := getattr(settings.network, key)) is None else str(value))
+                for key in (
+                    _FRAGMENT_RETRIES_KEY,
+                    _EXTRACTOR_RETRIES_KEY,
+                    _SOCKET_TIMEOUT_KEY,
+                    _CONCURRENT_FRAGMENTS_KEY,
+                )
+            ),
         ]
         network_comments = {
             _PROXY_KEY: "# A proxy, as scheme://host[:port]. It may not carry a username or "
@@ -1877,6 +1987,14 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             "line for no limit.",
             _RETRIES_KEY: "# How many times the downloader retries inside one attempt. Delete "
             "the line for its command line's default, which the settings screen shows.",
+            _FRAGMENT_RETRIES_KEY: "# How many times a piece of a stream the server refuses is "
+            "retried. Delete the line for the downloader's own.",
+            _EXTRACTOR_RETRIES_KEY: "# How many times reading a page is retried. Delete the line "
+            "for the downloader's own.",
+            _SOCKET_TIMEOUT_KEY: "# Seconds a silent server is waited for, up to "
+            f"{SOCKET_TIMEOUT_MAXIMUM}. Delete the line for the downloader's own.",
+            _CONCURRENT_FRAGMENTS_KEY: "# Pieces of a stream each download fetches at once, 1 "
+            f"to {MOST_CONCURRENT_FRAGMENTS}. Delete the line for one at a time.",
         }
         written = [(key, value) for key, value in network_pairs if value is not None]
         network_lines = (

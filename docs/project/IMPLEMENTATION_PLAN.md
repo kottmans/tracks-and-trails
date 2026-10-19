@@ -5,7 +5,7 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-10-19 — §Phase 4.5: `T-248` built and ruled; the audit's counts.
+**Last updated:** 2026-10-19 — §Phase 4.5: `T-248` and `T-252` built; the audit's counts.
 Previously 2026-10-11 — §Phase 4.5 amended: no `0.1.1`, `T-351` first, and owners for
 the two deliverables that had none. Previously 2026-09-11 — **§Phase 5's *Phase 4 approved* prerequisite relaxed for the start of
 the work by maintainer ruling**, with the first release still conditional on that approval; its four
@@ -855,7 +855,7 @@ with their help suppressed. Classified:
 
 | | |
 |---|---|
-| **65** get a typed control | **50 already have one**, `T-247`'s seven since 2026-10-11, `T-249`'s and `T-251`'s since 2026-10-14, `T-250`'s six since 2026-10-18 and `T-248`'s five since 2026-10-19; the other **15** are four tasks, `T-252`…`T-255` |
+| **65** get a typed control | **57 already have one**, `T-247`'s seven since 2026-10-11, `T-249`'s and `T-251`'s since 2026-10-14, `T-250`'s six since 2026-10-18, and `T-248`'s five and `T-252`'s seven since 2026-10-19; the other **8** are three tasks, `T-253`…`T-255` |
 | **91** are escape-hatch only | `T-184`. Two moved to typed with `T-250`, by its ruling |
 | **94** are refused | the application owns them (`app:sets`, `app:plumbing`, `app:policy`, `app:contained`), or `SEC-003`/`SEC-004`/`SEC-005` forbid them. Two moved here from typed with `T-248`, by its ruling: the Windows pair |
 | **0** are unclassified | ~~`--legacy-server-connect`, a transport-security downgrade the audit first missed (`T183-R3`)~~ — **ruled forbidden by `SEC-005` on 2026-08-21**, which unblocked `T-184` |

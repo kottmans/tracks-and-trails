@@ -14,6 +14,7 @@ classification the worker gives a spent retry count.
 from __future__ import annotations
 
 import io
+from dataclasses import replace
 from typing import Any, Final
 
 import pytest
@@ -83,8 +84,12 @@ def test_a_chosen_count_is_sent_as_chosen_and_zero_stays_zero(chosen: int) -> No
     assert options["fragment_retries"] == PINNED_COUNTS["fragment_retries"]
 
 
-def test_a_fragment_count_typed_in_the_options_field_wins() -> None:
-    options = adapter.build_options(a_request("--fragment-retries 3"), "%(title)s.%(ext)s")
+def test_a_fragment_count_chosen_in_settings_wins() -> None:
+    """*(A count typed in the options field won until `T-252` gave the count a setting, which
+    refuses the spelling there.)*"""
+    request = replace(a_request(), fragment_retries=3)
+
+    options = adapter.build_options(request, "%(title)s.%(ext)s")
 
     assert options["fragment_retries"] == 3
 

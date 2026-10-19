@@ -89,9 +89,10 @@ _BASE: Final[dict[str, Any]] = {
 #:
 #: The field holds the **admitted argv** since the ruling of 2026-09-22 (`T184-R9`), so the keys
 #: it contributes are the destinations of the options named here rather than the pairs themselves.
-_HATCH_TEXT: Final = "--fragment-retries 10"
-_HATCH_ARGV: Final[tuple[str, ...]] = ("--fragment-retries", "10")
-_HATCH_ON: Final[tuple[str, ...]] = ("fragment_retries",)
+#: *(`--fragment-retries 10` until `T-252` built its control, which refuses it here.)*
+_HATCH_TEXT: Final = "--file-access-retries 3"
+_HATCH_ARGV: Final[tuple[str, ...]] = ("--file-access-retries", "3")
+_HATCH_ON: Final[tuple[str, ...]] = ("file_access_retries",)
 
 #: One value per `DownloadRequest` field that can turn a branch on inside `build_options`.
 _FIELD_ON: Final = {
@@ -124,6 +125,14 @@ _FIELD_ON: Final = {
     "proxy": "http://127.0.0.1:8080",
     "rate_limit_bytes": 1024,
     "retries": 0,
+    # `T-252`'s connection settings on both passes, and which part on the download only. Two
+    # sections, so the download's case also sets the section template.
+    "fragment_retries": 3,
+    "extractor_retries": 5,
+    "socket_timeout": 7.5,
+    "concurrent_fragments": 4,
+    "download_sections": ("*1-2", "*3-4"),
+    "live_from_start": True,
     "cookies_from_browser": "firefox",
     # `T-249`'s kept files, on the download only. `ALL` is the case that sets a key of its own;
     # `BEST` shares `writethumbnail` with `embed_thumbnail`, already turned on above.

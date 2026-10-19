@@ -136,7 +136,8 @@ def format_name(choice: FormatChoice) -> str:
     name = preset_name_for(choice) or _converting_preset_for(choice) or _base_preset_for(choice)
     clauses = (
         f"{_format_depth(choice)}{_post_processing(choice)}{_subtitle_depth(choice)}"
-        f"{_kept_beside(choice)}{_which_items(choice)}{_extra_options(choice)}"
+        f"{_kept_beside(choice)}{_which_items(choice)}{_which_part(choice)}"
+        f"{_extra_options(choice)}"
     )
     if name is None:
         return f"{choice.format_selector}{clauses}"
@@ -172,8 +173,9 @@ def _base_preset_for(choice: FormatChoice) -> str | None:
     preset with some matched nothing and its row read as the raw selector — `T140-R3`'s defect
     again, through the newest field. `_extra_options` says they are there instead. **So are the
     size and date filters** (`T-247`), the files kept beside the media (`T-249`), the subtitle
-    depth (`T-251`) and the format depth (`T-250`), for the same reason, and `_which_items`,
-    `_kept_beside`, `_subtitle_depth` and `_format_depth` say them.
+    depth (`T-251`), the format depth (`T-250`) and which part is downloaded (`T-252`), for the
+    same reason, and `_which_items`, `_kept_beside`, `_subtitle_depth`, `_format_depth` and
+    `_which_part` say them.
     """
     plain = replace(
         unadjusted(choice),
@@ -192,6 +194,8 @@ def _base_preset_for(choice: FormatChoice) -> str | None:
         max_filesize=None,
         uploaded_after=None,
         uploaded_before=None,
+        download_sections=(),
+        live_from_start=False,
     )
     if plain == choice:
         return None
@@ -321,6 +325,17 @@ def _which_items(choice: FormatChoice) -> str:
         parts.append(f"uploaded on or after {_day(after)}")
     elif before is not None:
         parts.append(f"uploaded on or before {_day(before)}")
+    return "".join(f" · {part}" for part in parts)
+
+
+def _which_part(choice: FormatChoice) -> str:
+    """The sections as typed and *from the start*, and nothing for the whole item (`T-252`)."""
+    parts: list[str] = []
+    if choice.download_sections:
+        noun = "section" if len(choice.download_sections) == 1 else "sections"
+        parts.append(f"{noun} {'; '.join(choice.download_sections)}")
+    if choice.live_from_start:
+        parts.append("live from the start")
     return "".join(f" · {part}" for part in parts)
 
 

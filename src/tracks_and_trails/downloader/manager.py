@@ -63,7 +63,7 @@ import multiprocessing
 import threading
 import time
 from collections import deque
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from functools import partial
@@ -1446,6 +1446,15 @@ class DownloadManager(QObject):
         from tracks_and_trails.downloader import ytdlp_adapter as adapter
 
         return adapter.default_retries()
+
+    def connection_defaults(self) -> Mapping[str, float]:
+        """What `T-252`'s four connection settings are when nobody chose, for the Settings screen.
+
+        `default_retries`' reason: the numbers are yt-dlp's, read at the pin, and `ui/` may not ask.
+        """
+        from tracks_and_trails.downloader import ytdlp_adapter as adapter
+
+        return adapter.connection_defaults()
 
     def requires_ffmpeg(self, preset: Preset) -> bool:
         """Whether `preset`'s post-processing needs ffmpeg (`REQ-024`, `T-111`).

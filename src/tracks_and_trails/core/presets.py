@@ -60,6 +60,7 @@ from tracks_and_trails.core.models import (
     FormatCheck,
     KeptThumbnails,
     MediaKind,
+    NetworkOptions,
     Preset,
     SubtitleFormat,
 )
@@ -477,6 +478,10 @@ class FormatChoice:
     max_filesize: int | None
     uploaded_after: str | None
     uploaded_before: str | None
+    #: Which part is downloaded (`T-252`), for the same reason: a job keeping two minutes of a
+    #: video is not the job that keeps all of it.
+    download_sections: tuple[str, ...]
+    live_from_start: bool
 
 
 def format_choice_of(source: DownloadRequest | Preset) -> FormatChoice:
@@ -622,6 +627,8 @@ def to_request(
         # the job keeps the day it named when it was queued, so a retry keeps its window.
         uploaded_after=_frozen(preset.uploaded_after),
         uploaded_before=_frozen(preset.uploaded_before),
+        download_sections=preset.download_sections,
+        live_from_start=preset.live_from_start,
         extra_options=preset.extra_options,
         extra_option_argv=preset.extra_option_argv,
     )
@@ -663,6 +670,10 @@ def needs_ffmpeg(preset: Preset) -> bool:
         return True
     if preset.embed_metadata or preset.embed_chapters or preset.embed_thumbnail:
         return True
+    # **Cutting a section is ffmpeg's download, not a post-processor** (`T-252`): yt-dlp sends any
+    # item with a section to its ffmpeg downloader, or aborts the download when there is none.
+    if preset.download_sections:
+        return True
     # `post_processors` is a free list of yt-dlp keys; anything in it may be an ffmpeg one, and
     # this module cannot ask which. Treated as needing ffmpeg, which errs towards withdrawing an
     # offer rather than making one that would be refused (`UX-005` §5).
@@ -701,11 +712,10 @@ def with_connection_of(request: DownloadRequest, source: DownloadRequest) -> Dow
     back to yt-dlp's default. A field added to `NetworkOptions` and not listed here fails
     `tests/unit/test_presets.py::test_every_network_option_survives_a_retarget`, which derives the
     set from that dataclass rather than restating it.
+
+    **Every field of `NetworkOptions`, by name** (`T-252`), which the request shares:
+    `with_naming`'s rule, so the four connection settings `T-252` added are carried without a list
+    to forget one from.
     """
-    return replace(
-        request,
-        cookies_from_browser=source.cookies_from_browser,
-        proxy=source.proxy,
-        rate_limit_bytes=source.rate_limit_bytes,
-        retries=source.retries,
-    )
+    connection = {item.name: getattr(source, item.name) for item in fields(NetworkOptions)}
+    return replace(request, cookies_from_browser=source.cookies_from_browser, **connection)

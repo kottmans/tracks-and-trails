@@ -478,6 +478,9 @@ def test_a_preset_owned_field_cannot_be_overridden(field_name: str) -> None:
         "max_filesize": 1,
         "uploaded_after": "20260101",
         "uploaded_before": "20260101",
+        # `T-252`'s part: a job keeping two minutes, or a stream from its start, is not the preset.
+        "download_sections": ("*1:00-3:00",),
+        "live_from_start": True,
     }
     assert field_name in sample, f"no hostile value written for {field_name}"
 
@@ -838,6 +841,11 @@ def test_every_network_option_survives_a_retarget() -> None:
         "proxy": "http://proxy.invalid:8080",
         "rate_limit_bytes": 4096,
         "retries": 7,
+        # `T-252`'s four.
+        "fragment_retries": 4,
+        "extractor_retries": 2,
+        "socket_timeout": 7.5,
+        "concurrent_fragments": 3,
     }
     carried = {field.name for field in fields(NetworkOptions)}
     assert carried == set(samples), (

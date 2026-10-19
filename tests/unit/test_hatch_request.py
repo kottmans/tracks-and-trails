@@ -168,14 +168,14 @@ def test_a_row_written_before_the_field_existed_still_loads() -> None:
 def test_the_admitted_options_reach_the_option_dictionary() -> None:
     """The acceptance criterion, asserted on the dictionary rather than on a download."""
     request = a_request(
-        extra_options="--continue --fragment-retries 10",
-        extra_option_argv=("--continue", "--fragment-retries", "10"),
+        extra_options="--continue --file-access-retries 10",
+        extra_option_argv=("--continue", "--file-access-retries", "10"),
     )
 
     options = build_options(request, BASE["output_template"])
 
     assert options["continuedl"] is True
-    assert options["fragment_retries"] == 10
+    assert options["file_access_retries"] == 10
 
 
 def test_the_probe_sees_the_same_options_as_the_download() -> None:
@@ -274,15 +274,18 @@ def test_the_ffmpeg_preflight_counts_the_hatch_s_work() -> None:
 
 @pytest.mark.parametrize("ffmpeg_installed", [False, True])
 @pytest.mark.parametrize(
-    ("text", "partial"),
+    ("sections", "partial"),
     [
-        ('--download-sections "*1-2"', True),
-        ("--fragment-retries 3", False),
-        ("", False),
+        (("*1-2",), True),
+        (("*1-2", "*3-4"), True),
+        ((), False),
     ],
 )
 def test_a_partial_download_needs_ffmpeg_by_yt_dlp_s_own_decision(
-    text: str, partial: bool, ffmpeg_installed: bool, monkeypatch: pytest.MonkeyPatch
+    sections: tuple[str, ...],
+    partial: bool,
+    ffmpeg_installed: bool,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`T184-R14`, seventh round: downloading counts as ffmpeg work, not only post-processing.
 
@@ -291,6 +294,8 @@ def test_a_partial_download_needs_ffmpeg_by_yt_dlp_s_own_decision(
     downloading the video partially, but ffmpeg is not installed"*. Here the options the job is
     built with drive yt-dlp's own range callback and downloader choice for an ordinary item.
     yt-dlp aborts exactly when an item has a `section_start` and the choice is not `FFmpegFD`.
+
+    *(Typed since `T-252` built the sections' control, which refuses the spelling here.)*
     """
     from yt_dlp.downloader import get_suitable_downloader
     from yt_dlp.downloader.external import FFmpegFD
@@ -298,16 +303,15 @@ def test_a_partial_download_needs_ffmpeg_by_yt_dlp_s_own_decision(
     monkeypatch.setattr(
         FFmpegFD, "available", classmethod(lambda _cls, _path=None: ffmpeg_installed)
     )
-    _, argv = options_for(text)
-    request = a_request(extra_options=text, extra_option_argv=argv)
+    request = a_request(download_sections=sections)
     options = build_options(request, BASE["output_template"])
     item = {"id": "t184", "url": "https://example.invalid/t184.mp4", "ext": "mp4", "duration": 10}
 
     ranges = options.get("download_ranges", lambda *_: [{}])
-    sections = [section for section in ranges(item, None) if section]
+    yielded = [section for section in ranges(item, None) if section]
     cut = [
         {**item, "section_start": section["start_time"], "section_end": section["end_time"]}
-        for section in sections
+        for section in yielded
     ]
     aborts = any(get_suitable_downloader(dict(each), options) is not FFmpegFD for each in cut)
 
@@ -318,16 +322,13 @@ def test_a_partial_download_needs_ffmpeg_by_yt_dlp_s_own_decision(
     )
 
 
-@pytest.mark.parametrize("text", ['--download-sections "intro"', '--download-sections "*from-url"'])
-def test_sections_that_depend_on_the_item_are_counted_as_ffmpeg_work(text: str) -> None:
+@pytest.mark.parametrize("section", ["intro", "*from-url"])
+def test_sections_that_depend_on_the_item_are_counted_as_ffmpeg_work(section: str) -> None:
     """A chapter pattern cuts only items with a matching chapter, and `*from-url` only a URL with
     a time in it. Neither is knowable before the item, so both count: a refusal up front costs
-    less than an abort after the probe. `download_range_func.__eq__` ignores `from_info`, which is
-    why the predicate asks what the ranges hold rather than comparing them with the default.
+    less than an abort after the probe. *(Typed since `T-252`.)*
     """
-    _, argv = options_for(text)
-
-    assert requires_ffmpeg(a_request(extra_options=text, extra_option_argv=argv))
+    assert requires_ffmpeg(a_request(download_sections=(section,)))
 
 
 @pytest.mark.parametrize(
@@ -338,7 +339,6 @@ def test_sections_that_depend_on_the_item_are_counted_as_ffmpeg_work(text: str) 
             ("--match-filters", "title~="),
             ("--break-match-filters", "title~="),
             ("--remove-chapters", ""),
-            ("--download-sections", ""),
         )
         for pattern, failure in (
             ("a{4294967296}", "overflow"),
@@ -477,15 +477,15 @@ def test_an_option_with_several_destinations_brings_only_what_it_changed() -> No
     destination, whose value travels even when it equals the default.
     """
     request = a_request(
-        extra_options="--compat-options no-live-chat --fragment-retries 10",
-        extra_option_argv=("--compat-options", "no-live-chat", "--fragment-retries", "10"),
+        extra_options="--compat-options no-live-chat --file-access-retries 3",
+        extra_option_argv=("--compat-options", "no-live-chat", "--file-access-retries", "3"),
     )
 
     options = build_options(request, BASE["output_template"])
 
     assert options["compat_opts"] == {"no-live-chat"}
     assert not options.get("ignoreerrors"), "a failed download would be reported as a success"
-    assert options["fragment_retries"] == 10, "T184-R1: a value equal to the default was dropped"
+    assert options["file_access_retries"] == 3, "T184-R1: a value equal to the default was dropped"
 
 
 # --- what a log may carry (`T184-R6`) ------------------------------------------------------------
@@ -687,14 +687,16 @@ def test_a_path_the_hatch_names_is_redacted_however_short(registered: None) -> N
     [
         # `--sub-format best` was this case until `T-251` gave it a control, refused in the hatch.
         (("--merge-output-format", "mkv"), "mkv"),
-        # `--retries` was this case until `T-361` refused it, an alias of `-R`, which has a control.
-        (("--socket-timeout", "1000"), "1000"),
+        # `--retries` was this case until `T-361` refused it, an alias of `-R`, which has a control,
+        # then `--socket-timeout` until `T-252` gave it a setting.
+        (("--buffer-size", "1000"), "1000"),
         (("--fixup", "never"), "never"),
         (("--convert-thumbnails", "webp"), "webp"),
         # `--max-filesize 100M` until `T-247` gave it a control, which refuses it here.
         (("--http-chunk-size", "10M"), "10M"),
         (("--sleep-requests", "1.25"), "1.25"),
-        (("--fragment-retries=10",), "10"),
+        # `--fragment-retries=10` until `T-252`, likewise.
+        (("--file-access-retries=10",), "10"),
     ],
 )
 def test_an_ordinary_value_is_not_redacted_into_nonsense(

@@ -151,6 +151,7 @@ def _deserialize_request(raw: str) -> DownloadRequest:
     payload: dict[str, Any] = json.loads(raw)
     payload["post_processors"] = tuple(payload.get("post_processors", ()))
     payload["subtitle_languages"] = tuple(payload.get("subtitle_languages", ()))
+    payload["download_sections"] = tuple(payload.get("download_sections", ()))
     if "media_kind" in payload:
         payload["media_kind"] = MediaKind(payload["media_kind"])
     if "audio_codec" in payload:

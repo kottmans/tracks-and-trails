@@ -621,6 +621,168 @@ then again after the ruling's wording replaced the provisional notes. Four worke
 `-n auto`: a run under `-n auto` beside the serial suite ran this host out of memory overnight. No
 Windows run: `STARBASE` is offline.
 
+### T-252 — Download tuning and the retry policy the settings screen shows
+
+**Status:** In Review — built 2026-10-19 on its rulings, at the maintainer's request that day.
+*(Was Proposed:)* **design ruled 2026-10-19**, questions 3 and 4 as recommended (`ARC-010` and
+`UX-015` amended that day), after questions 1 and 2 on 2026-10-15 as `T-364`. Filed 2026-08-16 by
+`T-183`. *(Since `T-364`, built 2026-10-18, both
+counts are the command line's ten when nobody chose, and a missing fragment fails the attempt;
+this task's controls start from that.)* **Measured 2026-09-18, while correcting
+`T184-R1`: fragment retries are zero today, not yt-dlp's ten.** `build_options` deliberately sets
+`--retries` and not `--fragment-retries` (its own comment, from the maintainer's 2026-08-13 ruling),
+and the consequence was not measured at the time: `downloader/fragment.py` reads
+`self.params.get('fragment_retries')` with **no default** into `RetryManager`, whose first line is
+`self.retries = _retries or 0`. So an absent key is **no retries at all** on every fragmented
+format, which is most of YouTube. That is this task's to decide rather than a defect to fix
+quietly — the policy it presents has to start from what the application really does now.
+**Options (7):** `-N/--concurrent-fragments`, `--fragment-retries`, `--extractor-retries`,
+`--socket-timeout`, `--download-sections`, `--live-from-start`, `--no-live-from-start`
+**Specific criteria:** **the three retry knobs this task owns are presented as one policy**, not
+three integers — and the entry no longer calls them *the whole* retry policy, because
+`--file-access-retries` and `--retry-sleep` stay in the hatch (`T183-R4`'s wording point) —
+`--retries` already exists and `ytdlp_adapter` carries a comment deferring `--fragment-retries`
+here by name, so this task is where the difference between them stops needing a comment to explain.
+`--download-sections` takes a time-range grammar that is parsed and refused at edit time.
+`-N` interacts with the pool's own concurrency (`ARC-007`, `CONCURRENCY_MAXIMUM = 16`) and the
+interaction is measured rather than assumed.
+
+#### Mapped 2026-10-14 — the design, before the code
+
+Mapped against `8b0aad6` with the worker's own `run_session`, a local HLS stream and a scripted
+server that fails chosen requests; probes are in the implementer's scratch notes, not the
+repository.
+
+- **A fragmented download can end *Done* with a fragment missing — in `0.1.0` as on `main`.** One
+  503 on fragment 3 of a 12-second stream: the job ended `Succeeded` with 250 of 300 video frames
+  (155,465 bytes against 185,873), and yt-dlp's `Skipping fragment 3` reached no row. A 403 did
+  the same with retries set to 3. yt-dlp's own command line, on its defaults, retried both and
+  delivered the whole file. The cause is two library defaults the command line overrides:
+  `fragment_retries` absent is zero, and `skip_unavailable_fragments` is on. `v0.1.0`'s
+  `build_options` and pin are the same. **Severity guess Critical** under §14's *silent wrong
+  result*, at least High given the narrow trigger.
+- **`retries` absent is zero as well**, not only `fragment_retries` (`downloader/http.py:360`,
+  read). Ten is the *command line's* default. So Settings' *The downloader's own* means no retries:
+  one 503 partway through a progressive transfer failed the job as `EXTRACTOR_ERROR`, which the
+  queue's automatic retry (NETWORK only) never takes. With retries 3 it succeeded. **Medium guess.**
+- **The settings screen's retry text is untrue three ways at `HEAD`**: pieces retry zero times by
+  default; the setting does govern a fragment's 5xx and connection errors (each fragment is
+  fetched by an HTTP downloader built from the same params); only a 4xx or an incomplete read falls
+  to the fragment count.
+- **This entry's *most of YouTube* is wrong here**: all three built-ins chose `https` formats on a
+  YouTube probe, so `retries` is the one that matters there. Fragments matter on HLS and DASH
+  sites and on every `--live-from-start` capture.
+- **Two hatch defects with `--download-sections`.** Two ranges are admitted and the second
+  overwrites the first in the one output path (`Deleting existing file`, job `Succeeded`): a
+  `REQ-031` defect, **High guess**. And it aborts *"ffmpeg is not installed"* whenever ffmpeg is
+  reached through `ffmpeg_location` rather than `PATH`, because yt-dlp's ffmpeg *downloader* reads
+  only `PATH` unless its command line sets a class attribute; that is how the Windows installer
+  finds its bundled copy (inferred, not run on Windows). **Medium guess, High once a control ships.**
+- **`-N` multiplies with the pool**: one job at `-N 4` peaked at 4 concurrent requests, three jobs
+  at 12; the worst case is 16 × N and yt-dlp sets no ceiling. `--socket-timeout -1` passes edit
+  time and fails the job (`T184-R8`'s class, Low).
+
+**Ruled 2026-10-15:** the shipped defect is fixed first, as `T-364`, on questions 1 and 2 as
+recommended. Questions 3 and 4 are open.
+
+**Ruled 2026-10-19: questions 3 and 4 as recommended.** Fragment retries, extractor retries, the
+socket timeout and `-N`, capped at 8, are Settings, beside the retry count in *Network*;
+`--download-sections` and the live-from-start pair are preset fields in a *Which part* group below
+*Which items*. Several sections write one file each, named by the stem and a section suffix and
+claimed as one family.
+
+**Questions for the maintainer** (recommended first):
+
+1. **What *nobody chose* sends for `retries` and `fragment_retries`.** yt-dlp's command-line
+   defaults, read from `parse_options([])` at the pin and held there by a test, shown as *10 — the
+   downloader's own*; changes behaviour for `0.1.0` users, which the changelog says. / Numbers
+   chosen in `core/settings.py` (a second copy of a library default, which `T-196` declined). /
+   Leave them absent and relabel the default *No retries*.
+2. **A fragment still missing after its retries.** `skip_unavailable_fragments=False`, so the
+   attempt fails and the job's own retry resumes from staging, with the hatch's
+   `--skip-unavailable-fragments` kept as the user's opt-in (a second shared key, an `ARC-010`
+   amendment). / Keep the skip and mark the job *Done, incomplete* (log parsing, a new outcome). /
+   Only restore the counts (still silent after eleven failures).
+3. **Where the seven live.** Fragment retries, extractor retries, socket timeout and `-N` (capped
+   at 8) in *Settings › Network* beside the retry count; sections and live-from-start per preset in
+   a *Which part* group below *Which items* (`UX-015`). / All seven per preset. / All in Settings.
+4. **Several sections.** One file per section, named by the stem and a section suffix, claimed as
+   one family. / Refuse a second section (narrows `REQ-030`). / Join them (a new ffmpeg step).
+
+#### Built 2026-10-19
+
+- **Four connection settings, in *Settings › Network*** (ruling 3). `NetworkOptions` and
+  `DownloadRequest` gain `fragment_retries`, `extractor_retries`, `socket_timeout` and
+  `concurrent_fragments`, frozen into each request with the other network settings; the add dialog
+  and `with_connection_of` now carry every `NetworkOptions` field by name, so none can be
+  forgotten. `None` is the downloader's own: a piece's retries fall back to the command line's ten
+  (`T-364`), and the other three are left out, which the library reads as the command line does
+  (three, yt-dlp's 20 seconds, one piece). The model caps pieces at 8 and wants a positive
+  timeout; `[network]` is read key by key, clamping at 100 retries, 600 seconds and 8 pieces.
+- **One policy in three counts.** Each count is named by what it retries: the file transfer, a
+  piece the server refuses, reading the page. Each shows the downloader's own number, read at the
+  pin through the manager. The section says that waiting between retries and retrying a file the
+  computer could not write stay in the options field, so the screen no longer offers these as the
+  whole policy. The pieces control says the pool multiplies it.
+- **Which part, per preset** (ruling 3, `UX-015`). `download_sections` and `live_from_start` join
+  `Preset` and `DownloadRequest`, in a *Which part* group below *Which items*: one section per
+  line, checked as typed, withdrawn without ffmpeg (`FfmpegFeature.SECTIONS`) with the preset's own
+  carried. *From the start* acts on both passes, since it changes the formats a live stream offers.
+  The row's name says both.
+- **The grammar** is `core/sections.py`, a transcription of yt-dlp's `parse_chapters` and
+  `parse_duration`, regular expressions verbatim. `test_sections.py` binds it to the pin over
+  hand-picked and a few thousand generated spellings: accepted exactly when `parse_options`
+  accepts, read as the same seconds. One rule is stricter: a range that ends where or before it
+  starts is refused, since yt-dlp would ask ffmpeg for a negative length.
+- **One file per section** (ruling 4). yt-dlp numbers only a chapter match, so a
+  `download_range_func` subclass numbers every section in yt-dlp's order. A request that can write
+  several — two ranges or more, or any chapter pattern — names each `Stem (section N).ext`, while
+  the sidecars keep the base name and are written once for the item. The claim takes every section
+  and the sidecars as one family, numbered on the base name (`Clip (2) (section 1).mp4`), and reads a
+  subtitle yt-dlp recorded under a section's name at the base name it moved it to. One range writes
+  the one plain file. The preview names the first section.
+- **The mapped defects, closed.** Two sections no longer overwrite each other. A section works with
+  ffmpeg found only through its location: yt-dlp's downloader checks a context variable only its
+  command line sets, so the worker sets it for the download (`ffmpeg_for_its_downloader`),
+  measured with `PATH` emptied before and after. A chapter pattern that matches nothing ends
+  Cancelled; a section with no ffmpeg is refused before a byte moves.
+- **`-N` measured, as the criterion asks**: on a local HLS stream of six one-second pieces, one
+  download at 4 held exactly 4 pieces open at once, and at the default exactly 1.
+- **The hatch.** Regenerating refuses the seven spellings, `-N` included, for their controls, and
+  six left `NOT_SECRET_VALUES`. Nothing the hatch admits sets `download_ranges` any more, so its half
+  of the sections' ffmpeg answer, `_cuts_sections`, is removed and its tests read the typed field.
+- **Tests.** New: `test_sections.py`, `test_download_tuning.py` and, in integration,
+  `test_download_sections.py`, the real worker against a clip and an HLS stream ffmpeg builds at
+  test time: two sections written as two cut files and the info JSON once, one section as one file,
+  ffmpeg only through its location, no ffmpeg, a pattern matching nothing, and the pieces at once.
+  The Settings, options editor, add dialog and composition tests cover the four controls and the
+  group.
+- **Existing tests changed with the behaviour**: hatch examples that used a now-refused option took
+  `--file-access-retries`, `--http-chunk-size`, `--buffer-size` or `--sleep-interval`; `-N4` and
+  `-cN4` are held through their refusal, since no admitted short option takes a value any more;
+  the section-ffmpeg cases, two unit tests and one case of the worker's ffmpeg gate, read the typed
+  field; and the audit derivation, the group order and the network samples gained the new fields.
+- **Measured while building**: a clip whose index sits at its end cannot be cut from a server
+  without range requests. ffmpeg failed with *Error during demuxing*, and yt-dlp still reported
+  success, keeping a 262-byte file. The test media is written with its index first.
+- **Not verified**: *from the start* against a real live stream, which has no local stand-in, so it
+  is held to `parse_options` and to both passes only; chapter matching against a real item with
+  chapters, held by a unit test of the numbering instead; and Windows, with `STARBASE` offline.
+- **Mutations, 34 of 34 caught**, each on a fresh copy of the tree: every connection key unsent,
+  the sections on the probe or not sent, the media unnumbered or the sidecars numbered, yt-dlp's own
+  numbering, the downloader's ffmpeg unset or its context not entered, the claim taking only the
+  first section or reading sidecars under section names, the preview unsectioned, the backwards rule
+  and the duration grammar, the model's checks, the cap, the file's reading and writing, the screen
+  storing a sentinel, the carries dropping a field, and the editor's sections, check, withdrawal
+  and name.
+
+**Checks, 2026-10-19, on Linux, base `c6e9dd4`**, with the project `.venv` on `PATH`: `ruff check
+.` and `ruff format --check .` (498 files); `mypy src` (73), bare `mypy` and `mypy --platform
+win32` (234 each); the table check up to date; `tests/unit tests/ui` under `-n 4`, **6,088
+passed**, 21 skipped; `tests/integration` under `-n 4`, **577 passed**. The first integration run
+failed one case of the worker's ffmpeg gate, still spelled through the hatch; it was moved to the
+typed field and the suite rerun whole. No Windows run: `STARBASE` is offline.
+
 ## Ready
 
 <a id="t-302"></a>
@@ -1152,93 +1314,6 @@ beats designing it against an imagined one.
 #### Out of scope
 
 - Any change to `T-014`'s current strict comparison, which is right until then
-
-### T-252 — Download tuning and the retry policy the settings screen shows
-
-**Status:** Proposed — **design ruled 2026-10-19**, questions 3 and 4 as recommended (`ARC-010` and
-`UX-015` amended that day), after questions 1 and 2 on 2026-10-15 as `T-364`. Filed 2026-08-16 by
-`T-183`. *(Since `T-364`, built 2026-10-18, both
-counts are the command line's ten when nobody chose, and a missing fragment fails the attempt;
-this task's controls start from that.)* **Measured 2026-09-18, while correcting
-`T184-R1`: fragment retries are zero today, not yt-dlp's ten.** `build_options` deliberately sets
-`--retries` and not `--fragment-retries` (its own comment, from the maintainer's 2026-08-13 ruling),
-and the consequence was not measured at the time: `downloader/fragment.py` reads
-`self.params.get('fragment_retries')` with **no default** into `RetryManager`, whose first line is
-`self.retries = _retries or 0`. So an absent key is **no retries at all** on every fragmented
-format, which is most of YouTube. That is this task's to decide rather than a defect to fix
-quietly — the policy it presents has to start from what the application really does now.
-**Options (7):** `-N/--concurrent-fragments`, `--fragment-retries`, `--extractor-retries`,
-`--socket-timeout`, `--download-sections`, `--live-from-start`, `--no-live-from-start`
-**Specific criteria:** **the three retry knobs this task owns are presented as one policy**, not
-three integers — and the entry no longer calls them *the whole* retry policy, because
-`--file-access-retries` and `--retry-sleep` stay in the hatch (`T183-R4`'s wording point) —
-`--retries` already exists and `ytdlp_adapter` carries a comment deferring `--fragment-retries`
-here by name, so this task is where the difference between them stops needing a comment to explain.
-`--download-sections` takes a time-range grammar that is parsed and refused at edit time.
-`-N` interacts with the pool's own concurrency (`ARC-007`, `CONCURRENCY_MAXIMUM = 16`) and the
-interaction is measured rather than assumed.
-
-#### Mapped 2026-10-14 — the design, before the code
-
-Mapped against `8b0aad6` with the worker's own `run_session`, a local HLS stream and a scripted
-server that fails chosen requests; probes are in the implementer's scratch notes, not the
-repository.
-
-- **A fragmented download can end *Done* with a fragment missing — in `0.1.0` as on `main`.** One
-  503 on fragment 3 of a 12-second stream: the job ended `Succeeded` with 250 of 300 video frames
-  (155,465 bytes against 185,873), and yt-dlp's `Skipping fragment 3` reached no row. A 403 did
-  the same with retries set to 3. yt-dlp's own command line, on its defaults, retried both and
-  delivered the whole file. The cause is two library defaults the command line overrides:
-  `fragment_retries` absent is zero, and `skip_unavailable_fragments` is on. `v0.1.0`'s
-  `build_options` and pin are the same. **Severity guess Critical** under §14's *silent wrong
-  result*, at least High given the narrow trigger.
-- **`retries` absent is zero as well**, not only `fragment_retries` (`downloader/http.py:360`,
-  read). Ten is the *command line's* default. So Settings' *The downloader's own* means no retries:
-  one 503 partway through a progressive transfer failed the job as `EXTRACTOR_ERROR`, which the
-  queue's automatic retry (NETWORK only) never takes. With retries 3 it succeeded. **Medium guess.**
-- **The settings screen's retry text is untrue three ways at `HEAD`**: pieces retry zero times by
-  default; the setting does govern a fragment's 5xx and connection errors (each fragment is
-  fetched by an HTTP downloader built from the same params); only a 4xx or an incomplete read falls
-  to the fragment count.
-- **This entry's *most of YouTube* is wrong here**: all three built-ins chose `https` formats on a
-  YouTube probe, so `retries` is the one that matters there. Fragments matter on HLS and DASH
-  sites and on every `--live-from-start` capture.
-- **Two hatch defects with `--download-sections`.** Two ranges are admitted and the second
-  overwrites the first in the one output path (`Deleting existing file`, job `Succeeded`): a
-  `REQ-031` defect, **High guess**. And it aborts *"ffmpeg is not installed"* whenever ffmpeg is
-  reached through `ffmpeg_location` rather than `PATH`, because yt-dlp's ffmpeg *downloader* reads
-  only `PATH` unless its command line sets a class attribute; that is how the Windows installer
-  finds its bundled copy (inferred, not run on Windows). **Medium guess, High once a control ships.**
-- **`-N` multiplies with the pool**: one job at `-N 4` peaked at 4 concurrent requests, three jobs
-  at 12; the worst case is 16 × N and yt-dlp sets no ceiling. `--socket-timeout -1` passes edit
-  time and fails the job (`T184-R8`'s class, Low).
-
-**Ruled 2026-10-15:** the shipped defect is fixed first, as `T-364`, on questions 1 and 2 as
-recommended. Questions 3 and 4 are open.
-
-**Ruled 2026-10-19: questions 3 and 4 as recommended.** Fragment retries, extractor retries, the
-socket timeout and `-N`, capped at 8, are Settings, beside the retry count in *Network*;
-`--download-sections` and the live-from-start pair are preset fields in a *Which part* group below
-*Which items*. Several sections write one file each, named by the stem and a section suffix and
-claimed as one family.
-
-**Questions for the maintainer** (recommended first):
-
-1. **What *nobody chose* sends for `retries` and `fragment_retries`.** yt-dlp's command-line
-   defaults, read from `parse_options([])` at the pin and held there by a test, shown as *10 — the
-   downloader's own*; changes behaviour for `0.1.0` users, which the changelog says. / Numbers
-   chosen in `core/settings.py` (a second copy of a library default, which `T-196` declined). /
-   Leave them absent and relabel the default *No retries*.
-2. **A fragment still missing after its retries.** `skip_unavailable_fragments=False`, so the
-   attempt fails and the job's own retry resumes from staging, with the hatch's
-   `--skip-unavailable-fragments` kept as the user's opt-in (a second shared key, an `ARC-010`
-   amendment). / Keep the skip and mark the job *Done, incomplete* (log parsing, a new outcome). /
-   Only restore the counts (still silent after eleven failures).
-3. **Where the seven live.** Fragment retries, extractor retries, socket timeout and `-N` (capped
-   at 8) in *Settings › Network* beside the retry count; sections and live-from-start per preset in
-   a *Which part* group below *Which items* (`UX-015`). / All seven per preset. / All in Settings.
-4. **Several sections.** One file per section, named by the stem and a section suffix, claimed as
-   one family. / Refuse a second section (narrows `REQ-030`). / Join them (a new ffmpeg step).
 
 ### T-253 — Network reachability: address family and politeness delays
 

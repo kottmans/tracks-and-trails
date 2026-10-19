@@ -17,8 +17,9 @@ ten policy refusals was not supported by evidence — all corrected. **Then the 
 `SEC-005` forbade the sixteenth option on 2026-08-21 and `SEC-003`'s amendment withdrew two
 permissions the same day. **The refusal list is 94.** **`T-247` built seven typed rows on
 2026-10-11, `T-249` seven more on 2026-10-14, `T-251` four the same day, `T-250` six on
-2026-10-18 and `T-248` five on 2026-10-19**, two of `T-250`'s moved from `hatch` by its ruling and
-`T-248`'s Windows pair moved to `app:policy` by its ruling, so 50 of the 65 now have a control.
+2026-10-18, `T-248` five on 2026-10-19 and `T-252` seven the same day**, two of `T-250`'s moved
+from `hatch` by its ruling and `T-248`'s Windows pair moved to `app:policy` by its ruling, so 57
+of the 65 now have a control.
 
 *(**This header said 89 and named only `SEC-003` and `SEC-004` while the summary below said 92 and
 named `SEC-005`** — one document giving both the pre-ruling and post-ruling answer to the question
@@ -92,7 +93,7 @@ gap.
 
 | Class | Rows | What it means |
 |---|---|---|
-| `typed` | 65 | Gets a control, an owner task and a phase position. 50 already have one |
+| `typed` | 65 | Gets a control, an owner task and a phase position. 57 already have one |
 | `hatch` | 91 | Reachable through `REQ-031` only. Every row carries a reason |
 | `app:sets` | 19 | **`build_options` sets this key.** Derived, and drift-checked in both directions |
 | `app:plumbing` | 36 | It *is* the command line rather than a capability — `REQ-030`'s own words |
@@ -394,7 +395,7 @@ rather than guessed at here.
 
 ## The decomposition
 
-**65 typed rows: 50 already have a field, 15 do not.** Nothing is unassigned and nothing is in two
+**65 typed rows: 57 already have a field, 8 do not.** Nothing is unassigned and nothing is in two
 tasks — counted, and the test asserts the partition. A task's rows join the built table when it
 builds them, all of them at once.
 
@@ -406,7 +407,7 @@ builds them, all of them at once.
 | `T-249` | 7 | **Built 2026-10-14** — the sidecar writers: description, info JSON and thumbnail files |
 | `T-250` | 6 | **Built 2026-10-18** — format depth: sorting, checking and the merge container; two rows moved from `hatch` by its ruling |
 | `T-251` | 4 | **Built 2026-10-14** — subtitle depth: automatic captions, format and conversion |
-| `T-252` | 7 | Download tuning and the whole retry policy |
+| `T-252` | 7 | **Built 2026-10-19** — download tuning and the retry policy's other knobs; `--file-access-retries` and `--retry-sleep` stay in the hatch |
 | `T-253` | 4 | Network reachability: address family and politeness delays |
 | `T-254` | 3 | SponsorBlock, opt-in per preset |
 | `T-255` | 1 | Per-extractor arguments |
@@ -420,7 +421,7 @@ because `T183-R3` then found a sixteenth — `--legacy-server-connect` — which
 actually unblocked. Every typed-field task is independent of the rest and of the hatch.
 
 
-### The 50 typed options that already have a field
+### The 57 typed options that already have a field
 
 **`built` is stated here rather than inferred from what the nine tasks did not claim** —
 `T183-R4` showed that definition is circular: swapping an unbuilt option for a built one kept
@@ -482,10 +483,17 @@ one day, and is listed against the first.
 | `--trim-filenames` | `trim_filenames` |
 | `--mtime` | `use_last_modified` |
 | `--no-mtime` | `use_last_modified` |
+| `--concurrent-fragments` | `concurrent_fragments` |
+| `--fragment-retries` | `fragment_retries` |
+| `--extractor-retries` | `extractor_retries` |
+| `--socket-timeout` | `socket_timeout` |
+| `--download-sections` | `download_sections` |
+| `--live-from-start` | `live_from_start` |
+| `--no-live-from-start` | `live_from_start` |
 
-**50 rows**: the 21 built before these tasks, `T-247`'s seven, `T-249`'s seven, `T-251`'s four,
-`T-250`'s six and `T-248`'s five. With the 15 across `T-252`…`T-255`, that is the typed class
-exactly. *(`T-248`'s Windows pair moved to `app:policy` by its 2026-10-19 ruling:
+**57 rows**: the 21 built before these tasks, `T-247`'s seven, `T-249`'s seven, `T-251`'s four,
+`T-250`'s six, `T-248`'s five and `T-252`'s seven. With the 8 across `T-253`…`T-255`, that is the
+typed class exactly. *(`T-248`'s Windows pair moved to `app:policy` by its 2026-10-19 ruling:
 `DAT-002` already makes every name Windows-legal on both platforms, so `--windows-filenames` only
 swapped `#` for `_` in typed text, and `--no-windows-filenames` let a title's backslash through for
 `core/paths` to split into a folder.)*

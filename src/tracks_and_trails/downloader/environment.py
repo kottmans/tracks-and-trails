@@ -71,6 +71,9 @@ class FfmpegFeature(Enum):
     EMBED = "embedding thumbnails, metadata, chapters and subtitles"
     #: `--convert-subs` (`T-251`), which yt-dlp performs with `FFmpegSubtitlesConvertorPP`.
     SUBTITLES = "converting subtitles to another format"
+    #: `--download-sections` (`T-252`): yt-dlp downloads a section through ffmpeg, and aborts the
+    #: download without it.
+    SECTIONS = "downloading only part of a video"
 
 
 #: Features that need ffmpeg, named in the terms a user would recognise (`REQ-024`, `REQ-010`).

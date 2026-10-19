@@ -41,12 +41,12 @@ same reasoning, as the manager's `entry_point`.
 """
 
 import os
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QScreen
@@ -57,6 +57,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -76,6 +77,7 @@ from PySide6.QtWidgets import (
 
 from tracks_and_trails.core.models import (
     BROWSER_NAMES,
+    MOST_CONCURRENT_FRAGMENTS,
     MOST_NAME_CHARACTERS,
     FileNaming,
     NetworkOptions,
@@ -94,16 +96,21 @@ from tracks_and_trails.core.settings import (
     CONCURRENCY_MINIMUM,
     RATE_LIMIT_MAXIMUM_BYTES,
     RETRIES_MAXIMUM,
+    SOCKET_TIMEOUT_MAXIMUM,
     THEME_NAMES,
 )
 from tracks_and_trails.downloader.environment import BASELINE_YTDLP_VERSION, normalise_version
 from tracks_and_trails.ui.keyboard import route_is_elsewhere
 
 __all__ = [
+    "CONCURRENT_FRAGMENTS_NAME",
+    "CONCURRENT_FRAGMENTS_NOTE",
     "COOKIES_EXPLANATION",
     "DEFAULT_RETRIES_LABEL",
     "DOWNLOAD_DIRECTORY_PROBLEM_NAME",
+    "EXTRACTOR_RETRIES_NAME",
     "FFMPEG_ON_PATH_NOTE",
+    "FRAGMENT_RETRIES_NAME",
     "LAST_MODIFIED_NAME",
     "NETWORK_EXPLANATION",
     "NO_COOKIES_NOTE",
@@ -118,6 +125,7 @@ __all__ = [
     "RESTRICT_NAMES_NAME",
     "RETRIES_NAME",
     "SETTINGS_STILL_TO_COME",
+    "SOCKET_TIMEOUT_NAME",
     "STEP_BUTTON_PROPERTY",
     "STEP_DOWN_LABEL",
     "STEP_UP_LABEL",
@@ -244,6 +252,18 @@ PROXY_NAME: Final = "networkProxy"
 PROXY_NOTE_NAME: Final = "networkProxyNote"
 RATE_LIMIT_NAME: Final = "networkRateLimit"
 RETRIES_NAME: Final = "networkRetries"
+#: `T-252`'s four, beside the retry count (`ARC-010`, amended 2026-10-19).
+FRAGMENT_RETRIES_NAME: Final = "networkFragmentRetries"
+EXTRACTOR_RETRIES_NAME: Final = "networkExtractorRetries"
+SOCKET_TIMEOUT_NAME: Final = "networkSocketTimeout"
+CONCURRENT_FRAGMENTS_NAME: Final = "networkConcurrentFragments"
+#: What fetching pieces at once costs, under its control (`T-252`): each download is its own
+#: process, so the pool multiplies the number, measured on 2026-10-14 as 4 requests for one job at
+#: 4 and 12 for three.
+CONCURRENT_FRAGMENTS_NOTE: Final = (
+    "Each download fetches up to this many pieces of a stream at once, so several downloads at "
+    "once multiply it."
+)
 
 #: What the network section says about when its settings take effect, and about what the rate
 #: limit actually limits.
@@ -257,10 +277,12 @@ NETWORK_EXPLANATION: Final = (
     "These apply to downloads you add from now on. Anything already in the queue keeps what it "
     "was added with.\n"
     "The speed limit applies to each download on its own, so several at once can add up.\n"
-    "Retries here are of the file transfer, each piece of a stream included, when the server "
-    "fails or the connection drops. A piece the server refuses retries on a count of its own. A "
-    "piece still missing after its retries stops the download, which keeps what it has for the "
-    "next try."
+    "Retries here are inside one attempt. The file transfer retries when the server fails or the "
+    "connection drops, each piece of a stream included. A piece the server refuses retries on a "
+    "count of its own, and reading the page on another. A piece still missing after its retries "
+    "stops the download, which keeps what it has for the next try, and the queue offers it again. "
+    "Waiting between retries, and retrying a file the computer could not write, are set in a "
+    "preset's additional options."
 )
 
 #: What the rate-limit spin box reads at zero (`UX-005` §5: a control says what it does).
@@ -499,6 +521,7 @@ class SettingsDialog(QDialog):
         ffmpeg_summary: str = "",
         ffmpeg_bundled: bool = False,
         default_retries: int | None = None,
+        connection_defaults: Mapping[str, float] | None = None,
         on_ffmpeg_location_chosen: Callable[[Path | None], None] | None = None,
         choose_file: Callable[[Path | None], Path | None] | None = None,
         preset_names: Sequence[str] = (),
@@ -537,6 +560,9 @@ class SettingsDialog(QDialog):
         #: trio from its own widgets would re-round a hand-edited rate limit on an unrelated edit.
         self._network = network if network is not None else NetworkOptions()
         self._default_retries = default_retries
+        #: What `T-252`'s four are when nobody chose, keyed by `NetworkOptions`' names; empty
+        #: without a manager, and each control then says no number (`default_retries`' rule).
+        self._connection_defaults = dict(connection_defaults or {})
         self._on_network_chosen = on_network_chosen
         self._ffmpeg_location = ffmpeg_location
         self._ffmpeg_summary = ffmpeg_summary
@@ -1456,7 +1482,101 @@ class SettingsDialog(QDialog):
         retries_row.addStretch(1)
         layout.addLayout(retries_row)
 
+        # **The rest of the retry policy, beside the first** (`T-252`): one policy in three counts,
+        # each named by what it retries, as `T196-R5` asked of the first. The explanation above
+        # says what stays in the options field, so these are not offered as the whole of it.
+        self._fragment_retries = self._count_row(
+            box,
+            layout,
+            FRAGMENT_RETRIES_NAME,
+            "Retries of a piece the server refuses, within one attempt",
+            "fragment_retries",
+        )
+        self._extractor_retries = self._count_row(
+            box,
+            layout,
+            EXTRACTOR_RETRIES_NAME,
+            "Retries of reading the page, within one attempt",
+            "extractor_retries",
+        )
+
+        timeout_row = QHBoxLayout()
+        timeout_label = QLabel("Wait for a silent server", box)
+        timeout_label.setWordWrap(True)
+        timeout_row.addWidget(timeout_label)
+        self._socket_timeout = QDoubleSpinBox(box)
+        self._socket_timeout.setObjectName(SOCKET_TIMEOUT_NAME)
+        self._socket_timeout.setAccessibleName("Seconds to wait for a silent server")
+        timeout_label.setBuddy(self._socket_timeout)
+        # **Zero is *nobody chose*** and is never stored, since no wait is not a timeout yt-dlp
+        # can use; the ceiling is the settings layer's, read rather than restated.
+        self._socket_timeout.setRange(0, SOCKET_TIMEOUT_MAXIMUM)
+        self._socket_timeout.setDecimals(1)
+        self._socket_timeout.setSuffix(" s")
+        self._socket_timeout.setSpecialValueText(
+            self._default_label("socket_timeout", lambda seconds: f"{seconds:g} s")
+        )
+        self._socket_timeout.setValue(self._network.socket_timeout or 0)
+        self._socket_timeout.setEnabled(self._on_network_chosen is not None)
+        self._socket_timeout.valueChanged.connect(self._on_socket_timeout_value)
+        timeout_row.addWidget(self._socket_timeout)
+        timeout_row.addStretch(1)
+        layout.addLayout(timeout_row)
+
+        fragments_row = QHBoxLayout()
+        fragments_label = QLabel("Pieces of a stream fetched at once", box)
+        fragments_label.setWordWrap(True)
+        fragments_row.addWidget(fragments_label)
+        self._concurrent_fragments = QSpinBox(box)
+        self._concurrent_fragments.setObjectName(CONCURRENT_FRAGMENTS_NAME)
+        self._concurrent_fragments.setAccessibleName("Pieces of a stream fetched at once")
+        self._concurrent_fragments.setAccessibleDescription(CONCURRENT_FRAGMENTS_NOTE)
+        fragments_label.setBuddy(self._concurrent_fragments)
+        # **One is the downloader's own and is stored as no value**, so the special text sits on
+        # the minimum; the ceiling is the ruled cap the model holds.
+        self._concurrent_fragments.setRange(1, MOST_CONCURRENT_FRAGMENTS)
+        self._concurrent_fragments.setSpecialValueText(
+            self._default_label("concurrent_fragments", lambda count: f"{count:g}")
+        )
+        self._concurrent_fragments.setValue(self._network.concurrent_fragments or 1)
+        self._concurrent_fragments.setEnabled(self._on_network_chosen is not None)
+        self._concurrent_fragments.valueChanged.connect(self._on_concurrent_fragments_value)
+        fragments_row.addWidget(self._concurrent_fragments)
+        fragments_row.addStretch(1)
+        layout.addLayout(fragments_row)
+        fragments_note = QLabel(CONCURRENT_FRAGMENTS_NOTE, box)
+        fragments_note.setWordWrap(True)
+        layout.addWidget(fragments_note)
+
         return box
+
+    def _count_row(
+        self, box: QGroupBox, layout: QVBoxLayout, name: str, label_text: str, field_name: str
+    ) -> QSpinBox:
+        """A retry count laid out as the transfer's is, `-1` meaning *nobody chose* (`T-252`)."""
+        row = QHBoxLayout()
+        label = QLabel(label_text, box)
+        label.setWordWrap(True)
+        row.addWidget(label)
+        spin = QSpinBox(box)
+        spin.setObjectName(name)
+        spin.setAccessibleName(label_text)
+        label.setBuddy(spin)
+        spin.setRange(-1, RETRIES_MAXIMUM)
+        spin.setSpecialValueText(self._default_label(field_name, lambda count: f"{count:g}"))
+        stored = getattr(self._network, field_name)
+        spin.setValue(stored if stored is not None else -1)
+        spin.setEnabled(self._on_network_chosen is not None)
+        spin.valueChanged.connect(partial(self._on_count_value, field_name))
+        row.addWidget(spin)
+        row.addStretch(1)
+        layout.addLayout(row)
+        return spin
+
+    def _default_label(self, field_name: str, shown: Callable[[float], str]) -> str:
+        """`10 — the downloader's own`, or no number when the window gave none (`T-252`)."""
+        value = self._connection_defaults.get(field_name)
+        return DEFAULT_RETRIES_LABEL if value is None else f"{shown(value)} — the downloader's own"
 
     def _rate_limit_shown(self) -> int:
         """The stored limit as whole KiB/s, or `0` for none — see `RATE_LIMIT_STEP_BYTES`."""
@@ -1508,6 +1628,23 @@ class SettingsDialog(QDialog):
         """`-1` is *nobody chose*; `0` is a real answer — see `DEFAULT_RETRIES_LABEL`."""
         self._remember_network(replace(self._network, retries=None if count < 0 else count))
 
+    def _on_count_value(self, field_name: str, count: int) -> None:
+        """`_on_retries_value` for the other two counts (`T-252`)."""
+        chosen: dict[str, Any] = {field_name: None if count < 0 else count}
+        self._remember_network(replace(self._network, **chosen))
+
+    def _on_socket_timeout_value(self, seconds: float) -> None:
+        """Zero is *nobody chose*, stored as no value (`T-252`)."""
+        self._remember_network(
+            replace(self._network, socket_timeout=seconds if seconds > 0 else None)
+        )
+
+    def _on_concurrent_fragments_value(self, count: int) -> None:
+        """One is the downloader's own, stored as no value (`T-252`)."""
+        self._remember_network(
+            replace(self._network, concurrent_fragments=count if count > 1 else None)
+        )
+
     def _remember_network(self, options: NetworkOptions) -> None:
         """Hold what changed and hand it to composition, which owns the file (`ARC-007`).
 
@@ -1557,13 +1694,27 @@ class SettingsDialog(QDialog):
                 self._proxy_note.setText("")
         finally:
             self._proxy_field.blockSignals(blocked)
-        for control, value in (
+        shown: tuple[tuple[QSpinBox | QDoubleSpinBox, float], ...] = (
             (self._rate_limit, self._rate_limit_shown()),
             (self._retries, options.retries if options.retries is not None else -1),
-        ):
+            (
+                self._fragment_retries,
+                options.fragment_retries if options.fragment_retries is not None else -1,
+            ),
+            (
+                self._extractor_retries,
+                options.extractor_retries if options.extractor_retries is not None else -1,
+            ),
+            (self._socket_timeout, options.socket_timeout or 0),
+            (self._concurrent_fragments, options.concurrent_fragments or 1),
+        )
+        for control, value in shown:
             blocked = control.blockSignals(True)
             try:
-                control.setValue(value)
+                if isinstance(control, QDoubleSpinBox):
+                    control.setValue(value)
+                else:
+                    control.setValue(int(value))
             finally:
                 control.blockSignals(blocked)
 

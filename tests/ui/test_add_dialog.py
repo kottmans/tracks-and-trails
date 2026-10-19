@@ -33,7 +33,7 @@ import logging
 import statistics
 import time
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import replace
+from dataclasses import fields, replace
 from pathlib import Path
 from typing import Any, Final
 
@@ -6816,7 +6816,17 @@ def test_a_queued_request_inherits_the_settings_network_options(
     `T197-R4` is the finding that a default stamped in the pasted line's builder alone left every
     child of a playlist without it.
     """
-    options = NetworkOptions(proxy="http://proxy.invalid:8080", rate_limit_bytes=4096, retries=1)
+    # **Every field of `NetworkOptions`**, `T-252`'s four included, each away from its default.
+    options = NetworkOptions(
+        proxy="http://proxy.invalid:8080",
+        rate_limit_bytes=4096,
+        retries=1,
+        fragment_retries=4,
+        extractor_retries=2,
+        socket_timeout=7.5,
+        concurrent_fragments=3,
+    )
+    assert all(getattr(options, item.name) is not None for item in fields(NetworkOptions))
     dialog, _ = resolved(dialogs, managers, spin, PLAYLIST, default_network=lambda: options)
     row = dialog.rows[0]
 
@@ -6828,8 +6838,10 @@ def test_a_queued_request_inherits_the_settings_network_options(
     wrong = [
         job.url
         for job in jobs
-        if (job.request.proxy, job.request.rate_limit_bytes, job.request.retries)
-        != (options.proxy, options.rate_limit_bytes, options.retries)
+        if any(
+            getattr(job.request, item.name) != getattr(options, item.name)
+            for item in fields(NetworkOptions)
+        )
     ]
     assert not wrong, (
         f"{len(wrong)} queued requests did not inherit the network options: {wrong[:3]}"

@@ -76,7 +76,7 @@ row anatomy for this dialog and the queue both (`T-119`). The per-row format con
 
 import uuid
 from collections.abc import Callable, Sequence
-from dataclasses import replace
+from dataclasses import fields, replace
 from datetime import datetime
 from itertools import pairwise
 from pathlib import Path
@@ -3271,16 +3271,17 @@ class AddUrlDialog(QDialog):
         if self._default_network is None:
             return request
         options = self._default_network()
-        return replace(
-            request,
-            proxy=request.proxy if request.proxy is not None else options.proxy,
-            rate_limit_bytes=(
-                request.rate_limit_bytes
-                if request.rate_limit_bytes is not None
-                else options.rate_limit_bytes
-            ),
-            retries=request.retries if request.retries is not None else options.retries,
-        )
+        # **Every field of `NetworkOptions`, by name** (`T-252`), which the request shares, so the
+        # four connection settings `T-252` added are frozen in as the first three are.
+        filled = {
+            item.name: (
+                value
+                if (value := getattr(request, item.name)) is not None
+                else getattr(options, item.name)
+            )
+            for item in fields(NetworkOptions)
+        }
+        return replace(request, **filled)
 
     def _with_default_cookie_browser(self, request: DownloadRequest) -> DownloadRequest:
         """Fill in the Settings browser where the preset named none (`REQ-026`, `T197-R4`).
