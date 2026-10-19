@@ -533,8 +533,8 @@ def test_a_path_absolute_once_yt_dlp_expands_it_is_accepted(
     ("text", "canonical"),
     [
         ("-N4", ("-N", "4")),
-        # A value that is not a number, attached; `-I1:3` until `T-247` gave `-I` a control.
-        ("-Sres:720", ("-S", "res:720")),
+        # *A value that is not a number, attached* was `-I1:3`, then `-Sres:720`; `T-247` and
+        # `T-250` gave both a control, and no admitted short option takes text any more.
         ("-cN4", ("-c", "-N", "4")),
         ('--replace-in-metadata=title foo ""', ("--replace-in-metadata", "title", "foo", "")),
         ('"--add-headers=Referer: T184"', ("--add-headers", "Referer: T184")),

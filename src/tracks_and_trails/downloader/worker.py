@@ -1799,6 +1799,12 @@ def postprocessed_name(target: Path, request: DownloadRequest) -> Path:
     if request.remux_container is not None:
         return target.with_suffix(f".{request.remux_container}")
     if request.media_kind is not MediaKind.AUDIO:
+        # **A merge container names what a merge writes** (`T-250`), after a recode or a remux,
+        # which `ARC-010`'s written order puts first. One container, not a list, and only where the
+        # selector merges; the preview stays provisional, since `bv*+ba/b` may take one stream.
+        merge = request.merge_container
+        if merge is not None and "/" not in merge and selector_merges(request.format_selector):
+            return target.with_suffix(f".{merge}")
         return target
     extension = audio_extension_for(request.audio_codec)
     if extension is None:

@@ -38,6 +38,7 @@ from typing import Any, ClassVar, Final, Self
 from urllib.parse import urlsplit
 
 from tracks_and_trails.core.errors import ErrorKind
+from tracks_and_trails.core.format_sort import format_sort_problem
 from tracks_and_trails.core.job_state import JobStatus, apply
 from tracks_and_trails.core.selection import (
     LARGEST_SIZE,
@@ -603,6 +604,44 @@ def subtitle_format_problem(text: str) -> str | None:
     )
 
 
+class FormatCheck(StrEnum):
+    """Whether yt-dlp tries a format before choosing it (`T-250`): `--check-formats` and kin.
+
+    **Four positions** (`ARC-010`, amended 2026-10-15, second). `DEFAULT` leaves it to yt-dlp,
+    which checks only where an extractor asks; `SELECTED` checks the formats chosen
+    (`--check-formats`); `EVERY` checks all of them (`--check-all-formats`); `NEVER` checks none
+    (`--no-check-formats`). **On the download only**: checking every format of one YouTube video
+    took 79 requests and 12.9 s against 3 to read it, and the add dialog reads every pasted URL.
+    """
+
+    DEFAULT = "default"
+    SELECTED = "selected"
+    EVERY = "every"
+    NEVER = "never"
+
+
+#: The containers yt-dlp's merger can write (`T-250`): `FFmpegMergerPP.SUPPORTED_EXTS` at the pin,
+#: which `--merge-output-format` is checked against. A copy for `CONTAINER_FORMATS`' reason, held
+#: equal to yt-dlp's by `tests/unit/test_format_depth.py`.
+MERGE_CONTAINERS: Final[tuple[str, ...]] = ("avi", "flv", "mkv", "mov", "mp4", "webm")
+
+
+def merge_container_problem(text: str) -> str | None:
+    """Why `text` is not a merge container yt-dlp takes, or `None`.
+
+    yt-dlp's grammar: one of `MERGE_CONTAINERS`, or several separated by `/`, the first the streams
+    fit used. A list without `mkv` falls back to its **last** entry when none fits, and the merge
+    then fails after the download; `mkv` last is what *fall back to mkv* means.
+    """
+    names = text.split("/")
+    if all(name in MERGE_CONTAINERS for name in names):
+        return None
+    return (
+        f"{text!r} is not a merge container. Use {', '.join(MERGE_CONTAINERS)}, or several "
+        "separated by /, such as mp4/mkv"
+    )
+
+
 class AudioCodec(StrEnum):
     """The audio codec a request asks for (`REQ-010`'s "chosen codec").
 
@@ -762,6 +801,28 @@ def _require_subtitle_depth(owner: str, value: Any) -> None:
         if problem is not None:
             raise ValueError(f"{owner}.subtitle_format {value.subtitle_format!r}: {problem}")
     _require_optional_enum(owner, "convert_subtitles", value.convert_subtitles, SubtitleFormat)
+
+
+def _require_format_depth(owner: str, value: Any) -> None:
+    """`T-250`'s three fields, on a `DownloadRequest` or a `Preset`, which share their names.
+
+    **The sort is checked field by field and limit by limit** (`ARC-010`, amended 2026-10-15,
+    second): yt-dlp ignores an unknown field, reads `res:abc` as no limit and `vcodec:nonsense` as
+    another codec, so a stored sort that would not do what it says fails here rather than at the
+    site. The merge container is checked against yt-dlp's merger, for `_require_container`'s
+    reason: the merge runs after the download has been paid for.
+    """
+    _require_optional_text(owner, "format_sort", value.format_sort)
+    if value.format_sort is not None:
+        problem = format_sort_problem(value.format_sort)
+        if problem is not None:
+            raise ValueError(f"{owner}.format_sort {value.format_sort!r}: {problem}")
+    _require_enum(owner, "check_formats", value.check_formats, FormatCheck)
+    _require_optional_text(owner, "merge_container", value.merge_container)
+    if value.merge_container is not None:
+        problem = merge_container_problem(value.merge_container)
+        if problem is not None:
+            raise ValueError(f"{owner}.merge_container: {problem}")
 
 
 def _require_one_container_change(owner: str, remux: str | None, recode: str | None) -> None:
@@ -1185,6 +1246,14 @@ class DownloadRequest:
     format_selector: str
     output_template: str
     media_kind: MediaKind = MediaKind.VIDEO
+    #: Format depth (`T-250`). `format_sort` is `-S`, checked against yt-dlp's vocabulary;
+    #: `check_formats` is whether yt-dlp tries formats before choosing, on the download only; and
+    #: `merge_container` is `--merge-output-format`. **One written order decides the container**
+    #: (`ARC-010`, amended 2026-10-15, second): recode, then remux, then the merge container, then
+    #: yt-dlp's choice, and a remux into a container the merger writes merges straight into it.
+    format_sort: str | None = None
+    check_formats: FormatCheck = FormatCheck.DEFAULT
+    merge_container: str | None = None
 
     #: Tuples rather than lists throughout: a frozen dataclass with a mutable field is only
     #: shallowly frozen, and these travel between processes.
@@ -1334,6 +1403,7 @@ class DownloadRequest:
         )
         _require_text("DownloadRequest", "output_template", self.output_template)
         _require_enum("DownloadRequest", "media_kind", self.media_kind, MediaKind)
+        _require_format_depth("DownloadRequest", self)
         for name in ("post_processors", "subtitle_languages"):
             object.__setattr__(
                 self, name, _as_tuple_of("DownloadRequest", name, getattr(self, name), str)
@@ -1399,6 +1469,10 @@ class Preset:
     name: str
     media_kind: MediaKind
     format_selector: str
+    #: Format depth (`T-250`); see `DownloadRequest.format_sort`.
+    format_sort: str | None = None
+    check_formats: FormatCheck = FormatCheck.DEFAULT
+    merge_container: str | None = None
 
     post_processors: tuple[str, ...] = ()
 
@@ -1470,6 +1544,7 @@ class Preset:
         _require_text("Preset", "name", self.name, "it is what the user selects it by")
         _require_text("Preset", "format_selector", self.format_selector)
         _require_enum("Preset", "media_kind", self.media_kind, MediaKind)
+        _require_format_depth("Preset", self)
         for name in ("post_processors", "subtitle_languages"):
             object.__setattr__(self, name, _as_tuple_of("Preset", name, getattr(self, name), str))
         _require_enum("Preset", "audio_codec", self.audio_codec, AudioCodec)

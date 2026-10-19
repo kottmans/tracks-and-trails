@@ -16,8 +16,8 @@ permitted three mutations, the downstream `T-184` still carried the rejected des
 ten policy refusals was not supported by evidence — all corrected. **Then the rulings landed**:
 `SEC-005` forbade the sixteenth option on 2026-08-21 and `SEC-003`'s amendment withdrew two
 permissions the same day. **The refusal list is 92.** **`T-247` built seven typed rows on
-2026-10-11, `T-249` seven more on 2026-10-14 and `T-251` four the same day**, so 39 of the 65 now
-have a control.
+2026-10-11, `T-249` seven more on 2026-10-14, `T-251` four the same day and `T-250` six on
+2026-10-18**, two of them moved from `hatch` by its ruling, so 45 of the 67 now have a control.
 
 *(**This header said 89 and named only `SEC-003` and `SEC-004` while the summary below said 92 and
 named `SEC-005`** — one document giving both the pre-ruling and post-ruling answer to the question
@@ -91,8 +91,8 @@ gap.
 
 | Class | Rows | What it means |
 |---|---|---|
-| `typed` | 65 | Gets a control, an owner task and a phase position. 39 already have one |
-| `hatch` | 93 | Reachable through `REQ-031` only. Every row carries a reason |
+| `typed` | 67 | Gets a control, an owner task and a phase position. 45 already have one |
+| `hatch` | 91 | Reachable through `REQ-031` only. Every row carries a reason |
 | `app:sets` | 19 | **`build_options` sets this key.** Derived, and drift-checked in both directions |
 | `app:plumbing` | 36 | It *is* the command line rather than a capability — `REQ-030`'s own words |
 | `app:policy` | 10 | **The application owns the behaviour, and its model cannot represent the outcome** |
@@ -167,8 +167,8 @@ default are different jobs and `REQ-EXCL-002` needs both.)*
 **`hatch` as an option, and its values classed one by one** (`T-363`, ruled 2026-10-15). The option
 is a bag of unrelated switches: at 2026.08.19 one value, `allow-unsafe-ext`, switches yt-dlp's
 unsafe-extension check off for the whole process as it is parsed, `filename` rewrites a name the
-application sets, and `format-sort` and `mtime-by-default` reach keys `T-250` and `T-248` will give
-controls. The rows above cannot say that, so the generator parses each value alone and classes it by
+application sets, and `format-sort` and `mtime-by-default` reach keys `T-250` and `T-248` give
+controls; `T-250`'s was built on 2026-10-18, so `format-sort` is refused for it now. The rows above cannot say that, so the generator parses each value alone and classes it by
 what the parse changes: refused as **unsafe** where yt-dlp names it `allow-unsafe-*` or it switched
 the extension check off, as **the application's** where it sets a key `app:sets` owns, and as **a
 control's** where it sets a key a built control owns; admitted otherwise, carrying exactly the keys
@@ -194,7 +194,6 @@ value has no row here, so a new value is classified rather than admitted by defa
 | `embed-metadata` | `effect` | Embedded metadata takes the description as its comment rather than the address (`FFmpegMetadataPP`), whenever `embed_metadata` embeds |
 | `embed-thumbnail-atomicparsley` | `inert` | Prefers AtomicParsley to mutagen for an MP4 cover; mutagen is not installed with this application, so AtomicParsley is tried first either way |
 | `filename-sanitization` | `effect` | The rendered name is sanitized the older way, `a/b` becoming `a_b` rather than `a⧸b` (`prepare_outtmpl`), on the pass that renders it |
-| `format-sort` | `effect` | Adds youtube-dl's default to `format_sort`, `T-250`'s key; refused once that control is built |
 | `format-spec` | `inert` | Changes only the format chosen when none is given; this application gives one on both passes, from a selector the model requires |
 | `list-formats` | `inert` | Changes only the console format table, which this application never prints (`--list-formats` is `app:plumbing`) |
 | `manifest-filesize-approx` | `effect` | Estimates a size for a manifest's formats, which the sort and the size filters read |
@@ -394,7 +393,7 @@ rather than guessed at here.
 
 ## The decomposition
 
-**65 typed rows: 39 already have a field, 26 do not.** Nothing is unassigned and nothing is in two
+**67 typed rows: 45 already have a field, 22 do not.** Nothing is unassigned and nothing is in two
 tasks — counted, and the test asserts the partition. A task's rows join the built table when it
 builds them, all of them at once.
 
@@ -404,7 +403,7 @@ builds them, all of them at once.
 | `T-247` | 7 | **Built 2026-10-11** — video selection: which items, how big, how old |
 | `T-248` | 7 | Filename shaping and the modification time |
 | `T-249` | 7 | **Built 2026-10-14** — the sidecar writers: description, info JSON and thumbnail files |
-| `T-250` | 4 | Format depth: sorting, checking and the merge container |
+| `T-250` | 6 | **Built 2026-10-18** — format depth: sorting, checking and the merge container; two rows moved from `hatch` by its ruling |
 | `T-251` | 4 | **Built 2026-10-14** — subtitle depth: automatic captions, format and conversion |
 | `T-252` | 7 | Download tuning and the whole retry policy |
 | `T-253` | 4 | Network reachability: address family and politeness delays |
@@ -420,7 +419,7 @@ because `T183-R3` then found a sixteenth — `--legacy-server-connect` — which
 actually unblocked. Every typed-field task is independent of the rest and of the hatch.
 
 
-### The 39 typed options that already have a field
+### The 45 typed options that already have a field
 
 **`built` is stated here rather than inferred from what the nine tasks did not claim** —
 `T183-R4` showed that definition is circular: swapping an unbuilt option for a built one kept
@@ -471,9 +470,18 @@ one day, and is listed against the first.
 | `--no-write-auto-subs` | `automatic_captions` |
 | `--sub-format` | `subtitle_format` |
 | `--convert-subs` | `convert_subtitles` |
+| `-S` | `format_sort` |
+| `--format-sort-reset` | `format_sort` |
+| `--check-formats` | `check_formats` |
+| `--check-all-formats` | `check_formats` |
+| `--no-check-formats` | `check_formats` |
+| `--merge-output-format` | `merge_container` |
 
-**39 rows**: the 21 built before these tasks, `T-247`'s seven, `T-249`'s seven and `T-251`'s
-four. With the 26 across `T-248`, `T-250` and `T-252`…`T-255`, that is the typed class exactly.
+**45 rows**: the 21 built before these tasks, `T-247`'s seven, `T-249`'s seven, `T-251`'s four
+and `T-250`'s six. With the 22 across `T-248` and `T-252`…`T-255`, that is the typed class exactly.
+*(`--format-sort-reset` clears the sort, which the control does by leaving it empty, and
+`--check-all-formats` is the check's *every format*: both set a destination the control owns, so
+`ARC-010`'s 2026-10-15 amendment, second, moved them from `hatch` with it.)*
 
 ---
 
@@ -703,12 +711,12 @@ aliases and its `--no-` counterpart wherever they share one entry.
 | Option | Class | Reason |
 |---|---|---|
 | `--audio-multistreams` | `hatch` | Expert merging |
-| `--check-all-formats` | `hatch` | Costly variant of --check-formats |
+| `--check-all-formats` | `typed` | The check's every-format position (T-250, ARC-010 amended 2026-10-15) |
 | `--check-formats` | `typed` | T-183 names format depth thin |
 | `-f` `--format` | `app:sets` | build_options sets format from REQ-009's selector field |
 | `-S` `--format-sort` | `typed` | T-183 names format depth thin |
 | `--format-sort-force` `--S-force` | `hatch` | Detail of --format-sort |
-| `--format-sort-reset` | `hatch` | Detail of --format-sort |
+| `--format-sort-reset` | `typed` | Clearing the sort, which its control does by leaving it empty (T-250) |
 | `-F` `--list-formats` | `app:plumbing` | The format table is the application's own surface (T-107) |
 | `--merge-output-format` | `typed` | T-183 names format depth thin |
 | `--no-audio-multistreams` | `hatch` | Counterpart |

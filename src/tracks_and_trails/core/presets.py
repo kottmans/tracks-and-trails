@@ -56,6 +56,7 @@ from tracks_and_trails.core.models import (
     ALL_SUBTITLE_LANGUAGES,
     AudioCodec,
     DownloadRequest,
+    FormatCheck,
     KeptThumbnails,
     MediaKind,
     Preset,
@@ -419,6 +420,11 @@ class FormatChoice:
 
     media_kind: MediaKind
     format_selector: str
+    #: Format depth (`T-250`): a sort or a merge container changes which file arrives, and a
+    #: check changes whether one that cannot be fetched is chosen.
+    format_sort: str | None
+    check_formats: FormatCheck
+    merge_container: str | None
     audio_codec: AudioCodec
     audio_quality: str | None
     subtitle_languages: tuple[str, ...]
@@ -585,6 +591,9 @@ def to_request(
         url=url,
         output_directory=output_directory,
         format_selector=preset.format_selector,
+        format_sort=preset.format_sort,
+        check_formats=preset.check_formats,
+        merge_container=preset.merge_container,
         # **Naming is the caller's, never the preset's** (`UX-014`, 2026-09-13). A preset says what
         # is downloaded; how the file is named is the Settings preference, or one item's rename,
         # and the caller resolves which before it gets here.

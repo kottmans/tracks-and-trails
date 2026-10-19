@@ -14,6 +14,121 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-250 — Format depth: sorting, checking and the merge container
+
+**Status:** In Review — built 2026-10-18, ahead of `T-364`'s review by the maintainer's
+instruction that night ([the amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-18-the-work-continues-while-reviews-are-pending)).
+*(Was Proposed:)* **design ruled 2026-10-15, all four questions as recommended** (`ARC-010` and
+`UX-015` amended, second, that day); runs after `T-363` and `T-364`. Filed 2026-08-16 by `T-183`
+**Options (4):** `-S/--format-sort`, `--check-formats`, `--no-check-formats`,
+`--merge-output-format`
+**Specific criteria:** `--format-sort`'s field grammar is validated against yt-dlp's own accepted
+fields rather than passed through; `--check-formats` costs a request per format and the format
+table's probe budget is stated (`T-161`'s per-entry lesson); `--merge-output-format` and
+`remux_container` are two ways to name a container and the precedence between them is written down.
+
+#### Mapped 2026-10-14 — the design, before the code
+
+Mapped against `8b0aad6` on a real YouTube probe and downloads; probes in the implementer's
+scratch notes.
+
+- **No defect at `HEAD` for the four**, but building them breaks a recorded invariant:
+  `--check-all-formats` and `--format-sort-reset` are other options sharing the typed
+  destinations, so `T-361`'s recorded claim that only aliases share a built option's destination
+  stops being true, and the audit's drift test fails on both once the keys are emitted.
+  `--compat-options format-sort` is a third route into the sort (`T-248`'s question 4).
+- **A sort never changes a format chosen from the table** (IDs resolve the same under four sorts);
+  it moves the built-ins' selectors and reorders the probe's list.
+- **yt-dlp refuses nothing about a sort's meaning**: an unknown field logs a deprecation and is
+  ignored, `res:abc` silently sets no limit, and **`vcodec:nonsense` silently picks a different
+  format**. Its field table is a class-level dict an unknown field writes into, so the vocabulary
+  must be read in a fresh process.
+- **Checking costs**: 3 requests to read a URL normally, 5 with `--check-formats`, **79 over 12.9 s
+  with `--check-all-formats`**, 44 of them thumbnail checks — and the options field applies to the
+  add dialog's own read, so such a preset makes each pasted URL about ten times slower. Check
+  downloads write to `/tmp`, or with `--windows-filenames` to the worker's working directory
+  (Medium guess).
+- **A remux or recode runs after the merge**, so it decides the final container and a merge
+  container becomes an intermediate (two passes); merging into `avi` failed *Conversion failed!*
+  after the download was paid for.
+
+**Ruled 2026-10-15: all four as recommended.** Building them moves `--check-all-formats` to
+`typed`, makes `--format-sort-reset` the typed counterpart of clearing the sort, and corrects
+`T-361`'s recorded claim that only aliases share a built option's destination.
+
+**Questions for the maintainer** (recommended first):
+
+1. **How far the sort check goes.** Fields and limits, against a transcription bound to yt-dlp by
+   a fresh-process drift test, deprecated aliases refused naming the replacement. / Fields only. /
+   Ask yt-dlp lazily in the GUI process.
+2. **The check's positions and phase.** Four radio buttons — yt-dlp decides, the chosen formats,
+   every format, never — on the download only, `--check-all-formats` becoming typed (five options).
+   / Three, with `--check-all-formats` an application policy. / Four, on both phases.
+3. **Merge container and remux.** A separate merge choice with a written precedence (recode, remux,
+   merge, yt-dlp), set to the remux's container when it fits so there is one pass, offering
+   *fall back to mkv*. / Exclusive in the model. / No merge control.
+4. **Where they go.** A *Choosing the format* group at the top for the sort and the check, disabled
+   for a format chosen from the table, and the merge choice in *Container* (`UX-015`). / The format
+   dialog. / One *Format* group.
+
+#### Built 2026-10-18
+
+- **Three fields, shared by `Preset` and `DownloadRequest`**: `format_sort`, `check_formats`, a
+  `FormatCheck` of `default`, `selected`, `every` or `never`, and `merge_container`. Copied by
+  `to_request`, kept in `FormatChoice`, read back as the enum from `settings.toml` and a job's
+  stored request; an older row has none. The model refuses a sort or a merge container that would
+  not do what it says.
+- **The sort is checked field by field and limit by limit** (ruling 1) by `core/format_sort.py`,
+  a transcription of yt-dlp's `FormatSorter`: fields and their aliases, the retiring names refused
+  naming their replacement, the hidden two refused, and each limit read as yt-dlp reads it — a
+  number, a whole number, a size, a value in the field's order, or text. A field named twice is
+  refused, since yt-dlp keeps only its first place. `test_format_sort.py` binds it **in a fresh
+  process**: the vocabulary equals `FormatSorter.settings`, and over 44 sorts plus every suggested
+  limit it accepts exactly those yt-dlp would carry out as written, no deprecation line, no
+  invented field, every limit read and no field twice.
+- **The check has four positions and acts on the download only** (ruling 2). `--check-all-formats`
+  moved from `hatch` to `typed`, and `--format-sort-reset` with it, since both set a destination a
+  control owns: six built rows, not four, which also corrects `T-361`'s recorded claim that only
+  aliases share a built option's destination. The audit's counts are now 67 typed and 91 hatch.
+- **The containers have one written order** (ruling 3), `merge_container_for`: a remux into a
+  container the merger writes merges straight into it, one pass, as `-t mp4` does; otherwise the
+  merge container, then yt-dlp's choice. The sort and the merge container go on both passes, so the
+  probe names the file the download writes; the preview names a single merge container where the
+  selector merges and stays provisional.
+- **The editor** (ruling 4): *Choosing the format* above *Audio*, the sort as a field checked as
+  typed with its refusal beside it and an immediate OK refused, the check as four radio buttons;
+  both disabled with the reason for a row whose format was chosen from the table, carrying the
+  preset's own. The merge choice sits in *Container*: yt-dlp's choice, each container, and *else
+  mkv* for mp4, webm and mov; offered only while the container is kept, cleared by a remux or
+  recode, withdrawn for audio and without ffmpeg (`FfmpegFeature.MERGE`'s first control), and a
+  stored value the list lacks shown as written. The row's name adds *sorted by …*, *checking …*
+  and *merged into mp4, else mkv*, set aside to find the built-in.
+- **The hatch.** The seven spellings are refused for their controls, and `--compat-options
+  format-sort` for the sort's, by regenerating as `T-363` arranged; `-S` and
+  `--merge-output-format` left `NOT_SECRET_VALUES`.
+- **Measured while building**: yt-dlp gives an HLS audio rendition no codec, so `mp4/mkv` merges
+  such streams into mkv. *Else mkv* doing its job; the integration test asserts it.
+- **Tests.** `test_format_sort.py` (above); `test_format_depth.py`: each field held to
+  `parse_options`, both passes and the download-only check, the written order over eight cases, a
+  real sort moving the format `best` picks, the model's refusals, storage, the round trip, the
+  name, the hatch and the preview. `test_format_depth.py` in integration, the real worker against a
+  local HLS presentation with separate video and audio: the merge writes the container the order
+  names, and checking every format fetches more on the download while the read asks for exactly
+  what it did. The editor tests cover the order of groups, opening and coming back, each position,
+  the refusal and an immediate OK, a table choice, the merge choice's withdrawal, a carried value,
+  the name and the keyboard.
+- **Mutations, 21 of 22 caught**, each on a fresh copy of the tree; the twenty-second was
+  equivalent, a recode guard the model already makes unreachable, and the guard was removed.
+- **Existing tests changed with the behaviour**: the seam case `-Sres:720`, since no admitted short
+  option takes text any more; the override test's hostile values; the audit derivation's fields;
+  `T-363`'s `all,…` lines, which now take `format-sort` away too; and its control test, which now
+  sees the sort's control built.
+
+**Checks, 2026-10-18, on Linux, base `67a8778`**, with the project `.venv` on `PATH`: `ruff check
+.` and `ruff format --check .` (491 files); `mypy src` (71), bare `mypy` and `mypy --platform
+win32` (227 each); the table check up to date; `tests/unit tests/ui` under `-n auto`, **5,841
+passed**, 21 skipped; `tests/integration` **558 passed**. No Windows run: `STARBASE` is offline.
+
 ### T-364 — Fragmented downloads retry, and never finish with a piece missing
 
 **Status:** In Review — built 2026-10-18. *(Was Ready:)* filed 2026-10-15 by the maintainer's
@@ -881,62 +996,6 @@ recommended. Questions 2 and 3 are open.
 4. **A `--compat-options` value reaching a control's key** — `mtime-by-default` here, `format-sort`
    for `T-250`, one ruling for both. Refused at edit time naming the control, derived per value
    from yt-dlp's parser. / yt-dlp's precedence. / The control wins silently (`REQ-031` forbids).
-
-### T-250 — Format depth: sorting, checking and the merge container
-
-**Status:** Proposed — **design ruled 2026-10-15, all four questions as recommended** (`ARC-010`
-and `UX-015` amended, second, that day); runs after `T-363` and `T-364`. Filed 2026-08-16 by
-`T-183`
-**Options (4):** `-S/--format-sort`, `--check-formats`, `--no-check-formats`,
-`--merge-output-format`
-**Specific criteria:** `--format-sort`'s field grammar is validated against yt-dlp's own accepted
-fields rather than passed through; `--check-formats` costs a request per format and the format
-table's probe budget is stated (`T-161`'s per-entry lesson); `--merge-output-format` and
-`remux_container` are two ways to name a container and the precedence between them is written down.
-
-#### Mapped 2026-10-14 — the design, before the code
-
-Mapped against `8b0aad6` on a real YouTube probe and downloads; probes in the implementer's
-scratch notes.
-
-- **No defect at `HEAD` for the four**, but building them breaks a recorded invariant:
-  `--check-all-formats` and `--format-sort-reset` are other options sharing the typed
-  destinations, so `T-361`'s recorded claim that only aliases share a built option's destination
-  stops being true, and the audit's drift test fails on both once the keys are emitted.
-  `--compat-options format-sort` is a third route into the sort (`T-248`'s question 4).
-- **A sort never changes a format chosen from the table** (IDs resolve the same under four sorts);
-  it moves the built-ins' selectors and reorders the probe's list.
-- **yt-dlp refuses nothing about a sort's meaning**: an unknown field logs a deprecation and is
-  ignored, `res:abc` silently sets no limit, and **`vcodec:nonsense` silently picks a different
-  format**. Its field table is a class-level dict an unknown field writes into, so the vocabulary
-  must be read in a fresh process.
-- **Checking costs**: 3 requests to read a URL normally, 5 with `--check-formats`, **79 over 12.9 s
-  with `--check-all-formats`**, 44 of them thumbnail checks — and the options field applies to the
-  add dialog's own read, so such a preset makes each pasted URL about ten times slower. Check
-  downloads write to `/tmp`, or with `--windows-filenames` to the worker's working directory
-  (Medium guess).
-- **A remux or recode runs after the merge**, so it decides the final container and a merge
-  container becomes an intermediate (two passes); merging into `avi` failed *Conversion failed!*
-  after the download was paid for.
-
-**Ruled 2026-10-15: all four as recommended.** Building them moves `--check-all-formats` to
-`typed`, makes `--format-sort-reset` the typed counterpart of clearing the sort, and corrects
-`T-361`'s recorded claim that only aliases share a built option's destination.
-
-**Questions for the maintainer** (recommended first):
-
-1. **How far the sort check goes.** Fields and limits, against a transcription bound to yt-dlp by
-   a fresh-process drift test, deprecated aliases refused naming the replacement. / Fields only. /
-   Ask yt-dlp lazily in the GUI process.
-2. **The check's positions and phase.** Four radio buttons — yt-dlp decides, the chosen formats,
-   every format, never — on the download only, `--check-all-formats` becoming typed (five options).
-   / Three, with `--check-all-formats` an application policy. / Four, on both phases.
-3. **Merge container and remux.** A separate merge choice with a written precedence (recode, remux,
-   merge, yt-dlp), set to the remux's container when it fits so there is one pass, offering
-   *fall back to mkv*. / Exclusive in the model. / No merge control.
-4. **Where they go.** A *Choosing the format* group at the top for the sort and the check, disabled
-   for a format chosen from the table, and the merge choice in *Container* (`UX-015`). / The format
-   dialog. / One *Format* group.
 
 ### T-252 — Download tuning and the retry policy the settings screen shows
 

@@ -58,6 +58,7 @@ from platformdirs import user_config_dir
 
 from tracks_and_trails.core.models import (
     AudioCodec,
+    FormatCheck,
     KeptThumbnails,
     MediaKind,
     NetworkOptions,
@@ -1301,6 +1302,8 @@ def _preset_from(raw: Any) -> Preset:
         values["keep_thumbnails"] = KeptThumbnails(values["keep_thumbnails"])
     if values.get("convert_subtitles") is not None:
         values["convert_subtitles"] = SubtitleFormat(values["convert_subtitles"])
+    if "check_formats" in values:
+        values["check_formats"] = FormatCheck(values["check_formats"])
     for name in ("post_processors", "subtitle_languages"):
         if name in values:
             values[name] = tuple(values[name])

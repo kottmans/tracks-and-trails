@@ -34,6 +34,7 @@ from tracks_and_trails.core.job_state import REORDERABLE, TERMINAL, JobStatus
 from tracks_and_trails.core.models import (
     AudioCodec,
     DownloadRequest,
+    FormatCheck,
     KeptThumbnails,
     MediaKind,
     SubtitleFormat,
@@ -158,6 +159,8 @@ def _deserialize_request(raw: str) -> DownloadRequest:
         payload["keep_thumbnails"] = KeptThumbnails(payload["keep_thumbnails"])
     if payload.get("convert_subtitles") is not None:
         payload["convert_subtitles"] = SubtitleFormat(payload["convert_subtitles"])
+    if "check_formats" in payload:
+        payload["check_formats"] = FormatCheck(payload["check_formats"])
     return DownloadRequest(**{name: payload[name] for name in _REQUEST_FIELDS if name in payload})
 
 

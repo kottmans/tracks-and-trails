@@ -103,9 +103,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tracks_and_trails.core.format_sort import format_sort_problem
 from tracks_and_trails.core.models import (
     ALL_SUBTITLE_LANGUAGES,
     AudioCodec,
+    FormatCheck,
     KeptThumbnails,
     MediaKind,
     Preset,
@@ -188,6 +190,55 @@ CAPTION_SUFFIX: Final = " (automatic captions)"
 #: What the format field shows while empty: yt-dlp's `--sub-format` grammar, by example.
 SUBTITLE_FORMAT_PLACEHOLDER: Final = "The site's own choice, or for example srt/vtt/best"
 
+#: The group at the top (`UX-015`, amended 2026-10-15, second, `T-250`): the sort, checked as typed,
+#: and the format check, one radio button per position, each naming its whole choice.
+CHOOSING_FORMAT_TITLE: Final = "Choosing the format"
+CHOOSING_FORMAT_HINT: Final = (
+    "The sort decides which format the choice above picks, by yt-dlp's fields such as res, fps "
+    "and vcodec. Trying formats first happens when the download starts, not while reading the "
+    "link."
+)
+FORMAT_SORT_NAME: Final = "optionsFormatSort"
+FORMAT_SORT_REFUSALS_NAME: Final = "optionsFormatSortRefusals"
+FORMAT_SORT_PLACEHOLDER: Final = "yt-dlp's own order, or for example res:1080,vcodec:h264"
+FORMAT_REASON_NAME: Final = "optionsFormatReason"
+CHECK_FORMATS: Final = (
+    (FormatCheck.DEFAULT, "optionsCheckFormatsDefault", "Let yt-dlp decide whether to try formats"),
+    (
+        FormatCheck.SELECTED,
+        "optionsCheckFormatsSelected",
+        "Try the chosen formats before downloading",
+    ),
+    (FormatCheck.EVERY, "optionsCheckFormatsEvery", "Try every format first, one request each"),
+    (FormatCheck.NEVER, "optionsCheckFormatsNever", "Never try formats before downloading"),
+)
+#: Why the group is disabled for a row whose format was picked in the table: an exact format id
+#: is the same whatever the order (measured, `T-250`), and a check would only test that one.
+FORMAT_CHOSEN_REASON: Final = (
+    "A format chosen from the table is exact, so the sort and the check change nothing."
+)
+
+#: The merge container, inside *Container* beside the remux it yields to (`T-250`). Each list is
+#: yt-dlp's `--merge-output-format`; *else mkv* takes mkv where the streams do not fit the first.
+MERGE_CONTAINER_NAME: Final = "optionsMergeContainer"
+MERGE_CONTAINERS_OFFERED: Final[tuple[tuple[str | None, str], ...]] = (
+    (None, "yt-dlp's choice"),
+    ("mkv", "mkv"),
+    ("mp4", "mp4"),
+    ("mp4/mkv", "mp4, else mkv"),
+    ("webm", "webm"),
+    ("webm/mkv", "webm, else mkv"),
+    ("mov", "mov"),
+    ("mov/mkv", "mov, else mkv"),
+    ("avi", "avi"),
+    ("flv", "flv"),
+)
+MERGE_REASON_NAME: Final = "optionsMergeReason"
+MERGE_FOLLOWS_REASON: Final = (
+    "A remux or recode decides the container, so separate streams are merged into it."
+)
+MERGE_AUDIO_REASON: Final = "An audio download has no separate streams to merge."
+
 #: The group below *Embed in the file* (`UX-015`, amended 2026-10-11, second, `T-249`).
 KEEP_BESIDE_TITLE: Final = "Keep beside the file"
 KEEP_DESCRIPTION_NAME: Final = "optionsKeepDescription"
@@ -217,7 +268,7 @@ SAVE_RESULT_NAME: Final = "optionsSaveResult"
 #: absent: absence would be indistinguishable from an oversight, which is the failure this mapping
 #: exists to make impossible. Its surface is the format table, gated by `P-13` since `T-107`.
 FFMPEG_FEATURE_CONTROLS: Final[dict[FfmpegFeature, tuple[str, ...]]] = {
-    FfmpegFeature.MERGE: (),
+    FfmpegFeature.MERGE: (MERGE_CONTAINER_NAME,),
     FfmpegFeature.AUDIO: (AUDIO_CODEC_NAME, AUDIO_QUALITY_NAME),
     FfmpegFeature.CONTAINER: (
         CONTAINER_REMUX_NAME,
@@ -414,9 +465,14 @@ class OptionsDialog(QDialog):
         ask_name: Callable[[], tuple[str, bool]] | None = None,
         ffmpeg_available: bool = True,
         choosing_entries: bool = True,
+        format_chosen: bool = False,
     ) -> None:
         super().__init__(parent)
         self._preset = preset
+        #: **Whether the format was picked in the table** (`UX-015`, amended 2026-10-15, second):
+        #: an exact format id is the same under any sort, so *Choosing the format* is disabled
+        #: with the reason and carries the preset's own values (`T109-R2`).
+        self._format_chosen = format_chosen
         #: **Whether there are entries to choose between** (`UX-015`, amended 2026-10-11). A preset
         #: may be used for a playlist and a row may be one, so both default to `True`; a single
         #: video and a queued job, which is one item, have none, and their items and *at most*
@@ -454,6 +510,8 @@ class OptionsDialog(QDialog):
         self._selection_usable = True
         #: Whether the subtitle format preference as last checked may be used (`T-251`).
         self._subtitle_format_usable = True
+        #: Whether the format sort as last checked may be used (`T-250`).
+        self._format_sort_usable = True
         self._build()
         self._show_preset(preset)
         self._update_enabled()
@@ -543,6 +601,7 @@ class OptionsDialog(QDialog):
         groups = QWidget(self)
         stack = QVBoxLayout(groups)
         stack.setContentsMargins(0, 0, 0, 0)
+        stack.addWidget(self._build_choosing_format())
         stack.addWidget(self._build_audio())
         stack.addWidget(self._build_container())
         stack.addWidget(self._build_embedding())
@@ -595,6 +654,54 @@ class OptionsDialog(QDialog):
         layout.addWidget(buttons)
         self._buttons = buttons
         self._ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
+
+    def _build_choosing_format(self) -> QWidget:
+        """The sort and the format check, above *Audio* (`UX-015`, amended 2026-10-15, second).
+
+        **The sort is a field checked as it is typed**, against yt-dlp's own vocabulary in `core/`
+        (`ARC-010`, amended the same day): yt-dlp ignores an unknown field and reads `res:abc` as no
+        limit, so a sort that would not do what it says is refused here, beside the field. **The
+        check is radio buttons**, each naming its whole choice, for `CONVERT_SUBTITLES`' reason.
+        """
+        group = QGroupBox(CHOOSING_FORMAT_TITLE, self)
+        layout = QVBoxLayout(group)
+
+        hint = QLabel(CHOOSING_FORMAT_HINT, group)
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        # A form row, so the field has a label as its buddy (`NFR-005`).
+        form = QFormLayout()
+        self._format_sort = self._text_field(
+            group, FORMAT_SORT_NAME, "Sort the formats by", FORMAT_SORT_PLACEHOLDER
+        )
+        form.addRow("Sort the formats by", self._format_sort)
+        layout.addLayout(form)
+        self._format_sort_refusals = QLabel("", group)
+        self._format_sort_refusals.setObjectName(FORMAT_SORT_REFUSALS_NAME)
+        self._format_sort_refusals.setWordWrap(True)
+        # A refusal may quote what the user typed, which is their text.
+        self._format_sort_refusals.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self._format_sort_refusals)
+        # Checked once typing pauses, as the subtitle format is: `res:` is on its way to `res:720`.
+        self._format_sort_pause = QTimer(self)
+        self._format_sort_pause.setSingleShot(True)
+        self._format_sort_pause.setInterval(EXTRA_OPTIONS_PAUSE_MS)
+        self._format_sort_pause.timeout.connect(self._check_format_sort)
+        self._format_sort.textChanged.connect(self._format_sort_pause.start)
+
+        self._check_formats: dict[FormatCheck, QRadioButton] = {}
+        for wanted, name, text in CHECK_FORMATS:
+            button = QRadioButton(text, group)
+            button.setObjectName(name)
+            layout.addWidget(button)
+            self._check_formats[wanted] = button
+
+        self._format_reason = QLabel("", group)
+        self._format_reason.setObjectName(FORMAT_REASON_NAME)
+        self._format_reason.setWordWrap(True)
+        layout.addWidget(self._format_reason)
+        return group
 
     def _build_audio(self) -> QWidget:
         group = QGroupBox("Audio", self)
@@ -668,6 +775,30 @@ class OptionsDialog(QDialog):
         for container in offered:
             self._container_choice.addItem(container, container)
         layout.addWidget(self._container_choice)
+
+        # **The merge container, beside the remux it yields to** (`T-250`). Offered only while the
+        # container is kept, since a remux or recode decides it (`ARC-010`'s written order); its
+        # label is its buddy for `container_label`'s reason above.
+        merge_label = QLabel("Merge separate video and audio into", group)
+        merge_label.setObjectName("optionsMergeContainerLabel")
+        merge_label.setWordWrap(True)
+        layout.addWidget(merge_label)
+        self._merge_container = QComboBox(group)
+        self._merge_container.setObjectName(MERGE_CONTAINER_NAME)
+        self._merge_container.setAccessibleName("Merge separate video and audio into")
+        merge_label.setBuddy(self._merge_container)
+        for merge, text in MERGE_CONTAINERS_OFFERED:
+            self._merge_container.addItem(text, merge)
+        # **A merge container the preset carries is kept even when it is not offered** (`T109-R2`),
+        # shown as written, so opening and accepting never changes it.
+        carried_merge = self._preset.merge_container
+        if carried_merge is not None and self._merge_container.findData(carried_merge) < 0:
+            self._merge_container.addItem(carried_merge, carried_merge)
+        layout.addWidget(self._merge_container)
+        self._merge_reason = QLabel("", group)
+        self._merge_reason.setObjectName(MERGE_REASON_NAME)
+        self._merge_reason.setWordWrap(True)
+        layout.addWidget(self._merge_reason)
 
         note = QLabel(CONTAINER_NOTE, group)
         note.setObjectName(CONTAINER_NOTE_NAME)
@@ -957,6 +1088,14 @@ class OptionsDialog(QDialog):
             )
         else:
             self._container_keep.setChecked(True)
+        self._merge_container.setCurrentIndex(
+            0
+            if preset.merge_container is None
+            else self._merge_container.findData(preset.merge_container)
+        )
+
+        self._format_sort.setText(preset.format_sort or "")
+        self._check_formats[preset.check_formats].setChecked(True)
 
         self._embed_thumbnail.setChecked(preset.embed_thumbnail)
         self._embed_metadata.setChecked(preset.embed_metadata)
@@ -985,6 +1124,7 @@ class OptionsDialog(QDialog):
             checked = everything or self._language_of(item) in wanted
             item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
         self._check_subtitle_format()
+        self._check_format_sort()
 
         # The preset's own text, shown without starting the pause: showing it is not typing it.
         self._extra.setPlainText(preset.extra_options)
@@ -1042,7 +1182,12 @@ class OptionsDialog(QDialog):
 
     def _update_accepting(self) -> None:
         """The accepting buttons are live only while every checked field may be used."""
-        usable = self._extra_checked[2] and self._selection_usable and self._subtitle_format_usable
+        usable = (
+            self._extra_checked[2]
+            and self._selection_usable
+            and self._subtitle_format_usable
+            and self._format_sort_usable
+        )
         self._ok_button.setEnabled(usable)
         if self._save_preset is not None:
             self._save_button.setEnabled(usable)
@@ -1085,6 +1230,29 @@ class OptionsDialog(QDialog):
     def subtitle_format_refusals_text(self) -> str:
         """What the preference's refusal says. A method, so a test reads what the user reads."""
         return self._subtitle_format_refusals.text()
+
+    # --- the format sort (`T-250`) ----------------------------------------------------------
+
+    def _check_format_sort(self) -> None:
+        """Check the sort as it reads now, and say under it what is wrong with it."""
+        self._format_sort_pause.stop()
+        text = self._format_sort.text().strip()
+        problem = format_sort_problem(text) if text and self._format_sort.isEnabled() else None
+        self._format_sort_usable = problem is None
+        self._format_sort_refusals.setText(
+            "" if problem is None else f"Sort the formats by: {problem}"
+        )
+        self._update_accepting()
+
+    def _format_sort_ok(self) -> bool:
+        """Whether the sort may be used, checking it first if typing has not paused yet."""
+        if self._format_sort_pause.isActive():
+            self._check_format_sort()
+        return self._format_sort_usable
+
+    def format_sort_refusals_text(self) -> str:
+        """What the sort's refusal says. A method, so a test reads what the user reads."""
+        return self._format_sort_refusals.text()
 
     # --- *Which items* (`UX-015` amended 2026-10-11, `T-247`) ----------------------------------
 
@@ -1157,7 +1325,12 @@ class OptionsDialog(QDialog):
     # Qt's override name.
     def accept(self) -> None:
         """Accept only fields that may be used, checked as they read at this moment."""
-        if self._extra_options_usable() and self._selection_ok() and self._subtitle_format_ok():
+        if (
+            self._extra_options_usable()
+            and self._selection_ok()
+            and self._subtitle_format_ok()
+            and self._format_sort_ok()
+        ):
             super().accept()
 
     def _update_enabled(self) -> None:
@@ -1182,6 +1355,18 @@ class OptionsDialog(QDialog):
             self._audio_reason.setText(NO_BITRATE_REASON)
 
         self._container_choice.setEnabled(not self._container_keep.isChecked())
+
+        # **Choosing the format acts only where the format is not exact** (`T-250`).
+        for control in (self._format_sort, *self._check_formats.values()):
+            control.setEnabled(not self._format_chosen)
+        self._format_reason.setText(FORMAT_CHOSEN_REASON if self._format_chosen else "")
+        # **The merge container, only while the container is kept and there is video** (`T-250`).
+        video = self._preset.media_kind is not MediaKind.AUDIO
+        merges = video and self._container_keep.isChecked()
+        self._merge_container.setEnabled(merges)
+        self._merge_reason.setText(
+            "" if merges else MERGE_FOLLOWS_REASON if video else MERGE_AUDIO_REASON
+        )
 
         # **Subtitles or captions are something to choose** (`T-251`); with neither, every
         # subtitle control carries the preset's own, as the list always has (`T109-R2`).
@@ -1360,8 +1545,12 @@ class OptionsDialog(QDialog):
         extra_text, extra_argv = self._chosen_extra_options()
         items, at_most = self._chosen_entry_rule()
         smallest, largest, after, before = self._chosen_filters()
+        format_sort, check_formats = self._chosen_format_depth()
         derived = replace(
             derived,
+            format_sort=format_sort,
+            check_formats=check_formats,
+            merge_container=self._chosen_merge(),
             audio_codec=codec,
             audio_quality=quality,
             subtitle_languages=languages,
@@ -1405,6 +1594,30 @@ class OptionsDialog(QDialog):
             None,
         )
         return self._automatic_captions.isChecked(), text or None, conversion
+
+    def _chosen_format_depth(self) -> tuple[str | None, FormatCheck]:
+        """The sort and the check, or the preset's own where the format is exact (`T109-R2`)."""
+        if self._format_chosen:
+            return self._preset.format_sort, self._preset.check_formats
+        check = next(
+            (wanted for wanted, button in self._check_formats.items() if button.isChecked()),
+            FormatCheck.DEFAULT,
+        )
+        return self._format_sort.text().strip() or None, check
+
+    def _chosen_merge(self) -> str | None:
+        """The merge container, by `ARC-010`'s written order (amended 2026-10-15, second).
+
+        **None once a remux or recode is chosen**: that decides the container, and a merge
+        container kept beside it would be named on the row and do nothing there. **The preset's own
+        where the choice is withdrawn otherwise**, without ffmpeg or for audio (`T109-R2`).
+        """
+        if not self._container_keep.isChecked():
+            return None
+        if not self._merge_container.isEnabled():
+            return self._preset.merge_container
+        merge = self._merge_container.currentData()
+        return None if merge is None else str(merge)
 
     def _chosen_thumbnails(self) -> KeptThumbnails:
         """Which thumbnails the radio buttons keep. One is always checked; none means *none*."""

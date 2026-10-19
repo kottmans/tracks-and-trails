@@ -52,8 +52,11 @@ from yt_dlp.utils import (
 )
 
 from tracks_and_trails.core.errors import TRANSIENT_CONTEXT_KEY, ErrorKind, FailureDetail
+from tracks_and_trails.core.format_sort import sort_items
 from tracks_and_trails.core.models import (
+    MERGE_CONTAINERS,
     DownloadRequest,
+    FormatCheck,
     FormatInfo,
     KeptThumbnails,
     MediaInfo,
@@ -929,6 +932,15 @@ def build_options(
     # `--skip-unavailable-fragments` in the options field is merged below and wins: the one other
     # key the application and the user share, ruled as `ARC-010` rules `writethumbnail`.
     options["skip_unavailable_fragments"] = False
+    # **The sort and the merge container, on both passes** (`T-250`). The probe chooses a format
+    # too, to render the name the download will take, and yt-dlp picks a merged format's container
+    # when it chooses it; a probe without these would preview a name the download does not write.
+    # The check is the download's alone, below.
+    if request.format_sort is not None:
+        options["format_sort"] = list(sort_items(request.format_sort))
+    merge = merge_container_for(request)
+    if merge is not None:
+        options["merge_output_format"] = merge
     if request.cookies_from_browser:
         # **The four-tuple yt-dlp parses, not the string the user typed** (`T197-R2`). Its
         # `_parse_browser_specification(browser_name, profile, keyring, container)` refuses an
@@ -1002,6 +1014,11 @@ def build_options(
     # `--date`, `--dateafter` and `--datebefore`: an absent end is open, as the request's `None`
     # is. The request carries frozen `YYYYMMDD` days, never a relative form, and the worker ends a
     # job whose days have crossed before this is reached, since `DateRange` refuses that pair.
+    # **The format check, on the download only** (`T-250`, `ARC-010` amended 2026-10-15, second):
+    # checking every format of one YouTube video took 79 requests and 12.9 s against 3 to read it,
+    # and the add dialog reads every URL pasted into it.
+    if request.check_formats is not FormatCheck.DEFAULT:
+        options["check_formats"] = FORMAT_CHECKS[request.check_formats]
     if request.min_filesize is not None:
         options["min_filesize"] = request.min_filesize
     if request.max_filesize is not None:
@@ -1068,6 +1085,29 @@ def build_options(
         ]
     )
     return options
+
+
+#: Each position of the format check (`T-250`) as yt-dlp's `check_formats` reads it: `selected`,
+#: everything, nothing. `DEFAULT` sends no key, which leaves the check to the extractor.
+FORMAT_CHECKS: Final[Mapping[FormatCheck, str | bool]] = MappingProxyType(
+    {FormatCheck.SELECTED: "selected", FormatCheck.EVERY: True, FormatCheck.NEVER: False}
+)
+
+
+def merge_container_for(request: DownloadRequest) -> str | None:
+    """The container a merge writes, by `ARC-010`'s written order (amended 2026-10-15, second).
+
+    **Recode, then remux, then the merge container, then yt-dlp's choice.** A recode or a remux
+    runs after the merge and decides the final container, so the merge container is an
+    intermediate whenever either is set. **A remux into a container the merger writes merges
+    straight into it**, one pass instead of two, as yt-dlp's own `-t mp4` does; a remux into one it
+    cannot write, `gif` or an audio container, leaves the merge to the merge container or yt-dlp.
+    A request carries a remux or a recode, never both (`_require_one_container_change`), so the
+    remux is asked about alone.
+    """
+    if request.remux_container in MERGE_CONTAINERS:
+        return request.remux_container
+    return request.merge_container
 
 
 #: Keys that shape a file name, which act on the rendered name and never on the download's path

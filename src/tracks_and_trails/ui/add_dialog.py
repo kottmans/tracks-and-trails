@@ -2411,6 +2411,9 @@ class AddUrlDialog(QDialog):
             # `UX-015`, amended 2026-10-11: which entries a playlist keeps is a question only a
             # playlist has, so a single video's editor shows those two controls disabled.
             choosing_entries=isinstance(media, MediaInfo) and bool(media.entries),
+            # `T-250`: a format picked in the table is exact, so the sort and the check are
+            # disabled with the reason rather than offered to change nothing.
+            format_chosen=row.format_selection is not None,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return

@@ -23,6 +23,7 @@ from tracks_and_trails.core import presets
 from tracks_and_trails.core.models import (
     AudioCodec,
     DownloadRequest,
+    FormatCheck,
     KeptThumbnails,
     MediaKind,
     NetworkOptions,
@@ -445,6 +446,10 @@ def test_a_preset_owned_field_cannot_be_overridden(field_name: str) -> None:
     """
     sample: dict[str, Any] = {
         "format_selector": "worst",
+        # `T-250`'s depth: a job sorted, checked or merged otherwise is not the preset shown.
+        "format_sort": "+size",
+        "check_formats": FormatCheck.EVERY,
+        "merge_container": "webm",
         "media_kind": MediaKind.AUDIO,
         "post_processors": ("FFmpegMetadata",),
         "subtitle_languages": ("en",),

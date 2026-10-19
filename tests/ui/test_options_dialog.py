@@ -41,6 +41,7 @@ from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.models import (
     ALL_SUBTITLE_LANGUAGES,
     AudioCodec,
+    FormatCheck,
     KeptThumbnails,
     Preset,
     SubtitleFormat,
@@ -56,6 +57,8 @@ from tracks_and_trails.ui.options_dialog import (
     CAPTION_SUFFIX,
     CAPTIONS_HINT,
     CAPTIONS_ONLY_REASON,
+    CHECK_FORMATS,
+    CHOOSING_FORMAT_TITLE,
     CONTAINER_CHOICE_NAME,
     CONTAINER_KEEP_NAME,
     CONTAINER_NOTE,
@@ -73,6 +76,9 @@ from tracks_and_trails.ui.options_dialog import (
     EXTRA_OPTIONS_NAME,
     EXTRA_OPTIONS_TITLE,
     FFMPEG_FEATURE_CONTROLS,
+    FORMAT_CHOSEN_REASON,
+    FORMAT_REASON_NAME,
+    FORMAT_SORT_NAME,
     INFO_JSON_NOTE,
     INFO_JSON_NOTE_NAME,
     KEEP_BESIDE_TITLE,
@@ -80,6 +86,10 @@ from tracks_and_trails.ui.options_dialog import (
     KEEP_INFO_JSON_NAME,
     KEEP_THUMBNAILS,
     MAX_SIZE_NAME,
+    MERGE_AUDIO_REASON,
+    MERGE_CONTAINER_NAME,
+    MERGE_FOLLOWS_REASON,
+    MERGE_REASON_NAME,
     MIN_SIZE_NAME,
     NO_AUDIO_REASON,
     NO_ENTRIES_REASON,
@@ -741,6 +751,9 @@ STILL_LIVE_WITHOUT_FFMPEG: Final = {
     # any subtitle, and *keep the format* asks for nothing; only a conversion is ffmpeg's work.
     AUTOMATIC_CAPTIONS_NAME,
     next(name for wanted, name, _text in CONVERT_SUBTITLES if wanted is None),
+    # *Choosing the format* (`T-250`): sorting and trying formats decide which file is fetched,
+    # before anything is processed; neither asks ffmpeg for anything.
+    *(name for _wanted, name, _text in CHECK_FORMATS),
 }
 
 
@@ -2197,3 +2210,174 @@ def test_the_depth_sits_inside_the_subtitles_group(editor: Callable[..., Options
     }
     inside = {child.objectName() for child in group.findChildren(QWidget)}
     assert names <= inside, sorted(names - inside)
+
+
+# --- *Choosing the format* and the merge container (`T-250`) ------------------------------------
+
+SORTED: Final = replace(
+    preset_registry.BEST_VIDEO,
+    name="Deep",
+    built_in=False,
+    format_sort="res:1080,vcodec:h264",
+    check_formats=FormatCheck.EVERY,
+    merge_container="mp4/mkv",
+)
+
+
+def _group_titles(dialog: OptionsDialog) -> list[str]:
+    scroller = dialog.findChild(QScrollArea)
+    content = scroller.widget() if scroller is not None else None
+    assert content is not None
+    return [
+        child.title()
+        for child in content.findChildren(
+            QGroupBox, options=Qt.FindChildOption.FindDirectChildrenOnly
+        )
+    ]
+
+
+def test_choosing_the_format_is_the_first_group(editor: Callable[..., OptionsDialog]) -> None:
+    """`UX-015`, amended 2026-10-15, second: above *Audio*."""
+    titles = _group_titles(editor())
+
+    assert titles[:2] == [CHOOSING_FORMAT_TITLE, "Audio"], titles
+
+
+def test_format_depth_opens_on_the_preset_s_own_and_comes_back(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    dialog = editor(SORTED)
+
+    assert line(dialog, FORMAT_SORT_NAME).text() == "res:1080,vcodec:h264"
+    assert radio(dialog, "optionsCheckFormatsEvery").isChecked()
+    assert combo(dialog, MERGE_CONTAINER_NAME).currentText() == "mp4, else mkv"
+    result = dialog.result_preset()
+    assert (result.format_sort, result.check_formats, result.merge_container) == (
+        SORTED.format_sort,
+        SORTED.check_formats,
+        SORTED.merge_container,
+    )
+
+
+@pytest.mark.parametrize(("wanted", "name", "_text"), CHECK_FORMATS)
+def test_each_check_position_is_what_the_preset_gets(
+    editor: Callable[..., OptionsDialog], wanted: FormatCheck, name: str, _text: str
+) -> None:
+    dialog = editor()
+
+    radio(dialog, name).setChecked(True)
+
+    assert dialog.result_preset().check_formats is wanted
+
+
+def test_a_sort_yt_dlp_would_not_follow_is_refused_where_typed(
+    editor: Callable[..., OptionsDialog], spin: Callable[..., bool]
+) -> None:
+    """`res:abc` is no limit to yt-dlp, which says nothing; here it is refused beside the field."""
+    dialog = editor()
+
+    line(dialog, FORMAT_SORT_NAME).setText("res:abc")
+    assert spin(lambda: not dialog._format_sort_pause.isActive(), timeout=5)
+
+    assert "whole number" in dialog.format_sort_refusals_text()
+    assert not ok_button(dialog).isEnabled()
+
+    line(dialog, FORMAT_SORT_NAME).setText("res:720")
+    assert spin(lambda: not dialog._format_sort_pause.isActive(), timeout=5)
+    assert dialog.format_sort_refusals_text() == ""
+    assert ok_button(dialog).isEnabled()
+    assert dialog.result_preset().format_sort == "res:720"
+
+
+def test_an_immediate_accept_cannot_take_a_sort_nobody_checked(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """*Enter* inside the typing pause goes through `accept()`, which checks first."""
+    dialog = editor()
+    accepted: list[bool] = []
+    dialog.accepted.connect(lambda: accepted.append(True))
+
+    line(dialog, FORMAT_SORT_NAME).setText("resolution")
+    dialog.accept()
+
+    assert not accepted
+    assert "Use res" in dialog.format_sort_refusals_text()
+
+
+def test_a_format_chosen_from_the_table_disables_the_group_and_keeps_its_values(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """An exact format id is the same under any sort, so both are disabled with the reason and
+    carry the preset's own (`T109-R2`)."""
+    dialog = editor(SORTED, format_chosen=True)
+
+    assert not line(dialog, FORMAT_SORT_NAME).isEnabled()
+    assert not any(radio(dialog, name).isEnabled() for _w, name, _t in CHECK_FORMATS)
+    reason = dialog.findChild(QLabel, FORMAT_REASON_NAME)
+    assert reason is not None and reason.text() == FORMAT_CHOSEN_REASON
+    result = dialog.result_preset()
+    assert (result.format_sort, result.check_formats) == (SORTED.format_sort, SORTED.check_formats)
+
+
+def test_the_merge_container_is_offered_only_while_the_container_is_kept(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """`ARC-010`'s written order: a remux or recode decides the container, and the merge follows
+    it, so the choice is withdrawn with the reason and the result names none."""
+    dialog = editor(SORTED)
+    merge = combo(dialog, MERGE_CONTAINER_NAME)
+    assert merge.isEnabled()
+
+    radio(dialog, CONTAINER_REMUX_NAME).setChecked(True)
+
+    reason = dialog.findChild(QLabel, MERGE_REASON_NAME)
+    assert not merge.isEnabled()
+    assert reason is not None and reason.text() == MERGE_FOLLOWS_REASON
+    assert dialog.result_preset().merge_container is None
+
+
+def test_an_audio_download_merges_nothing(editor: Callable[..., OptionsDialog]) -> None:
+    dialog = editor(preset_registry.AUDIO_MP3)
+
+    reason = dialog.findChild(QLabel, MERGE_REASON_NAME)
+    assert not combo(dialog, MERGE_CONTAINER_NAME).isEnabled()
+    assert reason is not None and reason.text() == MERGE_AUDIO_REASON
+    assert dialog.result_preset().merge_container is None
+
+
+def test_a_merge_container_the_list_lacks_is_kept_as_written(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """A hand-written `webm/mp4/mkv` is shown and given back, never moved to index 0."""
+    dialog = editor(replace(SORTED, merge_container="webm/mp4/mkv"))
+
+    assert combo(dialog, MERGE_CONTAINER_NAME).currentText() == "webm/mp4/mkv"
+    assert dialog.result_preset().merge_container == "webm/mp4/mkv"
+
+
+def test_choosing_a_merge_container_is_what_the_preset_gets_and_its_name_says(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    dialog = editor()
+    merge = combo(dialog, MERGE_CONTAINER_NAME)
+
+    merge.setCurrentIndex(merge.findData("webm/mkv"))
+    result = dialog.result_preset()
+
+    assert result.merge_container == "webm/mkv"
+    assert result.name.endswith(" · merged into webm, else mkv"), result.name
+
+
+def test_the_new_controls_are_named_and_reached_by_the_keyboard(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    dialog = editor()
+    controls: list[QWidget] = [
+        line(dialog, FORMAT_SORT_NAME),
+        combo(dialog, MERGE_CONTAINER_NAME),
+        *(radio(dialog, name) for _w, name, _t in CHECK_FORMATS),
+    ]
+
+    for control in controls:
+        assert control.accessibleName() or isinstance(control, QRadioButton), control.objectName()
+        assert control.focusPolicy() & Qt.FocusPolicy.TabFocus, control.objectName()

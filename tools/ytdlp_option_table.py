@@ -192,8 +192,11 @@ def built_spellings() -> dict[str, str]:
     `REQ-031`'s *accepted and silently dropped*. The aliases are read from yt-dlp's parser rather
     than listed, so a new typed field brings all of them with it.
 
-    Measured at 2026.08.19: every other option sharing a built option's destination is one of its
-    aliases, so there is no deprecated option under another name to account for.
+    **Aliases only, and not every option sharing a destination is one** (`T-250`, which corrected
+    this): `--format-sort-reset` and `--check-all-formats` are other parser options setting the
+    destinations of `-S` and `--check-formats`. Each needs its own row in the built table, which is
+    what moved them from `hatch` to `typed`, and the audit's drift test fails on any such option
+    left reachable.
     """
     from yt_dlp.options import create_parser
 

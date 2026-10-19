@@ -31,6 +31,7 @@ from tracks_and_trails.core.models import (
     EXPANSION_FIELDS,
     AudioCodec,
     DownloadRequest,
+    FormatCheck,
     KeptThumbnails,
     MediaKind,
     SubtitleFormat,
@@ -95,6 +96,11 @@ _HATCH_ON: Final[tuple[str, ...]] = ("fragment_retries",)
 #: One value per `DownloadRequest` field that can turn a branch on inside `build_options`.
 _FIELD_ON: Final = {
     "media_kind": MediaKind.AUDIO,
+    # `T-250`'s format depth: the sort and the merge container on both passes, the check on the
+    # download only.
+    "format_sort": "res:720",
+    "check_formats": FormatCheck.EVERY,
+    "merge_container": "mp4/mkv",
     "audio_codec": AudioCodec.MP3,
     "audio_quality": "192",
     "post_processors": ("FFmpegThumbnailsConvertor",),

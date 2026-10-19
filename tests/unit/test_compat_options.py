@@ -186,9 +186,10 @@ def test_a_value_that_would_do_harm_or_nothing_is_refused_with_its_reason(
     [
         "--compat-options no-live-chat",
         "--compat-options 2021",
-        "--compat-options all,-allow-unsafe-ext,-allow-unsafe-exec-expansion,-filename",
+        "--compat-options all,-allow-unsafe-ext,-allow-unsafe-exec-expansion,-filename,"
+        "-format-sort",
         "--compat-options all --compat-options -allow-unsafe-ext,-allow-unsafe-exec-expansion,"
-        "-filename",
+        "-filename,-format-sort",
     ],
 )
 def test_harmless_values_stay_usable(text: str) -> None:
@@ -243,7 +244,7 @@ WITHOUT_FFMPEG: Final = (
     "--compat-options prefer-vp9-sort --split-chapters",
     "--compat-options allow-unsafe-ext --compat-options -allow-unsafe-ext --split-chapters",
     "--compat-options all --compat-options -allow-unsafe-ext,-allow-unsafe-exec-expansion,"
-    "-filename --split-chapters",
+    "-filename,-format-sort --split-chapters",
 )
 
 
@@ -501,9 +502,9 @@ def _tool() -> ModuleType:
 def test_a_value_reaching_a_built_control_s_key_is_refused_once_that_control_exists(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`format-sort` and `mtime-by-default` reach `T-250`'s and `T-248`'s keys, and are admitted
-    while neither control exists. Building one must refuse them by regenerating, with no list to
-    remember to edit."""
+    """`format-sort` and `mtime-by-default` reach `T-250`'s and `T-248`'s keys, and each was
+    admitted until its control existed. Building one must refuse them by regenerating, with no list
+    to remember to edit: `T-250`'s did, on 2026-10-18."""
     tool = _tool()
     built: dict[str, Any] = dict(tool.built_spellings())
     monkeypatch.setattr(
@@ -518,4 +519,5 @@ def test_a_value_reaching_a_built_control_s_key_is_refused_once_that_control_exi
     assert verdicts["mtime-by-default"] == "control"
     assert verdicts["no-live-chat"] is None
     assert "format_sort" not in carried
-    assert COMPAT_VALUES["format-sort"] is None, "a control for the sort was built; update this"
+    # `T-250` built the sort's control on 2026-10-18, and regenerating refused the value for it.
+    assert COMPAT_VALUES["format-sort"] == "control"
