@@ -105,6 +105,7 @@ Current requirements and architecture retain their own canonical authority.
 | [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) | The concurrency control leaves the toolbar for Settings | Accepted | — |
 | [UX-014](#ux-014--naming-is-a-setting-a-single-download-is-renamed-not-templated) | Naming is a setting; a single download is renamed, not templated | Accepted | — |
 | [UX-015](#ux-015--the-additional-options-field-the-editors-last-group-checked-as-you-type) | The additional-options field: the editor's last group, checked as you type | Accepted | [Amended 2026-10-11](#amended-2026-10-11--a-which-items-group-stands-above-the-hatch); [Amended 2026-10-11, second](#amended-2026-10-11-second--a-keep-beside-the-file-group-below-embed-in-the-file); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-inside-subtitles); [Amended 2026-10-15, second](#amended-2026-10-15-second--a-choosing-the-format-group-at-the-top) |
+| [UX-016](#ux-016--the-focus-ring-is-drawn-for-the-keyboard-not-for-a-click) | The focus ring is drawn for the keyboard, not for a click | Accepted | — |
 | [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button) | The row's menu says what it removes, and the ⋮ reads as a button | Accepted | — |
 | [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted; revision 2026-09-08.5 by amendment | [Status retention](#doc-007-status-retention); [running completed-task record](#doc-007-completed-tasks); [shared source and captured formatting](#doc-007-shared-source); [review storage](#doc-007-review-storage); [historical review migration](#doc-007-review-migration) |
 
@@ -7054,6 +7055,47 @@ row whose format was chosen from the table, since a sort never changes an exact 
 **The alternatives, as they were put.** The sort and the check beside the format table, which
 presets would need again elsewhere; or one *Format* group holding all three, which hides the merge
 choice's order behind the remux.
+
+---
+
+## UX-016 — The focus ring is drawn for the keyboard, not for a click
+
+**Status:** **Accepted** — maintainer ruling of 2026-09-09, option (2) of `T-304`; recorded here on
+2026-10-18, when `T-304` was built.
+**Date:** 2026-09-09
+**Supersedes, in one direction:** the rule `T202-R1` set and `tests/ui/test_colour_is_never_alone.py`
+enforces, that focus is drawn wherever it lands. Its geometry channel stands for keyboard focus;
+a pointer's focus now draws nothing. No numbered decision governed the ring before this one.
+
+### Context
+
+Qt draws `:focus` wherever focus lands, a click included, because check boxes and their kin take
+`StrongFocus`. The maintainer, 2026-09-09: *"if you are clicking around with a mouse all of the
+highlighted boxes are distracting."* The web's answer is `:focus-visible`; Qt has none.
+
+### Decision
+
+**The ring is drawn while the keyboard was the last input, and not after a pointer is pressed.** A
+key pressed after a click shows it at once on the control the click focused. It starts on, so a
+window opened from the keyboard shows it. Built as `ui/focus_ring.FocusRing`, which `theme.apply`
+installs with the style sheet and which sets `focusRing` on the focused widget; every focus rule
+asks for it through `theme.focused`, in the sheet and in `STATE_RULES` alike.
+
+### Consequences
+
+- `NFR-005`'s keyboard case is unchanged, and the colour-is-never-alone sweep still measures every
+  control on every screen under keyboard focus.
+- A control can hold focus with nothing drawn after a click; the handover to the keyboard is
+  asserted on what is drawn (`tests/ui/test_focus_ring.py`).
+- Re-polishing a focused control makes Qt measure it again with the focus rules applied, which
+  never happened before. That exposed a stepper whose width grew under focus; its idle padding now
+  reserves the pixel each side that focus spends.
+
+### The alternatives, as they were put
+
+Leaving every focus drawn, which the maintainer finds distracting; or keeping the ring for every
+focus and reducing it, thinner or lower in contrast, which keeps one rule and likely fails the
+contrast floor that made it 2px.
 
 ---
 

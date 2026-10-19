@@ -14,6 +14,112 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ## In Review
 
+### T-304 — Should a focus ring appear when the control was clicked?
+
+**Status:** In Review — built 2026-10-18 by the maintainer's overnight instruction that night,
+which also lifts the 2026-09-11 sequencing below
+([the amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-18-the-work-continues-while-reviews-are-pending));
+the ruling is recorded as `UX-016`. *(Was Ready:)* **ruled by the maintainer on 2026-09-09: option
+(2), the keyboard-only ring.** The options and their costs are kept below as the reasoning the ruling was made on. The
+decision entry recording it is part of this task, since the rule it supersedes has a review
+finding and a test for authority and no numbered decision.
+
+**Sequenced by the maintainer on 2026-09-11: not started until Phase 4's exit is approved.** The
+build touches every `:focus` selector in `ui/theme.py`, the generated `BORDERED_CONTROLS` ones
+included — and a type-and-attribute selector out-specifying a universal pseudo-class one is the
+defect behind both `T-303` and `P4EXIT-R1`'s collapse triangle. It would also rewrite the rule
+that `test_focus_is_visible_on_every_control_the_application_shows` enforces, which is the test
+carrying `P4EXIT-R1`'s evidence while that finding is under verification. The ruling on *what* to
+build is unchanged; only *when* is settled here.
+**Owner:** Maintainer to rule; Implementer to build
+**Priority:** Low — it is a comfort question, not a defect. Raised 2026-09-09: *"I don't
+necessarily think that mode should be enabled by default — if you are clicking around with a
+mouse all of the highlighted boxes are distracting."*
+**Phase:** Phase 4 (accessibility and polish)
+**Depends on:** `T-303` should land first, so the ring is correct before its trigger is argued
+**Relevant context:** `T202-R1`; `STATE_RULES` in `ui/theme.py`;
+`tests/ui/test_colour_is_never_alone.py`; `NFR-005`
+**Affected surfaces:** `ui/theme.py`, the application's input handling, and the accessibility tests
+**Risk:** Medium — it changes a rule that currently has a test and a recorded rationale
+
+#### The question
+
+Qt shows the focus ring wherever focus lands, including a mouse click, because `QCheckBox` and
+friends take `StrongFocus`. The web solved this with `:focus-visible`: ring for keyboard, none for
+pointer. **Qt has no native equivalent**, so it would be built — track the last input device and
+carry it as a dynamic property the style sheet selects on.
+
+#### What makes it a decision rather than a tweak
+
+The ring is not decoration here. `STATE_RULES` records it as the **geometry** channel for focus,
+adopted so that focus reads without colour — *"ink against background, which needs no colour to
+read"* — and `tests/ui/test_colour_is_never_alone.py` enforces that every state has a non-colour
+channel. **No numbered decision governs it**: its authority is review finding `T202-R1` and the
+test. So a ruling here would be the first time this is written down as a decision rather than as
+code.
+
+#### Options
+
+1. **Leave it.** Every focus is drawn. Costs nothing, and the maintainer finds it distracting.
+2. **Keyboard-only ring (`:focus-visible`).** Mouse focus draws no ring; keyboard focus does.
+   Standard on the web and in modern toolkits. **It does not weaken the keyboard case**, which is
+   what `NFR-005` and the accessibility pass are about. It does mean a control can hold focus with
+   nothing showing it, which matters to a mouse user who then reaches for the keyboard — the
+   handover is the case to check, not the steady state.
+3. **Keep the ring, reduce it** — thinner, or a lower-contrast hue — for every focus. Keeps one
+   code path and one rule; likely fails the contrast floor that made it 2px.
+
+**Recommendation: (2), after `T-303`.** It is what the maintainer asked for, it leaves the
+keyboard route untouched, and the objection it must answer — focus invisible until the user
+reaches for the keyboard — is testable rather than theoretical.
+
+#### Acceptance criteria
+
+- Whatever is ruled is **recorded as a decision with the maintainer's authority**, since the
+  current rule's authority is a review finding and this would supersede it in one direction.
+- If (2): pressing a key after clicking reveals the ring on the already-focused control, and that
+  handover is asserted by a test rather than described.
+- `tests/ui/test_colour_is_never_alone.py` still passes, or is amended deliberately with the
+  ruling cited — not adjusted to fit.
+
+#### Built 2026-10-18
+
+- **`ui/focus_ring.FocusRing`** watches the application's input: a key press makes it the
+  keyboard's turn, and a mouse, touch or tablet press the pointer's. On every focus change, and
+  whenever the turn changes, it sets `focusRing` on the focused widget and re-polishes it if the
+  answer changed. It starts on the keyboard's turn, so a window opened from the keyboard shows the
+  ring. `theme.apply` installs it with the style sheet, one per application, and a second dressing
+  starts it afresh.
+- **Every focus rule asks for the ring** through `theme.focused`, which inserts
+  `[focusRing="true"]` before each `:focus` part's first pseudo-state: the ten rules in the sheet,
+  the thickened selector built from `BORDERED_CONTROLS`, `STATE_RULES` and the coincidental-value
+  list, through one helper so they cannot disagree. All gain the same specificity, so their order
+  among themselves is unchanged.
+- **One geometry defect, exposed rather than caused.** Re-polishing a focused control makes Qt
+  measure it again with the focus rules on, which never happened before, and the stepper grew 2px
+  wider: its contents box is pinned and it had no side padding for the thicker edge to take. Its
+  idle padding now reserves a pixel each side from a 13px contents box, 15px before.
+- **Decided as `UX-016`**, with the maintainer's authority, superseding `T202-R1`'s rule in one
+  direction: the first criterion.
+- **Tests.** `tests/ui/test_focus_ring.py`, on what is drawn and with the focus sweep's own measure:
+  a click draws no ring and the next key draws it on the same control, in both themes (the second
+  criterion); `Tab` draws it from the start; a spin box is told on a click and on a key; dressing
+  installs one tracker on the keyboard's turn; and every focus rule in the sheet asks for the
+  ring. `tests/ui/test_colour_is_never_alone.py` passes unchanged (the third criterion), its focus
+  sweep included.
+- **Mutations, 8 of 8 caught**, each on a fresh copy of the tree: a click or a key changing
+  nothing; no re-polish; the pointer's turn first; a second dressing keeping the pointer's turn;
+  focus rules asking for nothing; `apply` installing no tracker; the stepper keeping no side
+  padding.
+
+**Not measured:** a screen reader, and a real desktop. The handover is asserted offscreen on Linux;
+the Windows desktop job runs these tests when `STARBASE` is back.
+
+**Checks, 2026-10-18, on Linux, base `f7e373a`**, with the project `.venv` on `PATH`: `ruff check
+.` and `ruff format --check .` (493 files); `mypy src` (72), bare `mypy` and `mypy --platform
+win32` (229 each); the table check up to date; `tests/unit tests/ui` under `-n auto`, **5,852
+passed**, 21 skipped; `tests/integration` **558 passed**.
+
 ### T-250 — Format depth: sorting, checking and the merge container
 
 **Status:** In Review — built 2026-10-18, ahead of `T-364`'s review by the maintainer's
@@ -341,71 +447,6 @@ and a marker saying a known failure is expected is that with extra steps.
   one point the count is four, and every accessibility-sounding test named in that figure passes.
 
 <a id="t-302"></a>
-
-### T-304 — Should a focus ring appear when the control was clicked?
-
-**Status:** Ready — **ruled by the maintainer on 2026-09-09: option (2), the keyboard-only
-ring.** The options and their costs are kept below as the reasoning the ruling was made on. The
-decision entry recording it is part of this task, since the rule it supersedes has a review
-finding and a test for authority and no numbered decision.
-
-**Sequenced by the maintainer on 2026-09-11: not started until Phase 4's exit is approved.** The
-build touches every `:focus` selector in `ui/theme.py`, the generated `BORDERED_CONTROLS` ones
-included — and a type-and-attribute selector out-specifying a universal pseudo-class one is the
-defect behind both `T-303` and `P4EXIT-R1`'s collapse triangle. It would also rewrite the rule
-that `test_focus_is_visible_on_every_control_the_application_shows` enforces, which is the test
-carrying `P4EXIT-R1`'s evidence while that finding is under verification. The ruling on *what* to
-build is unchanged; only *when* is settled here.
-**Owner:** Maintainer to rule; Implementer to build
-**Priority:** Low — it is a comfort question, not a defect. Raised 2026-09-09: *"I don't
-necessarily think that mode should be enabled by default — if you are clicking around with a
-mouse all of the highlighted boxes are distracting."*
-**Phase:** Phase 4 (accessibility and polish)
-**Depends on:** `T-303` should land first, so the ring is correct before its trigger is argued
-**Relevant context:** `T202-R1`; `STATE_RULES` in `ui/theme.py`;
-`tests/ui/test_colour_is_never_alone.py`; `NFR-005`
-**Affected surfaces:** `ui/theme.py`, the application's input handling, and the accessibility tests
-**Risk:** Medium — it changes a rule that currently has a test and a recorded rationale
-
-#### The question
-
-Qt shows the focus ring wherever focus lands, including a mouse click, because `QCheckBox` and
-friends take `StrongFocus`. The web solved this with `:focus-visible`: ring for keyboard, none for
-pointer. **Qt has no native equivalent**, so it would be built — track the last input device and
-carry it as a dynamic property the style sheet selects on.
-
-#### What makes it a decision rather than a tweak
-
-The ring is not decoration here. `STATE_RULES` records it as the **geometry** channel for focus,
-adopted so that focus reads without colour — *"ink against background, which needs no colour to
-read"* — and `tests/ui/test_colour_is_never_alone.py` enforces that every state has a non-colour
-channel. **No numbered decision governs it**: its authority is review finding `T202-R1` and the
-test. So a ruling here would be the first time this is written down as a decision rather than as
-code.
-
-#### Options
-
-1. **Leave it.** Every focus is drawn. Costs nothing, and the maintainer finds it distracting.
-2. **Keyboard-only ring (`:focus-visible`).** Mouse focus draws no ring; keyboard focus does.
-   Standard on the web and in modern toolkits. **It does not weaken the keyboard case**, which is
-   what `NFR-005` and the accessibility pass are about. It does mean a control can hold focus with
-   nothing showing it, which matters to a mouse user who then reaches for the keyboard — the
-   handover is the case to check, not the steady state.
-3. **Keep the ring, reduce it** — thinner, or a lower-contrast hue — for every focus. Keeps one
-   code path and one rule; likely fails the contrast floor that made it 2px.
-
-**Recommendation: (2), after `T-303`.** It is what the maintainer asked for, it leaves the
-keyboard route untouched, and the objection it must answer — focus invisible until the user
-reaches for the keyboard — is testable rather than theoretical.
-
-#### Acceptance criteria
-
-- Whatever is ruled is **recorded as a decision with the maintainer's authority**, since the
-  current rule's authority is a review finding and this would supersede it in one direction.
-- If (2): pressing a key after clicking reveals the ring on the already-focused control, and that
-  handover is asserted by a test rather than described.
-- `tests/ui/test_colour_is_never_alone.py` still passes, or is amended deliberately with the
-  ruling cited — not adjusted to fit.
 
 ## Proposed — Phase 0
 

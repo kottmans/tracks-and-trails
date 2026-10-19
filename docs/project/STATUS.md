@@ -141,7 +141,9 @@ task and review records it summarised.*
   each task in its own commit, pushed once its gates pass, for Codex to review together. **`T-250`
   was built that night** on its ruled design: the sort checked field by field against yt-dlp's
   vocabulary, bound in a fresh process; the format check, on the download only; and the merge
-  container in one written order with the remux and recode. It is with the Reviewer.
+  container in one written order with the remux and recode. It is with the Reviewer. **So is
+  `T-304`**, the keyboard-only focus ring ruled on 2026-09-09, now recorded as `UX-016`: a click
+  draws no ring, and the next key draws it on the control the click focused.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the

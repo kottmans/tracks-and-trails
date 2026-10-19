@@ -501,13 +501,49 @@ BORDERED_CONTROLS: Final = (
     ),
 )
 
+#: The dynamic property `ui/focus_ring.py` sets on the widget holding focus (`T-304`, `UX-016`):
+#: `true` while the keyboard was used last, `false` once a pointer was pressed.
+FOCUS_RING_PROPERTY: Final = "focusRing"
+
+
+def focused(selector: str) -> str:
+    """`selector` with each `:focus` part also asking for the ring (`T-304`, `UX-016`).
+
+    **The keyboard-only ring**, ruled 2026-09-09: Qt draws `:focus` wherever focus lands, a click
+    included, and has no `:focus-visible`. So every focus rule asks for `[focusRing="true"]` as
+    well, inserted in the part's last compound before its first pseudo-state, and `FocusRing` says
+    on the focused widget whether the keyboard was used last. **Every focus selector goes through
+    here**, in the sheet and in `STATE_RULES` alike, so the two cannot come to disagree, and all of
+    them gain the same specificity, so the rules keep the order they had among themselves.
+    """
+    return ", ".join(_focused_part(part.strip()) for part in selector.split(","))
+
+
+def _focused_part(part: str) -> str:
+    if ":focus" not in part:
+        return part
+    head, space, compound = part.rpartition(" ")
+    colon = compound.index(":")
+    ring = f'[{FOCUS_RING_PROPERTY}="true"]'
+    return f"{head}{space}{compound[:colon]}{ring}{compound[colon:]}"
+
+
 #: The one selector whose border goes from 1px to 2px when the control takes the keyboard.
 #:
 #: **Built from `BORDERED_CONTROLS` rather than typed out**, so the rule in `stylesheet()` and the
 #: inventory above cannot disagree. Retyping the list was how the first correction covered three
 #: controls and left seven behind; a list that exists once cannot be extended in one place only.
 THICKENED_FOCUS_SELECTOR: Final = ", ".join(
-    f"{control.selector}:focus" for control in BORDERED_CONTROLS if control.takes_focus
+    focused(f"{control.selector}:focus") for control in BORDERED_CONTROLS if control.takes_focus
+)
+
+
+#: Two focus selectors too long to write inline, shared by the sheet and `STATE_RULES`.
+_FOCUSED_VIEWS: Final = focused(
+    "QListView:focus, QTableView:focus, QTreeView:focus, QPlainTextEdit:focus, QTextEdit:focus"
+)
+_FOCUSED_ON_BRAND: Final = focused(
+    'QPushButton:default:focus, QToolBar QToolButton[primaryAction="true"]:focus'
 )
 
 
@@ -521,10 +557,10 @@ THICKENED_FOCUS_SELECTOR: Final = ", ".join(
 #: Listed by selector rather than excused by a colour comparison, so a rule that starts meaning
 #: something has to be moved out of this tuple deliberately.
 COINCIDENTAL_SEMANTIC_VALUES: Final = (
-    "*:focus",
-    "QScrollArea:focus",
+    focused("*:focus"),
+    focused("QScrollArea:focus"),
     THICKENED_FOCUS_SELECTOR,
-    'QToolBar QToolButton[primaryAction="true"]:focus',
+    focused('QToolBar QToolButton[primaryAction="true"]:focus'),
     'QToolBar QToolButton[primaryAction="true"]:pressed',
 )
 
@@ -570,7 +606,7 @@ STATE_CHANNELS: Final = frozenset({"geometry", "luminance", "published-state", "
 #: `accent` — focus, exactly — was never asked what it meant.
 STATE_RULES: Final = (
     StateRule(
-        selector="*:focus",
+        selector=focused("*:focus"),
         conveys="keyboard focus, on a control with no border of its own",
         channel="geometry",
         reason=(
@@ -611,22 +647,19 @@ STATE_RULES: Final = (
         ),
     ),
     StateRule(
-        selector="QPushButton:focus",
+        selector=focused("QPushButton:focus"),
         conveys="keyboard focus — the padding half of the rule above",
         channel="geometry",
         reason="Padding drops by exactly what the border gains, so the control does not move.",
     ),
     StateRule(
-        selector="QComboBox:focus, QLineEdit:focus",
+        selector=focused("QComboBox:focus, QLineEdit:focus"),
         conveys="keyboard focus — the padding half of the rule above",
         channel="geometry",
         reason="Padding drops by exactly what the border gains, so the control does not move.",
     ),
     StateRule(
-        selector=(
-            "QListView:focus, QTableView:focus, QTreeView:focus, QPlainTextEdit:focus, "
-            "QTextEdit:focus"
-        ),
+        selector=_FOCUSED_VIEWS,
         conveys="keyboard focus — the padding half, for the views and the text edits",
         channel="geometry",
         reason=(
@@ -636,16 +669,16 @@ STATE_RULES: Final = (
         ),
     ),
     StateRule(
-        selector='QToolButton[stepButton="true"]:focus',
+        selector=focused('QToolButton[stepButton="true"]:focus'),
         conveys="keyboard focus — the padding half, for a stepper",
         channel="geometry",
         reason=(
-            "Vertical only: `min-width` and `max-width` pin the contents box, so the sides cannot "
-            "move whatever the border does, and the top and bottom each give up their pixel."
+            "`min-width` and `max-width` pin the contents box, so every side gives up its pixel "
+            "of idle padding to the thicker border (`T-304`), and the size stays as it was."
         ),
     ),
     StateRule(
-        selector="QToolBar QToolButton:focus",
+        selector=focused("QToolBar QToolButton:focus"),
         conveys="keyboard focus — the padding half, for a toolbar verb",
         channel="geometry",
         reason=(
@@ -654,7 +687,7 @@ STATE_RULES: Final = (
         ),
     ),
     StateRule(
-        selector="QScrollArea:focus",
+        selector=focused("QScrollArea:focus"),
         conveys="keyboard focus, on a container Qt puts in the tab chain",
         channel="geometry",
         reason=(
@@ -664,7 +697,7 @@ STATE_RULES: Final = (
         ),
     ),
     StateRule(
-        selector='QPushButton:default:focus, QToolBar QToolButton[primaryAction="true"]:focus',
+        selector=_FOCUSED_ON_BRAND,
         conveys="keyboard focus, on the two controls whose ground is the brand fill",
         channel="geometry",
         reason=(
@@ -675,7 +708,7 @@ STATE_RULES: Final = (
         ),
     ),
     StateRule(
-        selector="QComboBox QAbstractItemView, QComboBox QAbstractItemView:focus",
+        selector=focused("QComboBox QAbstractItemView, QComboBox QAbstractItemView:focus"),
         conveys="nothing — a drop-down is never on screen without the keyboard",
         channel="geometry",
         reason=(
@@ -685,7 +718,7 @@ STATE_RULES: Final = (
         ),
     ),
     StateRule(
-        selector='QToolBar QToolButton[primaryAction="true"]:focus',
+        selector=focused('QToolBar QToolButton[primaryAction="true"]:focus'),
         conveys="keyboard focus — the padding half, for the primary verb",
         channel="geometry",
         reason=(
@@ -1164,7 +1197,7 @@ QMenu::separator {{
     background: {theme.rule};
     margin: 4px 6px;
 }}
-QComboBox QAbstractItemView, QComboBox QAbstractItemView:focus {{
+{focused("QComboBox QAbstractItemView, QComboBox QAbstractItemView:focus")} {{
     /* The drop-down list is its own view and does not inherit `QMenu`'s rules. Same defect,
        same remedy: without this, the row's format control highlights nothing as you move.
 
@@ -1228,9 +1261,13 @@ QToolButton[stepButton="true"] {{
     background-color: {theme.surface};
     border: 1px solid {theme.border};
     border-radius: 4px;
-    min-width: 15px;
-    max-width: 15px;
-    padding: 1px 0 2px 0;
+    /* **A pixel each side, for focus to spend** (`T-304`). Focus thickens the edge to 2px and the
+       contents box is pinned, so with nothing at the sides the button grew 2px wider the moment
+       its size was asked again while focused; the keyboard-only ring re-polishes a focused
+       control, which asks. The contents give up the two pixels: 13px still holds the glyph. */
+    min-width: 13px;
+    max-width: 13px;
+    padding: 1px 1px 2px 1px;
     font-weight: 600;
 }}
 QToolButton[stepButton="true"]:hover {{
@@ -1520,7 +1557,7 @@ QScrollArea {{
        to say so. */
     padding: 2px;
 }}
-QScrollArea:focus {{
+{focused("QScrollArea:focus")} {{
     /* Two pixels, because one measured as good as nothing here, and the padding above pays for
        both so the contents do not move: measured, the viewport keeps `QRect(2, 2, 550, 693)`
        exactly. */
@@ -1536,7 +1573,7 @@ QProgressBar {{
 QProgressBar::chunk {{
     background-color: {theme.primary};
 }}
-*:focus {{
+{focused("*:focus")} {{
     /* **For a widget with no border of its own, this ring *is* the non-colour channel**
        (`T202-R1`): focus makes ink appear where there was background, which survives a greyscale
        reading and a monochrome display alike. A check box, a radio button and a label-like control
@@ -1571,13 +1608,13 @@ QProgressBar::chunk {{
        with `background-color: {theme.rule}` still saying which state it is in. */
     border: 2px solid {theme.accent};
 }}
-QPushButton:focus {{
+{focused("QPushButton:focus")} {{
     padding: 3px 9px;
 }}
-QComboBox:focus, QLineEdit:focus {{
+{focused("QComboBox:focus, QLineEdit:focus")} {{
     padding: 2px 5px;
 }}
-QListView:focus, QTableView:focus, QTreeView:focus, QPlainTextEdit:focus, QTextEdit:focus {{
+{_FOCUSED_VIEWS} {{
     padding: 0px;
 }}
 QCheckBox, QRadioButton {{
@@ -1652,15 +1689,15 @@ QRadioButton::indicator:checked:disabled {{
         stop: 0 {theme.muted}, stop: 0.55 {theme.muted},
         stop: 0.6 {theme.sunken}, stop: 1 {theme.sunken});
 }}
-QToolButton[stepButton="true"]:focus {{
-    /* Vertical only: `min-width` and `max-width` pin the *contents* box at 15px, so the sides are
-       already at zero and the width cannot move whatever the border does. */
+{focused('QToolButton[stepButton="true"]:focus')} {{
+    /* `min-width` and `max-width` pin the *contents* box at 13px, so every side gives up its pixel
+       of padding to the thicker border, and the button keeps its size either way. */
     padding: 0 0 1px 0;
 }}
-QToolBar QToolButton:focus {{
+{focused("QToolBar QToolButton:focus")} {{
     padding: 2px 8px;
 }}
-QToolBar QToolButton[primaryAction="true"]:focus {{
+{focused('QToolBar QToolButton[primaryAction="true"]:focus')} {{
     /* **The brand fill is not a focus indicator** — it is there whether or not the button holds
        the keyboard, and `T-147` deliberately left it without a ring on hover. The border above
        thickens it like any other bordered control; only the padding differs, because its idle
@@ -1668,7 +1705,7 @@ QToolBar QToolButton[primaryAction="true"]:focus {{
        QToolButton:focus`, which would otherwise apply the narrower figure and move the button. */
     padding: 3px 11px;
 }}
-QPushButton:default:focus, QToolBar QToolButton[primaryAction="true"]:focus {{
+{_FOCUSED_ON_BRAND} {{
     /* **A ring is only a ring if it contrasts with the fill it is drawn on** (`T202-R1`, third
        round). These two are the controls whose ground is `primary`, and `T-147` measured accent
        against that ground at **1.42:1 in light and 1.25:1 in dark** — its exact words, about the
@@ -1766,3 +1803,11 @@ def apply(application: object, theme: Theme = LIGHT) -> None:
     styler = getattr(application, "setStyleSheet", None)
     if styler is not None:
         styler(stylesheet(theme))
+    # **The rules and the property together** (`T-304`, `UX-016`): every focus rule asks for
+    # `focusRing`, so a dressed application without the tracker would draw no ring at all.
+    from PySide6.QtWidgets import QApplication
+
+    if isinstance(application, QApplication):
+        from tracks_and_trails.ui.focus_ring import install
+
+        install(application)
