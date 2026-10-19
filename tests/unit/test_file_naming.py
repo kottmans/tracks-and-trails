@@ -1,9 +1,9 @@
 """How a name is shaped and a file dated, from the setting to yt-dlp (`T-248`).
 
-Built on the task's recommended answers before the maintainer rules: a Settings preference beside
-*How files are named*, frozen into each request as the template is (question 3), with the Windows
-pair refused as `app:policy` (question 2). The sessions that prove where files land are in
-`tests/integration/test_shaping_containment.py`; these hold the value on its way there.
+Built on the task's recommended answers, which the maintainer ruled on 2026-10-19: a Settings
+preference beside *How files are named*, frozen into each request as the template is (question 3),
+with the Windows pair refused as `app:policy` (question 2). The sessions that prove where files
+land are in `tests/integration/test_shaping_containment.py`; these hold the value on its way there.
 """
 
 from __future__ import annotations
