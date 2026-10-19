@@ -90,7 +90,7 @@ Current requirements and architecture retain their own canonical authority.
 | [OPS-009](#ops-009--where-each-ci-job-runs-now-that-starbase-is-back-and-minutes-are-metered) | Where each CI job runs, now that `STARBASE` is back and minutes are metered | Partly superseded | [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously); [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died); [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
 | [DAT-006](#dat-006--the-completion-ledger-what-it-stores-and-what-it-deliberately-does-not) | The completion ledger: what it stores, and what it deliberately does not | Withdrawn; purge ruling accepted | [Withdrawn 2026-08-06](#withdrawn-2026-08-06--there-is-no-ledger-so-there-is-nothing-to-decide); [Legacy-data ruling 2026-08-06](#legacy-data-ruling-2026-08-06--the-rows-already-written-are-purged-on-upgrade) |
 | [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch) | The queue does not run until it is started, and it is stopped at every launch | Accepted | [Amended 2026-09-12](#amended-2026-09-12--a-queue-with-nothing-left-to-do-stops-itself) |
-| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted); [Amended 2026-09-27](#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute); [Amended 2026-10-10](#amended-2026-10-10--a-long-option-is-typed-in-full); [Amended 2026-10-11](#amended-2026-10-11--playlist-selection-acts-at-expansion-and-dates-freeze-when-queued); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-acts-on-chosen-languages-and-never-captions-for-all); [Amended 2026-10-15, second](#amended-2026-10-15-second--the-sort-is-checked-whole-the-check-runs-on-the-download-and-containers-have-an-order); [Amended 2026-10-15, third](#amended-2026-10-15-third--skip_unavailable_fragments-is-shared-and-the-users-skip-wins) |
+| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted); [Amended 2026-09-27](#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute); [Amended 2026-10-10](#amended-2026-10-10--a-long-option-is-typed-in-full); [Amended 2026-10-11](#amended-2026-10-11--playlist-selection-acts-at-expansion-and-dates-freeze-when-queued); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-acts-on-chosen-languages-and-never-captions-for-all); [Amended 2026-10-15, second](#amended-2026-10-15-second--the-sort-is-checked-whole-the-check-runs-on-the-download-and-containers-have-an-order); [Amended 2026-10-15, third](#amended-2026-10-15-third--skip_unavailable_fragments-is-shared-and-the-users-skip-wins); [Amended 2026-10-19](#amended-2026-10-19--download-tuning-four-settings-a-part-per-preset-and-a-file-per-section) |
 | [UX-007](#ux-007--the-phase-3-surfaces-ruled-all-25-open-p-clauses) | The Phase 3 surfaces, ruled: all 25 open `[P]` clauses | Accepted | — |
 | [SEC-004](#sec-004--the-fifteen-options-sec-003-did-not-see-are-all-forbidden) | The fifteen options `SEC-003` did not see are all forbidden | Accepted | — |
 | [SEC-005](#sec-005----legacy-server-connect-is-forbidden-on-sec-004s-own-tls-reasoning) | `--legacy-server-connect` is forbidden, on `SEC-004`'s own TLS reasoning | Accepted | — |
@@ -104,7 +104,7 @@ Current requirements and architecture retain their own canonical authority.
 | [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu) | The row picks a preset; the per-row verbs are the row's own menu | Accepted | — |
 | [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) | The concurrency control leaves the toolbar for Settings | Accepted | — |
 | [UX-014](#ux-014--naming-is-a-setting-a-single-download-is-renamed-not-templated) | Naming is a setting; a single download is renamed, not templated | Accepted | [Amended 2026-10-19](#amended-2026-10-19--the-names-shape-and-the-files-date-sit-beside-the-name) |
-| [UX-015](#ux-015--the-additional-options-field-the-editors-last-group-checked-as-you-type) | The additional-options field: the editor's last group, checked as you type | Accepted | [Amended 2026-10-11](#amended-2026-10-11--a-which-items-group-stands-above-the-hatch); [Amended 2026-10-11, second](#amended-2026-10-11-second--a-keep-beside-the-file-group-below-embed-in-the-file); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-inside-subtitles); [Amended 2026-10-15, second](#amended-2026-10-15-second--a-choosing-the-format-group-at-the-top) |
+| [UX-015](#ux-015--the-additional-options-field-the-editors-last-group-checked-as-you-type) | The additional-options field: the editor's last group, checked as you type | Accepted | [Amended 2026-10-11](#amended-2026-10-11--a-which-items-group-stands-above-the-hatch); [Amended 2026-10-11, second](#amended-2026-10-11-second--a-keep-beside-the-file-group-below-embed-in-the-file); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-inside-subtitles); [Amended 2026-10-15, second](#amended-2026-10-15-second--a-choosing-the-format-group-at-the-top); [Amended 2026-10-19](#amended-2026-10-19--a-which-part-group-below-which-items) |
 | [UX-016](#ux-016--the-focus-ring-is-drawn-for-the-keyboard-not-for-a-click) | The focus ring is drawn for the keyboard, not for a click | Accepted | — |
 | [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button) | The row's menu says what it removes, and the ⋮ reads as a button | Accepted | — |
 | [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted; revision 2026-09-08.5 by amendment | [Status retention](#doc-007-status-retention); [running completed-task record](#doc-007-completed-tasks); [shared source and captured formatting](#doc-007-shared-source); [review storage](#doc-007-review-storage); [historical review migration](#doc-007-review-migration) |
@@ -5813,6 +5813,30 @@ name this key as their one exception.
 
 **Not ruled:** `T-252`'s fragment-retries control, or any other of its options.
 
+### Amended 2026-10-19 — download tuning: four settings, a part per preset, and a file per section
+
+**Status:** **Accepted** — maintainer rulings of 2026-10-19, on `T-252`'s questions 3 and 4, as
+recommended, before its code. Its questions 1 and 2 were ruled on 2026-10-15 and built as `T-364`.
+**Amends:** §1's typed fields, for `T-252`'s seven options.
+
+**The problem.** Four of the seven tune the connection and three choose which part of a video is
+downloaded. `-N` multiplies with the pool: one job at `-N 4` peaked at four concurrent requests and
+three jobs at twelve, so the worst case is sixteen times `N`, and yt-dlp sets no ceiling. And two
+ranges typed into the options field write to one output path, the second overwriting the first
+while the job succeeds.
+
+**What is ruled.**
+
+1. **Fragment retries, extractor retries, the socket timeout and concurrent fragments are
+   Settings**, beside the retry count in *Network*. Concurrent fragments are capped at 8.
+2. **Download sections and live-from-start are preset fields**, in a *Which part* group (`UX-015`,
+   amended the same day).
+3. **Several sections write one file each**, named by the stem and a section suffix and claimed as
+   one family.
+
+**The alternatives, as they were put.** All seven per preset, or all seven in Settings; refusing a
+second section, which narrows `REQ-030`, or joining the sections, a new ffmpeg step.
+
 ---
 
 ## UX-007 — The Phase 3 surfaces, ruled: all 25 open `[P]` clauses
@@ -7071,6 +7095,17 @@ row whose format was chosen from the table, since a sort never changes an exact 
 **The alternatives, as they were put.** The sort and the check beside the format table, which
 presets would need again elsewhere; or one *Format* group holding all three, which hides the merge
 choice's order behind the remux.
+
+### Amended 2026-10-19 — a *Which part* group below *Which items*
+
+**Status:** **Accepted** — maintainer ruling of 2026-10-19, on `T-252`'s question 3, as recommended.
+**Amends:** §1's groups. A new group follows *Which items*.
+
+**What is ruled.** ***Which part***, below *Which items*, holds the download sections, in yt-dlp's
+time-range grammar and checked as typed, and live-from-start. `T-252`'s other four options are
+Settings, in *Network*, and add nothing to the editor.
+
+**The alternatives, as they were put.** All seven in the editor, or none of them.
 
 ---
 

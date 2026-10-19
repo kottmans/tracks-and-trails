@@ -1155,7 +1155,9 @@ beats designing it against an imagined one.
 
 ### T-252 — Download tuning and the retry policy the settings screen shows
 
-**Status:** Proposed — filed 2026-08-16 by `T-183`. *(Since `T-364`, built 2026-10-18, both
+**Status:** Proposed — **design ruled 2026-10-19**, questions 3 and 4 as recommended (`ARC-010` and
+`UX-015` amended that day), after questions 1 and 2 on 2026-10-15 as `T-364`. Filed 2026-08-16 by
+`T-183`. *(Since `T-364`, built 2026-10-18, both
 counts are the command line's ten when nobody chose, and a missing fragment fails the attempt;
 this task's controls start from that.)* **Measured 2026-09-18, while correcting
 `T184-R1`: fragment retries are zero today, not yt-dlp's ten.** `build_options` deliberately sets
@@ -1213,6 +1215,12 @@ repository.
 
 **Ruled 2026-10-15:** the shipped defect is fixed first, as `T-364`, on questions 1 and 2 as
 recommended. Questions 3 and 4 are open.
+
+**Ruled 2026-10-19: questions 3 and 4 as recommended.** Fragment retries, extractor retries, the
+socket timeout and `-N`, capped at 8, are Settings, beside the retry count in *Network*;
+`--download-sections` and the live-from-start pair are preset fields in a *Which part* group below
+*Which items*. Several sections write one file each, named by the stem and a section suffix and
+claimed as one family.
 
 **Questions for the maintainer** (recommended first):
 
