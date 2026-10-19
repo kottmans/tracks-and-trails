@@ -6378,6 +6378,18 @@ def test_the_menu_key_reaches_the_current_row_under_a_shipped_theme(
         dialog.hide()
 
 
+def _off_every_row(listing: QListView, dialog: AddUrlDialog) -> QPoint:
+    """A point in the list's viewport coordinates below every row, checked as it is now."""
+    viewport = listing.viewport()
+    last = listing.visualRect(dialog.model.index(dialog.model.rowCount() - 1, 0))
+    point = QPoint(1, max(last.bottom() + 2, viewport.height() + 2))
+    assert not listing.indexAt(point).isValid(), (
+        "the probe position landed on a row, so this asserts the mouse route rather than the "
+        "keyboard one"
+    )
+    return point
+
+
 def test_the_menu_key_reaches_the_current_rows_menu(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
@@ -6413,12 +6425,7 @@ def test_the_menu_key_reaches_the_current_rows_menu(
         )
 
         viewport = listing.viewport()
-        last = listing.visualRect(dialog.model.index(dialog.model.rowCount() - 1, 0))
-        off_any_row = QPoint(1, max(last.bottom() + 2, viewport.height() + 2))
-        assert not listing.indexAt(off_any_row).isValid(), (
-            "the probe position landed on a row, so this asserts the mouse route rather than "
-            "the keyboard one"
-        )
+        off_any_row = _off_every_row(listing, dialog)
         QApplication.sendEvent(
             viewport,
             QContextMenuEvent(
@@ -6453,6 +6460,12 @@ def test_the_menu_key_reaches_the_current_rows_menu(
         listing.selectionModel().setCurrentIndex(
             QModelIndex(), QItemSelectionModel.SelectionFlag.NoUpdate
         )
+        # **Found again, not reused** (`T-301`). At one point larger the list lays itself out again
+        # between the two requests — measured, its viewport grew from 137 to 151 pixels as a
+        # horizontal scroll bar gave way to a vertical one, and the scroll moved from 31 to 17 —
+        # which put row 1 under the first point. The menu that opened was row 1's, correctly: a row
+        # *was* under the point. The premise this half asserts has to hold when it is sent.
+        off_any_row = _off_every_row(listing, dialog)
         QApplication.sendEvent(
             viewport,
             QContextMenuEvent(

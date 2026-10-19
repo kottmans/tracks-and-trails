@@ -143,7 +143,9 @@ task and review records it summarised.*
   vocabulary, bound in a fresh process; the format check, on the download only; and the merge
   container in one written order with the remux and recode. It is with the Reviewer. **So is
   `T-304`**, the keyboard-only focus ring ruled on 2026-09-09, now recorded as `UX-016`: a click
-  draws no ring, and the next key draws it on the control the click focused.
+  draws no ring, and the next key draws it on the control the click focused. **And `T-301`**: the
+  last of its four font-sensitive tests was the test, measured by bisecting and tracing — the list
+  re-laid itself out between two requests and put a row under a stale probe point — and is repaired.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the
