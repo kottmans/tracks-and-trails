@@ -1350,7 +1350,9 @@ task.
 
 ### T-255 — Per-extractor arguments
 
-**Status:** Proposed — filed 2026-08-16 by `T-183`
+**Status:** Proposed — **design ruled 2026-10-19, all four questions as recommended**, the first a
+security ruling (`SEC-003`, `ARC-010`, `DAT-003` and `UX-015` amended that day). Filed 2026-08-16 by
+`T-183`
 **Priority:** Lowest among the nine — one option, and the most expert-facing of the 44
 **Options (1):** `--extractor-args`
 **Specific criteria:** the `IE_KEY:ARGS` grammar is parsed into a validated structure, never stored
@@ -1382,6 +1384,16 @@ refused unsent; probes in the implementer's scratch notes.
   `visitor_data`, `hls_key`, `device_id` and `client_id`; stored, they are secrets at rest, which
   meets `DAT-003`'s reopening condition. The entry's `DAT-004` is withdrawn since 2026-08-01;
   `DAT-003`'s `T-049` amendment and `ARC-010`'s 2026-09-26 rule are what bind.
+
+**Ruled 2026-10-19: all four as recommended.** Forbidden, and refused where typed with the reason:
+the configurable endpoints `youtube:innertube_host` and `tiktok:api_hostname`, impersonation
+through `generic:impersonate`, and the solver's developer switches `youtube-ejs:dev`, `repo` and
+`script_version`. Everything else is permitted, `hls_key` included, and the documented
+`innertube_host=studio.youtube.com` workaround is lost. *Unknown* means absent from an allowlist
+of key and argument pairs generated from the pinned source and drift-tested like the option table;
+plugin keys are refused. Values are stored verbatim and registered for redaction, except fixed
+vocabularies. The editor is one *Extractor arguments* group above the options field, one
+`KEY:ARG=V;…` per line, checked as typed and shown back merged and normalized.
 
 **Questions for the maintainer** (recommended first; the first is a security ruling):
 

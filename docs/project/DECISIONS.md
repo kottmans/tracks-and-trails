@@ -65,7 +65,7 @@ Current requirements and architecture retain their own canonical authority.
 | [OPS-003](#ops-003--windows-verification-is-ci-only-until-a-real-windows-machine-exists) | Windows verification is CI-only until a real Windows machine exists | Partly superseded | [OPS-004](#ops-004--windows-ci-runners-provide-a-real-desktop-verify-against-it); [OPS-005](#ops-005--starbase-is-the-windows-verification-platform-hosted-only-findings-do-not-gate-the-phase) |
 | [ARC-003](#arc-003--versioned-in-arc-002-means-version-controlled-not-version-negotiated) | "Versioned" in `ARC-002` means version-controlled, not version-negotiated | Accepted | — |
 | [DAT-002](#dat-002--filename-sanitizing-promises-idempotence-not-uniqueness) | Filename sanitizing promises idempotence, not uniqueness | Accepted | — |
-| [DAT-003](#dat-003--a-stored-diagnostic-is-verbatim-cookie-paths-inside-one-are-accepted) | A stored diagnostic is verbatim; cookie paths inside one are accepted | Accepted | [Amended 2026-07-30](#amended-2026-07-30--the-boundary-is-provenance-and-the-table-above-overstated-it-t-049); [Amended 2026-08-10](#amended-2026-08-10--cookie-files-land-and-the-path-never-enters-the-model-t-197); [Amended 2026-09-26](#amended-2026-09-26--text-typed-into-the-options-field-is-stored-verbatim-like-a-url-t-184); [Amended 2026-10-11](#amended-2026-10-11--cookie-contents-never-reach-a-file-the-application-keeps-t-249) |
+| [DAT-003](#dat-003--a-stored-diagnostic-is-verbatim-cookie-paths-inside-one-are-accepted) | A stored diagnostic is verbatim; cookie paths inside one are accepted | Accepted | [Amended 2026-07-30](#amended-2026-07-30--the-boundary-is-provenance-and-the-table-above-overstated-it-t-049); [Amended 2026-08-10](#amended-2026-08-10--cookie-files-land-and-the-path-never-enters-the-model-t-197); [Amended 2026-09-26](#amended-2026-09-26--text-typed-into-the-options-field-is-stored-verbatim-like-a-url-t-184); [Amended 2026-10-11](#amended-2026-10-11--cookie-contents-never-reach-a-file-the-application-keeps-t-249); [Amended 2026-10-19](#amended-2026-10-19--extractor-argument-values-are-stored-verbatim-and-redacted-t-255) |
 | [SEC-002](#sec-002--a-fixture-commits-values-only-for-the-fields-the-projection-reads) | A fixture commits values only for the fields the projection reads | Accepted | [Amended 2026-08-04](#amended-2026-08-04--a-playlist-entry-is-a-record-not-a-count) |
 | [ARC-004](#arc-004--a-probed-job-downloads-from-ready-the-download-re-extracts-it-does-not-re-probe) | A probed job downloads from `READY`; the download re-extracts, it does not re-probe | Accepted | — |
 | [ARC-005](#arc-005--the-gui-thread-never-waits-on-sqlite-one-writer-thread-owns-every-queue-write) | The GUI thread never waits on SQLite; one writer thread owns every queue write | Accepted | [Amended 2026-07-27](#amended-2026-07-27--every-queue-write-means-the-managers-too); [Amended 2026-07-28](#amended-2026-07-28--only-the-announcement-moved-was-not-true-and-callers-unchanged-cost-the-most) |
@@ -90,11 +90,11 @@ Current requirements and architecture retain their own canonical authority.
 | [OPS-009](#ops-009--where-each-ci-job-runs-now-that-starbase-is-back-and-minutes-are-metered) | Where each CI job runs, now that `STARBASE` is back and minutes are metered | Partly superseded | [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously); [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died); [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
 | [DAT-006](#dat-006--the-completion-ledger-what-it-stores-and-what-it-deliberately-does-not) | The completion ledger: what it stores, and what it deliberately does not | Withdrawn; purge ruling accepted | [Withdrawn 2026-08-06](#withdrawn-2026-08-06--there-is-no-ledger-so-there-is-nothing-to-decide); [Legacy-data ruling 2026-08-06](#legacy-data-ruling-2026-08-06--the-rows-already-written-are-purged-on-upgrade) |
 | [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch) | The queue does not run until it is started, and it is stopped at every launch | Accepted | [Amended 2026-09-12](#amended-2026-09-12--a-queue-with-nothing-left-to-do-stops-itself) |
-| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted); [Amended 2026-09-27](#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute); [Amended 2026-10-10](#amended-2026-10-10--a-long-option-is-typed-in-full); [Amended 2026-10-11](#amended-2026-10-11--playlist-selection-acts-at-expansion-and-dates-freeze-when-queued); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-acts-on-chosen-languages-and-never-captions-for-all); [Amended 2026-10-15, second](#amended-2026-10-15-second--the-sort-is-checked-whole-the-check-runs-on-the-download-and-containers-have-an-order); [Amended 2026-10-15, third](#amended-2026-10-15-third--skip_unavailable_fragments-is-shared-and-the-users-skip-wins); [Amended 2026-10-19](#amended-2026-10-19--download-tuning-four-settings-a-part-per-preset-and-a-file-per-section); [Amended 2026-10-19, second](#amended-2026-10-19-second--reachability-one-address-choice-yt-dlps-delay-and-a-waiting-stage); [Amended 2026-10-19, third](#amended-2026-10-19-third--sponsorblock-per-category-chapters-held-and-a-lookup-without-typed-headers) |
+| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted); [Amended 2026-09-27](#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute); [Amended 2026-10-10](#amended-2026-10-10--a-long-option-is-typed-in-full); [Amended 2026-10-11](#amended-2026-10-11--playlist-selection-acts-at-expansion-and-dates-freeze-when-queued); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-acts-on-chosen-languages-and-never-captions-for-all); [Amended 2026-10-15, second](#amended-2026-10-15-second--the-sort-is-checked-whole-the-check-runs-on-the-download-and-containers-have-an-order); [Amended 2026-10-15, third](#amended-2026-10-15-third--skip_unavailable_fragments-is-shared-and-the-users-skip-wins); [Amended 2026-10-19](#amended-2026-10-19--download-tuning-four-settings-a-part-per-preset-and-a-file-per-section); [Amended 2026-10-19, second](#amended-2026-10-19-second--reachability-one-address-choice-yt-dlps-delay-and-a-waiting-stage); [Amended 2026-10-19, third](#amended-2026-10-19-third--sponsorblock-per-category-chapters-held-and-a-lookup-without-typed-headers); [Amended 2026-10-19, fourth](#amended-2026-10-19-fourth--extractor-arguments-are-checked-against-a-generated-allowlist) |
 | [UX-007](#ux-007--the-phase-3-surfaces-ruled-all-25-open-p-clauses) | The Phase 3 surfaces, ruled: all 25 open `[P]` clauses | Accepted | — |
 | [SEC-004](#sec-004--the-fifteen-options-sec-003-did-not-see-are-all-forbidden) | The fifteen options `SEC-003` did not see are all forbidden | Accepted | — |
 | [SEC-005](#sec-005----legacy-server-connect-is-forbidden-on-sec-004s-own-tls-reasoning) | `--legacy-server-connect` is forbidden, on `SEC-004`'s own TLS reasoning | Accepted | — |
-| [SEC-003](#sec-003--the-six-yt-dlp-option-families-that-meet-an-exclusion-ruled) | The six yt-dlp option families that meet an exclusion, ruled | Accepted | [Amended 2026-08-21](#amended-2026-08-21--two-options-this-entry-permitted-are-forbidden-and-the-count-corrected-t-256); [SEC-004](#sec-004--the-fifteen-options-sec-003-did-not-see-are-all-forbidden); [SEC-005](#sec-005----legacy-server-connect-is-forbidden-on-sec-004s-own-tls-reasoning) |
+| [SEC-003](#sec-003--the-six-yt-dlp-option-families-that-meet-an-exclusion-ruled) | The six yt-dlp option families that meet an exclusion, ruled | Accepted | [Amended 2026-08-21](#amended-2026-08-21--two-options-this-entry-permitted-are-forbidden-and-the-count-corrected-t-256); [Amended 2026-10-19](#amended-2026-10-19--extractor-argument-pairs-that-reach-shapes-this-entry-forbids-t-255); [SEC-004](#sec-004--the-fifteen-options-sec-003-did-not-see-are-all-forbidden); [SEC-005](#sec-005----legacy-server-connect-is-forbidden-on-sec-004s-own-tls-reasoning) |
 | [OPS-013](#ops-013--a-recorded-evidence-criterion-binds-where-the-source-reports-it-and-nowhere-else) | A recorded-evidence criterion binds where the source reports it, and nowhere else | Accepted | — |
 | [UX-008](#ux-008--per-job-pause-stays-out-resume-is-what-part-files-do-not-a-state) | Per-job pause stays out; resume is what `.part` files do, not a state | Accepted | — |
 | [UX-009](#ux-009--library-wide-actions-live-in-the-dialog-footer-not-on-a-row) | Library-wide actions live in the dialog footer, not on a row | Accepted | — |
@@ -104,7 +104,7 @@ Current requirements and architecture retain their own canonical authority.
 | [UX-011](#ux-011--the-row-picks-a-preset-the-per-row-verbs-are-the-rows-own-menu) | The row picks a preset; the per-row verbs are the row's own menu | Accepted | — |
 | [UX-013](#ux-013--the-concurrency-control-leaves-the-toolbar-for-settings) | The concurrency control leaves the toolbar for Settings | Accepted | — |
 | [UX-014](#ux-014--naming-is-a-setting-a-single-download-is-renamed-not-templated) | Naming is a setting; a single download is renamed, not templated | Accepted | [Amended 2026-10-19](#amended-2026-10-19--the-names-shape-and-the-files-date-sit-beside-the-name) |
-| [UX-015](#ux-015--the-additional-options-field-the-editors-last-group-checked-as-you-type) | The additional-options field: the editor's last group, checked as you type | Accepted | [Amended 2026-10-11](#amended-2026-10-11--a-which-items-group-stands-above-the-hatch); [Amended 2026-10-11, second](#amended-2026-10-11-second--a-keep-beside-the-file-group-below-embed-in-the-file); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-inside-subtitles); [Amended 2026-10-15, second](#amended-2026-10-15-second--a-choosing-the-format-group-at-the-top); [Amended 2026-10-19](#amended-2026-10-19--a-which-part-group-below-which-items); [Amended 2026-10-19, second](#amended-2026-10-19-second--a-sponsorblock-youtube-only-group-below-keep-beside-the-file) |
+| [UX-015](#ux-015--the-additional-options-field-the-editors-last-group-checked-as-you-type) | The additional-options field: the editor's last group, checked as you type | Accepted | [Amended 2026-10-11](#amended-2026-10-11--a-which-items-group-stands-above-the-hatch); [Amended 2026-10-11, second](#amended-2026-10-11-second--a-keep-beside-the-file-group-below-embed-in-the-file); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-inside-subtitles); [Amended 2026-10-15, second](#amended-2026-10-15-second--a-choosing-the-format-group-at-the-top); [Amended 2026-10-19](#amended-2026-10-19--a-which-part-group-below-which-items); [Amended 2026-10-19, second](#amended-2026-10-19-second--a-sponsorblock-youtube-only-group-below-keep-beside-the-file); [Amended 2026-10-19, third](#amended-2026-10-19-third--an-extractor-arguments-group-above-the-options-field) |
 | [UX-016](#ux-016--the-focus-ring-is-drawn-for-the-keyboard-not-for-a-click) | The focus ring is drawn for the keyboard, not for a click | Accepted | — |
 | [UX-012](#ux-012--the-rows-menu-says-what-it-removes-and-the--reads-as-a-button) | The row's menu says what it removes, and the ⋮ reads as a button | Accepted | — |
 | [DOC-007](#doc-007--adopt-revision-2026-09-082-and-maintain-concise-current-documentation) | Adopt revision 2026-09-08.2 and maintain concise current documentation | Accepted; revision 2026-09-08.5 by amendment | [Status retention](#doc-007-status-retention); [running completed-task record](#doc-007-completed-tasks); [shared source and captured formatting](#doc-007-shared-source); [review storage](#doc-007-review-storage); [historical review migration](#doc-007-review-migration) |
@@ -2224,6 +2224,27 @@ example, needs a new runtime dependency and a decision of its own, and `T-184` w
 **Reopening conditions.** Unchanged, and they now reach `settings.toml` as well as the database:
 sync, export, cloud backup, or a bug report that attaches either. An export of presets is the
 likeliest trigger, because a preset is where this field travels.
+
+### Amended 2026-10-19 — extractor-argument values are stored verbatim and redacted (`T-255`)
+
+**Status:** **Accepted** — maintainer ruling of 2026-10-19, on `T-255`'s question 3, as
+recommended, under this entry's reopening condition *"any other secret-bearing persisted field"*.
+**Amends:** the provenance table's second row.
+
+**The question.** `T-255`'s typed field stores extractor arguments, and some carry tokens:
+YouTube's `po_token` and `visitor_data`, the generic `hls_key`, TikTok's `device_id`, Twitch's
+`client_id`. Stored, they are secrets at rest in `settings.toml` and the `jobs` table.
+
+**What is ruled.** The field is **text the user typed**, stored verbatim as the options field is.
+Its values are registered for redaction in the process that formats the logs, except values from a
+fixed vocabulary, which cannot carry a secret, and the field stays out of the model's `repr`.
+
+| Provenance | Where it is stored | How that is guaranteed |
+|---|---|---|
+| **Values the user typed** — a source URL, the options field, **and the extractor arguments** | **Verbatim**, in the database; in `settings.toml` when a preset carries them | Deliberate. The field is part of the job and of the preset |
+
+**The alternatives, as they were put.** Keeping them out of storage, so a queued job loses them on
+a restart and cannot retry; or the system keyring, a new runtime dependency.
 
 
 ---
@@ -5893,6 +5914,25 @@ marking disabled until *Chapters* is ticked, or chapters implied in `build_optio
 `--add-headers` while SponsorBlock is on, or saying the headers go and amending `NFR-007`; an
 interim refusal of the two spellings now.
 
+### Amended 2026-10-19, fourth — extractor arguments are checked against a generated allowlist
+
+**Status:** **Accepted** — maintainer ruling of 2026-10-19, on `T-255`'s question 2, as
+recommended, before its code.
+**Amends:** §1's typed fields, for `--extractor-args`.
+
+**The problem.** Any key and argument is admitted and an unknown one silently ignored, `T012-R5`'s
+shape, and a repeated `--extractor-args` for one extractor keeps only the last. The key space is
+not the extractor list: `twitch`, `jiosaavn`, `wrestleuniverse`, `stacommu`, `youtube-ejs`,
+`youtubepot-*` and `youtubejsc-*` are read and are not extractor keys, and no extractor declares
+its argument names.
+
+**What is ruled.** An argument is known when it is on an **allowlist of key and argument pairs
+generated from the pinned yt-dlp source**, drift-tested as `option_table.py` is. A plugin's keys
+are not on it and are refused.
+
+**The alternatives, as they were put.** Extractor keys only, which refuses working `twitch`
+arguments; or a short hand-written list.
+
 ---
 
 ## UX-007 — The Phase 3 surfaces, ruled: all 25 open `[P]` clauses
@@ -6326,6 +6366,38 @@ is the operative half and the number was the error**, which is why the number mo
 `--client-certificate-password` from `hatch` to `excluded` — it had classified them `hatch` **because
 that is what this decision said**, and said so in its own text rather than overruling a decision.
 `T-184`'s refusal list gains two entries. Nothing is built by this.
+
+### Amended 2026-10-19 — extractor-argument pairs that reach shapes this entry forbids (`T-255`)
+
+**Status:** **Accepted** — maintainer security ruling of 2026-10-19, on `T-255`'s question 1, as
+recommended.
+**Amends:** the families this entry and `SEC-004` forbid, by naming the extractor-argument
+spellings that reach them. The six families and their reasoning are unchanged.
+
+**The problem.** `--extractor-args` takes `KEY:ARG=VALUE` pairs, and on unreleased `main` the
+options field admits any pair. Two choose the host requests go to: `youtube:innertube_host=H` sent
+all four player requests to `H` (measured, refused unsent), with a signed-in session's
+authorization computed for it (read), and `tiktok:api_hostname=H` copies the TikTok session cookie
+onto `H` (read, not run). This entry declined a configurable SponsorBlock endpoint because *its
+typo is a new network destination*; nothing covered these.
+
+**What is ruled.** These pairs are forbidden, and refused where they are typed, with the reason:
+
+| Family | Pairs | Why |
+|---|---|---|
+| Configurable endpoints | `youtube:innertube_host`, `tiktok:api_hostname` | A typo is a new network destination, and the session's credentials go with it |
+| Impersonation | `generic:impersonate` | `--impersonate` under another spelling, which this entry forbids; inert only while curl_cffi is absent |
+| The solver's developer switches | `youtube-ejs:dev`, `youtube-ejs:repo`, `youtube-ejs:script_version` | `dev=true` turns off yt-dlp's checks on the solver script it executes (read) |
+
+Everything else is permitted, `hls_key` included, since it is the user's own key. The cost is the
+documented `innertube_host=studio.youtube.com` workaround.
+
+**The alternatives, as they were put.** Endpoints only, which lets impersonation go live,
+unannounced, when curl_cffi arrives; or every pair as the user's own text, which this entry's
+2026-08-21 amendment already rejected for a free-text field in refusing `--netrc-cmd`.
+
+**Consequences.** `T-255` builds the refusal with its control. Until then, the options field on
+unreleased `main` still admits these pairs.
 
 ## OPS-013 — A recorded-evidence criterion binds where the source reports it, and nowhere else
 
@@ -7173,6 +7245,16 @@ group per category — leave it, mark it as a chapter, or cut it out — eleven 
 is marked, *Chapters* in *Embed in the file* shows checked and cannot be cleared.
 
 **The alternatives, as they were put.** Two checkbox lists, or one switch.
+
+### Amended 2026-10-19, third — an *Extractor arguments* group above the options field
+
+**Status:** **Accepted** — maintainer ruling of 2026-10-19, on `T-255`'s question 4, as recommended.
+**Amends:** §1's groups. A new group comes before the options field.
+
+**What is ruled.** ***Extractor arguments***, above the options field, is one text field taking one
+`KEY:ARG=V;…` per line, checked as typed and shown back merged and normalized.
+
+**The alternatives, as they were put.** A table, or named controls for YouTube's arguments.
 
 ---
 
