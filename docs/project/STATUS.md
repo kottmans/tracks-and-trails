@@ -150,6 +150,11 @@ task and review records it summarised.*
   maintainer ruled as recommended the next morning (`UX-014` amended): the Windows pair refused as
   `app:policy`, and the name's shaping and the file's date set in Settings under the name, frozen
   into each request as the template is. Containment runs after the shaping.
+- **Fifteen rulings taken 2026-10-19, all as recommended**, every open question in stage 3:
+  `T-248`'s two, as built; `T-252`'s last two; `T-253`'s three; `T-254`'s four; and `T-255`'s
+  four, the first a security ruling forbidding the extractor-argument pairs that choose a request's
+  host, impersonate, or switch off the solver's checks (`SEC-003` amended). Nothing in the stage
+  waits on a decision now, unless `T-254`'s lookup without typed headers cannot be built cleanly.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the
