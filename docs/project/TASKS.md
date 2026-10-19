@@ -1292,7 +1292,8 @@ together do not take turns. A sleeping job shows a *Waiting* stage, read from yt
 
 ### T-254 — SponsorBlock, opt-in per preset
 
-**Status:** Proposed — filed 2026-08-16 by `T-183`
+**Status:** Proposed — **design ruled 2026-10-19, all four questions as recommended** (`ARC-010` and
+`UX-015` amended that day). Filed 2026-08-16 by `T-183`
 **Options (3):** `--sponsorblock-mark`, `--sponsorblock-remove`, `--no-sponsorblock`
 **Specific criteria:** **off by default, and the control says what enabling it sends.** `SEC-003`
 permitted this and `NFR-007` was amended to name SponsorBlock as a third permitted destination
@@ -1324,6 +1325,14 @@ SponsorBlock API where the request had to be read; probes in the implementer's s
   works. A removal is ffmpeg work, and without ffmpeg the download finishes and then fails, so
   `REQ-024`'s gate is load-bearing. Two `ModifyChapters` passes leave a stale SponsorBlock chapter,
   so the build must compose one with the hatch's `--remove-chapters`.
+
+**Ruled 2026-10-19: all four as recommended.** Each category is left, marked as a chapter or cut
+out, stored as two disjoint tuples, in a *SponsorBlock (YouTube only)* group below *Keep beside the
+file*. While anything is marked, *Chapters* shows checked and held, and one metadata step carries
+both, which closes the metadata loss above. The lookup goes without typed headers, through a
+session carrying only the network settings; that overrides a private yt-dlp method and is
+unverified, so if it cannot be built the question comes back. Both defects above close within this
+task.
 
 **Questions for the maintainer** (recommended first):
 
