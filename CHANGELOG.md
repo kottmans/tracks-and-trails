@@ -4,6 +4,18 @@ All notable changes to Tracks & Trails are recorded here. The project follows
 [Semantic Versioning](https://semver.org/): `0.y.z` until `1.0` is declared, so a minor release
 may change behaviour.
 
+## [Unreleased]
+
+### Fixed
+
+- **Downloads now retry, and a stream never finishes with a piece missing.** In `0.1.0` a
+  download whose retry setting was left alone did not retry at all within an attempt, and a stream
+  delivered in pieces could skip a piece that failed and still finish as *Done*, seconds of it
+  missing. Now a download retries 10 times, as yt-dlp's own command line does, and Settings shows
+  that number. A piece still missing after its retries stops the download, which keeps what it has:
+  when the server was at fault the queue tries again by itself, from where it stopped. To skip such
+  pieces instead, type `--skip-unavailable-fragments` into a preset's additional options.
+
 ## [0.1.0] - 2026-09-14
 
 The first release: a desktop app for downloading video and audio with

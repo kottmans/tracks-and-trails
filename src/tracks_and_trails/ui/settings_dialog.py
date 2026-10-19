@@ -121,6 +121,7 @@ __all__ = [
     "YTDLP_WORKING_LABEL",
     "Req023Setting",
     "SettingsDialog",
+    "default_retries_label",
     "still_to_come",
 ]
 
@@ -224,8 +225,10 @@ NETWORK_EXPLANATION: Final = (
     "These apply to downloads you add from now on. Anything already in the queue keeps what it "
     "was added with.\n"
     "The speed limit applies to each download on its own, so several at once can add up.\n"
-    "Retries here are of the file transfer. Streams delivered in small pieces retry those pieces "
-    "on a count of their own, which this does not change."
+    "Retries here are of the file transfer, each piece of a stream included, when the server "
+    "fails or the connection drops. A piece the server refuses retries on a count of its own. A "
+    "piece still missing after its retries stops the download, which keeps what it has for the "
+    "next try."
 )
 
 #: What the rate-limit spin box reads at zero (`UX-005` §5: a control says what it does).
@@ -240,12 +243,23 @@ NO_RATE_LIMIT_LABEL: Final = "No limit"
 #: What the retries spin box reads below zero, where "nobody chose" lives.
 #:
 #: **A sentinel is needed because `0` is a real answer here** — *do not retry inside the attempt* —
-#: so the usual trick of treating zero as unset would silently turn that into yt-dlp's default of
-#: ten. `-1` is never stored: it is `None`, spelled in the one vocabulary a `QSpinBox` has.
+#: so the usual trick of treating zero as unset would silently turn that into the default of ten.
+#: `-1` is never stored: it is `None`, spelled in the one vocabulary a `QSpinBox` has.
 #:
-#: The application's own default is deliberately not named as a number. yt-dlp owns it, this
-#: module does not import yt-dlp, and a copy of it here would be wrong the day it changes.
+#: **The number comes with it, from yt-dlp** (`T-364`): nobody choosing sends yt-dlp's command-line
+#: default, which `build_options` reads at the pin, so the screen says how many that is. This module
+#: does not import yt-dlp, so the window asks the manager and passes it in; without one the label
+#: says no number rather than a copy that would be wrong the day the pin moves.
 DEFAULT_RETRIES_LABEL: Final = "The downloader's own"
+
+
+def default_retries_label(count: int | None) -> str:
+    """The retries box's *nobody chose* text, `10 — the downloader's own`, or no number unknown.
+
+    Without a count, which is a window with no manager, it says no number rather than guess one.
+    """
+    return DEFAULT_RETRIES_LABEL if count is None else f"{count} — the downloader's own"
+
 
 #: The rate limit is offered in KiB/s and stored in bytes per second.
 #:
@@ -452,6 +466,7 @@ class SettingsDialog(QDialog):
         ffmpeg_location: Path | None = None,
         ffmpeg_summary: str = "",
         ffmpeg_bundled: bool = False,
+        default_retries: int | None = None,
         on_ffmpeg_location_chosen: Callable[[Path | None], None] | None = None,
         choose_file: Callable[[Path | None], Path | None] | None = None,
         preset_names: Sequence[str] = (),
@@ -487,6 +502,7 @@ class SettingsDialog(QDialog):
         #: one control writes the other two back exactly as they were — a screen that rebuilt the
         #: trio from its own widgets would re-round a hand-edited rate limit on an unrelated edit.
         self._network = network if network is not None else NetworkOptions()
+        self._default_retries = default_retries
         self._on_network_chosen = on_network_chosen
         self._ffmpeg_location = ffmpeg_location
         self._ffmpeg_summary = ffmpeg_summary
@@ -1318,7 +1334,7 @@ class SettingsDialog(QDialog):
         # separate them, and a user setting this to zero would still see pieces retrying.
         self._retries.setAccessibleName("Retries of the file transfer, within one attempt")
         self._retries.setRange(-1, RETRIES_MAXIMUM)
-        self._retries.setSpecialValueText(DEFAULT_RETRIES_LABEL)
+        self._retries.setSpecialValueText(default_retries_label(self._default_retries))
         self._retries.setValue(self._network.retries if self._network.retries is not None else -1)
         self._retries.setEnabled(self._on_network_chosen is not None)
         self._retries.valueChanged.connect(self._on_retries_value)

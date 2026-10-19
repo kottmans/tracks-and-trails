@@ -1919,11 +1919,21 @@ def _extract(
         if probe_only
         else adapter.ffmpeg_progress(resolved.module, reporter.ffmpeg_position)
     )
-    with positions, resolved.module.YoutubeDL(options) as ydl:
+    # **What a spent retry count gave up on** (`T-364`): yt-dlp reports it without a cause, so a
+    # fragment that kept failing could not be classified as the network failure it is, and the
+    # queue never resumed the staging its failure keeps. A probe downloads nothing.
+    retrying: contextlib.AbstractContextManager[list[BaseException]] = (
+        contextlib.nullcontext([]) if probe_only else adapter.retries_given_up(resolved.module)
+    )
+    with positions, retrying as given_up, resolved.module.YoutubeDL(options) as ydl:
         # **Never written with the session's secrets** (`DAT-003`, amended 2026-10-11, `T249-R1`),
         # whichever option asked for an info JSON, so it is not keyed on `writeinfojson`.
         adapter.keep_secrets_out(ydl)
-        info = ydl.extract_info(request.url, download=not probe_only)
+        try:
+            info = ydl.extract_info(request.url, download=not probe_only)
+        except BaseException as error:
+            adapter.attribute_given_up(error, given_up)
+            raise
     result = dict(info or {})
     # **A normal return that wrote nothing is yt-dlp skipping the item on the job's own options**
     # (`UX-005`, amended 2026-09-27). Decided on what exists, never on what yt-dlp said: its last

@@ -314,17 +314,27 @@ def test_every_row_carries_a_reason() -> None:
 # --- the application-owned class is derived, and cannot drift ----------------------------------
 
 
+#: The application-owned keys a ruling lets the hatch reach anyway, and the ruling.
+#:
+#: **Named, so a second one needs its own.** `build_options` sets `skip_unavailable_fragments`
+#: false so a missing fragment fails the attempt (`T-364`), and the user's
+#: `--skip-unavailable-fragments` wins, merged after it (`ARC-010`, amended 2026-10-15, third).
+SHARED_BY_RULING: Final = {"skip_unavailable_fragments": "ARC-010, amended 2026-10-15, third"}
+
+
 def test_no_key_build_options_sets_is_reachable_through_the_hatch() -> None:
     """The invariant the refusal list exists to hold, checked against the code that sets them.
 
     A key the application sets and the user can also type is a key two sources fight over. The
     audit's answer is that such an option is `app:sets` (refused) or `typed` (a control wins by
-    `ARC-010`'s precedence rule) — never `hatch`, which would let the hatch win by silence.
+    `ARC-010`'s precedence rule) — never `hatch`, which would let the hatch win by silence —
+    unless a ruling shares the key and says who wins (`SHARED_BY_RULING`).
     """
     class_of = {s: cls for strings, cls, _ in ROWS for s in strings}
+    assert set(SHARED_BY_RULING) <= EMITTED, "a shared key build_options no longer sets"
     escapes = {}
     for option in DOCUMENTED:
-        if option["dest"] in EMITTED:
+        if option["dest"] in EMITTED - set(SHARED_BY_RULING):
             for string in option["strings"]:
                 if class_of[string] not in MAY_SET:
                     escapes[string] = (option["dest"], class_of[string])

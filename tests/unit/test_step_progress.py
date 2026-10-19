@@ -115,6 +115,12 @@ class _Adapter:
 
     def keep_secrets_out(self, _ydl: object) -> None: ...
 
+    @contextlib.contextmanager
+    def retries_given_up(self, _module: object) -> Iterator[list[BaseException]]:
+        yield []
+
+    def attribute_given_up(self, _error: BaseException, _given_up: object) -> None: ...
+
 
 class _Ydl:
     def __init__(self, _options: object) -> None: ...

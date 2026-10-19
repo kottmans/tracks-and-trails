@@ -130,7 +130,12 @@ task and review records it summarised.*
   classified in the audit, twelve refused as doing nothing here, which the Reviewer accepted against
   the pinned runtime. **`T249-R1`'s sibling audit found `--embed-info-json` putting both secrets
   inside the kept MKV** of a download that succeeded, on unreleased `main`; the same correction
-  closed it. **`T-364` is next**, its gate cleared.
+  closed it. **`T-364` was built on 2026-10-18 and is with the Reviewer**: a download nobody chose
+  a count for retries ten times, as yt-dlp's command line does, and a fragment still missing after
+  its retries fails the attempt, which the queue retries from where it stopped when the server was
+  at fault, rather than ending *Done* with seconds missing. That fixes a defect `0.1.0` shipped;
+  the changelog says so. `ARC-010` is amended for the one key the user's
+  `--skip-unavailable-fragments` shares with the application.
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the
@@ -170,18 +175,19 @@ task and review records it summarised.*
 
 ## Verification
 
-*Refreshed 2026-10-17, at `T-363`'s correction on `9e917ec`, on Linux with the project `.venv` on
-`PATH` (yt-dlp 2026.08.19).* The previous snapshot, at `3275a36`, is recoverable from `44d35ff`;
-how often `T-350`'s race failed each run is kept in
+*Refreshed 2026-10-18, at `T-364`'s build on `8f24f40`, on Linux with the project `.venv` on
+`PATH` (yt-dlp 2026.08.19).* The previous snapshot, at `T-363`'s correction, is recoverable from
+`8f24f40`; how often `T-350`'s race failed each run is kept in
 [its entry](TASKS.md#t-350--a-staged-format-fixture-races-a-real-probe-and-loses-its-format-control).
 
 | Check | Result |
 |---|---|
-| `ruff check .`; `ruff format --check .` | Passed; 485 files |
-| `mypy src`; bare `mypy`; `mypy --platform win32` | Passed; 70, 221, 221 |
+| `ruff check .`; `ruff format --check .` | Passed; 487 files |
+| `mypy src`; bare `mypy`; `mypy --platform win32` | Passed; 70, 223, 223 |
 | `python tools/ytdlp_option_table.py --check` | Up to date |
-| `tests/unit tests/ui` under `-n auto`; `tests/integration` | **5,671 passed**, 21 skipped; **545 passed**. At `9e917ec`, `T-249`'s correction alone: 5,620 and 545 |
+| `tests/unit tests/ui` under `-n auto`; `tests/integration` | **5,692 passed**, 21 skipped; **552 passed** |
 | Full `pytest -q -p no:cacheprovider`, serial | Not rerun. Last at `3275a36`: **4 failed, 6,116 passed**, 21 skipped, 2 deselected; 2,216 s |
+| CI at `8f24f40` | `linux`, `frozen linux`, *Prose* and *Commit messages* passed; both Windows jobs queued, `STARBASE` offline |
 
 **All four serial failures at `3275a36` were `T-350`'s race**, cases of
 `test_the_mounted_format_panel_fits_the_dialog_it_asked_for` failing *"row 0 offered no format
@@ -208,7 +214,7 @@ No Windows runtime, external download or release-gate result is claimed here.
   `--compat-options` values as [`T-363`](COMPLETED_TASKS.md#t-363--the-options-field-can-write-outside-the-chosen-folder-and-switch-off-a-safety-check),
   **Complete, approved 2026-10-18** at `dcb0f52` after one correction round, then the fragments as
   [`T-364`](TASKS.md#t-364--fragmented-downloads-retry-and-never-finish-with-a-piece-missing),
-  shipping in `0.2.0` and next.
+  shipping in `0.2.0`, built on 2026-10-18 and with the Reviewer.
 - **CI is green again.** Its Linux job failed from 2026-10-08, when PySide6 6.12.0's metapackage
   began requiring `PySide6_WebEngine` and `PySide6_Pdf` and the `LIC-001` gate refused them.
   **`T-355`** caps PySide6 below 6.12, and the push of `d18bcb8` passed every job in run

@@ -1133,8 +1133,8 @@ class NetworkOptions:
     `proxy_refusal` instead of growing a validator of its own.
 
     **`None` means "nobody chose" in all three cases**, which is not the same as a zero: no
-    proxy, no rate limit, and yt-dlp's own retry count. See `DownloadRequest.retries` for why
-    zero retries and no answer have to stay distinguishable.
+    proxy, no rate limit, and the retry count of yt-dlp's command line. See
+    `DownloadRequest.retries` for why zero retries and no answer have to stay distinguishable.
     """
 
     #: `scheme://host[:port]`, credential-free, or `None`.
@@ -1151,8 +1151,8 @@ class NetworkOptions:
     #: what stops the coercion happening anywhere else.
     rate_limit_bytes: int | None = None
 
-    #: Retries **inside one download attempt**, or `None` for yt-dlp's own default. Not the
-    #: job-level retry — see `DownloadRequest.retries`, which this is copied onto.
+    #: Retries **inside one download attempt**, or `None` for the count yt-dlp's command line
+    #: uses. Not the job-level retry — see `DownloadRequest.retries`, which this is copied onto.
     retries: int | None = None
 
     def __post_init__(self) -> None:
@@ -1270,8 +1270,8 @@ class DownloadRequest:
     proxy: str | None = None
     rate_limit_bytes: int | None = None
 
-    #: How many times yt-dlp retries **inside one download attempt**, or `None` for its own
-    #: default (`REQ-023`, `T-196`, ruled by the maintainer 2026-08-13).
+    #: How many times yt-dlp retries **inside one download attempt**, or `None` for the count its
+    #: command line uses (`REQ-023`, `T-196`, ruled by the maintainer 2026-08-13; `T-364`).
     #:
     #: **This is yt-dlp's `--retries`, and it is not the job-level retry.** `REQ-015`/`REQ-018`
     #: keep a failed job in the queue and offer it again, and `core/errors.py` auto-retries a
@@ -1280,9 +1280,11 @@ class DownloadRequest:
     #: *within* a single attempt, before the job has failed at all.
     #:
     #: **`0` is a real value and `None` is not zero.** Zero says *do not retry inside the
-    #: attempt*; `None` says *nobody chose*, and `build_options` then omits the key so yt-dlp
-    #: applies whatever its own default is. Reading them through truthiness — which is how
-    #: `rate_limit_bytes` is read one field up, where zero and unset genuinely mean the same
+    #: attempt*; `None` says *nobody chose*, and `build_options` then sends the count yt-dlp's
+    #: command line sends, read from `parse_options([])` at the pin (`T-364`). **Not the key left
+    #: out**: the library reads an absent `retries` as zero, which is what `None` did until
+    #: `T-364`, so a transfer gave up on its first 503. Reading them through truthiness — which is
+    #: how `rate_limit_bytes` is read one field up, where zero and unset genuinely mean the same
     #: thing — would silently turn "never retry" into "retry ten times".
     retries: int | None = None
     #: Which browser's cookies to use — a **browser name**, and since `T-197` by construction

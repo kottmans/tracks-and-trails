@@ -166,9 +166,9 @@ RATE_LIMIT_MAXIMUM_BYTES: Final = (2**31 - 1) * 1024
 #: The most retries a settings file may ask for inside one attempt (`T-196`).
 #:
 #: `CONCURRENCY_MAXIMUM`'s reasoning: a catcher for an extra digit rather than a measurement.
-#: yt-dlp's own default is 10 and each retry is a fresh request against a server that has already
-#: failed, so a hundred is generous for any real intent and low enough that `1000` does not
-#: survive. Clamped and reported, like the rate limit above.
+#: yt-dlp's command line retries 10 times and each retry is a fresh request against a server that
+#: has already failed, so a hundred is generous for any real intent and low enough that `1000`
+#: does not survive. Clamped and reported, like the rate limit above.
 RETRIES_MAXIMUM: Final = 100
 
 #: The first line every cookies jar this application can use carries (`T197-R5`).
@@ -1810,7 +1810,7 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             _RATE_LIMIT_KEY: "# The most each download may use, in bytes per second. Delete the "
             "line for no limit.",
             _RETRIES_KEY: "# How many times the downloader retries inside one attempt. Delete "
-            "the line for its own default.",
+            "the line for its command line's default, which the settings screen shows.",
         }
         written = [(key, value) for key, value in network_pairs if value is not None]
         network_lines = (

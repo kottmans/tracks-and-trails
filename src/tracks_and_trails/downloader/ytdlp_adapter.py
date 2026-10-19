@@ -159,6 +159,72 @@ def unwrap(error: BaseException) -> BaseException:
     return error
 
 
+@contextlib.contextmanager
+def retries_given_up(ytdlp: Any) -> Iterator[list[BaseException]]:
+    """Collect the error each fatal retry loop gives up on, for as long as this lasts (`T-364`).
+
+    **yt-dlp reports giving up without the error it gave up on.** A downloader's retry loop calls
+    `report_retry` once its count is spent, after the `except` that caught the error has ended,
+    and `report_error` raises a `DownloadError` whose `exc_info` is empty. So a fragment whose
+    server answered 503 eleven times reached `classify_exception` with nothing to classify, and
+    failed as `EXTRACTOR_ERROR`, which the queue never retries by itself: the staging that
+    `skip_unavailable_fragments=False` keeps for the resume was never resumed. This wraps
+    `FileDownloader.report_retry`, every downloader's, to keep the error of each **fatal** give-up;
+    a fragment the user chose to skip is not fatal and is not kept.
+
+    Restored on exit, and installed only around a download in a worker process, as
+    `ffmpeg_progress` is. A yt-dlp without the method yields an empty list and changes nothing.
+    """
+    try:
+        module = importlib.import_module(f"{ytdlp.__name__}.downloader.common")
+    except ImportError:
+        yield []
+        return
+    downloader: Any = getattr(module, "FileDownloader", None)
+    original: Any = getattr(downloader, "report_retry", None)
+    if not callable(original):
+        yield []
+        return
+    given_up: list[BaseException] = []
+
+    def report_retry(
+        self: Any, err: Any, count: int, retries: int, *args: Any, **kwargs: Any
+    ) -> Any:
+        # yt-dlp's signature at 2026.08.19: `(err, count, retries, frag_index, fatal=True)`.
+        fatal = kwargs.get("fatal", args[1] if len(args) > 1 else True)
+        if count > retries and fatal and isinstance(err, BaseException):
+            given_up.append(err)
+        return original(self, err, count, retries, *args, **kwargs)
+
+    downloader.report_retry = report_retry
+    try:
+        yield given_up
+    finally:
+        downloader.report_retry = original
+
+
+def attribute_given_up(error: BaseException, given_up: Sequence[BaseException]) -> None:
+    """Give yt-dlp's report of a spent retry count the error it gave up on (`T-364`).
+
+    Only for the report that came without one, which is the shape `retries_given_up` explains; the
+    error is put where yt-dlp keeps a cause, so `classify_exception` decides by its status as for
+    any other failure. **The words stay yt-dlp's** (`NFR-006`): only the classification gains.
+    """
+    if given_up and isinstance(error, DownloadError) and unwrap(error) is error:
+        cause = given_up[-1]
+        # yt-dlp ships no types, so the narrowing above cannot show mypy `exc_info`.
+        report: Any = error
+        report.exc_info = (type(cause), cause, cause.__traceback__)
+
+
+def default_retries() -> int:
+    """How many times a transfer retries when nobody chose a count: yt-dlp's command line's own.
+
+    What `build_options` sends then (`T-364`), read at the pin, for the Settings screen to show.
+    """
+    return int(_command_line_defaults()["retries"])
+
+
 def extractor_message(error: BaseException) -> str:
     """The extractor's own words, without yt-dlp's bug-report boilerplate.
 
@@ -843,18 +909,26 @@ def build_options(
         options["proxy"] = request.proxy
     if request.rate_limit_bytes:
         options["ratelimit"] = request.rate_limit_bytes
-    if request.retries is not None:
-        # **`is not None`, not truthiness** (`T-196`). `retries=0` is a user asking not to retry
-        # inside the attempt, and the two lines above can read a zero as *unset* because a rate
-        # limit of zero bytes per second is not a thing anyone means. Here it is: dropped by
-        # truthiness, "never retry" would silently become yt-dlp's own default of ten.
-        #
-        # **This is `--retries`, and it is deliberately not `--fragment-retries`** — measured
-        # against yt-dlp 2026.07.04, where `downloader/http.py` reads `retries` and
-        # `downloader/fragment.py` reads `fragment_retries`. The maintainer's 2026-08-13 ruling
-        # names `--retries`; the rest of yt-dlp's network surface, this one included, belongs to
-        # `T-183`'s audit rather than to a setting that would have to explain the difference.
-        options["retries"] = request.retries
+    # **What yt-dlp's command line retries, when nobody chose a count** (`T-364`, ruled
+    # 2026-10-15). The library reads an absent `retries` or `fragment_retries` as **zero**, where
+    # the command line sends ten, so a job whose user left the setting alone gave up on the first
+    # 503 of a transfer, and every fragment had no retry at all. Read from `parse_options([])`
+    # rather than copied, so the number follows the pin; `test_retry_defaults.py` holds it there.
+    defaults = _command_line_defaults()
+    # **`is not None`, not truthiness** (`T-196`). `retries=0` is a user asking not to retry inside
+    # the attempt, and the two lines above can read a zero as *unset* because a rate limit of zero
+    # bytes per second is not a thing anyone means. Here it is: dropped by truthiness, "never
+    # retry" would silently become the default of ten.
+    options["retries"] = request.retries if request.retries is not None else defaults["retries"]
+    # **`fragment_retries` has no setting yet** (`T-252` owns it), so it is always the command
+    # line's; a `--fragment-retries` in the options field is merged below and wins.
+    options["fragment_retries"] = defaults["fragment_retries"]
+    # **A fragment still missing after its retries fails the attempt** (`T-364`). The library skips
+    # it by default and the job ended *Done* with seconds of the media gone (250 of 300 frames,
+    # measured at `8b0aad6`). Failing instead keeps staging, and the job's own retry resumes it.
+    # `--skip-unavailable-fragments` in the options field is merged below and wins: the one other
+    # key the application and the user share, ruled as `ARC-010` rules `writethumbnail`.
+    options["skip_unavailable_fragments"] = False
     if request.cookies_from_browser:
         # **The four-tuple yt-dlp parses, not the string the user typed** (`T197-R2`). Its
         # `_parse_browser_specification(browser_name, profile, keyring, container)` refuses an

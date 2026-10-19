@@ -131,10 +131,11 @@ with a visible control.
 
 ### Why `app:sets` is not the same list as *what the application owns*
 
-`build_options` can emit **33 distinct keys** (24 before `T183-R1` added `geo_bypass`, 25
+`build_options` can emit **35 distinct keys** (24 before `T183-R1` added `geo_bypass`, 25
 before `T-247` added `min_filesize`, `max_filesize` and `daterange`, 28 before `T-249` added
-`writedescription`, `writeinfojson` and `write_all_thumbnails`, and 31 before `T-251` added
-`writeautomaticsub` and `subtitlesformat`). Only **26 of them are reachable from the command line
+`writedescription`, `writeinfojson` and `write_all_thumbnails`, 31 before `T-251` added
+`writeautomaticsub` and `subtitlesformat`, and 33 before `T-364` added `fragment_retries` and
+`skip_unavailable_fragments`). Only **28 of them are reachable from the command line
 at all** — `logger`, `progress_hooks`, `postprocessor_hooks`,
 `postprocessors`, `no_color`, `daterange` and `write_all_thumbnails` are library parameters with no
 option string, so they can never be typed into the hatch and never need refusing. Deriving the
@@ -143,12 +144,19 @@ nothing. *(`daterange` is what yt-dlp builds from `--date`, `--dateafter` and `-
 `write_all_thumbnails` what it builds from `--write-all-thumbnails`, whose destination is
 `writethumbnail`; all are `typed`, built, and refused through the hatch for their control.)*
 
-The invariant the test actually enforces is the useful one, and it holds with no exceptions:
+The invariant the test actually enforces is the useful one, and it holds with one ruled
+exception:
 
 > **No key `build_options` sets is reachable through the hatch.** Every documented option whose
 > `dest` is a key `build_options` emits is classified in a class that is not hatch-reachable —
 > any refused class, or `typed`, whose control wins by `ARC-010`'s precedence rule. Never `hatch`
 > and never `unruled`.
+
+*(**The exception, since `T-364`: `skip_unavailable_fragments`.** `build_options` sets it false, so
+a fragment still missing after its retries fails the attempt, and `--skip-unavailable-fragments`
+and its three counterparts stay `hatch`, the user's explicit choice winning, by `ARC-010`'s
+amendment of 2026-10-15, third. The test names it; a second exception needs its own ruling.
+`writethumbnail`, the other shared key, needs no exception: its options are `typed`.)*
 
 *(**This said `app:sets` or `typed` until `T183-R1`**, which was too narrow: `--xff` is `excluded`
 and names a key the application now sets, because refusing the option and supplying the safe

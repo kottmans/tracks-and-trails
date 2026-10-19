@@ -455,16 +455,17 @@ def test_a_value_spelled_like_an_option_is_only_a_value() -> None:
     So the value in `--output-na-placeholder --fragment-retries` copied `--fragment-retries`'
     destination at its default, an option the user never named. Measured 2026-09-26: 305 fields
     built this way copied a key their named option does not touch. The placeholder takes any text,
-    so nothing else refuses it first.
+    so nothing else refuses it first. *(Spelled `--socket-timeout` since `T-364`, when the
+    application began sending `fragment_retries` itself, so its presence proves nothing.)*
     """
     request = a_request(
-        extra_options="--output-na-placeholder --fragment-retries",
-        extra_option_argv=("--output-na-placeholder", "--fragment-retries"),
+        extra_options="--output-na-placeholder --socket-timeout",
+        extra_option_argv=("--output-na-placeholder", "--socket-timeout"),
     )
 
     options = build_options(request, BASE["output_template"])
 
-    assert "fragment_retries" not in options, "a value was read as the option it is spelled like"
+    assert "socket_timeout" not in options, "a value was read as the option it is spelled like"
 
 
 def test_an_option_with_several_destinations_brings_only_what_it_changed() -> None:

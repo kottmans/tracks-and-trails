@@ -6,7 +6,7 @@ requirements or design — those live in `REQUIREMENTS.md` and `ARCHITECTURE.md`
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-10-15
+**Last updated:** 2026-10-18
 **Update when:** A durable choice is accepted, superseded, or deliberately rejected.
 **Does not contain:** Completion notes for routine work. Routine fixes go to `TASKS.md` and `CHANGELOG.md`.
 
@@ -90,7 +90,7 @@ Current requirements and architecture retain their own canonical authority.
 | [OPS-009](#ops-009--where-each-ci-job-runs-now-that-starbase-is-back-and-minutes-are-metered) | Where each CI job runs, now that `STARBASE` is back and minutes are metered | Partly superseded | [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously); [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died); [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
 | [DAT-006](#dat-006--the-completion-ledger-what-it-stores-and-what-it-deliberately-does-not) | The completion ledger: what it stores, and what it deliberately does not | Withdrawn; purge ruling accepted | [Withdrawn 2026-08-06](#withdrawn-2026-08-06--there-is-no-ledger-so-there-is-nothing-to-decide); [Legacy-data ruling 2026-08-06](#legacy-data-ruling-2026-08-06--the-rows-already-written-are-purged-on-upgrade) |
 | [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch) | The queue does not run until it is started, and it is stopped at every launch | Accepted | [Amended 2026-09-12](#amended-2026-09-12--a-queue-with-nothing-left-to-do-stops-itself) |
-| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted); [Amended 2026-09-27](#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute); [Amended 2026-10-10](#amended-2026-10-10--a-long-option-is-typed-in-full); [Amended 2026-10-11](#amended-2026-10-11--playlist-selection-acts-at-expansion-and-dates-freeze-when-queued); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-acts-on-chosen-languages-and-never-captions-for-all); [Amended 2026-10-15, second](#amended-2026-10-15-second--the-sort-is-checked-whole-the-check-runs-on-the-download-and-containers-have-an-order) |
+| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted); [Amended 2026-09-27](#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute); [Amended 2026-10-10](#amended-2026-10-10--a-long-option-is-typed-in-full); [Amended 2026-10-11](#amended-2026-10-11--playlist-selection-acts-at-expansion-and-dates-freeze-when-queued); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-acts-on-chosen-languages-and-never-captions-for-all); [Amended 2026-10-15, second](#amended-2026-10-15-second--the-sort-is-checked-whole-the-check-runs-on-the-download-and-containers-have-an-order); [Amended 2026-10-15, third](#amended-2026-10-15-third--skip_unavailable_fragments-is-shared-and-the-users-skip-wins) |
 | [UX-007](#ux-007--the-phase-3-surfaces-ruled-all-25-open-p-clauses) | The Phase 3 surfaces, ruled: all 25 open `[P]` clauses | Accepted | — |
 | [SEC-004](#sec-004--the-fifteen-options-sec-003-did-not-see-are-all-forbidden) | The fifteen options `SEC-003` did not see are all forbidden | Accepted | — |
 | [SEC-005](#sec-005----legacy-server-connect-is-forbidden-on-sec-004s-own-tls-reasoning) | `--legacy-server-connect` is forbidden, on `SEC-004`'s own TLS reasoning | Accepted | — |
@@ -5781,6 +5781,36 @@ container the streams cannot enter fails only after the download.
 **The alternatives, as they were put.** Fields only, or asking yt-dlp in the GUI process; three
 positions with *every format* refused as policy, or four on both phases; merge and remux exclusive,
 or no merge control.
+
+### Amended 2026-10-15, third — `skip_unavailable_fragments` is shared, and the user's skip wins
+
+**Status:** **Accepted** — maintainer ruling of 2026-10-15, on `T-252`'s second question as
+recommended, filed as `T-364`; written here when `T-364` was built, on 2026-10-18.
+**Amends:** §3's second precedence half, for one more key: the reading the 2026-09-20 amendment
+left open for *a future application-owned key that turns out to be shareable*.
+
+**What was measured.** At `8b0aad6`, one 503 on one fragment of a local HLS stream ended the job
+`Succeeded` with 250 of 300 video frames. yt-dlp the library reads an absent `fragment_retries` as
+zero and skips a fragment it could not fetch; restoring the count alone still leaves a fragment
+that never arrives skipped, and the job *Done* with media missing.
+
+**What is ruled.** `build_options` sets `skip_unavailable_fragments` to false, so a fragment still
+missing after its retries fails the attempt, and the job's own retry resumes it from staging.
+**`--skip-unavailable-fragments` typed into the options field wins**, merged after the
+application's value: the user's explicit opt-in to a partial file, for their own job. Its
+counterparts, `--no-skip-unavailable-fragments` and `--abort-on-unavailable-fragments`, say what
+the application already does.
+
+**Why this is not an override in §3's sense.** It is `writethumbnail`'s reading. The application
+sets the key so that nobody gets a partial file **without asking for one**; a user who types the
+skip has asked, so the two intents do not conflict.
+
+**The second named exception.** `writethumbnail` and `skip_unavailable_fragments` are the only
+application-owned keys the hatch may reach. `writethumbnail`'s options are `typed`, so the audit's
+invariant never had to name it; the four skip spellings stay `hatch`, so the invariant and its test
+name this key as their one exception.
+
+**Not ruled:** `T-252`'s fragment-retries control, or any other of its options.
 
 ---
 

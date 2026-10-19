@@ -1750,17 +1750,20 @@ def test_a_request_that_asks_for_no_retries_gets_none_rather_than_the_default() 
     assert options["retries"] == 0
 
 
-def test_a_request_that_says_nothing_about_the_network_leaves_the_keys_out() -> None:
-    """Absent is absent: yt-dlp applies its own defaults rather than being handed `None`.
+def test_a_request_that_says_nothing_about_the_network_sends_the_command_line_s_retries() -> None:
+    """No proxy and no limit stay absent; no retry count is **not** left absent (`T-364`).
 
-    This is what makes *"the downloader's own"* a real answer on the settings screen instead of a
-    number this project would have to copy and keep in step.
+    The library reads an absent `retries` as zero, so leaving it out made *"the downloader's own"*
+    mean no retries at all. The command line's count is sent instead, read from yt-dlp rather than
+    copied, which keeps the settings screen's answer real without a number to keep in step.
     """
+    from yt_dlp import parse_options
+
     options = adapter.build_options(request_for(), "o.%(ext)s")
 
     assert "proxy" not in options
     assert "ratelimit" not in options
-    assert "retries" not in options
+    assert options["retries"] == parse_options([]).ydl_opts["retries"]
 
 
 # --- REQ-EXCL-002: the geo exclusion is a default, not a refusal (`T183-R1`) -------------------

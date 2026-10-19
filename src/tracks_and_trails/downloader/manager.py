@@ -1434,6 +1434,18 @@ class DownloadManager(QObject):
         )
         return OutputPreview(path=str(path), provisional=provisional)
 
+    def default_retries(self) -> int:
+        """How many times a transfer retries when nobody chose a count (`T-364`).
+
+        **Here for `requires_ffmpeg`'s reason**: the Settings screen says the number beside *the
+        downloader's own*, `ui/` may not ask yt-dlp, and the number is yt-dlp's command line's,
+        read at the pin rather than copied. It parses no options anyone typed, so nothing
+        process-wide moves.
+        """
+        from tracks_and_trails.downloader import ytdlp_adapter as adapter
+
+        return adapter.default_retries()
+
     def requires_ffmpeg(self, preset: Preset) -> bool:
         """Whether `preset`'s post-processing needs ffmpeg (`REQ-024`, `T-111`).
 

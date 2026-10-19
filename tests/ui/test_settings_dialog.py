@@ -1390,9 +1390,38 @@ def test_the_retry_control_says_which_retry_it_governs(
         )
 
     said = control(screen, QLabel, "networkExplanation").text().lower()
-    assert "pieces" in said, (
-        f"the section does not say that segmented streams retry on a count of their own: {said!r}"
+    assert "piece the server refuses retries on a count of its own" in said, (
+        f"the section does not say which failures of a piece retry on their own count: {said!r}"
     )
+    # `T-364`: a missing piece no longer finishes quietly, and the screen says what happens instead.
+    assert "still missing after its retries stops the download" in said, said
+
+
+def test_nobody_choosing_says_how_many_retries_that_is(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """`T-364`: nobody choosing now sends the count yt-dlp's command line uses, so the screen
+    says the number. The window hands it in; this screen never asks yt-dlp (`ARC-002`)."""
+    screen, _ = screens(on_network_chosen=lambda _options: None, default_retries=10)
+
+    retries = control(screen, QSpinBox, RETRIES_NAME)
+
+    assert retries.value() == -1
+    assert retries.text() == "10 — the downloader's own"
+
+
+def test_the_window_hands_the_screen_yt_dlp_s_own_count(composed: Any) -> None:
+    """Through the real composition, so the number is the pin's and not a copy of it."""
+    from yt_dlp import parse_options
+
+    screen = composed.open_settings()
+    assert screen is not None
+    count = parse_options([]).ydl_opts["retries"]
+
+    assert control(screen, QSpinBox, RETRIES_NAME).specialValueText() == (
+        f"{count} — the downloader's own"
+    )
+    screen.close()
 
 
 def test_the_network_section_says_when_its_settings_take_effect(
