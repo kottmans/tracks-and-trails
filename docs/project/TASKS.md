@@ -1019,7 +1019,10 @@ implementer's scratch notes.
   (Medium guess).
 
 **Ruled 2026-10-15:** question 1 as recommended, as `T-363`, which also takes question 4 as
-recommended. Questions 2 and 3 are open.
+recommended. Questions 2 and 3 are open. *(Re-read 2026-10-18: `T-363` was approved that day, so
+the breach above is closed on `main` and question 4's rule is built. `format-sort` is refused
+since `T-250` built the sort's control, and `mtime-by-default` stays admitted until this task
+builds `--mtime`. Questions 2 and 3 stand as written.)*
 
 **Questions for the maintainer** (recommended first):
 
