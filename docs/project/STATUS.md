@@ -238,7 +238,7 @@ No Windows runtime, external download or release-gate result is claimed here.
   **Ruled 2026-10-15, as recommended:** both are fixed next, before `T-250` — the breach and the
   `--compat-options` values as [`T-363`](COMPLETED_TASKS.md#t-363--the-options-field-can-write-outside-the-chosen-folder-and-switch-off-a-safety-check),
   **Complete, approved 2026-10-18** at `dcb0f52` after one correction round, then the fragments as
-  [`T-364`](TASKS.md#t-364--fragmented-downloads-retry-and-never-finish-with-a-piece-missing),
+  [`T-364`](COMPLETED_TASKS.md#t-364--fragmented-downloads-retry-and-never-finish-with-a-piece-missing),
   shipping in `0.2.0`, built on 2026-10-18 and with the Reviewer.
 - **CI is green again.** Its Linux job failed from 2026-10-08, when PySide6 6.12.0's metapackage
   began requiring `PySide6_WebEngine` and `PySide6_Pdf` and the `LIC-001` gate refused them.

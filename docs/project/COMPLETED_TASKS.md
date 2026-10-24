@@ -2,7 +2,7 @@
 
 **Purpose:** Running record of completed and cancelled tasks and their evidence.
 **Owner:** Task/status owner; Coordinator / Integrator during a parallel wave
-**Last updated:** 2026-10-18
+**Last updated:** 2026-10-24
 **Update when:** A task closes, reopens, or needs a dated correction or navigation update.
 
 [TASKS](TASKS.md) contains unfinished work. Move each newly Complete or Cancelled
@@ -41954,6 +41954,122 @@ as read.
 **5,671 passed**, 21 skipped; `tests/integration` **545 passed**. The first Ruff run failed on
 three long lines and the big solidus in a new test, corrected and rerun with both mypy runs and the
 three option modules (118 passed); no source changed after the suites ran. No Windows run.
+
+---
+
+### T-364 — Fragmented downloads retry, and never finish with a piece missing
+
+**Status:** **Complete — approved 2026-10-24** at `73bc3c8`
+([record](reviews/T-364.md#2026-10-24--initial-retry-and-missing-fragment-review)), with no change
+requests. Native Windows is unverified. *(Was In Review:)* built 2026-10-18. *(Was Ready:)* filed
+2026-10-15 by the maintainer's ruling, to run after `T-363` and before `T-250`, and ungated when
+`T-363` was approved on 2026-10-18. Found 2026-10-14 while mapping `T-252`. Ships in `0.2.0`; there
+is no `0.1.1`.
+**Owner:** Implementer
+**Priority:** Critical guess — a silent wrong result in the shipped `0.1.0`: a download reported
+*Done* whose file is missing media.
+**Phase:** Phase 4.5 (stage 3, before `T-250`)
+**Depends on:** `T-363`
+**Relevant context:** [`T-252`'s mapping](TASKS.md#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows);
+`T-196`; `UX-002`; `ARCHITECTURE.md` §8; `downloader/ytdlp_adapter.build_options`;
+`ui/settings_dialog.py` (`NETWORK_EXPLANATION`, the retries default); `core/settings.py`
+**Affected surfaces:** `build_options`, the settings screen's retry text and default label, the
+`retries` docstrings, the changelog, and their tests
+**Risk:** Medium — behaviour changes for `0.1.0`'s users.
+
+#### Evidence
+
+Measured at `8b0aad6` with the worker's `run_session` against a local 12-second HLS stream: one 503
+on fragment 3 ended `Succeeded` with 250 of 300 video frames, and a 403 did the same with retries
+set to 3. yt-dlp's command line, on its own defaults, delivered the whole file in both cases.
+yt-dlp the library reads absent `retries` and `fragment_retries` as zero, where its command line
+sends ten, and skips a missing fragment by default. One 503 in a progressive transfer failed the
+job as `EXTRACTOR_ERROR`, which the automatic retry never takes. `v0.1.0`'s `build_options` and pin
+are the same. The settings screen's account of retries is untrue in three ways at `HEAD`.
+
+#### Maintainer ruling, 2026-10-15
+
+**Its own task, next after `T-363`, on `T-252`'s recommended answers to its first two questions**:
+when nobody chose a count, `build_options` sends yt-dlp's command-line defaults, read from
+`parse_options([])` at the pin and held there by a test, and the screen says the number; and a
+fragment still missing after its retries fails the attempt (`skip_unavailable_fragments=False`),
+so the job's own retry resumes it from staging, with the options field's
+`--skip-unavailable-fragments` kept as the user's explicit opt-in.
+
+#### Acceptance criteria
+
+- [x] With no count chosen, the download sends `retries` and `fragment_retries` equal to yt-dlp's
+      command-line defaults at the pin, and a test fails when the pin's defaults change.
+- [x] A local fragmented stream with a 503 and with a 403 on one fragment delivers every frame, and
+      a fragment that never arrives fails the attempt rather than ending *Done*.
+- [x] The failure a job's automatic retry can take is classified so it takes it, or the reason it
+      cannot is recorded.
+- [x] `--skip-unavailable-fragments` typed in the options field still skips, as the user's choice,
+      and that sharing of one key is written down as `ARC-010`'s rule for `writethumbnail` is.
+- [x] The settings screen, its default label, the `retries` docstrings and the settings file's
+      comment say what is true; the changelog tells `0.1.0` users their downloads now retry.
+
+#### Out of scope
+
+- `T-252`'s controls for fragment retries, extractor retries, the socket timeout, `-N`, sections
+  and live-from-start, and its questions 3 and 4.
+
+#### Built 2026-10-18
+
+- **The counts.** When nobody chose one, `build_options` sends yt-dlp's command-line `retries` and
+  `fragment_retries`, read from `parse_options([])` at the pin, 10 each, on both passes. A chosen
+  `retries`, zero included, is sent as chosen, and `--fragment-retries` typed in the options field
+  wins. `test_retry_defaults.py` fails when the pin's two counts change.
+- **A missing fragment fails the attempt.** `skip_unavailable_fragments` is false, so a fragment
+  still missing after its retries fails, keeping staging, the `.part` and yt-dlp's `.ytdl`, for the
+  resume. `--skip-unavailable-fragments` and its three counterparts in the options field are merged
+  after, and win. `ARC-010`'s amendment of 2026-10-15, third, written now, rules the shared key as
+  `writethumbnail`'s, and the audit's invariant and its test name it as their one exception.
+- **The failure the queue's retry can take.** yt-dlp reports a spent count without the error it
+  gave up on: `report_error` runs after the `except` has ended, so the `DownloadError` has an empty
+  `exc_info`, and the job failed as `EXTRACTOR_ERROR`, which a download never retries by itself.
+  `retries_given_up` wraps every downloader's `report_retry` for the download, as `ffmpeg_progress`
+  wraps `Popen`, and keeps the error of each **fatal** give-up; the worker puts it where yt-dlp
+  keeps a cause, and the existing classification decides. A 5xx or a dropped connection is
+  `NETWORK`, retried by the queue from where it stopped; a 404 stays `EXTRACTOR_ERROR`; a 403 is
+  marked transient, which by the 2026-09-13 ruling retries reads only. The words stay yt-dlp's.
+- **The screen says what is true.** The retries box reads *10 — the downloader's own*, the number
+  asked of yt-dlp through the manager when Settings opens; without a manager it says no number.
+  The section says retries cover each piece of a stream when the server fails or the connection
+  drops, that a piece the server refuses retries on a count of its own, and that a piece still
+  missing stops the download, which keeps what it has. The `retries` docstrings and the settings
+  file's comment say the command line's count rather than an absent key, which the library read as
+  none. The changelog's first `Unreleased` entry tells `0.1.0` users.
+- **Tests.** `test_retry_defaults.py`: the counts at the pin, both passes, chosen counts, the shared
+  key both ways, and the give-up kept only when fatal, attributed, classified, and the downloader
+  put back. `test_fragment_retries.py`, the real worker against a 12-second HLS stream on
+  `127.0.0.1`: one 503 and one 403 on a fragment deliver 300 of 300 frames; a fragment that never
+  arrives fails as `NETWORK`, and a second attempt resumes it without fetching again the fragments
+  the first had; a 404 stays a failure the queue does not repeat; the user's skip still skips; a
+  progressive transfer retries one 503 and calls a persistent one `NETWORK`. And the screen's
+  number, through the real composition. **Six of the seven integration cases fail at `8f24f40`**;
+  the skip passes there, skipping having been the default.
+- **Four existing tests changed with the behaviour.** The adapter's *leaves the keys out* now
+  expects the command line's `retries`; the hatch's value-spelled-as-an-option case is spelled
+  `--socket-timeout`, since `fragment_retries` is now always sent; the screen's explanation test
+  reads the new sentences; and the step-progress stand-in adapter gained the two new names.
+- **Mutations, 12 of 12 caught**, each on a fresh copy of the tree: no count when nobody chose; no
+  fragment count; missing fragments skipped again; the application's value winning over the user's
+  skip; non-fatal give-ups kept; every retry kept; the downloader not put back; attribution doing
+  nothing, or overwriting a cause yt-dlp gave; the worker never attributing; the screen ignoring
+  the number; the window passing none.
+
+**Observed, not changed.** yt-dlp's give-up reaches the row as `ERROR: \r[download] Got error: …
+Giving up after 10 retries`, carriage return included, as every downloader's `report_error` text
+does; it predates this task.
+
+**Checks, 2026-10-18, on Linux, base `8f24f40`**, with the project `.venv` on `PATH`: `ruff check
+.` and `ruff format --check .` (487 files); `mypy src` (70), bare `mypy` and `mypy --platform
+win32` (223 each); the table check up to date; `tests/unit tests/ui` under `-n auto`, **5,692
+passed**, 21 skipped; `tests/integration` **552 passed**. That run found a missing blank line and
+one mypy error, yt-dlp's untyped `DownloadError` hiding `exc_info`; both were corrected without a
+change in behaviour and the static checks, `tests/unit tests/ui` (5,692 passed) and the three
+affected integration modules (24 passed) rerun. No Windows run: `STARBASE` is offline.
 
 ---
 
