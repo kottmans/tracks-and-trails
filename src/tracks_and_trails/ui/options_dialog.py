@@ -236,7 +236,7 @@ MERGE_CONTAINERS_OFFERED: Final[tuple[tuple[str | None, str], ...]] = (
 )
 MERGE_REASON_NAME: Final = "optionsMergeReason"
 MERGE_FOLLOWS_REASON: Final = (
-    "A remux or recode decides the container, so separate streams are merged into it."
+    "A remux or recode decides the final container, so there is nothing to choose here."
 )
 MERGE_AUDIO_REASON: Final = "An audio download has no separate streams to merge."
 

@@ -2335,18 +2335,22 @@ def test_a_format_chosen_from_the_table_disables_the_group_and_keeps_its_values(
 def test_the_merge_container_is_offered_only_while_the_container_is_kept(
     editor: Callable[..., OptionsDialog],
 ) -> None:
-    """`ARC-010`'s written order: a remux or recode decides the container, and the merge follows
-    it, so the choice is withdrawn with the reason and the result names none."""
-    dialog = editor(SORTED)
-    merge = combo(dialog, MERGE_CONTAINER_NAME)
-    assert merge.isEnabled()
+    """`ARC-010`'s written order: a remux or recode runs after the merge and decides the final
+    container, so the choice is withdrawn with the reason and the result names none. A recode
+    leaves the merge to yt-dlp, so the reason must not say the merge writes that container
+    (`T250-R1`)."""
+    for change in (CONTAINER_REMUX_NAME, CONTAINER_RECODE_NAME):
+        dialog = editor(SORTED)
+        merge = combo(dialog, MERGE_CONTAINER_NAME)
+        assert merge.isEnabled()
 
-    radio(dialog, CONTAINER_REMUX_NAME).setChecked(True)
+        radio(dialog, change).setChecked(True)
 
-    reason = dialog.findChild(QLabel, MERGE_REASON_NAME)
-    assert not merge.isEnabled()
-    assert reason is not None and reason.text() == MERGE_FOLLOWS_REASON
-    assert dialog.result_preset().merge_container is None
+        reason = dialog.findChild(QLabel, MERGE_REASON_NAME)
+        assert not merge.isEnabled(), change
+        assert reason is not None and reason.text() == MERGE_FOLLOWS_REASON, change
+        assert "final container" in reason.text() and "merged into" not in reason.text()
+        assert dialog.result_preset().merge_container is None, change
 
 
 def test_an_audio_download_merges_nothing(editor: Callable[..., OptionsDialog]) -> None:
