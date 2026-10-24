@@ -111,6 +111,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-250](reviews/T-250.md) | T-250; format sorting, checking and merge containers, 67a8778 to f7e373a | 0 |
 | [T-304](reviews/T-304.md) | T-304; keyboard-only focus rings, f7e373a to c391e5a | 0 |
 | [T-301](reviews/T-301.md) | T-301; font-sensitive UI tests, 276ffe4 to 8e654a7 | 0 |
+| [T-248](reviews/T-248.md) | T-248; filename shaping and file dates, 8e654a7 to 4b8f697, plus c6e9dd4 docstring | 0 |
 | [T-249](reviews/T-249.md) | T-249; [focused privacy correction verification](reviews/T-249.md#2026-10-18--focused-privacy-correction-verification), 9e917ec | 0 |
 | [T-251](reviews/T-251.md) | T-251; [focused typed conversion verification](reviews/T-251.md#2026-10-18--focused-typed-conversion-verification), 9e917ec | 0 |
 | [T-363](reviews/T-363.md) | T-363; [focused correction verification](reviews/T-363.md#2026-10-18--focused-correction-verification), dcb0f52 | 0 |
