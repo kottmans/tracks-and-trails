@@ -2,7 +2,7 @@
 
 **Purpose:** Navigation to canonical task and shared-scope review records.
 **Owner:** Reviewer; Coordinator / Integrator owns shared routing during a wave.
-**Last updated:** 2026-10-18
+**Last updated:** 2026-10-24
 **Update when:** A review record is introduced or its navigation changes.
 
 ## Current navigation
@@ -107,6 +107,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-361](reviews/T-361.md) | T-361 | 0 |
 | [T-247](reviews/T-247.md) | T-247; [second correction verification](reviews/T-247.md#2026-10-13--second-correction-focused-verification), b7c1dc4 | 0 |
 | [T-362](reviews/T-362.md) | T-362; initial queue-time numbering and padding, bd643ae to 4fa990b | 0 |
+| [T-364](reviews/T-364.md) | T-364; transfer retries and missing-fragment failures, 8f24f40 to 73bc3c8 | 0 |
 | [T-249](reviews/T-249.md) | T-249; [focused privacy correction verification](reviews/T-249.md#2026-10-18--focused-privacy-correction-verification), 9e917ec | 0 |
 | [T-251](reviews/T-251.md) | T-251; [focused typed conversion verification](reviews/T-251.md#2026-10-18--focused-typed-conversion-verification), 9e917ec | 0 |
 | [T-363](reviews/T-363.md) | T-363; [focused correction verification](reviews/T-363.md#2026-10-18--focused-correction-verification), dcb0f52 | 0 |
