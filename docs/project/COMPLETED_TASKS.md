@@ -42196,6 +42196,145 @@ passed**, 21 skipped; `tests/integration` **558 passed**. No Windows run: `STARB
 
 ---
 
+### T-301 — Four UI tests break when the application font grows by one point
+
+**Status:** **Complete — approved 2026-10-24** at `8e654a7`
+([record](reviews/T-301.md#2026-10-24--initial-font-sensitive-test-review)), with no findings.
+*(Was In Review:)* **the fourth repaired 2026-10-19**, by the maintainer's overnight instruction
+([the amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-18-the-work-continues-while-reviews-are-pending)):
+it was the test, measured below, and the 2026-09-10 diagnosis of it is corrected there. *(Was In
+Progress:)* three of the four repaired 2026-09-10. *(Found 2026-09-08 while repairing the two that
+`ubuntu-latest` broke.)*
+**Owner:** Implementer
+**Priority:** Low — contained test debt with no user-facing evidence behind it. It is recorded so
+the measurement is not lost, not because it blocks anything.
+**Phase:** Phase 4 (test infrastructure; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `OPS-012`'s 2026-09-08 amendment, `tools/bigger_font_plugin.py`,
+`tools/dialog_width_floor_probe.py`
+**Affected surfaces:** `tests/ui/test_row_verb_wiring.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Low
+**Required checks:** `ruff check .` · `ruff format --check .` · `pytest tests/ui` at the default
+font **and** under `tools/bigger_font_plugin.py`
+
+#### Scope
+
+Four tests fail at one point larger than the default font:
+
+```
+tests/ui/test_row_verb_wiring.py::test_the_drawn_verbs_are_where_the_click_is_tested
+tests/ui/test_row_verb_wiring.py::test_the_overflow_keeps_its_place_as_the_state_changes
+tests/ui/test_row_verb_wiring.py::test_the_verbs_leave_the_message_its_width
+tests/ui/test_add_dialog.py::test_the_menu_key_reaches_the_current_rows_menu
+```
+
+Three are one cluster — where verbs and the overflow land as a row narrows — and probably share a
+cause. Reproduce with `PYTHONPATH=tools python -m pytest -q -p bigger_font_plugin tests/ui`.
+
+#### 2026-09-10 — the cluster of three, and what a larger font actually does
+
+**All three were test debt, and the product was never wrong.** Each invented a row —
+`QRect(0, 0, 700, 66)`, sometimes with 100 px carved off the left — which is a row *at one font*.
+A point larger and nothing fitted inside it, so `_verb_rects` answered empty and the test failed
+for having guessed the geometry rather than for anything the delegate did.
+
+**Re-expressed against the seam the paint itself uses:** `visualRect` for the row and `_verb_area`
+for the region reserved in it. The claims are unchanged — verbs inside the row, right to left, not
+overlapping, off the first two lines — and now hold at both fonts.
+
+**One of the three also had a literal the comment beside it rejected.** It searched for the width
+where two rows both overflow *"rather than writing it down, because a literal here would be a
+number that passed on this machine"* — and then bounded the search at `range(24, 200, 2)`. The band
+moves with the font, a point larger put it past 200, and the search ran off the end. The ceiling is
+now the row's own width.
+
+**So: a larger font does nothing to verb placement**, which is this task's fourth criterion
+answered. `tests/ui/test_row_verb_wiring.py` passes in full — 62 tests — at both fonts.
+
+#### The fourth is not fixed, and these are the measurements
+
+`test_the_menu_key_reaches_the_current_rows_menu` still fails its second half at one point larger:
+*"with no current row and no row under the point, a menu opened anyway."* Established by probe:
+
+- The current index **is** invalid when the event is sent (`row: -1`).
+- The probe point **is** off every row, and still is with a twenty-pixel margin.
+- Exactly **one** `QMenu` exists; `_close_menu` hides it and `WA_DeleteOnClose` does **not** destroy
+  it. The same object becomes visible again when the next context event reaches the viewport.
+
+So the menu is not built a second time — a hidden popup is re-shown. `AddUrlDialog._show_row_menu`
+cannot be the route, since with no valid index it returns before building anything.
+
+**Two fixes were tried and both rejected**, recorded so the next reader does not repeat them:
+
+- **Widening the probe point's margin** from 2 px to 20. The original margin was exactly two pixels
+  at the larger font, which looked like a coordinate-space bug between `customContextMenuRequested`
+  (list coordinates) and `indexAt` (viewport coordinates). **It is not that** — the failure survives
+  the wider margin. The margin is kept anyway: a probe whose correctness depends on a frame width
+  being zero is measuring the frame.
+- **Forcing the menu's destruction** in `_close_menu` with `setParent(None)` plus `deleteLater`.
+  This made the test fail at the **default** font too, so it trades a font-specific failure for an
+  unconditional one. Reverted.
+
+**Ruled 2026-09-11: leave it failing and documented.** The font lever is deliberately not wired
+into CI — this task's own *Out of scope* says why — so nothing is red anywhere, and the diagnosis
+plus both rejected fixes are the record a later reader inherits. **An `xfail` scoped to the lever
+was offered and declined**: this task's own criteria forbid loosening an assertion to reach green,
+and a marker saying a known failure is expected is that with extra steps.
+
+#### Acceptance criteria
+
+- For each, establish **product or test** by measurement, the way
+  `tools/dialog_width_floor_probe.py` established the add-dialog floor. A pixel that moved is not
+  by itself a defect, and an assertion that was only ever true at one font is not by itself sound.
+- Repair whichever is wrong. **Do not loosen an assertion to reach green** — the two repaired on
+  2026-09-08 were re-expressed as the property each was actually protecting.
+- Record what a larger font does to verb placement, whichever way it goes.
+
+#### Out of scope
+
+- **Wiring the font lever into CI.** Gating on a standard nobody has established the product meets
+  would leave the board red for a known reason, which is what removed the `STARBASE orphans` job.
+- The other UI tests. **A 45-failure figure recorded earlier that day was wrong** — the lever that
+  produced it did not restore the font between tests, so it compounded a point per test. At a true
+  one point the count is four, and every accessibility-sounding test named in that figure passes.
+
+#### 2026-10-19 — the fourth was the test, and nothing was being re-shown
+
+**It now passes at one point larger, and bisecting found why.** Run in a clean archive of each
+commit with `tools/bigger_font_plugin.py`, it fails at `6cb947c`, where this task recorded it, and
+at every commit to `8d70e01`; it passes from `a988847` (2026-09-15, `T-342`, *keep every dialog
+inside the screen*), which opens the add dialog at 711 by 756 where it opened at 537 by 537. That
+is when it stopped failing, not what was wrong, so the geometry was measured at `8d70e01`:
+
+- **The menu that opened was a new one, for row 1.** A spy on the closed menu saw no `Show`, and
+  tracing `row_menu` showed it called for row 1, with `indexAt` answering row 1 for the probe
+  point. **The 2026-09-10 diagnosis was wrong**: the closed menu was not re-shown; the door built a
+  menu for the row under the point, which is its documented contract.
+- **The list laid itself out again between the two requests.** Before the first, its viewport was
+  137 pixels tall, scrolled to 31, with row 1 spanning 53–136, so the point at y 139 was below it.
+  Before the second, the viewport was 151 tall — a horizontal scroll bar had given way to a
+  vertical one — scrolled to 17, with row 1 spanning 67–150, over the same point.
+- **So the premise "off every row" was asserted once and reused stale.** The repair finds the
+  point again before each request and asserts it there (`_off_every_row`). With only that change,
+  the test passes at `8d70e01` at the larger font, before `T-342`'s geometry: the cause and the
+  repair, both measured. No assertion was loosened, and the product is unchanged.
+
+**A fifth fails at one point larger, outside this task's scope**, measured and not repaired:
+`tests/ui/test_settings_dialog.py::test_the_screen_opens_no_taller_than_the_display`. The product
+is right: the screen bounds itself to the display, 752 of 800 pixels, while its sections want
+1,524. The test's second assertion asks for more than half the content's height, 762, which no
+screen can give once the content is more than twice the display. The sound claim is the smaller of
+the content and the room, within the frame. It passes at the default font. It is recorded here for
+the maintainer's disposition rather than changed, since this task excludes the other UI tests.
+
+**Checks, 2026-10-19, on Linux:** `ruff check .` and `ruff format --check .`; the test alone at
+both fonts, passing six times at the larger; at `8d70e01` with only the repair, passing at the
+larger font. `tests/ui` under `-n auto` at the default font, **1,688 passed**, and under the plugin with
+**1 failed**, the fifth above, 1,687 passed; bare `mypy` and `mypy --platform win32` (229 each).
+A test-only change, so the integration suite was not rerun.
+
+---
+
 ## Cancelled
 
 ### T-212 — The recorded checklist run: the built window against the agreed flow
