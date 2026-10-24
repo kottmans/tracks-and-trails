@@ -769,3 +769,86 @@ acceptance remains as previously verified, without a new crash explanation.
 No unrelated task was created. The T-329 review is indexed in REVIEWS; task and
 STATUS updates remain with their owner. Previous dated Phase 4 entries are
 preserved byte for byte.
+
+## 2026-10-24 — Phase 4 exit sign-off after the resolved evidence blocker
+
+**Reviewer:** Codex, independent of the implementations.
+**Round:** Outstanding exit-verdict disposition; records only.
+**Assessed evidence boundary:** the preceding `59598de` phase assessment, followed by
+T-329's corrected gate and the independently approved evidence delivery at `8e67f6f`
+(approval recorded 2026-09-13). Current records were read at `7aadd3d`; this is not
+an implementation approval of all later `main` changes.
+**Verdict: Approved. Phase 4 is signed off on 2026-10-24.** Criterion 7 is now met.
+There is no remaining Phase 4 exit blocker within the amended, previously reviewed
+scope. This verdict supersedes the preceding Blocked disposition; it is not backdated.
+
+### Evidence and criterion disposition
+
+The preceding review resolved P4EXIT-R1 through R4 and held exit only on T329-R2.
+The [2026-09-13 T-329 disposition](T-329.md#2026-09-13--supplied-windows-evidence-disposition)
+explicitly resolved that last blocker after inspecting the retained Windows command
+and output: baseline **2 passed in 3.36s**, rendered-ring mutation **2 failed in
+3.80s**, both palettes and all six headers. Its express reservation of phase approval
+is why that task verdict alone did not supply criterion 7.
+
+The reviewer reread that disposition and its retained capture in
+[T-329's closed record](../COMPLETED_TASKS.md#t-329--the-focus-ring-floor-mismodels-a-header-and-windows-is-where-it-shows).
+The native Windows and frozen evidence independently inspected at `59598de`, the
+corrected helper's provenance and the prior Linux negative controls retain their
+original scope. No new Windows execution or broad application gate is claimed today.
+
+| Phase 4 criterion | Exit disposition on 2026-10-24 |
+|---|---|
+| 1. Keyboard reachability on Linux | **Met in the previously verified scope.** The corrected all-surface inventory and keyboard routes retain their approval. |
+| 2. Correct names/roles automated on both platforms | **Met within the amended boundary.** The prior real Windows provider run resolved the execution gap. Linux's Qt source-tree coverage remains narrower than AT-SPI publication; subjective screen-reader coherence is not asserted. |
+| 3. No information conveyed by colour alone | **Met.** The approved corrected gate, passing platform sweeps and now-resolved Windows rendered-control mutation complete the preceding evidence requirement. |
+| 4. Automated log redaction | **Met within the already accepted diagnostic and redaction boundaries.** No broader privacy guarantee is introduced. |
+| 5. In-app update and revert | **Met within the preceding independently verified integration/native/frozen scope.** No new live update is claimed. |
+| 6. Recorded built-window checklist | **No longer a Phase 4 gate**, by the 2026-09-10 amendment; subsequently **cancelled**, not performed, by the maintainer on 2026-09-13. |
+| 7. Reviewed and signed off | **Met by this dated verdict.** The last substantive evidence blocker was resolved 2026-09-13; formal approval is recorded today. |
+
+Criterion 6's later disposition is explicit in the
+[plan](../IMPLEMENTATION_PLAN.md#phase-4--settings-polish-and-accessibility) and
+[T-212 cancellation](../COMPLETED_TASKS.md#t-212--the-recorded-checklist-run-the-built-window-against-the-agreed-flow).
+It must not be described as a completed recorded checklist. T-327's independently
+approved Windows sitting became the release's manual evidence, with its own
+exceptions. The separate REQUIREMENTS §11 acceptance sitting was later waived
+unperformed for `0.1.0`; **T328-R4 remains open** under the
+[release review](T-328.md). Neither obligation is retroactively satisfied by this sign-off.
+T-289's explicitly bounded residual-risk acceptance also remains unchanged; no new
+crash explanation is claimed.
+
+### Release chronology and disposition
+
+**`0.1.0` shipped on 2026-09-16 without the Phase 4 approval required by the plan.**
+The Phase 5 amendment relaxed starting work, expressly retained approval as a
+publication condition, and the prior record still denied exit. The September 13
+resolution made sign-off supportable, but its explicit phase-exit reservation and
+the absence of a verdict mean publication cannot be represented as having met that
+approval condition. Likewise, Phase 4.5 began before its documented approval
+prerequisite had been recorded. Today's entry closes the outstanding sign-off;
+it does not rewrite either chronology or infer a historical waiver.
+
+**Release disposition, under the maintainer's express delegation in this review
+request: retain the published `0.1.0`; no withdrawal, replacement tag or republication
+is required solely for this missing sign-off.** The supporting Phase 4 evidence was
+available and its last blocker independently resolved before publication. This
+records a missed approval condition without inventing a new product or artifact
+defect from that omission. Existing shipped defects, release exceptions and their
+assigned corrections retain their own dispositions. This is a decision about the
+missing Phase 4 verdict, not a new approval of the release's waived acceptance walk.
+
+Phase 4's approval prerequisite is satisfied from this verdict onward. It supplies
+no blanket approval of the six later tasks or current release readiness; in
+particular [T304-R1](T-304.md) remains a correction to the later keyboard-only
+focus policy, while the historical phase's keyboard visibility evidence stands.
+
+### Record checks and coordination
+
+The preceding phase record is preserved byte for byte as a prefix, and the review
+migration verifier preserves all **381 entries in 105 files / 2,403,546 bytes**.
+The existing index entry now links this disposition; affected local links and
+documentation whitespace were checked. No source, tests, release bytes or task
+closure were changed. The serial task/status owner can synchronize STATUS's
+outstanding-sign-off statement to this dated verdict; the unrelated September audit
+requires no further review.
