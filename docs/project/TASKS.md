@@ -16,8 +16,10 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ### T-304 — Should a focus ring appear when the control was clicked?
 
-**Status:** In Review — built 2026-10-18 by the maintainer's overnight instruction that night,
-which also lifts the 2026-09-11 sequencing below
+**Status:** In Review — correction 1 built 2026-10-24, awaiting the focused re-review of
+`T304-R1`. Changes requested 2026-10-24 at `c391e5a`, one Medium blocker
+([record](reviews/T-304.md#2026-10-24--initial-keyboard-only-focus-review)); built 2026-10-18 by
+the maintainer's overnight instruction that night, which also lifts the 2026-09-11 sequencing below
 ([the amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-18-the-work-continues-while-reviews-are-pending));
 the ruling is recorded as `UX-016`. *(Was Ready:)* **ruled by the maintainer on 2026-09-09: option
 (2), the keyboard-only ring.** The options and their costs are kept below as the reasoning the ruling was made on. The
@@ -119,6 +121,65 @@ the Windows desktop job runs these tests when `STARBASE` is back.
 .` and `ruff format --check .` (493 files); `mypy src` (72), bare `mypy` and `mypy --platform
 win32` (229 each); the table check up to date; `tests/unit tests/ui` under `-n auto`, **5,852
 passed**, 21 skipped; `tests/integration` **558 passed**.
+
+#### Correction 1, 2026-10-24 — `T304-R1`
+
+The review of `c391e5a` requested changes with one Medium blocker. **Corrected, awaiting
+re-review.** The correction is on `a3214b2`, whose `focus_ring.py`, `format_table.py` and
+`test_focus_ring.py` are `c391e5a`'s.
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T304-R1`, Medium — `SortableHeader.paintSection` drew its ring whenever the header had focus, so a click on a format header painted the same 430 accent pixels as a key | **The painter asks what the sheet asks.** `focus_ring.shows_ring` is true when the widget holds focus and its `focusRing` is true, the condition every `:focus` rule carries, and `paintSection` draws the current section's ring only then | `test_a_real_click_on_a_format_header_draws_no_ring`, the review's reproduction: a real click on section 0 through the viewport, in both themes, then `Shift`. **Fails at `c391e5a`'s painter** |
+
+**Sibling audit: the click's side measured on every control there is, and a second route it
+found.** A scratch sweep walked all 112 focusable controls on every surface, in both themes, and
+rendered each idle, focused while the pointer had the turn, and after a key. At `c391e5a`, the key
+added a ring on 106 of 112: the six that did not were the six `SortableHeader`s on four surfaces,
+430 pixels after the click and nothing more after the key. And **a click on any of the nine spin
+boxes drew a ring the review's accent count could not see**: the sheet leaves `QSpinBox` to the
+platform's style (`T-133`), and Fusion draws its own one-pixel focus frame in the palette's
+highlight, measured at 0.91 to 1.00 of a ring. Before `T-304`, every `:focus` rule applied on a
+click, so the sheet's ring would have been drawn there instead (inferred, not measured). Now:
+
+- **`_KeyboardFocusStyle` wraps the application's style**, installed once by the tracker when it
+  is made. It takes `State_HasFocus` off each option the platform's style is asked to draw while
+  the pointer has the turn, and puts it back after, so nothing is measured or laid out differently.
+  It asks the tracker for the turn and never the widget being drawn: calling `focusProxy()` on that
+  widget from inside a draw call **deleted a table's scroll bar during `render()`**, with PySide6
+  6.11 and the sheet installed, bisected to that one call.
+- **After the correction**, the key adds a ring on 112 of 112 in both themes, and **focus from
+  the keyboard measures the same change on all 112 as at `c391e5a`**. What a click still changes is
+  the text cursor (14 to 16 pixels) and twelve dialog buttons Qt makes the default when they take
+  focus, which the sheet fills so the user can see which button Enter presses. That is not the
+  ring, it predates `T-304`, and the key still adds the ring to each of them.
+- **The header's viewport already repainted on a change of turn** at `c391e5a`, once each way,
+  counted with an event filter. Nothing held that, so a test does now.
+- **The cost**: every surface's window rendered ten times, best of five, took 0.209 to 0.230 s
+  against 0.175 to 0.177 s at `c391e5a`, about 0.4 ms more per window. Runs vary from 0.17 to
+  0.51 s, so the figure is rough.
+
+**Tests**, in `tests/ui/test_focus_ring.py`:
+`test_a_click_draws_no_ring_on_any_control_and_the_next_key_draws_it`, the sweep kept, on every
+focusable control of every surface in both themes, both ways round: the key after a click adds a
+ring, and a click draws none, with the default button exempted only when Qt reports it default;
+the real header click above; `test_a_real_click_on_a_spin_box_draws_no_frame_of_the_platform_s_own`;
+`test_the_header_repaints_its_sections_when_the_turn_changes`; and
+`test_drawing_with_the_wrapped_style_leaves_every_scroll_bar_alive`, for the hazard above.
+
+**Correction mutations, 5 of 5 caught**, each on a copy of the two source files restored by hash:
+the header asking only `hasFocus()` (the sweep and the header click fail, both themes); the style
+withholding nothing, and the style never installed (the sweep and the spin-box click); a change of
+turn neither re-polishing nor updating (the repaint test, and the existing handover tests); and the
+style asking the drawn widget for its `focusProxy()` (the scroll-bar test).
+
+**Not verified**: Windows, where the wrapped style is the native one rather than Fusion and draws
+its own focus differently; `STARBASE` is offline. And a screen reader, as before.
+
+**Checks, 2026-10-24, on Linux, base `a3214b2`**, with the project `.venv` on `PATH`: `ruff check .`
+and `ruff format --check .` (504 files); `mypy src` (73), bare `mypy` and `mypy --platform win32`
+(234 each); the table check up to date; `tests/unit tests/ui` under `-n 4`, **6,096 passed**, 21
+skipped; `tests/integration` under `-n 4`, **577 passed**. No Windows run: `STARBASE` is offline.
 
 ### T-252 — Download tuning and the retry policy the settings screen shows
 

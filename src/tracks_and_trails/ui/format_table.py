@@ -78,7 +78,7 @@ from PySide6.QtWidgets import (
 )
 
 from tracks_and_trails.core.models import FormatInfo
-from tracks_and_trails.ui import theme
+from tracks_and_trails.ui import focus_ring, theme
 from tracks_and_trails.ui.format_selection import (
     FormatKind,
     FormatSelection,
@@ -1012,7 +1012,9 @@ class SortableHeader(QHeaderView):
         logicalIndex: int,  # noqa: N803 - Qt's name
     ) -> None:
         super().paintSection(painter, rect, logicalIndex)
-        if not (self.hasFocus() and logicalIndex == self._current):
+        # **For the keyboard, not a click** (`UX-016`, `T304-R1`): the sheet's focus rules ask
+        # `focusRing`, and a painter cannot read the sheet, so it asks the same question itself.
+        if not (focus_ring.shows_ring(self) and logicalIndex == self._current):
             return
         # **Drawn here rather than asked of `PE_FrameFocusRect`** (`T202-R1`, third round). That
         # primitive is the style's idea of a focus rectangle, and once a style sheet is installed

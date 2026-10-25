@@ -11,6 +11,13 @@ pointer is pressed, so a window opened from the keyboard shows it, and a key pre
 shows it at once on the control the click focused: the handover the ruling named as the case to
 check. A style sheet does not look at a property again by itself, so the widget is re-polished
 whenever its answer changes.
+
+**Two routes draw focus without a style sheet, and both ask the same question** (`T304-R1`).
+A control that paints its own ring, as `SortableHeader` does, asks `shows_ring`. And a control the
+sheet leaves to the platform's style, as `T-133` leaves `QSpinBox`, gets that style's own focus
+frame on a click: measured with Fusion, a one-pixel edge in the palette's highlight, as visible as
+the ring itself. So the application's style is wrapped in `_KeyboardFocusStyle`, which withholds
+focus from the platform's drawing while the pointer has the turn.
 """
 
 from __future__ import annotations
@@ -18,7 +25,15 @@ from __future__ import annotations
 from typing import Final
 
 from PySide6.QtCore import QEvent, QObject
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtGui import QPainter
+from PySide6.QtWidgets import (
+    QApplication,
+    QProxyStyle,
+    QStyle,
+    QStyleOption,
+    QStyleOptionComplex,
+    QWidget,
+)
 
 from tracks_and_trails.ui.theme import FOCUS_RING_PROPERTY
 
@@ -32,18 +47,101 @@ _POINTER_EVENTS: Final = frozenset(
     }
 )
 
+_HAS_FOCUS: Final = QStyle.StateFlag.State_HasFocus
+
+
+def shows_ring(widget: QWidget) -> bool:
+    """Whether `widget` should draw its focus ring now: it holds focus, and the keyboard was used
+    last. **For a control that paints its own ring**: every style-sheet rule asks the same of the
+    widget it styles, through `theme.focused`, and a painter cannot read a style sheet."""
+    return widget.hasFocus() and widget.property(FOCUS_RING_PROPERTY) is True
+
+
+class _KeyboardFocusStyle(QProxyStyle):
+    """The platform's own style, asked to draw focus only while the keyboard has the turn.
+
+    **Only the drawing is changed**: the option loses `State_HasFocus` for the one call and has it
+    back afterwards, so nothing the style measures or lays out moves. A style sheet's `:focus` rules
+    are matched before the platform's style is asked, so they keep asking `focusRing` themselves.
+
+    **The turn is asked of the tracker, never of the widget being drawn.** Calling `focusProxy()`
+    on that widget from inside a draw call destroyed it: measured with PySide6 6.11 and the sheet
+    installed, a table's scroll bar was deleted during `render()`. The tracker gives the focused
+    widget the same answer it holds, so nothing is lost by not asking the widget.
+    """
+
+    def __init__(self, ring: FocusRing) -> None:
+        super().__init__()
+        self._ring = ring
+
+    def _withheld(self, option: QStyleOption) -> bool:
+        """Take focus off `option` while the pointer has the turn; say whether it was taken."""
+        if self._ring.keyboard or not option.state & _HAS_FOCUS:
+            return False
+        option.state &= ~_HAS_FOCUS
+        return True
+
+    # Qt's override names, hence the camelCase.
+    def drawPrimitive(
+        self,
+        element: QStyle.PrimitiveElement,
+        option: QStyleOption,
+        painter: QPainter,
+        /,
+        widget: QWidget | None = None,
+    ) -> None:
+        withheld = self._withheld(option)
+        try:
+            super().drawPrimitive(element, option, painter, widget)
+        finally:
+            if withheld:
+                option.state |= _HAS_FOCUS
+
+    def drawControl(
+        self,
+        element: QStyle.ControlElement,
+        option: QStyleOption,
+        painter: QPainter,
+        /,
+        widget: QWidget | None = None,
+    ) -> None:
+        withheld = self._withheld(option)
+        try:
+            super().drawControl(element, option, painter, widget)
+        finally:
+            if withheld:
+                option.state |= _HAS_FOCUS
+
+    def drawComplexControl(
+        self,
+        control: QStyle.ComplexControl,
+        option: QStyleOptionComplex,
+        painter: QPainter,
+        /,
+        widget: QWidget | None = None,
+    ) -> None:
+        withheld = self._withheld(option)
+        try:
+            super().drawComplexControl(control, option, painter, widget)
+        finally:
+            if withheld:
+                option.state |= _HAS_FOCUS
+
 
 class FocusRing(QObject):
     """Watches the application's input, and says on the focused widget whether to draw the ring.
 
     **One per application**, parented to it, and installed by `theme.apply`, the one call that
-    themes anything, so a dressed application cannot have the rules without the property.
+    themes anything, so a dressed application cannot have the rules without the property. It wraps
+    the application's style once, when it is made, for the controls the sheet leaves to it.
     """
 
     def __init__(self, application: QApplication) -> None:
         super().__init__(application)
         self.setObjectName("focusRing")
         self._keyboard = True
+        self._style = _KeyboardFocusStyle(self)
+        application.setStyle(self._style)
         application.installEventFilter(self)
         application.focusChanged.connect(self._focus_moved)
 
