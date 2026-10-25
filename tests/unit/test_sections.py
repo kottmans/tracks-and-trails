@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 import random
+import re
 from typing import Final
 
 import pytest
@@ -145,6 +146,30 @@ def test_a_section_is_refused_exactly_when_yt_dlp_refuses_it(section: str) -> No
     assert (problem is None) is accepted, problem
     if accepted and section.startswith("*") and section != FROM_URL:
         assert parsed_ranges(section) == theirs
+
+
+#: A chapter pattern nested deeper than `re`'s parser goes, which raises `RecursionError` rather
+#: than `re.error` (`T184-R8`); and one whose repeat count is past `re`'s limit, `OverflowError`.
+TOO_DEEP: Final = "(" * 500 + "a" + ")" * 500
+TOO_MANY: Final = "a{4294967296}"
+
+
+@pytest.mark.parametrize(
+    ("pattern", "raised"),
+    [(TOO_DEEP, RecursionError), (TOO_MANY, OverflowError)],
+    ids=["recursion", "overflow"],
+)
+def test_a_pattern_re_cannot_build_is_refused_rather_than_raised(
+    pattern: str, raised: type[BaseException]
+) -> None:
+    """`T252-R4`: these were the hatch's cases until the sections had a control, and the move kept
+    only the repeat count, so `RecursionError` could leave the handler with every test green."""
+    with pytest.raises(raised):
+        re.compile(pattern)  # the positive control: this pattern is the one that raises
+
+    problem = section_problem(pattern)
+
+    assert problem is not None and "is not a chapter pattern" in problem
 
 
 def test_generated_ranges_are_read_as_yt_dlp_reads_them() -> None:

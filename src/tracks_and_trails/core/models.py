@@ -1220,6 +1220,31 @@ def _require_naming(owner: str, value: Any) -> None:
 #: sets no ceiling of its own.
 MOST_CONCURRENT_FRAGMENTS: Final = 8
 
+#: The longest a silent server is waited for, in seconds (`T-252`). The settings file clamps to it
+#: and the model refuses past it, so no request carries a wait yt-dlp cannot take.
+MOST_SOCKET_TIMEOUT_SECONDS: Final = 600
+
+#: A timeout is held in tenths of a second, the precision the settings screen shows (`T252-R3`).
+#: A finer one was shown as another number, and one under a twentieth as the downloader's own,
+#: while the downloader was sent the value itself.
+SHORTEST_SOCKET_TIMEOUT_SECONDS: Final = 0.1
+
+
+def is_held_timeout(seconds: int | float) -> bool:
+    """Whether `seconds` is a timeout this application holds: a whole number of tenths, from
+    `SHORTEST_SOCKET_TIMEOUT_SECONDS` to `MOST_SOCKET_TIMEOUT_SECONDS`.
+
+    **Bounded before anything is converted to a `float`** (`T252-R2`): an integer too large for one
+    is refused by the comparison, where `math.isfinite` raised `OverflowError` over it.
+    """
+    if isinstance(seconds, float) and not math.isfinite(seconds):
+        return False
+    # A positive whole number of tenths is at least the shortest, so the floor needs no test.
+    if not 0 < seconds <= MOST_SOCKET_TIMEOUT_SECONDS:
+        return False
+    tenths = seconds * 10
+    return abs(tenths - round(tenths)) < 1e-6
+
 
 def _require_connection(owner: str, value: Any) -> None:
     """`T-252`'s four connection settings, on `NetworkOptions` or on a request, which shares them.
@@ -1227,7 +1252,8 @@ def _require_connection(owner: str, value: Any) -> None:
     **`None` is *nobody chose*** in all four, and the key is then the downloader's own: the command
     line's ten fragment retries (`T-364`), three extractor retries, a 20-second timeout and one
     piece at a time. Zero retries is a real answer. A timeout has to be a positive number of
-    seconds, since yt-dlp's library takes zero or less and then fails the job (`T184-R8`'s class).
+    seconds, since yt-dlp's library takes zero or less and then fails the job (`T184-R8`'s class),
+    and one `is_held_timeout`, so the screen can show it as it is.
     """
     _require_optional_count(owner, "fragment_retries", value.fragment_retries)
     _require_optional_count(owner, "extractor_retries", value.extractor_retries)
@@ -1235,8 +1261,11 @@ def _require_connection(owner: str, value: Any) -> None:
     if timeout is not None:
         if isinstance(timeout, bool) or not isinstance(timeout, int | float):
             _fail(owner, "socket_timeout", timeout, "a number of seconds or None")
-        if not math.isfinite(timeout) or timeout <= 0:
-            raise ValueError(f"{owner}.socket_timeout must be a positive number of seconds")
+        if not is_held_timeout(timeout):
+            raise ValueError(
+                f"{owner}.socket_timeout must be a number of seconds in tenths, from "
+                f"{SHORTEST_SOCKET_TIMEOUT_SECONDS} to {MOST_SOCKET_TIMEOUT_SECONDS}"
+            )
     _require_optional_positive(
         owner, "concurrent_fragments", value.concurrent_fragments, MOST_CONCURRENT_FRAGMENTS
     )

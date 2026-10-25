@@ -2459,6 +2459,20 @@ def test_a_section_yt_dlp_would_refuse_is_refused_where_typed(
     assert dialog.result_preset().download_sections == ("intro", "*1:00-2:00")
 
 
+@pytest.mark.parametrize("pattern", [_TOO_DEEP, _TOO_MANY], ids=["recursion", "overflow"])
+def test_a_chapter_pattern_re_cannot_build_is_refused_where_typed(
+    editor: Callable[..., OptionsDialog], spin: Callable[..., bool], pattern: str
+) -> None:
+    """`T252-R4`: the hatch's `--download-sections` recursion case, kept for the field that took
+    its place. Neither error is `re.error`, and either one escaping would end the check."""
+    dialog = editor()
+
+    typed_sections(dialog, pattern, spin)
+
+    assert "is not a chapter pattern" in part_refusals(dialog)
+    assert not ok_button(dialog).isEnabled()
+
+
 def test_a_range_that_ends_before_it_starts_is_refused(
     editor: Callable[..., OptionsDialog], spin: Callable[..., bool]
 ) -> None:

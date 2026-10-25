@@ -2079,6 +2079,32 @@ def test_each_control_reaches_only_its_own_setting_and_keeps_the_others(
     )
 
 
+@pytest.mark.parametrize("seconds", [0.1, 0.3, 7.5, 599.9, 600.0])
+def test_every_timeout_the_model_holds_is_shown_as_it_is_and_kept_through_other_edits(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]], seconds: float
+) -> None:
+    """`T252-R3`: a timeout of 0.01 or 0.04 s opened as *20 s, the downloader's own* and 0.06 s as
+    0.1 s, while the downloader was sent the value itself. The model now holds only what this
+    control can show, so each value it holds opens as that value, distinct from *nobody chose*,
+    and an edit elsewhere leaves it alone."""
+    chosen: list[NetworkOptions] = []
+    screen, _ = screens(
+        network=NetworkOptions(retries=2, socket_timeout=seconds),
+        on_network_chosen=chosen.append,
+        connection_defaults=CONNECTION_DEFAULTS,
+    )
+    timeout = control(screen, QDoubleSpinBox, SOCKET_TIMEOUT_NAME)
+
+    assert timeout.value() == seconds
+    assert timeout.text() == f"{seconds:.1f} s"
+    assert timeout.text() != timeout.specialValueText()
+
+    control(screen, QSpinBox, FRAGMENT_RETRIES_NAME).setValue(5)
+
+    assert chosen[-1].socket_timeout == seconds
+    assert timeout.value() == seconds
+
+
 def test_the_ranges_are_the_settings_layer_s(
     screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
 ) -> None:

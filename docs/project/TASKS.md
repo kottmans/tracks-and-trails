@@ -365,6 +365,36 @@ so its length can run long by up to one keyframe interval.
    request's headers and cookies, and refuse the sections where none can be read. / Refuse sections
    on such items. / Check the length only after the cut (a short whole item passes the slack).
 
+**`R2`, `R3` and `R4`, corrected 2026-10-25, awaiting re-review**, on `a002248`:
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T252-R2`, Medium — `socket_timeout = 10**400` in `[network]` raised `OverflowError` out of `load`, and out of `NetworkOptions` and the request | **Compared before it is converted.** `models.is_held_timeout` bounds the value before any `float` conversion and applies `math.isfinite` to floats only; the model now refuses past `MOST_SOCKET_TIMEOUT_SECONDS`, 600, which `settings.SOCKET_TIMEOUT_MAXIMUM` now reads, so no request built anywhere carries a wait yt-dlp cannot take. The reader clamps it and reports, keeping the other keys. `Settings`' own timeout ceiling, now unreachable, is removed | The review's case beside a valid `fragment_retries = 4`, read back as 4 and 600 with the report; `10**400` and 601 refused by both owners. **Both fail at `7aadd3d`**, as `OverflowError` |
+| `T252-R3`, Medium — a stored 0.01 or 0.04 s opened as *20 s, the downloader's own*, and 0.06 s as 0.1 s, while the downloader was sent the value | **The model holds only what the control shows**: a whole number of tenths, from 0.1 to 600. The reader rounds a finer value, to no less than 0.1, and reports it, as it reports the other clamps. Chosen over more decimals, which only moves the edge | Five held values, from 0.1 to 600, each open as themselves, unlike the special text, and survive an unrelated edit; 0.04 and 7.55 are refused by the model and read as 0.1 and 7.5 with a report |
+| `T252-R4`, Low — moving `--download-sections` out of the hatch dropped its deep-pattern case, so removing `RecursionError` from `core/sections.py`'s handler left every test green | **Restored for the field that took its place**, beside the overflow: a unit test of `section_problem`, whose positive control first asserts `re.compile` raises for that pattern, and the editor's refusal where typed | The review's mutation, the handler without `RecursionError`: **the unit and editor cases fail**: 2 failed, 242 passed, 1 skipped, 1 error |
+
+**Mutations, 7 of 8 caught**, each on copies restored by hash: the model's or the reader's
+conversion before the bound (`R2`); the model holding any precision; the reader keeping a finer
+value; the screen showing two decimals; the handler without `RecursionError`, and without
+`OverflowError`. The eighth, the model's floor of 0.1 set back to anything positive, survived and
+is equivalent: a positive whole number of tenths is at least 0.1. The floor's test was removed
+rather than kept untested.
+
+**Adjacent, measured, not corrected here** (`AGENTS.md` §7; both predate `T-252`):
+
+- **The rate limit is `R3`'s class.** A stored 1,500 bytes per second, inside the band, opens as
+  *1 KiB/s* and an unrelated edit sends 1,500 back: the screen shows whole KiB/s and the reader
+  keeps any whole number of bytes. `T-196`'s.
+- **`R2`'s class in the adapter.** `ytdlp_adapter._as_optional_float(10**400)` raises
+  `OverflowError`; it projects a site's `duration`, `fps` and `tbr`, and `worker._float_or_none`
+  has the same shape. The helper is measured, not a path from a real site. Since `a296615`.
+
+**Checks for `R2`…`R4`, 2026-10-25, on Linux**, with the project `.venv` on `PATH`: `ruff check .`
+and `ruff format --check .` (504 files); `mypy src` (73), bare `mypy` and `mypy --platform win32`
+(234 each); the table check up to date; `tests/unit tests/ui` under `-n 4`, **6,117 passed**, 21
+skipped; `tests/integration` under `-n 4`, **577 passed**. Two comments were rewrapped after the
+suites ran. No Windows run: `STARBASE` is offline.
+
 ## Ready
 
 <a id="t-302"></a>

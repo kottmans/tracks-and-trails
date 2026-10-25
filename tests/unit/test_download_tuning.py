@@ -23,6 +23,7 @@ from tracks_and_trails.core import presets
 from tracks_and_trails.core import settings as app_settings
 from tracks_and_trails.core.models import (
     MOST_CONCURRENT_FRAGMENTS,
+    MOST_SOCKET_TIMEOUT_SECONDS,
     DownloadRequest,
     MediaKind,
     NetworkOptions,
@@ -101,6 +102,12 @@ def test_the_samples_name_every_connection_setting() -> None:
         ("socket_timeout", -2.0),
         ("socket_timeout", math.inf),
         ("socket_timeout", math.nan),
+        # `T252-R2`: too large for a `float`, which raised `OverflowError` rather than refusing.
+        ("socket_timeout", 10**400),
+        ("socket_timeout", MOST_SOCKET_TIMEOUT_SECONDS + 1),
+        # `T252-R3`: finer than the tenths the screen shows, which it showed as another number.
+        ("socket_timeout", 0.04),
+        ("socket_timeout", 7.55),
         ("socket_timeout", True),
         ("socket_timeout", "20"),
         ("concurrent_fragments", 0),
@@ -196,6 +203,15 @@ def test_nobody_choosing_writes_none_of_them(tmp_path: Path) -> None:
         ("socket_timeout = 30", NetworkOptions(socket_timeout=30.0), False),
         ("socket_timeout = 0", NetworkOptions(), True),
         ("socket_timeout = 9000", NetworkOptions(socket_timeout=600.0), True),
+        ("socket_timeout = 0.04", NetworkOptions(socket_timeout=0.1), True),
+        ("socket_timeout = 7.55", NetworkOptions(socket_timeout=7.5), True),
+        ("socket_timeout = 0.3", NetworkOptions(socket_timeout=0.3), False),
+        # `T252-R2`: an integer too large for a `float`, beside a valid key it must not take.
+        (
+            f"fragment_retries = 4\nsocket_timeout = {10**400}",
+            NetworkOptions(fragment_retries=4, socket_timeout=600.0),
+            True,
+        ),
         ('socket_timeout = "20"', NetworkOptions(), True),
         ("concurrent_fragments = 16", NetworkOptions(concurrent_fragments=8), True),
         ("concurrent_fragments = 0", NetworkOptions(), True),

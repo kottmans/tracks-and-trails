@@ -60,6 +60,8 @@ from platformdirs import user_config_dir
 from tracks_and_trails.core.models import (
     MOST_CONCURRENT_FRAGMENTS,
     MOST_NAME_CHARACTERS,
+    MOST_SOCKET_TIMEOUT_SECONDS,
+    SHORTEST_SOCKET_TIMEOUT_SECONDS,
     AudioCodec,
     FileNaming,
     FormatCheck,
@@ -68,6 +70,7 @@ from tracks_and_trails.core.models import (
     NetworkOptions,
     Preset,
     SubtitleFormat,
+    is_held_timeout,
     looks_like_a_path,
     parse_browser_specification,
     proxy_refusal,
@@ -192,8 +195,9 @@ RETRIES_MAXIMUM: Final = 100
 #: The longest a silent server is waited for, in seconds (`T-252`).
 #:
 #: `RETRIES_MAXIMUM`'s reasoning again: a catcher for an extra digit. yt-dlp waits 20 seconds, and
-#: ten minutes is longer than anyone means a connection to hang before it counts as dropped.
-SOCKET_TIMEOUT_MAXIMUM: Final = 600
+#: ten minutes is longer than anyone means a connection to hang before it counts as dropped. The
+#: model's, since `T252-R2`, so a request built anywhere is held to it as well.
+SOCKET_TIMEOUT_MAXIMUM: Final = MOST_SOCKET_TIMEOUT_SECONDS
 
 #: The first line every cookies jar this application can use carries (`T197-R5`).
 #:
@@ -450,13 +454,7 @@ class Settings:
                     f"Settings.network.{name} is {count}; the ceiling is {RETRIES_MAXIMUM}. A "
                     "file asking for more is clamped and reported instead."
                 )
-        timeout = self.network.socket_timeout
-        if timeout is not None and timeout > SOCKET_TIMEOUT_MAXIMUM:
-            raise ValueError(
-                f"Settings.network.socket_timeout is {timeout}; the ceiling is "
-                f"{SOCKET_TIMEOUT_MAXIMUM} seconds. A file asking for more is clamped and "
-                "reported instead."
-            )
+        # The timeout's ceiling is `NetworkOptions`' own since `T252-R2`, so it is not asked here.
 
 
 def _concurrency_from(raw: Any) -> int:
@@ -1012,11 +1010,21 @@ def _timeout_from(raw: Any) -> tuple[float | None, str | None]:
 
     Zero or less is refused rather than read as *wait for ever*: yt-dlp's library takes it and the
     job then fails, and the absent key is how a file says *the downloader's own*.
+
+    **Compared before it is converted** (`T252-R2`): an integer too large for a `float` is clamped
+    like any other number past the ceiling, where `math.isfinite` raised over it and took the whole
+    file's reading with it. **Held in tenths** (`T252-R3`): a finer value is rounded, to no less
+    than a tenth, and reported, since the screen would otherwise show a number the downloader is
+    not sent.
     """
     key = f"{_NETWORK_TABLE}.{_SOCKET_TIMEOUT_KEY}"
     if raw is None:
         return None, None
-    if isinstance(raw, bool) or not isinstance(raw, int | float) or not math.isfinite(raw):
+    if (
+        isinstance(raw, bool)
+        or not isinstance(raw, int | float)
+        or (isinstance(raw, float) and not math.isfinite(raw))
+    ):
         return None, (
             f"{key} is {raw!r}, which is not a number of seconds. The downloader's own timeout "
             "is in use."
@@ -1029,6 +1037,12 @@ def _timeout_from(raw: Any) -> tuple[float | None, str | None]:
         return float(SOCKET_TIMEOUT_MAXIMUM), (
             f"{key} is {raw}, which is longer than this application waits. "
             f"{SOCKET_TIMEOUT_MAXIMUM} seconds is in use."
+        )
+    held = max(round(float(raw), 1), SHORTEST_SOCKET_TIMEOUT_SECONDS)
+    if not is_held_timeout(raw):
+        return held, (
+            f"{key} is {raw}, which is finer than the tenths of a second this application holds. "
+            f"{held:g} seconds is in use."
         )
     return float(raw), None
 
