@@ -44,6 +44,7 @@ import contextlib
 import hashlib
 import importlib
 import logging
+import math
 import multiprocessing
 import os
 import platform
@@ -70,7 +71,15 @@ from tracks_and_trails.core.paths import (
     numbered_variant,
 )
 from tracks_and_trails.core.presets import selector_merges
-from tracks_and_trails.core.sections import sectioned_stem, unsectioned_name, writes_several
+from tracks_and_trails.core.sections import (
+    NO_LENGTH,
+    needs_the_length,
+    past_the_end_reason,
+    sectioned_stem,
+    starting_past,
+    unsectioned_name,
+    writes_several,
+)
 from tracks_and_trails.core.selection import empty_window
 from tracks_and_trails.downloader import process_tree
 from tracks_and_trails.downloader.environment import (
@@ -78,6 +87,13 @@ from tracks_and_trails.downloader.environment import (
     YtdlpCandidate,
     find_ffmpeg,
     ytdlp_candidates,
+)
+from tracks_and_trails.downloader.media_probe import (
+    Run,
+    ffprobe_beside,
+    holds_media,
+    remote_length,
+    run_with,
 )
 from tracks_and_trails.downloader.protocol import (
     Failed,
@@ -124,6 +140,32 @@ NOTHING_DOWNLOADED: Final = "yt-dlp downloaded nothing for this item, because of
 EMPTY_WINDOW: Final = (
     "Nothing was downloaded: no upload date is on or after {after} and also on or before {before}."
 )
+
+#: Why sections are refused where ffmpeg has no ffprobe beside it (`T252-R1`): every section is
+#: read with it before it is claimed, and a length the site does not give is read with it first.
+NO_FFPROBE: Final = (
+    "Cutting part of an item needs ffprobe, which comes with ffmpeg, and there is none beside the "
+    "ffmpeg in use."
+)
+
+#: Why a section with no picture or sound failed its attempt (`T252-R1`, ruling 2).
+EMPTY_CUT: Final = (
+    "{name} came back with no picture or sound, so ffmpeg could not cut that part from what the "
+    "site sent. Downloading the whole item may work."
+)
+
+
+class SectionWithoutMediaError(Exception):
+    """A section yt-dlp reported written holds no picture and no sound (`T252-R1`, ruling 2).
+
+    **Failed as `FFMPEG_ERROR`, staging kept**: ffmpeg wrote the file and the attempt reported
+    success, and from a server that cannot seek a clip with its index at the end it wrote 262
+    bytes with no streams. Nothing retries by itself, since the same server cuts it the same way.
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 
 class CancelSignal(Protocol):
@@ -669,6 +711,17 @@ def _run(
                 message=missing,
                 context=tuple(sorted(context.items())),
             )
+        # **Sections are read with the ffprobe beside ffmpeg** (`T252-R1`), before they are cut and
+        # after, so without one they are refused here, before a byte moves, as without ffmpeg.
+        ffprobe = ffprobe_beside(ffmpeg.path) if ffmpeg.path is not None else None
+        if request.download_sections and ffprobe is None:
+            return Failed(
+                job_id=job_id,
+                kind=ErrorKind.FFMPEG_MISSING,
+                message=NO_FFPROBE,
+                context=tuple(sorted(context.items())),
+            )
+        probe_run = run_with(_ytdlp_name(resolved, "utils", "Popen"))
 
         # **The download writes into a staging directory, and the real name is claimed after**
         # (`T046-R1`). The obvious shape — reserve the target, hand it to yt-dlp with
@@ -688,6 +741,16 @@ def _run(
         # next one writes and yt-dlp continues from it. Created here rather than by
         # `staging_directory`, so asking where a job's partial *would* be costs nothing.
         staging = open_staging(directory, job_id)
+        # **Each time range placed against the item's length first** (`T252-R1`, rulings 1 and
+        # 3): a section past the end cancels the item here, and a length the site does not give is
+        # read from the link and handed to yt-dlp, which places a range by it.
+        section_length = _place_the_sections(
+            request,
+            info,
+            ffprobe,
+            probe_run,
+            _ytdlp_name(resolved, "cookies", "LenientSimpleCookie"),
+        )
         try:
             result = _extract(
                 adapter,
@@ -695,6 +758,7 @@ def _run(
                 resolved,
                 reporter,
                 probe_only=False,
+                section_length=section_length,
                 # Literal, not a second template — see `as_literal_template`.
                 output_template=as_literal_template(staging / target.name),
                 # `OPS-001`: yt-dlp must use the binary the worker gated on, not its own lookup.
@@ -715,6 +779,10 @@ def _run(
         # 2026-10-19): each named by the stem and its section's number, all claimed together.
         sections = _section_files(result) if writes_several(request.download_sections) else ()
         produced = sections[0] if sections else _written_path(result, staging / target.name)
+        # **Every section read before it is claimed** (`T252-R1`, ruling 2): yt-dlp reports a cut
+        # written whatever ffmpeg wrote into it.
+        if request.download_sections and ffprobe is not None:
+            _require_media(sections or (produced,), ffprobe, probe_run, staging, adapter)
         # **The media and everything the user asked to keep, claimed as one family** (`T046-R3`,
         # `T-109`, `T109-R3`, `T109-R4`). The destination keeps the *final* extension, not the
         # template's — that is the name the user will see and the one that has to be free — and the
@@ -770,6 +838,17 @@ def _run(
                 job_id=job_id,
                 kind=ErrorKind.DISK,
                 message=str(error),
+                context=tuple(sorted(context.items())),
+            )
+        )
+    except SectionWithoutMediaError as empty:
+        # **Staging is kept** (ruled 2026-10-25): the attempt failed after the download, which is
+        # what `T-113`'s resume keeps a partial for, and `FFMPEG_ERROR` retries only when asked.
+        return with_hook_failures(
+            Failed(
+                job_id=job_id,
+                kind=ErrorKind.FFMPEG_ERROR,
+                message=empty.reason,
                 context=tuple(sorted(context.items())),
             )
         )
@@ -1937,6 +2016,7 @@ def _extract(
     ffmpeg_location: Path | None = None,
     cookie_file: Path | None = None,
     overwrites: bool | None = None,
+    section_length: float | None = None,
 ) -> dict[str, Any]:
     from tracks_and_trails.core.logging import YtdlpLog, ytdlp_logger
 
@@ -1961,6 +2041,7 @@ def _extract(
         # and the download go through this function, and `REQ-019` wants *the* diagnostic output
         # for the job — a failure during the probe is the case a user most needs the log for.
         logger=log,
+        section_length=section_length,
     )
     # **ffmpeg's position reported while a step runs** (`T-344`). yt-dlp runs ffmpeg and says
     # nothing until it ends, which on a long video is minutes of a row that looks stuck. A probe
@@ -2058,6 +2139,70 @@ def _section_files(result: Mapping[str, Any]) -> tuple[Path, ...]:
         if recorded and Path(str(recorded)).is_file():
             found[Path(str(recorded))] = None
     return tuple(found)
+
+
+def _ytdlp_name(resolved: ResolvedYtdlp, module: str, name: str) -> Any:
+    """`yt_dlp.<module>.<name>` from the resolved copy, or `None` where that copy has none."""
+    return getattr(getattr(resolved.module, module, None), name, None)
+
+
+def _length_given(value: object) -> float | None:
+    """A positive, finite number of seconds from yt-dlp's info, or `None`.
+
+    **Converted inside a `try`**: an integer too large for a `float` is no length, not an
+    `OverflowError` out of the session (`T252-R2`'s class, here on what a site reports).
+    """
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    try:
+        seconds = float(value)
+    except OverflowError:
+        return None
+    return seconds if math.isfinite(seconds) and seconds > 0 else None
+
+
+def _place_the_sections(
+    request: DownloadRequest,
+    info: Mapping[str, Any],
+    ffprobe: Path | None,
+    run: Run,
+    cookie_parser: Any,
+) -> float | None:
+    """Place the item's time ranges against its length, cancelling it for any outside (`T252-R1`).
+
+    **Rulings 1 and 3 of 2026-10-25.** The length is the site's, or, where the site gives none,
+    the link's own as ffprobe reads it; with neither, the item is cancelled with `NO_LENGTH`. A
+    range starting at or after the end cancels it with each such section named. Chapter patterns
+    are matched against the item's own chapters and need no length.
+
+    Returns the length **only when it was read here**, for yt-dlp to place the ranges by (see
+    `NumberedSections`); a length the site gave, yt-dlp already has.
+    """
+    if ffprobe is None or not needs_the_length(request.download_sections):
+        return None
+    given = _length_given(info.get("duration"))
+    length = given if given is not None else remote_length(info, ffprobe, run, cookie_parser)
+    if length is None:
+        raise NothingDownloadedError(NO_LENGTH)
+    outside = starting_past(
+        request.download_sections, length, _length_given(info.get("start_time"))
+    )
+    if outside:
+        raise NothingDownloadedError(past_the_end_reason(outside, length))
+    return None if given is not None else length
+
+
+def _require_media(
+    files: Sequence[Path], ffprobe: Path, run: Run, staging: Path, adapter: Any
+) -> None:
+    """Fail the attempt on the first section with no picture or sound (`T252-R1`, ruling 2).
+
+    The staged info JSON is stripped first, as on every failed attempt (`T249-R1`).
+    """
+    empty = next((path for path in files if not holds_media(path, ffprobe, run)), None)
+    if empty is not None:
+        strip_staged_info_json(staging, adapter)
+        raise SectionWithoutMediaError(EMPTY_CUT.format(name=empty.name))
 
 
 def _written_path(result: dict[str, Any], target: Path) -> Path:

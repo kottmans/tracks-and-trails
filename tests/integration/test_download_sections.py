@@ -6,6 +6,11 @@ so ffmpeg can cut it from a server without ranges, and the same picture as an HL
 one-second pieces. Measured on 2026-10-14, before this task: two sections typed in the options field
 wrote one file, the second overwriting the first while the job succeeded; and a section aborted
 whenever ffmpeg was found anywhere but `PATH`.
+
+**`T252-R1`'s reproductions, kept** (rulings of 2026-10-25, `ARC-010` amended). The server here
+cannot seek, and neither link says how long it is, which is where yt-dlp went wrong: a clip with
+its index at the end, and the same clip as MKV, cut to a file with no streams, reported written;
+and `*99-100` and `*-2-inf` each came back as the whole six seconds.
 """
 
 from __future__ import annotations
@@ -23,9 +28,10 @@ from typing import Any, ClassVar, Final
 import pytest
 from yt_dlp.postprocessor import FFmpegPostProcessor
 
-from tests.capabilities import resolve_ffmpeg
+from tests.capabilities import SymlinkCapability, resolve_ffmpeg
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.models import DownloadRequest
+from tracks_and_trails.core.sections import NO_LENGTH
 from tracks_and_trails.downloader import worker as worker_module
 from tracks_and_trails.downloader.protocol import Failed, SessionKind, Succeeded
 
@@ -37,6 +43,9 @@ PAGE: Final = (
     '<meta property="og:video:type" content="video/mp4">'
     '<meta property="og:title" content="Clip"></head><body>x</body></html>'
 )
+
+#: A page naming a video that is not there, so nothing can read how long it is.
+GONE: Final = PAGE.replace("/clip.mp4", "/gone.mp4")
 
 
 @pytest.fixture(scope="module")
@@ -56,7 +65,16 @@ def site(tmp_path_factory: pytest.TempPathFactory) -> Path:
          "-f", "hls", "-hls_time", "1", "-hls_list_size", "0", str(directory / "video.m3u8")],
         check=True,
     )  # fmt: skip
+    # The two that cut to nothing from a server that cannot seek: ffmpeg's own MP4, index last,
+    # and MKV, whose cues are at the end (measured 2026-10-25, 262 and 765 bytes, no streams).
+    for name in ("late.mp4", "clip.mkv"):
+        subprocess.run(
+            [ffmpeg, "-v", "error", *picture, *sound, "-c:v", "libx264", "-preset", "ultrafast",
+             "-c:a", "aac", "-shortest", str(directory / name)],
+            check=True,
+        )  # fmt: skip
     (directory / "watch").write_text(PAGE, encoding="utf-8")
+    (directory / "gone").write_text(GONE, encoding="utf-8")
     return directory
 
 
@@ -245,3 +263,107 @@ def test_the_pieces_fetched_at_once_are_the_setting_s(
 
     assert written.exists()
     assert handler.peak == pieces
+
+
+# --- T252-R1: each section checked before it is cut and after -------------------------------
+
+
+@pytest.mark.parametrize("name", ["late.mp4", "clip.mkv"])
+def test_a_cut_with_no_picture_or_sound_fails_and_keeps_its_staging(
+    served: tuple[str, type[_Site]], tmp_path: Path, name: str
+) -> None:
+    """**Ruling 2**: from a server that cannot seek, ffmpeg cut these to a file with no streams
+    and yt-dlp reported it written, so the job claimed 262 bytes as the part. Now every section is
+    read before it is claimed: an ffmpeg failure, the reason in words, nothing claimed, and staging
+    kept as on any failed attempt."""
+    base, _ = served
+
+    outcome, messages = _outcome(_request(f"{base}/{name}", tmp_path, download_sections=("*1-3",)))
+
+    assert isinstance(outcome, Failed), messages
+    assert outcome.kind is ErrorKind.FFMPEG_ERROR
+    assert "came back with no picture or sound" in outcome.message
+    staging = worker_module.staging_directory(tmp_path, "job-1")
+    assert staging.is_dir(), "a failed attempt discarded its staging"
+    assert [
+        path for path in tmp_path.rglob("*") if path.is_file() and staging not in path.parents
+    ] == []
+
+
+@pytest.mark.parametrize(
+    ("sections", "named"),
+    [
+        (("*99-100",), "*99-100 starts"),
+        (("*6-7",), "*6-7 starts"),
+        (("*0-2", "*99-100"), "*99-100 starts"),
+        (("*99-100", "*120-130"), "*99-100 and *120-130 start"),
+    ],
+    ids=["past", "at the end", "one of two", "both"],
+)
+def test_a_section_past_the_end_cancels_the_item_before_it_downloads(
+    served: tuple[str, type[_Site]], tmp_path: Path, sections: tuple[str, ...], named: str
+) -> None:
+    """**Rulings 1 and 3**: the page gives no length, so it is read from the link, six seconds, and
+    a range starting at or after it cancels the item, naming each such section and no other. Before
+    this, `*99-100` came back as the whole six seconds, reported as the part."""
+    base, _ = served
+
+    outcome, messages = _outcome(_request(f"{base}/watch", tmp_path, download_sections=sections))
+
+    assert isinstance(outcome, Failed), messages
+    assert outcome.kind is ErrorKind.CANCELLED
+    assert f"Nothing was downloaded: {named} after the end of this item" in outcome.message
+    assert "6 seconds long" in outcome.message
+    assert "*0-2" not in outcome.message, "a section inside the item was named"
+    assert list(tmp_path.iterdir()) == [], "a cancelled job left something behind"
+
+
+def test_a_range_from_the_end_is_cut_by_the_length_read_from_the_link(
+    served: tuple[str, type[_Site]], tmp_path: Path
+) -> None:
+    """yt-dlp places a range counted from the end by the item's length, and this page gives none,
+    so `*-2-inf`, the last two seconds, came back as all six. The length read from the link is
+    handed to yt-dlp."""
+    base, _ = served
+
+    written = _written(_request(f"{base}/watch", tmp_path, download_sections=("*-2-inf",)))
+
+    assert _seconds(written) == pytest.approx(2, abs=0.3)
+
+
+def test_an_item_whose_length_cannot_be_read_is_cancelled_with_the_reason(
+    served: tuple[str, type[_Site]], tmp_path: Path
+) -> None:
+    """**Ruling 3**: with no length from the site or the link, a range cannot be placed, so the
+    item is cancelled rather than cut."""
+    base, _ = served
+
+    outcome, messages = _outcome(_request(f"{base}/gone", tmp_path, download_sections=("*1-3",)))
+
+    assert isinstance(outcome, Failed), messages
+    assert outcome.kind is ErrorKind.CANCELLED
+    assert outcome.message == NO_LENGTH
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_sections_without_ffprobe_beside_ffmpeg_are_refused_before_a_byte_moves(
+    served: tuple[str, type[_Site]], tmp_path: Path, symlinks: SymlinkCapability
+) -> None:
+    """Every section is read with the ffprobe in ffmpeg's own directory, where yt-dlp looks for
+    it, so an ffmpeg with none beside it cannot cut one."""
+    base, _ = served
+    alone = tmp_path / "ffmpeg-alone"
+    alone.mkdir()
+    symlinks.create(alone / "ffmpeg", Path(resolve_ffmpeg()[0]))
+    folder = tmp_path / "chosen"
+    folder.mkdir()
+
+    outcome, messages = _outcome(
+        _request(f"{base}/watch", folder, download_sections=("*0-2",)),
+        ffmpeg_override=alone / "ffmpeg",
+    )
+
+    assert isinstance(outcome, Failed), messages
+    assert outcome.kind is ErrorKind.FFMPEG_MISSING
+    assert outcome.message == worker_module.NO_FFPROBE
+    assert list(folder.iterdir()) == []

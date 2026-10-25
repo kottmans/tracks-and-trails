@@ -896,18 +896,29 @@ class NumberedSections(download_range_func):  # type: ignore[misc]
 
     **Its equality is yt-dlp's own**, which compares the patterns and the ranges, so the typed field
     is held to `parse_options` by comparing the two.
+
+    **It gives yt-dlp the item's length where the site gave none** (`T252-R1`, ruled 2026-10-25).
+    yt-dlp resolves a range counted from the end, and clips one that runs past it, by the item's
+    `duration`, and a direct link has none: `*-2-inf` on one came back as the whole file. The worker
+    reads the length with ffprobe first and sets `length`, which is written into the item here,
+    before yt-dlp reads it, and only where the item has none.
     """
 
+    length: float | None = None
+
     def __call__(self, info_dict: Any, ydl: Any) -> Iterator[dict[str, Any]]:
+        if self.length is not None and not info_dict.get("duration"):
+            info_dict["duration"] = self.length
         for number, section in enumerate(super().__call__(info_dict, ydl), start=1):
             yield {**section, "index": number} if section else section
 
 
-def numbered_sections(sections: Sequence[str]) -> NumberedSections:
+def numbered_sections(sections: Sequence[str], length: float | None = None) -> NumberedSections:
     """The `download_ranges` yt-dlp's command line builds from these sections, numbered.
 
     Parsed by `core/sections.py`'s transcription, which the model already held each section to, so
-    a section reaching here is one yt-dlp's command line accepts.
+    a section reaching here is one yt-dlp's command line accepts. `length` is the item's, read by
+    the worker where the site gave none; see `NumberedSections`.
     """
     chapters = [re.compile(section) for section in sections if not section.startswith("*")]
     ranges = [
@@ -916,7 +927,9 @@ def numbered_sections(sections: Sequence[str]) -> NumberedSections:
         if section.startswith("*") and section != FROM_URL
         for span in parsed_ranges(section) or ()
     ]
-    return NumberedSections(chapters, ranges, FROM_URL in sections)
+    numbered = NumberedSections(chapters, ranges, FROM_URL in sections)
+    numbered.length = length
+    return numbered
 
 
 def _section_template(output_template: str) -> str:
@@ -954,6 +967,7 @@ def build_options(
     cookie_file: Path | None = None,
     overwrites: bool | None = None,
     logger: Any = None,
+    section_length: float | None = None,
 ) -> dict[str, Any]:
     """Build the yt-dlp options dict for one session.
 
@@ -970,6 +984,9 @@ def build_options(
     `report_warning` consults `logger` before `no_warnings`. Both flags stay because they are
     still correct when no logger is passed — a probe run by a test, for instance — but with one
     present they suppress nothing. `core.logging.YtdlpLog` is what this receives.
+
+    **`section_length` is the item's length as the worker read it from the link** (`T252-R1`),
+    set only where the site gave none; the sections hand it to yt-dlp (`NumberedSections`).
     """
     options: dict[str, Any] = {
         # **Every template type, because one of them is not derived from this one** (`T184-R13`).
@@ -1165,7 +1182,7 @@ def build_options(
     # the sections when it processes the item, which a probe never does, and a chapter pattern
     # that matches nothing would otherwise be reported while the user is still choosing a format.
     if request.download_sections:
-        options["download_ranges"] = numbered_sections(request.download_sections)
+        options["download_ranges"] = numbered_sections(request.download_sections, section_length)
         if writes_several(request.download_sections):
             # **One file per section, the sidecars once** (ruled 2026-10-19, question 4). The media
             # template gains each section's number, so two sections can no longer share a name;

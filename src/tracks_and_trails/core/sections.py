@@ -22,6 +22,11 @@ not known until the item is.
 named by the stem and a section suffix. Whether a request can write more than one is decided from
 the request alone, so the preview and the worker agree before anything is fetched; see
 `writes_several`.
+
+**A time range is placed against the item's length before it is cut** (`T252-R1`, `ARC-010`
+amended 2026-10-25). yt-dlp asks ffmpeg for whatever the range says, and ffmpeg seeking past the
+end of an item wrote the whole item, reported as the part. So a range that starts at or after the
+end cancels the item instead, with the words below; see `starting_past`.
 """
 
 from __future__ import annotations
@@ -231,3 +236,63 @@ def writes_several(sections: Iterable[str]) -> bool:
         else:
             return True
     return count > 1
+
+
+def needs_the_length(sections: Iterable[str]) -> bool:
+    """Whether any section is placed by time, so the item's length decides whether it is inside.
+
+    A chapter pattern is matched against the item's own chapters, which are inside it by
+    definition, so it needs no length (`T252-R1`).
+    """
+    return any(section.startswith("*") for section in sections)
+
+
+def starting_past(
+    sections: Iterable[str], length: float, url_start: float | None = None
+) -> tuple[str, ...]:
+    """Every section asking for a range that starts at or after `length` seconds (`T252-R1`).
+
+    **Only the start decides**: a range that starts inside and runs past the end is cut to the end,
+    as yt-dlp cuts it (ruled 2026-10-25). A start counted from the end is inside by construction,
+    since yt-dlp takes it from the length and never below zero. `*from-url` starts where the address
+    says, `url_start`, which yt-dlp reads as zero when the address names none.
+    """
+    outside: list[str] = []
+    for section in sections:
+        if section == FROM_URL:
+            starts = [url_start or 0.0]
+        elif section.startswith("*"):
+            starts = [start for start, _end in parsed_ranges(section) or ()]
+        else:
+            continue
+        if any(start >= 0 and start >= length for start in starts):
+            outside.append(section)
+    return tuple(outside)
+
+
+def length_text(seconds: float) -> str:
+    """A length as a person reads one: `6 seconds`, `2:05` or `1:02:03`, like the sections."""
+    shown = round(seconds, 1)
+    if shown < 60:
+        return f"{shown:g} second" + ("" if shown == 1 else "s")
+    hours, rest = divmod(int(shown), 3600)
+    minutes, whole = divmod(rest, 60)
+    return f"{hours}:{minutes:02d}:{whole:02d}" if hours else f"{minutes}:{whole:02d}"
+
+
+def past_the_end_reason(outside: Iterable[str], length: float) -> str:
+    """Why an item was cancelled for sections past its end, naming each (`T252-R1`)."""
+    named = list(outside)
+    listed = named[0] if len(named) == 1 else ", ".join(named[:-1]) + " and " + named[-1]
+    starts = "starts" if len(named) == 1 else "start"
+    return (
+        f"Nothing was downloaded: {listed} {starts} after the end of this item, which is "
+        f"{length_text(length)} long."
+    )
+
+
+#: Why an item whose length nobody can say was cancelled rather than cut (`T252-R1`, ruling 3).
+NO_LENGTH: Final = (
+    "Nothing was downloaded: this item does not say how long it is, and its length could not be "
+    "read, so part of it cannot be cut. Downloading the whole item may work."
+)

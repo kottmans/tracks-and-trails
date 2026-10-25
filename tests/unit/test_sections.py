@@ -19,12 +19,16 @@ from yt_dlp.utils import parse_duration as yt_dlp_duration
 
 from tracks_and_trails.core.sections import (
     FROM_URL,
+    length_text,
+    needs_the_length,
     parse_duration,
     parsed_ranges,
+    past_the_end_reason,
     section_problem,
     sectioned_stem,
     sections_from_text,
     sections_problem,
+    starting_past,
     unsectioned_name,
     writes_several,
 )
@@ -247,3 +251,66 @@ def test_a_sidecar_recorded_under_a_section_name_is_read_under_the_base(
 def test_a_section_s_name_is_the_stem_and_its_number() -> None:
     assert sectioned_stem("Clip", 3) == "Clip (section 3)"
     assert unsectioned_name(sectioned_stem("Clip", 3) + ".mp4", "Clip") == "Clip.mp4"
+
+
+# --- placed against the item's length (`T252-R1`, ruled 2026-10-25) -------------------------
+
+
+def test_only_a_section_placed_by_time_needs_the_length() -> None:
+    assert not needs_the_length(("Intro", "^Outro$"))
+    assert needs_the_length(("Intro", "*1-2"))
+    assert needs_the_length((FROM_URL,))
+
+
+@pytest.mark.parametrize(
+    ("sections", "outside"),
+    [
+        (("*99-100",), ("*99-100",)),
+        # At the end is past it: there is nothing to cut from six seconds onward.
+        (("*6-7",), ("*6-7",)),
+        # Starting inside and running past the end is cut to the end, as yt-dlp cuts it.
+        (("*5-9", "*0-2"), ()),
+        # One line, several ranges: the line is named once if any of its ranges starts outside.
+        (("*0-2,7-8,9-10",), ("*0-2,7-8,9-10",)),
+        # Counted from the end, a range is inside by construction.
+        (("*-30-inf", "*-2--1"), ()),
+        # A chapter pattern is matched against the item's own chapters.
+        (("Intro", "*99-100"), ("*99-100",)),
+    ],
+)
+def test_a_range_starting_at_or_after_the_end_is_outside(
+    sections: tuple[str, ...], outside: tuple[str, ...]
+) -> None:
+    assert starting_past(sections, 6.0) == outside
+
+
+def test_the_address_s_own_range_starts_where_the_address_says() -> None:
+    assert starting_past((FROM_URL,), 6.0, url_start=7.0) == (FROM_URL,)
+    assert starting_past((FROM_URL,), 6.0, url_start=3.0) == ()
+    assert starting_past((FROM_URL,), 6.0) == (), "an address naming no start starts at zero"
+
+
+@pytest.mark.parametrize(
+    ("seconds", "text"),
+    [
+        (1.0, "1 second"),
+        (6.0, "6 seconds"),
+        (6.024, "6 seconds"),
+        (59.96, "1:00"),
+        (125.5, "2:05"),
+        (3725.0, "1:02:05"),
+    ],
+)
+def test_a_length_reads_as_a_person_says_it(seconds: float, text: str) -> None:
+    assert length_text(seconds) == text
+
+
+def test_the_reason_names_each_section_outside_and_the_length() -> None:
+    assert past_the_end_reason(("*99-100",), 6.0) == (
+        "Nothing was downloaded: *99-100 starts after the end of this item, which is 6 seconds "
+        "long."
+    )
+    assert past_the_end_reason(("*7-8", "*9-10", FROM_URL), 6.0) == (
+        "Nothing was downloaded: *7-8, *9-10 and *from-url start after the end of this item, "
+        "which is 6 seconds long."
+    )

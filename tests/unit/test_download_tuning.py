@@ -30,6 +30,7 @@ from tracks_and_trails.core.models import (
     Preset,
 )
 from tracks_and_trails.core.paths import UnsafePathError
+from tracks_and_trails.core.sections import NO_LENGTH
 from tracks_and_trails.downloader import worker
 from tracks_and_trails.downloader.worker import claim_outputs, previewed_path
 from tracks_and_trails.downloader.ytdlp_adapter import (
@@ -337,6 +338,127 @@ def test_every_section_is_numbered_in_yt_dlp_s_order() -> None:
     assert [section["index"] for section in yielded] == [1, 2, 3, 4]
     assert [section.get("title") for section in yielded] == ["Intro", "Outro", None, None]
     assert yielded[3]["start_time"] == 95
+
+
+def test_a_length_read_from_the_link_is_given_to_yt_dlp_only_where_the_item_has_none() -> None:
+    """`T252-R1`: yt-dlp places a range counted from the end by the item's `duration`, and a direct
+    link has none, so `*-2-inf` came back as the whole item. The worker reads the length and the
+    sections write it in, where the site gave none and only there."""
+    without: dict[str, Any] = {"id": "x"}
+    yielded = list(numbered_sections(("*-2-inf",), length=6.0)(without, None))
+    assert yielded[0]["start_time"] == 4
+    assert without["duration"] == 6.0
+
+    given: dict[str, Any] = {"id": "x", "duration": 10}
+    yielded = list(numbered_sections(("*-2-inf",), length=6.0)(given, None))
+    assert yielded[0]["start_time"] == 8, "the site's own length was overwritten"
+
+    untouched: dict[str, Any] = {"id": "x"}
+    list(numbered_sections(("*-2-inf",))(untouched, None))
+    assert "duration" not in untouched
+
+
+def test_a_length_does_not_change_what_the_sections_equal() -> None:
+    """Their equality is yt-dlp's, held to `parse_options`; the length is the worker's addition."""
+    assert numbered_sections(("*1-2",), length=6.0) == numbered_sections(("*1-2",))
+
+
+class _Probe:
+    """Stands in for ffprobe reading a link's length."""
+
+    def __init__(self, answer: str | None) -> None:
+        self.answer = answer
+        self.asked = 0
+
+    def __call__(self, arguments: Any, timeout: float) -> tuple[int, str]:
+        self.asked += 1
+        return (0, self.answer) if self.answer is not None else (1, "")
+
+
+_LINK: Final = {"url": "https://media.example/clip.mp4"}
+
+
+def _placed(sections: tuple[str, ...], info: dict[str, Any], probe: _Probe) -> float | None:
+    request = replace(a_request(), download_sections=sections)
+    return worker._place_the_sections(request, info, Path("/ff/ffprobe"), probe, None)
+
+
+def test_a_length_the_site_gives_is_used_and_the_link_is_not_asked() -> None:
+    probe = _Probe("999")
+
+    assert _placed(("*1-3",), {**_LINK, "duration": 6}, probe) is None
+    with pytest.raises(worker.NothingDownloadedError) as cancelled:
+        _placed(("*1-3", "*99-100"), {**_LINK, "duration": 6}, probe)
+
+    assert cancelled.value.reason == (
+        "Nothing was downloaded: *99-100 starts after the end of this item, which is 6 seconds "
+        "long."
+    )
+    assert probe.asked == 0
+
+
+def test_where_the_site_gives_none_the_link_s_length_is_read_and_returned() -> None:
+    probe = _Probe("6.000000")
+
+    assert _placed(("*-2-inf",), dict(_LINK), probe) == 6.0
+    with pytest.raises(worker.NothingDownloadedError, match=r"\*99-100 starts after"):
+        _placed(("*99-100",), dict(_LINK), probe)
+    assert probe.asked == 2
+
+
+@pytest.mark.parametrize(
+    "duration",
+    [None, 0, -5, math.inf, math.nan, 10**400, True, "6"],
+    ids=["none", "zero", "negative", "inf", "nan", "too large", "bool", "text"],
+)
+def test_a_length_the_site_cannot_give_is_read_from_the_link(duration: Any) -> None:
+    """Including an integer too large for a `float`, `T252-R2`'s class on what a site reports."""
+    probe = _Probe("6.0")
+
+    assert _placed(("*1-3",), {**_LINK, "duration": duration}, probe) == 6.0
+    assert probe.asked == 1
+
+
+def test_with_no_length_from_the_site_or_the_link_the_item_is_cancelled() -> None:
+    with pytest.raises(worker.NothingDownloadedError) as cancelled:
+        _placed(("*1-3",), dict(_LINK), _Probe(None))
+
+    assert cancelled.value.reason == NO_LENGTH
+
+
+def test_a_section_with_no_media_fails_with_the_staged_info_json_stripped(tmp_path: Path) -> None:
+    """Ruling 2's failure is a failed attempt like any other, so the second line behind
+    `keep_secrets_out` runs on it too (`T249-R1`), and the cut is left in staging."""
+    import json
+
+    from tests.unit.test_kept_beside import WRITTEN
+    from tracks_and_trails.downloader import ytdlp_adapter
+
+    info = tmp_path / "Clip.info.json"
+    info.write_text(json.dumps(WRITTEN), encoding="utf-8")
+    cut = tmp_path / "Clip (section 2).mp4"
+    cut.write_bytes(b"\0" * 262)
+    answers = iter([(0, '{"streams": [{"codec_type": "video"}]}'), (0, '{"streams": []}')])
+
+    with pytest.raises(worker.SectionWithoutMediaError) as failed:
+        worker._require_media(
+            (tmp_path / "Clip (section 1).mp4", cut),
+            Path("/ff/ffprobe"),
+            lambda _arguments, _timeout: next(answers),
+            tmp_path,
+            ytdlp_adapter,
+        )
+
+    assert failed.value.reason.startswith("Clip (section 2).mp4 came back with no picture or sound")
+    assert "SECRET" not in info.read_text(encoding="utf-8")
+    assert cut.read_bytes() == b"\0" * 262
+
+
+def test_chapter_patterns_need_no_length() -> None:
+    probe = _Probe(None)
+
+    assert _placed(("Intro",), dict(_LINK), probe) is None
+    assert probe.asked == 0
 
 
 @pytest.mark.parametrize(

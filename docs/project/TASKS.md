@@ -183,8 +183,9 @@ skipped; `tests/integration` under `-n 4`, **577 passed**. No Windows run: `STAR
 
 ### T-252 — Download tuning and the retry policy the settings screen shows
 
-**Status:** In Review — correction 1 under way: `T252-R1` ruled 2026-10-25, below. Changes
-requested 2026-10-24 at `7aadd3d`, one Critical and two Medium blockers
+**Status:** In Review — correction 1 built 2026-10-25, awaiting the focused re-review of
+`T252-R1`…`R4`; `T252-R1` ruled 2026-10-25, below. Changes requested 2026-10-24 at `7aadd3d`, one
+Critical and two Medium blockers
 ([record](reviews/T-252.md#2026-10-24--initial-download-tuning-and-sections-review)); built
 2026-10-19 on its rulings, at the maintainer's request that day.
 *(Was Proposed:)* **design ruled 2026-10-19**, questions 3 and 4 as recommended (`ARC-010` and
@@ -364,6 +365,54 @@ so its length can run long by up to one keyframe interval.
 3. **An item whose site gives no length.** Read it from the media with ffprobe first, with the
    request's headers and cookies, and refuse the sections where none can be read. / Refuse sections
    on such items. / Check the length only after the cut (a short whole item passes the slack).
+
+**`R1`, corrected 2026-10-25 on its rulings, awaiting re-review**, on `d7831a2`:
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T252-R1`, Critical — the worker trusted yt-dlp's success for a section: a cut from a server that cannot seek claimed 262 bytes with no streams, and `*99-100` came back as the whole six seconds, alone or beside `*0-2` | **Each section checked before it is cut and after.** Before the download, `_place_the_sections` takes the site's length or, where it gives none, reads the chosen link's with ffprobe and the request's own headers and cookies (`media_probe.remote_length`); with neither, the item is cancelled with `NO_LENGTH`, and a range starting at or after the end cancels it naming each such section (`core.sections.starting_past`). A length read here is handed to yt-dlp through `NumberedSections`. After the download, every section is read with `media_probe.holds_media` before it is claimed, and one with no picture or sound fails the attempt as `FFMPEG_ERROR` with staging kept and its info JSON stripped. The ffprobe is the one beside ffmpeg, where yt-dlp looks; without one, sections are refused before a byte moves | The review's reproductions, real worker on `127.0.0.1` from a server without range support: the cut of a clip with its index last, and of the MKV, fails as `FFMPEG_ERROR` with staging kept; `*99-100`, `*6-7`, `*0-2` with `*99-100`, and two sections past the end, each cancel the item naming only those outside; an item whose length cannot be read is cancelled; and no ffprobe beside ffmpeg is refused. **The cut and the past-the-end cases fail at `7aadd3d`'s checks**, by the mutations below |
+
+**Sibling audit, measured 2026-10-25 from a server that cannot seek, and one more wrong result
+it found.**
+
+- **A range counted from the end, on a link that gives no length**: `*-2-inf`, the last two
+  seconds, came back as all six at `7aadd3d`, since yt-dlp resolves the start by the item's length
+  and had none. Now the length read from the link is written into the item for yt-dlp, only where
+  the site gave none. `*3-inf` and `*1-3` cut correctly before and after.
+- **Containers**: the faststart MP4 cuts correctly; ffmpeg's own MP4 with its index last cut to
+  262 bytes and MKV to 765, both with no streams; WebM cut `*1-3` to 671 bytes with none and `*4-6`
+  correctly to 2 seconds. Every failure seen had no streams, which the check catches; **no wrong
+  part with a picture or sound in it was seen**.
+- **A live stream has no length**, so ruling 3 refuses sections on one with `NO_LENGTH`. Not
+  exercised against a real live stream.
+- **The request's headers and cookies reach ffprobe on its command line**, as yt-dlp's own ffmpeg
+  downloader passes them to the ffmpeg that cuts the section. Nothing ffprobe prints is logged.
+- **A cancel during the length read** waits for ffprobe, at most 60 seconds, or for the parent to
+  end the worker.
+
+**Tests.** Integration, in `test_download_sections.py`: the five above. Unit: `test_media_probe.py`
+(new), what ffprobe is asked and what its answers mean, headers and cookies included;
+`test_sections.py`, the placing rules and the words; `test_download_tuning.py`, the worker's
+placing on a length the site gave or did not, an oversized integer among them, the sections writing
+the length in only where none was given, and the info JSON stripped on an empty cut.
+
+**Mutations, 11 of 11 caught**, each on copies restored by hash: no section read before the claim;
+a zero length held as media; the empty cut discarding staging, and leaving its info JSON
+unstripped; nothing placed against the length; a range at the end held inside; the length read
+not handed to yt-dlp; the sections ignoring it, and overwriting the site's own; the link's cookies
+not sent; and no ffprobe gate.
+
+**Not verified**: Windows, where the bundled ffmpeg has `ffprobe.exe` beside it
+(`packaging/fetch_ffmpeg.py`'s `WANTED_EXECUTABLES`); a real site, whose length yt-dlp usually has;
+and a real live stream.
+
+**Checks for `R1`, 2026-10-25, on Linux**, with the project `.venv` on `PATH`: `ruff check .` and
+`ruff format --check .` (506 files); `mypy src` (74), bare `mypy` and `mypy --platform win32` (236
+each); the table check up to date; `tests/unit tests/ui` under `-n 4`, **6,172 passed**, 21
+skipped; `tests/integration` under `-n 4`, **586 passed**. The first run failed `T-260`'s guard: the
+test without ffprobe made its symlink directly, and now uses the `symlinks` fixture; both suites
+were rerun whole. Bare `mypy` also caught two tests reading `NO_LENGTH` through the worker, which
+does not export it. No Windows run: `STARBASE` is offline.
 
 **`R2`, `R3` and `R4`, corrected 2026-10-25, awaiting re-review**, on `a002248`:
 
