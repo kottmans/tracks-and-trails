@@ -6,7 +6,7 @@ requirements or design — those live in `REQUIREMENTS.md` and `ARCHITECTURE.md`
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-10-19
+**Last updated:** 2026-10-25
 **Update when:** A durable choice is accepted, superseded, or deliberately rejected.
 **Does not contain:** Completion notes for routine work. Routine fixes go to `TASKS.md` and `CHANGELOG.md`.
 
@@ -90,7 +90,7 @@ Current requirements and architecture retain their own canonical authority.
 | [OPS-009](#ops-009--where-each-ci-job-runs-now-that-starbase-is-back-and-minutes-are-metered) | Where each CI job runs, now that `STARBASE` is back and minutes are metered | Partly superseded | [OPS-010](#ops-010--windows-runs-on-starbase-on-every-push-and-asynchronously); [OPS-011](#ops-011--a-prose-only-push-runs-no-ci-and-the-one-gate-that-read-prose-moved-rather-than-died); [OPS-012](#ops-012--linux-runs-on-the-maintainers-fedora-machines-because-it-is-faster-as-well-as-free) |
 | [DAT-006](#dat-006--the-completion-ledger-what-it-stores-and-what-it-deliberately-does-not) | The completion ledger: what it stores, and what it deliberately does not | Withdrawn; purge ruling accepted | [Withdrawn 2026-08-06](#withdrawn-2026-08-06--there-is-no-ledger-so-there-is-nothing-to-decide); [Legacy-data ruling 2026-08-06](#legacy-data-ruling-2026-08-06--the-rows-already-written-are-purged-on-upgrade) |
 | [UX-006](#ux-006--the-queue-does-not-run-until-it-is-started-and-it-is-stopped-at-every-launch) | The queue does not run until it is started, and it is stopped at every launch | Accepted | [Amended 2026-09-12](#amended-2026-09-12--a-queue-with-nothing-left-to-do-stops-itself) |
-| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted); [Amended 2026-09-27](#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute); [Amended 2026-10-10](#amended-2026-10-10--a-long-option-is-typed-in-full); [Amended 2026-10-11](#amended-2026-10-11--playlist-selection-acts-at-expansion-and-dates-freeze-when-queued); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-acts-on-chosen-languages-and-never-captions-for-all); [Amended 2026-10-15, second](#amended-2026-10-15-second--the-sort-is-checked-whole-the-check-runs-on-the-download-and-containers-have-an-order); [Amended 2026-10-15, third](#amended-2026-10-15-third--skip_unavailable_fragments-is-shared-and-the-users-skip-wins); [Amended 2026-10-19](#amended-2026-10-19--download-tuning-four-settings-a-part-per-preset-and-a-file-per-section); [Amended 2026-10-19, second](#amended-2026-10-19-second--reachability-one-address-choice-yt-dlps-delay-and-a-waiting-stage); [Amended 2026-10-19, third](#amended-2026-10-19-third--sponsorblock-per-category-chapters-held-and-a-lookup-without-typed-headers); [Amended 2026-10-19, fourth](#amended-2026-10-19-fourth--extractor-arguments-are-checked-against-a-generated-allowlist) |
+| [ARC-010](#arc-010--option-coverage-is-typed-fields-plus-one-validated-escape-hatch) | Option coverage is typed fields plus one validated escape hatch | Accepted | [Amended 2026-09-20](#amended-2026-09-20--writethumbnail-is-shared-and-sharing-it-is-a-union); [Amended 2026-09-26](#amended-2026-09-26--the-declared-member-is-the-admitted-command-line); [Amended 2026-09-26, second](#amended-2026-09-26-second--a-value-that-cannot-carry-a-secret-is-not-redacted); [Amended 2026-09-27](#amended-2026-09-27--a-path-the-hatch-names-must-be-absolute); [Amended 2026-10-10](#amended-2026-10-10--a-long-option-is-typed-in-full); [Amended 2026-10-11](#amended-2026-10-11--playlist-selection-acts-at-expansion-and-dates-freeze-when-queued); [Amended 2026-10-15](#amended-2026-10-15--subtitle-depth-acts-on-chosen-languages-and-never-captions-for-all); [Amended 2026-10-15, second](#amended-2026-10-15-second--the-sort-is-checked-whole-the-check-runs-on-the-download-and-containers-have-an-order); [Amended 2026-10-15, third](#amended-2026-10-15-third--skip_unavailable_fragments-is-shared-and-the-users-skip-wins); [Amended 2026-10-19](#amended-2026-10-19--download-tuning-four-settings-a-part-per-preset-and-a-file-per-section); [Amended 2026-10-19, second](#amended-2026-10-19-second--reachability-one-address-choice-yt-dlps-delay-and-a-waiting-stage); [Amended 2026-10-19, third](#amended-2026-10-19-third--sponsorblock-per-category-chapters-held-and-a-lookup-without-typed-headers); [Amended 2026-10-19, fourth](#amended-2026-10-19-fourth--extractor-arguments-are-checked-against-a-generated-allowlist); [Amended 2026-10-25](#amended-2026-10-25--a-section-is-checked-before-it-is-cut-and-after) |
 | [UX-007](#ux-007--the-phase-3-surfaces-ruled-all-25-open-p-clauses) | The Phase 3 surfaces, ruled: all 25 open `[P]` clauses | Accepted | — |
 | [SEC-004](#sec-004--the-fifteen-options-sec-003-did-not-see-are-all-forbidden) | The fifteen options `SEC-003` did not see are all forbidden | Accepted | — |
 | [SEC-005](#sec-005----legacy-server-connect-is-forbidden-on-sec-004s-own-tls-reasoning) | `--legacy-server-connect` is forbidden, on `SEC-004`'s own TLS reasoning | Accepted | — |
@@ -5932,6 +5932,39 @@ are not on it and are refused.
 
 **The alternatives, as they were put.** Extractor keys only, which refuses working `twitch`
 arguments; or a short hand-written list.
+
+### Amended 2026-10-25 — a section is checked before it is cut and after
+
+**Status:** **Accepted** — maintainer rulings of 2026-10-25, on `T252-R1`'s three questions, as
+recommended, before the correction's code.
+**Amends:** the 2026-10-19 amendment's sections, which wrote one file each and checked nothing that
+was written.
+
+**The problem.** yt-dlp hands each section to ffmpeg and reports success whatever ffmpeg writes.
+`T252-R1` measured three silent wrong results on a six-second clip. From a server that cannot seek,
+a clip with its index at the end cut to **262 bytes and no streams**. And `*99-100` came back as
+the **whole six seconds**: a direct link reports no length, so yt-dlp asked ffmpeg for one second
+from 99, and ffmpeg, seeking past the end, gave everything. Where the length is known, yt-dlp asks
+for a negative length instead.
+
+**What is ruled.**
+
+1. **A section that starts at or after the item's end cancels the item**, before anything
+   downloads, with a reason that names each such section and the item's length, as a chapter
+   pattern that matches nothing does (`UX-005`, amended 2026-09-27). A range that starts inside the
+   item and runs past its end is still cut to the end.
+2. **A section with no picture or sound fails the attempt as an ffmpeg failure**: every section is
+   read with ffprobe before it is claimed, and one with neither fails with a reason that suggests
+   downloading the whole item. Staging is kept, and nothing retries by itself.
+3. **Where the site gives no length, it is read from the media first**: ffprobe asks the link, with
+   the request's own headers and cookies, and rule 1 applies to the answer. Where no length can be
+   read, the sections are refused for that item, with the reason.
+
+**The alternatives, as they were put.** For a section past the end: download the sections that
+fit, which ends *Done* with fewer files than asked; or fail the item, whose retry cannot help. For
+an empty cut: download the whole item and cut it here, a new step. For an item with no length:
+refuse sections on it, which refuses cuts yt-dlp makes correctly; or check the length only after
+the cut, where a copied cut runs long by up to a keyframe and a short whole item passes.
 
 ---
 

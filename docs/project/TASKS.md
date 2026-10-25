@@ -183,7 +183,10 @@ skipped; `tests/integration` under `-n 4`, **577 passed**. No Windows run: `STAR
 
 ### T-252 — Download tuning and the retry policy the settings screen shows
 
-**Status:** In Review — built 2026-10-19 on its rulings, at the maintainer's request that day.
+**Status:** In Review — correction 1 under way: `T252-R1` ruled 2026-10-25, below. Changes
+requested 2026-10-24 at `7aadd3d`, one Critical and two Medium blockers
+([record](reviews/T-252.md#2026-10-24--initial-download-tuning-and-sections-review)); built
+2026-10-19 on its rulings, at the maintainer's request that day.
 *(Was Proposed:)* **design ruled 2026-10-19**, questions 3 and 4 as recommended (`ARC-010` and
 `UX-015` amended that day), after questions 1 and 2 on 2026-10-15 as `T-364`. Filed 2026-08-16 by
 `T-183`. *(Since `T-364`, built 2026-10-18, both
@@ -342,6 +345,25 @@ win32` (234 each); the table check up to date; `tests/unit tests/ui` under `-n 4
 passed**, 21 skipped; `tests/integration` under `-n 4`, **577 passed**. The first integration run
 failed one case of the worker's ffmpeg gate, still spelled through the hatch; it was moved to the
 typed field and the suite rerun whole. No Windows run: `STARBASE` is offline.
+
+#### Correction 1 — `T252-R1`…`R4`
+
+**`T252-R1`'s three questions, ruled 2026-10-25, all as recommended** (`ARC-010` amended that
+day). Mapped first: yt-dlp clips a range's end to the item's length and hands ffmpeg `-ss` and
+`-t`, so `*99-100` on a six-second item asks for a negative length; a direct link reports no length
+at all (measured: the generic extractor's `duration` is `None`), so yt-dlp asks for one second from
+99, and ffmpeg, seeking past the end, returned the whole file. A copied cut starts on a keyframe,
+so its length can run long by up to one keyframe interval.
+
+1. **A section past the end.** Cancel the item before it downloads, naming each such section and
+   the item's length, as a chapter pattern that matches nothing does. / Download the sections that
+   fit (*Done* with fewer files). / Fail the item (a retry cannot help).
+2. **A cut with no picture or sound.** Fail the attempt as an ffmpeg failure, every section read
+   with ffprobe before it is claimed, staging kept, no automatic retry. / Download the whole item
+   and cut it here (a new step).
+3. **An item whose site gives no length.** Read it from the media with ffprobe first, with the
+   request's headers and cookies, and refuse the sections where none can be read. / Refuse sections
+   on such items. / Check the length only after the cut (a short whole item passes the slack).
 
 ## Ready
 
