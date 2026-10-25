@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-10-19
+**Last updated:** 2026-10-25
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -12,10 +12,12 @@ Windows installer, with `SHA256SUMS`, on the
 [release page](https://github.com/kottmans/tracks-and-trails/releases/tag/v0.1.0). `main` is now
 `0.1.1.dev0`. Tracks & Trails also still runs from source on Linux and Windows.
 
-**Phases 0–3 and Phase 5 have exited**; Phase 5's exit is recorded criterion by criterion, one of
-them unmet by ruling ([table](IMPLEMENTATION_PLAN.md#phase-5-exit-2026-09-17)). **Phase 4's exit
-review was last Blocked only on `T329-R2`'s Windows mutation evidence, which the 2026-09-13 review
-resolved**; its sign-off is the reviewer's to record ([record](reviews/phase-4-exit.md)).
+**Phases 0–5 have exited**; Phase 5's exit is recorded criterion by criterion, one of them unmet
+by ruling ([table](IMPLEMENTATION_PLAN.md#phase-5-exit-2026-09-17)). **Phase 4 was signed off on
+2026-10-24** ([record](reviews/phase-4-exit.md#2026-10-24--phase-4-exit-sign-off-after-the-resolved-evidence-blocker)),
+its last blocker resolved on 2026-09-13, so `0.1.0` was published without the approval the plan
+required; **the maintainer ruled on 2026-10-25 that `0.1.0` stands**
+([ruling](IMPLEMENTATION_PLAN.md#phase-5--distribution)), and `T328-R4` stays open.
 [README](../../README.md) describes available features; the
 [implementation plan](IMPLEMENTATION_PLAN.md#phase-5--distribution) owns phase deliverables and
 exit criteria.
@@ -130,7 +132,7 @@ task and review records it summarised.*
   classified in the audit, twelve refused as doing nothing here, which the Reviewer accepted against
   the pinned runtime. **`T249-R1`'s sibling audit found `--embed-info-json` putting both secrets
   inside the kept MKV** of a download that succeeded, on unreleased `main`; the same correction
-  closed it. **`T-364` was built on 2026-10-18 and is with the Reviewer**: a download nobody chose
+  closed it. **`T-364` was built on 2026-10-18 and approved on 2026-10-24**: a download nobody chose
   a count for retries ten times, as yt-dlp's command line does, and a fragment still missing after
   its retries fails the attempt, which the queue retries from where it stopped when the server was
   at fault, rather than ending *Done* with seconds missing. That fixes a defect `0.1.0` shipped;
@@ -138,18 +140,21 @@ task and review records it summarised.*
   `--skip-unavailable-fragments` shares with the application.
 - **Asked what could be done overnight on 2026-10-18, the maintainer chose to have the work go on
   while reviews are pending** ([the amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-18-the-work-continues-while-reviews-are-pending)),
-  each task in its own commit, pushed once its gates pass, for Codex to review together. **`T-250`
-  was built that night** on its ruled design: the sort checked field by field against yt-dlp's
-  vocabulary, bound in a fresh process; the format check, on the download only; and the merge
-  container in one written order with the remux and recode. It is with the Reviewer. **So is
-  `T-304`**, the keyboard-only focus ring ruled on 2026-09-09, now recorded as `UX-016`: a click
-  draws no ring, and the next key draws it on the control the click focused. **And `T-301`**: the
-  last of its four font-sensitive tests was the test, measured by bisecting and tracing — the list
-  re-laid itself out between two requests and put a row under a stale probe point — and is repaired.
-  **And `T-248`**, built overnight on the recommended answers to its questions 2 and 3, which the
-  maintainer ruled as recommended the next morning (`UX-014` amended): the Windows pair refused as
-  `app:policy`, and the name's shaping and the file's date set in Settings under the name, frozen
-  into each request as the template is. Containment runs after the shaping.
+  each task in its own commit, pushed once its gates pass, for Codex to review together: `T-364`,
+  `T-250`, `T-304`, `T-301`, `T-248` and `T-252`, built 2026-10-18 and 2026-10-19.
+- **Reviewed 2026-10-24: four approved, two corrected.** `T-364`, `T-250`, `T-301` and `T-248` are
+  Complete and in [COMPLETED_TASKS](COMPLETED_TASKS.md); `T-250`'s Low finding, a sentence saying a
+  recode merges into its container, was corrected in its closure. **`T-304` and `T-252` had changes
+  requested, and both corrections were built by 2026-10-25 and are with the Reviewer.** `T304-R1`:
+  a format header painted its ring on a click, and sweeping the click's side over all 112 controls
+  found the spin boxes drawing the platform style's focus frame too; the application's style is now
+  wrapped to draw no focus while the pointer has the turn. `T252-R1`, Critical: a section was
+  claimed whatever ffmpeg wrote, so an empty cut and the whole item passed as the part. **Three
+  rulings of 2026-10-25, all as recommended** (`ARC-010` amended): a section past the end cancels
+  the item, an empty cut fails as an ffmpeg failure, and a length the site does not give is read
+  from the link first. `T252-R2`…`R4` corrected the timeout's reading and display and restored a
+  lost test. Two adjacent findings, older than `T-252`, are recorded in its entry for the
+  Reviewer's disposition.
 - **Fifteen rulings taken 2026-10-19, all as recommended**, every open question in stage 3:
   `T-248`'s two, as built; `T-252`'s last two; `T-253`'s three; `T-254`'s four; and `T-255`'s
   four, the first a security ruling forbidding the extractor-argument pairs that choose a request's
@@ -159,8 +164,7 @@ task and review records it summarised.*
   retry policy and the connection's tuning in *Settings › Network*, and a *Which part* group for
   download sections and live-from-start. Several sections write one file each, and a section now
   works with ffmpeg found only through its location, which aborted every section on the Windows
-  installer's bundled ffmpeg (inferred; measured on Linux with `PATH` emptied). It is with the
-  Reviewer.
+  installer's bundled ffmpeg (inferred; measured on Linux with `PATH` emptied).
 - **The first `T184-R6` correction was inert, found 2026-09-24.** It registered hatch values in
   the worker, but a worker's records are redacted by the parent's handlers, so a real spawn left
   the value in the log. The correction of 2026-09-24 registers them in the parent, covers the
@@ -181,8 +185,8 @@ task and review records it summarised.*
   editor's last group, checked as the user types (`UX-015`), so `T-184`'s interface is specified.
   **All three are built** and were reviewed on 2026-09-27: the first two as a fifth correction
   round, the third as `T-184`'s interface stage.
-- **A codebase audit ran on 2026-09-24** and is with the Reviewer for its own record. Two outcomes
-  are already filed: `T-351` (with a playlist in the queue, row changes are signalled on the wrong
+- **A codebase audit ran on 2026-09-24**, reviewed on 2026-09-27
+  ([record](reviews/codebase-audit-2026-09.md)). Two outcomes were filed: `T-351` (with a playlist in the queue, row changes are signalled on the wrong
   row, and a screen reader hears less than the row shows) and `T-352`, which retires
   `JobProgressView` by the maintainer's `UX-005` amendment of the same day.
 - **`T-348`'s shape is recommended** (2026-09-18): fetch, verify against the published
@@ -200,30 +204,24 @@ task and review records it summarised.*
 
 ## Verification
 
-*Refreshed 2026-10-18, at `T-364`'s build on `8f24f40`, on Linux with the project `.venv` on
-`PATH` (yt-dlp 2026.08.19).* The previous snapshot, at `T-363`'s correction, is recoverable from
-`8f24f40`; how often `T-350`'s race failed each run is kept in
+*Refreshed 2026-10-25, at `T-252`'s correction on `c23473c`, on Linux with the project `.venv` on
+`PATH` (yt-dlp 2026.08.19).* The previous snapshot, at `T-364`'s build, is recoverable from
+`c23473c`; how often `T-350`'s race failed each run is kept in
 [its entry](TASKS.md#t-350--a-staged-format-fixture-races-a-real-probe-and-loses-its-format-control).
 
 | Check | Result |
 |---|---|
-| `ruff check .`; `ruff format --check .` | Passed; 487 files |
-| `mypy src`; bare `mypy`; `mypy --platform win32` | Passed; 70, 223, 223 |
+| `ruff check .`; `ruff format --check .` | Passed; 506 files |
+| `mypy src`; bare `mypy`; `mypy --platform win32` | Passed; 74, 236, 236 |
 | `python tools/ytdlp_option_table.py --check` | Up to date |
-| `tests/unit tests/ui` under `-n auto`; `tests/integration` | **5,692 passed**, 21 skipped; **552 passed** |
+| `tests/unit tests/ui` under `-n 4`; `tests/integration` under `-n 4` | **6,172 passed**, 21 skipped; **586 passed** |
 | Full `pytest -q -p no:cacheprovider`, serial | Not rerun. Last at `3275a36`: **4 failed, 6,116 passed**, 21 skipped, 2 deselected; 2,216 s |
-| CI at `8f24f40` | `linux`, `frozen linux`, *Prose* and *Commit messages* passed; both Windows jobs queued, `STARBASE` offline |
+| CI | Nothing pushed since `7aadd3d`, where `linux` and `frozen linux` passed daily to 2026-10-24; both Windows jobs cancelled unstarted, `STARBASE` offline |
 
 **All four serial failures at `3275a36` were `T-350`'s race**, cases of
 `test_the_mounted_format_panel_fits_the_dialog_it_asked_for` failing *"row 0 offered no format
 control"* with the real worker's DNS error in the log, which is the cause its 2026-10-14
 investigation confirmed.
-
-**CI was red at the pushed `8b0aad6`**: run
-[`38672888953`](https://github.com/kottmans/tracks-and-trails/actions/runs/38672888953)'s `linux`
-job failed at *Types, tests included*, the bare `mypy` error above, and its two Windows jobs are
-queued on `STARBASE`, which is offline. The fix, `bfda7c9`, was pushed on 2026-10-15 with
-`ea5c787`.
 
 No Windows runtime, external download or release-gate result is claimed here.
 
@@ -239,7 +237,7 @@ No Windows runtime, external download or release-gate result is claimed here.
   `--compat-options` values as [`T-363`](COMPLETED_TASKS.md#t-363--the-options-field-can-write-outside-the-chosen-folder-and-switch-off-a-safety-check),
   **Complete, approved 2026-10-18** at `dcb0f52` after one correction round, then the fragments as
   [`T-364`](COMPLETED_TASKS.md#t-364--fragmented-downloads-retry-and-never-finish-with-a-piece-missing),
-  shipping in `0.2.0`, built on 2026-10-18 and with the Reviewer.
+  shipping in `0.2.0`, **Complete, approved 2026-10-24**.
 - **CI is green again.** Its Linux job failed from 2026-10-08, when PySide6 6.12.0's metapackage
   began requiring `PySide6_WebEngine` and `PySide6_Pdf` and the `LIC-001` gate refused them.
   **`T-355`** caps PySide6 below 6.12, and the push of `d18bcb8` passed every job in run
@@ -259,6 +257,12 @@ No Windows runtime, external download or release-gate result is claimed here.
   ([procedure](../WINDOWS_VERIFICATION.md#offline-for-more-than-14-days-it-must-be-registered-again)).
   Every run in between left `windows desktop` and `frozen windows` queued until cancelled, and
   `STARBASE coverage` reported both as having run, because `STARBASE_AVAILABLE` stayed `true`.
+- **`STARBASE` has been offline again since 2026-10-12.** Its last job was run
+  [`38268247138`](https://github.com/kottmans/tracks-and-trails/actions/runs/38268247138) at
+  `d9c7248`, and the API listed it offline on 2026-10-24; every Windows job since was cancelled
+  unstarted. So **nothing from `T-247`'s correction onward has a Windows result**. If it has not
+  connected since that job, GitHub removes its registration after 14 days, about 2026-10-26, and it
+  must be registered again ([procedure](../WINDOWS_VERIFICATION.md#offline-for-more-than-14-days-it-must-be-registered-again)).
 - **Windows evidence is back.** The first run after `STARBASE` returned, at `8857753`
   ([`37929286459`](https://github.com/kottmans/tracks-and-trails/actions/runs/37929286459)), failed
   both Windows jobs: a cp1252 pipe to Ruff, which **`T-356`** fixes, and a pinned ffmpeg BtbN had
