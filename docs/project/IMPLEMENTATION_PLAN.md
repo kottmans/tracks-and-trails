@@ -5,8 +5,8 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-10-19 — §Phase 4.5: `T-248` and `T-252` built; the audit's counts.
-Previously 2026-10-11 — §Phase 4.5 amended: no `0.1.1`, `T-351` first, and owners for
+**Last updated:** 2026-10-25 — §Phase 5: the ruling that `0.1.0` stands without Phase 4's approval.
+Previously 2026-10-19 — §Phase 4.5: `T-248` and `T-252` built; the audit's counts. Previously 2026-10-11 — §Phase 4.5 amended: no `0.1.1`, `T-351` first, and owners for
 the two deliverables that had none. Previously 2026-09-11 — **§Phase 5's *Phase 4 approved* prerequisite relaxed for the start of
 the work by maintainer ruling**, with the first release still conditional on that approval; its four
 gating decisions are taken (`REL-003`–`REL-006`). *(Earlier that day: §Phase 5 gained a task map
@@ -1051,6 +1051,14 @@ the phase against an external event. So the *work* starts now.
 ship whatever `R2` has not yet established. Phase 4's approval remains a condition of the first
 release; this ruling moves when Phase 5 may be worked, not what may be shipped. If the maintainer
 intends otherwise, that is a separate ruling and belongs here beside this one.
+
+**Ruled 2026-10-25: `0.1.0` stands.** It was published on 2026-09-16 without that approval: the
+Reviewer signed Phase 4 off on 2026-10-24 ([record](reviews/phase-4-exit.md)), its last blocker
+having been resolved on 2026-09-13, before publication. The maintainer keeps the published
+release, with no withdrawal, replacement tag or republication. The sign-off's record attributes
+this disposition to a delegation in the review request; the request left it to the maintainer, and
+this is the maintainer's ruling. It settles the missing approval only: `T328-R4`'s waived acceptance
+walk stays open.
 
 **Two things gate the start rather than the end, and both need arranging now.**
 
