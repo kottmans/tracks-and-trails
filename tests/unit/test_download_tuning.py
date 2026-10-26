@@ -611,9 +611,10 @@ def test_the_downloader_s_ffmpeg_is_set_for_the_session_and_put_back() -> None:
     """yt-dlp's command line sets this from `--ffmpeg-location`; its library never does."""
     import yt_dlp
 
+    location = Path("/opt/ffmpeg/bin/ffmpeg")
     before = FFmpegPostProcessor._ffmpeg_location.get()
-    with ffmpeg_for_its_downloader(yt_dlp, Path("/opt/ffmpeg/bin/ffmpeg")):
-        assert FFmpegPostProcessor._ffmpeg_location.get() == "/opt/ffmpeg/bin/ffmpeg"
+    with ffmpeg_for_its_downloader(yt_dlp, location):
+        assert FFmpegPostProcessor._ffmpeg_location.get() == str(location)
     assert FFmpegPostProcessor._ffmpeg_location.get() == before
 
     with ffmpeg_for_its_downloader(yt_dlp, None):

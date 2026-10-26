@@ -7,6 +7,7 @@ real ffprobe against real media is `tests/integration/test_download_sections.py`
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Sequence
 from http.cookies import SimpleCookie
 from pathlib import Path
@@ -67,10 +68,11 @@ def test_a_section_holds_media_only_with_a_picture_or_a_sound(
     answer: tuple[int, str], holds: bool
 ) -> None:
     run = Answers(answer)
+    section = Path("/staging/Clip (section 1).mp4")
 
-    assert holds_media(Path("/staging/Clip (section 1).mp4"), FFPROBE, run) is holds
+    assert holds_media(section, FFPROBE, run) is holds
     arguments, timeout = run.runs[0]
-    assert arguments[0] == str(FFPROBE) and arguments[-1] == "/staging/Clip (section 1).mp4"
+    assert arguments[0] == str(FFPROBE) and arguments[-1] == str(section)
     assert timeout == LOCAL_TIMEOUT_SECONDS
 
 
@@ -136,12 +138,14 @@ def test_only_a_web_link_is_asked() -> None:
 
 
 def test_the_ffprobe_is_the_one_beside_ffmpeg(tmp_path: Path) -> None:
-    ffmpeg = tmp_path / "ffmpeg"
+    # Named as each platform names a program: `shutil.which` finds no bare `ffprobe` on Windows.
+    suffix = ".exe" if sys.platform == "win32" else ""
+    ffmpeg = tmp_path / f"ffmpeg{suffix}"
     ffmpeg.write_text("#!/bin/sh\n")
     ffmpeg.chmod(0o755)
     assert ffprobe_beside(ffmpeg) is None
 
-    ffprobe = tmp_path / "ffprobe"
+    ffprobe = tmp_path / f"ffprobe{suffix}"
     ffprobe.write_text("#!/bin/sh\n")
     ffprobe.chmod(0o755)
     assert ffprobe_beside(ffmpeg) == ffprobe

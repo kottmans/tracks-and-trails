@@ -354,13 +354,15 @@ def test_sections_without_ffprobe_beside_ffmpeg_are_refused_before_a_byte_moves(
     base, _ = served
     alone = tmp_path / "ffmpeg-alone"
     alone.mkdir()
-    symlinks.create(alone / "ffmpeg", Path(resolve_ffmpeg()[0]))
+    ffmpeg = Path(resolve_ffmpeg()[0])
+    # By its own name, `ffmpeg.exe` on Windows, where a program without the suffix does not run.
+    symlinks.create(alone / ffmpeg.name, ffmpeg)
     folder = tmp_path / "chosen"
     folder.mkdir()
 
     outcome, messages = _outcome(
         _request(f"{base}/watch", folder, download_sections=("*0-2",)),
-        ffmpeg_override=alone / "ffmpeg",
+        ffmpeg_override=alone / ffmpeg.name,
     )
 
     assert isinstance(outcome, Failed), messages

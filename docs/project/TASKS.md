@@ -2,7 +2,7 @@
 
 **Purpose:** Unfinished work: review, ready, proposed and blocked tasks.
 **Owner:** Planner (priorities); Implementer (task/status); Reviewer (review disposition)
-**Last updated:** 2026-10-24
+**Last updated:** 2026-10-26
 **Update when:** Work starts, changes scope/status, closes or reopens.
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
@@ -402,9 +402,9 @@ unstripped; nothing placed against the length; a range at the end held inside; t
 not handed to yt-dlp; the sections ignoring it, and overwriting the site's own; the link's cookies
 not sent; and no ffprobe gate.
 
-**Not verified**: Windows, where the bundled ffmpeg has `ffprobe.exe` beside it
-(`packaging/fetch_ffmpeg.py`'s `WANTED_EXECUTABLES`); a real site, whose length yt-dlp usually has;
-and a real live stream.
+**Not verified**: the Windows installer, whose bundled ffmpeg has `ffprobe.exe` beside it
+(`packaging/fetch_ffmpeg.py`'s `WANTED_EXECUTABLES`), though Windows from source is measured
+below; a real site, whose length yt-dlp usually has; and a real live stream.
 
 **Checks for `R1`, 2026-10-25, on Linux**, with the project `.venv` on `PATH`: `ruff check .` and
 `ruff format --check .` (506 files); `mypy src` (74), bare `mypy` and `mypy --platform win32` (236
@@ -413,6 +413,23 @@ skipped; `tests/integration` under `-n 4`, **586 passed**. The first run failed 
 test without ffprobe made its symlink directly, and now uses the `symlinks` fixture; both suites
 were rerun whole. Bare `mypy` also caught two tests reading `NO_LENGTH` through the worker, which
 does not export it. No Windows run: `STARBASE` is offline.
+
+**Windows, 2026-10-26, on `STARBASE`, which returned that day.** CI's `windows desktop` at
+`d055fc6` ([`40343995401`](https://github.com/kottmans/tracks-and-trails/actions/runs/40343995401))
+failed 13 unit tests, so integration never ran. **Twelve were this task's tests, not its code**:
+ten cases in `test_media_probe.py` wrote a section's path as `/` text, which Windows spells with
+`\`; one made its ffprobe without `.exe`, which `shutil.which` does not find there; and
+`test_the_downloader_s_ffmpeg_is_set_for_the_session_and_put_back`, from the build at `7aadd3d`,
+compared a location as `/` text. The test without ffprobe would have failed for a reason of its own,
+measured there: it linked ffmpeg as `ffmpeg`, which the worker refuses on Windows (*explicit
+override, not usable*) before it looks for ffprobe; it now uses the real program's name. The
+thirteenth is `T-248`'s, amended in its record. Then on `STARBASE`'s desktop session with these
+corrections, at `d055fc6`, as CI runs it: `tests/unit tests/ui` under `-n auto`, **6,146 passed**,
+44 skipped, 2 failed, `test_toolchain_versions`' check that `ruff` and `mypy` are the virtualenv's,
+because that run left the virtualenv off `PATH`, which CI puts first; `tests/integration`, serial,
+**579 passed**, 5 skipped, 2 failed, both `T-248`'s. The six files concerned, rerun with the
+virtualenv first on `PATH`, `test_download_sections.py` among them: **235 passed**, 3 skipped,
+`T-248`'s colon cases. The sections ran with winget's ffmpeg 8.1.2, `ffprobe.exe` beside it.
 
 **`R2`, `R3` and `R4`, corrected 2026-10-25, awaiting re-review**, on `a002248`:
 
