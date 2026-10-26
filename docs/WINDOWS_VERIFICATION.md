@@ -5,7 +5,7 @@ make a run look valid when it is not.
 **Owner:** Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-10-09
+**Last updated:** 2026-10-26
 **Related:** `docs/project/TESTING.md` §12, `T-040`, `T-056`, `T-066`…`T-070`, `OPS-003`, `OPS-004`
 
 ---
@@ -335,6 +335,19 @@ when that machine is unreachable is a day-long hang rather than a prompt red.
 
 *(This said `timeout-minutes` bounded the queue wait. It does not, and the difference is 15
 minutes against 24 hours. Corrected under `RUNNER-R1`.)*
+
+### A console in selection mode stops the runner
+
+**Measured 2026-10-26.** The runner was started from the `ghrunner` task and stayed **offline** on
+GitHub while `Runner.Listener.exe` ran in session 2. Its newest `_diag\Runner_*.log` had created
+its session and then stopped at `Terminal] WRITE LINE: Current runner version`, unchanged for
+minutes. The console's title began **"Select"**: a click inside a console window starts a text
+selection, and while one is active Windows holds every program writing to that console at its
+next write. **Esc in the runner's window** released it: it printed *Listening for Jobs* and took
+the queued job at once.
+
+So if the runner sits offline with its process alive, look at its window's title before anything
+else, and do not kill it to recover (trap 3).
 
 ## What CI does differently
 

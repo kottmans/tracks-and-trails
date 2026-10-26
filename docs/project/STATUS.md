@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-10-25
+**Last updated:** 2026-10-26
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -257,12 +257,13 @@ No Windows runtime, external download or release-gate result is claimed here.
   ([procedure](../WINDOWS_VERIFICATION.md#offline-for-more-than-14-days-it-must-be-registered-again)).
   Every run in between left `windows desktop` and `frozen windows` queued until cancelled, and
   `STARBASE coverage` reported both as having run, because `STARBASE_AVAILABLE` stayed `true`.
-- **`STARBASE` has been offline again since 2026-10-12.** Its last job was run
+- **`STARBASE` was offline again from 2026-10-12 to 2026-10-26.** Its last job before was run
   [`38268247138`](https://github.com/kottmans/tracks-and-trails/actions/runs/38268247138) at
-  `d9c7248`, and the API listed it offline on 2026-10-24; every Windows job since was cancelled
-  unstarted. So **nothing from `T-247`'s correction onward has a Windows result**. If it has not
-  connected since that job, GitHub removes its registration after 14 days, about 2026-10-26, and it
-  must be registered again ([procedure](../WINDOWS_VERIFICATION.md#offline-for-more-than-14-days-it-must-be-registered-again)).
+  `d9c7248`, and every Windows job since was cancelled unstarted, so **nothing from `T-247`'s
+  correction onward has a Windows result yet**. The maintainer registered it again and started it
+  on 2026-10-26; it sat offline until its console left selection mode
+  ([the trap](../WINDOWS_VERIFICATION.md#a-console-in-selection-mode-stops-the-runner)), then took
+  the queued run's `windows desktop` job at `7aadd3d`.
 - **Windows evidence is back.** The first run after `STARBASE` returned, at `8857753`
   ([`37929286459`](https://github.com/kottmans/tracks-and-trails/actions/runs/37929286459)), failed
   both Windows jobs: a cp1252 pipe to Ruff, which **`T-356`** fixes, and a pinned ffmpeg BtbN had
