@@ -155,6 +155,19 @@ task and review records it summarised.*
   from the link first. `T252-R2`…`R4` corrected the timeout's reading and display and restored a
   lost test. Two adjacent findings, older than `T-252`, are recorded in its entry for the
   Reviewer's disposition.
+- **Windows ran again on 2026-10-26**, once `STARBASE` returned. CI's `windows desktop` failed at
+  `7aadd3d` and `d055fc6` on test cases that spelled paths the Linux way, twelve of them `T-252`'s
+  and one `T-248`'s; run whole on `STARBASE`, two more of `T-248`'s failed in integration, which CI
+  had not reached. No product code changed: the cases now spell paths as each platform does,
+  recorded in [`T-252`'s entry](TASKS.md#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)
+  and amended in [`T-248`'s record](COMPLETED_TASKS.md#t-248--filename-shaping-and-the-modification-time).
+  Apart from those, and a toolchain check that caught that run's own `PATH`, every test passed on
+  the Windows desktop, integration included. The same run measured one older defect, under risks.
+  **CI runs the UI suite offscreen, which leaves Windows' own style out**, so `T-304`'s tests were
+  run again under the real platform: the click draws no ring anywhere, but a spin box's key ring
+  is faint in light, the native style's own, and `T-310`'s format table states a size 1 to 3
+  pixels short. Both are recorded in [`T-304`'s entry](TASKS.md#t-304--should-a-focus-ring-appear-when-the-control-was-clicked)
+  for disposition.
 - **Fifteen rulings taken 2026-10-19, all as recommended**, every open question in stage 3:
   `T-248`'s two, as built; `T-252`'s last two; `T-253`'s three; `T-254`'s four; and `T-255`'s
   four, the first a security ruling forbidding the extractor-argument pairs that choose a request's
@@ -205,7 +218,7 @@ task and review records it summarised.*
 ## Verification
 
 *Refreshed 2026-10-25, at `T-252`'s correction on `c23473c`, on Linux with the project `.venv` on
-`PATH` (yt-dlp 2026.08.19).* The previous snapshot, at `T-364`'s build, is recoverable from
+`PATH` (yt-dlp 2026.08.19); the CI and Windows rows on 2026-10-26.* The previous snapshot, at `T-364`'s build, is recoverable from
 `c23473c`; how often `T-350`'s race failed each run is kept in
 [its entry](TASKS.md#t-350--a-staged-format-fixture-races-a-real-probe-and-loses-its-format-control).
 
@@ -216,14 +229,16 @@ task and review records it summarised.*
 | `python tools/ytdlp_option_table.py --check` | Up to date |
 | `tests/unit tests/ui` under `-n 4`; `tests/integration` under `-n 4` | **6,172 passed**, 21 skipped; **586 passed** |
 | Full `pytest -q -p no:cacheprovider`, serial | Not rerun. Last at `3275a36`: **4 failed, 6,116 passed**, 21 skipped, 2 deselected; 2,216 s |
-| CI | Nothing pushed since `7aadd3d`, where `linux` and `frozen linux` passed daily to 2026-10-24; both Windows jobs cancelled unstarted, `STARBASE` offline |
+| CI | At `d055fc6`, run [`40343995401`](https://github.com/kottmans/tracks-and-trails/actions/runs/40343995401): `linux`, `frozen linux`, `frozen windows`, Prose and Commit messages passed; `windows desktop` failed 13 unit tests, corrected since, and did not reach integration |
+| Windows, `STARBASE`'s desktop session, from source | At `d055fc6` with the test corrections: `tests/unit tests/ui` under `-n auto`, **6,146 passed**, 44 skipped, 2 failed, the toolchain check, the run's `PATH`; `tests/integration` serial, **579 passed**, 5 skipped, 2 failed, `T-248`'s colon folder. The six files concerned, rerun: **235 passed**, 3 skipped |
+| Windows, the same session, real `windows` platform | `test_focus_ring.py` and `test_format_table.py`: **9 failed, 96 passed**, recorded in `T-304`'s entry |
 
 **All four serial failures at `3275a36` were `T-350`'s race**, cases of
 `test_the_mounted_format_panel_fits_the_dialog_it_asked_for` failing *"row 0 offered no format
 control"* with the real worker's DNS error in the log, which is the cause its 2026-10-14
 investigation confirmed.
 
-No Windows runtime, external download or release-gate result is claimed here.
+No external download, Windows installer or release-gate result is claimed here.
 
 ## Current risks and external blockers
 
@@ -259,11 +274,18 @@ No Windows runtime, external download or release-gate result is claimed here.
   `STARBASE coverage` reported both as having run, because `STARBASE_AVAILABLE` stayed `true`.
 - **`STARBASE` was offline again from 2026-10-12 to 2026-10-26.** Its last job before was run
   [`38268247138`](https://github.com/kottmans/tracks-and-trails/actions/runs/38268247138) at
-  `d9c7248`, and every Windows job since was cancelled unstarted, so **nothing from `T-247`'s
-  correction onward has a Windows result yet**. The maintainer registered it again and started it
-  on 2026-10-26; it sat offline until its console left selection mode
+  `d9c7248`, and every Windows job since was cancelled unstarted, so nothing from `T-247`'s
+  correction to `7aadd3d` had a Windows result until it returned. The maintainer registered it
+  again and started it on 2026-10-26; it sat offline until its console left selection mode
   ([the trap](../WINDOWS_VERIFICATION.md#a-console-in-selection-mode-stops-the-runner)), then took
-  the queued run's `windows desktop` job at `7aadd3d`.
+  the queued run's `windows desktop` job at `7aadd3d`. Its results are under *Verification*.
+- **On Windows, a chosen folder ending in a Unicode space is renamed under the download**
+  (measured 2026-10-26, awaiting disposition). Windows keeps a folder ending in U+00A0, U+2003 or
+  U+3000, and yt-dlp's own path sanitizing, which Windows always gets, renames it to end in `#`; a
+  real session wrote the file there, outside the chosen folder, failed as a disk error, and left it.
+  It is `T-363`'s breach by another route, through the literal template the worker has handed
+  yt-dlp since `a296615` ([evidence](COMPLETED_TASKS.md#t-248--filename-shaping-and-the-modification-time),
+  at the end).
 - **Windows evidence is back.** The first run after `STARBASE` returned, at `8857753`
   ([`37929286459`](https://github.com/kottmans/tracks-and-trails/actions/runs/37929286459)), failed
   both Windows jobs: a cp1252 pipe to Ruff, which **`T-356`** fixes, and a pinned ffmpeg BtbN had
