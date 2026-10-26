@@ -168,6 +168,12 @@ task and review records it summarised.*
   is faint in light, the native style's own, and `T-310`'s format table states a size 1 to 3
   pixels short. Both are recorded in [`T-304`'s entry](TASKS.md#t-304--should-a-focus-ring-appear-when-the-control-was-clicked)
   for disposition.
+- **`T-365` was filed and built on 2026-10-26** at the maintainer's instruction, and is with the
+  Reviewer: yt-dlp rewrote the path the worker hands it, so a download could land outside the
+  chosen folder. Building it found two more routes than the Windows one filed, on every platform:
+  a `$` variable in a folder wrote outside it, and one in a title saved the file under the
+  variable's value, *Done*. The download pass now writes the literal path as the worker built it
+  ([entry](TASKS.md#t-365--yt-dlp-rewrites-the-path-the-worker-hands-it-and-can-write-outside-the-chosen-folder)).
 - **Fifteen rulings taken 2026-10-19, all as recommended**, every open question in stage 3:
   `T-248`'s two, as built; `T-252`'s last two; `T-253`'s three; `T-254`'s four; and `T-255`'s
   four, the first a security ruling forbidding the extractor-argument pairs that choose a request's
@@ -229,9 +235,10 @@ task and review records it summarised.*
 | `python tools/ytdlp_option_table.py --check` | Up to date |
 | `tests/unit tests/ui` under `-n 4`; `tests/integration` under `-n 4` | **6,172 passed**, 21 skipped; **586 passed** |
 | Full `pytest -q -p no:cacheprovider`, serial | Not rerun. Last at `3275a36`: **4 failed, 6,116 passed**, 21 skipped, 2 deselected; 2,216 s |
-| CI | At `d055fc6`, run [`40343995401`](https://github.com/kottmans/tracks-and-trails/actions/runs/40343995401): `linux`, `frozen linux`, `frozen windows`, Prose and Commit messages passed; `windows desktop` failed 13 unit tests, corrected since, and did not reach integration |
+| CI | At `a3705e4`, run [`40409543055`](https://github.com/kottmans/tracks-and-trails/actions/runs/40409543055): every job passed, `windows desktop` and `frozen windows` included, the first Windows pass since 2026-10-12. At `d055fc6` `windows desktop` had failed 13 unit tests, corrected in `c318169` and `2c96f37` |
 | Windows, `STARBASE`'s desktop session, from source | At `d055fc6` with the test corrections: `tests/unit tests/ui` under `-n auto`, **6,146 passed**, 44 skipped, 2 failed, the toolchain check, the run's `PATH`; `tests/integration` serial, **579 passed**, 5 skipped, 2 failed, `T-248`'s colon folder. The six files concerned, rerun: **235 passed**, 3 skipped |
 | Windows, the same session, real `windows` platform | `test_focus_ring.py` and `test_format_table.py`: **9 failed, 96 passed**, recorded in `T-304`'s entry |
+| Windows, the same session, with `T-365` | `tests/unit tests/ui` under `-n auto`, **6,174 passed**, 44 skipped; `tests/integration` serial, **583 passed**, 7 skipped, 1 failed: `T-364`'s fragment-resume test, which fails the same at `a3705e4`'s source on that machine, cause not found ([`T-365`'s entry](TASKS.md#t-365--yt-dlp-rewrites-the-path-the-worker-hands-it-and-can-write-outside-the-chosen-folder)) |
 
 **All four serial failures at `3275a36` were `T-350`'s race**, cases of
 `test_the_mounted_format_panel_fits_the_dialog_it_asked_for` failing *"row 0 offered no format
@@ -279,13 +286,12 @@ No external download, Windows installer or release-gate result is claimed here.
   again and started it on 2026-10-26; it sat offline until its console left selection mode
   ([the trap](../WINDOWS_VERIFICATION.md#a-console-in-selection-mode-stops-the-runner)), then took
   the queued run's `windows desktop` job at `7aadd3d`. Its results are under *Verification*.
-- **On Windows, a chosen folder ending in a Unicode space is renamed under the download**
-  (measured 2026-10-26, awaiting disposition). Windows keeps a folder ending in U+00A0, U+2003 or
-  U+3000, and yt-dlp's own path sanitizing, which Windows always gets, renames it to end in `#`; a
-  real session wrote the file there, outside the chosen folder, failed as a disk error, and left it.
-  It is `T-363`'s breach by another route, through the literal template the worker has handed
-  yt-dlp since `a296615` ([evidence](COMPLETED_TASKS.md#t-248--filename-shaping-and-the-modification-time),
-  at the end).
+- **yt-dlp rewrote the path the worker hands it, on `main` and in `0.1.0`**, measured
+  2026-10-26: on Windows a chosen folder ending in U+00A0, which Windows allows, was renamed to end
+  in `#`; on every platform a `$` variable in a folder or a title was expanded. Downloads landed
+  outside the chosen folder, failing with the file left behind, or under the variable's value. It
+  is `T-363`'s breach by other routes, through the literal template the worker has handed yt-dlp
+  since `a296615`. **`T-365` corrects it**, built the same day and awaiting review.
 - **Windows evidence is back.** The first run after `STARBASE` returned, at `8857753`
   ([`37929286459`](https://github.com/kottmans/tracks-and-trails/actions/runs/37929286459)), failed
   both Windows jobs: a cp1252 pipe to Ruff, which **`T-356`** fixes, and a pinned ffmpeg BtbN had

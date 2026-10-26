@@ -759,8 +759,10 @@ def _run(
                 reporter,
                 probe_only=False,
                 section_length=section_length,
-                # Literal, not a second template — see `as_literal_template`.
+                # Literal, not a second template — see `as_literal_template`, and kept literal
+                # below `staging` by `keep_the_literal_path`.
                 output_template=as_literal_template(staging / target.name),
+                staging=staging,
                 # `OPS-001`: yt-dlp must use the binary the worker gated on, not its own lookup.
                 ffmpeg_location=ffmpeg.path,
                 cookie_file=cookie_file,
@@ -1840,6 +1842,10 @@ def as_literal_template(path: Path) -> str:
     `%%` is yt-dlp's own escape for a literal percent, so this stays inside its template
     language rather than fighting it. The whole path is escaped, not just the filename: a user's
     download folder may legitimately contain a `%`.
+
+    **The escape is half of it** (`T-365`). yt-dlp also expands `$` variables in the template, with
+    no escape that holds on every platform (`$$` is kept as two on Linux), and on Windows renames
+    folders in the path; `ytdlp_adapter.keep_the_literal_path` keeps both off the download pass.
     """
     return str(path).replace("%", "%%")
 
@@ -2017,6 +2023,7 @@ def _extract(
     cookie_file: Path | None = None,
     overwrites: bool | None = None,
     section_length: float | None = None,
+    staging: Path | None = None,
 ) -> dict[str, Any]:
     from tracks_and_trails.core.logging import YtdlpLog, ytdlp_logger
 
@@ -2074,6 +2081,10 @@ def _extract(
         # **Never written with the session's secrets** (`DAT-003`, amended 2026-10-11, `T249-R1`),
         # whichever option asked for an info JSON, so it is not keyed on `writeinfojson`.
         adapter.keep_secrets_out(ydl)
+        # **Written where it was contained, under the name it was shown** (`T-365`): yt-dlp would
+        # otherwise expand a `$` variable in the literal path, and on Windows rename a folder.
+        if staging is not None:
+            adapter.keep_the_literal_path(ydl, resolved.module, staging)
         try:
             info = ydl.extract_info(request.url, download=not probe_only)
         except BaseException as error:

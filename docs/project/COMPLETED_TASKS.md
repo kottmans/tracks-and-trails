@@ -42502,7 +42502,9 @@ the forced Windows names on Linux: into a folder `Talks` + U+00A0, the job fails
 download reported a file outside its own working directory"* (`T109-R8`'s check), and leaves the
 2,060-byte file under `Talks#\.tracks-and-trails-staging-…\`, with an empty staging folder in the
 chosen one. The same session into `Talks & notes, 2026` succeeds. The literal template dates from
-`a296615` (`T-012`).
+`a296615` (`T-012`). **Filed the same day by the maintainer as
+[`T-365`](TASKS.md#t-365--yt-dlp-rewrites-the-path-the-worker-hands-it-and-can-write-outside-the-chosen-folder)**,
+which found two more routes while building.
 
 ---
 

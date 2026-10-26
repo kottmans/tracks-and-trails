@@ -1628,6 +1628,51 @@ def keep_secrets_out(ydl: Any) -> None:
     ydl.sanitize_info = sanitize_info
 
 
+def keep_the_literal_path(ydl: Any, ytdlp: Any, staging: Path) -> None:
+    """Make `ydl` write the worker's literal path as it was handed over (`T-365`).
+
+    **yt-dlp changes the path it is given twice before writing to it**, and `as_literal_template`'s
+    escaping reaches neither. `_outtmpl_expandpath` expands environment variables in the template,
+    so a folder `Notes $HOME` became `Notes /home/…`, outside the chosen folder, and a title
+    `Price $HOME` was saved as the variable's last part. And on Windows `get_output_path` puts the
+    whole path through `sanitize_path`, which renames a folder Windows allows, ending in U+00A0, to
+    end in `#`. Measured in real sessions at 2026.08.19: each wrote outside the folder or under
+    another name, and the claim's source check (`T109-R8`) failed the job only after the file
+    existed. It is `T-363`'s breach by two more routes.
+
+    **Instance attributes on this session's `YoutubeDL` only**, as `keep_secrets_out` sets its own.
+    A template under `staging` is not expanded at all: the probe pass expanded the user's template
+    already, and every character after that is a name the worker rendered, contained and showed.
+    yt-dlp's Windows pass still runs below `staging`, where a site's chapter title can land; only
+    the staging directory's own path, which the worker created and so exists as written, is kept
+    out of it. Any other template or path goes to yt-dlp unchanged, and a yt-dlp without these
+    methods leaves the claim's check as the only line.
+    """
+    kept = f"{staging}{os.sep}"
+    escaped = kept.replace("%", "%%")
+    expand = getattr(ydl, "_outtmpl_expandpath", None)
+    output_path = getattr(ydl, "get_output_path", None)
+    sanitize_path = getattr(getattr(ytdlp, "utils", None), "sanitize_path", None)
+
+    if expand is not None:
+
+        def _outtmpl_expandpath(outtmpl: str) -> str:
+            return outtmpl if outtmpl.startswith(escaped) else str(expand(outtmpl))
+
+        ydl._outtmpl_expandpath = _outtmpl_expandpath
+
+    if output_path is not None and sanitize_path is not None:
+
+        def get_output_path(dir_type: str = "", filename: str | None = None) -> str:
+            # `--paths` is refused (`app:contained`), so nothing is joined ahead of the literal.
+            if filename and filename.startswith(kept) and not ydl.params.get("paths"):
+                below = filename[len(kept) :]
+                return kept + str(sanitize_path(below, force=ydl.params.get("windowsfilenames")))
+            return str(output_path(dir_type, filename))
+
+        ydl.get_output_path = get_output_path
+
+
 def merge_thumbnail(options: dict[str, Any], hatch: dict[str, Any]) -> None:
     """Settle `writethumbnail`, the one key the application and the user share (Finding 6).
 

@@ -488,6 +488,107 @@ and `ruff format --check .` (504 files); `mypy src` (73), bare `mypy` and `mypy 
 skipped; `tests/integration` under `-n 4`, **577 passed**. Two comments were rewrapped after the
 suites ran. No Windows run: `STARBASE` is offline.
 
+### T-365 — yt-dlp rewrites the path the worker hands it, and can write outside the chosen folder
+
+**Status:** In Review — built 2026-10-26, the day it was filed. Filed by the maintainer on
+2026-10-26, on the finding measured while amending `T-248` for Windows, with the instruction to
+build it the same day.
+**Owner:** Implementer
+**Priority:** Critical — `TESTING.md` §14 names *writing outside the directory the user chose*, and
+a silent wrong name. In `0.1.0` too: the literal template dates from `a296615`.
+**Phase:** Phase 4.5, shipping in `0.2.0`
+**Depends on:** nothing
+**Relevant context:** `T-363` (the same breach through the shaping options, and its criterion that
+the path *"is handed to yt-dlp untouched"*); `T-034`; `T012-R4` (`as_literal_template`);
+`T109-R8` (the claim's source check); `DAT-002`; [`T-248`'s amendment](COMPLETED_TASKS.md#t-248--filename-shaping-and-the-modification-time)
+**Affected surfaces:** `downloader/worker.py` (`_extract`'s download pass, `as_literal_template`'s
+docstring); `downloader/ytdlp_adapter.keep_the_literal_path`; their tests
+**Risk:** High — the containment boundary, and two private yt-dlp methods.
+
+#### Evidence
+
+The worker renders a name, contains it and shows it, then hands yt-dlp the absolute path inside
+staging as a literal template. **yt-dlp changes that path twice more before writing to it**, and
+`as_literal_template`'s `%` escape reaches neither:
+
+- **`_outtmpl_expandpath` expands environment variables**, on every platform. Measured in real
+  sessions on Linux at `a3705e4`: a chosen folder `Notes $HOME` wrote the file under
+  `Notes /home/sean/.tracks-and-trails-staging-…/`, outside the chosen folder, and the job failed
+  as `disk` with the file left there; a title `Price $HOME` **succeeded as `sean.mp4`**, a name the
+  preview never showed, made of the variable's value.
+- **On Windows, `get_output_path` puts the whole path through `sanitize_path`**, whatever the
+  options say: a folder ending in U+00A0, U+2003 or U+3000, which Windows allows, is renamed to end
+  in `#`. Measured on `STARBASE` on 2026-10-26: the file was written under `Talks#\…`, outside the
+  chosen folder, the job failed as `disk`, and the file stayed.
+
+`T-363`'s ruling took *"Linux evidence suffices, since yt-dlp's `_prepare_filename` is the same on
+every platform"*; the Windows pass is in `get_output_path`, after it.
+
+#### Acceptance criteria
+
+- [x] The download pass writes the literal path the worker built, verbatim: no variable in it is
+      expanded, and on Windows no folder of the staging directory's own path is renamed.
+- [x] yt-dlp's Windows pass still runs on whatever lies below staging, and any template or path
+      outside staging reaches yt-dlp unchanged.
+- [x] The measured cases are tests: real sessions on `127.0.0.1` for the folder, the title and the
+      U+00A0 folder, and unit cases reproducing Windows' rename on Linux, each with a positive
+      control that fails without the correction.
+- [x] Mutation-checked; Ruff, `mypy src`, bare `mypy` and `mypy --platform win32`, and the suites
+      pass, with a native Windows run, apart from one Windows test that fails the same without
+      this change (below).
+
+#### Out of scope
+
+- A folder whose name ends in an ASCII space or a dot. Windows drops either when a folder is made
+  through its ordinary paths, so one exists only if made through a `\\?\` path, which the worker's
+  own paths would not reach either.
+
+#### Built 2026-10-26
+
+- **`ytdlp_adapter.keep_the_literal_path`**, called on the download pass's `YoutubeDL` beside
+  `keep_secrets_out`, sets two instance attributes. `_outtmpl_expandpath` leaves a template under
+  staging unexpanded, recognising it by its `%`-escaped spelling: the probe pass expanded the
+  user's template already, and everything after that is a name the worker rendered. And
+  `get_output_path` keeps the staging directory's own path out of `sanitize_path`, still running
+  yt-dlp's pass on what lies below it, where a site's chapter title can land. Neither changes the
+  probe pass or the preview.
+- **A yt-dlp without either method is left as it is**, and the claim's source check stays as the
+  second line. `--paths` is refused (`app:contained`), so nothing is joined ahead of the literal.
+- **`as_literal_template`'s docstring** promised *"verbatim"*; it now says the escape is half of
+  that, and names the other half.
+
+**Tests**: `tests/unit/test_literal_path.py`, the six cases (the folder, braced, beside a `%`, the
+title, U+00A0, U+3000) each written elsewhere without the correction and as built with it, *as on
+Linux* and *as on Windows*; the sections' template; yt-dlp's pass below staging and outside it; a
+template outside staging still expanded; a yt-dlp without the methods; and, on Windows only, the
+two folders kept without forcing. `test_shaping_containment.py`'s
+`test_the_path_is_written_as_it_reads`: real sessions for the folder, the title and the U+00A0
+folder, the last holding by construction off Windows.
+
+**Mutations, 8 of 8 caught on Linux**, each on copies restored by hash: either attribute not set;
+the worker not asking, or passing no staging; nothing sanitized below staging; every template left
+unexpanded; every path kept out of yt-dlp's pass; the prefix compared unescaped. **On Windows**,
+with the Windows half removed on a copy restored by hash, 7 fail: every U+00A0 and U+3000 unit
+case and the real U+00A0 session.
+
+**Checks, 2026-10-26, on Linux, base `a3705e4`**, with the project `.venv` on `PATH`: `ruff check .`
+and `ruff format --check .` (507 files); `mypy src` (74), bare `mypy` and `mypy --platform win32`
+(237 each); the table check up to date; `tests/unit tests/ui` under `-n 4`, **6,197 passed**, 23
+skipped; `tests/integration` under `-n 4`, **591 passed**. **On `STARBASE`'s desktop
+session**, at `a3705e4` with this change, as CI runs it: `tests/unit tests/ui` under `-n auto`,
+**6,174 passed**, 44 skipped; `tests/integration`, serial, **583 passed**, 7 skipped, 1 failed,
+below. CI passed every job at `a3705e4`, run `40409543055`, `windows desktop` included.
+
+**Adjacent, measured, not corrected** (`AGENTS.md` §7): on `STARBASE`,
+`test_fragment_retries.py`'s `test_a_fragment_that_never_arrives_fails_and_the_retry_resumes_it`
+(`T-364`'s) fails every time since the afternoon of 2026-10-26: the first session fails as it
+should, and the resume cannot rename `v0.mp4.part`, *"being used by another process"*. **Not
+`T-365`'s**: with both source files set back to `a3705e4` it fails the same, three runs of three,
+and the same with each half alone. It passed in that machine's full run at `d055fc6` earlier that
+day and in CI at `a3705e4`, and passes alone on Linux. Neither the virtualenv on `PATH` nor a
+collector run every 10 allocations changes it. What holds the file is not found; a scanner is a
+guess, not checked.
+
 ## Ready
 
 <a id="t-302"></a>

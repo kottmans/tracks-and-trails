@@ -14,11 +14,17 @@ pair as `app:policy`. So the sessions shape through the request's fields, and th
 are held here too: `T-034`'s containment runs after the shaping, so a name the shaping makes
 reserved is renamed, two names shaped alike are numbered (`T-046`), and the file date follows
 `Last-Modified`.
+
+**`T-365` closed two more routes to the same breach**, with no shaping at all: yt-dlp expanded a
+`$` variable anywhere in the literal path, so a folder `Notes $HOME` wrote outside itself and a
+title `Price $HOME` was saved as `sean.mp4`; and on Windows it renamed a folder ending in U+00A0,
+which Windows allows, to end in `#`. Measured in these sessions before the correction.
 """
 
 from __future__ import annotations
 
 import html
+import os
 import sys
 import threading
 from collections.abc import Callable, Iterator
@@ -169,6 +175,39 @@ def test_a_shaped_name_lands_in_the_chosen_folder_and_nowhere_else(
     written = _written(_request(watch_url, chosen, **fields))
 
     assert written.parent == chosen, f"the download landed at {written}"
+    new = _everything_under(tmp_path) - before
+    assert new == {written}, f"something was written besides the download: {sorted(new)}"
+
+
+#: A variable each session below sets, whose value holds a separator, as `HOME` and `PATH` do.
+_VARIABLE: Final = "TT_T365_ELSEWHERE"
+
+
+@pytest.mark.parametrize(
+    ("folder", "title"),
+    [
+        pytest.param(f"Notes ${_VARIABLE}", TITLE, id="a variable in the folder"),
+        pytest.param("plain", f"Price ${_VARIABLE}", id="a variable in the title"),
+        # Renamed only on Windows, where `sanitize_path` always runs; elsewhere it holds as is.
+        pytest.param("Talks\u00a0", TITLE, id="a folder ending in U+00A0"),
+    ],
+)
+def test_the_path_is_written_as_it_reads(
+    serve: Callable[[str], str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    folder: str,
+    title: str,
+) -> None:
+    """`T-365`: the folder chosen and the name shown, with nothing of yt-dlp's own in between."""
+    monkeypatch.setenv(_VARIABLE, f"x{os.sep}elsewhere")
+    chosen = tmp_path / "downloads" / folder
+    chosen.mkdir(parents=True)
+    before = _everything_under(tmp_path)
+
+    written = _written(_request(serve(title), chosen))
+
+    assert written == chosen / f"{title}.mp4", f"the download landed at {written}"
     new = _everything_under(tmp_path) - before
     assert new == {written}, f"something was written besides the download: {sorted(new)}"
 
