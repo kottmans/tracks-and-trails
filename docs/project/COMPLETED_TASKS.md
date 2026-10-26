@@ -42339,7 +42339,8 @@ A test-only change, so the integration suite was not rerun.
 
 **Status:** **Complete — approved 2026-10-24** at `4b8f697`, with its docstring correction
 `c6e9dd4` ([record](reviews/T-248.md#2026-10-24--initial-filename-shaping-review)), with no change
-requests. Native Windows is unverified. *(Was In Review:)* built overnight into 2026-10-19 on the
+requests. Native Windows was first run on 2026-10-26, and three test cases were amended for it, at
+the end of this record. *(Was In Review:)* built overnight into 2026-10-19 on the
 recommended answers to questions 2 and 3, by the instruction of 2026-10-18
 ([the amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-18-the-work-continues-while-reviews-are-pending)),
 and **both ruled as recommended** that morning, before the commit, so nothing in it is
@@ -42477,6 +42478,31 @@ seven `FileNaming` cases and the height test above; both were corrected and the 
 then again after the ruling's wording replaced the provisional notes. Four workers rather than
 `-n auto`: a run under `-n auto` beside the serial suite ran this host out of memory overnight. No
 Windows run: `STARBASE` is offline.
+
+**Amended after approval, 2026-10-26, on its first Windows run**, at the maintainer's instruction
+that day; a test correction, not re-reviewed, and the approved code is unchanged. The `plain names`
+case of `test_yt_dlp_writes_the_download_where_it_was_contained` chose `/home/someone/Talks: 2026`,
+and `windows desktop` failed it at `7aadd3d` and at `d055fc6`
+([`40343995401`](https://github.com/kottmans/tracks-and-trails/actions/runs/40343995401)): on
+Windows, yt-dlp's `sanitize_path` turns a colon in any folder of the path into `#`, whatever the
+options say, and no Windows folder can hold one. Run whole on `STARBASE` the same day,
+`test_shaping_containment.py`'s `plain names` and `both` failed earlier still, unable to make the
+folder. Each now chooses `Talks & notes, 2026`, which Windows keeps and which the restriction
+rewrites when it is a field (`Talks_notes_2026`, measured); the colon stays as a second case of
+each, skipped on Windows. On `STARBASE`, with `T-252`'s files in the same run, **235 passed and 3
+skipped**, the three colon cases; on Linux the colon cases run and pass as before.
+
+**Adjacent, measured on `STARBASE`, not corrected** (`AGENTS.md` §7): the same rewrite reaches a
+folder Windows *does* allow. A folder ending in U+00A0, U+2003 or U+3000 is created and kept under
+its own name, and yt-dlp's `prepare_filename` names the download, through the literal template the
+worker hands it, in a sibling `Talks#`, outside the chosen folder; by `sanitize_path`'s code, any
+folder on the path counts. A trailing ASCII space or dot cannot arise: Windows did not keep either
+when the folder was made. **A real session shows the consequence**, the one `8b0aad6` showed for
+the forced Windows names on Linux: into a folder `Talks` + U+00A0, the job fails as `disk`, *"the
+download reported a file outside its own working directory"* (`T109-R8`'s check), and leaves the
+2,060-byte file under `Talks#\.tracks-and-trails-staging-…\`, with an empty staging folder in the
+chosen one. The same session into `Talks & notes, 2026` succeeds. The literal template dates from
+`a296615` (`T-012`).
 
 ---
 

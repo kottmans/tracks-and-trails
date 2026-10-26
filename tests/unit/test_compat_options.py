@@ -17,6 +17,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import inspect
+import sys
 from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
@@ -113,11 +114,21 @@ def test_the_windows_pair_is_refused_on_every_platform(text: str) -> None:
         # Measured: inside the folder but outside staging, past `T-046`'s reservation.
         pytest.param({"trim_filenames": 50}, CHOSEN, id="trim into the staging name"),
         # The restriction stays on the download pass, where it acts on no literal text: a folder
-        # with a space and a colon in it is left as it is.
+        # with spaces and punctuation it would replace is left as it is.
+        pytest.param(
+            {"restrict_filenames": True},
+            Path("/home/someone/Talks & notes, 2026"),
+            id="plain names",
+        ),
+        # And a colon, where a folder can hold one. No Windows folder can, and yt-dlp's own
+        # `sanitize_path` turns one into `#` there whatever the options say.
         pytest.param(
             {"restrict_filenames": True},
             Path("/home/someone/Talks: 2026"),
-            id="plain names",
+            id="plain names, a colon",
+            marks=pytest.mark.skipif(
+                sys.platform == "win32", reason="no Windows folder holds a colon"
+            ),
         ),
     ],
 )

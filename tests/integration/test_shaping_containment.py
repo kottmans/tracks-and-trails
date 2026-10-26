@@ -19,6 +19,7 @@ reserved is renamed, two names shaped alike are numbered (`T-046`), and the file
 from __future__ import annotations
 
 import html
+import sys
 import threading
 from collections.abc import Callable, Iterator
 from email.utils import formatdate
@@ -99,6 +100,11 @@ def _everything_under(root: Path) -> set[Path]:
     return set(root.rglob("*"))
 
 
+_NO_COLON_ON_WINDOWS: Final = pytest.mark.skipif(
+    sys.platform == "win32", reason="no Windows folder holds a colon"
+)
+
+
 def _request(url: str, chosen: Path, **fields: Any) -> DownloadRequest:
     return DownloadRequest(
         url=url,
@@ -132,8 +138,23 @@ def _written(request: DownloadRequest) -> Path:
         # A trim reaching just past the folder, into the staging folder's name.
         pytest.param("plain", {"trim_filenames": "into_staging"}, id="trim into staging"),
         # The restriction stays on the download pass, where the folder is literal text.
-        pytest.param("Talks: 2026", {"restrict_filenames": True}, id="plain names"),
-        pytest.param("Talks: 2026", {"trim_filenames": 12, "restrict_filenames": True}, id="both"),
+        pytest.param("Talks & notes, 2026", {"restrict_filenames": True}, id="plain names"),
+        pytest.param(
+            "Talks & notes, 2026", {"trim_filenames": 12, "restrict_filenames": True}, id="both"
+        ),
+        # And the colon `8b0aad6` renamed, where a folder can hold one: no Windows folder can.
+        pytest.param(
+            "Talks: 2026",
+            {"restrict_filenames": True},
+            id="plain names, a colon",
+            marks=_NO_COLON_ON_WINDOWS,
+        ),
+        pytest.param(
+            "Talks: 2026",
+            {"trim_filenames": 12, "restrict_filenames": True},
+            id="both, a colon",
+            marks=_NO_COLON_ON_WINDOWS,
+        ),
     ],
 )
 def test_a_shaped_name_lands_in_the_chosen_folder_and_nowhere_else(
