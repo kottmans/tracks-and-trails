@@ -173,13 +173,40 @@ withholding nothing, and the style never installed (the sweep and the spin-box c
 turn neither re-polishing nor updating (the repaint test, and the existing handover tests); and the
 style asking the drawn widget for its `focusProxy()` (the scroll-bar test).
 
-**Not verified**: Windows, where the wrapped style is the native one rather than Fusion and draws
-its own focus differently; `STARBASE` is offline. And a screen reader, as before.
+**Not verified**: Windows 11, whose default style is `windows11`, not the `windowsvista` measured
+below; and a screen reader, as before.
 
 **Checks, 2026-10-24, on Linux, base `a3214b2`**, with the project `.venv` on `PATH`: `ruff check .`
 and `ruff format --check .` (504 files); `mypy src` (73), bare `mypy` and `mypy --platform win32`
 (234 each); the table check up to date; `tests/unit tests/ui` under `-n 4`, **6,096 passed**, 21
 skipped; `tests/integration` under `-n 4`, **577 passed**. No Windows run: `STARBASE` is offline.
+
+**Native Windows, measured 2026-10-26, not corrected.** `STARBASE` returned that day. CI's
+`windows desktop` runs this file under `offscreen`, which leaves the native style out, and it
+passed there at `d055fc6`. So it was run again in `STARBASE`'s desktop session with the real
+`windows` platform (Windows 10 22H2, style `windowsvista`, which the application keeps, as it sets
+none), with `test_format_table.py` beside it: **9 failed, 96 passed**.
+
+- **The click's side holds natively**: no control the sweep reaches, in either theme, drew a ring
+  on a click.
+- **The key's side falls short on spin boxes**: the sweep failed *"the key after a click added no
+  ring"* on all nine in light and on two in dark (`optionsAtMost`, `settingsConcurrencyChoice`),
+  and the real-click spin-box test in light, *"the key drew no ring"*: 56 pixels changed against a
+  floor of 136.8. **It is the native style's own focus frame, not the wrap**: sampled from 0 to
+  1.5 s after the key, the change holds at 56 to 69 pixels, the difference being the caret, so it
+  is not a transition caught early; and a spin box given a bare `windowsvista` style, outside the
+  wrap, measures the same in both themes, 69 in light and 259 in dark, and draws nothing on a
+  click either. The sheet leaves `QSpinBox` to the platform (`T-133`), so on Windows in light its
+  keyboard focus is faint, by the floor `UX-016`'s tests hold every control to. Whether that is
+  `T-304`'s to correct, `T-133`'s, or accepted on Windows is the Reviewer's disposition to propose.
+
+**Adjacent, measured in the same run, not corrected** (`AGENTS.md` §7): `T-310`'s format table
+states a size too small under the native style. `test_the_stated_width_is_enough_for_both_lists`
+fails at 9, 10 and 11 pt, the video list scrolling sideways by 2, 2 and 3 pixels at its own stated
+width, and `test_the_stated_height_shows_every_row` by 1 pixel of six rows at each size. By the
+test's own account of `AddUrlDialog._widen_for`, the add dialog would then show a scroll bar on
+Windows, `T-310`'s defect; inferred, not seen in the application. Both pass under `offscreen` on
+Windows and on Linux.
 
 ### T-252 — Download tuning and the retry policy the settings screen shows
 
