@@ -2,7 +2,7 @@
 
 **Purpose:** Navigation to canonical task and shared-scope review records.
 **Owner:** Reviewer; Coordinator / Integrator owns shared routing during a wave.
-**Last updated:** 2026-10-24
+**Last updated:** 2026-10-27
 **Update when:** A review record is introduced or its navigation changes.
 
 ## Current navigation
@@ -198,7 +198,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | <a id="2026-08-29--post-approval-boundary-and-t-298-initial-review"></a><a id="2026-08-29--post-approval-correction-focused-re-review"></a>[post-approval-boundaries](reviews/post-approval-boundaries.md) | T-212, T-268, T-289, T-298 | 2 |
 | <a id="2026-08-20--session-coordination-and-evidence-review"></a><a id="2026-08-20--session-evidence-focused-correction-re-review"></a>[session-evidence-2026-08-20](reviews/session-evidence-2026-08-20.md) | T-074, T-238, T-269, T-270, T-272 | 2 |
 | <a id="2026-08-17--duplicate-in-review-entries-repair"></a>[task-ledger-repair](reviews/task-ledger-repair.md) | task ledger repair | 1 |
-| [phase-4-exit](reviews/phase-4-exit.md) | phase 4 exit; [2026-10-24 sign-off](reviews/phase-4-exit.md#2026-10-24--phase-4-exit-sign-off-after-the-resolved-evidence-blocker) | 0 |
+| [phase-4-exit](reviews/phase-4-exit.md) | phase 4 exit; [2026-10-24 sign-off](reviews/phase-4-exit.md#2026-10-24--phase-4-exit-sign-off-after-the-resolved-evidence-blocker); [release attribution correction](reviews/phase-4-exit.md#2026-10-27--release-disposition-attribution-correction) | 0 |
 | [github-community-files](reviews/github-community-files.md) | GitHub community files, installation and page artwork | 0 |
 
 Find a task ID in the middle column to locate its record and any cross-cutting

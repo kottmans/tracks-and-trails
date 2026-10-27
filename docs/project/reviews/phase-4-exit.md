@@ -852,3 +852,23 @@ documentation whitespace were checked. No source, tests, release bytes or task
 closure were changed. The serial task/status owner can synchronize STATUS's
 outstanding-sign-off statement to this dated verdict; the unrelated September audit
 requires no further review.
+
+## 2026-10-27 — Release-disposition attribution correction
+
+**Reviewer:** Codex. **Scope:** Attribution only; no new phase or release review.
+**Record inspected:** the maintainer's 2026-10-25 ruling in
+`7634b55`, beside the [Phase 5 publication condition](../IMPLEMENTATION_PLAN.md#phase-5--distribution).
+
+The 2026-10-24 entry's description of retaining `0.1.0` **“under the maintainer's
+express delegation in this review request” is withdrawn as the operative
+attribution**. The maintainer has explicitly stated that the release disposition
+was theirs to take and ruled on 2026-10-25 that the published `0.1.0` stands,
+without withdrawal, replacement tag or republication. That ruling is the
+authoritative basis for retaining the release, rather than an assertion of
+delegated release authority in this review.
+
+The original dated entry remains unchanged as history. Phase 4's independent
+approval remains dated 2026-10-24; the release's earlier missing approval is not
+backdated or erased. The separate unperformed acceptance sitting and T328-R4's
+existing disposition remain unchanged. No source, release artifact or task
+status changes accompany this note.
