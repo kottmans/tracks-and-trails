@@ -40,6 +40,7 @@ from typing import Any, ClassVar, Final, Self
 from urllib.parse import urlsplit
 
 from tracks_and_trails.core.errors import ErrorKind
+from tracks_and_trails.core.extractor_args import ExtractorArg, extractor_args_problem
 from tracks_and_trails.core.format_sort import format_sort_problem
 from tracks_and_trails.core.job_state import JobStatus, apply
 from tracks_and_trails.core.sections import sections_problem
@@ -1344,6 +1345,15 @@ def _require_sponsorblock(owner: str, value: Any) -> None:
         )
 
 
+def _require_extractor_args(owner: str, value: Any) -> None:
+    """Per-extractor arguments, on a preset or a request (`T-255`): only what the editor can show
+    back and read again, every pair one yt-dlp reads and none `SEC-003` forbids. A hand-edited
+    preset holding one yt-dlp would ignore is set aside when it is read, with the reason."""
+    problem = extractor_args_problem(value.extractor_args)
+    if problem is not None:
+        raise ValueError(f"{owner}.extractor_args: {problem}")
+
+
 #: `-4` and `-6`, spelled as yt-dlp's command line spells them (`T-253`): each binds connections
 #: to the unspecified address of one family, so the networking layer uses only that family's
 #: addresses. Held in `source_address`, which `--source-address` writes too, so the two choices
@@ -1620,6 +1630,11 @@ class DownloadRequest:
     #: only the network settings; see `_require_sponsorblock`.
     sponsorblock_mark: tuple[str, ...] = ()
     sponsorblock_remove: tuple[str, ...] = ()
+    #: Per-extractor arguments (`T-255`), a preset's like the fields above: `--extractor-args` as
+    #: one checked structure of `(key, argument, values)`, sorted, never the text typed; see
+    #: `core/extractor_args.py`. **Out of the `repr`**, since a value can be a token (`DAT-003`,
+    #: amended 2026-10-19), and registered for redaction where the logs are formatted.
+    extractor_args: tuple[ExtractorArg, ...] = field(default=(), repr=False)
 
     #: Network options are carried, never logged as-is. `T-038` redacts at the handler level
     #: (`NFR-007`), which is why a proxy URL may safely live in the model.
@@ -1724,6 +1739,7 @@ class DownloadRequest:
             )
         _require_part("DownloadRequest", self)
         _require_sponsorblock("DownloadRequest", self)
+        _require_extractor_args("DownloadRequest", self)
         _require_flag("DownloadRequest", "embed_subtitles", self.embed_subtitles)
         _require_subtitle_depth("DownloadRequest", self)
         _require_enum("DownloadRequest", "audio_codec", self.audio_codec, AudioCodec)
@@ -1849,6 +1865,8 @@ class Preset:
     #: SponsorBlock (`T-254`); see `DownloadRequest.sponsorblock_mark`.
     sponsorblock_mark: tuple[str, ...] = ()
     sponsorblock_remove: tuple[str, ...] = ()
+    #: Per-extractor arguments (`T-255`); see `DownloadRequest.extractor_args`.
+    extractor_args: tuple[ExtractorArg, ...] = field(default=(), repr=False)
     #: The escape hatch this preset carries (`REQ-031`, `T-184`), the same shape as the request's.
     #:
     #: `REQ-031` says the field is **per preset and overridable per job**, and the maintainer ruled
@@ -1879,6 +1897,7 @@ class Preset:
             object.__setattr__(self, name, _as_tuple_of("Preset", name, getattr(self, name), str))
         _require_part("Preset", self)
         _require_sponsorblock("Preset", self)
+        _require_extractor_args("Preset", self)
         _require_enum("Preset", "audio_codec", self.audio_codec, AudioCodec)
         _require_optional_text("Preset", "audio_quality", self.audio_quality)
         if self.audio_quality is not None and not _is_ytdlp_quality(self.audio_quality):

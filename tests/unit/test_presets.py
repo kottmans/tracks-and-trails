@@ -484,6 +484,8 @@ def test_a_preset_owned_field_cannot_be_overridden(field_name: str) -> None:
         # `T-254`'s SponsorBlock: a job with sponsors cut out is not the preset that was shown.
         "sponsorblock_mark": ("intro",),
         "sponsorblock_remove": ("sponsor",),
+        # `T-255`'s arguments: a job asking YouTube for another client is not the preset shown.
+        "extractor_args": (("youtube", "player_client", ("web",)),),
     }
     assert field_name in sample, f"no hostile value written for {field_name}"
 

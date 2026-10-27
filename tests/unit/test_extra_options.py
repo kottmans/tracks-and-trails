@@ -32,7 +32,7 @@ from tracks_and_trails.downloader.extra_options import (
     options_for,
     refusal_lines,
 )
-from tracks_and_trails.downloader.option_table import OPTION_CLASSES
+from tracks_and_trails.downloader.option_table import OPTION_CLASSES, TYPED_WITH_A_FIELD
 
 
 def only_refusal(text: str) -> tuple[str, str]:
@@ -136,14 +136,24 @@ def test_an_option_that_has_a_control_points_at_the_control() -> None:
     assert reason == HAS_A_CONTROL
 
 
-def test_a_typed_option_with_no_control_yet_is_usable() -> None:
+def test_a_typed_option_with_no_control_yet_is_usable(monkeypatch: pytest.MonkeyPatch) -> None:
     """The other half of the same rule, and the reason `typed` is an admitted class.
 
     An option whose control has not been built is reachable by no other route. `--proxy` has a
-    field, so it is refused above; `--extractor-args` does not until `T-255` builds one, so it is
-    usable here. *(`--concurrent-fragments` was this case until `T-252` built its setting, and
-    `--sleep-interval` until `T-253` built its own.)*
+    field, so it is refused above. **Every typed option has its control since `T-255`**, so the
+    rule is held by taking one control away: `--extractor-args` without its field is usable
+    again. *(`--concurrent-fragments` was this case until `T-252` built its setting,
+    `--sleep-interval` until `T-253` and `--extractor-args` until `T-255`.)*
     """
+    from tracks_and_trails.downloader import extra_options
+
+    assert only_refusal("--extractor-args youtube:player_client=web")[1] == HAS_A_CONTROL
+    monkeypatch.setattr(
+        extra_options,
+        "TYPED_WITH_A_FIELD",
+        {k: v for k, v in TYPED_WITH_A_FIELD.items() if k != "--extractor-args"},
+    )
+
     admission = admit("--extractor-args youtube:player_client=web")
 
     assert admission.usable, [(r.option, r.reason) for r in admission.refusals]

@@ -1579,7 +1579,22 @@ def _preset_from(raw: Any) -> Preset:
     for name in ("post_processors", "subtitle_languages", "download_sections"):
         if name in values:
             values[name] = tuple(values[name])
+    if "extractor_args" in values:
+        values["extractor_args"] = _extractor_args_from(values["extractor_args"])
     return Preset(**values, built_in=False)
+
+
+def _extractor_args_from(raw: Any) -> Any:
+    """`[[key, argument, [values]], ...]` as the model's tuples (`T-255`). **Raises** nothing of
+    its own: anything not in that shape is handed on as it is, for `Preset` to refuse."""
+    if not isinstance(raw, list):
+        return raw
+    return tuple(
+        (item[0], item[1], tuple(item[2]))
+        if isinstance(item, list) and len(item) == 3 and isinstance(item[2], list)
+        else item
+        for item in raw
+    )
 
 
 def _presets_from(document: dict[str, Any]) -> tuple[tuple[Preset, ...], str | None]:
@@ -1750,7 +1765,15 @@ def _toml_value(value: Any) -> str:
         # string the fallback below would write is a value `Preset` refuses on the way back in.
         return str(value)
     if isinstance(value, tuple | list):
-        return "[" + ", ".join(_toml_string(str(item)) for item in value) + "]"
+        # **Nested for `extractor_args`** (`T-255`): an array of `[key, argument, [values]]`.
+        return (
+            "["
+            + ", ".join(
+                _toml_value(item) if isinstance(item, tuple | list) else _toml_string(str(item))
+                for item in value
+            )
+            + "]"
+        )
     return _toml_string(str(value))
 
 

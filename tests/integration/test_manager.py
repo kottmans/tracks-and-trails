@@ -2915,6 +2915,45 @@ def test_a_download_waiting_before_its_file_is_running_not_probing(
     assert repository.statuses("job-1") == [JobStatus.PROBING, JobStatus.RUNNING]
 
 
+def test_extractor_argument_values_are_registered_for_redaction_before_the_session(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`DAT-003`, amended 2026-10-19** (`T-255`): a value can be a token, and yt-dlp prints
+    one alone (*got "…"*), so it is registered where the options field's are, in the parent,
+    before the session starts. A fixed vocabulary's value, a client's name, stays readable."""
+    import logging
+
+    from tracks_and_trails.core.logging import RedactingFormatter, forget_the_secrets
+
+    canary = "T255_PO_TOKEN_CANARY"
+    job = make_job("job-1", "https://example.invalid/x", tmp_path)
+    request = replace(
+        job.request,
+        extractor_args=(
+            ("youtube", "player_client", ("android",)),
+            ("youtube", "po_token", (f"web.gvs+{canary}",)),
+        ),
+    )
+    repository.add(replace(job, request=request, status=JobStatus.READY))
+    download = manager(entry_point=child_downloading_forever)
+    forget_the_secrets()
+    try:
+        download.start("job-1", SessionKind.DOWNLOAD)
+        assert spin(lambda: repository.jobs["job-1"].status is JobStatus.RUNNING)
+
+        def shown(message: str) -> str:
+            record = logging.LogRecord("t", logging.INFO, __file__, 1, message, (), None)
+            return RedactingFormatter().format(record)
+
+        assert canary not in shown(f'Expected "CLIENT.CONTEXT+PO_TOKEN", got "web.gvs+{canary}"')
+        assert "android" in shown("[youtube] x: Downloading android player API JSON")
+    finally:
+        forget_the_secrets()
+
+
 def test_a_probe_session_is_refused_for_a_ready_job(
     tmp_path: Path, repository: FakeRepository, manager: Callable[..., DownloadManager]
 ) -> None:

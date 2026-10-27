@@ -105,6 +105,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tracks_and_trails.core.extractor_args import as_text, parsed
 from tracks_and_trails.core.format_sort import format_sort_problem
 from tracks_and_trails.core.models import (
     ALL_SUBTITLE_LANGUAGES,
@@ -281,6 +282,16 @@ def sponsorblock_name(category: str, choice: str) -> str:
     words = "".join(part.capitalize() for part in category.split("_"))
     return f"optionsSponsorBlock{words}{choice.capitalize()}"
 
+
+#: The group above the options field (`UX-015`, amended 2026-10-19, third, `T-255`).
+EXTRACTOR_ARGS_TITLE: Final = "Extractor arguments"
+EXTRACTOR_ARGS_NAME: Final = "optionsExtractorArgs"
+EXTRACTOR_ARGS_REFUSALS_NAME: Final = "optionsExtractorArgsRefusals"
+EXTRACTOR_ARGS_HINT: Final = (
+    "Arguments for one site's extractor, one per line, such as youtube:player_client=web or "
+    "youtube:lang=fr;player_skip=js. Only arguments yt-dlp reads are accepted. They are shown back "
+    "one line per site."
+)
 
 SAVE_PRESET_NAME: Final = "optionsSavePreset"
 SAVE_RESULT_NAME: Final = "optionsSaveResult"
@@ -566,6 +577,8 @@ class OptionsDialog(QDialog):
         self._format_sort_usable = True
         #: Whether the sections as last checked may be used (`T-252`).
         self._part_usable = True
+        #: Whether the extractor arguments as last checked may be used (`T-255`).
+        self._extractor_args_usable = True
         #: *Chapters* as the user left it, given back once SponsorBlock marks nothing (`T-254`).
         self._chapters_own = preset.embed_chapters
         self._build()
@@ -666,6 +679,7 @@ class OptionsDialog(QDialog):
         stack.addWidget(self._build_subtitles())
         stack.addWidget(self._build_which_items())
         stack.addWidget(self._build_which_part())
+        stack.addWidget(self._build_extractor_args())
         stack.addWidget(self._build_extra_options())
 
         scroller = _OptionGroups(self)
@@ -1174,6 +1188,46 @@ class OptionsDialog(QDialog):
         self._sections.textChanged.connect(self._part_pause.start)
         return group
 
+    def _build_extractor_args(self) -> QWidget:
+        """*Extractor arguments*, above the options field (`T-255`, ruling 4).
+
+        **Checked as typed**, each refused line or argument named with its reason, and shown back
+        merged and normalized when the editor opens: one line per key, arguments in order.
+        """
+        group = QGroupBox(EXTRACTOR_ARGS_TITLE, self)
+        layout = QVBoxLayout(group)
+        hint = QLabel(EXTRACTOR_ARGS_HINT, group)
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        self._extractor_args = _OptionsBox(group)
+        self._extractor_args.setObjectName(EXTRACTOR_ARGS_NAME)
+        self._extractor_args.setAccessibleName(EXTRACTOR_ARGS_TITLE)
+        self._extractor_args.setAccessibleDescription(EXTRACTOR_ARGS_HINT)
+        self._extractor_args.setTabChangesFocus(True)
+        self._extractor_args.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        hint.setBuddy(self._extractor_args)
+        layout.addWidget(self._extractor_args)
+        self._extractor_args_refusals = QLabel("", group)
+        self._extractor_args_refusals.setObjectName(EXTRACTOR_ARGS_REFUSALS_NAME)
+        self._extractor_args_refusals.setWordWrap(True)
+        # A refusal quotes what was typed, which is the user's own text.
+        self._extractor_args_refusals.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self._extractor_args_refusals)
+        self._extractor_args.textChanged.connect(self._check_extractor_args)
+        return group
+
+    def _check_extractor_args(self) -> None:
+        """Say what in the field yt-dlp would ignore or `SEC-003` forbids (`T-255`)."""
+        _structure, problems = parsed(self._extractor_args.toPlainText())
+        self._extractor_args_refusals.setText("\n".join(problems))
+        self._extractor_args_usable = not problems
+        self._update_accepting()
+
+    def _extractor_args_ok(self) -> bool:
+        return not parsed(self._extractor_args.toPlainText())[1]
+
     def _build_extra_options(self) -> QWidget:
         """The last group, below *Which part* and always visible (`UX-015`, `REQ-031`)."""
         group = QGroupBox(EXTRA_OPTIONS_TITLE, self)
@@ -1306,6 +1360,8 @@ class OptionsDialog(QDialog):
 
         self._show_which_items(preset)
         self._show_which_part(preset)
+        # **Shown back merged and normalized** (`T-255`, ruling 4).
+        self._extractor_args.setPlainText(as_text(preset.extractor_args))
 
     def _show_which_part(self, preset: Preset) -> None:
         """Show the preset's sections and live choice, and check the sections at once (`T-252`)."""
@@ -1370,6 +1426,7 @@ class OptionsDialog(QDialog):
             and self._subtitle_format_usable
             and self._format_sort_usable
             and self._part_usable
+            and self._extractor_args_usable
         )
         self._ok_button.setEnabled(usable)
         if self._save_preset is not None:
@@ -1538,6 +1595,7 @@ class OptionsDialog(QDialog):
             and self._subtitle_format_ok()
             and self._format_sort_ok()
             and self._part_ok()
+            and self._extractor_args_ok()
         ):
             super().accept()
 
@@ -1783,6 +1841,8 @@ class OptionsDialog(QDialog):
             live_from_start=self._live_from_start.isChecked(),
             sponsorblock_mark=self._chosen_sponsorblock("mark"),
             sponsorblock_remove=self._chosen_sponsorblock("cut"),
+            # What passed the check; a refused line keeps OK disabled, so none is dropped here.
+            extractor_args=parsed(self._extractor_args.toPlainText())[0],
             extra_options=extra_text,
             extra_option_argv=extra_argv,
         )

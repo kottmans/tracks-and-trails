@@ -55,6 +55,7 @@ from yt_dlp.utils import (
 )
 
 from tracks_and_trails.core.errors import TRANSIENT_CONTEXT_KEY, ErrorKind, FailureDetail
+from tracks_and_trails.core.extractor_args import as_ytdlp
 from tracks_and_trails.core.format_sort import sort_items
 from tracks_and_trails.core.models import (
     MERGE_CONTAINERS,
@@ -1083,6 +1084,11 @@ def build_options(
     # the only place the key is set, and the options field refuses all three spellings.
     if request.source_address is not None:
         options["source_address"] = request.source_address
+    # **Per-extractor arguments, on both passes** (`T-255`): `youtube:player_client` changes which
+    # formats exist, and the user picks from what the probe found. Merged by key and argument, so
+    # two lines for one extractor both reach it, where yt-dlp's command line kept only the last.
+    if request.extractor_args:
+        options["extractor_args"] = as_ytdlp(request.extractor_args)
     # **From the start, on both passes** (`T-252`): yt-dlp's live extractors offer different
     # formats for a stream fetched from its beginning, so the probe has to ask the same question.
     if request.live_from_start:

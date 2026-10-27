@@ -486,6 +486,9 @@ class FormatChoice:
     #: keeps them.
     sponsorblock_mark: tuple[str, ...]
     sponsorblock_remove: tuple[str, ...]
+    #: Per-extractor arguments (`T-255`), out of the `repr` as on the request: a value can be a
+    #: token, as the options field's can.
+    extractor_args: tuple[tuple[str, str, tuple[str, ...]], ...] = field(repr=False)
 
 
 def format_choice_of(source: DownloadRequest | Preset) -> FormatChoice:
@@ -635,6 +638,7 @@ def to_request(
         live_from_start=preset.live_from_start,
         sponsorblock_mark=preset.sponsorblock_mark,
         sponsorblock_remove=preset.sponsorblock_remove,
+        extractor_args=preset.extractor_args,
         extra_options=preset.extra_options,
         extra_option_argv=preset.extra_option_argv,
     )

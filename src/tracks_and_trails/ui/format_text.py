@@ -137,6 +137,7 @@ def format_name(choice: FormatChoice) -> str:
     clauses = (
         f"{_format_depth(choice)}{_post_processing(choice)}{_subtitle_depth(choice)}"
         f"{_kept_beside(choice)}{_which_items(choice)}{_which_part(choice)}{_sponsorblock(choice)}"
+        f"{_extractor_args(choice)}"
         f"{_extra_options(choice)}"
     )
     if name is None:
@@ -198,6 +199,7 @@ def _base_preset_for(choice: FormatChoice) -> str | None:
         live_from_start=False,
         sponsorblock_mark=(),
         sponsorblock_remove=(),
+        extractor_args=(),
     )
     if plain == choice:
         return None
@@ -371,6 +373,13 @@ def _sponsorblock(choice: FormatChoice) -> str:
     if choice.sponsorblock_remove:
         parts.append(f"cutting out {named(choice.sponsorblock_remove)}")
     return f" · SponsorBlock {'; '.join(parts)}" if parts else ""
+
+
+def _extractor_args(choice: FormatChoice) -> str:
+    """Which extractors are given arguments, and **never the values** (`T-255`): a value can be a
+    token, and a row's name is shown and stored as text."""
+    keys = list(dict.fromkeys(key for key, _, _ in choice.extractor_args))
+    return f" · extractor arguments for {', '.join(keys)}" if keys else ""
 
 
 def _day(text: str) -> str:

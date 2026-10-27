@@ -842,6 +842,134 @@ removed.
 under `-n 4`, **6,392 passed**, 23 skipped; `tests/integration` under `-n 4`, **601 passed**. No
 Windows run of this change.
 
+### T-255 — Per-extractor arguments
+
+**Status:** In Review — built 2026-10-27 on its rulings, at the maintainer's instruction of
+2026-10-26. *(Was Proposed:)* **design ruled 2026-10-19, all four questions as recommended**, the
+first a security ruling (`SEC-003`, `ARC-010`, `DAT-003` and `UX-015` amended that day). Filed
+2026-08-16 by `T-183`
+**Priority:** Lowest among the nine — one option, and the most expert-facing of the 44
+**Options (1):** `--extractor-args`
+**Specific criteria:** the `IE_KEY:ARGS` grammar is parsed into a validated structure, never stored
+as the string the user typed; an unknown extractor key is refused **with the reason** rather than
+accepted and ignored, which is `T012-R5`'s defect exactly; values are redacted under `DAT-004` like
+any other text this application supplies, because an extractor argument can carry a token.
+
+#### Mapped 2026-10-14 — the design, before the code
+
+Mapped against `8b0aad6` on real YouTube requests, with every request outside YouTube's hosts
+refused unsent; probes in the implementer's scratch notes.
+
+- **Unruled and admitted on unreleased `main`: two arguments choose the host requests go to.**
+  `youtube:innertube_host=H` sent all four player requests to `H` (measured, refused unsent), with
+  a signed-in session's authorization computed for it (read); `tiktok:api_hostname=H` copies the
+  TikTok session cookie onto `H` (read, not run). `SEC-003` declined a configurable SponsorBlock
+  endpoint because *its typo is a new network destination*; nothing covers these. **High guess,
+  Critical once signed in.**
+- **Any key and argument is admitted and an unknown one silently ignored** — `T012-R5` live
+  (`nosuchie:anything=1`, `youtube:nosucharg=1`). **A repeated `--extractor-args` for one
+  extractor keeps only the last.** **Medium guesses.**
+- Lower: `generic:impersonate` is `SEC-003`'s forbidden `--impersonate` as an argument, inert only
+  while curl_cffi is absent; `youtube-ejs:dev=true` turns off yt-dlp's checks on the solver script
+  it executes (read); `zan:split_angles=true` makes ffmpeg re-encode where `requires_ffmpeg`
+  cannot see it (read).
+- **The key space is not the extractor list**: `twitch`, `jiosaavn`, `wrestleuniverse`,
+  `stacommu`, `youtube-ejs`, `youtubepot-*` and `youtubejsc-*` are read and are not extractor keys,
+  and no extractor declares its argument names. Token-carrying arguments include `po_token`,
+  `visitor_data`, `hls_key`, `device_id` and `client_id`; stored, they are secrets at rest, which
+  meets `DAT-003`'s reopening condition. The entry's `DAT-004` is withdrawn since 2026-08-01;
+  `DAT-003`'s `T-049` amendment and `ARC-010`'s 2026-09-26 rule are what bind.
+
+**Ruled 2026-10-19: all four as recommended.** Forbidden, and refused where typed with the reason:
+the configurable endpoints `youtube:innertube_host` and `tiktok:api_hostname`, impersonation
+through `generic:impersonate`, and the solver's developer switches `youtube-ejs:dev`, `repo` and
+`script_version`. Everything else is permitted, `hls_key` included, and the documented
+`innertube_host=studio.youtube.com` workaround is lost. *Unknown* means absent from an allowlist
+of key and argument pairs generated from the pinned source and drift-tested like the option table;
+plugin keys are refused. Values are stored verbatim and registered for redaction, except fixed
+vocabularies. The editor is one *Extractor arguments* group above the options field, one
+`KEY:ARG=V;…` per line, checked as typed and shown back merged and normalized.
+
+**Questions for the maintainer** (recommended first; the first is a security ruling):
+
+1. **Which pairs are forbidden.** Four families on `SEC-003`'s and `SEC-004`'s reasoning:
+   configurable endpoints, impersonation, and the solver's developer switches; everything else,
+   `hls_key` included, permitted (the documented `innertube_host=studio.youtube.com` workaround is
+   lost). / Endpoints only. / Everything, as the user's own text.
+2. **What *unknown* is checked against.** A generated allowlist of key and argument pairs from the
+   pinned source, drift-tested like `option_table.py` (plugin keys refused). / Extractor keys only
+   (refuses working `twitch` arguments). / A short hand-written list.
+3. **Storing token values.** Verbatim, with `DAT-003`'s provenance row amended to name the field and
+   values registered for redaction except fixed vocabularies. / Kept out of storage (no retry after
+   a restart). / The system keyring (a new runtime dependency).
+4. **The editor.** One *Extractor arguments* group above the hatch, one `KEY:ARG=V;…` per line,
+   checked as typed and shown back merged and normalized. / A table. / Named YouTube controls.
+
+#### Built 2026-10-27
+
+- **A checked structure, never the text** (`T-255`'s criterion). `Preset` and `DownloadRequest` gain
+  `extractor_args`, `(key, argument, values)` sorted, each pair once, out of the `repr`.
+  `core/extractor_args.py` transcribes yt-dlp's grammar from `options.py` at the pin and is held to
+  `parse_options` line by line. **Two lines for one extractor are merged**, the later argument
+  winning, which closes the mapped defect that a repeated `--extractor-args` kept only the last.
+- **The allowlist is generated from the pinned source** (ruling 2):
+  `tools/ytdlp_extractor_args.py` reads every `_configuration_arg` call by syntax tree, resolving
+  the key a call names, or every real extractor the enclosing method runs for, plus YouTube's token
+  providers (`youtubepot-NAME`) and the solver's `ejs_setting` (`youtube-ejs`), into
+  `core/extractor_arg_table.py`: 27 keys and 68 pairs at 2026.08.19. Three reads name their
+  argument through a variable and are answered in the generator, each read from the class's own
+  table where it has one; **any other read it cannot resolve stops it**, so a new one is classified, not missed.
+  `test_extractor_args.py` regenerates and compares, as the option table's test does. A plugin's
+  keys are not on it.
+- **Refused with the reason, as typed** (`T012-R5`'s defect closed for this option): an unknown key,
+  an argument its key does not read (with the ones it does), a line of no shape, and the six
+  forbidden pairs (ruling 1, `SEC-003` amended), each with why in plain words. A hand-edited preset
+  holding one is set aside when it is read, with the reason.
+- **Stored as typed, redacted except a fixed vocabulary** (ruling 3, `DAT-003` amended): the
+  settings file holds `[key, argument, [values]]`, the queue's store the same, and the manager
+  registers every value for redaction where it registers the options field's, before a session
+  starts. `FIXED_VOCABULARY` lists the 42 pairs whose values are a fixed set, a client's name or a
+  sort order, and is **my classification, for review**; every other value, `po_token`,
+  `visitor_data`, `hls_key`, `device_id` and `client_id` among them, is registered.
+- **The editor** (ruling 4): *Extractor arguments* above the options field, one
+  `KEY:ARG=VALUE;…` per line, refusals shown as typed and *OK* held until there are none, and the
+  preset's own shown back merged and normalized when it opens. The row's name says which
+  extractors are given arguments, never the values.
+- **Sent on both passes**, merged, since an argument can change which formats exist. A real session
+  on loopback: `generic:fragment_query` added to every piece's address, and not without it.
+- **The audit and the hatch**: `--extractor-args` is built; all 66 typed options now have a control.
+  The options field refuses it for its control. The test that held a typed option without a
+  control to be usable now takes one control away to hold it.
+- **Not changed, as mapped (Low, unruled)**: `zan:split_angles=true` makes ffmpeg re-encode where
+  the ffmpeg gate cannot see it, so it is offered without ffmpeg; and no real site was asked.
+
+**Tests**: `tests/unit/test_extractor_args.py`: the allowlist regenerated and compared, every read
+resolved, the release it was read from, the mapping's pairs and the token-carrying ones known; each
+forbidden pair and each fixed vocabulary one yt-dlp reads, and none of the tokens fixed; one line
+read as `parse_options` reads it, two lines merged where yt-dlp keeps the last, the later argument
+winning, the text shown back lossless; every refusal with its reason; the model's rule on both
+owners, out of the `repr`, through the file and the store; both passes handed the merged arguments
+as yt-dlp's own options would be; the row's name; the options field's refusal.
+`tests/ui/test_options_extractor_args.py`: shown back normalized, merged into the result, refused as
+typed with *OK* held, and named. `tests/integration/test_extractor_args.py`: a real session where
+the argument reaches the extractor and one where it is not given. `test_manager.py`: the values
+registered for redaction before the session, a client's name left readable. The audit, editor,
+preset, hatch and options-field tests gained the field, the group and the spelling.
+
+**Mutations, 35 of 35 caught**, each on copies restored by hash: each refusal let through, the
+merge, the escapes, the separator, the names' case and dashes, the shown-back text, the model's
+order, a semicolon held, the registration of nothing or of everything, either owner unchecked, a
+value in either `repr`, the request losing the field, the file and the store not nested, nothing or
+one value sent, the manager not registering, the name silent or its base match blind, the editor
+blank, *OK* and *Accept* ungated, the result dropped, the refusals silent, the hatch admitting the
+spelling, and the generator blind below a class, forgetting a stated reading, or its table losing a
+key.
+
+**Checks, 2026-10-27, on Linux, base `f05f720`**, with the project `.venv` on `PATH`: `ruff check .`
+and `ruff format --check .` (519 files); `mypy src` (76), bare `mypy` and `mypy --platform win32`
+(248 each); both tables' checks up to date; `tests/unit tests/ui` under `-n 4`, **6,479 passed**,
+23 skipped; `tests/integration` under `-n 4`, **604 passed**. No Windows run of this change.
+
 ## Ready
 
 <a id="t-302"></a>
@@ -1373,68 +1501,6 @@ beats designing it against an imagined one.
 #### Out of scope
 
 - Any change to `T-014`'s current strict comparison, which is right until then
-
-### T-255 — Per-extractor arguments
-
-**Status:** Proposed — **design ruled 2026-10-19, all four questions as recommended**, the first a
-security ruling (`SEC-003`, `ARC-010`, `DAT-003` and `UX-015` amended that day). Filed 2026-08-16 by
-`T-183`
-**Priority:** Lowest among the nine — one option, and the most expert-facing of the 44
-**Options (1):** `--extractor-args`
-**Specific criteria:** the `IE_KEY:ARGS` grammar is parsed into a validated structure, never stored
-as the string the user typed; an unknown extractor key is refused **with the reason** rather than
-accepted and ignored, which is `T012-R5`'s defect exactly; values are redacted under `DAT-004` like
-any other text this application supplies, because an extractor argument can carry a token.
-
-#### Mapped 2026-10-14 — the design, before the code
-
-Mapped against `8b0aad6` on real YouTube requests, with every request outside YouTube's hosts
-refused unsent; probes in the implementer's scratch notes.
-
-- **Unruled and admitted on unreleased `main`: two arguments choose the host requests go to.**
-  `youtube:innertube_host=H` sent all four player requests to `H` (measured, refused unsent), with
-  a signed-in session's authorization computed for it (read); `tiktok:api_hostname=H` copies the
-  TikTok session cookie onto `H` (read, not run). `SEC-003` declined a configurable SponsorBlock
-  endpoint because *its typo is a new network destination*; nothing covers these. **High guess,
-  Critical once signed in.**
-- **Any key and argument is admitted and an unknown one silently ignored** — `T012-R5` live
-  (`nosuchie:anything=1`, `youtube:nosucharg=1`). **A repeated `--extractor-args` for one
-  extractor keeps only the last.** **Medium guesses.**
-- Lower: `generic:impersonate` is `SEC-003`'s forbidden `--impersonate` as an argument, inert only
-  while curl_cffi is absent; `youtube-ejs:dev=true` turns off yt-dlp's checks on the solver script
-  it executes (read); `zan:split_angles=true` makes ffmpeg re-encode where `requires_ffmpeg`
-  cannot see it (read).
-- **The key space is not the extractor list**: `twitch`, `jiosaavn`, `wrestleuniverse`,
-  `stacommu`, `youtube-ejs`, `youtubepot-*` and `youtubejsc-*` are read and are not extractor keys,
-  and no extractor declares its argument names. Token-carrying arguments include `po_token`,
-  `visitor_data`, `hls_key`, `device_id` and `client_id`; stored, they are secrets at rest, which
-  meets `DAT-003`'s reopening condition. The entry's `DAT-004` is withdrawn since 2026-08-01;
-  `DAT-003`'s `T-049` amendment and `ARC-010`'s 2026-09-26 rule are what bind.
-
-**Ruled 2026-10-19: all four as recommended.** Forbidden, and refused where typed with the reason:
-the configurable endpoints `youtube:innertube_host` and `tiktok:api_hostname`, impersonation
-through `generic:impersonate`, and the solver's developer switches `youtube-ejs:dev`, `repo` and
-`script_version`. Everything else is permitted, `hls_key` included, and the documented
-`innertube_host=studio.youtube.com` workaround is lost. *Unknown* means absent from an allowlist
-of key and argument pairs generated from the pinned source and drift-tested like the option table;
-plugin keys are refused. Values are stored verbatim and registered for redaction, except fixed
-vocabularies. The editor is one *Extractor arguments* group above the options field, one
-`KEY:ARG=V;…` per line, checked as typed and shown back merged and normalized.
-
-**Questions for the maintainer** (recommended first; the first is a security ruling):
-
-1. **Which pairs are forbidden.** Four families on `SEC-003`'s and `SEC-004`'s reasoning:
-   configurable endpoints, impersonation, and the solver's developer switches; everything else,
-   `hls_key` included, permitted (the documented `innertube_host=studio.youtube.com` workaround is
-   lost). / Endpoints only. / Everything, as the user's own text.
-2. **What *unknown* is checked against.** A generated allowlist of key and argument pairs from the
-   pinned source, drift-tested like `option_table.py` (plugin keys refused). / Extractor keys only
-   (refuses working `twitch` arguments). / A short hand-written list.
-3. **Storing token values.** Verbatim, with `DAT-003`'s provenance row amended to name the field and
-   values registered for redaction except fixed vocabularies. / Kept out of storage (no retry after
-   a restart). / The system keyring (a new runtime dependency).
-4. **The editor.** One *Extractor arguments* group above the hatch, one `KEY:ARG=V;…` per line,
-   checked as typed and shown back merged and normalized. / A table. / Named YouTube controls.
 
 ### T-339 — Hear Narrator read the Windows application
 

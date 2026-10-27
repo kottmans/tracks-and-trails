@@ -17,10 +17,10 @@ ten policy refusals was not supported by evidence — all corrected. **Then the 
 `SEC-005` forbade the sixteenth option on 2026-08-21 and `SEC-003`'s amendment withdrew two
 permissions the same day. **The refusal list is 94.** **`T-247` built seven typed rows on
 2026-10-11, `T-249` seven more on 2026-10-14, `T-251` four the same day, `T-250` six on
-2026-10-18, `T-248` five on 2026-10-19, `T-252` seven the same day, `T-253` five on 2026-10-26
-and `T-254` three on 2026-10-27**, two of `T-250`'s moved from `hatch` by its ruling, `T-248`'s
-Windows pair moved to `app:policy` by its ruling and `T-253`'s `--source-address` moved from
-`hatch` by its ruling, so 65 of the 66 now have a control.
+2026-10-18, `T-248` five on 2026-10-19, `T-252` seven the same day, `T-253` five on 2026-10-26,
+and `T-254` three and `T-255` one on 2026-10-27**, two of `T-250`'s moved from `hatch` by its
+ruling, `T-248`'s Windows pair moved to `app:policy` by its ruling and `T-253`'s `--source-address`
+moved from `hatch` by its ruling, so all 66 now have a control.
 
 *(**This header said 89 and named only `SEC-003` and `SEC-004` while the summary below said 92 and
 named `SEC-005`** — one document giving both the pre-ruling and post-ruling answer to the question
@@ -94,7 +94,7 @@ gap.
 
 | Class | Rows | What it means |
 |---|---|---|
-| `typed` | 66 | Gets a control, an owner task and a phase position. 65 already have one |
+| `typed` | 66 | Gets a control, an owner task and a phase position. All 66 have one |
 | `hatch` | 90 | Reachable through `REQ-031` only. Every row carries a reason |
 | `app:sets` | 19 | **`build_options` sets this key.** Derived, and drift-checked in both directions |
 | `app:plumbing` | 36 | It *is* the command line rather than a capability — `REQ-030`'s own words |
@@ -396,7 +396,7 @@ rather than guessed at here.
 
 ## The decomposition
 
-**66 typed rows: 65 already have a field, 1 does not.** Nothing is unassigned and nothing is in two
+**66 typed rows: 66 already have a field, 0 do not.** Nothing is unassigned and nothing is in two
 tasks — counted, and the test asserts the partition. A task's rows join the built table when it
 builds them, all of them at once.
 
@@ -411,7 +411,7 @@ builds them, all of them at once.
 | `T-252` | 7 | **Built 2026-10-19** — download tuning and the retry policy's other knobs; `--file-access-retries` and `--retry-sleep` stay in the hatch |
 | `T-253` | 5 | **Built 2026-10-26** — network reachability: address family and politeness delays; `--source-address` moved from `hatch` by its ruling |
 | `T-254` | 3 | **Built 2026-10-27** — SponsorBlock, opt-in per preset |
-| `T-255` | 1 | Per-extractor arguments |
+| `T-255` | 1 | **Built 2026-10-27** — per-extractor arguments |
 | ~~`T-256`~~ | — | **Done — `SEC-004` 2026-08-16, then `SEC-005` and `SEC-003`'s amendment 2026-08-21.** All sixteen forbidden, two permissions withdrawn; `T-184` unblocked |
 
 **`T-256` was first and is done; `T-184` is next.** The hatch could not be built before the refusal
@@ -422,7 +422,7 @@ because `T183-R3` then found a sixteenth — `--legacy-server-connect` — which
 actually unblocked. Every typed-field task is independent of the rest and of the hatch.
 
 
-### The 65 typed options that already have a field
+### The 66 typed options that already have a field
 
 **`built` is stated here rather than inferred from what the nine tasks did not claim** —
 `T183-R4` showed that definition is circular: swapping an unbuilt option for a built one kept
@@ -499,10 +499,11 @@ one day, and is listed against the first.
 | `--sponsorblock-mark` | `sponsorblock_mark` |
 | `--sponsorblock-remove` | `sponsorblock_remove` |
 | `--no-sponsorblock` | `sponsorblock_mark` |
+| `--extractor-args` | `extractor_args` |
 
-**65 rows**: the 21 built before these tasks, `T-247`'s seven, `T-249`'s seven, `T-251`'s four,
-`T-250`'s six, `T-248`'s five, `T-252`'s seven, `T-253`'s five and `T-254`'s three. With `T-255`'s
-one, that is the typed class exactly. *(`-4`, `-6` and `--source-address` all set yt-dlp's
+**66 rows**: the 21 built before these tasks, `T-247`'s seven, `T-249`'s seven, `T-251`'s four,
+`T-250`'s six, `T-248`'s five, `T-252`'s seven, `T-253`'s five, `T-254`'s three and `T-255`'s one,
+which is the typed class exactly. *(`-4`, `-6` and `--source-address` all set yt-dlp's
 `source_address`, the last typed winning, so `T-253`'s ruling made them one choice in *Settings ›
 Network* and moved the third from `hatch` with the first two (`ARC-010`, amended 2026-10-19,
 second).)* *(`T-248`'s Windows pair moved to `app:policy` by its 2026-10-19 ruling:

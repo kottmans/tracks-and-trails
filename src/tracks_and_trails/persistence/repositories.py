@@ -152,6 +152,10 @@ def _deserialize_request(raw: str) -> DownloadRequest:
     payload["post_processors"] = tuple(payload.get("post_processors", ()))
     payload["subtitle_languages"] = tuple(payload.get("subtitle_languages", ()))
     payload["download_sections"] = tuple(payload.get("download_sections", ()))
+    payload["extractor_args"] = tuple(
+        (key, argument, tuple(values))
+        for key, argument, values in payload.get("extractor_args", ())
+    )
     if "media_kind" in payload:
         payload["media_kind"] = MediaKind(payload["media_kind"])
     if "audio_codec" in payload:

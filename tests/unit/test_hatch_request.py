@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import shlex
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -183,12 +184,10 @@ def test_the_probe_sees_the_same_options_as_the_download() -> None:
 
     `--extractor-args` changes which formats exist. A probe run without it lists one set and the
     download then uses another, and the mismatch surfaces as a format that vanished between
-    choosing and downloading.
+    choosing and downloading. *(Typed into the options field until `T-255` gave the arguments a
+    control, which refuses the spelling there; the control's field acts on both passes too.)*
     """
-    request = a_request(
-        extra_options="--extractor-args youtube:player_client=web",
-        extra_option_argv=("--extractor-args", "youtube:player_client=web"),
-    )
+    request = replace(a_request(), extractor_args=(("youtube", "player_client", ("web",)),))
 
     probe = build_options(request, BASE["output_template"], probe_only=True)
 

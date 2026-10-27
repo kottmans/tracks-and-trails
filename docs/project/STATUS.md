@@ -186,6 +186,11 @@ task and review records it summarised.*
   and the lookup carries none of the download's headers, through a session of its own as ruled,
   so ruling 3 did not need to come back
   ([entry](TASKS.md#t-254--sponsorblock-opt-in-per-preset)).
+- **`T-255` was built on 2026-10-27** on its rulings, and is with the Reviewer: extractor
+  arguments as a checked structure, refused with the reason where yt-dlp would ignore them or
+  `SEC-003` forbids them, against an allowlist generated from the pinned source
+  ([entry](TASKS.md#t-255--per-extractor-arguments)). **Every typed option in the audit now has a
+  control**, so stage 3's typed-field tasks are all built; each awaits review.
 - **Fifteen rulings taken 2026-10-19, all as recommended**, every open question in stage 3:
   `T-248`'s two, as built; `T-252`'s last two; `T-253`'s three; `T-254`'s four; and `T-255`'s
   four, the first a security ruling forbidding the extractor-argument pairs that choose a request's

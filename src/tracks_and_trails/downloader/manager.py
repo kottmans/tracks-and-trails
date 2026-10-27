@@ -1705,6 +1705,14 @@ class DownloadManager(QObject):
             from tracks_and_trails.downloader.extra_options import remember_the_hatch
 
             remember_the_hatch(job.request.extra_option_argv)
+        if job.request.extractor_args:
+            # **Per-extractor arguments, for the same reason and in the same place** (`T-255`,
+            # `DAT-003` amended 2026-10-19): a value can be a token, and yt-dlp can print one alone.
+            from tracks_and_trails.core.extractor_args import secret_values
+            from tracks_and_trails.core.logging import remember_a_secret
+
+            for value in secret_values(job.request.extractor_args):
+                remember_a_secret(value)
         session: _Session | None = None
         queue: Any = None
         try:

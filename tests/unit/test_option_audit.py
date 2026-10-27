@@ -142,6 +142,8 @@ _FIELD_ON: Final = {
     # `embed_chapters`, and a cut turns on the same step. The lookup is not an option at all.
     "sponsorblock_mark": None,
     "sponsorblock_remove": ("sponsor",),
+    # `T-255`'s arguments, on both passes.
+    "extractor_args": (("youtube", "player_client", ("web",)),),
     "cookies_from_browser": "firefox",
     # `T-249`'s kept files, on the download only. `ALL` is the case that sets a key of its own;
     # `BEST` shares `writethumbnail` with `embed_thumbnail`, already turned on above.

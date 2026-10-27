@@ -76,6 +76,7 @@ from tracks_and_trails.ui.options_dialog import (
     ENTRIES_REASON_NAME,
     EXTRA_OPTIONS_NAME,
     EXTRA_OPTIONS_TITLE,
+    EXTRACTOR_ARGS_TITLE,
     FFMPEG_FEATURE_CONTROLS,
     FORMAT_CHOSEN_REASON,
     FORMAT_REASON_NAME,
@@ -1241,7 +1242,8 @@ def test_the_field_is_the_last_group_below_which_part(
     editor: Callable[..., OptionsDialog],
 ) -> None:
     """`UX-015`: last, in the scrolling region, always visible; since its 2026-10-11 amendment
-    with *Which items* above it, and since 2026-10-19 *Which part* between the two (`T-252`)."""
+    with *Which items* above it, since 2026-10-19 *Which part* between the two (`T-252`), and
+    *Extractor arguments* directly above it (`T-255`, amended the same day, third)."""
     dialog = editor()
     scroller = dialog.findChild(QScrollArea)
     assert scroller is not None
@@ -1254,10 +1256,11 @@ def test_the_field_is_the_last_group_below_which_part(
         )
     ]
 
-    assert groups[-4:] == [
+    assert groups[-5:] == [
         "Subtitles",
         WHICH_ITEMS_TITLE,
         WHICH_PART_TITLE,
+        EXTRACTOR_ARGS_TITLE,
         EXTRA_OPTIONS_TITLE,
     ], groups
     assert extra_box(dialog).isVisibleTo(dialog)
