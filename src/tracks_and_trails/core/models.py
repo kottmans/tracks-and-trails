@@ -1243,14 +1243,19 @@ def is_held_timeout(seconds: int | float) -> bool:
 
 
 def _in_tenths(seconds: int | float, most: int) -> bool:
-    """A whole number of tenths of a second, more than none and at most `most` (`T252-R3`)."""
+    """A whole number of tenths of a second, at least one and at most `most` (`T252-R3`).
+
+    **The count of tenths is what must be at least one**, not the seconds more than none: the
+    tolerance that lets `0.3` be three tenths also made `1e-9` a whole number of them, zero, which
+    both owners held, the file kept unreported and the screen showed as *the downloader's own*
+    (`T252-R3`, second round, and `T253-R2`'s for the waits).
+    """
     if isinstance(seconds, float) and not math.isfinite(seconds):
         return False
-    # A positive whole number of tenths is at least one tenth, so the floor needs no test.
     if not 0 < seconds <= most:
         return False
     tenths = seconds * 10
-    return abs(tenths - round(tenths)) < 1e-6
+    return round(tenths) >= 1 and abs(tenths - round(tenths)) < 1e-6
 
 
 def _require_connection(owner: str, value: Any) -> None:

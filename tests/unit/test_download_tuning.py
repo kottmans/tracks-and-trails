@@ -28,6 +28,7 @@ from tracks_and_trails.core.models import (
     MediaKind,
     NetworkOptions,
     Preset,
+    is_held_timeout,
 )
 from tracks_and_trails.core.paths import UnsafePathError
 from tracks_and_trails.core.sections import NO_LENGTH
@@ -113,6 +114,9 @@ def test_the_samples_name_every_connection_setting() -> None:
         # `T252-R3`: finer than the tenths the screen shows, which it showed as another number.
         ("socket_timeout", 0.04),
         ("socket_timeout", 7.55),
+        # Second round: within the tolerance of zero tenths, which the floor had stopped checking.
+        ("socket_timeout", 1e-9),
+        ("socket_timeout", 1e-8),
         ("socket_timeout", True),
         ("socket_timeout", "20"),
         ("concurrent_fragments", 0),
@@ -123,6 +127,26 @@ def test_the_samples_name_every_connection_setting() -> None:
 def test_a_value_the_downloader_cannot_use_is_refused(owner: Any, field: str, value: Any) -> None:
     with pytest.raises((TypeError, ValueError)):
         owner(**{field: value})
+
+
+@pytest.mark.parametrize(
+    ("seconds", "held"),
+    [
+        (0.1, True),
+        (0.1 - 1e-8, True),
+        (0.30000000000000004, True),
+        (600, True),
+        (1e-9, False),
+        (1e-8, False),
+        (1e-7, False),
+        (0.05, False),
+        (0.1 - 1e-5, False),
+        (600 + 1e-9, False),
+    ],
+)
+def test_the_tolerance_is_around_a_tenth_never_around_none(seconds: float, held: bool) -> None:
+    """`T252-R3`, second round: a value within the tolerance of zero tenths is no timeout."""
+    assert is_held_timeout(seconds) is held
 
 
 def test_zero_retries_and_the_ceiling_of_pieces_are_answers() -> None:
@@ -211,6 +235,8 @@ def test_nobody_choosing_writes_none_of_them(tmp_path: Path) -> None:
         ("socket_timeout = 0.04", NetworkOptions(socket_timeout=0.1), True),
         ("socket_timeout = 7.55", NetworkOptions(socket_timeout=7.5), True),
         ("socket_timeout = 0.3", NetworkOptions(socket_timeout=0.3), False),
+        ("socket_timeout = 1e-9", NetworkOptions(socket_timeout=0.1), True),
+        ("socket_timeout = 1e-8", NetworkOptions(socket_timeout=0.1), True),
         # `T252-R2`: an integer too large for a `float`, beside a valid key it must not take.
         (
             f"fragment_retries = 4\nsocket_timeout = {10**400}",
@@ -373,18 +399,24 @@ class _Probe:
     def __init__(self, answer: str | None) -> None:
         self.answer = answer
         self.asked = 0
+        self.arguments: list[str] = []
 
     def __call__(self, arguments: Any, timeout: float) -> tuple[int, str]:
         self.asked += 1
+        self.arguments = list(arguments)
         return (0, self.answer) if self.answer is not None else (1, "")
 
 
-_LINK: Final = {"url": "https://media.example/clip.mp4"}
+_LINK: Final = {"url": "https://media.example/clip.mp4", "protocol": "https"}
 
 
-def _placed(sections: tuple[str, ...], info: dict[str, Any], probe: _Probe) -> float | None:
-    request = replace(a_request(), download_sections=sections)
-    return worker._place_the_sections(request, info, Path("/ff/ffprobe"), probe, None)
+def _placed(
+    sections: tuple[str, ...], info: dict[str, Any], probe: _Probe, **fields_: Any
+) -> float | None:
+    request = replace(a_request(**fields_), download_sections=sections)
+    return worker._place_the_sections(
+        request, info, Path("/ff/ffprobe"), probe, None, float(DEFAULT_TIMEOUT)
+    )
 
 
 def test_a_length_the_site_gives_is_used_and_the_link_is_not_asked() -> None:
@@ -428,6 +460,132 @@ def test_with_no_length_from_the_site_or_the_link_the_item_is_cancelled() -> Non
         _placed(("*1-3",), dict(_LINK), _Probe(None))
 
     assert cancelled.value.reason == NO_LENGTH
+
+
+# --- T252-R1, second round: a section empty once placed ---------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("sections", "named"),
+    [
+        (("*0--100",), "*0--100 ends at or before its start"),
+        (("*0--6",), "*0--6 ends at or before its start"),
+        (("*0-2", "*0--6"), "*0--6 ends at or before its start"),
+        (("*3--4",), "*3--4 ends at or before its start"),
+        (("*-1--2",), "*-1--2 ends at or before its start"),
+        (("*0--6", "*4--4"), "*0--6 and *4--4 end at or before their start"),
+    ],
+    ids=["past the start", "to zero", "beside one inside", "reversed", "both from the end", "two"],
+)
+def test_a_range_empty_once_placed_cancels_the_item(sections: tuple[str, ...], named: str) -> None:
+    """**The review's counterexamples**: yt-dlp resolves `*0--100` and `*0--6` on six seconds to
+    zero and zero, and downloads that as no section at all, the whole item, reported as the part."""
+    with pytest.raises(worker.NothingDownloadedError) as cancelled:
+        _placed(sections, {**_LINK, "duration": 6}, _Probe(None))
+
+    assert cancelled.value.reason == (
+        f"Nothing was downloaded: {named} in this item, which is 6 seconds long."
+    )
+    assert "*0-2 " not in cancelled.value.reason, "a section inside the item was named"
+
+
+@pytest.mark.parametrize("sections", [("*0--2",), ("*-2-inf",), ("*5-9",), ("*0-inf",)])
+def test_a_range_with_something_in_it_is_placed(sections: tuple[str, ...]) -> None:
+    assert _placed(sections, {**_LINK, "duration": 6}, _Probe(None)) is None
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "empty"),
+    [(3, 3, True), (3, 2, True), (3, None, False), (None, 4, False), (2, 9, False)],
+)
+def test_the_address_s_range_is_placed_too(start: int | None, end: int | None, empty: bool) -> None:
+    info = {**_LINK, "duration": 6, "start_time": start, "end_time": end}
+
+    if not empty:
+        assert _placed(("*from-url",), info, _Probe(None)) is None
+        return
+    with pytest.raises(worker.NothingDownloadedError, match=r"\*from-url ends at or before"):
+        _placed(("*from-url",), info, _Probe(None))
+
+
+def test_a_pattern_matching_a_chapter_of_no_length_cancels_the_item() -> None:
+    """yt-dlp ends a chapter where the next starts, so two starting at zero make the first zero to
+    zero, which it downloads as the whole item. A chapter pattern needs no length to be checked."""
+    chapters = [
+        {"title": "Intro", "start_time": 0, "end_time": 0},
+        {"title": "Main", "start_time": 0, "end_time": 6},
+    ]
+    probe = _Probe(None)
+
+    with pytest.raises(worker.NothingDownloadedError) as cancelled:
+        _placed(("Intro",), {**_LINK, "chapters": chapters}, probe)
+
+    assert cancelled.value.reason == (
+        "Nothing was downloaded: Intro matches a chapter of this item that has no length."
+    )
+    assert _placed(("Main",), {**_LINK, "chapters": chapters}, probe) is None
+    assert _placed(("Ma",), {**_LINK, "chapters": chapters}, probe) is None, "searched, not matched"
+    assert probe.asked == 0
+
+
+# --- T252-R5 and T253-R3: the link is read by the request's route -----------------------------
+
+
+def test_the_length_is_read_by_the_request_s_proxy_address_and_timeout() -> None:
+    probe = _Probe("6.0")
+
+    _placed(
+        ("*1-3",),
+        dict(_LINK),
+        probe,
+        proxy="http://proxy.example:3128",
+        source_address="::",
+        socket_timeout=7.5,
+    )
+
+    arguments = probe.arguments
+    assert arguments[arguments.index("-http_proxy") + 1] == "http://proxy.example:3128"
+    assert arguments[arguments.index("-local_addr") + 1] == "::"
+    assert arguments[arguments.index("-timeout") + 1] == "7500000"
+
+
+def test_with_nothing_chosen_the_read_waits_as_long_as_yt_dlp_would(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
+        monkeypatch.delenv(name, raising=False)
+    probe = _Probe("6.0")
+
+    _placed(("*1-3",), dict(_LINK), probe)
+
+    arguments = probe.arguments
+    assert arguments[arguments.index("-timeout") + 1] == str(DEFAULT_TIMEOUT * 1_000_000)
+    assert arguments[arguments.index("-http_proxy") + 1] == ""
+    assert "-local_addr" not in arguments
+
+
+def test_the_system_s_proxy_is_the_one_read_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    """yt-dlp's own reading of it, `urllib.request.getproxies`, when the request names none."""
+    monkeypatch.setenv("https_proxy", "http://system.example:8080")
+    probe = _Probe("6.0")
+
+    _placed(("*1-3",), dict(_LINK), probe)
+
+    assert probe.arguments[probe.arguments.index("-http_proxy") + 1] == "http://system.example:8080"
+
+
+def test_a_proxy_ffmpeg_would_go_around_cancels_the_item_unread() -> None:
+    from tracks_and_trails.core.sections import NOT_THROUGH_THE_PROXY
+
+    probe = _Probe("6.0")
+
+    with pytest.raises(worker.NothingDownloadedError) as cancelled:
+        _placed(("*1-3",), dict(_LINK), probe, proxy="socks5://proxy.example:1080")
+
+    assert cancelled.value.reason == NOT_THROUGH_THE_PROXY
+    assert probe.asked == 0, "ffprobe was started"
+    # The site's own length needs no read, so no route either.
+    assert _placed(("*1-3",), {**_LINK, "duration": 6}, probe, proxy="socks5://p:1") is None
 
 
 def test_a_section_with_no_media_fails_with_the_staged_info_json_stripped(tmp_path: Path) -> None:

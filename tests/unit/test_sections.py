@@ -15,10 +15,15 @@ from typing import Final
 
 import pytest
 from yt_dlp import parse_options
+from yt_dlp.utils import download_range_func
 from yt_dlp.utils import parse_duration as yt_dlp_duration
 
 from tracks_and_trails.core.sections import (
     FROM_URL,
+    empty_chapter_reason,
+    empty_chapters,
+    empty_once_placed,
+    empty_reason,
     length_text,
     needs_the_length,
     parse_duration,
@@ -288,6 +293,83 @@ def test_the_address_s_own_range_starts_where_the_address_says() -> None:
     assert starting_past((FROM_URL,), 6.0, url_start=7.0) == (FROM_URL,)
     assert starting_past((FROM_URL,), 6.0, url_start=3.0) == ()
     assert starting_past((FROM_URL,), 6.0) == (), "an address naming no start starts at zero"
+
+
+# --- T252-R1, second round: empty once placed -------------------------------------------------
+
+#: Ranges against a six-second item: from the start, from the end, mixed, reversed and past it.
+PLACED_RANGES: Final = (
+    "*0-2", "*0--100", "*0--6", "*0--5.9", "*3--4", "*3--3", "*-2-inf", "*-1--2", "*-100--99",
+    "*-100--1", "*5-9", "*6-7", "*99-100", "*0-inf", "*2.5-2.6", "*-0.5--0.4", "*1-2,3--4",
+)  # fmt: skip
+
+
+def _yt_dlp_says_empty(section: str, length: float) -> bool:
+    """yt-dlp's own placement: `download_range_func` resolves the ends by the item's duration and
+    `process_video_result` cuts the end to it; ffmpeg is then asked for `end - start`."""
+    (ranges,) = [parse_options(["--download-sections", section]).ydl_opts["download_ranges"]]
+    assert isinstance(ranges, download_range_func)
+    placed = list(ranges({"duration": length, "id": "x"}, None))
+    return any(min(span["end_time"], length) <= span["start_time"] for span in placed)
+
+
+@pytest.mark.parametrize("length", [6.0, 0.5, 120.0])
+@pytest.mark.parametrize("section", PLACED_RANGES)
+def test_a_range_is_empty_here_exactly_when_yt_dlp_places_it_empty(
+    section: str, length: float
+) -> None:
+    assert (section in empty_once_placed((section,), length)) is _yt_dlp_says_empty(section, length)
+
+
+def test_the_review_s_ranges_are_empty_and_their_neighbours_are_not() -> None:
+    """The second round's counterexamples on the six-second clip, each beside one that is not."""
+    assert empty_once_placed(("*0--100", "*0--6", "*0-2", "*0--2"), 6.0) == ("*0--100", "*0--6")
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "empty"),
+    [
+        (None, None, False),
+        (3.0, 3.0, True),
+        (3.0, 2.0, True),
+        (3.0, None, False),
+        (0.0, 4.0, False),
+    ],
+)
+def test_the_address_s_range_is_empty_where_it_ends_before_it_starts(
+    start: float | None, end: float | None, empty: bool
+) -> None:
+    """Taken as the address says: a range only when it names a start or an end, as yt-dlp reads
+    it, and never counted from the item's end."""
+    assert empty_once_placed((FROM_URL,), 6.0, start, end) == ((FROM_URL,) if empty else ())
+
+
+def test_a_pattern_is_empty_where_a_chapter_it_matches_has_no_length() -> None:
+    chapters = [
+        {"title": "Intro", "start_time": 0, "end_time": 0},
+        {"title": "Main", "start_time": 0, "end_time": 5.5},
+        {"title": "Outro", "start_time": 5.5, "end_time": 5.0},
+        {"title": "Untimed", "start_time": None, "end_time": None},
+        "not a chapter",
+    ]
+
+    assert empty_chapters(("Intro", "Main", "^O", "Untimed", "*0-1"), chapters) == ("Intro", "^O")
+    # Searched in the title, as yt-dlp's `re.search` does, not matched from its start.
+    assert empty_chapters(("tro",), chapters) == ("tro",)
+
+
+def test_the_reasons_name_each_empty_section_and_the_length() -> None:
+    assert empty_reason(("*0--6",), 6.0) == (
+        "Nothing was downloaded: *0--6 ends at or before its start in this item, which is "
+        "6 seconds long."
+    )
+    assert empty_reason(("*0--6", "*3--4"), 6.0) == (
+        "Nothing was downloaded: *0--6 and *3--4 end at or before their start in this item, "
+        "which is 6 seconds long."
+    )
+    assert empty_chapter_reason(("Intro", "Outro")) == (
+        "Nothing was downloaded: Intro and Outro match a chapter of this item that has no length."
+    )
 
 
 @pytest.mark.parametrize(

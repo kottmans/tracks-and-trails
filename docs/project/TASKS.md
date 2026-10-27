@@ -210,8 +210,11 @@ Windows and on Linux.
 
 ### T-252 — Download tuning and the retry policy the settings screen shows
 
-**Status:** In Review — correction 1 built 2026-10-25, awaiting the focused re-review of
-`T252-R1`…`R4`; `T252-R1` ruled 2026-10-25, below. Changes requested 2026-10-24 at `7aadd3d`, one
+**Status:** In Review — correction 2 built 2026-10-27, awaiting the second focused re-review of
+`T252-R1`, `R3` and `R5`; changes requested 2026-10-27 at `a3705e4`, `R2` and `R4` resolved, `R6`
+routed to `T-253`
+([record](reviews/T-252.md#2026-10-27--first-focused-correction-review)). Correction 1 built
+2026-10-25; `T252-R1` ruled 2026-10-25, below. Changes requested 2026-10-24 at `7aadd3d`, one
 Critical and two Medium blockers
 ([record](reviews/T-252.md#2026-10-24--initial-download-tuning-and-sections-review)); built
 2026-10-19 on its rulings, at the maintainer's request that day.
@@ -487,6 +490,55 @@ and `ruff format --check .` (504 files); `mypy src` (73), bare `mypy` and `mypy 
 (234 each); the table check up to date; `tests/unit tests/ui` under `-n 4`, **6,117 passed**, 21
 skipped; `tests/integration` under `-n 4`, **577 passed**. Two comments were rewrapped after the
 suites ran. No Windows run: `STARBASE` is offline.
+
+**`R1`, `R3` and `R5`, corrected 2026-10-27, awaiting the second focused re-review**
+([record](reviews/T-252.md#2026-10-27--first-focused-correction-review)), on `fdff1b4`. `R5`'s
+correction is also `T253-R3`'s, and `R3`'s shared helper is `T253-R2`'s, as the review routed them:
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T252-R1`, Critical — `*0--100` and `*0--6` on the six-second clip, and `*0--6` beside `*0-2`, succeeded with the whole item | **Every section is placed as yt-dlp places it, and one empty once placed cancels the item** (`core/sections.empty_once_placed`): both ends resolved by `download_range_func`'s rule, counted from the end and never below zero, the end cut to the length as `process_video_result` cuts it. Zero to zero is what yt-dlp downloads as no section at all. Reversed ranges (`*3--4`) and `*from-url` with an end at or before its start are refused the same way, with each such section named | The review's three cases and `*3--4`, through the real worker on the committed clip: each **cancelled before a byte moves**, nothing left; the control `*0--2`, zero to four once placed, still cuts four seconds. `test_sections.py` holds the rule to yt-dlp's own `download_range_func` over 17 ranges at three lengths |
+| (audit, same class) | **A chapter pattern matching a chapter of no length cancels the item** (`empty_chapters`). yt-dlp ends a chapter where the next starts, so two at `0:00` make the first zero to zero, the whole-item route again; elsewhere one of no length was an ffmpeg failure | **Reproduced in a yt-dlp session** on the loopback clip, outside the worker: chapters *Intro* and *Main* both at `0:00` were filled as zero to zero and zero to six, and `Intro` downloaded the whole six seconds. Held by unit cases in that filled shape. `*from-url` naming no range is the whole item, as yt-dlp reads it and as ruled 2026-10-25; unchanged |
+| `T252-R3`, Medium — `1e-9` and `1e-8` were held by both owners, kept by the file unreported, and shown as *the downloader's own* | **The count of tenths must be at least one** (`models._in_tenths`), where the floor's test had been removed as equivalent: the tolerance that makes `0.3` three tenths made `1e-9` zero of them. Shared with the waits, so `T253-R2`'s model half is this change | Both owners refuse `1e-9` and `1e-8`; the file reads both as 0.1 and reports it; the tolerance's boundary on each side, held and refused. **The redundancy claim in the first round was wrong**, as the review showed |
+| `T252-R5`, Critical, and `T253-R3`, Critical — the length read went around the request's proxy and its address to connect from | **The read is made by the request's route, or not at all** (`media_probe.Route`, `route_for`). Each part is passed to ffprobe and none left to its defaults: the proxy yt-dlp would use (the request's, or the system's as `urllib.request.getproxies` reads it), the address to connect from as `-local_addr`, yt-dlp's socket timeout, and **certificates checked**, which ffmpeg does not do unless asked. The proxy variables are kept out of ffprobe's environment. **ffmpeg tunnels only through an `http://` proxy**, so a SOCKS or `https://` one, or system settings naming two, cancel the item unread with the reason. **Only a format fetched as one file is read**, by a demuxer that opens nothing else | Real ffprobe through `_place_the_sections`, `tests/integration/test_length_route.py`, each with its control: through the request's proxy, the origin sees only the proxy's side (`127.0.0.3`); from `127.0.0.2`, only that address; IPv6 only against the IPv4 origin, **cancelled with nothing asked**, as yt-dlp fails; a SOCKS proxy, never tried; a certificate nobody signed, **refused with no request sent**, where ffprobe alone reads it; a playlist served as a plain link, read no further than itself |
+
+**Measured on 2026-10-27, ffmpeg 8.1.3 on Linux, before building the route**: handed a `socks5://` or
+`https://` proxy, by option or environment, ffprobe connected directly; `-local_addr` of the other
+family fails the connection rather than going around it, and holds through TLS; **HLS pieces are
+fetched without `-local_addr` and without a certificate check** even when the playlist had both,
+which is why a manifest is not read; `-tls_verify 1` checks the chain and the host name.
+
+**Windows, measured on `STARBASE`**: gyan's build verifies with GnuTLS against the Windows stores,
+which hold only the roots Windows has already fetched (`REL-007`'s gap, `tls.py`). There,
+`www.example.com` **failed the check** while YouTube passed. So on Windows a site whose root the
+machine has not met cannot have its length read, and an item that does not give one is cancelled
+with `NO_LENGTH` rather than read unchecked. **Flagged for the maintainer**: safe, but narrower than
+Linux.
+
+**Adjacent, measured, not corrected (Critical, needs a decision).** yt-dlp's own cut, `FFmpegFD`,
+has the same defect, and it is not this client: it hands ffmpeg the proxy through `http_proxy`
+only, never the address to connect from, and no certificate check. In a real yt-dlp session with
+`*1-3` on the loopback clip, the probe's request went through a SOCKS proxy and from `127.0.0.2`,
+and **the cut connected directly from `127.0.0.1` both times**. Every section download, and every
+download yt-dlp gives to ffmpeg, is affected; it predates `T-252` through the options field.
+Carrying the route as `ffmpeg_i` arguments would close the direct file; a SOCKS proxy and any
+manifest cannot be closed that way, only refused, which is a product choice.
+
+**Mutations, 22 of 22 caught**, each on copies restored by hash: each part of the route left out
+(the proxy, the address, the certificate check, the timeout's unit, the request's timeout, the
+demuxer list, the protocol list); any proxy kind let through; the first of several proxies taken;
+the system's proxy ignored, or not read; the environment inherited; a manifest read; the worker
+skipping empty ranges or empty chapters; the end not cut to the length; the ends not held at zero;
+a chapter or a range of no length allowed; the address's end not passed; the floor of one tenth
+removed. **One was caught only after a test gap was closed**: matching a chapter from its start
+rather than searching it survived, since every pattern tested matched at the start; a pattern
+found only by searching now fails it.
+
+**Checks, 2026-10-27, on Linux**, with the project `.venv` on `PATH`: `ruff check .` and
+`ruff format --check .` (524 files); `mypy src` (76), bare `mypy` and `mypy --platform win32` (249
+each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,596 passed**, 23 skipped;
+`tests/integration` under `-n 4`, **615 passed**. Not yet run on Windows; the certificate check's
+Windows result above is a probe of ffprobe there, not the suite.
 
 ### T-365 — yt-dlp rewrites the path the worker hands it, and can write outside the chosen folder
 

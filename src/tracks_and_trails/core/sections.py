@@ -15,8 +15,8 @@ accepts it, and a range means the same seconds to both.
 
 **One rule is stricter than yt-dlp's**: a range that ends where or before it starts is refused.
 yt-dlp passes it to ffmpeg, which is asked for a negative length and writes nothing usable. It is
-checked only where both ends count from the start, because an end counted from the item's end is
-not known until the item is.
+checked here only where both ends count from the start, because an end counted from the item's end
+is not known until the item is; once it is, `empty_once_placed` checks the rest (`T252-R1`).
 
 **Several sections write several files** (`ARC-010`, amended 2026-10-19): one file per section,
 named by the stem and a section suffix. Whether a request can write more than one is decided from
@@ -26,7 +26,10 @@ the request alone, so the preview and the worker agree before anything is fetche
 **A time range is placed against the item's length before it is cut** (`T252-R1`, `ARC-010`
 amended 2026-10-25). yt-dlp asks ffmpeg for whatever the range says, and ffmpeg seeking past the
 end of an item wrote the whole item, reported as the part. So a range that starts at or after the
-end cancels the item instead, with the words below; see `starting_past`.
+end cancels the item instead, with the words below; see `starting_past`. **So does one that is
+empty once placed**, `*0--6` on a six-second item, and a matched chapter of no length: yt-dlp cuts
+a section from zero to zero as no section at all, which is the whole item (`T252-R1`, second
+round); see `empty_once_placed` and `empty_chapters`.
 """
 
 from __future__ import annotations
@@ -270,6 +273,77 @@ def starting_past(
     return tuple(outside)
 
 
+def _placed(start: float, length: float) -> float:
+    """One end as yt-dlp places it: counted from the end when negative, and never below zero.
+
+    `download_range_func._handle_negative_timestamp` at the pin, which the worker hands the length.
+    """
+    return max(length + start, 0) if start < 0 else start
+
+
+def empty_once_placed(
+    sections: Iterable[str],
+    length: float,
+    url_start: float | None = None,
+    url_end: float | None = None,
+) -> tuple[str, ...]:
+    """Every section asking for a range that is empty once placed in an item `length` long.
+
+    **Both ends resolved as yt-dlp resolves them, and the end cut to the length** as
+    `process_video_result` cuts it, so the range compared is the one ffmpeg would be asked for.
+    `*0--6` on six seconds is zero to zero, which yt-dlp downloads as no section at all, the whole
+    item; `*3--4` is three to two, a negative length (`T252-R1`, second round). `*from-url` runs
+    from `url_start` to `url_end` as the address says them, never counted from the end, and an
+    end it does not name is the item's.
+    """
+    empty: list[str] = []
+    for section in sections:
+        if section == FROM_URL:
+            placed = [(url_start or 0.0, url_end or math.inf)]
+        elif section.startswith("*"):
+            placed = [
+                (_placed(start, length), _placed(end, length))
+                for start, end in parsed_ranges(section) or ()
+            ]
+        else:
+            continue
+        if any(min(end, length) <= start for start, end in placed):
+            empty.append(section)
+    return tuple(empty)
+
+
+def empty_chapters(sections: Iterable[str], chapters: Iterable[object]) -> tuple[str, ...]:
+    """Every chapter pattern matching a chapter of the item that has no length (`T252-R1`).
+
+    yt-dlp gives a chapter the next one's start as its end, so two chapters starting together make
+    the first one empty, and one at zero is cut as no section at all: the whole item. `chapters`
+    are the item's as yt-dlp filled them; a pattern matches a title as yt-dlp's `re.search` does.
+    """
+    timed = [
+        chapter
+        for chapter in chapters
+        if isinstance(chapter, dict)
+        and isinstance(chapter.get("title"), str)
+        and isinstance(chapter.get("start_time"), int | float)
+        and isinstance(chapter.get("end_time"), int | float)
+    ]
+    return tuple(
+        section
+        for section in sections
+        if not section.startswith("*")
+        and any(
+            chapter["end_time"] <= chapter["start_time"]
+            for chapter in timed
+            if re.search(section, chapter["title"])
+        )
+    )
+
+
+def _listed(named: list[str]) -> str:
+    """`a`, `a and b` or `a, b and c`."""
+    return named[0] if len(named) == 1 else ", ".join(named[:-1]) + " and " + named[-1]
+
+
 def length_text(seconds: float) -> str:
     """A length as a person reads one: `6 seconds`, `2:05` or `1:02:03`, like the sections."""
     shown = round(seconds, 1)
@@ -283,11 +357,30 @@ def length_text(seconds: float) -> str:
 def past_the_end_reason(outside: Iterable[str], length: float) -> str:
     """Why an item was cancelled for sections past its end, naming each (`T252-R1`)."""
     named = list(outside)
-    listed = named[0] if len(named) == 1 else ", ".join(named[:-1]) + " and " + named[-1]
     starts = "starts" if len(named) == 1 else "start"
     return (
-        f"Nothing was downloaded: {listed} {starts} after the end of this item, which is "
+        f"Nothing was downloaded: {_listed(named)} {starts} after the end of this item, which is "
         f"{length_text(length)} long."
+    )
+
+
+def empty_reason(empty: Iterable[str], length: float) -> str:
+    """Why an item was cancelled for sections empty once placed in it, naming each (`T252-R1`)."""
+    named = list(empty)
+    ends, its = ("ends", "its") if len(named) == 1 else ("end", "their")
+    return (
+        f"Nothing was downloaded: {_listed(named)} {ends} at or before {its} start in this item, "
+        f"which is {length_text(length)} long."
+    )
+
+
+def empty_chapter_reason(patterns: Iterable[str]) -> str:
+    """Why an item was cancelled for a pattern matching a chapter of no length (`T252-R1`)."""
+    named = list(patterns)
+    matches = "matches" if len(named) == 1 else "match"
+    return (
+        f"Nothing was downloaded: {_listed(named)} {matches} a chapter of this item that has no "
+        "length."
     )
 
 
@@ -295,4 +388,19 @@ def past_the_end_reason(outside: Iterable[str], length: float) -> str:
 NO_LENGTH: Final = (
     "Nothing was downloaded: this item does not say how long it is, and its length could not be "
     "read, so part of it cannot be cut. Downloading the whole item may work."
+)
+
+#: Why the length was not read at all: through any proxy but an `http://` one, ffprobe connects
+#: directly (`T252-R5`). The proxy is not named, since the system's can carry a password.
+NOT_THROUGH_THE_PROXY: Final = (
+    "Nothing was downloaded: this item does not say how long it is, and its length can only be "
+    "read through an http:// proxy, so part of it cannot be cut. Downloading the whole item may "
+    "work."
+)
+
+#: Why the length was not read where the system names a different proxy for each kind of link.
+NOT_THROUGH_SEVERAL_PROXIES: Final = (
+    "Nothing was downloaded: this item does not say how long it is, and this computer's settings "
+    "name more than one proxy, which its length cannot be read through, so part of it cannot be "
+    "cut. Downloading the whole item may work."
 )

@@ -191,6 +191,16 @@ task and review records it summarised.*
   `SEC-003` forbids them, against an allowlist generated from the pinned source
   ([entry](TASKS.md#t-255--per-extractor-arguments)). **Every typed option in the audit now has a
   control**, so stage 3's typed-field tasks are all built; each awaits review.
+- **Reviewed 2026-10-27, and corrected the same day.** `T-304` and `T-365` were approved, their
+  Windows follow-ups filed as `T-366` and `T-367`; `T-254` waits only on Windows and CI evidence;
+  `T-252`, `T-253` and `T-255` had changes requested. **`T-252`'s second correction**: a range
+  empty once placed in the item, `*0--6` on six seconds, which yt-dlp downloads as the whole item,
+  now cancels it, and so does a chapter pattern matching a chapter of no length; and a section's
+  length is read from its link by the request's own proxy, address and timeout, certificates
+  checked, or not read at all (`T252-R5`, `T253-R3`). **Measured while building it and brought to
+  the maintainer**: yt-dlp's own cut makes the same direct connections, through any SOCKS proxy and
+  from any address; and on Windows, ffprobe's certificate check knows only the roots Windows has
+  already fetched ([entry](TASKS.md#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)).
 - **Fifteen rulings taken 2026-10-19, all as recommended**, every open question in stage 3:
   `T-248`'s two, as built; `T-252`'s last two; `T-253`'s three; `T-254`'s four; and `T-255`'s
   four, the first a security ruling forbidding the extractor-argument pairs that choose a request's

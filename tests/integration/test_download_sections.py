@@ -369,3 +369,44 @@ def test_sections_without_ffprobe_beside_ffmpeg_are_refused_before_a_byte_moves(
     assert outcome.kind is ErrorKind.FFMPEG_MISSING
     assert outcome.message == worker_module.NO_FFPROBE
     assert list(folder.iterdir()) == []
+
+
+# --- T252-R1, second round: a range empty once placed ------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("sections", "named"),
+    [
+        (("*0--100",), "*0--100 ends"),
+        (("*0--6",), "*0--6 ends"),
+        (("*0-2", "*0--6"), "*0--6 ends"),
+        (("*3--4",), "*3--4 ends"),
+    ],
+    ids=["past the start", "to zero", "beside one inside", "reversed"],
+)
+def test_a_range_empty_once_placed_cancels_the_item_before_it_downloads(
+    served: tuple[str, type[_Site]], tmp_path: Path, sections: tuple[str, ...], named: str
+) -> None:
+    """**The review's counterexamples, as it ran them**: the length is read from the link, six
+    seconds, and yt-dlp places `*0--100` and `*0--6` at zero to zero, which it downloads as the
+    whole item. Each came back as six seconds, reported as the part, `*0-2`'s neighbour too."""
+    base, _ = served
+
+    outcome, messages = _outcome(_request(f"{base}/watch", tmp_path, download_sections=sections))
+
+    assert isinstance(outcome, Failed), messages
+    assert outcome.kind is ErrorKind.CANCELLED
+    assert f"Nothing was downloaded: {named} at or before its start" in outcome.message
+    assert "6 seconds long" in outcome.message
+    assert list(tmp_path.iterdir()) == [], "a cancelled job left something behind"
+
+
+def test_a_range_from_the_end_with_something_in_it_is_still_cut(
+    served: tuple[str, type[_Site]], tmp_path: Path
+) -> None:
+    """The control: `*0--2` is zero to four once placed, so the check refuses only the empty."""
+    base, _ = served
+
+    written = _written(_request(f"{base}/watch", tmp_path, download_sections=("*0--2",)))
+
+    assert _seconds(written) == pytest.approx(4, abs=0.3)

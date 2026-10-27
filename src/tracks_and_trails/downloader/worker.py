@@ -53,6 +53,7 @@ import sys
 import threading
 import time
 import traceback
+import urllib.request
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -73,6 +74,10 @@ from tracks_and_trails.core.paths import (
 from tracks_and_trails.core.presets import selector_merges
 from tracks_and_trails.core.sections import (
     NO_LENGTH,
+    empty_chapter_reason,
+    empty_chapters,
+    empty_once_placed,
+    empty_reason,
     needs_the_length,
     past_the_end_reason,
     sectioned_stem,
@@ -93,6 +98,7 @@ from tracks_and_trails.downloader.media_probe import (
     ffprobe_beside,
     holds_media,
     remote_length,
+    route_for,
     run_with,
 )
 from tracks_and_trails.downloader.protocol import (
@@ -762,6 +768,7 @@ def _run(
             ffprobe,
             probe_run,
             _ytdlp_name(resolved, "cookies", "LenientSimpleCookie"),
+            adapter.connection_defaults()["socket_timeout"],
         )
         try:
             result = _extract(
@@ -2201,28 +2208,52 @@ def _place_the_sections(
     ffprobe: Path | None,
     run: Run,
     cookie_parser: Any,
+    default_timeout: float,
 ) -> float | None:
-    """Place the item's time ranges against its length, cancelling it for any outside (`T252-R1`).
+    """Place the item's sections in it, cancelling it for any outside or empty (`T252-R1`).
 
     **Rulings 1 and 3 of 2026-10-25.** The length is the site's, or, where the site gives none,
     the link's own as ffprobe reads it; with neither, the item is cancelled with `NO_LENGTH`. A
-    range starting at or after the end cancels it with each such section named. Chapter patterns
-    are matched against the item's own chapters and need no length.
+    range starting at or after the end cancels it with each such section named, and so does one
+    that is empty once placed, which yt-dlp would download as the whole item (second round). A
+    chapter pattern needs no length, and cancels the item when it matches a chapter of none.
+
+    **The link is read by the request's route** (`T252-R5`, `T253-R3`): its proxy, or the
+    system's, its address to connect from and its timeout, `default_timeout` being yt-dlp's own.
+    Where ffprobe cannot follow it, the length is not read and the item is cancelled with why.
 
     Returns the length **only when it was read here**, for yt-dlp to place the ranges by (see
     `NumberedSections`); a length the site gave, yt-dlp already has.
     """
-    if ffprobe is None or not needs_the_length(request.download_sections):
+    sections = request.download_sections
+    if ffprobe is None or not sections:
+        return None
+    patterns = empty_chapters(sections, info.get("chapters") or ())
+    if patterns:
+        raise NothingDownloadedError(empty_chapter_reason(patterns))
+    if not needs_the_length(sections):
         return None
     given = _length_given(info.get("duration"))
-    length = given if given is not None else remote_length(info, ffprobe, run, cookie_parser)
+    length = given
+    if length is None:
+        route = route_for(
+            request.proxy,
+            request.source_address,
+            default_timeout if request.socket_timeout is None else request.socket_timeout,
+            urllib.request.getproxies(),
+        )
+        if isinstance(route, str):
+            raise NothingDownloadedError(route)
+        length = remote_length(info, ffprobe, run, cookie_parser, route=route)
     if length is None:
         raise NothingDownloadedError(NO_LENGTH)
-    outside = starting_past(
-        request.download_sections, length, _length_given(info.get("start_time"))
-    )
+    url_start = _length_given(info.get("start_time"))
+    outside = starting_past(sections, length, url_start)
     if outside:
         raise NothingDownloadedError(past_the_end_reason(outside, length))
+    empty = empty_once_placed(sections, length, url_start, _length_given(info.get("end_time")))
+    if empty:
+        raise NothingDownloadedError(empty_reason(empty, length))
     return None if given is not None else length
 
 
