@@ -15,6 +15,7 @@ import contextlib
 import functools
 import io
 import json
+import logging
 import shutil
 import subprocess
 import threading
@@ -30,6 +31,7 @@ from yt_dlp.postprocessor import get_postprocessor
 
 from tests.capabilities import resolve_ffmpeg
 from tracks_and_trails.core.models import DownloadRequest
+from tracks_and_trails.core.paths import APP_SLUG
 from tracks_and_trails.downloader import worker as worker_module
 from tracks_and_trails.downloader import ytdlp_adapter as adapter
 from tracks_and_trails.downloader.protocol import Failed, SessionKind, Succeeded
@@ -195,8 +197,40 @@ def served(clip: Path) -> Iterator[str]:
     thread.join(timeout=5)
 
 
+class _Said(logging.Handler):
+    """Keeps every line it is handed."""
+
+    def __init__(self) -> None:
+        super().__init__(logging.INFO)
+        self.lines: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.lines.append(record.getMessage())
+
+
+@contextlib.contextmanager
+def _told_at_info() -> Iterator[list[str]]:
+    """What the application's log tree is told at `INFO`, **whatever an earlier test left it at**.
+
+    `caplog` listens at the root, and an earlier test in the same process can leave the tree not
+    passing records up and at `WARNING`: `test_manager.py`'s level tests do, through
+    `configure_logging`. CI runs the suite in one process, and this test failed there on 2026-10-27
+    having heard nothing, while it passed alone and split across workers.
+    """
+    tree = logging.getLogger(APP_SLUG)
+    said = _Said()
+    level = tree.level
+    tree.addHandler(said)
+    tree.setLevel(logging.INFO)
+    try:
+        yield said.lines
+    finally:
+        tree.removeHandler(said)
+        tree.setLevel(level)
+
+
 def test_a_real_session_with_sponsorblock_on_downloads_an_item_it_cannot_ask_about(
-    served: str, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    served: str, tmp_path: Path
 ) -> None:
     """**The worker's lookup, on a real session**: SponsorBlock knows YouTube alone, so yt-dlp's
     step says so and asks nothing, and the download finishes as it would have without it."""
@@ -213,7 +247,7 @@ def test_a_real_session_with_sponsorblock_on_downloads_an_item_it_cannot_ask_abo
     )
     queue: Queue[Any] = Queue()
 
-    with caplog.at_level("INFO"):
+    with _told_at_info() as said:
         worker_module.run_session(SessionKind.DOWNLOAD, "job-1", request, queue)
 
     messages = []
@@ -222,5 +256,4 @@ def test_a_real_session_with_sponsorblock_on_downloads_an_item_it_cannot_ask_abo
     outcome = next((m for m in messages if isinstance(m, Succeeded | Failed)), None)
     assert isinstance(outcome, Succeeded), messages
     assert _seconds(Path(outcome.output_path)) == pytest.approx(6, abs=0.3)
-    said = [record.getMessage() for record in caplog.records]
     assert any("SponsorBlock is not supported for Generic" in line for line in said), said

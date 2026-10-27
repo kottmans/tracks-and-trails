@@ -789,8 +789,11 @@ each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,622 passe
 
 ### T-254 — SponsorBlock, opt-in per preset
 
-**Status:** In Review — built 2026-10-27 on its rulings, at the maintainer's instruction of
-2026-10-26. *(Was Proposed:)* **design ruled 2026-10-19, all four questions as recommended**
+**Status:** In Review — blocked 2026-10-27 at `f05f720` on Windows and CI evidence only, no
+source finding ([record](reviews/T-254.md#2026-10-27--initial-comprehensive-review)); its first CI
+run failed one of its own tests, corrected below. Built 2026-10-27 on its rulings, at the
+maintainer's instruction of 2026-10-26. *(Was Proposed:)* **design ruled 2026-10-19, all four
+questions as recommended**
 (`ARC-010` and `UX-015` amended that day). Filed 2026-08-16 by `T-183`
 **Options (3):** `--sponsorblock-mark`, `--sponsorblock-remove`, `--no-sponsorblock`
 **Specific criteria:** **off by default, and the control says what enabling it sends.** `SEC-003`
@@ -919,6 +922,20 @@ removed.
 `mypy` and `mypy --platform win32` (243 each); the table check up to date; `tests/unit tests/ui`
 under `-n 4`, **6,392 passed**, 23 skipped; `tests/integration` under `-n 4`, **601 passed**. No
 Windows run of this change.
+
+**CI at `fdff1b4`, 2026-10-27, run
+[`40577746758`](https://github.com/kottmans/tracks-and-trails/actions/runs/40577746758): one of this
+task's tests failed on Linux and on the Windows desktop**, and the rest passed (Linux integration
+603 of 604; Windows 595 of 597, the other `T-367`'s, filed that day).
+`test_a_real_session_with_sponsorblock_on_downloads_an_item_it_cannot_ask_about` heard nothing.
+**The test's fault, not the code's**: it listened through `caplog`, at the root, and CI runs the
+integration suite in one process, where `test_manager.py`'s two level tests run first and leave the
+application's log tree passing nothing up and at `WARNING` (`configure_logging`, never put back).
+Under `-n 4` they had run elsewhere. **Found by a probe printing the tree's state after each test of
+a serial run**, and reproduced with those two tests and this one, 1 failed. The test now listens on
+the tree itself at `INFO` and puts it back; the same three pass, and it passes alone. **Adjacent,
+not corrected** (`AGENTS.md` §7): the two level tests still leave the tree configured for whatever
+runs after them in that process.
 
 ### T-255 — Per-extractor arguments
 
