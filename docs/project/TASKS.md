@@ -2,7 +2,7 @@
 
 **Purpose:** Unfinished work: review, ready, proposed and blocked tasks.
 **Owner:** Planner (priorities); Implementer (task/status); Reviewer (review disposition)
-**Last updated:** 2026-10-26
+**Last updated:** 2026-10-27
 **Update when:** Work starts, changes scope/status, closes or reopens.
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
@@ -1357,6 +1357,39 @@ ends badly — the shape `2026-08-27-T212-ytdlp-update-double-free.md` recorded.
 - `T-268`'s seven preserved specimens, which remain its own.
 
 ## Proposed — Phase 4.5
+
+### T-366 — Establish native Windows focus and format-table geometry
+
+**Status:** Proposed — scheduled by the 2026-10-27 independent T-304 review for the
+Phase 4.5 debt, before T-358's release gate. Two native contracts share the same
+Windows validation sitting; the offscreen CI suite does not exercise either style.
+**Owner:** Implementer; independent Reviewer verifies the result
+**Priority:** Medium — known failures of required native UI evidence, with keyboard
+visibility needing product-versus-instrument diagnosis
+**Phase:** Phase 4.5 — stage 4, before release acceptance
+**Relevant context:** [T304-R2 and R3](reviews/T-304.md#2026-10-27--focused-correction-verification);
+NFR-005; T-133; T-310; T-358; the native 2026-10-26 measurements in T-304 above
+**Affected surfaces:** Native focus drawing/measurement and format-table sizing,
+their regression tests and retained Windows evidence
+
+#### Scope and acceptance criteria
+
+- Reproduce under the real Windows platform/style, recording the exact tree,
+  plugin, style and font. Keep an offscreen control and state the available styles;
+  do not claim an unrun Windows 11 configuration.
+- Establish whether the spin-box keyboard failures are product drawing, the
+  measurement model, or both, using the bare native-style positive control and a
+  deliberate focus-removal negative control. Correct the cause; do not lower the
+  floor solely to make a native pass. Retain the keyboard-only pointer policy.
+- Make the format table's stated size sufficient for its contents under the native
+  style at the three reported fonts, with width/height assertions and a weakening
+  control. Check the resulting Add/queue dialog geometry as well.
+- Retain meaningful automated regressions at the native boundary and the actual
+  Windows results. Run the applicable lint/type/UI checks and verify the Linux
+  geometry/focus behavior is preserved.
+
+This is not a new product design, a reopening of the verified pointer correction,
+or approval of current native Windows release readiness.
 
 ### T-358 — The `0.2.0` release
 
