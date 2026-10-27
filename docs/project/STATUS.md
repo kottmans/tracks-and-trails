@@ -201,6 +201,11 @@ task and review records it summarised.*
   the maintainer**: yt-dlp's own cut makes the same direct connections, through any SOCKS proxy and
   from any address; and on Windows, ffprobe's certificate check knows only the roots Windows has
   already fetched ([entry](TASKS.md#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)).
+  **`T-253`'s first correction**: a wait from nothing up to a longest, yt-dlp's own setting, is
+  held, read and set from the screen, where it had been refused; and a speed limit the screen
+  rounds down is said exactly beneath it. `REQ-014`'s list of stages lacks *Waiting*; the wording
+  is proposed to the maintainer, since that file is not the Implementer's
+  ([entry](TASKS.md#t-253--network-reachability-address-family-and-politeness-delays)).
 - **Fifteen rulings taken 2026-10-19, all as recommended**, every open question in stage 3:
   `T-248`'s two, as built; `T-252`'s last two; `T-253`'s three; `T-254`'s four; and `T-255`'s
   four, the first a security ruling forbidding the extractor-argument pairs that choose a request's

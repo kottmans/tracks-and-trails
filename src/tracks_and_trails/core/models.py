@@ -1401,8 +1401,9 @@ def _require_reachability(owner: str, value: Any) -> None:
     **The two waits are yt-dlp's `--sleep-interval` and `--max-sleep-interval`**, with its command
     line's rules, which its library does not apply (`{max: 1.5}` alone slept, measured
     2026-10-14): the longest wait needs the shortest, and is not shorter than it. `None` is no
-    wait. **Zero is not held**, since it is no wait as well and `None` already says that; so a wait
-    picked at random between nothing and a longest is held as from a tenth.
+    wait. **A shortest of zero is held beside a longest** (`T253-R1`): yt-dlp then waits a random
+    time from nothing up to the longest, which is not the same as from a tenth. Alone, zero would
+    be no wait, which `None` already says, so it is refused there.
     """
     address = value.source_address
     if address is not None:
@@ -1413,18 +1414,20 @@ def _require_reachability(owner: str, value: Any) -> None:
                 f"{owner}.source_address must be an IP address written the shortest way, such as "
                 f"{IPV4_ONLY} or {IPV6_ONLY}, not {address!r}"
             )
-    for name in ("sleep_interval", "max_sleep_interval"):
-        seconds = getattr(value, name)
+    shortest, longest = value.sleep_interval, value.max_sleep_interval
+    for name, seconds in (("sleep_interval", shortest), ("max_sleep_interval", longest)):
         if seconds is None:
             continue
         if isinstance(seconds, bool) or not isinstance(seconds, int | float):
             _fail(owner, name, seconds, "a number of seconds or None")
+        if name == "sleep_interval" and seconds == 0 and longest is not None:
+            continue
         if not is_held_wait(seconds):
             raise ValueError(
                 f"{owner}.{name} must be a number of seconds in tenths, from 0.1 to "
                 f"{MOST_WAIT_SECONDS}"
+                + (", or 0 beside a max_sleep_interval" if name == "sleep_interval" else "")
             )
-    shortest, longest = value.sleep_interval, value.max_sleep_interval
     if longest is not None and shortest is None:
         raise ValueError(
             f"{owner}.max_sleep_interval needs sleep_interval: a longest wait without a shortest "

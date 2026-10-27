@@ -643,7 +643,10 @@ guess, not checked.
 
 ### T-253 — Network reachability: address family and politeness delays
 
-**Status:** In Review — built 2026-10-26 on its rulings, at the maintainer's instruction that day.
+**Status:** In Review — correction 1 built 2026-10-27, awaiting the focused re-review of
+`T253-R1`, `R2`, `R3` and `R5`; changes requested 2026-10-27 at `1740c86`
+([record](reviews/T-253.md#2026-10-27--initial-comprehensive-review)). Built 2026-10-26 on its
+rulings, at the maintainer's instruction that day.
 *(Was Proposed:)* **design ruled 2026-10-19, all three questions as recommended** (`ARC-010`
 amended that day). Filed 2026-08-16 by `T-183`
 **Options (5):** `-4/--force-ipv4`, `-6/--force-ipv6`, `--sleep-interval`, `--max-sleep-interval`,
@@ -760,6 +763,29 @@ and `ruff format --check .` (510 files); `mypy src` (74), bare `mypy` and `mypy 
 skipped, 1 failed: the placement gate, since this entry had not yet moved to *In Review*; moved, the
 gate and the audit's tests pass, 53 of 53. `tests/integration` under `-n 4`, **596 passed**. No
 Windows run of this change.
+
+**Correction 1, 2026-10-27**, on `2e5f9da`, awaiting re-review
+([record](reviews/T-253.md#2026-10-27--initial-comprehensive-review)):
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T253-R1`, High — a random wait from nothing up to a longest, yt-dlp's `--sleep-interval 0 --max-sleep-interval 5`, could not be held, read, set or sent | **A shortest of zero is held beside a longest**, in both owners, the file and the screen; alone it is still no wait, which `None` says. The reader rounds the shortest to the nearest tenth, which may be none; the longest to no less than a tenth. On the screen the longest is offered beside no wait too, and the wait box reads `0.0 s` rather than *No wait* while one is set. My first build's *"from a tenth"* substitute is gone | yt-dlp's real downloader, handed what the adapter builds, **draws the wait from `(0.0, 5.0)`**; the pair matches `parse_options` for that spelling; the file saves and reads it back; the screen sets it from *No wait*, opens it as `0.0 s` and `5.0 s`, and keeps it through another edit; zero alone is refused by both owners and read as no wait with a report |
+| `T253-R2`, Medium — `1e-9` and `1e-8` were held as waits and shown as *No wait* | **The shared check corrected in `2e5f9da`** with `T252-R3`: the count of tenths must be at least one. Here the waits' own cases: both fields, alone and paired | Both owners refuse `1e-9` and `1e-8` as either field, alone or beside a longest; the file reads `1e-9` as no wait, `1e-8` beside a longest of 5 as from zero, and a longest of `1e-9` as a tenth, each reported |
+| `T253-R3`, Critical — the section-length read went around the address to connect from | **Corrected in `2e5f9da`** with `T252-R5`, one client as the review asked: ffprobe is given `-local_addr`, and an address of the other family fails the read rather than making it another way | `tests/integration/test_length_route.py`: from `127.0.0.2` the origin sees only that address; IPv6 only against the IPv4 origin is cancelled with nothing asked, as yt-dlp's own request fails |
+| `T253-R4`, Low — `REQ-014` names five stages and not *Waiting* | **Not changed**: `REQUIREMENTS.md` is not the Implementer's to edit without instruction (`AGENTS.md` §4). **Proposed wording**, for the maintainer: *"current stage (probing, waiting before a file, downloading video, downloading audio, merging, post-processing)"* | |
+| `T253-R5`, Low, and `T252-R6` — 1,500 bytes per second showed as *1 KiB/s* | **Said under the box while the stored limit is not whole KiB/s**, and given to a screen reader as the box's description: *"This limit is 1,500 bytes per second, which the box shows rounded down to 1 KiB/s. Changing the box sets a whole number of KiB/s."* Nothing stored changes until the box is moved, as ruled | The review's value, said and described; gone once the box is moved to 2; nothing said for no limit, 1,024 or 2,048 |
+| `T253-R6`, Medium — no Windows or CI run | `fdff1b4` is pushed and CI is running on the first build; this correction is not yet pushed | |
+
+**Mutations, 13 of 13 caught**, each on copies restored by hash: the model refusing zero beside a
+longest, or holding it alone; the reader refusing a zero shortest, rounding it up to a tenth,
+rounding the longest to zero, or keeping zero alone; the screen saying *No wait* beside a longest,
+offering no longest without a wait, dropping zero beside a longest or storing it alone; the exact
+rate not said, not given to a screen reader, or kept after the box moves.
+
+**Checks, 2026-10-27, on Linux**, with the project `.venv` on `PATH`: `ruff check .` and
+`ruff format --check .` (524 files); `mypy src` (76), bare `mypy` and `mypy --platform win32` (249
+each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,622 passed**, 23 skipped;
+`tests/integration` under `-n 4`, **615 passed**. No Windows run of this correction.
 
 ### T-254 — SponsorBlock, opt-in per preset
 

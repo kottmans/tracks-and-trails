@@ -90,8 +90,16 @@ def test_an_address_is_held_the_shortest_way_and_a_name_is_none(
         {"source_address": " 192.0.2.7"},
         {"source_address": ""},
         {"source_address": 7},
+        # Zero alone is no wait, which `None` says (`T253-R1`); beside a longest it is held.
         {"sleep_interval": 0},
+        {"sleep_interval": 0.0, "max_sleep_interval": None},
         {"sleep_interval": -1.0},
+        {"sleep_interval": -1.0, "max_sleep_interval": 5.0},
+        # `T253-R2`: within the tolerance of zero tenths, alone or beside a longest, either field.
+        {"sleep_interval": 1e-9},
+        {"sleep_interval": 1e-8, "max_sleep_interval": 5.0},
+        {"sleep_interval": 0.0, "max_sleep_interval": 1e-9},
+        {"sleep_interval": 0.0, "max_sleep_interval": 0},
         {"sleep_interval": math.inf},
         {"sleep_interval": math.nan},
         {"sleep_interval": 10**400},
@@ -122,6 +130,9 @@ def test_a_value_yt_dlp_s_command_line_would_refuse_is_refused(
         {"sleep_interval": float(MOST_WAIT_SECONDS)},
         {"sleep_interval": 3, "max_sleep_interval": 3},
         {"sleep_interval": 3.0, "max_sleep_interval": 9.5},
+        # `T253-R1`: a random wait from nothing up to the longest.
+        {"sleep_interval": 0, "max_sleep_interval": 5.0},
+        {"sleep_interval": 0.0, "max_sleep_interval": 0.1},
     ],
 )
 def test_each_answer_the_screen_can_give_is_held(fields: dict[str, Any]) -> None:
@@ -146,6 +157,7 @@ def _saved_and_loaded(tmp_path: Path, options: NetworkOptions) -> app_settings.S
         NetworkOptions(source_address=IPV6_ONLY),
         NetworkOptions(source_address="2001:db8::20", sleep_interval=2.5),
         NetworkOptions(sleep_interval=2.5, max_sleep_interval=30.0),
+        NetworkOptions(sleep_interval=0.0, max_sleep_interval=5.0),
     ],
 )
 def test_the_choices_are_saved_and_read_back(tmp_path: Path, options: NetworkOptions) -> None:
@@ -176,11 +188,28 @@ def test_nobody_choosing_writes_none_of_them(tmp_path: Path) -> None:
         ('sleep_interval = "3"', NetworkOptions(), True),
         ("sleep_interval = 9000", NetworkOptions(sleep_interval=3600.0), True),
         ("sleep_interval = 2.55", NetworkOptions(sleep_interval=2.5), True),
-        ("sleep_interval = 0.04", NetworkOptions(sleep_interval=0.1), True),
+        # Rounded to the nearest tenth, which for the shortest may be none at all (`T253-R1`).
+        ("sleep_interval = 0.04", NetworkOptions(), True),
+        ("sleep_interval = 0.06", NetworkOptions(sleep_interval=0.1), True),
+        ("sleep_interval = 1e-9", NetworkOptions(), True),
+        (
+            "sleep_interval = 1e-8\nmax_sleep_interval = 5",
+            NetworkOptions(sleep_interval=0.0, max_sleep_interval=5.0),
+            True,
+        ),
+        (
+            "sleep_interval = 0\nmax_sleep_interval = 1e-9",
+            NetworkOptions(sleep_interval=0.0, max_sleep_interval=0.1),
+            True,
+        ),
         (f"sleep_interval = {10**400}", NetworkOptions(sleep_interval=3600.0), True),
         # The pair is held to yt-dlp's command line's rules after each key is read.
         ("max_sleep_interval = 9", NetworkOptions(), True),
-        ("sleep_interval = 0\nmax_sleep_interval = 9", NetworkOptions(), True),
+        (
+            "sleep_interval = 0\nmax_sleep_interval = 9",
+            NetworkOptions(sleep_interval=0.0, max_sleep_interval=9.0),
+            False,
+        ),
         ("sleep_interval = 5\nmax_sleep_interval = 4", NetworkOptions(sleep_interval=5.0), True),
         (
             "sleep_interval = 5\nmax_sleep_interval = 5",
@@ -226,6 +255,10 @@ def test_a_hand_edited_value_is_read_key_by_key_and_never_raises(
         (
             ["--sleep-interval", "3", "--max-sleep-interval", "9.5"],
             {"sleep_interval": 3.0, "max_sleep_interval": 9.5},
+        ),
+        (
+            ["--sleep-interval", "0", "--max-sleep-interval", "5"],
+            {"sleep_interval": 0.0, "max_sleep_interval": 5.0},
         ),
     ],
 )
@@ -278,6 +311,9 @@ def test_the_options_field_refuses_every_spelling_for_its_control(argv: tuple[st
 # --- the wait, as the row sees it ------------------------------------------------------------
 
 
+SLEEP_KEYS: Final = ("sleep_interval", "max_sleep_interval")
+
+
 class _Lines:
     """A logger keeping what yt-dlp writes, as `YtdlpLog` is handed it."""
 
@@ -307,6 +343,27 @@ def test_yt_dlp_s_own_line_before_a_wait_is_read_as_one(
         _Nothing(ydl, ydl.params).download(str(tmp_path / "clip.mp4"), {"id": "x"})
 
     assert [line for line in lines.seen if is_waiting_line(line.strip())] != [], lines.seen
+
+
+def test_a_wait_from_nothing_is_drawn_from_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """**`T253-R1`**: yt-dlp's real downloader, handed what the adapter builds for a wait from zero
+    up to five seconds, draws it from zero, where the tenth the model used to substitute drew it
+    from a tenth."""
+    drawn: list[tuple[float, float]] = []
+
+    def uniform(low: float, high: float) -> float:
+        drawn.append((low, high))
+        return 0.0
+
+    monkeypatch.setattr(downloader_common.random, "uniform", uniform)
+    options = build_options(a_request(sleep_interval=0.0, max_sleep_interval=5.0), STAGING)
+    lines = _Lines()
+    with YoutubeDL({"logger": lines, **{key: options[key] for key in SLEEP_KEYS}}) as ydl:
+        _Nothing(ydl, ydl.params).download(str(tmp_path / "clip.mp4"), {"id": "x"})
+
+    assert drawn == [(0.0, 5.0)]
 
 
 @pytest.mark.parametrize(

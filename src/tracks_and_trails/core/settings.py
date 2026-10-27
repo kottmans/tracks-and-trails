@@ -1095,12 +1095,16 @@ def _address_from(raw: Any) -> tuple[str | None, str | None]:
     return address, None
 
 
-def _wait_from(raw: Any, key: str, instead: str) -> tuple[float | None, str | None]:
+def _wait_from(
+    raw: Any, key: str, instead: str, *, shortest: bool = False
+) -> tuple[float | None, str | None]:
     """Coerce one stored wait before a file, in seconds. **Never raises** (`T-253`).
 
-    `_timeout_from`'s shape: zero or less is no wait and is reported, past `MOST_WAIT_SECONDS` is
+    `_timeout_from`'s shape: less than zero is no wait and is reported, past `MOST_WAIT_SECONDS` is
     clamped, and a value finer than tenths is rounded, all reported. `instead` says what happens
-    when the key is dropped, which differs between the two keys.
+    when the key is dropped, which differs between the two keys. **The `shortest` may be zero**,
+    and may round to it, since beside a longest that is a wait from nothing up to it (`T253-R1`);
+    `_waits_from` decides what a zero alone is. The longest rounds to no less than a tenth.
     """
     named = f"{_NETWORK_TABLE}.{key}"
     if raw is None:
@@ -1111,15 +1115,15 @@ def _wait_from(raw: Any, key: str, instead: str) -> tuple[float | None, str | No
         or (isinstance(raw, float) and not math.isfinite(raw))
     ):
         return None, f"{named} is {raw!r}, which is not a number of seconds. {instead}"
-    if raw <= 0:
+    if raw < 0 or (raw == 0 and not shortest):
         return None, f"{named} is {raw}, which is not a wait. {instead}"
     if raw > MOST_WAIT_SECONDS:
         return float(MOST_WAIT_SECONDS), (
             f"{named} is {raw}, which is longer than this application waits. "
             f"{MOST_WAIT_SECONDS} seconds is in use."
         )
-    if not is_held_wait(raw):
-        held = max(round(float(raw), 1), 0.1)
+    if raw != 0 and not is_held_wait(raw):
+        held = round(float(raw), 1) if shortest else max(round(float(raw), 1), 0.1)
         return held, (
             f"{named} is {raw}, which is finer than the tenths of a second this application holds. "
             f"{held:g} seconds is in use."
@@ -1135,11 +1139,21 @@ def _waits_from(table: dict[str, Any]) -> tuple[float | None, float | None, list
     shorter than the shortest, which then waits alone. Checked after the clamping and the rounding,
     so the pair that is kept is a pair the model holds.
     """
-    shortest, shortest_reason = _wait_from(table.get(_SLEEP_KEY), _SLEEP_KEY, "No wait is in use.")
+    shortest, shortest_reason = _wait_from(
+        table.get(_SLEEP_KEY), _SLEEP_KEY, "No wait is in use.", shortest=True
+    )
     longest, longest_reason = _wait_from(
         table.get(_MAX_SLEEP_KEY), _MAX_SLEEP_KEY, "Each file waits the shortest time."
     )
     reasons = [reason for reason in (shortest_reason, longest_reason) if reason]
+    # **Zero is a shortest only beside a longest** (`T253-R1`); alone it is no wait.
+    if shortest == 0 and longest is None:
+        if shortest_reason is None:
+            reasons.append(
+                f"{_NETWORK_TABLE}.{_SLEEP_KEY} is 0, with no {_MAX_SLEEP_KEY} beside it, which is "
+                "not a wait. No wait is in use."
+            )
+        shortest = None
     if longest is not None and shortest is None:
         reasons.append(
             f"{_NETWORK_TABLE}.{_MAX_SLEEP_KEY} is {longest:g}, with no {_SLEEP_KEY} beside it, "
@@ -2137,7 +2151,8 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             _CONCURRENT_FRAGMENTS_KEY: "# Pieces of a stream each download fetches at once, 1 "
             f"to {MOST_CONCURRENT_FRAGMENTS}. Delete the line for one at a time.",
             _SLEEP_KEY: "# Seconds each download waits before each of its files, in tenths, up to "
-            f"{MOST_WAIT_SECONDS}. Delete the line for no wait.",
+            f"{MOST_WAIT_SECONDS}; 0 with {_MAX_SLEEP_KEY} waits a random time up to it. Delete "
+            "the line for no wait.",
             _MAX_SLEEP_KEY: "# The longest wait, when each wait is picked at random from "
             f"{_SLEEP_KEY} up to this. Delete the line to wait exactly {_SLEEP_KEY}.",
             _SOURCE_ADDRESS_KEY: f'# The address connections are made from: "{IPV4_ONLY}" for IPv4 '

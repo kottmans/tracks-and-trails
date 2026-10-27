@@ -129,6 +129,8 @@ __all__ = [
     "NO_WAIT_LABEL",
     "PROXY_NAME",
     "PROXY_NOTE_NAME",
+    "RATE_LIMIT_EXACT",
+    "RATE_LIMIT_EXACT_NAME",
     "RATE_LIMIT_NAME",
     "RATE_LIMIT_STEP_BYTES",
     "REQ_023_SETTINGS",
@@ -385,6 +387,15 @@ def default_retries_label(count: int | None) -> str:
 #: this control cannot show — so the residual is now bounded to *"1500 B/s reads as 1 KiB/s"*,
 #: which understates a limit by less than the limit itself and never denies one.
 RATE_LIMIT_STEP_BYTES: Final = 1024
+
+#: Said under the speed limit while the stored limit is not a whole number of KiB/s (`T253-R5`,
+#: `T252-R6`): the box shows it rounded down, so the limit actually sent is said in words, and to a
+#: screen reader. Moving the box sets a whole number, and the note goes.
+RATE_LIMIT_EXACT: Final = (
+    "This limit is {bytes} bytes per second, which the box shows rounded down to {kib} KiB/s. "
+    "Changing the box sets a whole number of KiB/s."
+)
+RATE_LIMIT_EXACT_NAME: Final = "networkRateLimitExact"
 
 #: What the concurrency control's step buttons read (`UX-005` row 11, `T-141`, `T-236`).
 #:
@@ -1511,6 +1522,11 @@ class SettingsDialog(QDialog):
         rate_row.addWidget(self._rate_limit)
         rate_row.addStretch(1)
         layout.addLayout(rate_row)
+        self._rate_exact = QLabel(box)
+        self._rate_exact.setObjectName(RATE_LIMIT_EXACT_NAME)
+        self._rate_exact.setWordWrap(True)
+        layout.addWidget(self._rate_exact)
+        self._show_rate_exact()
 
         # **The wait, beside the speed limit** (`T-253`, ruled 2026-10-19, second): both pace a
         # download, and both act on each download alone, which the two notes say.
@@ -1724,8 +1740,10 @@ class SettingsDialog(QDialog):
         """The wait before each file and its random longest (`T-253`).
 
         **The longest is held to yt-dlp's command line's rules at the control**, which its library
-        does not apply: it is off until there is a wait, and it cannot go below the wait, since its
-        lowest value is the wait itself, *the same every time*, stored as no value.
+        does not apply: it cannot go below the wait, since its lowest value is the wait itself, *the
+        same every time*, stored as no value. **It is offered beside no wait too** (`T253-R1`):
+        a wait of zero with a longest is yt-dlp's random wait from nothing up to it, so the wait
+        box then reads `0.0 s` rather than *No wait*.
         """
         writable = self._on_network_chosen is not None
         wait_row = QHBoxLayout()
@@ -1737,7 +1755,7 @@ class SettingsDialog(QDialog):
         self._wait.setAccessibleName("Seconds to wait before each file")
         self._wait.setAccessibleDescription(WAIT_NOTE)
         wait_label.setBuddy(self._wait)
-        # Zero is *no wait* and is never stored; tenths, as the model holds them.
+        # Zero is *no wait* unless a longest is chosen beside it; tenths, as the model holds them.
         self._wait.setRange(0, MOST_WAIT_SECONDS)
         self._wait.setDecimals(1)
         self._wait.setSuffix(" s")
@@ -1773,37 +1791,43 @@ class SettingsDialog(QDialog):
         layout.addWidget(wait_note)
 
     def _on_wait_value(self, seconds: float) -> None:
-        """Zero is *no wait*, stored as no value, which takes the longest with it (`T-253`)."""
-        shortest = round(seconds, 1) if seconds > 0 else None
+        """A longest at or below the new wait is dropped: each wait is then the same (`T-253`)."""
         longest = self._network.max_sleep_interval
-        if shortest is None or (longest is not None and longest <= shortest):
+        if longest is not None and longest <= round(seconds, 1):
             longest = None
-        self._remember_network(
-            replace(self._network, sleep_interval=shortest, max_sleep_interval=longest)
-        )
-        self._show_longest_wait()
+        self._remember_waits(seconds, longest)
 
     def _on_longest_wait_value(self, seconds: float) -> None:
         """The wait itself is *the same every time*, stored as no value (`T-253`)."""
-        shortest = self._network.sleep_interval
-        if shortest is None:
-            return
         longest = round(seconds, 1)
+        self._remember_waits(self._wait.value(), longest if longest > self._wait.value() else None)
+
+    def _remember_waits(self, seconds: float, longest: float | None) -> None:
+        """Store the pair the two boxes show (`T253-R1`).
+
+        A wait of zero is a shortest of zero beside a longest, a random wait from nothing up to it,
+        and *no wait*, no value at all, without one.
+        """
+        shortest = round(seconds, 1)
+        held = shortest if shortest > 0 or longest is not None else None
         self._remember_network(
-            replace(self._network, max_sleep_interval=longest if longest > shortest else None)
+            replace(self._network, sleep_interval=held, max_sleep_interval=longest)
         )
+        self._show_longest_wait()
 
     def _show_longest_wait(self) -> None:
-        """The longest box as the wait in force allows it, without writing anything back."""
+        """The two boxes as the waits in force allow them, without writing anything back."""
         shortest = self._network.sleep_interval
         longest = self._network.max_sleep_interval
         blocked = self._longest_wait.blockSignals(True)
         try:
             self._longest_wait.setMinimum(shortest or 0)
-            self._longest_wait.setValue(longest or shortest or 0)
+            self._longest_wait.setValue(longest if longest is not None else shortest or 0)
         finally:
             self._longest_wait.blockSignals(blocked)
-        self._longest_wait.setEnabled(self._on_network_chosen is not None and shortest is not None)
+        self._longest_wait.setEnabled(self._on_network_chosen is not None)
+        # *No wait* only while there is none: zero beside a longest is a wait (`T253-R1`).
+        self._wait.setSpecialValueText(NO_WAIT_LABEL if longest is None else "")
 
     def _count_row(
         self, box: QGroupBox, layout: QVBoxLayout, name: str, label_text: str, field_name: str
@@ -1878,6 +1902,19 @@ class SettingsDialog(QDialog):
                 rate_limit_bytes=None if kib == 0 else kib * RATE_LIMIT_STEP_BYTES,
             )
         )
+        self._show_rate_exact()
+
+    def _show_rate_exact(self) -> None:
+        """Say the stored limit in bytes while the box can only show it rounded down (`T253-R5`)."""
+        stored = self._network.rate_limit_bytes
+        exact = (
+            RATE_LIMIT_EXACT.format(bytes=f"{stored:,}", kib=stored // RATE_LIMIT_STEP_BYTES)
+            if stored is not None and stored % RATE_LIMIT_STEP_BYTES
+            else ""
+        )
+        self._rate_exact.setText(exact)
+        self._rate_exact.setHidden(not exact)
+        self._rate_limit.setAccessibleDescription(exact)
 
     def _on_retries_value(self, count: int) -> None:
         """`-1` is *nobody chose*; `0` is a real answer — see `DEFAULT_RETRIES_LABEL`."""

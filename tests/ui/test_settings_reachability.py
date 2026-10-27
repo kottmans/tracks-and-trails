@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QRadioButton,
+    QSpinBox,
 )
 
 from tracks_and_trails.core.models import IPV4_ONLY, IPV6_ONLY, MOST_WAIT_SECONDS, NetworkOptions
@@ -31,6 +32,7 @@ from tracks_and_trails.ui.settings_dialog import (
     ADDRESS_REFUSAL,
     LONGEST_WAIT_NAME,
     NO_WAIT_LABEL,
+    RATE_LIMIT_EXACT_NAME,
     RATE_LIMIT_NAME,
     SAME_WAIT_LABEL,
     WAIT_NAME,
@@ -228,18 +230,41 @@ def test_each_choice_is_named_for_a_screen_reader(
 # --- the wait --------------------------------------------------------------------------------
 
 
-def test_no_wait_is_words_and_the_longest_is_off_until_there_is_a_wait(
+def test_a_longest_beside_no_wait_is_a_random_wait_from_nothing(
     screens: Callable[..., tuple[SettingsDialog, list[NetworkOptions]]],
 ) -> None:
-    """**Refused at edit time** (`T-253`'s criterion): a longest wait without a shortest, which
-    yt-dlp's command line refuses and its library does not, cannot be set from this screen."""
-    screen, _ = screens()
+    """**`T253-R1`**: yt-dlp's wait from zero up to a longest is its own setting, not a wait from a
+    tenth, and not no wait. A longest is never stored without a shortest (`T-253`'s criterion):
+    beside no wait, the shortest stored is zero, and the wait box stops saying *No wait*."""
+    screen, chosen = screens()
+    wait = control(screen, QDoubleSpinBox, WAIT_NAME)
+    longest = control(screen, QDoubleSpinBox, LONGEST_WAIT_NAME)
+    assert wait.text() == NO_WAIT_LABEL
+    assert longest.isEnabled() and longest.text() == SAME_WAIT_LABEL
 
+    longest.setValue(5.0)
+
+    assert chosen[-1] == NetworkOptions(sleep_interval=0.0, max_sleep_interval=5.0)
+    assert wait.text() == "0.0 s"
+
+    longest.setValue(0.0)
+
+    assert chosen[-1] == NetworkOptions()
+    assert wait.text() == NO_WAIT_LABEL
+
+
+def test_a_stored_wait_from_nothing_opens_as_it_is(
+    screens: Callable[..., tuple[SettingsDialog, list[NetworkOptions]]],
+) -> None:
+    screen, chosen = screens(network=NetworkOptions(sleep_interval=0.0, max_sleep_interval=5.0))
     wait = control(screen, QDoubleSpinBox, WAIT_NAME)
     longest = control(screen, QDoubleSpinBox, LONGEST_WAIT_NAME)
 
-    assert wait.text() == NO_WAIT_LABEL
-    assert not longest.isEnabled()
+    assert (wait.text(), longest.text()) == ("0.0 s", "5.0 s")
+
+    control(screen, QSpinBox, RATE_LIMIT_NAME).setValue(64)
+
+    assert chosen[-1].sleep_interval == 0.0 and chosen[-1].max_sleep_interval == 5.0
 
 
 def test_a_wait_is_stored_and_its_longest_cannot_go_below_it(
@@ -274,7 +299,7 @@ def test_the_longest_back_at_the_wait_is_the_same_every_time_stored_as_none(
 @pytest.mark.parametrize(
     ("wait", "expected"),
     [
-        (0.0, NetworkOptions()),
+        (0.0, NetworkOptions(sleep_interval=0.0, max_sleep_interval=9.5)),
         (12.0, NetworkOptions(sleep_interval=12.0)),
         (5.0, NetworkOptions(sleep_interval=5.0, max_sleep_interval=9.5)),
     ],
@@ -284,15 +309,14 @@ def test_moving_the_wait_takes_the_longest_with_it_where_it_no_longer_holds(
     wait: float,
     expected: NetworkOptions,
 ) -> None:
-    """No wait takes the longest with it; a wait past the longest makes the longest the same as
-    it; a wait below it keeps it. Every value stored is one the model holds."""
+    """A wait past the longest makes the longest the same as it; a wait below it keeps it, zero
+    included (`T253-R1`). Every value stored is one the model holds."""
     screen, chosen = screens(network=NetworkOptions(sleep_interval=3.0, max_sleep_interval=9.5))
 
     control(screen, QDoubleSpinBox, WAIT_NAME).setValue(wait)
 
     assert chosen[-1] == expected
-    longest = control(screen, QDoubleSpinBox, LONGEST_WAIT_NAME)
-    assert longest.isEnabled() is (wait > 0)
+    assert control(screen, QDoubleSpinBox, LONGEST_WAIT_NAME).isEnabled()
 
 
 def test_the_wait_keeps_what_the_other_controls_hold(
@@ -323,3 +347,45 @@ def test_the_wait_sits_beside_the_speed_limit_and_says_downloads_do_not_take_tur
     order = [spin.objectName() for spin in screen.findChildren(QAbstractSpinBox)]
     at = order.index(RATE_LIMIT_NAME)
     assert order[at + 1 : at + 3] == [WAIT_NAME, LONGEST_WAIT_NAME], order
+
+
+# --- the speed limit's exact value (`T253-R5`, `T252-R6`) ------------------------------------
+
+
+def _exact(screen: SettingsDialog) -> QLabel:
+    found = screen.findChild(QLabel, RATE_LIMIT_EXACT_NAME)
+    assert found is not None
+    return found
+
+
+def test_a_limit_the_box_rounds_down_is_said_exactly(
+    screens: Callable[..., tuple[SettingsDialog, list[NetworkOptions]]],
+) -> None:
+    """**The review's case**: 1,500 bytes per second opened as *1 KiB/s* and was sent as 1,500, with
+    nothing on screen saying so. Said under the box and to a screen reader, until it is moved."""
+    screen, chosen = screens(network=NetworkOptions(rate_limit_bytes=1500))
+    rate = control(screen, QSpinBox, RATE_LIMIT_NAME)
+    expected = (
+        "This limit is 1,500 bytes per second, which the box shows rounded down to 1 KiB/s. "
+        "Changing the box sets a whole number of KiB/s."
+    )
+
+    assert rate.text() == "1 KiB/s"
+    assert not _exact(screen).isHidden() and _exact(screen).text() == expected
+    assert rate.accessibleDescription() == expected
+    assert "\u2014" not in expected and "\u2013" not in expected
+
+    rate.setValue(2)
+
+    assert chosen[-1].rate_limit_bytes == 2048
+    assert _exact(screen).isHidden() and rate.accessibleDescription() == ""
+
+
+@pytest.mark.parametrize("stored", [None, 1024, 2048])
+def test_a_whole_limit_says_nothing_more(
+    screens: Callable[..., tuple[SettingsDialog, list[NetworkOptions]]], stored: int | None
+) -> None:
+    screen, _ = screens(network=NetworkOptions(rate_limit_bytes=stored))
+
+    assert _exact(screen).isHidden()
+    assert control(screen, QSpinBox, RATE_LIMIT_NAME).accessibleDescription() == ""
