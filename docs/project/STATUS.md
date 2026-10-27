@@ -166,7 +166,7 @@ task and review records it summarised.*
   **CI runs the UI suite offscreen, which leaves Windows' own style out**, so `T-304`'s tests were
   run again under the real platform: the click draws no ring anywhere, but a spin box's key ring
   is faint in light, the native style's own, and `T-310`'s format table states a size 1 to 3
-  pixels short. Both are recorded in [`T-304`'s entry](TASKS.md#t-304--should-a-focus-ring-appear-when-the-control-was-clicked)
+  pixels short. Both are recorded in [`T-304`'s entry](COMPLETED_TASKS.md#t-304--should-a-focus-ring-appear-when-the-control-was-clicked)
   for disposition.
 - **`T-365` was filed and built on 2026-10-26** at the maintainer's instruction, and is with the
   Reviewer: yt-dlp rewrote the path the worker hands it, so a download could land outside the

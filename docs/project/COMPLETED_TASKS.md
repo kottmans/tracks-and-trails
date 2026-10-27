@@ -2,7 +2,7 @@
 
 **Purpose:** Running record of completed and cancelled tasks and their evidence.
 **Owner:** Task/status owner; Coordinator / Integrator during a parallel wave
-**Last updated:** 2026-10-24
+**Last updated:** 2026-10-27
 **Update when:** A task closes, reopens, or needs a dated correction or navigation update.
 
 [TASKS](TASKS.md) contains unfinished work. Move each newly Complete or Cancelled
@@ -42505,6 +42505,205 @@ chosen one. The same session into `Talks & notes, 2026` succeeds. The literal te
 `a296615` (`T-012`). **Filed the same day by the maintainer as
 [`T-365`](TASKS.md#t-365--yt-dlp-rewrites-the-path-the-worker-hands-it-and-can-write-outside-the-chosen-folder)**,
 which found two more routes while building.
+
+---
+
+### T-304 — Should a focus ring appear when the control was clicked?
+
+**Status:** **Complete — approved with follow-ups 2026-10-27**, its correction `ecdda31` checked
+at `a3705e4` ([record](reviews/T-304.md#2026-10-27--focused-correction-verification)): `T304-R1`
+resolved, and the native Windows spin-box ring and format-table size, older than this task,
+scheduled as `T-366` before the release gate. *(Was In Review:)* correction 1 built 2026-10-24
+for `T304-R1`, changes requested 2026-10-24 at `c391e5a`
+([record](reviews/T-304.md#2026-10-24--initial-keyboard-only-focus-review)); built 2026-10-18 by
+the maintainer's overnight instruction that night, which also lifts the 2026-09-11 sequencing below
+([the amendment](IMPLEMENTATION_PLAN.md#amended-2026-10-18-the-work-continues-while-reviews-are-pending));
+the ruling is recorded as `UX-016`. *(Was Ready:)* **ruled by the maintainer on 2026-09-09: option
+(2), the keyboard-only ring.** The options and their costs are kept below as the reasoning the ruling was made on. The
+decision entry recording it is part of this task, since the rule it supersedes has a review
+finding and a test for authority and no numbered decision.
+
+**Sequenced by the maintainer on 2026-09-11: not started until Phase 4's exit is approved.** The
+build touches every `:focus` selector in `ui/theme.py`, the generated `BORDERED_CONTROLS` ones
+included — and a type-and-attribute selector out-specifying a universal pseudo-class one is the
+defect behind both `T-303` and `P4EXIT-R1`'s collapse triangle. It would also rewrite the rule
+that `test_focus_is_visible_on_every_control_the_application_shows` enforces, which is the test
+carrying `P4EXIT-R1`'s evidence while that finding is under verification. The ruling on *what* to
+build is unchanged; only *when* is settled here.
+**Owner:** Maintainer to rule; Implementer to build
+**Priority:** Low — it is a comfort question, not a defect. Raised 2026-09-09: *"I don't
+necessarily think that mode should be enabled by default — if you are clicking around with a
+mouse all of the highlighted boxes are distracting."*
+**Phase:** Phase 4 (accessibility and polish)
+**Depends on:** `T-303` should land first, so the ring is correct before its trigger is argued
+**Relevant context:** `T202-R1`; `STATE_RULES` in `ui/theme.py`;
+`tests/ui/test_colour_is_never_alone.py`; `NFR-005`
+**Affected surfaces:** `ui/theme.py`, the application's input handling, and the accessibility tests
+**Risk:** Medium — it changes a rule that currently has a test and a recorded rationale
+
+#### The question
+
+Qt shows the focus ring wherever focus lands, including a mouse click, because `QCheckBox` and
+friends take `StrongFocus`. The web solved this with `:focus-visible`: ring for keyboard, none for
+pointer. **Qt has no native equivalent**, so it would be built — track the last input device and
+carry it as a dynamic property the style sheet selects on.
+
+#### What makes it a decision rather than a tweak
+
+The ring is not decoration here. `STATE_RULES` records it as the **geometry** channel for focus,
+adopted so that focus reads without colour — *"ink against background, which needs no colour to
+read"* — and `tests/ui/test_colour_is_never_alone.py` enforces that every state has a non-colour
+channel. **No numbered decision governs it**: its authority is review finding `T202-R1` and the
+test. So a ruling here would be the first time this is written down as a decision rather than as
+code.
+
+#### Options
+
+1. **Leave it.** Every focus is drawn. Costs nothing, and the maintainer finds it distracting.
+2. **Keyboard-only ring (`:focus-visible`).** Mouse focus draws no ring; keyboard focus does.
+   Standard on the web and in modern toolkits. **It does not weaken the keyboard case**, which is
+   what `NFR-005` and the accessibility pass are about. It does mean a control can hold focus with
+   nothing showing it, which matters to a mouse user who then reaches for the keyboard — the
+   handover is the case to check, not the steady state.
+3. **Keep the ring, reduce it** — thinner, or a lower-contrast hue — for every focus. Keeps one
+   code path and one rule; likely fails the contrast floor that made it 2px.
+
+**Recommendation: (2), after `T-303`.** It is what the maintainer asked for, it leaves the
+keyboard route untouched, and the objection it must answer — focus invisible until the user
+reaches for the keyboard — is testable rather than theoretical.
+
+#### Acceptance criteria
+
+- Whatever is ruled is **recorded as a decision with the maintainer's authority**, since the
+  current rule's authority is a review finding and this would supersede it in one direction.
+- If (2): pressing a key after clicking reveals the ring on the already-focused control, and that
+  handover is asserted by a test rather than described.
+- `tests/ui/test_colour_is_never_alone.py` still passes, or is amended deliberately with the
+  ruling cited — not adjusted to fit.
+
+#### Built 2026-10-18
+
+- **`ui/focus_ring.FocusRing`** watches the application's input: a key press makes it the
+  keyboard's turn, and a mouse, touch or tablet press the pointer's. On every focus change, and
+  whenever the turn changes, it sets `focusRing` on the focused widget and re-polishes it if the
+  answer changed. It starts on the keyboard's turn, so a window opened from the keyboard shows the
+  ring. `theme.apply` installs it with the style sheet, one per application, and a second dressing
+  starts it afresh.
+- **Every focus rule asks for the ring** through `theme.focused`, which inserts
+  `[focusRing="true"]` before each `:focus` part's first pseudo-state: the ten rules in the sheet,
+  the thickened selector built from `BORDERED_CONTROLS`, `STATE_RULES` and the coincidental-value
+  list, through one helper so they cannot disagree. All gain the same specificity, so their order
+  among themselves is unchanged.
+- **One geometry defect, exposed rather than caused.** Re-polishing a focused control makes Qt
+  measure it again with the focus rules on, which never happened before, and the stepper grew 2px
+  wider: its contents box is pinned and it had no side padding for the thicker edge to take. Its
+  idle padding now reserves a pixel each side from a 13px contents box, 15px before.
+- **Decided as `UX-016`**, with the maintainer's authority, superseding `T202-R1`'s rule in one
+  direction: the first criterion.
+- **Tests.** `tests/ui/test_focus_ring.py`, on what is drawn and with the focus sweep's own measure:
+  a click draws no ring and the next key draws it on the same control, in both themes (the second
+  criterion); `Tab` draws it from the start; a spin box is told on a click and on a key; dressing
+  installs one tracker on the keyboard's turn; and every focus rule in the sheet asks for the
+  ring. `tests/ui/test_colour_is_never_alone.py` passes unchanged (the third criterion), its focus
+  sweep included.
+- **Mutations, 8 of 8 caught**, each on a fresh copy of the tree: a click or a key changing
+  nothing; no re-polish; the pointer's turn first; a second dressing keeping the pointer's turn;
+  focus rules asking for nothing; `apply` installing no tracker; the stepper keeping no side
+  padding.
+
+**Not measured:** a screen reader, and a real desktop. The handover is asserted offscreen on Linux;
+the Windows desktop job runs these tests when `STARBASE` is back.
+
+**Checks, 2026-10-18, on Linux, base `f7e373a`**, with the project `.venv` on `PATH`: `ruff check
+.` and `ruff format --check .` (493 files); `mypy src` (72), bare `mypy` and `mypy --platform
+win32` (229 each); the table check up to date; `tests/unit tests/ui` under `-n auto`, **5,852
+passed**, 21 skipped; `tests/integration` **558 passed**.
+
+#### Correction 1, 2026-10-24 — `T304-R1`
+
+The review of `c391e5a` requested changes with one Medium blocker. **Corrected, awaiting
+re-review.** The correction is on `a3214b2`, whose `focus_ring.py`, `format_table.py` and
+`test_focus_ring.py` are `c391e5a`'s.
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T304-R1`, Medium — `SortableHeader.paintSection` drew its ring whenever the header had focus, so a click on a format header painted the same 430 accent pixels as a key | **The painter asks what the sheet asks.** `focus_ring.shows_ring` is true when the widget holds focus and its `focusRing` is true, the condition every `:focus` rule carries, and `paintSection` draws the current section's ring only then | `test_a_real_click_on_a_format_header_draws_no_ring`, the review's reproduction: a real click on section 0 through the viewport, in both themes, then `Shift`. **Fails at `c391e5a`'s painter** |
+
+**Sibling audit: the click's side measured on every control there is, and a second route it
+found.** A scratch sweep walked all 112 focusable controls on every surface, in both themes, and
+rendered each idle, focused while the pointer had the turn, and after a key. At `c391e5a`, the key
+added a ring on 106 of 112: the six that did not were the six `SortableHeader`s on four surfaces,
+430 pixels after the click and nothing more after the key. And **a click on any of the nine spin
+boxes drew a ring the review's accent count could not see**: the sheet leaves `QSpinBox` to the
+platform's style (`T-133`), and Fusion draws its own one-pixel focus frame in the palette's
+highlight, measured at 0.91 to 1.00 of a ring. Before `T-304`, every `:focus` rule applied on a
+click, so the sheet's ring would have been drawn there instead (inferred, not measured). Now:
+
+- **`_KeyboardFocusStyle` wraps the application's style**, installed once by the tracker when it
+  is made. It takes `State_HasFocus` off each option the platform's style is asked to draw while
+  the pointer has the turn, and puts it back after, so nothing is measured or laid out differently.
+  It asks the tracker for the turn and never the widget being drawn: calling `focusProxy()` on that
+  widget from inside a draw call **deleted a table's scroll bar during `render()`**, with PySide6
+  6.11 and the sheet installed, bisected to that one call.
+- **After the correction**, the key adds a ring on 112 of 112 in both themes, and **focus from
+  the keyboard measures the same change on all 112 as at `c391e5a`**. What a click still changes is
+  the text cursor (14 to 16 pixels) and twelve dialog buttons Qt makes the default when they take
+  focus, which the sheet fills so the user can see which button Enter presses. That is not the
+  ring, it predates `T-304`, and the key still adds the ring to each of them.
+- **The header's viewport already repainted on a change of turn** at `c391e5a`, once each way,
+  counted with an event filter. Nothing held that, so a test does now.
+- **The cost**: every surface's window rendered ten times, best of five, took 0.209 to 0.230 s
+  against 0.175 to 0.177 s at `c391e5a`, about 0.4 ms more per window. Runs vary from 0.17 to
+  0.51 s, so the figure is rough.
+
+**Tests**, in `tests/ui/test_focus_ring.py`:
+`test_a_click_draws_no_ring_on_any_control_and_the_next_key_draws_it`, the sweep kept, on every
+focusable control of every surface in both themes, both ways round: the key after a click adds a
+ring, and a click draws none, with the default button exempted only when Qt reports it default;
+the real header click above; `test_a_real_click_on_a_spin_box_draws_no_frame_of_the_platform_s_own`;
+`test_the_header_repaints_its_sections_when_the_turn_changes`; and
+`test_drawing_with_the_wrapped_style_leaves_every_scroll_bar_alive`, for the hazard above.
+
+**Correction mutations, 5 of 5 caught**, each on a copy of the two source files restored by hash:
+the header asking only `hasFocus()` (the sweep and the header click fail, both themes); the style
+withholding nothing, and the style never installed (the sweep and the spin-box click); a change of
+turn neither re-polishing nor updating (the repaint test, and the existing handover tests); and the
+style asking the drawn widget for its `focusProxy()` (the scroll-bar test).
+
+**Not verified**: Windows 11, whose default style is `windows11`, not the `windowsvista` measured
+below; and a screen reader, as before.
+
+**Checks, 2026-10-24, on Linux, base `a3214b2`**, with the project `.venv` on `PATH`: `ruff check .`
+and `ruff format --check .` (504 files); `mypy src` (73), bare `mypy` and `mypy --platform win32`
+(234 each); the table check up to date; `tests/unit tests/ui` under `-n 4`, **6,096 passed**, 21
+skipped; `tests/integration` under `-n 4`, **577 passed**. No Windows run: `STARBASE` is offline.
+
+**Native Windows, measured 2026-10-26, not corrected.** `STARBASE` returned that day. CI's
+`windows desktop` runs this file under `offscreen`, which leaves the native style out, and it
+passed there at `d055fc6`. So it was run again in `STARBASE`'s desktop session with the real
+`windows` platform (Windows 10 22H2, style `windowsvista`, which the application keeps, as it sets
+none), with `test_format_table.py` beside it: **9 failed, 96 passed**.
+
+- **The click's side holds natively**: no control the sweep reaches, in either theme, drew a ring
+  on a click.
+- **The key's side falls short on spin boxes**: the sweep failed *"the key after a click added no
+  ring"* on all nine in light and on two in dark (`optionsAtMost`, `settingsConcurrencyChoice`),
+  and the real-click spin-box test in light, *"the key drew no ring"*: 56 pixels changed against a
+  floor of 136.8. **It is the native style's own focus frame, not the wrap**: sampled from 0 to
+  1.5 s after the key, the change holds at 56 to 69 pixels, the difference being the caret, so it
+  is not a transition caught early; and a spin box given a bare `windowsvista` style, outside the
+  wrap, measures the same in both themes, 69 in light and 259 in dark, and draws nothing on a
+  click either. The sheet leaves `QSpinBox` to the platform (`T-133`), so on Windows in light its
+  keyboard focus is faint, by the floor `UX-016`'s tests hold every control to. Whether that is
+  `T-304`'s to correct, `T-133`'s, or accepted on Windows is the Reviewer's disposition to propose.
+
+**Adjacent, measured in the same run, not corrected** (`AGENTS.md` §7): `T-310`'s format table
+states a size too small under the native style. `test_the_stated_width_is_enough_for_both_lists`
+fails at 9, 10 and 11 pt, the video list scrolling sideways by 2, 2 and 3 pixels at its own stated
+width, and `test_the_stated_height_shows_every_row` by 1 pixel of six rows at each size. By the
+test's own account of `AddUrlDialog._widen_for`, the add dialog would then show a scroll bar on
+Windows, `T-310`'s defect; inferred, not seen in the application. Both pass under `offscreen` on
+Windows and on Linux.
 
 ---
 
