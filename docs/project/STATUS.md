@@ -173,7 +173,7 @@ task and review records it summarised.*
   chosen folder. Building it found two more routes than the Windows one filed, on every platform:
   a `$` variable in a folder wrote outside it, and one in a title saved the file under the
   variable's value, *Done*. The download pass now writes the literal path as the worker built it
-  ([entry](TASKS.md#t-365--yt-dlp-rewrites-the-path-the-worker-hands-it-and-can-write-outside-the-chosen-folder)).
+  ([entry](COMPLETED_TASKS.md#t-365--yt-dlp-rewrites-the-path-the-worker-hands-it-and-can-write-outside-the-chosen-folder)).
 - **`T-253` was built on 2026-10-26**, and committed the next morning, on its rulings, at the maintainer's instruction, and is with
   the Reviewer: one choice of where connections are made from in *Settings › Network*, which
   absorbs `--source-address`, so `-4`, `-6` and a typed address can no longer disagree; the wait
@@ -277,7 +277,7 @@ task and review records it summarised.*
 | CI | At `a3705e4`, run [`40409543055`](https://github.com/kottmans/tracks-and-trails/actions/runs/40409543055): every job passed, `windows desktop` and `frozen windows` included, the first Windows pass since 2026-10-12. At `d055fc6` `windows desktop` had failed 13 unit tests, corrected in `c318169` and `2c96f37` |
 | Windows, `STARBASE`'s desktop session, from source | At `d055fc6` with the test corrections: `tests/unit tests/ui` under `-n auto`, **6,146 passed**, 44 skipped, 2 failed, the toolchain check, the run's `PATH`; `tests/integration` serial, **579 passed**, 5 skipped, 2 failed, `T-248`'s colon folder. The six files concerned, rerun: **235 passed**, 3 skipped |
 | Windows, the same session, real `windows` platform | `test_focus_ring.py` and `test_format_table.py`: **9 failed, 96 passed**, recorded in `T-304`'s entry |
-| Windows, the same session, with `T-365` | `tests/unit tests/ui` under `-n auto`, **6,174 passed**, 44 skipped; `tests/integration` serial, **583 passed**, 7 skipped, 1 failed: `T-364`'s fragment-resume test, which fails the same at `a3705e4`'s source on that machine, cause not found ([`T-365`'s entry](TASKS.md#t-365--yt-dlp-rewrites-the-path-the-worker-hands-it-and-can-write-outside-the-chosen-folder)) |
+| Windows, the same session, with `T-365` | `tests/unit tests/ui` under `-n auto`, **6,174 passed**, 44 skipped; `tests/integration` serial, **583 passed**, 7 skipped, 1 failed: `T-364`'s fragment-resume test, which fails the same at `a3705e4`'s source on that machine, cause not found ([`T-365`'s entry](COMPLETED_TASKS.md#t-365--yt-dlp-rewrites-the-path-the-worker-hands-it-and-can-write-outside-the-chosen-folder)) |
 
 **All four serial failures at `3275a36` were `T-350`'s race**, cases of
 `test_the_mounted_format_panel_fits_the_dialog_it_asked_for` failing *"row 0 offered no format
