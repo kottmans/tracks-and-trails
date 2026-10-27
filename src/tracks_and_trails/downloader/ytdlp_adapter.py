@@ -58,6 +58,7 @@ from tracks_and_trails.core.errors import TRANSIENT_CONTEXT_KEY, ErrorKind, Fail
 from tracks_and_trails.core.format_sort import sort_items
 from tracks_and_trails.core.models import (
     MERGE_CONTAINERS,
+    SPONSORBLOCK_CATEGORIES,
     DownloadRequest,
     FormatCheck,
     FormatInfo,
@@ -1277,12 +1278,49 @@ def build_options(
     # straight afterwards and the finished file had none. Grouping by `when` does not settle
     # order *within* a stage, and these two share one.
     options["postprocessors"] = _in_dependency_order(
-        [
-            *build_postprocessors(request, keep_thumbnail=bool(hatch.get("writethumbnail"))),
-            *hatch.get("postprocessors", []),
-        ]
+        _one_chapter_pass(
+            [
+                *build_postprocessors(
+                    request,
+                    keep_thumbnail=bool(hatch.get("writethumbnail")),
+                    force_keyframes=bool(hatch.get("force_keyframes_at_cuts")),
+                ),
+                *hatch.get("postprocessors", []),
+            ]
+        )
     )
     return options
+
+
+def _one_chapter_pass(specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One `ModifyChapters` where SponsorBlock and the options field's `--remove-chapters` both ask
+    for one (`T-254`).
+
+    **Two passes leave a stale chapter** (mapped 2026-10-14): the second reads chapters the first
+    already rearranged, and a SponsorBlock chapter survives it. yt-dlp's command line builds one
+    pass for both, so this joins them: every pattern, segment and range, `force_keyframes` if
+    either asks, and the options field's chapter title where it gave one.
+    """
+    passes = [spec for spec in specs if spec.get("key") == "ModifyChapters"]
+    if len(passes) < 2:
+        return specs
+    joined: dict[str, Any] = {"key": "ModifyChapters"}
+    for name in ("remove_chapters_patterns", "remove_ranges"):
+        joined[name] = [item for spec in passes for item in spec.get(name) or ()]
+    joined["remove_sponsor_segments"] = sorted(
+        {item for spec in passes for item in spec.get("remove_sponsor_segments") or ()}
+    )
+    joined["force_keyframes"] = any(spec.get("force_keyframes") for spec in passes)
+    titles = [
+        spec["sponsorblock_chapter_title"]
+        for spec in passes
+        if "sponsorblock_chapter_title" in spec
+    ]
+    if titles:
+        joined["sponsorblock_chapter_title"] = titles[-1]
+    first = specs.index(passes[0])
+    rest = [spec for spec in specs if spec.get("key") != "ModifyChapters"]
+    return [*rest[:first], joined, *rest[first:]]
 
 
 #: Each position of the format check (`T-250`) as yt-dlp's `check_formats` reads it: `selected`,
@@ -1657,6 +1695,89 @@ def keep_secrets_out(ydl: Any) -> None:
     ydl.sanitize_info = sanitize_info
 
 
+#: SponsorBlock's server, fixed (`SEC-003`: a configurable endpoint was declined, since its typo
+#: would be a new network destination). yt-dlp's own default at the pin.
+SPONSORBLOCK_API: Final = "https://sponsor.ajay.app"
+
+#: The settings a SponsorBlock lookup is made with, and nothing else (`T-254`, ruled 2026-10-19,
+#: third, question 3): how this computer reaches the network. Never the request's headers, its
+#: cookies or a client certificate, which belong to the site the user is downloading from.
+LOOKUP_KEYS: Final = ("proxy", "source_address", "socket_timeout")
+
+
+def lookup_params(params: Mapping[str, Any]) -> dict[str, Any]:
+    """The network settings of a session, for a lookup that must carry nothing else (`T-254`)."""
+    return {key: params[key] for key in LOOKUP_KEYS if params.get(key) is not None}
+
+
+@functools.cache
+def _lookup_class(ytdlp: Any) -> type:
+    """yt-dlp's `SponsorBlockPP`, looking segments up through a session of its own (`T-254`).
+
+    **The one private method it overrides is `_download_json`**, which the ruling named: yt-dlp
+    sends the lookup through the download's own session, whose handlers add every header typed
+    with `--add-headers`, `Authorization` included (captured on loopback, 2026-10-14). This sends it
+    through a fresh `YoutubeDL` holding only `lookup_params`, with yt-dlp's own retry loop and its
+    own refusal of a 404 kept as they are at the pin; `tests/unit/test_sponsorblock.py` holds the
+    method it replaces to the pin's text, so a release that changes it fails there.
+    """
+
+    # From the yt-dlp this session resolved, which may be the user's own copy (`ARCHITECTURE.md`
+    # §6), so the subclass and the session it opens are that copy's.
+    def part(name: str) -> Any:
+        return importlib.import_module(f"{ytdlp.__name__}.{name}")
+
+    networking, exceptions = part("networking"), part("networking.exceptions")
+    utils = part("utils")
+    base = part("postprocessor.sponsorblock").SponsorBlockPP
+
+    class LookupWithoutTheDownloadsHeaders(base):  # type: ignore[misc,valid-type]
+        def _download_json(self, url: str, *, expected_http_errors: Any = (404,)) -> Any:
+            self.write_debug(f"{self.PP_NAME} query: {url}")
+            own = {**lookup_params(self._downloader.params), "quiet": True, "no_warnings": True}
+            logger = self._downloader.params.get("logger")
+            if logger is not None:
+                own["logger"] = logger
+            with ytdlp.YoutubeDL(own) as session:
+                for retry in utils.RetryManager(
+                    self.get_param("extractor_retries", 3), self._retry_download
+                ):
+                    try:
+                        response = session.urlopen(networking.Request(url))
+                    except exceptions.network_exceptions as error:
+                        if (
+                            isinstance(error, exceptions.HTTPError)
+                            and error.status in expected_http_errors
+                        ):
+                            return None
+                        retry.error = utils.PostProcessingError(
+                            f"Unable to communicate with {self.PP_NAME} API: {error}"
+                        )
+                        continue
+                return json.loads(
+                    response.read().decode(response.headers.get_param("charset") or "utf-8")
+                )
+
+    return LookupWithoutTheDownloadsHeaders
+
+
+def look_up_sponsorblock(ydl: Any, ytdlp: Any, request: DownloadRequest) -> None:
+    """Ask SponsorBlock about the item, on the download's session only (`T-254`).
+
+    **Nothing is added while nothing is marked or cut**, so no request can leave for SponsorBlock
+    then (`NFR-007`, as amended): the lookup is not in the options `build_options` returns, so the
+    probe, which asked three times per video through the options field (mapped 2026-10-14), never
+    makes it. Added through `add_post_processor`, after any of the options field's own, which is
+    where yt-dlp's command line puts it.
+    """
+    chosen = set(request.sponsorblock_mark) | set(request.sponsorblock_remove)
+    if not chosen:
+        return
+    categories = tuple(name for name in SPONSORBLOCK_CATEGORIES if name in chosen)
+    lookup = _lookup_class(ytdlp)(ydl, categories=categories, api=SPONSORBLOCK_API)
+    ydl.add_post_processor(lookup, when="after_filter")
+
+
 def keep_the_literal_path(ydl: Any, ytdlp: Any, staging: Path) -> None:
     """Make `ydl` write the worker's literal path as it was handed over (`T-365`).
 
@@ -1830,7 +1951,7 @@ def _performed_by_ffmpeg(specs: Sequence[Mapping[str, Any]]) -> bool:
 
 
 def build_postprocessors(
-    request: DownloadRequest, *, keep_thumbnail: bool = False
+    request: DownloadRequest, *, keep_thumbnail: bool = False, force_keyframes: bool = False
 ) -> list[dict[str, Any]]:
     """Translate the request's post-processing intent into what `YoutubeDL` actually consumes.
 
@@ -1910,6 +2031,19 @@ def build_postprocessors(
         specs.append({"key": "FFmpegVideoConvertor", "preferedformat": request.recode_container})
     if request.subtitle_languages and request.embed_subtitles:
         specs.append({"key": "FFmpegEmbedSubtitle"})
+    if request.sponsorblock_mark or request.sponsorblock_remove:
+        # **SponsorBlock's segments become chapters here, and the cut ones are cut** (`T-254`):
+        # `ModifyChapters`, as yt-dlp's command line builds it for either option, before the
+        # metadata step writes the chapters. The lookup itself is `look_up_sponsorblock`'s, on the
+        # download's session. `force_keyframes` is `--force-keyframes-at-cuts`, which the options
+        # field may carry, as the command line passes it.
+        specs.append(
+            {
+                "key": "ModifyChapters",
+                "remove_sponsor_segments": list(request.sponsorblock_remove),
+                "force_keyframes": force_keyframes,
+            }
+        )
     if request.embed_metadata or request.embed_chapters:
         specs.append(
             {

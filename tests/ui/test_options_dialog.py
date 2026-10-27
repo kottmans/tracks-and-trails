@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
 from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.models import (
     ALL_SUBTITLE_LANGUAGES,
+    SPONSORBLOCK_CATEGORIES,
     AudioCodec,
     FormatCheck,
     KeptThumbnails,
@@ -102,6 +103,7 @@ from tracks_and_trails.ui.options_dialog import (
     SAVE_PRESET_TEXT,
     SAVE_RESULT_NAME,
     SECTIONS_NAME,
+    SPONSORBLOCK_TITLE,
     SUBTITLE_FORMAT_NAME,
     SUBTITLE_FORMAT_REFUSALS_NAME,
     SUBTITLE_LANGUAGES_NAME,
@@ -112,6 +114,7 @@ from tracks_and_trails.ui.options_dialog import (
     WHICH_PART_REFUSALS_NAME,
     WHICH_PART_TITLE,
     OptionsDialog,
+    sponsorblock_name,
 )
 
 
@@ -761,6 +764,8 @@ STILL_LIVE_WITHOUT_FFMPEG: Final = {
     # *Which part* (`T-252`): fetching a live stream from its start asks ffmpeg for nothing of its
     # own; merging what it fetches is `MERGE`'s, gated where the merge is chosen.
     LIVE_FROM_START_NAME,
+    # SponsorBlock (`T-254`): *leave* asks for nothing, and every mark and cut is gated.
+    *(sponsorblock_name(category, "leave") for category in SPONSORBLOCK_CATEGORIES),
 }
 
 
@@ -1864,7 +1869,10 @@ def test_the_kept_files_group_sits_directly_below_embed_in_the_file(
     ]
 
     embed = groups.index("Embed in the file")
-    assert groups[embed + 1 : embed + 3] == [KEEP_BESIDE_TITLE, "Subtitles"], groups
+    # *SponsorBlock* follows since `T-254` (`UX-015`, amended 2026-10-19, second).
+    assert groups[embed + 1 : embed + 4] == [KEEP_BESIDE_TITLE, SPONSORBLOCK_TITLE, "Subtitles"], (
+        groups
+    )
 
 
 def test_the_kept_files_open_on_the_preset_s_own_and_come_back(

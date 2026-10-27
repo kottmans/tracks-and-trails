@@ -709,6 +709,139 @@ skipped, 1 failed: the placement gate, since this entry had not yet moved to *In
 gate and the audit's tests pass, 53 of 53. `tests/integration` under `-n 4`, **596 passed**. No
 Windows run of this change.
 
+### T-254 — SponsorBlock, opt-in per preset
+
+**Status:** In Review — built 2026-10-27 on its rulings, at the maintainer's instruction of
+2026-10-26. *(Was Proposed:)* **design ruled 2026-10-19, all four questions as recommended**
+(`ARC-010` and `UX-015` amended that day). Filed 2026-08-16 by `T-183`
+**Options (3):** `--sponsorblock-mark`, `--sponsorblock-remove`, `--no-sponsorblock`
+**Specific criteria:** **off by default, and the control says what enabling it sends.** `SEC-003`
+permitted this and `NFR-007` was amended to name SponsorBlock as a third permitted destination
+*conditional on the user enabling it*; a test asserts no SponsorBlock request leaves the process
+while the option is off. The category lists are validated against yt-dlp's own. `--sponsorblock-api`
+is **excluded** — `SEC-003` declined a configurable endpoint — and this task does not reopen it.
+
+#### Mapped 2026-10-14 — the design, before the code
+
+Mapped against `8b0aad6` on real YouTube downloads, with a loopback server standing in for the
+SponsorBlock API where the request had to be read; probes in the implementer's scratch notes.
+
+- **Through the options field on unreleased `main`, *Embed metadata* plus `--sponsorblock-mark`
+  produces a file with no metadata.** The option implies a second `FFmpegMetadata` that writes
+  chapters only, appended after the application's own, and it rewrites the file from a chapters
+  map, dropping every tag the first wrote: the control run had `title=Me at the zoo`, the hatch
+  run none. **High guess.**
+- **The lookup carries every header typed through `--add-headers`**, `Authorization` included,
+  captured on loopback; a youtube.com cookie was not sent. The four-character hash prefix
+  `SEC-003` ruled on still holds. **High guess, Critical where the header is a credential.**
+- **The hatch already turns SponsorBlock on with nothing saying what is sent, on the probe as
+  well**: one lookup each from the staging probe, the session's probe and the download, three per
+  queued video. **Medium guess.**
+- Low: `--sponsorblock-chapter-title` and `--no-sponsorblock` are refused as *changes nothing*
+  although each changes something beside a mark; `--sponsorblock-mark -sponsor` is admitted and
+  builds nothing (`T012-R5`'s shape).
+- SponsorBlock acts on YouTube alone, so the local integration pages can never fail a *no request
+  while off* test; an offline guard through `run_all_pps('after_filter')` with requests refused
+  works. A removal is ffmpeg work, and without ffmpeg the download finishes and then fails, so
+  `REQ-024`'s gate is load-bearing. Two `ModifyChapters` passes leave a stale SponsorBlock chapter,
+  so the build must compose one with the hatch's `--remove-chapters`.
+
+**Ruled 2026-10-19: all four as recommended.** Each category is left, marked as a chapter or cut
+out, stored as two disjoint tuples, in a *SponsorBlock (YouTube only)* group below *Keep beside the
+file*. While anything is marked, *Chapters* shows checked and held, and one metadata step carries
+both, which closes the metadata loss above. The lookup goes without typed headers, through a
+session carrying only the network settings; that overrides a private yt-dlp method and is
+unverified, so if it cannot be built the question comes back. Both defects above close within this
+task.
+
+**Questions for the maintainer** (recommended first):
+
+1. **What a preset holds.** Per category, *leave*, *mark as a chapter* or *cut out*, stored as two
+   disjoint tuples, in one *SponsorBlock (YouTube only)* group below *Keep beside the file* (eleven
+   radio groups). / Two checkbox lists (an overlap rule). / One switch (no per-category choice).
+2. **Marking and *Chapters*.** While anything is marked, *Chapters* shows checked and held, and one
+   `FFmpegMetadata` carries both (the structural fix for the metadata loss). / Marking disabled
+   until *Chapters* is ticked. / Implied in `build_options` only.
+3. **Typed headers on the lookup.** Look up without them, through a subclass whose session carries
+   only the network settings (overrides a private method; feasibility unverified). / Refuse
+   `--add-headers` while SponsorBlock is on. / Say so and amend `NFR-007`.
+4. **When `HEAD`'s defects close.** Within this task, as `T-249`'s did (`main` is unreleased). / An
+   interim refusal of the two spellings now.
+
+#### Built 2026-10-27
+
+- **Per category, left, marked or cut** (ruling 1). `Preset` and `DownloadRequest` gain
+  `sponsorblock_mark` and `sponsorblock_remove`, two tuples that share nothing, each of categories
+  in `SPONSORBLOCK_CATEGORIES`, once each. That is a transcription of yt-dlp's own list, since
+  `core/` may not import yt-dlp, held to it at the pin by a test, as is `SPONSORBLOCK_UNCUTTABLE`
+  (a highlight and a chapter title, which yt-dlp's command line refuses after
+  `--sponsorblock-remove` and its cutting step drops silently). A category marked and cut, which
+  yt-dlp resolves by cutting, is one or the other here. Carried from preset to request, into the
+  row's name, the settings file and the queue's store; a cut needs ffmpeg
+  (`FfmpegFeature.SPONSORBLOCK`).
+- **Marking holds *Chapters*, and one metadata step writes both** (ruling 2). The model refuses a
+  mark without `embed_chapters`, since a mark is a chapter and only a written chapter is kept, and
+  the editor checks *Chapters* and holds it while anything is marked, giving the user's own choice
+  back once nothing is. The chain has one `ModifyChapters`, as yt-dlp's command line builds it for
+  either option, before one `FFmpegMetadata` carrying the metadata and the chapters. **The first
+  mapped defect is closed**: a real file keeps its title tag beside a SponsorBlock chapter, and a
+  chapters-only second step after it, the options field's route, loses the tag, which shows the
+  test can see it.
+- **The lookup carries none of the download's headers** (ruling 3), and it was built as ruled:
+  `look_up_sponsorblock` adds a subclass of yt-dlp's `SponsorBlockPP` to the download's session
+  through `add_post_processor`, overriding only `_download_json`, the private method the ruling
+  named. The override sends through a fresh `YoutubeDL` holding only the proxy, the source address
+  and the socket timeout (`lookup_params`): never the typed headers, the cookies or a client
+  certificate. yt-dlp's retry loop and its 404 rule are copied as they are at the pin, and a test
+  holds the method it replaces to the pin's text. On loopback, the lookup sent no `Authorization`
+  typed with `--add-headers` and found its segment; yt-dlp's own step, through the same session,
+  sent it. **The second mapped defect is closed.**
+- **Nothing is sent while it is off** (`T-254`'s criterion, `NFR-007`): the lookup is never an
+  option, so nothing adds it while both tuples are empty, and the probe never asks, where the
+  options field's route asked three times per video. Held through yt-dlp's after-filter step with
+  every request refused and counted: none off, one on.
+- **The options field's chapter cuts join the one pass**: `--remove-chapters` and
+  `--force-keyframes-at-cuts` there are composed into the SponsorBlock pass rather than a second
+  one. Unjoined, a real file kept a stale `[SponsorBlock]: Sponsor` chapter and 0.2 s more.
+- **The editor**: *SponsorBlock (YouTube only)* below *Keep beside the file*, a note on what is sent
+  (the first four characters of a hash of the video's ID, to `sponsor.ajay.app`) and that nothing
+  is sent while every row is left, then one row per category, each an exclusive group whose buttons
+  name their category for a screen reader. Without ffmpeg, only *Leave* is offered and the preset's
+  own is kept.
+- **The audit and the hatch**: the three spellings are built (65 of 66 typed), refused for their
+  control, and leave `NOT_SECRET_VALUES`.
+- **Not changed, as mapped (Low, unruled)**: `--sponsorblock-chapter-title` stays in the options
+  field and is still refused as changing nothing, although beside a mark it now would; and
+  SponsorBlock is unverified against a real YouTube lookup, which no test here may make.
+
+**Tests**: `tests/unit/test_sponsorblock.py`: the categories held to yt-dlp's; every value yt-dlp
+would refuse or silently resolve, refused on both owners; the preset's choices reaching the request,
+the file and the store; a cut alone needing ffmpeg; the options field refusing the three spellings;
+one metadata step after the chapter step, cutting what yt-dlp's own options cut, with the options
+field's keyframes; nothing of SponsorBlock in any options; the lookup, through a loopback server, sent
+without the typed header and finding its segment, beside yt-dlp's own step sending it; only the
+network settings kept; nothing asked while off and one request while on; and the replaced method held
+to the pin's text. `tests/ui/test_options_sponsorblock.py`: eleven rows, one choice each, opening on
+the preset's own; *Chapters* held while marked and given back; the name; the note; names for a
+screen reader; and *Leave* alone without ffmpeg. `tests/integration/test_sponsorblock.py`: the chain
+on a real file, the mark kept beside the title tag and the second step losing it, a cut shortening
+the file, the options field's `--remove-chapters` joined into one pass, and a real worker session
+with SponsorBlock on for an item it cannot ask about. The audit, editor, preset and step-progress
+tests gained the new fields, group and call.
+
+**Mutations, 32 of 34 caught**, each on copies restored by hash. The first run caught 28; four were
+gaps in the tests, closed and caught on a rerun: a category both marked and cut (the test's case
+lacked *Chapters*, so it was refused for that instead), a cut alone needing ffmpeg, *Chapters* given
+back as the user set it, and the row's whole name. **Two were equivalent**, the lists from the file
+and from the store made tuples, which `Preset` and `DownloadRequest` already do, so that code was
+removed.
+
+**Checks, 2026-10-27, on Linux, base `1740c86`**, with the project `.venv` on `PATH` and nothing of
+`T-255` in the tree: `ruff check .` and `ruff format --check .` (513 files); `mypy src` (74), bare
+`mypy` and `mypy --platform win32` (243 each); the table check up to date; `tests/unit tests/ui`
+under `-n 4`, **6,392 passed**, 23 skipped; `tests/integration` under `-n 4`, **601 passed**. No
+Windows run of this change.
+
 ## Ready
 
 <a id="t-302"></a>
@@ -1240,64 +1373,6 @@ beats designing it against an imagined one.
 #### Out of scope
 
 - Any change to `T-014`'s current strict comparison, which is right until then
-
-### T-254 — SponsorBlock, opt-in per preset
-
-**Status:** Proposed — **design ruled 2026-10-19, all four questions as recommended** (`ARC-010` and
-`UX-015` amended that day). Filed 2026-08-16 by `T-183`
-**Options (3):** `--sponsorblock-mark`, `--sponsorblock-remove`, `--no-sponsorblock`
-**Specific criteria:** **off by default, and the control says what enabling it sends.** `SEC-003`
-permitted this and `NFR-007` was amended to name SponsorBlock as a third permitted destination
-*conditional on the user enabling it*; a test asserts no SponsorBlock request leaves the process
-while the option is off. The category lists are validated against yt-dlp's own. `--sponsorblock-api`
-is **excluded** — `SEC-003` declined a configurable endpoint — and this task does not reopen it.
-
-#### Mapped 2026-10-14 — the design, before the code
-
-Mapped against `8b0aad6` on real YouTube downloads, with a loopback server standing in for the
-SponsorBlock API where the request had to be read; probes in the implementer's scratch notes.
-
-- **Through the options field on unreleased `main`, *Embed metadata* plus `--sponsorblock-mark`
-  produces a file with no metadata.** The option implies a second `FFmpegMetadata` that writes
-  chapters only, appended after the application's own, and it rewrites the file from a chapters
-  map, dropping every tag the first wrote: the control run had `title=Me at the zoo`, the hatch
-  run none. **High guess.**
-- **The lookup carries every header typed through `--add-headers`**, `Authorization` included,
-  captured on loopback; a youtube.com cookie was not sent. The four-character hash prefix
-  `SEC-003` ruled on still holds. **High guess, Critical where the header is a credential.**
-- **The hatch already turns SponsorBlock on with nothing saying what is sent, on the probe as
-  well**: one lookup each from the staging probe, the session's probe and the download, three per
-  queued video. **Medium guess.**
-- Low: `--sponsorblock-chapter-title` and `--no-sponsorblock` are refused as *changes nothing*
-  although each changes something beside a mark; `--sponsorblock-mark -sponsor` is admitted and
-  builds nothing (`T012-R5`'s shape).
-- SponsorBlock acts on YouTube alone, so the local integration pages can never fail a *no request
-  while off* test; an offline guard through `run_all_pps('after_filter')` with requests refused
-  works. A removal is ffmpeg work, and without ffmpeg the download finishes and then fails, so
-  `REQ-024`'s gate is load-bearing. Two `ModifyChapters` passes leave a stale SponsorBlock chapter,
-  so the build must compose one with the hatch's `--remove-chapters`.
-
-**Ruled 2026-10-19: all four as recommended.** Each category is left, marked as a chapter or cut
-out, stored as two disjoint tuples, in a *SponsorBlock (YouTube only)* group below *Keep beside the
-file*. While anything is marked, *Chapters* shows checked and held, and one metadata step carries
-both, which closes the metadata loss above. The lookup goes without typed headers, through a
-session carrying only the network settings; that overrides a private yt-dlp method and is
-unverified, so if it cannot be built the question comes back. Both defects above close within this
-task.
-
-**Questions for the maintainer** (recommended first):
-
-1. **What a preset holds.** Per category, *leave*, *mark as a chapter* or *cut out*, stored as two
-   disjoint tuples, in one *SponsorBlock (YouTube only)* group below *Keep beside the file* (eleven
-   radio groups). / Two checkbox lists (an overlap rule). / One switch (no per-category choice).
-2. **Marking and *Chapters*.** While anything is marked, *Chapters* shows checked and held, and one
-   `FFmpegMetadata` carries both (the structural fix for the metadata loss). / Marking disabled
-   until *Chapters* is ticked. / Implied in `build_options` only.
-3. **Typed headers on the lookup.** Look up without them, through a subclass whose session carries
-   only the network settings (overrides a private method; feasibility unverified). / Refuse
-   `--add-headers` while SponsorBlock is on. / Say so and amend `NFR-007`.
-4. **When `HEAD`'s defects close.** Within this task, as `T-249`'s did (`main` is unreleased). / An
-   interim refusal of the two spellings now.
 
 ### T-255 — Per-extractor arguments
 

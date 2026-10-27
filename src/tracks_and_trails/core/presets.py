@@ -482,6 +482,10 @@ class FormatChoice:
     #: video is not the job that keeps all of it.
     download_sections: tuple[str, ...]
     live_from_start: bool
+    #: What SponsorBlock marks and cuts (`T-254`): a job with sponsors cut out is not the job that
+    #: keeps them.
+    sponsorblock_mark: tuple[str, ...]
+    sponsorblock_remove: tuple[str, ...]
 
 
 def format_choice_of(source: DownloadRequest | Preset) -> FormatChoice:
@@ -629,6 +633,8 @@ def to_request(
         uploaded_before=_frozen(preset.uploaded_before),
         download_sections=preset.download_sections,
         live_from_start=preset.live_from_start,
+        sponsorblock_mark=preset.sponsorblock_mark,
+        sponsorblock_remove=preset.sponsorblock_remove,
         extra_options=preset.extra_options,
         extra_option_argv=preset.extra_option_argv,
     )
@@ -673,6 +679,10 @@ def needs_ffmpeg(preset: Preset) -> bool:
     # **Cutting a section is ffmpeg's download, not a post-processor** (`T-252`): yt-dlp sends any
     # item with a section to its ffmpeg downloader, or aborts the download when there is none.
     if preset.download_sections:
+        return True
+    # **A cut is ffmpeg's** (`T-254`): yt-dlp removes the segments by rewriting the file. A mark is
+    # a chapter, and *Chapters* is held on while anything is marked, so it is answered above.
+    if preset.sponsorblock_remove:
         return True
     # `post_processors` is a free list of yt-dlp keys; anything in it may be an ffmpeg one, and
     # this module cannot ask which. Treated as needing ffmpeg, which errs towards withdrawing an

@@ -174,17 +174,23 @@ task and review records it summarised.*
   a `$` variable in a folder wrote outside it, and one in a title saved the file under the
   variable's value, *Done*. The download pass now writes the literal path as the worker built it
   ([entry](TASKS.md#t-365--yt-dlp-rewrites-the-path-the-worker-hands-it-and-can-write-outside-the-chosen-folder)).
-- **`T-253` was built on 2026-10-27** on its rulings, at the maintainer's instruction, and is with
+- **`T-253` was built on 2026-10-26**, and committed the next morning, on its rulings, at the maintainer's instruction, and is with
   the Reviewer: one choice of where connections are made from in *Settings › Network*, which
   absorbs `--source-address`, so `-4`, `-6` and a typed address can no longer disagree; the wait
   before each file, beside the speed limit, held to yt-dlp's command-line rules; and a *Waiting*
   stage read from yt-dlp's own line, where a waiting row read *Downloading*
   ([entry](TASKS.md#t-253--network-reachability-address-family-and-politeness-delays)).
+- **`T-254` was built on 2026-10-27** on its rulings, and is with the Reviewer: SponsorBlock per
+  preset, each category left, marked as a chapter or cut out, off by default and saying what it
+  sends. Both mapped defects are closed: a mark beside *Embed metadata* now keeps the file's tags,
+  and the lookup carries none of the download's headers, through a session of its own as ruled,
+  so ruling 3 did not need to come back
+  ([entry](TASKS.md#t-254--sponsorblock-opt-in-per-preset)).
 - **Fifteen rulings taken 2026-10-19, all as recommended**, every open question in stage 3:
   `T-248`'s two, as built; `T-252`'s last two; `T-253`'s three; `T-254`'s four; and `T-255`'s
   four, the first a security ruling forbidding the extractor-argument pairs that choose a request's
   host, impersonate, or switch off the solver's checks (`SEC-003` amended). Nothing in the stage
-  waits on a decision now, unless `T-254`'s lookup without typed headers cannot be built cleanly.
+  waits on a decision now; `T-254`'s lookup without typed headers was built as ruled.
 - **`T-252` was built the same day, on its rulings**, at the maintainer's request: the rest of the
   retry policy and the connection's tuning in *Settings › Network*, and a *Which part* group for
   download sections and live-from-start. Several sections write one file each, and a section now

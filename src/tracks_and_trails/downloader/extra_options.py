@@ -578,8 +578,6 @@ NOT_SECRET_VALUES: Final = frozenset(
         "--sleep-subtitles",
         "--remove-chapters",
         "--retry-sleep",
-        "--sponsorblock-mark",
-        "--sponsorblock-remove",
         "--throttled-rate",
         "--wait-for-video",
     }

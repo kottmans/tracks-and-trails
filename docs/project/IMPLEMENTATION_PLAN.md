@@ -855,7 +855,7 @@ with their help suppressed. Classified:
 
 | | |
 |---|---|
-| **66** get a typed control | **62 already have one**, `T-247`'s seven since 2026-10-11, `T-249`'s and `T-251`'s since 2026-10-14, `T-250`'s six since 2026-10-18, `T-248`'s five and `T-252`'s seven since 2026-10-19, and `T-253`'s five since 2026-10-26; the other **4** are two tasks, `T-254` and `T-255` |
+| **66** get a typed control | **65 already have one**, `T-247`'s seven since 2026-10-11, `T-249`'s and `T-251`'s since 2026-10-14, `T-250`'s six since 2026-10-18, `T-248`'s five and `T-252`'s seven since 2026-10-19, `T-253`'s five since 2026-10-26, and `T-254`'s three since 2026-10-27; the other **1** is `T-255`'s |
 | **90** are escape-hatch only | `T-184`. Two moved to typed with `T-250`, and one with `T-253`, by their rulings |
 | **94** are refused | the application owns them (`app:sets`, `app:plumbing`, `app:policy`, `app:contained`), or `SEC-003`/`SEC-004`/`SEC-005` forbid them. Two moved here from typed with `T-248`, by its ruling: the Windows pair |
 | **0** are unclassified | ~~`--legacy-server-connect`, a transport-security downgrade the audit first missed (`T183-R3`)~~ — **ruled forbidden by `SEC-005` on 2026-08-21**, which unblocked `T-184` |

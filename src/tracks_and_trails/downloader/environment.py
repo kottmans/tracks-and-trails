@@ -74,6 +74,9 @@ class FfmpegFeature(Enum):
     #: `--download-sections` (`T-252`): yt-dlp downloads a section through ffmpeg, and aborts the
     #: download without it.
     SECTIONS = "downloading only part of a video"
+    #: SponsorBlock's marks and cuts (`T-254`): a mark is written as a chapter and a cut rewrites
+    #: the file, both ffmpeg's.
+    SPONSORBLOCK = "marking or cutting out SponsorBlock segments"
 
 
 #: Features that need ffmpeg, named in the terms a user would recognise (`REQ-024`, `REQ-010`).

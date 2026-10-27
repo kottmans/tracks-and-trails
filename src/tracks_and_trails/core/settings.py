@@ -1574,6 +1574,8 @@ def _preset_from(raw: Any) -> Preset:
         values["convert_subtitles"] = SubtitleFormat(values["convert_subtitles"])
     if "check_formats" in values:
         values["check_formats"] = FormatCheck(values["check_formats"])
+    # `sponsorblock_mark` and `sponsorblock_remove` (`T-254`) need no entry: `Preset` makes a list a
+    # tuple, and a mutation removing the conversion for them changed nothing.
     for name in ("post_processors", "subtitle_languages", "download_sections"):
         if name in values:
             values[name] = tuple(values[name])

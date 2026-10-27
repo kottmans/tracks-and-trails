@@ -481,6 +481,9 @@ def test_a_preset_owned_field_cannot_be_overridden(field_name: str) -> None:
         # `T-252`'s part: a job keeping two minutes, or a stream from its start, is not the preset.
         "download_sections": ("*1:00-3:00",),
         "live_from_start": True,
+        # `T-254`'s SponsorBlock: a job with sponsors cut out is not the preset that was shown.
+        "sponsorblock_mark": ("intro",),
+        "sponsorblock_remove": ("sponsor",),
     }
     assert field_name in sample, f"no hostile value written for {field_name}"
 

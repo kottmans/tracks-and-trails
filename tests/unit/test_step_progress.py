@@ -104,6 +104,8 @@ def test_a_cancelled_session_stops_at_ffmpegs_next_position() -> None:
 class _Adapter:
     def __init__(self) -> None:
         self.entered: list[object] = []
+        #: The requests SponsorBlock was asked about for (`T-254`).
+        self.looked_up: list[object] = []
 
     def build_options(self, *_args: object, **_options: object) -> dict[str, object]:
         return {}
@@ -124,6 +126,9 @@ class _Adapter:
         yield
 
     def attribute_given_up(self, _error: BaseException, _given_up: object) -> None: ...
+
+    def look_up_sponsorblock(self, _ydl: object, _module: object, _request: object) -> None:
+        self.looked_up.append(_request)
 
 
 class _Ydl:
@@ -163,3 +168,6 @@ def test_positions_are_read_for_a_download_and_never_for_a_probe(probe_only: boo
     )
 
     assert adapter.entered == ([] if probe_only else [reporter.ffmpeg_position])
+    # **SponsorBlock is asked on the download only** (`T-254`): the options field's route asked
+    # on every probe as well.
+    assert adapter.looked_up == ([] if probe_only else [request])

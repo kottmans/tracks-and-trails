@@ -1290,6 +1290,60 @@ def _require_part(owner: str, value: Any) -> None:
     _require_flag(owner, "live_from_start", value.live_from_start)
 
 
+#: SponsorBlock's categories, in yt-dlp's order (`T-254`, `ARC-010` amended 2026-10-19, third):
+#: a transcription of `SponsorBlockPP.CATEGORIES` at the pin, held to it by
+#: `tests/unit/test_sponsorblock.py`, since `core/` may not import yt-dlp. Each is left, marked as
+#: a chapter, or cut out.
+SPONSORBLOCK_CATEGORIES: Final = (
+    "sponsor",
+    "intro",
+    "outro",
+    "selfpromo",
+    "preview",
+    "filler",
+    "interaction",
+    "music_offtopic",
+    "hook",
+    "poi_highlight",
+    "chapter",
+)
+
+#: The two a mark can take and a cut cannot (`SponsorBlockPP.NON_SKIPPABLE_CATEGORIES`): a
+#: highlight is a moment and a chapter is a title, so neither is a stretch to cut. yt-dlp's command
+#: line refuses both after `--sponsorblock-remove`, and its cutting step drops them silently.
+SPONSORBLOCK_UNCUTTABLE: Final = ("poi_highlight", "chapter")
+
+
+def _require_sponsorblock(owner: str, value: Any) -> None:
+    """What SponsorBlock marks and cuts, on a preset or a request (`T-254`).
+
+    **Two tuples that share nothing** (ruling 1): a category is left, marked or cut, never two of
+    them, where yt-dlp's command line lets *cut* win over *mark* silently. Each holds categories
+    yt-dlp knows, once each; a highlight or a chapter cannot be cut. **Anything marked needs
+    `embed_chapters`** (ruling 2), since a mark is a chapter and the file only keeps one written
+    into it: the editor holds *Chapters* on while anything is marked, so one metadata step writes
+    both.
+    """
+    for name in ("sponsorblock_mark", "sponsorblock_remove"):
+        chosen = getattr(value, name)
+        unknown = [category for category in chosen if category not in SPONSORBLOCK_CATEGORIES]
+        if unknown:
+            raise ValueError(f"{owner}.{name} names categories SponsorBlock lacks: {unknown}")
+        if len(set(chosen)) != len(chosen):
+            raise ValueError(f"{owner}.{name} names a category twice: {list(chosen)}")
+    uncut = sorted(set(value.sponsorblock_remove) & set(SPONSORBLOCK_UNCUTTABLE))
+    if uncut:
+        raise ValueError(f"{owner}.sponsorblock_remove cannot cut {uncut}: neither is a stretch")
+    both = sorted(set(value.sponsorblock_mark) & set(value.sponsorblock_remove))
+    if both:
+        raise ValueError(f"{owner} both marks and cuts {both}; a category is one or the other")
+    if value.sponsorblock_mark and not value.embed_chapters:
+        raise ValueError(
+            f"{owner}.sponsorblock_mark needs embed_chapters: a mark is a chapter, and only a "
+            "chapter written into the file is kept"
+        )
+
+
 #: `-4` and `-6`, spelled as yt-dlp's command line spells them (`T-253`): each binds connections
 #: to the unspecified address of one family, so the networking layer uses only that family's
 #: addresses. Held in `source_address`, which `--source-address` writes too, so the two choices
@@ -1559,6 +1613,13 @@ class DownloadRequest:
     #: the probe finds, so it acts on both passes.
     download_sections: tuple[str, ...] = ()
     live_from_start: bool = False
+    #: SponsorBlock (`T-254`, `ARC-010` amended 2026-10-19, third), a preset's like the fields
+    #: above: the categories marked as chapters and those cut out, two tuples that share nothing,
+    #: in `SPONSORBLOCK_CATEGORIES`. **Off while both are empty**, and nothing is sent then
+    #: (`NFR-007`). Looked up on YouTube alone, on the download only, through a session carrying
+    #: only the network settings; see `_require_sponsorblock`.
+    sponsorblock_mark: tuple[str, ...] = ()
+    sponsorblock_remove: tuple[str, ...] = ()
 
     #: Network options are carried, never logged as-is. `T-038` redacts at the handler level
     #: (`NFR-007`), which is why a proxy URL may safely live in the model.
@@ -1651,11 +1712,18 @@ class DownloadRequest:
         _require_enum("DownloadRequest", "media_kind", self.media_kind, MediaKind)
         _require_format_depth("DownloadRequest", self)
         _require_naming("DownloadRequest", self)
-        for name in ("post_processors", "subtitle_languages", "download_sections"):
+        for name in (
+            "post_processors",
+            "subtitle_languages",
+            "download_sections",
+            "sponsorblock_mark",
+            "sponsorblock_remove",
+        ):
             object.__setattr__(
                 self, name, _as_tuple_of("DownloadRequest", name, getattr(self, name), str)
             )
         _require_part("DownloadRequest", self)
+        _require_sponsorblock("DownloadRequest", self)
         _require_flag("DownloadRequest", "embed_subtitles", self.embed_subtitles)
         _require_subtitle_depth("DownloadRequest", self)
         _require_enum("DownloadRequest", "audio_codec", self.audio_codec, AudioCodec)
@@ -1778,6 +1846,9 @@ class Preset:
     #: Which part of the item is downloaded (`T-252`); see `DownloadRequest.download_sections`.
     download_sections: tuple[str, ...] = ()
     live_from_start: bool = False
+    #: SponsorBlock (`T-254`); see `DownloadRequest.sponsorblock_mark`.
+    sponsorblock_mark: tuple[str, ...] = ()
+    sponsorblock_remove: tuple[str, ...] = ()
     #: The escape hatch this preset carries (`REQ-031`, `T-184`), the same shape as the request's.
     #:
     #: `REQ-031` says the field is **per preset and overridable per job**, and the maintainer ruled
@@ -1798,9 +1869,16 @@ class Preset:
         _require_text("Preset", "format_selector", self.format_selector)
         _require_enum("Preset", "media_kind", self.media_kind, MediaKind)
         _require_format_depth("Preset", self)
-        for name in ("post_processors", "subtitle_languages", "download_sections"):
+        for name in (
+            "post_processors",
+            "subtitle_languages",
+            "download_sections",
+            "sponsorblock_mark",
+            "sponsorblock_remove",
+        ):
             object.__setattr__(self, name, _as_tuple_of("Preset", name, getattr(self, name), str))
         _require_part("Preset", self)
+        _require_sponsorblock("Preset", self)
         _require_enum("Preset", "audio_codec", self.audio_codec, AudioCodec)
         _require_optional_text("Preset", "audio_quality", self.audio_quality)
         if self.audio_quality is not None and not _is_ytdlp_quality(self.audio_quality):

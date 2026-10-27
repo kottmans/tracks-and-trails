@@ -2104,6 +2104,10 @@ def _extract(
         # otherwise expand a `$` variable in the literal path, and on Windows rename a folder.
         if staging is not None:
             adapter.keep_the_literal_path(ydl, resolved.module, staging)
+        # **SponsorBlock, on the download only and without the download's headers** (`T-254`):
+        # nothing is added while nothing is marked or cut, and a probe never asks.
+        if not probe_only:
+            adapter.look_up_sponsorblock(ydl, resolved.module, request)
         try:
             info = ydl.extract_info(request.url, download=not probe_only)
         except BaseException as error:

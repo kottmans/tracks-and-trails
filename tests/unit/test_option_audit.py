@@ -138,6 +138,10 @@ _FIELD_ON: Final = {
     "source_address": "0.0.0.0",  # noqa: S104 - `-4`, which binds to no one address
     "sleep_interval": 2.0,
     "max_sleep_interval": None,
+    # `T-254`'s chapter step, through `postprocessors`; a mark alone is refused without
+    # `embed_chapters`, and a cut turns on the same step. The lookup is not an option at all.
+    "sponsorblock_mark": None,
+    "sponsorblock_remove": ("sponsor",),
     "cookies_from_browser": "firefox",
     # `T-249`'s kept files, on the download only. `ALL` is the case that sets a key of its own;
     # `BEST` shares `writethumbnail` with `embed_thumbnail`, already turned on above.
@@ -896,7 +900,7 @@ def test_the_typed_tasks_partition_the_typed_options_with_no_field_yet() -> None
 
     # **The audit's sentence, held to the derivation** rather than to numbers written here too.
     stated = re.search(
-        r"\*\*(\d+) typed rows: (\d+) already have a field, (\d+) do not\.\*\*",
+        r"\*\*(\d+) typed rows: (\d+) already have a field, (\d+) (?:do|does) not\.\*\*",
         AUDIT.read_text(encoding="utf-8"),
     )
     assert stated, "the audit no longer states the typed split in the shape this reads"

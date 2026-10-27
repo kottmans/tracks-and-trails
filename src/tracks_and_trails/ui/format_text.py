@@ -136,7 +136,7 @@ def format_name(choice: FormatChoice) -> str:
     name = preset_name_for(choice) or _converting_preset_for(choice) or _base_preset_for(choice)
     clauses = (
         f"{_format_depth(choice)}{_post_processing(choice)}{_subtitle_depth(choice)}"
-        f"{_kept_beside(choice)}{_which_items(choice)}{_which_part(choice)}"
+        f"{_kept_beside(choice)}{_which_items(choice)}{_which_part(choice)}{_sponsorblock(choice)}"
         f"{_extra_options(choice)}"
     )
     if name is None:
@@ -173,9 +173,9 @@ def _base_preset_for(choice: FormatChoice) -> str | None:
     preset with some matched nothing and its row read as the raw selector — `T140-R3`'s defect
     again, through the newest field. `_extra_options` says they are there instead. **So are the
     size and date filters** (`T-247`), the files kept beside the media (`T-249`), the subtitle
-    depth (`T-251`), the format depth (`T-250`) and which part is downloaded (`T-252`), for the
-    same reason, and `_which_items`, `_kept_beside`, `_subtitle_depth`, `_format_depth` and
-    `_which_part` say them.
+    depth (`T-251`), the format depth (`T-250`), which part is downloaded (`T-252`) and what
+    SponsorBlock marks and cuts (`T-254`), for the same reason, and `_which_items`, `_kept_beside`,
+    `_subtitle_depth`, `_format_depth`, `_which_part` and `_sponsorblock` say them.
     """
     plain = replace(
         unadjusted(choice),
@@ -196,6 +196,8 @@ def _base_preset_for(choice: FormatChoice) -> str | None:
         uploaded_before=None,
         download_sections=(),
         live_from_start=False,
+        sponsorblock_mark=(),
+        sponsorblock_remove=(),
     )
     if plain == choice:
         return None
@@ -337,6 +339,38 @@ def _which_part(choice: FormatChoice) -> str:
     if choice.live_from_start:
         parts.append("live from the start")
     return "".join(f" · {part}" for part in parts)
+
+
+#: Each SponsorBlock category in plain words (`T-254`), for the row's name and the editor's rows.
+#: Keyed by yt-dlp's names, in its order (`SPONSORBLOCK_CATEGORIES`).
+SPONSORBLOCK_WORDS: Final = {
+    "sponsor": "Sponsored segments",
+    "intro": "Intros and intermissions",
+    "outro": "End cards and credits",
+    "selfpromo": "Unpaid or self promotion",
+    "preview": "Previews and recaps",
+    "filler": "Filler and tangents",
+    "interaction": "Reminders to like or subscribe",
+    "music_offtopic": "Non-music parts of music videos",
+    "hook": "Hooks and greetings",
+    "poi_highlight": "The highlight",
+    "chapter": "Chapter titles from SponsorBlock",
+}
+
+
+def _sponsorblock(choice: FormatChoice) -> str:
+    """What SponsorBlock marks and cuts, and nothing while it is off (`T-254`)."""
+
+    def named(categories: tuple[str, ...]) -> str:
+        words = [SPONSORBLOCK_WORDS.get(name, name) for name in categories]
+        return ", ".join(word[:1].lower() + word[1:] for word in words)
+
+    parts: list[str] = []
+    if choice.sponsorblock_mark:
+        parts.append(f"marking {named(choice.sponsorblock_mark)}")
+    if choice.sponsorblock_remove:
+        parts.append(f"cutting out {named(choice.sponsorblock_remove)}")
+    return f" · SponsorBlock {'; '.join(parts)}" if parts else ""
 
 
 def _day(text: str) -> str:

@@ -82,11 +82,13 @@ from typing import Final, Protocol
 from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QInputDialog,
     QLabel,
@@ -106,6 +108,8 @@ from PySide6.QtWidgets import (
 from tracks_and_trails.core.format_sort import format_sort_problem
 from tracks_and_trails.core.models import (
     ALL_SUBTITLE_LANGUAGES,
+    SPONSORBLOCK_CATEGORIES,
+    SPONSORBLOCK_UNCUTTABLE,
     AudioCodec,
     FormatCheck,
     KeptThumbnails,
@@ -136,7 +140,7 @@ from tracks_and_trails.downloader.extra_options import (
     options_for,
     refusal_lines,
 )
-from tracks_and_trails.ui.format_text import derived_preset_name
+from tracks_and_trails.ui.format_text import SPONSORBLOCK_WORDS, derived_preset_name
 
 __all__ = ["OptionsDialog"]
 
@@ -253,6 +257,31 @@ KEEP_THUMBNAILS: Final = (
 )
 #: Said under the info JSON, because the file differs from what yt-dlp alone would write.
 INFO_JSON_NOTE: Final = "Sign-in cookies and request headers are removed from it before it is kept."
+
+#: The group below *Keep beside the file* (`UX-015`, amended 2026-10-19, second, `T-254`): one row
+#: per category, each left, marked as a chapter or cut out. A highlight and a chapter title have no
+#: *cut out*, since neither is a stretch of the video.
+SPONSORBLOCK_TITLE: Final = "SponsorBlock (YouTube only)"
+SPONSORBLOCK_NOTE_NAME: Final = "optionsSponsorBlockNote"
+SPONSORBLOCK_CHOICES: Final = (("leave", "Leave"), ("mark", "Mark"), ("cut", "Cut out"))
+#: What turning it on sends (`T-254`'s criterion, `NFR-007` as amended), said where it is turned
+#: on: the four-character hash prefix `SEC-003` measured, never the video's own ID.
+SPONSORBLOCK_NOTE: Final = (
+    "Marking or cutting anything asks SponsorBlock (sponsor.ajay.app) about each YouTube video as "
+    "it downloads. It sends the first four characters of a scrambled form of the video's ID, which "
+    "many videos share, so the server cannot tell which one it is. Nothing is sent while every row "
+    "is left. A marked part becomes a chapter, and a part cut out is removed from the file."
+)
+#: Said on *Chapters* while it is held on (ruling 2): a mark is a chapter, so it is written.
+CHAPTERS_HELD_NOTE: Final = "On while SponsorBlock marks anything, since each mark is a chapter."
+
+
+def sponsorblock_name(category: str, choice: str) -> str:
+    """One category's choice's object name, such as `optionsSponsorBlockSponsorCut` (`T-254`)."""
+    words = "".join(part.capitalize() for part in category.split("_"))
+    return f"optionsSponsorBlock{words}{choice.capitalize()}"
+
+
 SAVE_PRESET_NAME: Final = "optionsSavePreset"
 SAVE_RESULT_NAME: Final = "optionsSaveResult"
 
@@ -299,6 +328,13 @@ FFMPEG_FEATURE_CONTROLS: Final[dict[FfmpegFeature, tuple[str, ...]]] = {
     FfmpegFeature.SUBTITLES: tuple(name for wanted, name, _ in CONVERT_SUBTITLES if wanted),
     # A section is ffmpeg's download (`T-252`); live from the start asks for no ffmpeg of its own.
     FfmpegFeature.SECTIONS: (SECTIONS_NAME,),
+    # Every mark and every cut (`T-254`), and not *leave*, which asks for nothing.
+    FfmpegFeature.SPONSORBLOCK: tuple(
+        sponsorblock_name(category, choice)
+        for category in SPONSORBLOCK_CATEGORIES
+        for choice in ("mark", "cut")
+        if not (choice == "cut" and category in SPONSORBLOCK_UNCUTTABLE)
+    ),
 }
 
 #: Said once, where the controls it explains are (`NFR-006`, `REQ-024`).
@@ -530,6 +566,8 @@ class OptionsDialog(QDialog):
         self._format_sort_usable = True
         #: Whether the sections as last checked may be used (`T-252`).
         self._part_usable = True
+        #: *Chapters* as the user left it, given back once SponsorBlock marks nothing (`T-254`).
+        self._chapters_own = preset.embed_chapters
         self._build()
         self._show_preset(preset)
         self._update_enabled()
@@ -624,6 +662,7 @@ class OptionsDialog(QDialog):
         stack.addWidget(self._build_container())
         stack.addWidget(self._build_embedding())
         stack.addWidget(self._build_kept_beside())
+        stack.addWidget(self._build_sponsorblock())
         stack.addWidget(self._build_subtitles())
         stack.addWidget(self._build_which_items())
         stack.addWidget(self._build_which_part())
@@ -865,6 +904,70 @@ class OptionsDialog(QDialog):
             layout.addWidget(button)
             self._keep_thumbnail[kept] = button
         return group
+
+    def _build_sponsorblock(self) -> QWidget:
+        """*SponsorBlock (YouTube only)*, below *Keep beside the file* (`T-254`).
+
+        **One exclusive group per category** (ruling 1), so a category is left, marked or cut and
+        never two, which the model holds as two tuples sharing nothing. Each button's name says its
+        category and its choice, so a screen reader needs no row to read it by. While anything is
+        marked, *Chapters* is checked and held (ruling 2); the note says what is sent.
+        """
+        group = QGroupBox(SPONSORBLOCK_TITLE, self)
+        layout = QVBoxLayout(group)
+        note = QLabel(SPONSORBLOCK_NOTE, group)
+        note.setObjectName(SPONSORBLOCK_NOTE_NAME)
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        grid = QGridLayout()
+        self._sponsorblock: dict[str, dict[str, QRadioButton]] = {}
+        for row, category in enumerate(SPONSORBLOCK_CATEGORIES):
+            words = SPONSORBLOCK_WORDS[category]
+            label = QLabel(words, group)
+            label.setWordWrap(True)
+            grid.addWidget(label, row, 0)
+            buttons = QButtonGroup(group)
+            buttons.setExclusive(True)
+            self._sponsorblock[category] = {}
+            for column, (choice, text) in enumerate(SPONSORBLOCK_CHOICES, start=1):
+                if choice == "cut" and category in SPONSORBLOCK_UNCUTTABLE:
+                    continue
+                button = QRadioButton(text, group)
+                button.setObjectName(sponsorblock_name(category, choice))
+                button.setAccessibleName(f"{words}: {text.lower()}")
+                buttons.addButton(button)
+                button.toggled.connect(self._hold_chapters)
+                grid.addWidget(button, row, column)
+                self._sponsorblock[category][choice] = button
+        grid.setColumnStretch(0, 1)
+        layout.addLayout(grid)
+        self._embed_chapters.toggled.connect(self._remember_chapters)
+        return group
+
+    def _marking(self) -> bool:
+        """Whether SponsorBlock marks any category (`T-254`)."""
+        return any(choices["mark"].isChecked() for choices in self._sponsorblock.values())
+
+    def _remember_chapters(self, checked: bool) -> None:
+        """Keep the user's own *Chapters* while nothing is marked, to give back afterwards."""
+        if not self._marking():
+            self._chapters_own = checked
+
+    def _hold_chapters(self, *_: object) -> None:
+        """*Chapters* checked and held while anything is marked (ruling 2, `T-254`).
+
+        **Given back as the user left it** once nothing is marked, rather than left on, since the
+        hold was this screen's and not their choice.
+        """
+        marking = self._marking()
+        blocked = self._embed_chapters.blockSignals(True)
+        try:
+            self._embed_chapters.setChecked(True if marking else self._chapters_own)
+        finally:
+            self._embed_chapters.blockSignals(blocked)
+        self._embed_chapters.setEnabled(not marking and self._ffmpeg_available)
+        self._embed_chapters.setAccessibleDescription(CHAPTERS_HELD_NOTE if marking else "")
+        self._embed_chapters.setToolTip(CHAPTERS_HELD_NOTE if marking else "")
 
     def _build_subtitles(self) -> QWidget:
         """The languages, then how they are taken, embedded, fetched and converted (`T-251`).
@@ -1164,6 +1267,17 @@ class OptionsDialog(QDialog):
         self._keep_description.setChecked(preset.write_description)
         self._keep_info_json.setChecked(preset.write_info_json)
         self._keep_thumbnail[preset.keep_thumbnails].setChecked(True)
+        self._chapters_own = preset.embed_chapters
+        for category, choices in self._sponsorblock.items():
+            chosen = (
+                "mark"
+                if category in preset.sponsorblock_mark
+                else "cut"
+                if category in preset.sponsorblock_remove
+                else "leave"
+            )
+            choices[chosen].setChecked(True)
+        self._hold_chapters()
         # **`all` is a selector, not a language** (`T109-R1`). It means *every subtitle this source
         # publishes*, so displaying it means every offered language checked. Compared as a set
         # against the literals, a preset carrying `("all",)` matched nothing the probe found and an
@@ -1614,8 +1728,11 @@ class OptionsDialog(QDialog):
         that has no use for one, rather than being set directly here — a second route to the same
         field is a second opinion about when it applies.
         """
+        # **Without SponsorBlock until the end** (`T-254`): a preset marking anything must embed
+        # chapters, so taking the marks away and *Chapters* with them, as two steps, would pass
+        # through a preset the model refuses. Both are set together below.
         derived = with_post_processing(
-            self._preset,
+            replace(self._preset, sponsorblock_mark=(), sponsorblock_remove=()),
             # Provisional: replaced below, once the derived preset is what gets named. A preset
             # cannot be built without a name, and the name depends on the fields being set.
             name=self._preset.name,
@@ -1664,11 +1781,22 @@ class OptionsDialog(QDialog):
             uploaded_before=before,
             download_sections=sections,
             live_from_start=self._live_from_start.isChecked(),
+            sponsorblock_mark=self._chosen_sponsorblock("mark"),
+            sponsorblock_remove=self._chosen_sponsorblock("cut"),
             extra_options=extra_text,
             extra_option_argv=extra_argv,
         )
         # **With its entry rule** (`T-247`): two presets differing only in it must not share a name.
         return replace(derived, name=derived_preset_name(derived))
+
+    def _chosen_sponsorblock(self, choice: str) -> tuple[str, ...]:
+        """The categories given `choice`, in yt-dlp's order (`T-254`)."""
+        return tuple(
+            category
+            for category in SPONSORBLOCK_CATEGORIES
+            if (button := self._sponsorblock[category].get(choice)) is not None
+            and button.isChecked()
+        )
 
     def _chosen_subtitle_depth(
         self, languages: tuple[str, ...]
