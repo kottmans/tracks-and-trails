@@ -122,3 +122,21 @@ def test_the_field_names_itself_for_a_screen_reader(editor: Callable[..., Option
 
     assert field(dialog).accessibleName() == "Extractor arguments"
     assert "youtube:player_client=web" in field(dialog).accessibleDescription()
+
+
+def test_a_value_ending_in_a_backslash_survives_accepting_and_reopening(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    r"""**`T255-R2`, the review's case through the real editor**: `x=\` beside `y=2` was shown back
+    as `x=\,y=2`, which reads as one value, so reopening the editor and accepting it again changed
+    the preset's arguments without a word."""
+    first = editor()
+    field(first).setPlainText("generic:key_query=x=\\ ,y=2")
+    assert refusals(first) == "" and ok(first)
+    accepted = first.result_preset()
+    assert accepted.extractor_args == (("generic", "key_query", ("x=\\", "y=2")),)
+
+    reopened = editor(replace(accepted, name="Args"))
+
+    assert refusals(reopened) == "" and ok(reopened)
+    assert reopened.result_preset().extractor_args == accepted.extractor_args

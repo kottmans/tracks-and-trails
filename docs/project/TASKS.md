@@ -939,8 +939,11 @@ runs after them in that process.
 
 ### T-255 — Per-extractor arguments
 
-**Status:** In Review — built 2026-10-27 on its rulings, at the maintainer's instruction of
-2026-10-26. *(Was Proposed:)* **design ruled 2026-10-19, all four questions as recommended**, the
+**Status:** In Review — correction 1 built 2026-10-27, awaiting the focused re-review of
+`T255-R1`…`R4`; changes requested 2026-10-27 at `f028f1e`
+([record](reviews/T-255.md#2026-10-27--initial-comprehensive-review)). Built 2026-10-27 on its
+rulings, at the maintainer's instruction of 2026-10-26. *(Was Proposed:)* **design ruled
+2026-10-19, all four questions as recommended**, the
 first a security ruling (`SEC-003`, `ARC-010`, `DAT-003` and `UX-015` amended that day). Filed
 2026-08-16 by `T-183`
 **Priority:** Lowest among the nine — one option, and the most expert-facing of the 44
@@ -1064,6 +1067,29 @@ key.
 and `ruff format --check .` (519 files); `mypy src` (76), bare `mypy` and `mypy --platform win32`
 (248 each); both tables' checks up to date; `tests/unit tests/ui` under `-n 4`, **6,479 passed**,
 23 skipped; `tests/integration` under `-n 4`, **604 passed**. No Windows run of this change.
+
+**Correction 1, 2026-10-27**, on `7eece55`, awaiting re-review
+([record](reviews/T-255.md#2026-10-27--initial-comprehensive-review)):
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T255-R1`, Critical — a preset set aside at startup was reported with its token: the refusal quoted the item whole, or the value | **A refusal names nothing that is not on the allowlist** (`extractor_args_problem`): no item, no value, and no key or argument no extractor reads, since a token can be typed where any of them goes; a known key or argument is still named, with the forbidden pairs' reasons. The editor's own refusals, shown only on its screen, are unchanged | Eleven shapes, from bare text to a value holding a line separator, refused without the token; **the real reader** on the review's hand-edited file, five rows each set aside, the report naming the preset and not the token, which is the text composition logs |
+| `T255-R2`, Medium — `x=\` beside `y=2` was shown back as one value, and the model held values `parsed` breaks into lines | **The model's rule is the round trip itself**: an item is held only if `parsed(as_text(item))` gives it back, so no gap between the two can be held. **`as_text` parts a value ending in a backslash from the next with a space**, which yt-dlp strips | The review's case read back here and by `parse_options` alike; a thousand seeded values of the grammar's own characters, every one held reading back the same both ways; all ten characters `str.splitlines` breaks at refused by both owners; the real editor accepting and reopening the review's case unchanged; the settings file and the queue's store keeping it |
+| `T255-R3`, Critical — a token beside a client's name was left readable, and yt-dlp's warning quoted it | **A value is readable only from its own argument's vocabulary** (`Vocabulary`): the class attribute the extractor compares against where there is one, else the words yt-dlp's pinned documentation gives that argument, a count where yt-dlp reads one as `int` does. Everything else is registered. `soundcloud:comments_sort_by`, whose words the site supplies, leaves the list; `soundcloud:formats` keeps only `default`, `*` and the default formats. **Audited one by one**, 41 kept | **yt-dlp's own YouTube extractor**, initialized with the network refused, warned *Skipping unsupported client* with the token, as the control; registered as the manager registers it, the redacting formatter's line kept the warning and lost the token. Each vocabulary held to its class attribute exactly, or each word found in its argument's documented line |
+| `T255-R4`, Medium — `zan:split_angles` made ffmpeg's work that neither gate counted | **Both gates ask `extractor_args_need_ffmpeg`**, which reads the value as Zan does: the first, lower-cased, anything but `false` splits | Upstream's own `_multiangle_formats` driven with seven values, `true`, `yes`, empty, `TRUE`, `false`, `FALSE` and `false,true`: it writes `libx264` into the angles exactly when the offer and the worker now say ffmpeg is needed |
+| `T255-R5`, Medium — no Windows or CI run | Pushed at `fdff1b4`; CI ran there, and this correction is not yet pushed | |
+
+**Mutations, 16 of 16 caught**, each on copies restored by hash: the item, an unknown key, an unknown
+argument or an unshowable value quoted; no round trip checked; no space after a backslash, or one
+after the last value too; a whole argument left readable; no count readable, anything readable
+where counts are, or a count read as `str.isdigit` reads one; no client left out by name; the split
+read case-sensitively, or by any value; the offer or the worker not asking.
+
+**Checks, 2026-10-27, on Linux**, with the project `.venv` on `PATH`: `ruff check .` and
+`ruff format --check .` (524 files); `mypy src` (76), bare `mypy` and `mypy --platform win32` (249
+each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,718 passed**, 23 skipped;
+`tests/integration` **in one process, as CI runs it**, **615 passed**, `T-254`'s corrected test
+among them. No Windows run of this correction.
 
 ## Ready
 

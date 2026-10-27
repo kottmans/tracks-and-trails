@@ -206,6 +206,13 @@ task and review records it summarised.*
   rounds down is said exactly beneath it. `REQ-014`'s list of stages lacks *Waiting*; the wording
   is proposed to the maintainer, since that file is not the Implementer's
   ([entry](TASKS.md#t-253--network-reachability-address-family-and-politeness-delays)).
+  **`T-254`'s first CI run failed one of its own tests** on both platforms: CI runs integration in
+  one process, where two older tests leave the application's log silenced first; the test now
+  listens on the log itself. **`T-255`'s first correction**: a refusal no longer quotes what was
+  typed, which had reached the startup log; the model holds only what the editor reads back; a
+  value stays readable only from its own argument's vocabulary, 41 audited, so a token beside a
+  client's name is redacted; and Zan's split counts as ffmpeg's work
+  ([entry](TASKS.md#t-255--per-extractor-arguments)).
 - **Fifteen rulings taken 2026-10-19, all as recommended**, every open question in stage 3:
   `T-248`'s two, as built; `T-252`'s last two; `T-253`'s three; `T-254`'s four; and `T-255`'s
   four, the first a security ruling forbidding the extractor-argument pairs that choose a request's

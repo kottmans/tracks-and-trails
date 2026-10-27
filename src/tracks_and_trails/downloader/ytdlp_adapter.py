@@ -55,7 +55,7 @@ from yt_dlp.utils import (
 )
 
 from tracks_and_trails.core.errors import TRANSIENT_CONTEXT_KEY, ErrorKind, FailureDetail
-from tracks_and_trails.core.extractor_args import as_ytdlp
+from tracks_and_trails.core.extractor_args import as_ytdlp, extractor_args_need_ffmpeg
 from tracks_and_trails.core.format_sort import sort_items
 from tracks_and_trails.core.models import (
     MERGE_CONTAINERS,
@@ -1871,10 +1871,13 @@ def requires_ffmpeg(request: DownloadRequest) -> bool:
     # its ffmpeg downloader, or aborts when there is none (`YoutubeDL.process_info`, read at
     # 2026.08.19). A chapter pattern or `*from-url` counts as well, since what it cuts depends on
     # the item. The hatch answered this for `--download-sections` until the control refused it.
+    # **So can an extractor argument** (`T255-R4`): Zan's split re-encodes each angle, which no
+    # postprocessor shows, since the extractor writes ffmpeg's arguments into the formats.
     return (
         bool(request.download_sections)
         or _performed_by_ffmpeg(build_postprocessors(request))
         or hatch_requires_ffmpeg(request.extra_options, request.extra_option_argv)
+        or extractor_args_need_ffmpeg(request.extractor_args)
     )
 
 

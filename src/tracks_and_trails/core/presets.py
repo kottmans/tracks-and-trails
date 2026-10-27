@@ -52,6 +52,7 @@ selector would trade a clear error for a silent substitution.
 from dataclasses import dataclass, field, fields, replace
 from typing import Any, Final
 
+from tracks_and_trails.core.extractor_args import extractor_args_need_ffmpeg
 from tracks_and_trails.core.models import (
     ALL_SUBTITLE_LANGUAGES,
     AudioCodec,
@@ -687,6 +688,9 @@ def needs_ffmpeg(preset: Preset) -> bool:
     # **A cut is ffmpeg's** (`T-254`): yt-dlp removes the segments by rewriting the file. A mark is
     # a chapter, and *Chapters* is held on while anything is marked, so it is answered above.
     if preset.sponsorblock_remove:
+        return True
+    # **An extractor argument can be ffmpeg's** (`T255-R4`): Zan's split re-encodes each angle.
+    if extractor_args_need_ffmpeg(preset.extractor_args):
         return True
     # `post_processors` is a free list of yt-dlp keys; anything in it may be an ffmpeg one, and
     # this module cannot ask which. Treated as needing ffmpeg, which errs towards withdrawing an
