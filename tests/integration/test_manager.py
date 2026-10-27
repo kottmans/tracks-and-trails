@@ -537,6 +537,15 @@ def child_downloading_forever(
         time.sleep(0.05)
 
 
+def child_waiting_forever(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """Reports yt-dlp's wait before a file (`T-253`), then waits for ever."""
+    queue.put(Progress(job_id=job_id, stage=Stage.WAITING))
+    while True:
+        time.sleep(0.05)
+
+
 def child_probe_reporting_then_lingering(
     kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
 ) -> None:
@@ -2886,6 +2895,24 @@ def test_a_ready_job_starts_a_download_at_running(
     assert spin(lambda: repository.jobs["job-1"].status is JobStatus.RUNNING)
     assert repository.statuses("job-1") == [JobStatus.RUNNING]
     assert JobStatus.PROBING not in repository.statuses("job-1")
+
+
+def test_a_download_waiting_before_its_file_is_running_not_probing(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**The wait is part of the download** (`T-253`). A download started from `QUEUED` reads
+    *Probing* until its worker says otherwise, and a wait sends nothing else, so without its stage
+    moving the job on, a row would read *Probing* for as long as yt-dlp waited."""
+    repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
+    download = manager(entry_point=child_waiting_forever)
+
+    download.start("job-1", SessionKind.DOWNLOAD)
+
+    assert spin(lambda: repository.jobs["job-1"].status is JobStatus.RUNNING)
+    assert repository.statuses("job-1") == [JobStatus.PROBING, JobStatus.RUNNING]
 
 
 def test_a_probe_session_is_refused_for_a_ready_job(

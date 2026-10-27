@@ -343,8 +343,10 @@ def test_every_step_with_words_has_a_word_for_the_chip() -> None:
             Progress(job_id="job-1", stage=Stage.POST_PROCESSING, step="SomeFutureStep"),
             "Processing",
         ),
+        # yt-dlp's wait before a file (`T-253`), which sends nothing until the file starts.
+        (JobStatus.RUNNING, Progress(job_id="job-1", stage=Stage.WAITING), "Waiting"),
     ],
-    ids=["downloading", "joining", "unnamed-step"],
+    ids=["downloading", "joining", "unnamed-step", "waiting"],
 )
 def test_the_chip_says_what_the_percentage_is_of(
     queue: FakeQueue,  # noqa: F811

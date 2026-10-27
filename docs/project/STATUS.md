@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-10-26
+**Last updated:** 2026-10-27
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -174,6 +174,12 @@ task and review records it summarised.*
   a `$` variable in a folder wrote outside it, and one in a title saved the file under the
   variable's value, *Done*. The download pass now writes the literal path as the worker built it
   ([entry](TASKS.md#t-365--yt-dlp-rewrites-the-path-the-worker-hands-it-and-can-write-outside-the-chosen-folder)).
+- **`T-253` was built on 2026-10-27** on its rulings, at the maintainer's instruction, and is with
+  the Reviewer: one choice of where connections are made from in *Settings › Network*, which
+  absorbs `--source-address`, so `-4`, `-6` and a typed address can no longer disagree; the wait
+  before each file, beside the speed limit, held to yt-dlp's command-line rules; and a *Waiting*
+  stage read from yt-dlp's own line, where a waiting row read *Downloading*
+  ([entry](TASKS.md#t-253--network-reachability-address-family-and-politeness-delays)).
 - **Fifteen rulings taken 2026-10-19, all as recommended**, every open question in stage 3:
   `T-248`'s two, as built; `T-252`'s last two; `T-253`'s three; `T-254`'s four; and `T-255`'s
   four, the first a security ruling forbidding the extractor-argument pairs that choose a request's

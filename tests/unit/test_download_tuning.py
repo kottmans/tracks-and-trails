@@ -85,6 +85,10 @@ def test_the_samples_name_every_connection_setting() -> None:
         "proxy",
         "rate_limit_bytes",
         "retries",
+        # `T-253`'s, held in `tests/unit/test_reachability.py`.
+        "source_address",
+        "sleep_interval",
+        "max_sleep_interval",
     }
     assert added == set(CONNECTION) == set(CONNECTION_KEYS)
 

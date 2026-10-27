@@ -113,7 +113,8 @@ def make_job(job_id: str, directory: Path, **overrides: Any) -> Job:
 def child_walking_every_stage(
     _kind: SessionKind, job_id: str, _request: DownloadRequest, queue: Any, **_: Any
 ) -> None:
-    """Every stage `REQ-014` names, then a success. The criterion is that all five are shown.
+    """Every stage `REQ-014` names, then a success. The criterion is that all five are shown, and
+    the wait before a file `ARC-010` adds (`T-253`).
 
     Paced deliberately: see the sleep below. A widget that coalesces cannot promise to render a
     stage that was already stale when its turn came, so a test asserting every stage must give
@@ -122,6 +123,7 @@ def child_walking_every_stage(
     for index, stage in enumerate(
         (
             Stage.PROBING,
+            Stage.WAITING,
             Stage.DOWNLOADING_VIDEO,
             Stage.DOWNLOADING_AUDIO,
             Stage.MERGING,

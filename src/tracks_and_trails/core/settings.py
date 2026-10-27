@@ -58,9 +58,12 @@ from typing import Any, Final
 from platformdirs import user_config_dir
 
 from tracks_and_trails.core.models import (
+    IPV4_ONLY,
+    IPV6_ONLY,
     MOST_CONCURRENT_FRAGMENTS,
     MOST_NAME_CHARACTERS,
     MOST_SOCKET_TIMEOUT_SECONDS,
+    MOST_WAIT_SECONDS,
     SHORTEST_SOCKET_TIMEOUT_SECONDS,
     AudioCodec,
     FileNaming,
@@ -70,7 +73,9 @@ from tracks_and_trails.core.models import (
     NetworkOptions,
     Preset,
     SubtitleFormat,
+    canonical_address,
     is_held_timeout,
+    is_held_wait,
     looks_like_a_path,
     parse_browser_specification,
     proxy_refusal,
@@ -156,6 +161,10 @@ _FRAGMENT_RETRIES_KEY: Final = "fragment_retries"
 _EXTRACTOR_RETRIES_KEY: Final = "extractor_retries"
 _SOCKET_TIMEOUT_KEY: Final = "socket_timeout"
 _CONCURRENT_FRAGMENTS_KEY: Final = "concurrent_fragments"
+#: `T-253`'s three, likewise.
+_SOURCE_ADDRESS_KEY: Final = "source_address"
+_SLEEP_KEY: Final = "sleep_interval"
+_MAX_SLEEP_KEY: Final = "max_sleep_interval"
 
 #: The band of rate limits this application will hold, in bytes per second (`T-196`).
 #:
@@ -1069,6 +1078,83 @@ def _fragments_from(raw: Any) -> tuple[int | None, str | None]:
     return raw, None
 
 
+def _address_from(raw: Any) -> tuple[str | None, str | None]:
+    """Coerce a stored source address. **Never raises** (`T-253`).
+
+    Held the shortest way, so a hand-written `0:0::0` reads as *IPv6 only* without a report: it is
+    the same address. Anything that is not an address falls back to the automatic choice.
+    """
+    if raw is None:
+        return None, None
+    address = canonical_address(raw) if isinstance(raw, str) else None
+    if address is None:
+        return None, (
+            f"{_NETWORK_TABLE}.{_SOURCE_ADDRESS_KEY} is {raw!r}, which is not an IP address. "
+            "Connections are made the automatic way."
+        )
+    return address, None
+
+
+def _wait_from(raw: Any, key: str, instead: str) -> tuple[float | None, str | None]:
+    """Coerce one stored wait before a file, in seconds. **Never raises** (`T-253`).
+
+    `_timeout_from`'s shape: zero or less is no wait and is reported, past `MOST_WAIT_SECONDS` is
+    clamped, and a value finer than tenths is rounded, all reported. `instead` says what happens
+    when the key is dropped, which differs between the two keys.
+    """
+    named = f"{_NETWORK_TABLE}.{key}"
+    if raw is None:
+        return None, None
+    if (
+        isinstance(raw, bool)
+        or not isinstance(raw, int | float)
+        or (isinstance(raw, float) and not math.isfinite(raw))
+    ):
+        return None, f"{named} is {raw!r}, which is not a number of seconds. {instead}"
+    if raw <= 0:
+        return None, f"{named} is {raw}, which is not a wait. {instead}"
+    if raw > MOST_WAIT_SECONDS:
+        return float(MOST_WAIT_SECONDS), (
+            f"{named} is {raw}, which is longer than this application waits. "
+            f"{MOST_WAIT_SECONDS} seconds is in use."
+        )
+    if not is_held_wait(raw):
+        held = max(round(float(raw), 1), 0.1)
+        return held, (
+            f"{named} is {raw}, which is finer than the tenths of a second this application holds. "
+            f"{held:g} seconds is in use."
+        )
+    return float(raw), None
+
+
+def _waits_from(table: dict[str, Any]) -> tuple[float | None, float | None, list[str]]:
+    """The shortest and longest wait before a file, and why any was dropped (`T-253`).
+
+    **Each read alone, then the pair held to yt-dlp's command line's rules**, which its library
+    does not apply: a longest wait without a shortest is dropped and reported, and so is one
+    shorter than the shortest, which then waits alone. Checked after the clamping and the rounding,
+    so the pair that is kept is a pair the model holds.
+    """
+    shortest, shortest_reason = _wait_from(table.get(_SLEEP_KEY), _SLEEP_KEY, "No wait is in use.")
+    longest, longest_reason = _wait_from(
+        table.get(_MAX_SLEEP_KEY), _MAX_SLEEP_KEY, "Each file waits the shortest time."
+    )
+    reasons = [reason for reason in (shortest_reason, longest_reason) if reason]
+    if longest is not None and shortest is None:
+        reasons.append(
+            f"{_NETWORK_TABLE}.{_MAX_SLEEP_KEY} is {longest:g}, with no {_SLEEP_KEY} beside it, "
+            "and a longest wait needs a shortest one. No wait is in use."
+        )
+        longest = None
+    elif longest is not None and shortest is not None and longest < shortest:
+        reasons.append(
+            f"{_NETWORK_TABLE}.{_MAX_SLEEP_KEY} is {longest:g}, which is shorter than "
+            f"{_SLEEP_KEY}, {shortest:g}. Each file waits {shortest:g} seconds."
+        )
+        longest = None
+    return shortest, longest, reasons
+
+
 def _network_from(table: dict[str, Any]) -> tuple[NetworkOptions, str | None]:
     """The `[network]` table as one value, and everything it had to discard (`T-196`).
 
@@ -1087,6 +1173,8 @@ def _network_from(table: dict[str, Any]) -> tuple[NetworkOptions, str | None]:
     )
     timeout, timeout_reason = _timeout_from(table.get(_SOCKET_TIMEOUT_KEY))
     fragments, fragments_reason = _fragments_from(table.get(_CONCURRENT_FRAGMENTS_KEY))
+    address, address_reason = _address_from(table.get(_SOURCE_ADDRESS_KEY))
+    shortest, longest, wait_reasons = _waits_from(table)
     reasons = [
         reason
         for reason in (
@@ -1097,6 +1185,8 @@ def _network_from(table: dict[str, Any]) -> tuple[NetworkOptions, str | None]:
             extractor_reason,
             timeout_reason,
             fragments_reason,
+            address_reason,
+            *wait_reasons,
         )
         if reason
     ]
@@ -1108,6 +1198,9 @@ def _network_from(table: dict[str, Any]) -> tuple[NetworkOptions, str | None]:
         extractor_retries=extractor_retries,
         socket_timeout=timeout,
         concurrent_fragments=fragments,
+        source_address=address,
+        sleep_interval=shortest,
+        max_sleep_interval=longest,
     )
     return options, ("\n".join(reasons) if reasons else None)
 
@@ -1983,7 +2076,8 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
                 _RETRIES_KEY,
                 None if settings.network.retries is None else str(settings.network.retries),
             ),
-            # `T-252`'s four, each absent while nobody chose, as the three above are.
+            # `T-252`'s four, each absent while nobody chose, as the three above are, and `T-253`'s
+            # two waits.
             *(
                 (key, None if (value := getattr(settings.network, key)) is None else str(value))
                 for key in (
@@ -1991,7 +2085,15 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
                     _EXTRACTOR_RETRIES_KEY,
                     _SOCKET_TIMEOUT_KEY,
                     _CONCURRENT_FRAGMENTS_KEY,
+                    _SLEEP_KEY,
+                    _MAX_SLEEP_KEY,
                 )
+            ),
+            (
+                _SOURCE_ADDRESS_KEY,
+                None
+                if settings.network.source_address is None
+                else _toml_string(settings.network.source_address),
             ),
         ]
         network_comments = {
@@ -2009,6 +2111,13 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             f"{SOCKET_TIMEOUT_MAXIMUM}. Delete the line for the downloader's own.",
             _CONCURRENT_FRAGMENTS_KEY: "# Pieces of a stream each download fetches at once, 1 "
             f"to {MOST_CONCURRENT_FRAGMENTS}. Delete the line for one at a time.",
+            _SLEEP_KEY: "# Seconds each download waits before each of its files, in tenths, up to "
+            f"{MOST_WAIT_SECONDS}. Delete the line for no wait.",
+            _MAX_SLEEP_KEY: "# The longest wait, when each wait is picked at random from "
+            f"{_SLEEP_KEY} up to this. Delete the line to wait exactly {_SLEEP_KEY}.",
+            _SOURCE_ADDRESS_KEY: f'# The address connections are made from: "{IPV4_ONLY}" for IPv4 '
+            f'only, "{IPV6_ONLY}" for IPv6 only, or one of this computer\'s own. Delete the line '
+            "for the automatic choice.",
         }
         written = [(key, value) for key, value in network_pairs if value is not None]
         network_lines = (

@@ -27,6 +27,7 @@ durable records belong with their schema, not in this module — is why it is wo
 (`T-176`).
 """
 
+import ipaddress
 import math
 import os
 import re
@@ -1237,10 +1238,15 @@ def is_held_timeout(seconds: int | float) -> bool:
     **Bounded before anything is converted to a `float`** (`T252-R2`): an integer too large for one
     is refused by the comparison, where `math.isfinite` raised `OverflowError` over it.
     """
+    return _in_tenths(seconds, MOST_SOCKET_TIMEOUT_SECONDS)
+
+
+def _in_tenths(seconds: int | float, most: int) -> bool:
+    """A whole number of tenths of a second, more than none and at most `most` (`T252-R3`)."""
     if isinstance(seconds, float) and not math.isfinite(seconds):
         return False
-    # A positive whole number of tenths is at least the shortest, so the floor needs no test.
-    if not 0 < seconds <= MOST_SOCKET_TIMEOUT_SECONDS:
+    # A positive whole number of tenths is at least one tenth, so the floor needs no test.
+    if not 0 < seconds <= most:
         return False
     tenths = seconds * 10
     return abs(tenths - round(tenths)) < 1e-6
@@ -1284,14 +1290,93 @@ def _require_part(owner: str, value: Any) -> None:
     _require_flag(owner, "live_from_start", value.live_from_start)
 
 
+#: `-4` and `-6`, spelled as yt-dlp's command line spells them (`T-253`): each binds connections
+#: to the unspecified address of one family, so the networking layer uses only that family's
+#: addresses. Held in `source_address`, which `--source-address` writes too, so the two choices
+#: and a typed address are one value and can never disagree (`ARC-010`, amended 2026-10-19,
+#: second).
+IPV4_ONLY: Final = "0.0.0.0"  # noqa: S104 - what `-4` binds to, which picks the family
+IPV6_ONLY: Final = "::"
+
+#: The longest wait before a file, in seconds (`T-253`). `MOST_SOCKET_TIMEOUT_SECONDS`' reasoning:
+#: a catcher for an extra digit rather than a measurement. A politeness delay is seconds to
+#: minutes, and an hour before every file is longer than anyone means one.
+MOST_WAIT_SECONDS: Final = 3600
+
+
+def canonical_address(text: str) -> str | None:
+    """`text` as the IP address it spells, written the shortest way, or `None` (`T-253`).
+
+    **An address, never a host name.** yt-dlp tells the families apart by whether the text holds a
+    colon, so a name would be bound as IPv4 whatever it resolves to. The shortest spelling is the
+    one held, so `0:0::0` is *IPv6 only* and is shown as that choice.
+    """
+    try:
+        return str(ipaddress.ip_address(text.strip()))
+    except ValueError:
+        return None
+
+
+def is_held_wait(seconds: int | float) -> bool:
+    """Whether `seconds` is a wait before a file this application holds (`T-253`): a whole number
+    of tenths, from a tenth to `MOST_WAIT_SECONDS`, held as the timeout is (`T252-R3`)."""
+    return _in_tenths(seconds, MOST_WAIT_SECONDS)
+
+
+def _require_reachability(owner: str, value: Any) -> None:
+    """`T-253`'s three settings, on `NetworkOptions` or on a request, which shares them.
+
+    **`source_address` is `None` for *Automatic***, `IPV4_ONLY` or `IPV6_ONLY` for one family, or
+    any other address to make connections from, in its shortest spelling.
+
+    **The two waits are yt-dlp's `--sleep-interval` and `--max-sleep-interval`**, with its command
+    line's rules, which its library does not apply (`{max: 1.5}` alone slept, measured
+    2026-10-14): the longest wait needs the shortest, and is not shorter than it. `None` is no
+    wait. **Zero is not held**, since it is no wait as well and `None` already says that; so a wait
+    picked at random between nothing and a longest is held as from a tenth.
+    """
+    address = value.source_address
+    if address is not None:
+        if not isinstance(address, str):
+            _fail(owner, "source_address", address, "an IP address or None")
+        if canonical_address(address) != address:
+            raise ValueError(
+                f"{owner}.source_address must be an IP address written the shortest way, such as "
+                f"{IPV4_ONLY} or {IPV6_ONLY}, not {address!r}"
+            )
+    for name in ("sleep_interval", "max_sleep_interval"):
+        seconds = getattr(value, name)
+        if seconds is None:
+            continue
+        if isinstance(seconds, bool) or not isinstance(seconds, int | float):
+            _fail(owner, name, seconds, "a number of seconds or None")
+        if not is_held_wait(seconds):
+            raise ValueError(
+                f"{owner}.{name} must be a number of seconds in tenths, from 0.1 to "
+                f"{MOST_WAIT_SECONDS}"
+            )
+    shortest, longest = value.sleep_interval, value.max_sleep_interval
+    if longest is not None and shortest is None:
+        raise ValueError(
+            f"{owner}.max_sleep_interval needs sleep_interval: a longest wait without a shortest "
+            "is refused, as yt-dlp's own command line refuses it"
+        )
+    if longest is not None and shortest is not None and longest < shortest:
+        raise ValueError(
+            f"{owner}.max_sleep_interval ({longest}) is shorter than its sleep_interval "
+            f"({shortest})"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class NetworkOptions:
-    """The network settings, as one value (`T-196`, `T-252`).
+    """The network settings, as one value (`T-196`, `T-252`, `T-253`).
 
     `REQ-023` names the first three; `T-252` adds four that tune the connection, ruled Settings
     rather than preset fields (`ARC-010`, amended 2026-10-19): retries of a refused piece and of
     reading the page, how long a silent server is waited for, and how many pieces are fetched at
-    once.
+    once. `T-253` adds three more by its rulings of the same day (second): which address
+    connections are made from, and how long to wait before each file.
 
     **A value object rather than loose fields**, because they are set together, stored together
     under one `[network]` table, and travel together onto a request. Loose fields would make every
@@ -1335,6 +1420,11 @@ class NetworkOptions:
     extractor_retries: int | None = None
     socket_timeout: float | None = None
     concurrent_fragments: int | None = None
+    #: `T-253`'s three, each copied onto the request field of the same name; see
+    #: `_require_reachability` for what each holds.
+    source_address: str | None = None
+    sleep_interval: float | None = None
+    max_sleep_interval: float | None = None
 
     def __post_init__(self) -> None:
         _require_optional_text("NetworkOptions", "proxy", self.proxy)
@@ -1348,6 +1438,7 @@ class NetworkOptions:
             )
         _require_optional_count("NetworkOptions", "retries", self.retries)
         _require_connection("NetworkOptions", self)
+        _require_reachability("NetworkOptions", self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1501,6 +1592,16 @@ class DownloadRequest:
     extractor_retries: int | None = None
     socket_timeout: float | None = None
     concurrent_fragments: int | None = None
+    #: Where connections are made from and how long to wait before each file (`T-253`, `ARC-010`
+    #: amended 2026-10-19, second), frozen from Settings when the job is queued, as the rest of the
+    #: connection is. `source_address` is `-4`, `-6` and `--source-address` as one value, so no two
+    #: of them can disagree; `sleep_interval` and `max_sleep_interval` are yt-dlp's
+    #: `--sleep-interval` and `--max-sleep-interval`, **per file, as yt-dlp means them**, so a
+    #: download joined from a picture and a sound waits twice, and downloads running together do
+    #: not take turns. See `_require_reachability`.
+    source_address: str | None = None
+    sleep_interval: float | None = None
+    max_sleep_interval: float | None = None
     #: Which browser's cookies to use — a **browser name**, and since `T-197` by construction
     #: rather than by intent (`REQ-026`, `DAT-003`).
     #:
@@ -1587,6 +1688,7 @@ class DownloadRequest:
         _require_optional_count("DownloadRequest", "rate_limit_bytes", self.rate_limit_bytes)
         _require_optional_count("DownloadRequest", "retries", self.retries)
         _require_connection("DownloadRequest", self)
+        _require_reachability("DownloadRequest", self)
         _require_text_or_empty("DownloadRequest", "extra_options", self.extra_options)
         object.__setattr__(
             self,

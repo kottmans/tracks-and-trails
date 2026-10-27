@@ -409,11 +409,16 @@ class YtdlpLog:
     handler sits at `INFO`, so the job log would have been created, been empty, and looked fine.
     """
 
-    def __init__(self, logger: logging.Logger) -> None:
+    def __init__(
+        self, logger: logging.Logger, on_line: Callable[[str], None] | None = None
+    ) -> None:
         self._logger = logger
         #: The last line yt-dlp wrote, so a session it ended by downloading nothing can say why in
         #: yt-dlp's own words (`UX-005`, amended 2026-09-27). It is shown, and never classified on.
         self.last_line: str | None = None
+        #: Told every line that is not `[debug]` as it arrives (`T-253`): the worker reads
+        #: yt-dlp's wait before a file from its line, since yt-dlp says it nowhere else.
+        self._on_line = on_line
 
     def debug(self, message: str) -> None:
         if message.startswith("[debug] "):
@@ -438,6 +443,8 @@ class YtdlpLog:
         # `strip`, because yt-dlp starts a progress-style line with `\r`: *File is larger than
         # max-filesize … Aborting.* arrives that way.
         self.last_line = message.strip() or self.last_line
+        if self._on_line is not None:
+            self._on_line(message.strip())
 
 
 class _OnlyThisJob(logging.Filter):

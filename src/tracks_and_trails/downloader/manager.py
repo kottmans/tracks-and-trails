@@ -190,6 +190,9 @@ _ENTRY_STATUS: Final[dict[JobStatus, JobStatus]] = {
 #: `PROBING` is absent deliberately: `start()` has already moved the job there, and mapping it
 #: would make an ordinary probe progress message look like a transition every time it arrived.
 _STAGE_STATUS: Final[dict[Stage, JobStatus]] = {
+    # The wait before a file is part of the download (`T-253`): yt-dlp waits after the session
+    # started it, and between the files of one item.
+    Stage.WAITING: JobStatus.RUNNING,
     Stage.DOWNLOADING_VIDEO: JobStatus.RUNNING,
     Stage.DOWNLOADING_AUDIO: JobStatus.RUNNING,
     Stage.MERGING: JobStatus.POST_PROCESSING,

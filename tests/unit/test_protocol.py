@@ -48,6 +48,9 @@ REQ_014_STAGES = {
     "downloading_audio",
     "merging",
     "post_processing",
+    # Not `REQ-014`'s: the wait before a file, which `ARC-010` adds (amended 2026-10-19, second,
+    # `T-253`).
+    "waiting",
 }
 
 

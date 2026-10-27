@@ -278,6 +278,19 @@ def connection_defaults() -> Mapping[str, float]:
     )
 
 
+#: The line yt-dlp writes as it begins to wait before a file (`T-253`), `[download] Sleeping 3.00
+#: seconds ...`, from `FileDownloader.download` at the pin. It says so nowhere else: no hook is
+#: called and no progress is sent until the wait is over. A line this does not match is not a wait,
+#: so a wording yt-dlp changes leaves the row reading *Downloading* rather than wrong, and
+#: `tests/integration/test_reachability.py` is what notices.
+_WAITING_LINE: Final = re.compile(r"\[download\] Sleeping \d+(?:\.\d+)? seconds\b")
+
+
+def is_waiting_line(line: str) -> bool:
+    """Whether yt-dlp wrote `line` as it began its wait before a file (`T-253`)."""
+    return _WAITING_LINE.match(line) is not None
+
+
 def extractor_message(error: BaseException) -> str:
     """The extractor's own words, without yt-dlp's bug-report boilerplate.
 
@@ -1064,6 +1077,11 @@ def build_options(
         options["socket_timeout"] = request.socket_timeout
     if request.concurrent_fragments is not None:
         options["concurrent_fragment_downloads"] = request.concurrent_fragments
+    # **Where connections are made from, on both passes** (`T-253`), since the probe connects as
+    # the download does. `-4`, `-6` and `--source-address` are one value on the request, so this is
+    # the only place the key is set, and the options field refuses all three spellings.
+    if request.source_address is not None:
+        options["source_address"] = request.source_address
     # **From the start, on both passes** (`T-252`): yt-dlp's live extractors offer different
     # formats for a stream fetched from its beginning, so the probe has to ask the same question.
     if request.live_from_start:
@@ -1178,6 +1196,17 @@ def build_options(
     # or a conversion keeps the oldest input's date, so the finished file carries it.
     if request.use_last_modified:
         options["updatetime"] = True
+    # **The wait before each file, on the download only** (`T-253`). yt-dlp waits inside its file
+    # downloader, which a probe never starts, once per file: a download joined from a picture and a
+    # sound waits twice. The longest is the shortest where none was chosen, which is what yt-dlp's
+    # command line sends, so the pair matches `parse_options` exactly.
+    if request.sleep_interval is not None:
+        options["sleep_interval"] = request.sleep_interval
+        options["max_sleep_interval"] = (
+            request.max_sleep_interval
+            if request.max_sleep_interval is not None
+            else request.sleep_interval
+        )
     # **Which part, on the download only** (`T-252`, `ARC-010` amended 2026-10-19). yt-dlp asks for
     # the sections when it processes the item, which a probe never does, and a chapter pattern
     # that matches nothing would otherwise be reported while the user is still choosing a format.

@@ -113,8 +113,9 @@ NO_OBSERVABLE_EFFECT: Final[frozenset[str]] = frozenset(
 #: Admitted options no value in the generator's ladder can exercise, so their effect is unmeasured.
 #:
 #: Refused by the same ruling and for the stronger reason: this application cannot say what they
-#: would change. `--max-sleep-interval` needs `--min-sleep-interval` beside it to validate, and
-#: `--ap-mso` needs a real television provider id.
+#: would change. `--ap-mso` needs a real television provider id. *(`--max-sleep-interval`, which
+#: needs `--min-sleep-interval` beside it to validate, was the other until `T-253` gave the pair a
+#: control, which refuses both here.)*
 EFFECT_UNKNOWN: Final[frozenset[str]] = frozenset(
     {{
 {unknown}    }}

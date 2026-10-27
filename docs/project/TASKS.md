@@ -589,6 +589,126 @@ day and in CI at `a3705e4`, and passes alone on Linux. Neither the virtualenv on
 collector run every 10 allocations changes it. What holds the file is not found; a scanner is a
 guess, not checked.
 
+### T-253 — Network reachability: address family and politeness delays
+
+**Status:** In Review — built 2026-10-26 on its rulings, at the maintainer's instruction that day.
+*(Was Proposed:)* **design ruled 2026-10-19, all three questions as recommended** (`ARC-010`
+amended that day). Filed 2026-08-16 by `T-183`
+**Options (5):** `-4/--force-ipv4`, `-6/--force-ipv6`, `--sleep-interval`, `--max-sleep-interval`,
+`--source-address` *(the fifth by ruling 1, moved from `hatch`)*
+**Specific criteria:** `-4` and `-6` share yt-dlp's `source_address` and are mutually exclusive —
+`DownloadRequest` makes that unrepresentable rather than validating it; `--max-sleep-interval` is
+refused without `--sleep-interval`, which is yt-dlp's own rule, and it is refused at edit time.
+
+#### Mapped 2026-10-14 — the design, before the code
+
+Mapped against `8b0aad6` on a machine with no IPv6 route; probes in the implementer's scratch
+notes.
+
+- **No defect at `HEAD`**, and one gap: `--max-sleep-interval` is refused as *cannot tell what
+  this would change* because the table generator runs each option alone, so a randomized delay is
+  unreachable (`REQ-030`, Low).
+- **`-4`, `-6` and the hatch's `--source-address` all write `source_address`**, the last typed
+  winning. Once `-4`/`-6` have a control, a typed `--source-address` beside them would be admitted
+  and overridden — the `REQ-031` shape — unless the build decides.
+- **`-6` with no IPv6 fails as NETWORK**, so the queue retries it three times before the user sees
+  why. The family reaches yt-dlp's traffic only: thumbnails and update checks read neither it nor
+  the proxy.
+- **yt-dlp's library enforces none of the command line's pairing rules** (max without min, max
+  below min, negatives): `{max: 1.5}` slept, so the typed fields must check themselves.
+- **The sleep is per file**, so a merged download sleeps twice; **a sleeping job sends nothing**, so
+  its row reads *Downloading* throughout; **a cancel during a sleep is never cooperative** (noticed
+  only when the sleep ended), so the manager's escalation always answers it; and **three jobs
+  started within 0.17 s of each other**, so with the pool the delay spaces nothing between jobs.
+
+**Ruled 2026-10-19: all three as recommended.** The address family is one radio group in
+*Settings › Network* — Automatic, IPv4 only, IPv6 only, *From this address* — so building it moves
+`--source-address` from `hatch` to `typed` and the task types five options. The delay keeps
+yt-dlp's meaning, per file, beside the speed limit, and the control says that downloads running
+together do not take turns. A sleeping job shows a *Waiting* stage, read from yt-dlp's
+`Sleeping N seconds` line and held to it by a test.
+
+**Questions for the maintainer** (recommended first):
+
+1. **The address family and `--source-address`.** One radio group in *Settings › Network* —
+   Automatic, IPv4 only, IPv6 only, *From this address* — absorbing `--source-address` (an audit
+   change; the task grows to five options). / Three choices in Settings, `--source-address` left in
+   the hatch and a disagreement refused at queue time. / Three choices per preset.
+2. **What the delay means with several downloads at once.** yt-dlp's meaning, in *Settings ›
+   Network* beside the speed limit, saying that downloads running together do not take turns. / A
+   queue-level gap between starts (new manager behaviour; parity fails). / Per preset.
+3. **What the row says while a job waits.** A *Waiting* stage from yt-dlp's `Sleeping N seconds`
+   line, pinned by a test (a new `Stage` member). / Nothing; the control's note says so. / The
+   application sleeps itself (one wait per job; parity fails).
+
+#### Built 2026-10-26
+
+- **One address choice in *Settings › Network*** (ruling 1): Automatic, IPv4 only, IPv6 only, or
+  *From this address*. `NetworkOptions` and `DownloadRequest` gain `source_address`, which is `-4`,
+  `-6` and `--source-address` as one value: `None` is automatic, `0.0.0.0` and `::` are the two
+  families, as yt-dlp's command line spells them, and anything else is an address of this
+  computer. So the three cannot disagree. The model holds an IP address written the shortest way,
+  never a host name, since yt-dlp picks the family by whether the text has a colon. The address is
+  checked as typed and stored only when the edit is finished (`T196-R1`'s rule), with the earlier
+  choice kept in force, and said to be, until the box holds an address. Sent on both passes.
+- **The wait before each file, beside the speed limit** (ruling 2): `sleep_interval` and
+  `max_sleep_interval`, yt-dlp's own, per file, sent on the download only, with the longest
+  defaulted to the shortest as the command line does. The model applies the command line's rules,
+  which the library does not: the longest needs the shortest and is not shorter than it. Both are
+  tenths of a second, from 0.1 to an hour (`MOST_WAIT_SECONDS`, a catcher for an extra digit, my
+  choice). The screen holds the rules at the control: the longest is off until there is a wait,
+  and its lowest value is the wait itself, *the same every time*, stored as no value. The note
+  says a download fetching video and audio apart waits twice, and downloads running together do
+  not take turns. `[network]` is read key by key, the pair held to the rules after the clamping.
+- **A *Waiting* stage** (ruling 3): `Stage.WAITING`, read from yt-dlp's `[download] Sleeping N
+  seconds` line, which `YtdlpLog` now passes to the worker. The manager counts it as running, so a
+  download started from `QUEUED` no longer reads *Probing* through a wait; the row's chip reads
+  *Waiting*, since a wait counts no bytes, and the job's detail reads *Waiting before the next
+  file*. The next progress from the file puts the stage back.
+- **The audit and the hatch.** `--source-address` moves from `hatch` to `typed` (ruling 1): 66
+  typed, 62 built, 90 hatch. Regenerating refuses all eight spellings for their controls;
+  `--max-sleep-interval` leaves `EFFECT_UNKNOWN`, and `--sleep-interval` and `--min-sleep-interval`
+  leave `NOT_SECRET_VALUES`.
+- **The address is not registered for redaction.** Typed into the options field, its value was
+  hidden from the logs like any value the hatch cannot classify. As a setting it is neither a
+  credential nor a cookie path, which is what `REQ-026` and `DAT-003` keep out of logs, and no
+  decision names it; for the Reviewer to judge.
+- **Unchanged, as mapped**: IPv6 only with no IPv6 route fails as `NETWORK`, so the queue retries
+  it before the user sees why; the family reaches yt-dlp's traffic only, not thumbnails or update
+  checks; and a cancel during a wait is noticed only when the wait ends, so the manager's
+  escalation answers it.
+- **`REQ-014` still names five stages.** `ARC-010`'s amendment adds the sixth; the requirement's
+  text is not amended here. `test_protocol.py` names the sixth beside `REQ-014`'s five.
+
+**Tests**: `tests/unit/test_reachability.py`: the address held the shortest way and a host name
+refused; every value yt-dlp's command line refuses, refused on both owners; `[network]` read key by
+key, the pair held after clamping; each choice setting the keys `parse_options` sets for its
+spelling; the address on both passes and the wait on the download only; the options field refusing
+all eight spellings; yt-dlp's own downloader writing the line read as a wait; and the wait sent as
+its stage and put back. `tests/ui/test_settings_reachability.py`: the choice in force on opening;
+a family stored as picked; no keystroke of an address stored; the earlier choice kept and said to be
+while the box holds none; the close committing an unfinished address; the longest off and bounded
+by the wait. `tests/integration/test_reachability.py`: real sessions on `127.0.0.1`, the wait
+reported as *Waiting* before the file's first progress and not without one, IPv4 only reaching the
+server and IPv6 only failing as `NETWORK`. The manager, chip and detail tests gained a *Waiting*
+case each; the network and stage samples gained the new fields.
+
+**Mutations, 30 of 30 caught**, each on copies restored by hash: either owner unchecked; any
+spelling of an address, an unstripped one; the longest without the shortest or below it, in the
+model and in the file's reading; a wait finer than tenths; the file's address as written, or not
+saved, or the waits not saved; no address sent, the longest not defaulted, the wait on the probe;
+the line not matched, not listened for, not passed on, or sent as another stage; the manager not
+moving the job; the chip and the live set without *Waiting*; the address stored per keystroke, lost
+on closing, or flipped back while typed; the longest below the wait, kept without one, or enabled
+without one; the detail without words; and the generated table admitting `--source-address`.
+
+**Checks, 2026-10-27, on Linux, base `b43c300`**, with the project `.venv` on `PATH`: `ruff check .`
+and `ruff format --check .` (510 files); `mypy src` (74), bare `mypy` and `mypy --platform win32`
+(240 each); the table check up to date; `tests/unit tests/ui` under `-n 4`, **6,326 passed**, 23
+skipped, 1 failed: the placement gate, since this entry had not yet moved to *In Review*; moved, the
+gate and the audit's tests pass, 53 of 53. `tests/integration` under `-n 4`, **596 passed**. No
+Windows run of this change.
+
 ## Ready
 
 <a id="t-302"></a>
@@ -1120,56 +1240,6 @@ beats designing it against an imagined one.
 #### Out of scope
 
 - Any change to `T-014`'s current strict comparison, which is right until then
-
-### T-253 — Network reachability: address family and politeness delays
-
-**Status:** Proposed — **design ruled 2026-10-19, all three questions as recommended** (`ARC-010`
-amended that day). Filed 2026-08-16 by `T-183`
-**Options (4):** `-4/--force-ipv4`, `-6/--force-ipv6`, `--sleep-interval`, `--max-sleep-interval`
-**Specific criteria:** `-4` and `-6` share yt-dlp's `source_address` and are mutually exclusive —
-`DownloadRequest` makes that unrepresentable rather than validating it; `--max-sleep-interval` is
-refused without `--sleep-interval`, which is yt-dlp's own rule, and it is refused at edit time.
-
-#### Mapped 2026-10-14 — the design, before the code
-
-Mapped against `8b0aad6` on a machine with no IPv6 route; probes in the implementer's scratch
-notes.
-
-- **No defect at `HEAD`**, and one gap: `--max-sleep-interval` is refused as *cannot tell what
-  this would change* because the table generator runs each option alone, so a randomized delay is
-  unreachable (`REQ-030`, Low).
-- **`-4`, `-6` and the hatch's `--source-address` all write `source_address`**, the last typed
-  winning. Once `-4`/`-6` have a control, a typed `--source-address` beside them would be admitted
-  and overridden — the `REQ-031` shape — unless the build decides.
-- **`-6` with no IPv6 fails as NETWORK**, so the queue retries it three times before the user sees
-  why. The family reaches yt-dlp's traffic only: thumbnails and update checks read neither it nor
-  the proxy.
-- **yt-dlp's library enforces none of the command line's pairing rules** (max without min, max
-  below min, negatives): `{max: 1.5}` slept, so the typed fields must check themselves.
-- **The sleep is per file**, so a merged download sleeps twice; **a sleeping job sends nothing**, so
-  its row reads *Downloading* throughout; **a cancel during a sleep is never cooperative** (noticed
-  only when the sleep ended), so the manager's escalation always answers it; and **three jobs
-  started within 0.17 s of each other**, so with the pool the delay spaces nothing between jobs.
-
-**Ruled 2026-10-19: all three as recommended.** The address family is one radio group in
-*Settings › Network* — Automatic, IPv4 only, IPv6 only, *From this address* — so building it moves
-`--source-address` from `hatch` to `typed` and the task types five options. The delay keeps
-yt-dlp's meaning, per file, beside the speed limit, and the control says that downloads running
-together do not take turns. A sleeping job shows a *Waiting* stage, read from yt-dlp's
-`Sleeping N seconds` line and held to it by a test.
-
-**Questions for the maintainer** (recommended first):
-
-1. **The address family and `--source-address`.** One radio group in *Settings › Network* —
-   Automatic, IPv4 only, IPv6 only, *From this address* — absorbing `--source-address` (an audit
-   change; the task grows to five options). / Three choices in Settings, `--source-address` left in
-   the hatch and a disagreement refused at queue time. / Three choices per preset.
-2. **What the delay means with several downloads at once.** yt-dlp's meaning, in *Settings ›
-   Network* beside the speed limit, saying that downloads running together do not take turns. / A
-   queue-level gap between starts (new manager behaviour; parity fails). / Per preset.
-3. **What the row says while a job waits.** A *Waiting* stage from yt-dlp's `Sleeping N seconds`
-   line, pinned by a test (a new `Stage` member). / Nothing; the control's note says so. / The
-   application sleeps itself (one wait per job; parity fails).
 
 ### T-254 — SponsorBlock, opt-in per preset
 

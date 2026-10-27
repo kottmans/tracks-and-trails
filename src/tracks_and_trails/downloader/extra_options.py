@@ -574,8 +574,6 @@ NOT_SECRET_VALUES: Final = frozenset(
         "--http-chunk-size",
         "--ies",
         "--use-extractors",
-        "--min-sleep-interval",
-        "--sleep-interval",
         "--sleep-requests",
         "--sleep-subtitles",
         "--remove-chapters",

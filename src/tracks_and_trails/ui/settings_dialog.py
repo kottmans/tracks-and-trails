@@ -77,10 +77,14 @@ from PySide6.QtWidgets import (
 
 from tracks_and_trails.core.models import (
     BROWSER_NAMES,
+    IPV4_ONLY,
+    IPV6_ONLY,
     MOST_CONCURRENT_FRAGMENTS,
     MOST_NAME_CHARACTERS,
+    MOST_WAIT_SECONDS,
     FileNaming,
     NetworkOptions,
+    canonical_address,
     proxy_refusal,
 )
 from tracks_and_trails.core.output_template import (
@@ -103,6 +107,11 @@ from tracks_and_trails.downloader.environment import BASELINE_YTDLP_VERSION, nor
 from tracks_and_trails.ui.keyboard import route_is_elsewhere
 
 __all__ = [
+    "ADDRESS_CHOICE_NAMES",
+    "ADDRESS_FIELD_NAME",
+    "ADDRESS_HINT",
+    "ADDRESS_NOTE_NAME",
+    "ADDRESS_REFUSAL",
     "CONCURRENT_FRAGMENTS_NAME",
     "CONCURRENT_FRAGMENTS_NOTE",
     "COOKIES_EXPLANATION",
@@ -112,10 +121,12 @@ __all__ = [
     "FFMPEG_ON_PATH_NOTE",
     "FRAGMENT_RETRIES_NAME",
     "LAST_MODIFIED_NAME",
+    "LONGEST_WAIT_NAME",
     "NETWORK_EXPLANATION",
     "NO_COOKIES_NOTE",
     "NO_RATE_LIMIT_LABEL",
     "NO_TRIM_LABEL",
+    "NO_WAIT_LABEL",
     "PROXY_NAME",
     "PROXY_NOTE_NAME",
     "RATE_LIMIT_NAME",
@@ -124,6 +135,7 @@ __all__ = [
     "RESTRICT_NAMES_HINT",
     "RESTRICT_NAMES_NAME",
     "RETRIES_NAME",
+    "SAME_WAIT_LABEL",
     "SETTINGS_STILL_TO_COME",
     "SOCKET_TIMEOUT_NAME",
     "STEP_BUTTON_PROPERTY",
@@ -131,6 +143,8 @@ __all__ = [
     "STEP_UP_LABEL",
     "THEME_LABELS",
     "TRIM_NAMES_NAME",
+    "WAIT_NAME",
+    "WAIT_NOTE",
     "YTDLP_NOTE_NAME",
     "YTDLP_REVERT_LABEL",
     "YTDLP_REVERT_NAME",
@@ -263,6 +277,46 @@ CONCURRENT_FRAGMENTS_NAME: Final = "networkConcurrentFragments"
 CONCURRENT_FRAGMENTS_NOTE: Final = (
     "Each download fetches up to this many pieces of a stream at once, so several downloads at "
     "once multiply it."
+)
+
+#: `T-253`'s controls (`ARC-010`, amended 2026-10-19, second): one choice of where connections are
+#: made from, and the wait before each file, beside the speed limit.
+ADDRESS_CHOICE_NAMES: Final = {
+    "automatic": "networkAddressAutomatic",
+    "ipv4": "networkAddressIpv4",
+    "ipv6": "networkAddressIpv6",
+    "own": "networkAddressOwn",
+}
+ADDRESS_FIELD_NAME: Final = "networkAddress"
+ADDRESS_NOTE_NAME: Final = "networkAddressNote"
+WAIT_NAME: Final = "networkWait"
+LONGEST_WAIT_NAME: Final = "networkLongestWait"
+#: The address each family's choice holds, which is what `-4` and `-6` send.
+_FAMILY_ADDRESSES: Final[dict[str, str | None]] = {
+    "automatic": None,
+    "ipv4": IPV4_ONLY,
+    "ipv6": IPV6_ONLY,
+}
+#: What the address box says while it holds nothing, and while it holds no address. **Nothing is
+#: stored until it holds one**, the proxy's rule (`T196-R1`), so the note says the earlier choice
+#: is still in force rather than leaving the screen to imply otherwise.
+ADDRESS_HINT: Final = (
+    "Type an address this computer has, such as 192.168.1.20. Until then, nothing changes."
+)
+ADDRESS_REFUSAL: Final = (
+    "That is not an IP address. Type one like 192.168.1.20 or 2001:db8::20. Until then, nothing "
+    "changes."
+)
+#: What the wait's two boxes read where nobody chose (`UX-005` §5: a control says what it does).
+NO_WAIT_LABEL: Final = "No wait"
+SAME_WAIT_LABEL: Final = "The same every time"
+#: What the wait means (ruled 2026-10-19, second, question 2): **yt-dlp's own, per file**, so a
+#: download fetching its video and its audio apart waits twice, and the pool's downloads are not
+#: spaced out, since three jobs started within 0.17 s of each other (measured 2026-10-14).
+WAIT_NOTE: Final = (
+    "Each download waits before each file it fetches, so one that fetches its video and its audio "
+    "separately waits twice. Downloads running at the same time do not take turns: each one waits "
+    "on its own. A longer limit makes each wait a random length between the two."
 )
 
 #: What the network section says about when its settings take effect, and about what the rate
@@ -1435,6 +1489,8 @@ class SettingsDialog(QDialog):
         self._proxy_note.setWordWrap(True)
         layout.addWidget(self._proxy_note)
 
+        self._add_address_controls(box, layout)
+
         rate_row = QHBoxLayout()
         rate_label = QLabel("Speed limit for each download", box)
         rate_label.setObjectName("networkRateLimitLabel")
@@ -1455,6 +1511,10 @@ class SettingsDialog(QDialog):
         rate_row.addWidget(self._rate_limit)
         rate_row.addStretch(1)
         layout.addLayout(rate_row)
+
+        # **The wait, beside the speed limit** (`T-253`, ruled 2026-10-19, second): both pace a
+        # download, and both act on each download alone, which the two notes say.
+        self._add_wait_controls(box, layout)
 
         retries_row = QHBoxLayout()
         retries_label = QLabel("Retries of the file transfer, within one attempt", box)
@@ -1549,6 +1609,201 @@ class SettingsDialog(QDialog):
         layout.addWidget(fragments_note)
 
         return box
+
+    def _add_address_controls(self, box: QGroupBox, layout: QVBoxLayout) -> None:
+        """Where connections are made from, as one choice of four (`T-253`).
+
+        **One value behind all four**, `NetworkOptions.source_address`, because `-4`, `-6` and
+        `--source-address` all write yt-dlp's `source_address` and the last one typed won. As one
+        choice they cannot disagree, and the options field refuses all three spellings for it.
+        """
+        label = QLabel("Connect using", box)
+        label.setObjectName("networkAddressLabel")
+        layout.addWidget(label)
+        writable = self._on_network_chosen is not None
+        self._address_choices: dict[str, QRadioButton] = {}
+        for key, text in (
+            ("automatic", "Automatic"),
+            ("ipv4", "IPv4 only"),
+            ("ipv6", "IPv6 only"),
+            ("own", "From this address"),
+        ):
+            button = QRadioButton(text, box)
+            button.setObjectName(ADDRESS_CHOICE_NAMES[key])
+            button.setAccessibleName(text)
+            button.setEnabled(writable)
+            button.toggled.connect(partial(self._address_picked, key))
+            layout.addWidget(button)
+            self._address_choices[key] = button
+
+        self._address_field = QLineEdit(box)
+        self._address_field.setObjectName(ADDRESS_FIELD_NAME)
+        self._address_field.setAccessibleName("Address to connect from")
+        # What an empty box means, as the proxy's placeholder is, not an example to mistake for one.
+        self._address_field.setPlaceholderText("No address")
+        # **Checked as typed, committed when the edit is finished** (`T196-R1`'s rule): a prefix
+        # such as `192.168.1.2` is an address too, and committing it would bind to the wrong one.
+        self._address_field.textChanged.connect(self._show_address_refusal)
+        self._address_field.editingFinished.connect(self._commit_address)
+        layout.addWidget(self._address_field)
+
+        self._address_note = QLabel(box)
+        self._address_note.setObjectName(ADDRESS_NOTE_NAME)
+        # The user's own text may be quoted back, so never rich text (`T016-R6`).
+        self._address_note.setTextFormat(Qt.TextFormat.PlainText)
+        self._address_note.setWordWrap(True)
+        layout.addWidget(self._address_note)
+        self._show_address(self._network.source_address)
+
+    def _address_picked(self, key: str, checked: bool) -> None:
+        """A family is stored as it is picked; *this address* only once the box holds one."""
+        if not checked:
+            return
+        self._address_field.setEnabled(key == "own" and self._on_network_chosen is not None)
+        if key == "own":
+            self._show_address_refusal(self._address_field.text())
+            self._commit_address()
+            return
+        self._address_note.setText("")
+        address = _FAMILY_ADDRESSES[key]
+        if address != self._network.source_address:
+            self._remember_network(replace(self._network, source_address=address))
+
+    def _show_address_refusal(self, text: str) -> None:
+        """Say whether the box holds an address. **Writes nothing** (`T196-R1`)."""
+        if not self._address_choices["own"].isChecked():
+            self._address_note.setText("")
+        elif not text.strip():
+            self._address_note.setText(ADDRESS_HINT)
+        else:
+            self._address_note.setText("" if canonical_address(text) else ADDRESS_REFUSAL)
+
+    def _commit_address(self) -> None:
+        """Hand over the typed address, held the shortest way, or leave what is in force alone.
+
+        `_commit_proxy`'s rule: called when the box is left and from `done`, and a box holding no
+        address stores nothing at all.
+        """
+        if self._on_network_chosen is None or not self._address_choices["own"].isChecked():
+            return
+        address = canonical_address(self._address_field.text())
+        if address is not None and address != self._network.source_address:
+            self._remember_network(replace(self._network, source_address=address))
+
+    def _show_address(self, address: str | None) -> None:
+        """Check the choice `address` is, without writing anything back.
+
+        **Not while an address is being typed**: with *this address* picked and the box holding no
+        address yet, what is in force is the earlier choice, which the note says, and moving the
+        choice back to it would undo the pick under the user's hands.
+        """
+        key = next((k for k, v in _FAMILY_ADDRESSES.items() if v == address), "own")
+        typing = (
+            self._address_choices["own"].isChecked()
+            and canonical_address(self._address_field.text()) is None
+        )
+        if key != "own" and typing:
+            return
+        for name, button in self._address_choices.items():
+            blocked = button.blockSignals(True)
+            try:
+                button.setChecked(name == key)
+            finally:
+                button.blockSignals(blocked)
+        shown = canonical_address(self._address_field.text())
+        if key == "own" and address is not None and shown != address:
+            blocked = self._address_field.blockSignals(True)
+            try:
+                self._address_field.setText(address)
+            finally:
+                self._address_field.blockSignals(blocked)
+        self._address_field.setEnabled(key == "own" and self._on_network_chosen is not None)
+        self._show_address_refusal(self._address_field.text())
+
+    def _add_wait_controls(self, box: QGroupBox, layout: QVBoxLayout) -> None:
+        """The wait before each file and its random longest (`T-253`).
+
+        **The longest is held to yt-dlp's command line's rules at the control**, which its library
+        does not apply: it is off until there is a wait, and it cannot go below the wait, since its
+        lowest value is the wait itself, *the same every time*, stored as no value.
+        """
+        writable = self._on_network_chosen is not None
+        wait_row = QHBoxLayout()
+        wait_label = QLabel("Wait before each file", box)
+        wait_label.setWordWrap(True)
+        wait_row.addWidget(wait_label)
+        self._wait = QDoubleSpinBox(box)
+        self._wait.setObjectName(WAIT_NAME)
+        self._wait.setAccessibleName("Seconds to wait before each file")
+        self._wait.setAccessibleDescription(WAIT_NOTE)
+        wait_label.setBuddy(self._wait)
+        # Zero is *no wait* and is never stored; tenths, as the model holds them.
+        self._wait.setRange(0, MOST_WAIT_SECONDS)
+        self._wait.setDecimals(1)
+        self._wait.setSuffix(" s")
+        self._wait.setSpecialValueText(NO_WAIT_LABEL)
+        self._wait.setValue(self._network.sleep_interval or 0)
+        self._wait.setEnabled(writable)
+        self._wait.valueChanged.connect(self._on_wait_value)
+        wait_row.addWidget(self._wait)
+        wait_row.addStretch(1)
+        layout.addLayout(wait_row)
+
+        longest_row = QHBoxLayout()
+        longest_label = QLabel("Longest wait, for a random one", box)
+        longest_label.setWordWrap(True)
+        longest_row.addWidget(longest_label)
+        self._longest_wait = QDoubleSpinBox(box)
+        self._longest_wait.setObjectName(LONGEST_WAIT_NAME)
+        self._longest_wait.setAccessibleName("Longest wait before each file, in seconds")
+        self._longest_wait.setAccessibleDescription(WAIT_NOTE)
+        longest_label.setBuddy(self._longest_wait)
+        self._longest_wait.setMaximum(MOST_WAIT_SECONDS)
+        self._longest_wait.setDecimals(1)
+        self._longest_wait.setSuffix(" s")
+        self._longest_wait.setSpecialValueText(SAME_WAIT_LABEL)
+        self._longest_wait.valueChanged.connect(self._on_longest_wait_value)
+        longest_row.addWidget(self._longest_wait)
+        longest_row.addStretch(1)
+        layout.addLayout(longest_row)
+        self._show_longest_wait()
+
+        wait_note = QLabel(WAIT_NOTE, box)
+        wait_note.setWordWrap(True)
+        layout.addWidget(wait_note)
+
+    def _on_wait_value(self, seconds: float) -> None:
+        """Zero is *no wait*, stored as no value, which takes the longest with it (`T-253`)."""
+        shortest = round(seconds, 1) if seconds > 0 else None
+        longest = self._network.max_sleep_interval
+        if shortest is None or (longest is not None and longest <= shortest):
+            longest = None
+        self._remember_network(
+            replace(self._network, sleep_interval=shortest, max_sleep_interval=longest)
+        )
+        self._show_longest_wait()
+
+    def _on_longest_wait_value(self, seconds: float) -> None:
+        """The wait itself is *the same every time*, stored as no value (`T-253`)."""
+        shortest = self._network.sleep_interval
+        if shortest is None:
+            return
+        longest = round(seconds, 1)
+        self._remember_network(
+            replace(self._network, max_sleep_interval=longest if longest > shortest else None)
+        )
+
+    def _show_longest_wait(self) -> None:
+        """The longest box as the wait in force allows it, without writing anything back."""
+        shortest = self._network.sleep_interval
+        longest = self._network.max_sleep_interval
+        blocked = self._longest_wait.blockSignals(True)
+        try:
+            self._longest_wait.setMinimum(shortest or 0)
+            self._longest_wait.setValue(longest or shortest or 0)
+        finally:
+            self._longest_wait.blockSignals(blocked)
+        self._longest_wait.setEnabled(self._on_network_chosen is not None and shortest is not None)
 
     def _count_row(
         self, box: QGroupBox, layout: QVBoxLayout, name: str, label_text: str, field_name: str
@@ -1672,6 +1927,7 @@ class SettingsDialog(QDialog):
         costs when nothing is explicit about it.
         """
         self._commit_proxy()
+        self._commit_address()
         application = QApplication.instance()
         if isinstance(application, QApplication):
             with suppress(RuntimeError):
@@ -1707,6 +1963,7 @@ class SettingsDialog(QDialog):
             ),
             (self._socket_timeout, options.socket_timeout or 0),
             (self._concurrent_fragments, options.concurrent_fragments or 1),
+            (self._wait, options.sleep_interval or 0),
         )
         for control, value in shown:
             blocked = control.blockSignals(True)
@@ -1717,6 +1974,8 @@ class SettingsDialog(QDialog):
                     control.setValue(int(value))
             finally:
                 control.blockSignals(blocked)
+        self._show_longest_wait()
+        self._show_address(options.source_address)
 
     # --- ffmpeg -------------------------------------------------------------------------
 

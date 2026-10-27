@@ -846,6 +846,10 @@ def test_every_network_option_survives_a_retarget() -> None:
         "extractor_retries": 2,
         "socket_timeout": 7.5,
         "concurrent_fragments": 3,
+        # `T-253`'s three.
+        "source_address": "192.0.2.7",
+        "sleep_interval": 2.5,
+        "max_sleep_interval": 9.0,
     }
     carried = {field.name for field in fields(NetworkOptions)}
     assert carried == set(samples), (

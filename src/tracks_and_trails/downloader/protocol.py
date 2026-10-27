@@ -60,9 +60,14 @@ from tracks_and_trails.core.models import MediaInfo
 
 
 class Stage(StrEnum):
-    """The pipeline stages `REQ-014` requires progress to name."""
+    """The pipeline stages `REQ-014` requires progress to name, and one `ARC-010` adds.
+
+    **`WAITING` is the wait before a file** (`T-253`, `ARC-010` amended 2026-10-19, second): yt-dlp
+    sleeps there when asked to, sending nothing, so the row read *Downloading* throughout.
+    """
 
     PROBING = "probing"
+    WAITING = "waiting"
     DOWNLOADING_VIDEO = "downloading_video"
     DOWNLOADING_AUDIO = "downloading_audio"
     MERGING = "merging"

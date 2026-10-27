@@ -335,7 +335,11 @@ OPTION_CLASSES: Final[dict[str, tuple[str, str]]] = {
     "--sleep-requests": ("hatch", "Expert politeness tuning"),
     "--sleep-subtitles": ("hatch", "Expert politeness tuning"),
     "--socket-timeout": ("typed", "Network tuning, alongside the retry policy"),
-    "--source-address": ("hatch", "Binding a local address is expert-only"),
+    "--source-address": (
+        "typed",
+        "The address choice's own address; it shares source_address with -4 and -6 (T-253, "
+        "ARC-010 amended 2026-10-19)",
+    ),
     "--split-chapters": ("hatch", "Writes several files; T-184 must contain them"),
     "--split-tracks": ("hatch", "Writes several files; T-184 must contain them"),
     "--sponsorblock-api": ("excluded", "SEC-003: a configurable endpoint was declined"),
@@ -500,6 +504,8 @@ TYPED_WITH_A_FIELD: Final[dict[str, str]] = {
     "--embed-thumbnail": "embed_thumbnail",
     "--extract-audio": "media_kind",
     "--extractor-retries": "extractor_retries",
+    "--force-ipv4": "source_address",
+    "--force-ipv6": "source_address",
     "--format-sort": "format_sort",
     "--format-sort-reset": "format_sort",
     "--fragment-retries": "fragment_retries",
@@ -507,8 +513,10 @@ TYPED_WITH_A_FIELD: Final[dict[str, str]] = {
     "--live-from-start": "live_from_start",
     "--max-downloads": "max_downloads",
     "--max-filesize": "max_filesize",
+    "--max-sleep-interval": "max_sleep_interval",
     "--merge-output-format": "merge_container",
     "--min-filesize": "min_filesize",
+    "--min-sleep-interval": "sleep_interval",
     "--mtime": "use_last_modified",
     "--no-add-chapters": "embed_chapters",
     "--no-add-metadata": "embed_metadata",
@@ -535,7 +543,9 @@ TYPED_WITH_A_FIELD: Final[dict[str, str]] = {
     "--remux-video": "remux_container",
     "--restrict-filenames": "restrict_filenames",
     "--retries": "retries",
+    "--sleep-interval": "sleep_interval",
     "--socket-timeout": "socket_timeout",
+    "--source-address": "source_address",
     "--srt-langs": "subtitle_languages",
     "--sub-format": "subtitle_format",
     "--sub-langs": "subtitle_languages",
@@ -549,6 +559,8 @@ TYPED_WITH_A_FIELD: Final[dict[str, str]] = {
     "--write-srt": "subtitle_languages",
     "--write-subs": "subtitle_languages",
     "--write-thumbnail": "keep_thumbnails",
+    "-4": "source_address",
+    "-6": "source_address",
     "-I": "playlist_items",
     "-N": "concurrent_fragments",
     "-R": "retries",
@@ -972,8 +984,6 @@ OPTION_KEYS: Final[dict[str, tuple[str, ...]]] = {
     "--file-access-retries": ("file_access_retries",),
     "--fixup": ("fixup",),
     "--force-download-archive": ("force_write_download_archive",),
-    "--force-ipv4": ("source_address",),
-    "--force-ipv6": ("source_address",),
     "--force-keyframes-at-cuts": ("force_keyframes_at_cuts",),
     "--force-write-archive": ("force_write_download_archive",),
     "--force-write-download-archive": ("force_write_download_archive",),
@@ -989,7 +999,6 @@ OPTION_KEYS: Final[dict[str, tuple[str, ...]]] = {
     "--keep-video": ("keepvideo",),
     "--mark-watched": ("mark_watched",),
     "--match-filters": ("match_filter",),
-    "--min-sleep-interval": ("max_sleep_interval", "sleep_interval"),
     "--netrc": ("usenetrc",),
     "--netrc-location": ("netrc_location",),
     "--no-abort-on-unavailable-fragments": ("skip_unavailable_fragments",),
@@ -1029,10 +1038,8 @@ OPTION_KEYS: Final[dict[str, tuple[str, ...]]] = {
     "--resize-buffer": ("noresizebuffer",),
     "--retry-sleep": ("retry_sleep_functions",),
     "--skip-unavailable-fragments": ("skip_unavailable_fragments",),
-    "--sleep-interval": ("max_sleep_interval", "sleep_interval"),
     "--sleep-requests": ("sleep_interval_requests",),
     "--sleep-subtitles": ("sleep_interval_subtitles",),
-    "--source-address": ("source_address",),
     "--split-chapters": ("postprocessors",),
     "--split-tracks": ("postprocessors",),
     "--sponsorblock-mark": ("postprocessors",),
@@ -1049,8 +1056,6 @@ OPTION_KEYS: Final[dict[str, tuple[str, ...]]] = {
     "--write-webloc-link": ("writewebloclink",),
     "--xattr": ("postprocessors",),
     "--xattrs": ("postprocessors",),
-    "-4": ("source_address",),
-    "-6": ("source_address",),
     "-c": ("continuedl",),
     "-k": ("keepvideo",),
     "-n": ("usenetrc",),
@@ -1079,12 +1084,12 @@ NO_OBSERVABLE_EFFECT: Final[frozenset[str]] = frozenset(
 #: Admitted options no value in the generator's ladder can exercise, so their effect is unmeasured.
 #:
 #: Refused by the same ruling and for the stronger reason: this application cannot say what they
-#: would change. `--max-sleep-interval` needs `--min-sleep-interval` beside it to validate, and
-#: `--ap-mso` needs a real television provider id.
+#: would change. `--ap-mso` needs a real television provider id. *(`--max-sleep-interval`, which
+#: needs `--min-sleep-interval` beside it to validate, was the other until `T-253` gave the pair a
+#: control, which refuses both here.)*
 EFFECT_UNKNOWN: Final[frozenset[str]] = frozenset(
     {
         "--ap-mso",
-        "--max-sleep-interval",
     }
 )
 

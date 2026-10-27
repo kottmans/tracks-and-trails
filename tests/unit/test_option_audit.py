@@ -133,6 +133,11 @@ _FIELD_ON: Final = {
     "concurrent_fragments": 4,
     "download_sections": ("*1-2", "*3-4"),
     "live_from_start": True,
+    # `T-253`'s address on both passes, and the wait on the download only. The wait sets both of
+    # yt-dlp's keys, as its command line does, and `DownloadRequest` refuses a longest alone.
+    "source_address": "0.0.0.0",  # noqa: S104 - `-4`, which binds to no one address
+    "sleep_interval": 2.0,
+    "max_sleep_interval": None,
     "cookies_from_browser": "firefox",
     # `T-249`'s kept files, on the download only. `ALL` is the case that sets a key of its own;
     # `BEST` shares `writethumbnail` with `embed_thumbnail`, already turned on above.

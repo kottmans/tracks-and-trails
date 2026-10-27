@@ -6816,7 +6816,8 @@ def test_a_queued_request_inherits_the_settings_network_options(
     `T197-R4` is the finding that a default stamped in the pasted line's builder alone left every
     child of a playlist without it.
     """
-    # **Every field of `NetworkOptions`**, `T-252`'s four included, each away from its default.
+    # **Every field of `NetworkOptions`**, `T-252`'s four and `T-253`'s three included, each away
+    # from its default.
     options = NetworkOptions(
         proxy="http://proxy.invalid:8080",
         rate_limit_bytes=4096,
@@ -6825,6 +6826,9 @@ def test_a_queued_request_inherits_the_settings_network_options(
         extractor_retries=2,
         socket_timeout=7.5,
         concurrent_fragments=3,
+        source_address="192.0.2.7",
+        sleep_interval=2.5,
+        max_sleep_interval=6.0,
     )
     assert all(getattr(options, item.name) is not None for item in fields(NetworkOptions))
     dialog, _ = resolved(dialogs, managers, spin, PLAYLIST, default_network=lambda: options)

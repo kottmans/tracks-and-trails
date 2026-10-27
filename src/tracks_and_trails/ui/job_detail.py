@@ -112,9 +112,11 @@ REPAINT_INTERVAL_MS: Final = 100
 
 #: `REQ-014`'s five stages, in `REQ-014`'s own words. Transcribed from the requirement rather
 #: than derived from `Stage`'s member names, so the two are independent statements and a renamed
-#: member cannot silently change what the user is told (`docs/project/TESTING.md` §13).
+#: member cannot silently change what the user is told (`docs/project/TESTING.md` §13). The sixth,
+#: the wait before a file, is `ARC-010`'s (amended 2026-10-19, second, `T-253`).
 STAGE_TEXT: Final[dict[Stage, str]] = {
     Stage.PROBING: "Probing",
+    Stage.WAITING: "Waiting before the next file",
     Stage.DOWNLOADING_VIDEO: "Downloading video",
     Stage.DOWNLOADING_AUDIO: "Downloading audio",
     Stage.MERGING: "Merging",

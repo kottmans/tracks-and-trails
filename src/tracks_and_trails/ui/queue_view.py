@@ -255,6 +255,8 @@ STEP_CHIP_TEXT: Final[dict[str, str]] = {
 
 #: The chip's word for a stage when no step has been named (`T-345`).
 STAGE_CHIP_TEXT: Final[dict[Stage, str]] = {
+    # yt-dlp's wait before a file (`T-253`), which sends nothing until it ends.
+    Stage.WAITING: "Waiting",
     Stage.DOWNLOADING_VIDEO: "Downloading",
     Stage.DOWNLOADING_AUDIO: "Downloading",
     Stage.MERGING: "Joining",
@@ -329,6 +331,7 @@ _STAGES_STILL_LIVE_IN: Final[dict[JobStatus, frozenset[Stage]]] = {
     JobStatus.PROBING: frozenset({Stage.PROBING}),
     JobStatus.RUNNING: frozenset(
         {
+            Stage.WAITING,
             Stage.DOWNLOADING_VIDEO,
             Stage.DOWNLOADING_AUDIO,
             Stage.MERGING,
@@ -1235,7 +1238,9 @@ class QueueModel(QAbstractTableModel):
             doing = self._doing(row)
             if fraction is not None:
                 return f"{doing} {round(fraction * 100)}%"
-            if row.job.status is JobStatus.POST_PROCESSING:
+            # **A wait before a file counts no bytes** (`T-253`), so it has no percentage, and
+            # without this the chip fell back to the status's word, *Downloading*.
+            if row.job.status is JobStatus.POST_PROCESSING or self._is_waiting(row):
                 return doing
         if not self._manager.is_running and row.job.status in HELD_STATUSES:
             # **A waiting row says what it is waiting for** (`UX-006` item 3, `T181-R1`). Read from
@@ -1291,6 +1296,15 @@ class QueueModel(QAbstractTableModel):
         if row.job.status is JobStatus.POST_PROCESSING:
             return STAGE_CHIP_TEXT[Stage.POST_PROCESSING]
         return STAGE_CHIP_TEXT[Stage.DOWNLOADING_VIDEO]
+
+    def _is_waiting(self, row: _Row) -> bool:
+        """Whether the drawn message is yt-dlp's wait before a file, and still true (`T-253`)."""
+        message = row.displayed
+        return (
+            message is not None
+            and message.stage is Stage.WAITING
+            and message.stage in _STAGES_STILL_LIVE_IN.get(row.job.status, frozenset())
+        )
 
     def _live_step(self, row: _Row) -> Progress | None:
         """The drawn message, if it describes a post-processing step still running (`T-344`)."""

@@ -140,10 +140,11 @@ def test_a_typed_option_with_no_control_yet_is_usable() -> None:
     """The other half of the same rule, and the reason `typed` is an admitted class.
 
     An option whose control has not been built is reachable by no other route. `--proxy` has a
-    field, so it is refused above; `--sleep-interval` does not until `T-253` builds one, so it is
-    usable here. *(`--concurrent-fragments` was this case until `T-252` built its setting.)*
+    field, so it is refused above; `--extractor-args` does not until `T-255` builds one, so it is
+    usable here. *(`--concurrent-fragments` was this case until `T-252` built its setting, and
+    `--sleep-interval` until `T-253` built its own.)*
     """
-    admission = admit("--sleep-interval 5")
+    admission = admit("--extractor-args youtube:player_client=web")
 
     assert admission.usable, [(r.option, r.reason) for r in admission.refusals]
 

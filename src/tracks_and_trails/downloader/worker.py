@@ -526,6 +526,18 @@ class _Reporter:
         except Exception as error:
             self._record_hook_failure("postprocessor", error)
 
+    def waiting(self) -> None:
+        """yt-dlp has begun its wait before a file (`T-253`, `ARC-010` amended 2026-10-19, second).
+
+        It sends nothing while it waits, so without this the row kept the stage before the wait,
+        *Downloading*. The next progress from the file's own download puts the stage back.
+        """
+        try:
+            self._stage = Stage.WAITING
+            self.send(Progress(job_id=self._job_id, stage=Stage.WAITING))
+        except Exception as error:
+            self._record_hook_failure("waiting", error)
+
     def ffmpeg_position(self, seconds: float) -> None:
         """ffmpeg's position in the file it is writing, from `ytdlp_adapter.ffmpeg_progress`.
 
@@ -2034,7 +2046,14 @@ def _extract(
         raise NothingDownloadedError(
             EMPTY_WINDOW.format(after=request.uploaded_after, before=request.uploaded_before)
         )
-    log = YtdlpLog(ytdlp_logger())
+
+    def _read_the_line(line: str) -> None:
+        # **The wait before a file, which yt-dlp says only in a line** (`T-253`). A probe downloads
+        # no file, so it never waits.
+        if adapter.is_waiting_line(line):
+            reporter.waiting()
+
+    log = YtdlpLog(ytdlp_logger(), on_line=None if probe_only else _read_the_line)
     options = adapter.build_options(
         request,
         output_template if output_template is not None else request.output_template,
