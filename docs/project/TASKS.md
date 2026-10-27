@@ -1391,6 +1391,33 @@ their regression tests and retained Windows evidence
 This is not a new product design, a reopening of the verified pointer correction,
 or approval of current native Windows release readiness.
 
+### T-367 — Establish Windows fragment-resume file ownership
+
+**Status:** Proposed — scheduled by the 2026-10-27 T-365 review, before T-358's release gate
+**Owner:** Implementer; independent Reviewer verifies the result
+**Priority:** High — a required Windows retry/resume contract fails repeatedly
+**Phase:** Phase 4.5 — stage 4, before release acceptance
+**Relevant context:** [T365-R1](reviews/T-365.md#2026-10-27--initial-comprehensive-review);
+T-364; T-358; the native 2026-10-26 baseline measurements in T-365 above
+**Affected surfaces:** Fragment retry/resume, subprocess/file lifetime, its Windows
+integration fixture and retained native evidence, as diagnosis establishes
+
+#### Scope and acceptance criteria
+
+- Reproduce `test_a_fragment_that_never_arrives_fails_and_the_retry_resumes_it`
+  under real Windows, preserving the failed first attempt and the successful retry's
+  media/resume assertions. Record exact revisions and compare with `a3705e4`.
+- Determine which process or handle prevents renaming `v0.mp4.part`, and whether the
+  cause belongs to the worker, the fixture or an external component. Retain evidence;
+  a scanner attribution without identifying evidence does not settle the failure.
+- Correct the established cause and retain a meaningful regression at that boundary.
+  Do not weaken OS protection or discard the resume/media assertions to obtain a pass.
+- Demonstrate repeatable native Windows passes and the applicable full Windows gate;
+  preserve the Linux contract and run the relevant lint/type checks for any changes.
+
+This schedules an unresolved platform contract, not a claim that T-365 caused it or
+that its containment correction should be reverted.
+
 ### T-358 — The `0.2.0` release
 
 **Status:** Proposed — filed 2026-10-11 by the maintainer's rulings that day: `0.1.1` is skipped
