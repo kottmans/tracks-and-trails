@@ -2,7 +2,7 @@
 
 **Purpose:** Unfinished work: review, ready, proposed and blocked tasks.
 **Owner:** Planner (priorities); Implementer (task/status); Reviewer (review disposition)
-**Last updated:** 2026-10-27
+**Last updated:** 2026-10-28
 **Update when:** Work starts, changes scope/status, closes or reopens.
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
@@ -1183,6 +1183,55 @@ ends badly — the shape `2026-08-27-T212-ytdlp-update-double-free.md` recorded.
 - `T-268`'s seven preserved specimens, which remain its own.
 
 ## Proposed — Phase 4.5
+
+### T-368 — Keep ffmpeg's network requests on the selected route
+
+**Status:** Proposed — Critical safety work filed by the 2026-10-28 independent review;
+the transport/product choice below awaits the maintainer's ruling
+**Owner:** Implementer; independent Reviewer verifies the complete boundary
+**Priority:** Critical — actual media connections bypass the chosen route and TLS verification
+**Phase:** Phase 4.5, before section approval and T-358's release gate
+**Relevant context:** [T252-R7](reviews/T-252.md#2026-10-28--second-focused-correction-review);
+T252-R5 (the separate length-client proxy regression); T253-R3; T255-R4;
+REQ-023/024/030; NFR-007; SEC-004; the pinned yt-dlp `FFmpegFD`
+**Affected surfaces:** The worker/adapter's ffmpeg network-input boundary, capability/refusal
+reporting, route handling and its real transport regressions
+
+#### Evidence and scope
+
+At yt-dlp 2026.08.19 with ffmpeg 8.1.3, a real section session probes from the requested
+`127.0.0.2` but cuts from `127.0.0.1`. The pinned downloader passes a proxy through environment
+variables, omits the source address and does not enable certificate verification. The Implementer
+also reports a real SOCKS section cut connecting directly and HLS children ignoring address/TLS
+options. This predates T-252 through the hatch and affects other network inputs delegated to
+ffmpeg; securing only the separate ffprobe length read does not secure the download.
+
+The proposed first protection is to forward policy for supported direct-file inputs and refuse
+unsupported SOCKS/HLS cases before network activity. **The maintainer has been asked to choose**
+temporary refusal or a transport preserving those capabilities. Refusal must not silently become
+a permanent REQ-030 exception: the parity exit remains blocked until support or an explicit scope
+ruling is recorded. Known unsafe downloads cannot be approved while that choice is pending.
+
+#### Acceptance criteria
+
+- Cover actual media input requests, including sections with a duration already known (which
+  bypass the length read), sections needing a length read, and other affected ffmpeg network
+  inputs such as Zan's split. Keep the R5 length-client correction separately accountable.
+- Preserve the effective proxy, scheme/host bypass rules, source address/family, socket timeout
+  and certificate chain/hostname validation. Do not forward site headers/cookies to an unselected
+  proxy, strip route policy from a child fetch or fall back to an unchecked/direct connection.
+- Where the selected transport cannot preserve policy, stop before that connection and explain
+  the unsupported combination without exposing credentials. Implement the maintainer's capability
+  ruling; retain the parity limitation explicitly until resolved. HLS/DASH descendants and
+  redirects must not evade the guard by arriving as a plain HTTP link.
+- Keep TLS verification enabled on Linux and Windows. Document the reported Windows trust-store
+  limitation; any root-store compatibility work must retain validation and the cancellation path.
+- Use real local origins/proxies/TLS endpoints and actual yt-dlp/ffmpeg processes, observing
+  callers and requests. Include positive controls proving the instruments see proxy/bind/TLS
+  differences, and weakening controls for the corrected boundary. Verify Linux, native Windows
+  and applicable full CI; keep T-367's independent failure visible if it still occurs.
+- Independently verify T252-R7 and the corresponding Network setting boundary before either
+  task's approval, and verify this task before the release/parity verdict.
 
 ### T-366 — Establish native Windows focus and format-table geometry
 

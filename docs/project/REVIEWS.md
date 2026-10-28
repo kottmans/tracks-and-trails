@@ -2,7 +2,7 @@
 
 **Purpose:** Navigation to canonical task and shared-scope review records.
 **Owner:** Reviewer; Coordinator / Integrator owns shared routing during a wave.
-**Last updated:** 2026-10-27
+**Last updated:** 2026-10-28
 **Update when:** A review record is introduced or its navigation changes.
 
 ## Current navigation
@@ -113,7 +113,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-304](reviews/T-304.md) | T-304; [focused correction verification](reviews/T-304.md#2026-10-27--focused-correction-verification), ecdda31, checked at a3705e4 | 0 |
 | [T-301](reviews/T-301.md) | T-301; font-sensitive UI tests, 276ffe4 to 8e654a7 | 0 |
 | [T-248](reviews/T-248.md) | T-248; filename shaping and file dates, 8e654a7 to 4b8f697, plus c6e9dd4 docstring | 0 |
-| [T-252](reviews/T-252.md) | T-252; [first focused correction review](reviews/T-252.md#2026-10-27--first-focused-correction-review), corrected production at c23473c, checked at a3705e4 | 0 |
+| [T-252](reviews/T-252.md) | T-252; [second focused correction review](reviews/T-252.md#2026-10-28--second-focused-correction-review), 2e5f9da, combined checks at be3cc08 | 0 |
 | [T-253](reviews/T-253.md) | T-253; network reachability and waits, b43c300 to 1740c86 | 0 |
 | [T-254](reviews/T-254.md) | T-254; SponsorBlock controls and isolated lookup, 1740c86 to f05f720 | 0 |
 | [T-255](reviews/T-255.md) | T-255; checked extractor arguments, f05f720 to f028f1e | 0 |
