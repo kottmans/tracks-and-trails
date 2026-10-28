@@ -114,7 +114,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-301](reviews/T-301.md) | T-301; font-sensitive UI tests, 276ffe4 to 8e654a7 | 0 |
 | [T-248](reviews/T-248.md) | T-248; filename shaping and file dates, 8e654a7 to 4b8f697, plus c6e9dd4 docstring | 0 |
 | [T-252](reviews/T-252.md) | T-252; [second focused correction review](reviews/T-252.md#2026-10-28--second-focused-correction-review), 2e5f9da, combined checks at be3cc08 | 0 |
-| [T-253](reviews/T-253.md) | T-253; network reachability and waits, b43c300 to 1740c86 | 0 |
+| [T-253](reviews/T-253.md) | T-253; [focused correction review](reviews/T-253.md#2026-10-28--focused-correction-review), 94e5fd1, combined checks at be3cc08 | 0 |
 | [T-254](reviews/T-254.md) | T-254; SponsorBlock controls and isolated lookup, 1740c86 to f05f720 | 0 |
 | [T-255](reviews/T-255.md) | T-255; checked extractor arguments, f05f720 to f028f1e | 0 |
 | [T-249](reviews/T-249.md) | T-249; [focused privacy correction verification](reviews/T-249.md#2026-10-18--focused-privacy-correction-verification), 9e917ec | 0 |
