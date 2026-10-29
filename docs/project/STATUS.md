@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-10-27
+**Last updated:** 2026-10-29
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -213,6 +213,23 @@ task and review records it summarised.*
   value stays readable only from its own argument's vocabulary, 41 audited, so a token beside a
   client's name is redacted; and Zan's split counts as ffmpeg's work
   ([entry](TASKS.md#t-255--per-extractor-arguments)).
+- **Reviewed again 2026-10-28; ruled and corrected 2026-10-29.** The review resolved most of the
+  corrections and found four more. **`T-252`'s third correction**: each link's length is read by
+  yt-dlp's own route to it, chosen by yt-dlp's own functions, where one system proxy had been taken
+  for every link and its exceptions ignored; and its certificate test, which failed on Windows
+  before testing anything, is fixed. **`T-253`**: `REQ-014` now names the *Waiting* stage, as the
+  review and the maintainer approved. **`T-254`**: every test leaves the application's log as it
+  found it. **`T-255`'s second correction**: a value is registered in every spelling yt-dlp prints
+  it in, where a token typed in capitals reached the log lower-cased
+  ([entries](TASKS.md#in-review)).
+- **`T-368` was built on 2026-10-29**, on the maintainer's ruling of that day, and is with the
+  Reviewer: ffmpeg's own downloads keep to yt-dlp's route, where they had ignored any SOCKS proxy,
+  the address to connect from and every certificate, or they do not start. **So a live stream
+  ffmpeg would fetch, a section of anything that comes in pieces, and Zan's split angles no longer
+  download**; the whole of a recorded stream still does. That is a parity limitation kept open,
+  not a ruling on scope ([entry](TASKS.md#t-368--keep-ffmpegs-network-requests-on-the-selected-route)).
+  On the same day the maintainer kept the certificate check on Windows, where it knows only the
+  roots Windows has fetched, and `T-369` was filed to measure a bundled list instead.
 - **Fifteen rulings taken 2026-10-19, all as recommended**, every open question in stage 3:
   `T-248`'s two, as built; `T-252`'s last two; `T-253`'s three; `T-254`'s four; and `T-255`'s
   four, the first a security ruling forbidding the extractor-argument pairs that choose a request's
