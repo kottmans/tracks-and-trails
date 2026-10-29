@@ -18,6 +18,7 @@ import pytest
 from yt_dlp import parse_options
 from yt_dlp.networking.common import DEFAULT_TIMEOUT
 from yt_dlp.postprocessor import FFmpegPostProcessor
+from yt_dlp.utils import networking
 
 from tracks_and_trails.core import presets
 from tracks_and_trails.core import settings as app_settings
@@ -411,11 +412,16 @@ _LINK: Final = {"url": "https://media.example/clip.mp4", "protocol": "https"}
 
 
 def _placed(
-    sections: tuple[str, ...], info: dict[str, Any], probe: _Probe, **fields_: Any
+    sections: tuple[str, ...],
+    info: dict[str, Any],
+    probe: _Probe,
+    *,
+    routes: Any = networking,
+    **fields_: Any,
 ) -> float | None:
     request = replace(a_request(**fields_), download_sections=sections)
     return worker._place_the_sections(
-        request, info, Path("/ff/ffprobe"), probe, None, float(DEFAULT_TIMEOUT)
+        request, info, Path("/ff/ffprobe"), probe, None, float(DEFAULT_TIMEOUT), routes
     )
 
 
@@ -586,6 +592,18 @@ def test_a_proxy_ffmpeg_would_go_around_cancels_the_item_unread() -> None:
     assert probe.asked == 0, "ffprobe was started"
     # The site's own length needs no read, so no route either.
     assert _placed(("*1-3",), {**_LINK, "duration": 6}, probe, proxy="socks5://p:1") is None
+
+
+def test_without_yt_dlp_s_route_functions_no_link_is_read() -> None:
+    """A copy of yt-dlp without `utils.networking` gives no way to tell its route to a link, so
+    none is asked and the item is cancelled as one whose length could not be read."""
+    probe = _Probe("6.0")
+
+    with pytest.raises(worker.NothingDownloadedError) as cancelled:
+        _placed(("*1-3",), dict(_LINK), probe, routes=None)
+
+    assert cancelled.value.reason == NO_LENGTH
+    assert probe.asked == 0, "ffprobe was started"
 
 
 def test_a_section_with_no_media_fails_with_the_staged_info_json_stripped(tmp_path: Path) -> None:

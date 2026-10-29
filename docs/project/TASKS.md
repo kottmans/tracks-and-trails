@@ -16,8 +16,11 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ### T-252 — Download tuning and the retry policy the settings screen shows
 
-**Status:** In Review — correction 2 built 2026-10-27, awaiting the second focused re-review of
-`T252-R1`, `R3` and `R5`; changes requested 2026-10-27 at `a3705e4`, `R2` and `R4` resolved, `R6`
+**Status:** In Review — correction 3 built 2026-10-29, awaiting the third focused re-review of
+`T252-R5` and `R8`; `R7`, the download's own route, is `T-368`'s and blocks this task until it is
+verified. Changes requested 2026-10-28 at `2e5f9da`, `R1`, `R3` and `R6` resolved
+([record](reviews/T-252.md#2026-10-28--second-focused-correction-review)). Correction 2 built
+2026-10-27; changes requested 2026-10-27 at `a3705e4`, `R2` and `R4` resolved, `R6`
 routed to `T-253`
 ([record](reviews/T-252.md#2026-10-27--first-focused-correction-review)). Correction 1 built
 2026-10-25; `T252-R1` ruled 2026-10-25, below. Changes requested 2026-10-24 at `7aadd3d`, one
@@ -345,6 +348,36 @@ found only by searching now fails it.
 each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,596 passed**, 23 skipped;
 `tests/integration` under `-n 4`, **615 passed**. Not yet run on Windows; the certificate check's
 Windows result above is a probe of ffprobe there, not the suite.
+
+**`R5` and `R8`, corrected 2026-10-29, awaiting the third focused re-review**
+([record](reviews/T-252.md#2026-10-28--second-focused-correction-review),
+[CI](reviews/T-252.md#2026-10-28--ci-evidence-disposition-after-the-focused-review)):
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T252-R5`, Critical, second round — `route_for` gave every link the one system proxy and followed none of the system's exceptions: with `http_proxy` set and `no_proxy` naming the origin, or `https_proxy` alone and an `http://` link, the read sent the link and its headers to a proxy yt-dlp goes around | **Each link is read by yt-dlp's route to it, chosen by yt-dlp's own functions** (`media_probe.route_for`, `proxy_table`): the table `YoutubeDL.proxies` builds, then, for the link and the headers it is sent with, the resolved copy's `clean_proxies`, `clean_headers` and `select_proxy`, as its handlers choose for each request. So the exceptions and each scheme's proxy are followed, `__noproxy__` and a proxy written without its scheme are read as yt-dlp reads them, and **a `Ytdl-Request-Proxy` header**, which `--add-headers` in the options field can set, is the proxy and is not sent. **A redirect is followed only where it cannot change the route**: yt-dlp chooses again for each link it is sent to and ffmpeg keeps one proxy, so where the table has exceptions or a proxy for one scheme only, ffprobe is given `-max_redirects 0` and a link that redirects gives no length. A link whose route is refused no longer stops another link's read; with none read, the item is cancelled with the reason. System settings naming two proxies, refused in the first round, are now each link's own, so that refusal is gone | Real ffprobe through `_place_the_sections`, each case with yt-dlp reaching the same server as its control: **the review's two cases read directly, the proxy asked nothing**; a redirect from an exempt host to one that is not, **not followed**, where yt-dlp went through the proxy at the second and the read's direct route left to itself reached it directly; a redirect under the request's own proxy followed, both hosts seeing only the proxy; a `Ytdl-Request-Proxy` header's proxy used, and the header never reaching the origin. Unit: the table held to `YoutubeDL.proxies` over six environments and three request proxies; each link's route over thirteen tables; a copy of yt-dlp without these functions asks no link |
+| `T252-R8`, Medium — on Windows the certificate test failed before testing anything: the application replaces `ssl.SSLContext` with `truststore`'s for the process, whose `wrap_socket` checks the peer even on a listening socket | **The test's server uses the standard library's class**, kept when the module is imported, and **the test puts the application's patch in place itself on every platform**, through `verify_with_the_operating_system(os_name="nt")`, which `truststore` makes real on Linux too. The production patch is unchanged | On Linux, the server built with the patched class reproduces CI's `AttributeError`; the patch left out, or certificates not checked, each fail the test. **On `STARBASE`**, the same file with the old line failed with CI's error, and with the new one all six route tests then in the file passed, the unchecked control reading the server and the checked read refusing it |
+
+**The Windows certificate check, ruled 2026-10-29**: the maintainer kept it as it is, a read that
+cannot check the chain cancelled rather than made unchecked, and asked for a task measuring a
+bundled list of certificates handed to ffmpeg on Windows, filed as `T-369`.
+
+**Mutations, 20 of 20 caught**, each on copies restored by hash. For `R5`, 17: the exceptions
+ignored; one proxy taken for every scheme; redirects always followed, or never; `-max_redirects`
+not passed; the exceptions left out of the redirect rule; `clean_proxies` or `clean_headers` not
+applied; the headers sent as given; a proxy other than `http://` let through; `https` not taking
+`http`'s proxy; the request's proxy ignored; one refused link stopping the rest; a refusal not
+reported, or its reason dropped; the item's headers used for every link; the system's proxies not
+read. For `R8`, 3: the server built with the patched class; the patch not put in place; certificates
+not checked.
+
+**Windows, on `STARBASE`**, these files copied onto `be3cc08`: `test_length_route.py` with
+`test_media_probe.py` and `test_download_tuning.py`, **209 passed**, none skipped.
+
+**Checks, 2026-10-29, on Linux**, with the project `.venv` on `PATH`: `ruff check .` and
+`ruff format --check .` (524 files); `mypy src` (76), bare `mypy` and `mypy --platform win32` (249
+each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,746 passed**, 23 skipped;
+`tests/integration` **in one process, as CI runs it**, **620 passed**.
 
 ### T-253 — Network reachability: address family and politeness delays
 

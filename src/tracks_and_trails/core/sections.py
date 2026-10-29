@@ -397,10 +397,3 @@ NOT_THROUGH_THE_PROXY: Final = (
     "read through an http:// proxy, so part of it cannot be cut. Downloading the whole item may "
     "work."
 )
-
-#: Why the length was not read where the system names a different proxy for each kind of link.
-NOT_THROUGH_SEVERAL_PROXIES: Final = (
-    "Nothing was downloaded: this item does not say how long it is, and this computer's settings "
-    "name more than one proxy, which its length cannot be read through, so part of it cannot be "
-    "cut. Downloading the whole item may work."
-)

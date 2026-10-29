@@ -8,22 +8,28 @@ from __future__ import annotations
 
 import json
 import sys
-from collections.abc import Sequence
+import urllib.request
+from collections.abc import Mapping, Sequence
 from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import Any
 
 import pytest
+import yt_dlp
+from yt_dlp.utils import networking
 
-from tracks_and_trails.core.sections import NOT_THROUGH_SEVERAL_PROXIES, NOT_THROUGH_THE_PROXY
+from tracks_and_trails.core.sections import NOT_THROUGH_THE_PROXY
 from tracks_and_trails.downloader.media_probe import (
     LINK_PROTOCOLS,
     LOCAL_TIMEOUT_SECONDS,
     ONE_FILE_DEMUXERS,
     REMOTE_TIMEOUT_SECONDS,
     Route,
+    RouteRefusedError,
+    RouteTo,
     ffprobe_beside,
     holds_media,
+    proxy_table,
     remote_length,
     route_for,
     run_with,
@@ -33,6 +39,14 @@ FFPROBE = Path("/opt/ffmpeg/ffprobe")
 
 #: No proxy, no address to connect from, yt-dlp's own timeout.
 DIRECT = Route(proxy="", source_address=None, timeout=20.0)
+
+
+def _every_link(route: Route) -> RouteTo:
+    """One route for every link, its headers sent as they are."""
+    return lambda _url, headers: (route, dict(headers))
+
+
+ALWAYS_DIRECT = _every_link(DIRECT)
 
 
 class Answers:
@@ -98,7 +112,7 @@ def test_the_length_is_read_from_the_chosen_link_with_its_headers_and_cookies() 
         "cookies": "session=abc; Domain=.example; Path=/; Secure; theme=dark; Path=/",
     }
 
-    assert remote_length(info, FFPROBE, run, SimpleCookie, route=DIRECT) == 6.0
+    assert remote_length(info, FFPROBE, run, SimpleCookie, route=ALWAYS_DIRECT) == 6.0
 
     ((arguments, timeout),) = run.runs
     assert timeout == REMOTE_TIMEOUT_SECONDS
@@ -120,7 +134,7 @@ def test_the_first_merged_link_that_answers_gives_the_length() -> None:
         ]
     }
 
-    assert remote_length(info, FFPROBE, run, route=DIRECT) == 6.02
+    assert remote_length(info, FFPROBE, run, route=ALWAYS_DIRECT) == 6.02
     assert [arguments[-1] for arguments, _ in run.runs] == [
         "https://media.example/video.mp4",
         "https://media.example/audio.m4a",
@@ -132,14 +146,15 @@ def test_the_first_merged_link_that_answers_gives_the_length() -> None:
 def test_no_length_is_read_where_ffprobe_gives_none(answer: tuple[int, str]) -> None:
     link = {"url": "https://media.example/clip.mp4", "protocol": "https"}
 
-    assert remote_length(link, FFPROBE, Answers(answer), route=DIRECT) is None
+    assert remote_length(link, FFPROBE, Answers(answer), route=ALWAYS_DIRECT) is None
 
 
 def test_only_a_web_link_is_asked() -> None:
     run = Answers()
 
-    assert remote_length({"url": "rtmp://media.example/live"}, FFPROBE, run, route=DIRECT) is None
-    assert remote_length({}, FFPROBE, run, route=DIRECT) is None
+    rtmp = {"url": "rtmp://media.example/live"}
+    assert remote_length(rtmp, FFPROBE, run, route=ALWAYS_DIRECT) is None
+    assert remote_length({}, FFPROBE, run, route=ALWAYS_DIRECT) is None
     assert run.runs == []
 
 
@@ -151,7 +166,7 @@ def test_only_a_format_fetched_as_one_file_is_asked(protocol: str | None) -> Non
     run = Answers((0, "6.0"))
     info = {"url": "https://media.example/master.m3u8", "protocol": protocol}
 
-    assert remote_length(info, FFPROBE, run, route=DIRECT) is None
+    assert remote_length(info, FFPROBE, run, route=ALWAYS_DIRECT) is None
     assert run.runs == []
 
 
@@ -169,7 +184,10 @@ def test_the_read_carries_every_part_of_the_route() -> None:
     route = Route(proxy="http://proxy.example:3128", source_address="::", timeout=7.5)
 
     remote_length(
-        {"url": "https://media.example/clip.mp4", "protocol": "https"}, FFPROBE, run, route=route
+        {"url": "https://media.example/clip.mp4", "protocol": "https"},
+        FFPROBE,
+        run,
+        route=_every_link(route),
     )
 
     ((arguments, _),) = run.runs
@@ -190,52 +208,199 @@ def test_no_proxy_is_passed_as_none_and_no_address_as_nothing() -> None:
     assert "-local_addr" not in arguments
 
 
-@pytest.mark.parametrize(
-    ("proxy", "system", "expected"),
-    [
-        # The request's own proxy, whatever the system says.
-        ("http://proxy.example:3128", {"https": "http://other:1"}, "http://proxy.example:3128"),
-        ("HTTP://proxy.example:3128", {}, "HTTP://proxy.example:3128"),
-        # The system's, as yt-dlp reads it, where the request names none.
-        (None, {}, ""),
-        (None, {"http": "http://sys:8080", "https": "http://sys:8080"}, "http://sys:8080"),
-        (None, {"https": "http://sys:8080"}, "http://sys:8080"),
-        (None, {"all": "http://sys:8080", "no": "media.example"}, "http://sys:8080"),
-        (None, {"ftp": "http://ftp:21"}, ""),
-    ],
-    ids=["request", "scheme case", "none", "one for both", "https only", "all", "not a web one"],
-)
-def test_the_read_takes_the_proxy_yt_dlp_would(
-    proxy: str | None, system: dict[str, str], expected: str
+def test_a_redirect_is_refused_only_where_the_route_could_change() -> None:
+    """`-max_redirects 0` where yt-dlp could reach the next link another way (`route_for`)."""
+    assert "-max_redirects" not in DIRECT.arguments()
+    held = Route(proxy="", source_address=None, timeout=20.0, follows_redirects=False)
+    assert _option(held.arguments(), "-max_redirects") == "0"
+
+
+#: Several environments, each as `urllib.request.getproxies` reads it on this platform.
+ENVIRONMENTS = [
+    {},
+    {"http_proxy": "http://sys:8080"},
+    {"https_proxy": "http://sys:8080"},
+    {"http_proxy": "http://a:1", "https_proxy": "http://b:1"},
+    {"all_proxy": "socks5://sys:1080", "no_proxy": "media.example"},
+    {"http_proxy": "http://sys:8080", "no_proxy": "127.0.0.1,.example"},
+]
+
+
+@pytest.mark.parametrize("proxy", [None, "", "http://request:3128"])
+@pytest.mark.parametrize("environment", ENVIRONMENTS, ids=lambda e: ",".join(e) or "none")
+def test_the_table_is_yt_dlp_s_own(
+    monkeypatch: pytest.MonkeyPatch, environment: dict[str, str], proxy: str | None
 ) -> None:
-    route = route_for(proxy, "0.0.0.0", 20.0, system)  # noqa: S104 - IPv4 only, as `-4` binds
+    """Held to `YoutubeDL.proxies` at the pin, given what the adapter gives it: a request's proxy
+    only when it is not empty (`build_options`)."""
+    for name in ("http_proxy", "https_proxy", "all_proxy", "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+        monkeypatch.delenv(name.upper(), raising=False)
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+    params: dict[str, Any] = {"quiet": True}
+    if proxy:
+        params["proxy"] = proxy
 
-    assert route == Route(proxy=expected, source_address="0.0.0.0", timeout=20.0)  # noqa: S104
+    with yt_dlp.YoutubeDL(params) as ydl:
+        expected = ydl.proxies
+
+    assert proxy_table(proxy, urllib.request.getproxies()) == expected
+
+
+def _route(
+    url: str,
+    proxies: Mapping[str, str],
+    headers: Mapping[str, str] | None = None,
+) -> tuple[Route, Mapping[str, str]] | str:
+    return route_for(url, headers or {}, proxies, networking, "0.0.0.0", 20.0)  # noqa: S104
 
 
 @pytest.mark.parametrize(
-    ("proxy", "system", "refusal"),
+    ("url", "proxies", "proxy", "follows"),
     [
-        ("socks5://proxy.example:1080", {}, NOT_THROUGH_THE_PROXY),
-        ("socks5h://proxy.example:1080", {}, NOT_THROUGH_THE_PROXY),
-        ("https://proxy.example:443", {}, NOT_THROUGH_THE_PROXY),
-        (None, {"all": "socks5://sys:1080"}, NOT_THROUGH_THE_PROXY),
-        (None, {"http": "sys:8080"}, NOT_THROUGH_THE_PROXY),
-        (None, {"http": "http://a:1", "https": "http://b:1"}, NOT_THROUGH_SEVERAL_PROXIES),
+        # The request's own, for every link, so a redirect keeps it.
+        ("https://m.example/c", {"all": "http://request:3128"}, "http://request:3128", True),
+        ("http://m.example/c", {"all": "HTTP://request:3128"}, "HTTP://request:3128", True),
+        # None at all, and one for both kinds of link.
+        ("https://m.example/c", {}, "", True),
+        ("http://m.example/c", {"http": "http://s:1", "https": "http://s:1"}, "http://s:1", True),
+        # yt-dlp's `__noproxy__`, and a proxy written without its scheme.
+        ("http://m.example/c", {"all": "__noproxy__"}, "", True),
+        ("http://m.example/c", {"all": "s:8080"}, "http://s:8080", True),
+        # **The review's second case**: `https` only leaves an `http://` link direct.
+        ("http://m.example/c", {"https": "http://s:1"}, "", False),
+        ("https://m.example/c", {"https": "http://s:1"}, "http://s:1", False),
+        # Two proxies: each link its own.
+        ("http://m.example/c", {"http": "http://a:1", "https": "http://b:1"}, "http://a:1", False),
+        ("https://m.example/c", {"http": "http://a:1", "https": "http://b:1"}, "http://b:1", False),
+        # **The review's first case**: the exceptions name the host, so it is reached directly.
+        ("http://127.0.0.1:8/c", {"all": "http://s:1", "no": "127.0.0.1"}, "", False),
+        ("http://m.example/c", {"all": "http://s:1", "no": ".example"}, "", False),
+        ("http://m.other/c", {"all": "http://s:1", "no": ".example"}, "http://s:1", False),
     ],
-    ids=["socks5", "socks5h", "https", "system socks", "no scheme", "two proxies"],
+    ids=[
+        "request",
+        "scheme case",
+        "none",
+        "one for both",
+        "noproxy",
+        "no scheme",
+        "https only, http link",
+        "https only, https link",
+        "two, http link",
+        "two, https link",
+        "exempt address",
+        "exempt domain",
+        "not exempt",
+    ],
 )
-def test_a_proxy_ffmpeg_would_go_around_is_refused(
-    proxy: str | None, system: dict[str, str], refusal: str
+def test_each_link_is_read_by_yt_dlp_s_route_to_it(
+    url: str, proxies: dict[str, str], proxy: str, follows: bool
 ) -> None:
+    routed = _route(url, proxies)
+
+    assert not isinstance(routed, str)
+    route, _ = routed
+    assert route == Route(
+        proxy=proxy,
+        source_address="0.0.0.0",  # noqa: S104 - IPv4 only, as `-4` binds
+        timeout=20.0,
+        follows_redirects=follows,
+    )
+
+
+def test_a_header_naming_a_proxy_is_the_route_and_is_not_sent() -> None:
+    """`Ytdl-Request-Proxy`, which `--add-headers` can set, stands for every proxy and every
+    exception, and goes nowhere; yt-dlp's other instruction is read as yt-dlp reads it."""
+    routed = _route(
+        "http://127.0.0.1:8/c",
+        {"all": "http://s:1", "no": "127.0.0.1"},
+        {"ytdl-request-proxy": "http://named:3128", "Youtubedl-No-Compression": "1", "X-A": "b"},
+    )
+
+    assert not isinstance(routed, str)
+    route, sent = routed
+    assert (route.proxy, route.follows_redirects) == ("http://named:3128", True)
+    assert dict(sent) == {"X-A": "b", "Accept-Encoding": "identity"}
+
+
+@pytest.mark.parametrize(
+    ("url", "proxies"),
+    [
+        ("https://m.example/c", {"all": "socks5://proxy.example:1080"}),
+        ("https://m.example/c", {"all": "socks5h://proxy.example:1080"}),
+        ("https://m.example/c", {"all": "https://proxy.example:443"}),
+        ("http://m.example/c", {"http": "socks4://sys:1080", "https": "http://s:1"}),
+    ],
+    ids=["socks5", "socks5h", "https", "this link's only"],
+)
+def test_a_proxy_ffmpeg_would_go_around_is_refused(url: str, proxies: dict[str, str]) -> None:
     """**Measured 2026-10-27**: handed a SOCKS or `https://` proxy, ffmpeg connected directly."""
-    assert route_for(proxy, None, 20.0, system) == refusal
+    assert _route(url, proxies) == NOT_THROUGH_THE_PROXY
+
+
+def test_a_link_another_proxy_serves_is_still_read() -> None:
+    """Refusing one link's route does not stop another's: the audio is asked when the video's
+    proxy is one ffmpeg would go around."""
+    run = Answers((0, "6.0"))
+    info = {
+        "requested_formats": [
+            {"url": "https://m.example/video.mp4", "protocol": "https"},
+            {"url": "http://m.example/audio.m4a", "protocol": "http"},
+        ]
+    }
+
+    def route(url: str, headers: Mapping[str, str]) -> tuple[Route, Mapping[str, str]] | str:
+        return route_for(url, headers, {"https": "socks5://s:1"}, networking, None, 20.0)
+
+    assert remote_length(info, FFPROBE, run, route=route) == 6.0
+    assert [arguments[-1] for arguments, _ in run.runs] == ["http://m.example/audio.m4a"]
+
+
+def test_no_link_read_says_why() -> None:
+    run = Answers()
+    info = {"url": "https://m.example/clip.mp4", "protocol": "https"}
+
+    def refused(_url: str, _headers: Mapping[str, str]) -> str:
+        return NOT_THROUGH_THE_PROXY
+
+    with pytest.raises(RouteRefusedError) as raised:
+        remote_length(info, FFPROBE, run, route=refused)
+
+    assert raised.value.reason == NOT_THROUGH_THE_PROXY
+    assert run.runs == []
+
+
+def test_the_route_is_asked_with_each_link_and_its_own_headers() -> None:
+    asked: list[tuple[str, dict[str, str]]] = []
+
+    def route(url: str, headers: Mapping[str, str]) -> tuple[Route, Mapping[str, str]]:
+        asked.append((url, dict(headers)))
+        return DIRECT, {"X-Sent": "yes"}
+
+    run = Answers((1, ""), (0, "6.0"))
+    info = {
+        "http_headers": {"X-Item": "1"},
+        "requested_formats": [
+            {"url": "https://m.example/v.mp4", "protocol": "https", "http_headers": {"X-V": "1"}},
+            {"url": "https://m.example/a.m4a", "protocol": "https"},
+        ],
+    }
+
+    assert remote_length(info, FFPROBE, run, route=route) == 6.0
+    assert asked == [
+        ("https://m.example/v.mp4", {"X-V": "1"}),
+        ("https://m.example/a.m4a", {"X-Item": "1"}),
+    ]
+    assert all(_option(arguments, "-headers") == "X-Sent: yes\r\n" for arguments, _ in run.runs)
 
 
 def test_the_proxy_is_never_named_in_a_refusal() -> None:
     """The system's can carry a password, `http://user:secret@host`."""
-    for refusal in (NOT_THROUGH_THE_PROXY, NOT_THROUGH_SEVERAL_PROXIES):
-        assert "secret" not in refusal and "@" not in refusal
+    refusal = _route("https://m.example/c", {"all": "socks5://user:secret@sys:1080"})
+    assert refusal == NOT_THROUGH_THE_PROXY
+    assert "secret" not in refusal and "@" not in refusal
 
 
 # --- which ffprobe, and how it is run ---------------------------------------------------------

@@ -41,6 +41,7 @@ observe them (`REQ-015`, `ARCHITECTURE.md` §3):
 """
 
 import contextlib
+import functools
 import hashlib
 import importlib
 import logging
@@ -94,9 +95,11 @@ from tracks_and_trails.downloader.environment import (
     ytdlp_candidates,
 )
 from tracks_and_trails.downloader.media_probe import (
+    RouteRefusedError,
     Run,
     ffprobe_beside,
     holds_media,
+    proxy_table,
     remote_length,
     route_for,
     run_with,
@@ -769,6 +772,7 @@ def _run(
             probe_run,
             _ytdlp_name(resolved, "cookies", "LenientSimpleCookie"),
             adapter.connection_defaults()["socket_timeout"],
+            _ytdlp_name(resolved, "utils", "networking"),
         )
         try:
             result = _extract(
@@ -2209,6 +2213,7 @@ def _place_the_sections(
     run: Run,
     cookie_parser: Any,
     default_timeout: float,
+    networking: Any,
 ) -> float | None:
     """Place the item's sections in it, cancelling it for any outside or empty (`T252-R1`).
 
@@ -2218,9 +2223,10 @@ def _place_the_sections(
     that is empty once placed, which yt-dlp would download as the whole item (second round). A
     chapter pattern needs no length, and cancels the item when it matches a chapter of none.
 
-    **The link is read by the request's route** (`T252-R5`, `T253-R3`): its proxy, or the
-    system's, its address to connect from and its timeout, `default_timeout` being yt-dlp's own.
-    Where ffprobe cannot follow it, the length is not read and the item is cancelled with why.
+    **Each link is read by yt-dlp's route to it** (`T252-R5`, `T253-R3`): the proxy yt-dlp
+    would choose for it, by `networking`, the resolved copy's own functions; the request's address
+    to connect from; its timeout, `default_timeout` being yt-dlp's own. Where ffprobe cannot take
+    the route, the length is not read and the item is cancelled with why.
 
     Returns the length **only when it was read here**, for yt-dlp to place the ranges by (see
     `NumberedSections`); a length the site gave, yt-dlp already has.
@@ -2235,16 +2241,18 @@ def _place_the_sections(
         return None
     given = _length_given(info.get("duration"))
     length = given
-    if length is None:
-        route = route_for(
-            request.proxy,
-            request.source_address,
-            default_timeout if request.socket_timeout is None else request.socket_timeout,
-            urllib.request.getproxies(),
+    if length is None and networking is not None:
+        route = functools.partial(
+            route_for,
+            proxies=proxy_table(request.proxy, urllib.request.getproxies()),
+            networking=networking,
+            source_address=request.source_address,
+            timeout=default_timeout if request.socket_timeout is None else request.socket_timeout,
         )
-        if isinstance(route, str):
-            raise NothingDownloadedError(route)
-        length = remote_length(info, ffprobe, run, cookie_parser, route=route)
+        try:
+            length = remote_length(info, ffprobe, run, cookie_parser, route=route)
+        except RouteRefusedError as refused:
+            raise NothingDownloadedError(refused.reason) from None
     if length is None:
         raise NothingDownloadedError(NO_LENGTH)
     url_start = _length_given(info.get("start_time"))

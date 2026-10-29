@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Any, Final
 from urllib.parse import urlsplit
 
-from tracks_and_trails.core.sections import NOT_THROUGH_SEVERAL_PROXIES, NOT_THROUGH_THE_PROXY
+from tracks_and_trails.core.sections import NOT_THROUGH_THE_PROXY
 
 #: How long ffprobe is given to read a link's length. A link to a file with its index at the end,
 #: on a server that cannot seek, is read through to the index, so this is a ceiling on that.
@@ -78,11 +78,15 @@ class Route:
       rather than making it another way, as yt-dlp's does (`T253-R3`).
     - `timeout`, the socket timeout yt-dlp would wait, where ffmpeg waits for ever.
     - certificates checked, chain and host name, where ffmpeg checks neither by default.
+    - `follows_redirects`, `False` where the next link could be reached another way: yt-dlp
+      chooses the route again for each link it is sent to, and ffmpeg keeps one for all of them
+      (`route_for`). `-max_redirects 0` stops ffprobe at the redirect, which gives no length.
     """
 
     proxy: str
     source_address: str | None
     timeout: float
+    follows_redirects: bool = True
 
     def arguments(self) -> list[str]:
         arguments = [
@@ -99,35 +103,76 @@ class Route:
         ]
         if self.source_address is not None:
             arguments += ["-local_addr", self.source_address]
+        if not self.follows_redirects:
+            arguments += ["-max_redirects", "0"]
         return arguments
 
 
+#: The route to one link, from the link and the headers yt-dlp would send it: the route and the
+#: headers sent along it, or why ffprobe cannot take it (`route_for`).
+RouteTo = Callable[[str, Mapping[str, str]], "tuple[Route, Mapping[str, str]] | str"]
+
+
+class RouteRefusedError(Exception):
+    """No link was asked, since ffprobe could take yt-dlp's route to none; `reason` says why."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+def proxy_table(proxy: str | None, system: Mapping[str, str]) -> dict[str, str]:
+    """The proxies yt-dlp chooses from, as `YoutubeDL.proxies` builds them at the pin.
+
+    The request's own for every kind of link, or else the system's as `urllib.request.getproxies`
+    reads them (`system`), where an `https` link takes the `http` one if the system names none for
+    it. The adapter hands yt-dlp a request's proxy only when it is not empty, so neither is this.
+    """
+    if proxy:
+        return {"all": proxy}
+    table = dict(system)
+    if "http" in table and "https" not in table:
+        table["https"] = table["http"]
+    return table
+
+
 def route_for(
-    proxy: str | None,
+    url: str,
+    headers: Mapping[str, str],
+    proxies: Mapping[str, str],
+    networking: Any,
     source_address: str | None,
     timeout: float,
-    system_proxies: Mapping[str, str],
-) -> Route | str:
-    """The route a link's length is read by, or why the request's cannot be followed (`T252-R5`).
+) -> tuple[Route, Mapping[str, str]] | str:
+    """yt-dlp's route to `url` and the headers it sends there, or why ffprobe cannot take it.
 
-    **The proxy yt-dlp would use.** `proxy` is the request's, and `None` means the system's, which
-    yt-dlp reads with `urllib.request.getproxies` (`system_proxies`) for each link's scheme.
+    **Chosen by yt-dlp's own functions, as its handlers choose for each request** (`T252-R5`,
+    second round), `networking` being the resolved copy's `yt_dlp.utils.networking`.
+    `clean_proxies` lets a `Ytdl-Request-Proxy` header stand for every proxy and takes it out of
+    the headers, gives a proxy written without a scheme `http://`, and reads `__noproxy__` as none;
+    `clean_headers` takes yt-dlp's other instructions out of what is sent; `select_proxy` then
+    picks this link's proxy by its scheme, unless the system's exceptions (`no_proxy`) name its
+    host. `proxies` is the table yt-dlp starts from (`proxy_table`).
+
+    **A redirect is followed only where it cannot change the route.** yt-dlp chooses again for
+    each link it is sent to, and ffmpeg keeps its one proxy for all of them, so where the table
+    has exceptions, or a different proxy for `http` and `https`, ffprobe follows none.
+
     **ffmpeg tunnels through an `http://` proxy only**: handed SOCKS or `https://`, it connected
-    directly. So any other kind is refused, and so are system settings naming different proxies for
-    different schemes, since a redirect from one to another would keep ffmpeg on the first. The
-    system's exceptions are not followed: a link they name is read through the proxy, which can
-    fail but never goes around it.
+    directly (measured 2026-10-27), so any other is refused.
     """
-    if proxy is None:
-        named = {
-            value for scheme in ("http", "https", "all") if (value := system_proxies.get(scheme))
-        }
-        if len(named) > 1:
-            return NOT_THROUGH_SEVERAL_PROXIES
-        proxy = next(iter(named), "")
+    sent = networking.HTTPHeaderDict(headers)
+    table = dict(proxies)
+    networking.clean_proxies(table, sent)
+    networking.clean_headers(sent)
+    proxy = networking.select_proxy(url, table) or ""
     if proxy and urlsplit(proxy).scheme.lower() != "http":
         return NOT_THROUGH_THE_PROXY
-    return Route(proxy=proxy, source_address=source_address, timeout=timeout)
+    same_for_every_link = "no" not in table and networking.select_proxy(
+        "http://any.invalid/", table
+    ) == networking.select_proxy("https://any.invalid/", table)
+    route = Route(proxy, source_address, timeout, follows_redirects=same_for_every_link)
+    return route, sent.sensitive()
 
 
 def _without_proxies() -> dict[str, str]:
@@ -206,10 +251,10 @@ def _cookie_line(cookies: object, parser: Any) -> str | None:
     return "; ".join(pairs) or None
 
 
-def _headers(chosen: Mapping[str, Any], info: Mapping[str, Any], parser: Any) -> str:
-    """The request's headers as ffmpeg's `-headers` takes them, its cookies among them."""
-    headers = dict(chosen.get("http_headers") or info.get("http_headers") or {})
-    cookie = _cookie_line(chosen.get("cookies") or info.get("cookies"), parser)
+def _headers(sent: Mapping[str, str], cookies: Any, parser: Any) -> str:
+    """The headers yt-dlp sends, as ffmpeg's `-headers` takes them, with the cookies among them."""
+    headers = dict(sent)
+    cookie = _cookie_line(cookies, parser)
     if cookie:
         headers["Cookie"] = cookie
     return "".join(f"{name}: {value}\r\n" for name, value in headers.items())
@@ -221,38 +266,47 @@ def remote_length(
     run: Run,
     cookie_parser: Any = None,
     *,
-    route: Route,
+    route: RouteTo,
 ) -> float | None:
     """The length of the media yt-dlp chose for `info`, read from its link (ruling 3).
 
     `info` is the probe's: yt-dlp merges the format it chose into it, or lists the formats it will
     merge in `requested_formats`, each with its link, headers and cookies. The first link that
     answers gives the length. **Only a format yt-dlp fetches as one file over `http` or `https` is
-    asked**, by `route` (`T252-R5`). `None` when none answers.
+    asked**, each by yt-dlp's route to it, `route` (`T252-R5`). `None` when none answers;
+    `RouteRefusedError` when there was a link to ask and no route ffprobe could take to any.
     """
+    refused: str | None = None
     for chosen in info.get("requested_formats") or [info]:
         if not isinstance(chosen, Mapping) or chosen.get("protocol") not in ONE_FILE_PROTOCOLS:
             continue
         url = chosen.get("url")
         if not isinstance(url, str) or not url.startswith(("http://", "https://")):
             continue
+        routed = route(url, chosen.get("http_headers") or info.get("http_headers") or {})
+        if isinstance(routed, str):
+            refused = routed
+            continue
+        link_route, sent = routed
         arguments = [
             str(ffprobe),
             "-v",
             "error",
-            *route.arguments(),
+            *link_route.arguments(),
             "-show_entries",
             "format=duration",
             "-of",
             "default=noprint_wrappers=1:nokey=1",
         ]
-        headers = _headers(chosen, info, cookie_parser)
+        headers = _headers(sent, chosen.get("cookies") or info.get("cookies"), cookie_parser)
         if headers:
             arguments += ["-headers", headers]
         code, output = run([*arguments, url], REMOTE_TIMEOUT_SECONDS)
         seconds = _seconds(output) if code == 0 else None
         if seconds is not None:
             return seconds
+    if refused is not None:
+        raise RouteRefusedError(refused)
     return None
 
 
