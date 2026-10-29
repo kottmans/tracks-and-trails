@@ -1274,6 +1274,40 @@ ruling is recorded. Known unsafe downloads cannot be approved while that choice 
 - Independently verify T252-R7 and the corresponding Network setting boundary before either
   task's approval, and verify this task before the release/parity verdict.
 
+### T-369 — Measure a bundled certificate list for ffmpeg on Windows
+
+**Status:** Proposed — filed 2026-10-29 at the maintainer's ruling of that day, recorded in
+`T-252`'s third correction
+**Owner:** Implementer; independent Reviewer verifies the measurements
+**Priority:** Medium — a safe refusal, narrower on Windows than on Linux
+**Phase:** Phase 4.5
+**Relevant context:** `T-252` (the section length read's certificate check); `T-368` (the same
+check on ffmpeg's own downloads); `REL-007`; `SEC-004`; `downloader/tls.py`
+**Affected surfaces:** the certificate check ffmpeg and ffprobe make on Windows
+
+#### Evidence and scope
+
+On Windows the bundled ffmpeg build checks certificates with GnuTLS against the Windows stores,
+which hold only the roots Windows has already fetched. On `STARBASE`, 2026-10-27, `www.example.com`
+failed the check while YouTube passed. With the check kept, as the maintainer ruled, the section
+length read is cancelled for such a site, and once `T-368` gives ffmpeg's own downloads the same
+check, those are refused too. Linux checks against the distribution's bundle and has no such gap.
+
+The question is whether handing ffmpeg a bundled list of certificates on Windows, through its
+`-ca_file` option, checks what Linux checks without dropping the check, and what it would refuse
+that the Windows store accepts.
+
+#### Acceptance criteria
+
+- Measure on `STARBASE`, with the build the application ships, whether `-ca_file` with a bundled
+  list is honoured: against a site whose root Windows has not fetched, one whose root it has, and a
+  certificate nobody signed, which must still fail.
+- State what such a list does not hold that the Windows store can, such as roots an organisation
+  installs, and what that would refuse; and where the list would come from, since a new runtime
+  dependency needs an accepted decision (`AGENTS.md` §7).
+- Propose the choice to the maintainer with the measurements. Change nothing in the product
+  without that ruling, and keep the check and its cancellation in any change.
+
 ### T-366 — Establish native Windows focus and format-table geometry
 
 **Status:** Proposed — scheduled by the 2026-10-27 independent T-304 review for the
