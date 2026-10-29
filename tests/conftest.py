@@ -11,6 +11,7 @@ might need to ask. `tests/capabilities.py` holds the answers; this makes its fix
 because pytest discovers fixtures from `conftest.py` and plugins, not from an ordinary module.
 """
 
+import logging
 import os
 import sys
 from collections.abc import Iterator
@@ -48,6 +49,35 @@ def _no_release_check_reaches_the_network() -> Iterator[None]:
         yield
     finally:
         setattr(app_release, "_open_url", real)  # noqa: B010
+
+
+# --- Each test leaves the application's log tree as it found it (`T254-R3`) ---------------------
+#
+# `configure_logging` leaves the tree at its level, not propagating, with its own handlers. A later
+# test in the same process that listens at the root then hears nothing: in CI's one-process
+# integration run, `test_manager.py`'s level cases silenced `test_sponsorblock.py`'s, which passed
+# under `-n 4`. A probe of every test's before and after found one more, in
+# `test_worker_logging.py`, so the restore is here rather than beside either.
+
+
+@pytest.fixture(autouse=True)
+def _the_logging_tree_as_found() -> Iterator[None]:
+    from tracks_and_trails.core.paths import APP_SLUG
+
+    tree = logging.getLogger(APP_SLUG)
+    level, propagate, handlers = tree.level, tree.propagate, list(tree.handlers)
+    try:
+        yield
+    finally:
+        for handler in list(tree.handlers):
+            if handler not in handlers:
+                tree.removeHandler(handler)
+                handler.close()
+        for handler in handlers:
+            if handler not in tree.handlers:
+                tree.addHandler(handler)
+        tree.setLevel(level)
+        tree.propagate = propagate
 
 
 # --- `docs/project/TESTING.md` §5, which had a rule and no mechanism (`T123-R2`) ------------------

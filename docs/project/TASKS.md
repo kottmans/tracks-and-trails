@@ -2,7 +2,7 @@
 
 **Purpose:** Unfinished work: review, ready, proposed and blocked tasks.
 **Owner:** Planner (priorities); Implementer (task/status); Reviewer (review disposition)
-**Last updated:** 2026-10-28
+**Last updated:** 2026-10-29
 **Update when:** Work starts, changes scope/status, closes or reopens.
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
@@ -494,9 +494,13 @@ each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,622 passe
 
 ### T-254 — SponsorBlock, opt-in per preset
 
-**Status:** In Review — blocked 2026-10-27 at `f05f720` on Windows and CI evidence only, no
-source finding ([record](reviews/T-254.md#2026-10-27--initial-comprehensive-review)); its first CI
-run failed one of its own tests, corrected below. Built 2026-10-27 on its rulings, at the
+**Status:** In Review — blocked 2026-10-28 at `7eece55` on the required gate only
+([record](reviews/T-254.md#2026-10-28--focused-test-correction-and-ci-evidence-review)): CI at
+`be3cc08` passed this task's tests on Linux and Windows and failed Windows integration on
+`T-252`'s certificate fixture (`T252-R8`), corrected there. `T254-R3` (Low) corrected 2026-10-29,
+below. Blocked 2026-10-27 at `f05f720` on Windows and CI evidence only, no source finding
+([record](reviews/T-254.md#2026-10-27--initial-comprehensive-review)); its first CI run failed one
+of its own tests, corrected below. Built 2026-10-27 on its rulings, at the
 maintainer's instruction of 2026-10-26. *(Was Proposed:)* **design ruled 2026-10-19, all four
 questions as recommended**
 (`ARC-010` and `UX-015` amended that day). Filed 2026-08-16 by `T-183`
@@ -641,6 +645,31 @@ a serial run**, and reproduced with those two tests and this one, 1 failed. The 
 the tree itself at `INFO` and puts it back; the same three pass, and it passes alone. **Adjacent,
 not corrected** (`AGENTS.md` §7): the two level tests still leave the tree configured for whatever
 runs after them in that process.
+
+**`T254-R3`, corrected 2026-10-29**
+([record](reviews/T-254.md#2026-10-28--focused-test-correction-and-ci-evidence-review)): **every
+test now leaves the application's log tree as it found it.** An autouse fixture in
+`tests/conftest.py` puts back the tree's level, whether it passes records up, and its handlers,
+closing any a test added. In the root `conftest.py` rather than beside the level tests: a probe
+recording the tree before and after every test of a one-process integration run found **one more**,
+`test_worker_logging.py`'s first test, which left it passing nothing up and at `DEBUG`. It runs
+after `test_sponsorblock.py`, so it had not shown. With the fixture, the same full run, 615 tests,
+left nothing changed.
+
+**Evidence**: the probe over the level tests, `test_worker_logging.py` and
+`tests/unit/test_logging.py`, failing on any test that leaves the tree changed: **none does**, 84
+passed. Each part of the restore taken away is caught, **4 of 4**: the fixture not autouse; the
+level, the propagation or the added handlers not put back (the last first written as a syntax
+error, rewritten and run again, not counted twice). **The serial-order regression is kept**: with
+the old `caplog` capture put back, the level tests then the SponsorBlock session **pass, 3**; with
+the restore also off, **1 failed, 2 passed**, as the review measured. The test's own capture on the
+tree is unchanged.
+
+**Checks, 2026-10-29, on Linux**, with the project `.venv` on `PATH`: `ruff check .` and
+`ruff format --check .` (524 files); `mypy src` (76), bare `mypy` and `mypy --platform win32` (249
+each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,718 passed**, 23 skipped;
+`tests/integration` **in one process, as CI runs it**, with the probe attached, **615 passed** and
+no test left the tree changed. No Windows run; the fixture has nothing platform-specific in it.
 
 ### T-255 — Per-extractor arguments
 
