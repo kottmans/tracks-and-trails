@@ -37,20 +37,19 @@ from tracks_and_trails.downloader.protocol import (
     validate_sequence,
 )
 
-#: `REQ-014`'s list — "probing, downloading video, downloading audio, merging,
-#: post-processing" — transcribed by hand as the identifiers this protocol uses.
+#: `REQ-014`'s list — "probing, waiting before a file, downloading video, downloading audio,
+#: merging, post-processing" — transcribed by hand as the identifiers this protocol uses. The wait
+#: is `ARC-010`'s (amended 2026-10-19, second, `T-253`), named in `REQ-014` since `T253-R4`.
 #:
 #: Independent of `Stage` on purpose: deriving it from the enum would make the test agree with
 #: the code by construction, which is the `T010-R1` mistake.
 REQ_014_STAGES = {
     "probing",
+    "waiting",
     "downloading_video",
     "downloading_audio",
     "merging",
     "post_processing",
-    # Not `REQ-014`'s: the wait before a file, which `ARC-010` adds (amended 2026-10-19, second,
-    # `T-253`).
-    "waiting",
 }
 
 

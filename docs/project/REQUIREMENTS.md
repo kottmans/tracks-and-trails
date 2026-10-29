@@ -5,7 +5,7 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-09-26
+**Last updated:** 2026-10-29
 **Last reviewed:** 2026-08-07
 **Update when:** Product scope, a feature, a user-facing constraint, or acceptance criteria change.
 **Does not contain:** Schema details, framework specifics, task lists, review history.
@@ -105,7 +105,7 @@ controls exist", which stopped being true when `T-016` supplied them (`COORD-R5`
 
 - **REQ-012** — Maintain a persistent download queue. The queue survives application restart and unexpected termination. *(This said "queue and history"; `REQ-020` was withdrawn 2026-08-06 and there is no history to survive anything.)*
 - **REQ-013** — Run a bounded, user-configurable number of downloads concurrently (default 3, minimum 1).
-- **REQ-014** — Per job, show live progress: percent, downloaded/total size, speed, ETA, current stage (probing, downloading video, downloading audio, merging, post-processing).
+- **REQ-014** — Per job, show live progress: percent, downloaded/total size, speed, ETA, current stage (probing, waiting before a file, downloading video, downloading audio, merging, post-processing).
 - **REQ-015** — Per job, support cancel, retry, and remove. Cancelling must terminate the underlying work promptly and must not leave the UI unresponsive. Removing takes a job out of the queue and never deletes a file from disk. **Pause and resume are queue-level, not per-job** (`UX-001`, maintainer, 2026-07-29): pausing lets in-flight downloads finish and starts nothing new, so no partial file is ever created by pausing. Remove never deletes a file; removing a running job cancels it first. *(This read "Per job, support cancel, pause, resume, retry, and remove" until `T-080`'s decision; `core/job_state.py` still carries `RUNNING → PAUSED → RUNNING` edges that nothing now reaches, which `T-080` owns. `UX-001` holds the rationale and its reopening condition — per-job pause becomes coherent when `REQ-017` lands resume in Phase 3.)*
   - **The queue does not run until the user starts it** (`UX-006`, maintainer, 2026-08-07). Adding
     a URL enqueues it and starts nothing; the user reviews the batch and presses **Start**. A

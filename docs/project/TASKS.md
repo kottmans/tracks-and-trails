@@ -348,8 +348,11 @@ Windows result above is a probe of ffprobe there, not the suite.
 
 ### T-253 — Network reachability: address family and politeness delays
 
-**Status:** In Review — correction 1 built 2026-10-27, awaiting the focused re-review of
-`T253-R1`, `R2`, `R3` and `R5`; changes requested 2026-10-27 at `1740c86`
+**Status:** In Review — blocked 2026-10-28 at `94e5fd1`
+([record](reviews/T-253.md#2026-10-28--focused-correction-review)): `T253-R3` waits on `T-368`'s
+correction of the download's own route, and `R6` on a green required gate, red at `be3cc08` on
+`T252-R8`; `R1`, `R2` and `R5` resolved. `R4` applied 2026-10-29, below. Correction 1 built
+2026-10-27; changes requested 2026-10-27 at `1740c86`
 ([record](reviews/T-253.md#2026-10-27--initial-comprehensive-review)). Built 2026-10-26 on its
 rulings, at the maintainer's instruction that day.
 *(Was Proposed:)* **design ruled 2026-10-19, all three questions as recommended** (`ARC-010`
@@ -491,6 +494,15 @@ rate not said, not given to a screen reader, or kept after the box moves.
 `ruff format --check .` (524 files); `mypy src` (76), bare `mypy` and `mypy --platform win32` (249
 each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,622 passed**, 23 skipped;
 `tests/integration` under `-n 4`, **615 passed**. No Windows run of this correction.
+
+**`R4`, applied 2026-10-29** at the review's instruction of 2026-10-28
+([record](reviews/T-253.md#2026-10-28--focused-correction-review)), which approved the proposed
+wording, and the maintainer's approval of 2026-10-29. `REQ-014`'s stage phrase now reads *"current
+stage (probing, waiting before a file, downloading video, downloading audio, merging,
+post-processing)"*, and nothing else in it changed. `tests/unit/test_protocol.py`'s transcription
+of the list now has the wait as `REQ-014`'s own rather than as `ARC-010`'s addition beside it.
+Checked with `T-254`'s gate of the same day: `tests/unit tests/ui` under `-n 4`, **6,718 passed**,
+23 skipped, the placement and prose checks among them; Ruff, format and the three type runs clean.
 
 ### T-254 — SponsorBlock, opt-in per preset
 
