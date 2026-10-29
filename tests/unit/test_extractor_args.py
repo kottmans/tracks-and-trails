@@ -262,7 +262,13 @@ def test_values_are_registered_except_a_fixed_vocabulary_s() -> None:
         "youtube:player_client=android;po_token=web.gvs+TOKENVALUE\ngeneric:hls_key=0123abcd"
     )
 
-    assert set(secret_values(structure)) == {"web.gvs+TOKENVALUE", "0123abcd"}
+    assert set(secret_values(structure)) == {
+        "web.gvs+TOKENVALUE",
+        "0123abcd",
+        # Second round: lower-cased as yt-dlp reads it. `TOKENVALUE` is no `base64`, so yt-dlp
+        # prints it only in the whole value.
+        "web.gvs+tokenvalue",
+    }
 
 
 def test_no_value_is_kept_with_a_comma_escape_left_in_it() -> None:
@@ -695,14 +701,18 @@ def test_a_value_is_left_readable_only_from_its_vocabulary(
     assert secret_values(structure) == registered
 
 
+@pytest.mark.parametrize("marker", [TOKEN, "T255_UPPERCASE_MARKER", "t255_MiXeD_Marker"])
 def test_yt_dlp_s_own_warning_about_an_unknown_client_is_redacted(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, marker: str
 ) -> None:
     """**The review's case, through the real path**: yt-dlp's YouTube extractor, initialized and
     asked for its clients with the network refused, quotes a client it does not know in a warning.
     Registered as the manager registers it, and read through `YtdlpLog` into the redacting
     formatter, the token is gone and the warning still says what happened. The control: without
-    the registration the token is in the line."""
+    the registration the token is in the line.
+
+    **Second round**: yt-dlp lower-cases the value before it quotes it, so a token typed with
+    capitals was printed in a spelling nobody had registered."""
     import io
     import logging
     import socket
@@ -715,7 +725,7 @@ def test_yt_dlp_s_own_warning_about_an_unknown_client_is_redacted(
         raise OSError("no network in a unit test")
 
     monkeypatch.setattr(socket.socket, "connect", refuse)
-    structure, _ = parsed(f"youtube:player_client=android,{TOKEN}")
+    structure, _ = parsed(f"youtube:player_client=android,{marker}")
     stream = io.StringIO()
     handler = logging.StreamHandler(stream)
     handler.setFormatter(app_logging.RedactingFormatter(app_logging.LOG_FORMAT))
@@ -739,7 +749,7 @@ def test_yt_dlp_s_own_warning_about_an_unknown_client_is_redacted(
 
     try:
         app_logging.forget_the_secrets()
-        assert TOKEN in warn_once(), "the control: yt-dlp did not quote the client"
+        assert marker.lower() in warn_once(), "the control: yt-dlp did not quote the client"
         for value in secret_values(structure):
             app_logging.remember_a_secret(value)
         logged = warn_once()
@@ -747,7 +757,130 @@ def test_yt_dlp_s_own_warning_about_an_unknown_client_is_redacted(
         app_logging.forget_the_secrets()
 
     assert "Skipping unsupported client" in logged
-    assert TOKEN not in logged
+    assert marker not in logged
+    assert marker.lower() not in logged
+
+
+@pytest.mark.parametrize("line", ["youtube:player_client=ANDROID,Web", "vimeo:client=Web"])
+def test_a_known_word_typed_in_capitals_stays_readable(line: str) -> None:
+    """yt-dlp reads it lower-cased, so it is the word it names; registering it would hide that
+    word from every line, as `android` or `web`."""
+    structure, problems = parsed(line)
+
+    assert problems == []
+    assert secret_values(structure) == ()
+
+
+def _case_reads() -> tuple[set[str], set[str], bool]:
+    """The arguments the pinned extractors read keeping their case, and those read lower-cased,
+    by name, from every `_configuration_arg` call's syntax tree; and whether a call whose
+    argument is not written out keeps its case, which would have to be decided by hand."""
+    import ast
+
+    import yt_dlp
+
+    kept: set[str] = set()
+    lowered: set[str] = set()
+    unwritten_kept = False
+    for path in Path(yt_dlp.__file__).parent.rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "_configuration_arg"
+                and node.args
+            ):
+                continue
+            keeps = any(
+                word.arg == "casesense"
+                and isinstance(word.value, ast.Constant)
+                and word.value.value is True
+                for word in node.keywords
+            )
+            name = node.args[0].value if isinstance(node.args[0], ast.Constant) else None
+            if isinstance(name, str):
+                (kept if keeps else lowered).add(name)
+            else:
+                unwritten_kept = unwritten_kept or keeps
+    return kept, lowered, unwritten_kept
+
+
+def test_each_vocabulary_reads_case_as_yt_dlp_does() -> None:
+    """**Held to the pin**: an argument read keeping its case is compared as typed, and every
+    other lower-cased, so each word of the latter must be lower case to be reachable at all."""
+    kept, lowered, unwritten_kept = _case_reads()
+
+    # Hotstar's `res`, `vcodec` and `dr` are read through a variable, lower-cased.
+    assert not unwritten_kept, "an argument not written out keeps its case; decide it by hand"
+    for (key, name), vocabulary in FIXED_VOCABULARY.items():
+        assert name in EXTRACTOR_ARGS[key], f"{key}:{name} is read nowhere"
+        assert name not in kept & lowered, f"{name} is read both ways; decide by key"
+        assert vocabulary.casesense == (name in kept), f"{key}:{name}"
+        if not vocabulary.casesense:
+            assert all(word == word.lower() for word in vocabulary.words), f"{key}:{name}"
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["QUJDREVGR0hJ", "QUJDREVGR0g%3D", "QUJD*REVG!R0g=", "QUJDREVGR0hJ&pot=1"],
+    ids=["as yt-dlp wants it", "quoted", "stray characters", "with a query"],
+)
+def test_a_po_token_is_registered_as_yt_dlp_cleans_it(token: str) -> None:
+    """`_get_config_po_token` unquotes the token, drops what is not `base64` and puts the result
+    in a manifest's path; held to the pinned method itself."""
+    import yt_dlp
+    from yt_dlp.extractor.youtube._base import _PoTokenContext
+
+    value = f"web.gvs+{token}"
+    structure, problems = parsed(f"youtube:po_token={value}")
+    assert problems == []
+    with yt_dlp.YoutubeDL({"quiet": True, "extractor_args": as_ytdlp(structure)}) as ydl:
+        cleaned = ydl.get_info_extractor("Youtube")._get_config_po_token("web", _PoTokenContext.GVS)
+
+    assert cleaned is not None
+    assert cleaned in secret_values(structure)
+    assert value in secret_values(structure)
+
+
+@pytest.mark.parametrize("value", ["T255DELEGATED||T255SESSION", "T255SESSION||"])
+def test_a_data_sync_id_is_registered_in_the_pieces_yt_dlp_reads(value: str) -> None:
+    from yt_dlp.extractor.youtube._base import YoutubeBaseInfoExtractor
+
+    structure, _ = parsed(f"youtube:data_sync_id={value}")
+    pieces = {piece for piece in YoutubeBaseInfoExtractor._parse_data_sync_id(value) if piece}
+
+    assert pieces
+    assert pieces <= set(secret_values(structure))
+
+
+def test_tiktok_s_debug_line_of_its_app_info_is_redacted() -> None:
+    """TikTok cuts `app_info` at `/` and writes the pieces to a debug line as a `dict`, so each
+    piece is printed alone, lower-cased, and as `repr` spells it: the backslash here doubled.
+    Through the pinned `_get_next_app_info`, and the control is the line before registering."""
+    import yt_dlp
+
+    from tracks_and_trails.core import logging as app_logging
+
+    value = "7351144126450059040/T255_App\\Name/T255.9.9/T2552023401020"
+    structure, problems = parsed(f"tiktok:app_info={value}")
+    assert problems == []
+    with yt_dlp.YoutubeDL({"quiet": True, "extractor_args": as_ytdlp(structure)}) as ydl:
+        extractor = ydl.get_info_extractor("TikTok")
+        assert extractor._get_next_app_info()
+        line = str(extractor._APP_INFO)
+    assert "7351144126450059040" in line and "t255_app\\\\name" in line, line
+
+    try:
+        app_logging.forget_the_secrets()
+        for one in secret_values(structure):
+            app_logging.remember_a_secret(one)
+        redacted = app_logging.redact(line)
+    finally:
+        app_logging.forget_the_secrets()
+
+    # `t255_app` stands for its piece in both spellings; the `dict`'s own keys hold `name`.
+    for piece in ("7351144126450059040", "t255_app", "t255.9.9", "t2552023401020"):
+        assert piece not in redacted.lower(), redacted
 
 
 # --- T255-R4: an argument that makes the download ffmpeg's -------------------------------------

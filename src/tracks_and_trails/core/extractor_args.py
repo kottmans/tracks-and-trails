@@ -10,7 +10,8 @@ ignores any it does not read, which is `T012-R5`'s *accepted and silently droppe
 2. **A pair is known when yt-dlp's source reads it** (`ARC-010`, amended, fourth): the allowlist is
    `core/extractor_arg_table.py`, generated from the pin. A plugin's keys are not on it.
 3. **Values are stored as typed** (`DAT-003`, amended), kept out of the model's `repr`, and
-   registered for redaction except a value from its argument's fixed vocabulary (`T255-R3`).
+   registered for redaction except a value from its argument's fixed vocabulary (`T255-R3`), in
+   every spelling yt-dlp can print it in (`secret_values`).
 4. **The editor takes one `KEY:ARG=VALUE;…` per line** (`UX-015`, amended, third), and shows them
    back merged and normalized: one line per key, arguments in order.
 
@@ -23,7 +24,11 @@ merges them**, the later argument winning, so two lines for one extractor both c
 
 from __future__ import annotations
 
+import base64
+import binascii
 import re
+import urllib.parse
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from typing import Final
 
@@ -69,13 +74,19 @@ class Vocabulary:
     what `int` reads: `str.isdecimal`, so fullwidth digits are one and a superscript is not. A
     value outside it is registered for redaction, however ordinary it looks: `player_client` takes
     any word, and yt-dlp's warning about one it does not know quotes it.
+
+    **Read as yt-dlp reads it**: `_configuration_arg` lower-cases a value unless the extractor
+    asks for its case (`casesense`), so `ANDROID` is the client `android` and stays readable, as
+    the word it is. At the pin only YouTube's `lang` keeps its case (`T255-R3`, second round).
     """
 
     words: frozenset[str] = frozenset()
     counts: bool = False
+    casesense: bool = False
 
     def holds(self, value: str) -> bool:
-        return value in self.words or (self.counts and value.isdecimal())
+        read = value if self.casesense else value.lower()
+        return read in self.words or (self.counts and read.isdecimal())
 
 
 #: A flag's two words, which yt-dlp's documentation spells, `Either true or false`. An argument
@@ -174,7 +185,7 @@ FIXED_VOCABULARY: Final[dict[tuple[str, str], Vocabulary]] = {
     ),
     ("youtube", "include_duplicate_formats"): _FLAG,
     ("youtube", "jsc_trace"): _FLAG,
-    ("youtube", "lang"): Vocabulary(YOUTUBE_LANGUAGES),
+    ("youtube", "lang"): Vocabulary(YOUTUBE_LANGUAGES, casesense=True),
     # Five counts, each a number or `all`.
     ("youtube", "max_comments"): Vocabulary(frozenset({"all"}), counts=True),
     # A client, `-` and a client to leave one out, `default` or `all`.
@@ -348,14 +359,63 @@ def as_ytdlp(value: tuple[ExtractorArg, ...]) -> dict[str, dict[str, list[str]]]
     return options
 
 
+def _po_token(value: str) -> tuple[str, ...]:
+    """`youtube:po_token`'s token as `_get_config_po_token` cleans it, the part after the `+`
+    unquoted and through `base64` both ways, which drops what is not of its alphabet. yt-dlp puts
+    it in a manifest's path, which a link's redaction keeps. A token it cannot clean, it warns
+    about with the whole value, which is registered already, and uses no further."""
+    _, plus, token = value.partition("+")
+    if not plus:
+        return ()
+    try:
+        cleaned = base64.urlsafe_b64encode(base64.urlsafe_b64decode(urllib.parse.unquote(token)))
+    except binascii.Error, ValueError:
+        return ()
+    return (cleaned.decode(),)
+
+
+#: The pieces yt-dlp cuts a value of these arguments into and can print alone (`T255-R3`, second
+#: round), each transcribed from the pin and held to it by `tests/unit/test_extractor_args.py`.
+#: `_parse_data_sync_id` splits at `||`; TikTok's `_get_next_app_info` at `/`, and writes the
+#: pieces to a debug line as a `dict`.
+_PIECES: Final[dict[tuple[str, str], Callable[[str], Iterable[str]]]] = {
+    ("youtube", "po_token"): _po_token,
+    ("youtube", "data_sync_id"): lambda value: value.partition("||")[::2],
+    ("tiktok", "app_info"): lambda value: value.split("/"),
+}
+
+
+def _spellings(key: str, name: str, value: str) -> Iterator[str]:
+    """Every spelling yt-dlp can print `value` in (`T255-R3`, second round).
+
+    **As typed, and lower-cased**, which is how `_configuration_arg` hands it to an extractor
+    unless the extractor asks for its case; **the pieces some arguments are cut into**
+    (`_PIECES`); and each of those **as `repr` writes it**, less the quotes, since a debug line can
+    print a `dict` or a list of them, where a backslash, a quote or an unprintable character is
+    escaped. The registry replaces exact text only, so a spelling not registered is printed.
+    """
+    read = (value, value.lower())
+    cut = _PIECES.get((key, name))
+    forms = [*read, *(piece for one in read for piece in cut(one))] if cut else list(read)
+    for form in forms:
+        yield form
+        yield repr(form)[1:-1]
+
+
 def secret_values(value: tuple[ExtractorArg, ...]) -> tuple[str, ...]:
-    """The values to register for redaction: all but those in their argument's vocabulary
-    (`DAT-003`; `T255-R3`, where a whole argument's values were left readable)."""
+    """What to register for redaction: every spelling yt-dlp can print of each value not in its
+    argument's vocabulary (`DAT-003`; `T255-R3`, where a whole argument's values were left
+    readable, and then a value was printed lower-cased)."""
     return tuple(
-        one
-        for key, name, values in value
-        for one in values
-        if one and not ((vocabulary := FIXED_VOCABULARY.get((key, name))) and vocabulary.holds(one))
+        dict.fromkeys(
+            form
+            for key, name, values in value
+            for one in values
+            if one
+            and not ((vocabulary := FIXED_VOCABULARY.get((key, name))) and vocabulary.holds(one))
+            for form in _spellings(key, name, one)
+            if form
+        )
     )
 
 

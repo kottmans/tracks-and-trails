@@ -718,8 +718,10 @@ no test left the tree changed. No Windows run; the fixture has nothing platform-
 
 ### T-255 — Per-extractor arguments
 
-**Status:** In Review — correction 1 built 2026-10-27, awaiting the focused re-review of
-`T255-R1`…`R4`; changes requested 2026-10-27 at `f028f1e`
+**Status:** In Review — correction 2 built 2026-10-29, awaiting the second focused re-review of
+`T255-R3`; `R5` waits on a green required gate. Changes requested 2026-10-28 at `96afab6`, `R1`,
+`R2` and `R4` resolved ([record](reviews/T-255.md#2026-10-28--focused-correction-review)).
+Correction 1 built 2026-10-27; changes requested 2026-10-27 at `f028f1e`
 ([record](reviews/T-255.md#2026-10-27--initial-comprehensive-review)). Built 2026-10-27 on its
 rulings, at the maintainer's instruction of 2026-10-26. *(Was Proposed:)* **design ruled
 2026-10-19, all four questions as recommended**, the
@@ -869,6 +871,26 @@ read case-sensitively, or by any value; the offer or the worker not asking.
 each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,718 passed**, 23 skipped;
 `tests/integration` **in one process, as CI runs it**, **615 passed**, `T-254`'s corrected test
 among them. No Windows run of this correction.
+
+**`T255-R3`, corrected 2026-10-29, awaiting the second focused re-review**
+([record](reviews/T-255.md#2026-10-28--focused-correction-review)):
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T255-R3`, Critical, second round — `youtube:player_client=android,UPPERCASE_MARKER` and `MiXeD_Marker` were registered as typed, and yt-dlp lower-cases a value before its warning quotes it | **Every spelling yt-dlp can print a value in is registered** (`secret_values`). **Audited at the pin**: all 85 reads, `_configuration_arg`, the YouTube providers' `configuration_arg` and the solver's `ejs_setting`, by their syntax trees. Each hands a value on as typed or lower-cased, and three arguments are then cut into pieces printed alone, by the pin's own code: `youtube:po_token`'s token, cleaned, goes into a manifest's path, which a link's redaction keeps; `youtube:data_sync_id` is cut at `\|\|`; TikTok's `app_info` at `/`, its pieces printed as a `dict` in a debug line. So the value, lower-cased, those pieces, and each as `repr` spells it, are registered. **A known word is judged as yt-dlp reads it**: lower-cased, but for YouTube's `lang`, the one vocabulary argument read keeping its case. So `ANDROID` stays readable as the client it is, rather than hiding every `android` | The review's three markers through the real initialized extractor and the redacting formatter: the lower-cased warning quoted as the control, and gone once registered. Each piece held to the pin's own code: the cleaned token to `_get_config_po_token` over four spellings; `data_sync_id`'s pieces to `_parse_data_sync_id`; TikTok's `_get_next_app_info` and its debug line, a backslash doubled by `repr` in it, redacted. Each vocabulary's case rule held to the pin's reads |
+
+**Mutations, 10 of 10 caught**, each on copies restored by hash: a vocabulary read as typed, or
+every one lower-cased; `lang` lower-cased; the lower-cased spelling not registered; no pieces, or
+none for `po_token`, `data_sync_id` or `app_info` each; the cleaned token dropped; the `repr`
+spelling dropped. **One survived first**: registering the token after `+` as typed changed nothing
+any test saw, since the pin prints it only within the whole value or cleaned. It is no longer
+registered.
+
+**Checks, 2026-10-29, on Linux**, with the project `.venv` on `PATH`: `ruff check .` and
+`ruff format --check .` (524 files); `mypy src` (76), bare `mypy` and `mypy --platform win32` (249
+each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,758 passed**, 23 skipped;
+`tests/integration` **in one process, as CI runs it**, **620 passed**. **On `STARBASE`**, these two
+files copied onto `be3cc08`: `tests/unit/test_extractor_args.py`, **173 passed**.
 
 ## Ready
 
