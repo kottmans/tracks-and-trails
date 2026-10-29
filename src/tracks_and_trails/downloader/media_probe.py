@@ -175,11 +175,11 @@ def route_for(
     return route, sent.sensitive()
 
 
-def _without_proxies() -> dict[str, str]:
-    """This process's environment without its proxy variables, which ffmpeg would read (`Route`)."""
-    return {
-        name: value for name, value in os.environ.items() if not name.lower().endswith("_proxy")
-    }
+def without_proxies(environment: Mapping[str, str] | None = None) -> dict[str, str]:
+    """`environment`, this process's by default, without its proxy variables, which ffmpeg would
+    read itself (`Route`, `ffmpeg_route`)."""
+    given = os.environ if environment is None else environment
+    return {name: value for name, value in given.items() if not name.lower().endswith("_proxy")}
 
 
 def ffprobe_beside(ffmpeg: Path) -> Path | None:
@@ -205,7 +205,7 @@ def run_with(popen: Any) -> Run:
                     text=True,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    env=_without_proxies(),
+                    env=without_proxies(),
                 )
                 return int(code), str(stdout or "")
             done = subprocess.run(  # noqa: S603 - a fixed program and arguments, no shell
@@ -216,7 +216,7 @@ def run_with(popen: Any) -> Run:
                 errors="replace",
                 timeout=timeout,
                 check=False,
-                env=_without_proxies(),
+                env=without_proxies(),
             )
             return done.returncode, done.stdout or ""
         except OSError, subprocess.SubprocessError, ValueError:

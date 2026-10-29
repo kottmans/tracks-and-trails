@@ -892,6 +892,130 @@ each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,758 passe
 `tests/integration` **in one process, as CI runs it**, **620 passed**. **On `STARBASE`**, these two
 files copied onto `be3cc08`: `tests/unit/test_extractor_args.py`, **173 passed**.
 
+### T-368 — Keep ffmpeg's network requests on the selected route
+
+**Status:** In Review — built 2026-10-29 on the maintainer's ruling of that day, below, awaiting
+its first review. *(Was Proposed:)* Critical safety work filed by the 2026-10-28 independent
+review; it blocks `T-252` and `T253-R3` until verified
+**Owner:** Implementer; independent Reviewer verifies the complete boundary
+**Priority:** Critical — actual media connections bypass the chosen route and TLS verification
+**Phase:** Phase 4.5, before section approval and T-358's release gate
+**Relevant context:** [T252-R7](reviews/T-252.md#2026-10-28--second-focused-correction-review);
+T252-R5 (the separate length-client proxy regression); T253-R3; T255-R4;
+REQ-023/024/030; NFR-007; SEC-004; the pinned yt-dlp `FFmpegFD`
+**Affected surfaces:** The worker/adapter's ffmpeg network-input boundary, capability/refusal
+reporting, route handling and its real transport regressions
+
+#### Evidence and scope
+
+At yt-dlp 2026.08.19 with ffmpeg 8.1.3, a real section session probes from the requested
+`127.0.0.2` but cuts from `127.0.0.1`. The pinned downloader passes a proxy through environment
+variables, omits the source address and does not enable certificate verification. The Implementer
+also reports a real SOCKS section cut connecting directly and HLS children ignoring address/TLS
+options. This predates T-252 through the hatch and affects other network inputs delegated to
+ffmpeg; securing only the separate ffprobe length read does not secure the download.
+
+The proposed first protection is to forward policy for supported direct-file inputs and refuse
+unsupported SOCKS/HLS cases before network activity. **The maintainer has been asked to choose**
+temporary refusal or a transport preserving those capabilities. Refusal must not silently become
+a permanent REQ-030 exception: the parity exit remains blocked until support or an explicit scope
+ruling is recorded. Known unsafe downloads cannot be approved while that choice is pending.
+
+#### Acceptance criteria
+
+- Cover actual media input requests, including sections with a duration already known (which
+  bypass the length read), sections needing a length read, and other affected ffmpeg network
+  inputs such as Zan's split. Keep the R5 length-client correction separately accountable.
+- Preserve the effective proxy, scheme/host bypass rules, source address/family, socket timeout
+  and certificate chain/hostname validation. Do not forward site headers/cookies to an unselected
+  proxy, strip route policy from a child fetch or fall back to an unchecked/direct connection.
+- Where the selected transport cannot preserve policy, stop before that connection and explain
+  the unsupported combination without exposing credentials. Implement the maintainer's capability
+  ruling; retain the parity limitation explicitly until resolved. HLS/DASH descendants and
+  redirects must not evade the guard by arriving as a plain HTTP link.
+- Keep TLS verification enabled on Linux and Windows. Document the reported Windows trust-store
+  limitation; any root-store compatibility work must retain validation and the cancellation path.
+- Use real local origins/proxies/TLS endpoints and actual yt-dlp/ffmpeg processes, observing
+  callers and requests. Include positive controls proving the instruments see proxy/bind/TLS
+  differences, and weakening controls for the corrected boundary. Verify Linux, native Windows
+  and applicable full CI; keep T-367's independent failure visible if it still occurs.
+- Independently verify T252-R7 and the corresponding Network setting boundary before either
+  task's approval, and verify this task before the release/parity verdict.
+
+#### Ruled 2026-10-29
+
+**The maintainer's ruling, on the recommendation put to them that day**: carry the route where
+ffmpeg can follow it, and refuse with a plain message where it cannot, which takes in a SOCKS or
+`https://` proxy and a stream that comes in pieces, like HLS. **This is the refusal the review
+calls temporary**: no scope ruling on `REQ-030` was asked or given, so the parity limitation below
+stays open and the parity exit stays blocked on it.
+
+#### Built 2026-10-29
+
+**`downloader/ffmpeg_route.py`** wraps the resolved copy's `FFmpegFD._call_downloader` for each
+worker session, probe and download alike, since `--check-formats` downloads a little:
+
+- **ffmpeg fetches only a link read as one file over `http` or `https`.** A manifest's pieces are
+  fetched without the address to connect from or a certificate check, whatever ffmpeg is given
+  (measured 2026-10-27), so any other input is refused before ffmpeg starts: HLS and DASH, live or
+  recorded, `rtmp`, `ftp`, a `file:` link, and Zan's angles, which are HLS. What yt-dlp's websocket
+  downloader feeds ffmpeg's standard input is left alone, since ffmpeg connects to nothing there.
+- **Each input is given yt-dlp's route to it**, by `T-252`'s `route_for`: the proxy yt-dlp would
+  choose for that link, the address to connect from, the request's timeout or the copy's own,
+  `-tls_verify 1`, the protocol and demuxer lists, and `-max_redirects 0` where a redirect could
+  change the route. They go **after** the format's own input options, so an extractor's earlier
+  option of the same name cannot undo them. **A plain `http://` link** is not given the
+  certificate check, which ffmpeg refuses as an option nothing uses (measured, exit 8), and so
+  follows no redirect, which could reach an `https://` link unchecked.
+- **The headers sent are yt-dlp's**: `Ytdl-Request-Proxy` and yt-dlp's other instructions are
+  taken out, where the pin's `FFmpegFD` sent them on to the site.
+- **ffmpeg's environment carries no proxy variable**: it reads `http_proxy` and `no_proxy`
+  itself, and the pin copied `no_proxy` in beside the request's proxy.
+- **A refusal ends the item as cancelled, with the reason**; in a format test it is ffmpeg
+  failing, so that format is passed over rather than the item ended. A copy of yt-dlp without
+  `FFmpegFD` is left alone; one without the route functions has every ffmpeg download refused.
+
+| Criterion | Evidence |
+|---|---|
+| Actual media requests, with the length known and not | `tests/integration/test_ffmpeg_route.py` drives the pin's `FFmpegFD` with the real ffmpeg, which reads no length, and the real worker once with a length read and once with the site's; `tests/unit/test_ffmpeg_route.py` the inputs as rewritten. Each case has the pin's unguarded cut as its control |
+| Proxy, exceptions, address, timeout, certificates | **The review's case**: told to connect from `127.0.0.2`, the pin's cut connected from `127.0.0.1`; this one from `127.0.0.2` only, and so did the worker's probe and cut. The request's proxy with `no_proxy` naming the site: the pin's cut went around it, this one through it. `no_proxy` naming the site with a system proxy: cut directly, as yt-dlp reaches it. A certificate nobody signed: the pin's cut read it, this one sent no request, with an extractor's own `-tls_verify 0` before it |
+| No headers to an unselected proxy, no fall back | A `Ytdl-Request-Proxy` header: the pin's cut sent it to the site and went directly; this one went through that proxy and sent it nowhere. A redirect from a host the exceptions name to one they do not: not followed, the cut failing |
+| Stop before the connection, with a reason | A SOCKS proxy: the pin's cut connected directly; this one refused, nothing asked. An HLS playlist: the pin's fetched it and its pieces; this one refused, nothing asked; in a format test, reported as not working. **Through the worker**, a section of an HLS item ended `CANCELLED` with the reason and nothing written |
+| TLS on Linux and Windows | Kept; the Windows trust-store gap is `T-252`'s ruled limitation, measured under `T-369` |
+
+**The parity limitation, kept open as the ruling requires.** These no longer download: **a live
+stream** yt-dlp gives ffmpeg, which at the pin is every live HLS stream and a live DASH one; **a
+section of anything that comes in pieces**; Zan's split angles; and an `m3u8` format yt-dlp does
+not fetch itself. The whole of a recorded HLS or DASH item still downloads, by yt-dlp's own
+downloader, which keeps to the route. A plain `http://` link that redirects fails rather than
+being followed. Each is a capability the command line has, so `REQ-030` cannot pass on them until
+a transport that keeps the route exists, such as downloading with yt-dlp's own downloader and
+cutting the file locally, or the maintainer rules them out of scope.
+
+**Adjacent, not corrected** (`AGENTS.md` §7): yt-dlp's websocket downloader connects with the
+`websockets` library directly, so it too ignores the proxy and the address; that is not ffmpeg,
+and not this task's.
+
+**Mutations, 15 of 15 caught**, each on copies restored by hash: the guard not installed in the
+worker; a refusal not made a cancellation; the route's options not given, or given before the
+format's own; the proxy variables left to ffmpeg; the headers sent as given; any protocol handed on;
+a format test stopped rather than failed; standard input refused; a copy without the route
+functions let through; a plain link given the certificate check, or following redirects; the copy's
+own timeout not used; yt-dlp's method, or its `Popen`, not put back. **One was caught only after a
+test gap was closed**: `Popen` left swapped after a call survived, since no test called through the
+guard; one now does, and starts a child with the `Popen` ffmpeg is given.
+
+**Windows, on `STARBASE`**: the local commits to `fc7e730`, carried there in a bundle, with this
+task's files on them. The guard's unit and integration tests with `test_length_route.py`,
+`test_media_probe.py`, `test_download_tuning.py` and `test_download_sections.py`: **264 passed**,
+none skipped, the pin's digest of `_call_downloader` among them.
+
+**Checks, 2026-10-29, on Linux**, with the project `.venv` on `PATH`: `ruff check .` and
+`ruff format --check .` (528 files); `mypy src` (77), bare `mypy` and `mypy --platform win32` (253
+each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,785 passed**, 23 skipped;
+`tests/integration` **in one process, as CI runs it**, **631 passed**. The length read's servers
+moved to `tests/integration/loopback.py`, shared with this task's tests. Not pushed, so no CI.
+
 ## Ready
 
 <a id="t-302"></a>
@@ -1279,55 +1403,6 @@ ends badly — the shape `2026-08-27-T212-ytdlp-update-double-free.md` recorded.
 - `T-268`'s seven preserved specimens, which remain its own.
 
 ## Proposed — Phase 4.5
-
-### T-368 — Keep ffmpeg's network requests on the selected route
-
-**Status:** Proposed — Critical safety work filed by the 2026-10-28 independent review;
-the transport/product choice below awaits the maintainer's ruling
-**Owner:** Implementer; independent Reviewer verifies the complete boundary
-**Priority:** Critical — actual media connections bypass the chosen route and TLS verification
-**Phase:** Phase 4.5, before section approval and T-358's release gate
-**Relevant context:** [T252-R7](reviews/T-252.md#2026-10-28--second-focused-correction-review);
-T252-R5 (the separate length-client proxy regression); T253-R3; T255-R4;
-REQ-023/024/030; NFR-007; SEC-004; the pinned yt-dlp `FFmpegFD`
-**Affected surfaces:** The worker/adapter's ffmpeg network-input boundary, capability/refusal
-reporting, route handling and its real transport regressions
-
-#### Evidence and scope
-
-At yt-dlp 2026.08.19 with ffmpeg 8.1.3, a real section session probes from the requested
-`127.0.0.2` but cuts from `127.0.0.1`. The pinned downloader passes a proxy through environment
-variables, omits the source address and does not enable certificate verification. The Implementer
-also reports a real SOCKS section cut connecting directly and HLS children ignoring address/TLS
-options. This predates T-252 through the hatch and affects other network inputs delegated to
-ffmpeg; securing only the separate ffprobe length read does not secure the download.
-
-The proposed first protection is to forward policy for supported direct-file inputs and refuse
-unsupported SOCKS/HLS cases before network activity. **The maintainer has been asked to choose**
-temporary refusal or a transport preserving those capabilities. Refusal must not silently become
-a permanent REQ-030 exception: the parity exit remains blocked until support or an explicit scope
-ruling is recorded. Known unsafe downloads cannot be approved while that choice is pending.
-
-#### Acceptance criteria
-
-- Cover actual media input requests, including sections with a duration already known (which
-  bypass the length read), sections needing a length read, and other affected ffmpeg network
-  inputs such as Zan's split. Keep the R5 length-client correction separately accountable.
-- Preserve the effective proxy, scheme/host bypass rules, source address/family, socket timeout
-  and certificate chain/hostname validation. Do not forward site headers/cookies to an unselected
-  proxy, strip route policy from a child fetch or fall back to an unchecked/direct connection.
-- Where the selected transport cannot preserve policy, stop before that connection and explain
-  the unsupported combination without exposing credentials. Implement the maintainer's capability
-  ruling; retain the parity limitation explicitly until resolved. HLS/DASH descendants and
-  redirects must not evade the guard by arriving as a plain HTTP link.
-- Keep TLS verification enabled on Linux and Windows. Document the reported Windows trust-store
-  limitation; any root-store compatibility work must retain validation and the cancellation path.
-- Use real local origins/proxies/TLS endpoints and actual yt-dlp/ffmpeg processes, observing
-  callers and requests. Include positive controls proving the instruments see proxy/bind/TLS
-  differences, and weakening controls for the corrected boundary. Verify Linux, native Windows
-  and applicable full CI; keep T-367's independent failure visible if it still occurs.
-- Independently verify T252-R7 and the corresponding Network setting boundary before either
-  task's approval, and verify this task before the release/parity verdict.
 
 ### T-369 — Measure a bundled certificate list for ffmpeg on Windows
 

@@ -94,6 +94,7 @@ from tracks_and_trails.downloader.environment import (
     find_ffmpeg,
     ytdlp_candidates,
 )
+from tracks_and_trails.downloader.ffmpeg_route import for_the_session
 from tracks_and_trails.downloader.media_probe import (
     RouteRefusedError,
     Run,
@@ -2102,10 +2103,19 @@ def _extract(
         if probe_only
         else adapter.ffmpeg_for_its_downloader(resolved.module, ffmpeg_location)
     )
+    # **ffmpeg's own downloads on yt-dlp's route, or not started** (`T-368`, `T252-R7`): every
+    # section, every live stream. A probe too, since `--check-formats` downloads a little.
+    routed = for_the_session(
+        resolved.module,
+        proxy_table(request.proxy, urllib.request.getproxies()),
+        request.source_address,
+        request.socket_timeout,
+    )
     with (
         positions,
         retrying as given_up,
         downloading_with,
+        routed,
         resolved.module.YoutubeDL(options) as ydl,
     ):
         # **Never written with the session's secrets** (`DAT-003`, amended 2026-10-11, `T249-R1`),
@@ -2121,6 +2131,8 @@ def _extract(
             adapter.look_up_sponsorblock(ydl, resolved.module, request)
         try:
             info = ydl.extract_info(request.url, download=not probe_only)
+        except RouteRefusedError as refused:
+            raise NothingDownloadedError(refused.reason) from None
         except BaseException as error:
             adapter.attribute_given_up(error, given_up)
             raise
