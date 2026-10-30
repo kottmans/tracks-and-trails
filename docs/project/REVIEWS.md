@@ -117,7 +117,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-252](reviews/T-252.md) | T-252; [per-link route and fixture review](reviews/T-252.md#2026-10-29--focused-per-link-route-and-fixture-review), 72fe1bf, combined checks at 483147b | 0 |
 | [T-253](reviews/T-253.md) | T-253; [requirements/dependency disposition](reviews/T-253.md#2026-10-29--requirements-completion-and-dependency-disposition), e56de36, combined checks at 483147b | 0 |
 | [T-254](reviews/T-254.md) | T-254; [logging isolation disposition](reviews/T-254.md#2026-10-29--logging-isolation-completion-disposition), 2bd909e, CI at 483147b | 0 |
-| [T-255](reviews/T-255.md) | T-255; [focused correction review](reviews/T-255.md#2026-10-28--focused-correction-review), 96afab6, combined checks at be3cc08 | 0 |
+| [T-255](reviews/T-255.md) | T-255; [emitted-value redaction review](reviews/T-255.md#2026-10-29--focused-emitted-value-redaction-review), fc7e730, combined checks at 483147b | 0 |
 | [T-249](reviews/T-249.md) | T-249; [focused privacy correction verification](reviews/T-249.md#2026-10-18--focused-privacy-correction-verification), 9e917ec | 0 |
 | [T-251](reviews/T-251.md) | T-251; [focused typed conversion verification](reviews/T-251.md#2026-10-18--focused-typed-conversion-verification), 9e917ec | 0 |
 | [T-363](reviews/T-363.md) | T-363; [focused correction verification](reviews/T-363.md#2026-10-18--focused-correction-verification), dcb0f52 | 0 |
