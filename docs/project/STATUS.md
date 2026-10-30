@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-10-29
+**Last updated:** 2026-10-30
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -230,6 +230,18 @@ task and review records it summarised.*
   not a ruling on scope ([entry](TASKS.md#t-368--keep-ffmpegs-network-requests-on-the-selected-route)).
   On the same day the maintainer kept the certificate check on Windows, where it knows only the
   roots Windows has fetched, and `T-369` was filed to measure a bundled list instead.
+- **Reviewed 2026-10-29, CI red; corrected 2026-10-30.** The first CI run of that work failed 16
+  Linux integration cases: CI's ffmpeg, Ubuntu 24.04's 6.1.1, has no `-max_redirects`, which
+  FFmpeg added in 8.1, and the route passed it. The review found two more: a proxy written
+  `HTTP://`, which yt-dlp goes through, was handed to ffmpeg as written, and ffmpeg ignores it, so
+  the length read and the cut connected directly; and an input left with no headers took the
+  item's. **Corrected in `T-252` and `T-368`**: the proxy is written as ffmpeg reads it; the ffmpeg
+  in use is asked which options it defines, and a route it cannot carry is refused with a plain
+  reason, which on Ubuntu 24.04 means a cut through a proxy with exceptions to it, and on Debian
+  12 one from a chosen address; a plain link follows a redirect that cannot change the route again;
+  and the item's headers go to no input. Measured against each distribution's own ffmpeg in a
+  container, where CI's 16 failures reproduced exactly first ([entries](TASKS.md#in-review)). The
+  review filed `T-370` to restore live recording, sections of anything in pieces and Zan's angles.
 - **Fifteen rulings taken 2026-10-19, all as recommended**, every open question in stage 3:
   `T-248`'s two, as built; `T-252`'s last two; `T-253`'s three; `T-254`'s four; and `T-255`'s
   four, the first a security ruling forbidding the extractor-argument pairs that choose a request's
