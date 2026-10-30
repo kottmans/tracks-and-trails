@@ -38,6 +38,7 @@ from tests.integration.loopback import (
     Proxy,
     Redirect,
     clear_ambient_proxies,
+    defined_by,
     make_certificate,
     make_site,
     needs_loopback_addresses,
@@ -47,9 +48,14 @@ from tests.integration.loopback import (
     serve,
 )
 from tracks_and_trails.core.models import DownloadRequest
-from tracks_and_trails.core.sections import NO_LENGTH, NOT_THROUGH_THE_PROXY
+from tracks_and_trails.core.sections import NO_LENGTH, NOT_THROUGH_THE_PROXY, NOT_WITH_THIS_FFPROBE
 from tracks_and_trails.downloader import worker
-from tracks_and_trails.downloader.media_probe import Route, run_with
+from tracks_and_trails.downloader.media_probe import (
+    PROTOCOL_OPTIONS,
+    Route,
+    defined_options,
+    run_with,
+)
 from tracks_and_trails.downloader.tls import verify_with_the_operating_system
 
 
@@ -104,6 +110,23 @@ def _placed(url: str, headers: dict[str, str] | None = None, **fields: Any) -> f
     )
 
 
+def _lacks(option: str) -> bool:
+    """Whether the ffprobe in use does not define `option` (`T368-R5`), so a read needing it is
+    cancelled with `NOT_WITH_THIS_FFPROBE` before any link is asked."""
+    return option not in defined_by(resolve_ffmpeg()[1])
+
+
+def _placed_unless_lacking(option: str, url: str, **fields: Any) -> float | None:
+    """`_placed`, or, where the ffprobe in use lacks `option`, `None` once the item is cancelled
+    with `NOT_WITH_THIS_FFPROBE`, which is what this build does instead."""
+    if not _lacks(option):
+        return _placed(url, **fields)
+    with pytest.raises(worker.NothingDownloadedError) as cancelled:
+        _placed(url, **fields)
+    assert cancelled.value.reason == NOT_WITH_THIS_FFPROBE
+    return None
+
+
 @needs_loopback_addresses
 def test_the_length_is_read_through_the_request_s_proxy(
     origin: tuple[str, type[Origin]], proxy: tuple[str, type[Proxy]]
@@ -142,10 +165,15 @@ def test_a_link_the_system_exempts_is_read_directly(
     assert forwarded.asked == [], "the control asked the proxy"
     served.callers.clear()
 
-    assert _placed(url) == pytest.approx(6, abs=0.1)
+    # A proxy and exceptions to it: the route passes `-max_redirects` (`T368-R5`).
+    length = _placed_unless_lacking("max_redirects", url)
 
     assert forwarded.asked == [], "the read went to a proxy yt-dlp goes around for this link"
-    assert served.callers and set(served.callers) == {"127.0.0.1"}, served.callers
+    if length is None:
+        assert served.callers == [], "this ffprobe cannot keep to the route, and was started"
+    else:
+        assert length == pytest.approx(6, abs=0.1)
+        assert served.callers and set(served.callers) == {"127.0.0.1"}, served.callers
 
 
 @needs_loopback_addresses
@@ -164,10 +192,15 @@ def test_an_http_link_is_read_directly_where_the_system_proxies_only_https(
     assert served.callers == ["127.0.0.1"] and forwarded.asked == [], "the control was proxied"
     served.callers.clear()
 
-    assert _placed(url) == pytest.approx(6, abs=0.1)
+    # A different proxy for each kind of link: the route passes `-max_redirects` (`T368-R5`).
+    length = _placed_unless_lacking("max_redirects", url)
 
     assert forwarded.asked == [], "the read went to a proxy yt-dlp does not use for this link"
-    assert served.callers and set(served.callers) == {"127.0.0.1"}, served.callers
+    if length is None:
+        assert served.callers == [], "this ffprobe cannot keep to the route, and was started"
+    else:
+        assert length == pytest.approx(6, abs=0.1)
+        assert served.callers and set(served.callers) == {"127.0.0.1"}, served.callers
 
 
 @needs_loopback_addresses
@@ -201,10 +234,30 @@ def test_a_redirect_is_not_followed_where_it_could_change_the_route(
     with pytest.raises(worker.NothingDownloadedError) as cancelled:
         _placed(url)
 
-    assert cancelled.value.reason == NO_LENGTH
-    assert sent_on.callers == ["127.0.0.1"], "the first link was not read the way yt-dlp reads it"
+    if _lacks("max_redirects"):
+        # A build before FFmpeg 8.1 cannot be stopped at the redirect, so it asks nothing.
+        assert cancelled.value.reason == NOT_WITH_THIS_FFPROBE
+        assert sent_on.callers == [], "this ffprobe cannot stop at a redirect, and was started"
+    else:
+        assert cancelled.value.reason == NO_LENGTH
+        assert sent_on.callers == ["127.0.0.1"], "the first link was not read as yt-dlp reads it"
     assert served.callers == [], "the redirect was followed by a route yt-dlp would not take"
     assert forwarded.asked == []
+
+
+@needs_loopback_addresses
+def test_a_redirect_is_followed_where_exceptions_have_no_proxy_to_go_around(
+    redirect: tuple[str, type[Redirect], type[Origin]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`no_proxy` with no proxy leaves every link direct, so a redirect cannot change the route
+    and is followed, by any build, with no `-max_redirects` to need (`T368-R5`)."""
+    url, sent_on, served = redirect
+    monkeypatch.setenv("no_proxy", "127.0.0.1")
+
+    assert _placed(url) == pytest.approx(6, abs=0.1)
+
+    assert sent_on.callers and set(sent_on.callers) == {"127.0.0.1"}, sent_on.callers
+    assert served.callers and set(served.callers) == {"127.0.0.1"}, served.callers
 
 
 @needs_loopback_addresses
@@ -246,6 +299,34 @@ def test_a_proxy_a_header_names_is_the_one_used_and_is_never_sent(
     assert all("ytdl-request-proxy" not in heard for heard in served.heard), "the header was sent"
 
 
+@needs_loopback_addresses
+def test_a_proxy_written_in_capitals_is_the_one_read_through(
+    origin: tuple[str, type[Origin]], proxy: tuple[str, type[Proxy]]
+) -> None:
+    """**`T252-R5` as narrowed, and `T368-R4`**: yt-dlp goes through `HTTP://…`, and ffprobe
+    handed it as written read the length directly, since ffmpeg takes a proxy only where the text
+    starts `http://`."""
+    url, served = origin
+    address, forwarded = proxy
+    written = address.replace("http://", "HTTP://", 1)
+    with yt_dlp.YoutubeDL({"proxy": written, "quiet": True}) as ydl:
+        ydl.urlopen(url).read()
+    assert served.callers == [PROXY_SIDE], "the control: yt-dlp did not go through it"
+    served.callers.clear()
+    _, ffprobe = resolve_ffmpeg()
+    code, _ = run_with(Popen)(
+        [ffprobe, "-v", "error", *Route(written, None, 20.0).arguments(), url], 30
+    )
+    assert code == 0 and served.callers == ["127.0.0.1"], "the control: ffprobe went through it"
+    served.callers.clear()
+    forwarded.asked.clear()
+
+    assert _placed(url, proxy=written) == pytest.approx(6, abs=0.1)
+
+    assert forwarded.asked, "the proxy was not asked"
+    assert set(served.callers) == {PROXY_SIDE}, f"the origin was reached directly: {served.callers}"
+
+
 def test_a_proxy_ffprobe_would_go_around_is_never_tried(origin: tuple[str, type[Origin]]) -> None:
     """ffmpeg handed a SOCKS proxy connected directly (measured 2026-10-27), so it is not handed
     one: the item is cancelled and the origin never asked."""
@@ -267,9 +348,56 @@ def test_the_length_is_read_from_the_request_s_address(origin: tuple[str, type[O
     assert served.callers == [BOUND], "the control did not connect from the address"
     served.callers.clear()
 
-    assert _placed(url, source_address=BOUND) == pytest.approx(6, abs=0.1)
+    length = _placed_unless_lacking("local_addr", url, source_address=BOUND)
 
-    assert served.callers and set(served.callers) == {BOUND}, served.callers
+    if length is None:
+        assert served.callers == [], "this ffprobe cannot connect from the address, and was started"
+    else:
+        assert length == pytest.approx(6, abs=0.1)
+        assert served.callers and set(served.callers) == {BOUND}, served.callers
+
+
+def test_an_ffprobe_without_an_option_the_route_needs_is_never_started_on_the_link(
+    origin: tuple[str, type[Origin]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**`T368-R5`, on any build**: the one in use made to lack `local_addr`, as Debian 12's 5.1.9
+    does. Asking it is what tells the two apart; the build is asked through the worker."""
+    url, served = origin
+    monkeypatch.setattr(
+        worker, "defined_options", lambda *given: defined_options(*given) - {"local_addr"}
+    )
+
+    with pytest.raises(worker.NothingDownloadedError) as cancelled:
+        _placed(url, source_address=BOUND)
+
+    assert cancelled.value.reason == NOT_WITH_THIS_FFPROBE
+    assert served.callers == []
+
+
+#: A value for each option a route can pass, to give ffprobe with a file on disk.
+OPTION_VALUES: dict[str, str] = {
+    "http_proxy": "http://127.0.0.1:9",
+    "max_redirects": "0",
+    "timeout": "1000000",
+    "local_addr": "127.0.0.1",
+    "tls_verify": "1",
+}
+
+
+@pytest.mark.parametrize("option", sorted(OPTION_VALUES))
+def test_the_ffprobe_in_use_takes_exactly_the_options_it_lists(site: Path, option: str) -> None:
+    """`defined_options` held to the build: one it does not define fails ffprobe before it reads
+    anything, and one it defines does not, on a file on disk. Measured 2026-10-30 on FFmpeg
+    5.1.9, 6.1.1 and 8.1.3, each lacking a different one or none."""
+    assert set(OPTION_VALUES) == frozenset().union(*PROTOCOL_OPTIONS.values())
+    _, ffprobe = resolve_ffmpeg()
+    shown = ["-show_entries", "format=duration", "-of", "csv=p=0", str(site / "clip.mp4")]
+
+    code, _ = run_with(Popen)(
+        [ffprobe, "-v", "error", f"-{option}", OPTION_VALUES[option], *shown], 30
+    )
+
+    assert (code == 0) is (option in defined_options(ffprobe, run_with(Popen)))
 
 
 def test_ipv6_only_does_not_reach_an_ipv4_origin(origin: tuple[str, type[Origin]]) -> None:
@@ -285,7 +413,7 @@ def test_ipv6_only_does_not_reach_an_ipv4_origin(origin: tuple[str, type[Origin]
     with pytest.raises(worker.NothingDownloadedError) as cancelled:
         _placed(url, source_address="::")
 
-    assert cancelled.value.reason == NO_LENGTH
+    assert cancelled.value.reason == (NOT_WITH_THIS_FFPROBE if _lacks("local_addr") else NO_LENGTH)
     assert served.callers == []
 
 

@@ -34,6 +34,7 @@ from tracks_and_trails.core.models import (
 from tracks_and_trails.core.paths import UnsafePathError
 from tracks_and_trails.core.sections import NO_LENGTH
 from tracks_and_trails.downloader import worker
+from tracks_and_trails.downloader.media_probe import PROTOCOL_OPTIONS
 from tracks_and_trails.downloader.worker import claim_outputs, previewed_path
 from tracks_and_trails.downloader.ytdlp_adapter import (
     NumberedSections,
@@ -395,14 +396,22 @@ def test_a_length_does_not_change_what_the_sections_equal() -> None:
 
 
 class _Probe:
-    """Stands in for ffprobe reading a link's length."""
+    """Stands in for ffprobe reading a link's length, and listing its options when asked for
+    them (`T368-R5`): every one a route can pass, but those named in `lacking`."""
 
-    def __init__(self, answer: str | None) -> None:
+    def __init__(self, answer: str | None, lacking: frozenset[str] = frozenset()) -> None:
         self.answer = answer
+        self.lacking = lacking
         self.asked = 0
+        self.listed = 0
         self.arguments: list[str] = []
 
     def __call__(self, arguments: Any, timeout: float) -> tuple[int, str]:
+        if "-h" in arguments:
+            self.listed += 1
+            protocol = arguments[-1].removeprefix("protocol=")
+            names = PROTOCOL_OPTIONS.get(protocol, frozenset()) - self.lacking
+            return 0, "".join(f"  -{name}    <string>    ED.........\n" for name in sorted(names))
         self.asked += 1
         self.arguments = list(arguments)
         return (0, self.answer) if self.answer is not None else (1, "")
@@ -592,6 +601,31 @@ def test_a_proxy_ffmpeg_would_go_around_cancels_the_item_unread() -> None:
     assert probe.asked == 0, "ffprobe was started"
     # The site's own length needs no read, so no route either.
     assert _placed(("*1-3",), {**_LINK, "duration": 6}, probe, proxy="socks5://p:1") is None
+
+
+@pytest.mark.parametrize(
+    ("lacking", "fields_"),
+    [("local_addr", {"source_address": "::"}), ("max_redirects", {})],
+)
+def test_an_ffprobe_that_cannot_take_the_route_is_never_started_on_the_link(
+    monkeypatch: pytest.MonkeyPatch, lacking: str, fields_: dict[str, Any]
+) -> None:
+    """**`T368-R5`**: the ffprobe in use is asked which options it defines, and one without an
+    option the route needs reads nothing: Ubuntu 24.04's has no `max_redirects`, which a route
+    with a proxy and exceptions to it passes, and Debian 12's no `local_addr`."""
+    from tracks_and_trails.core.sections import NOT_WITH_THIS_FFPROBE
+
+    monkeypatch.setenv("http_proxy", "http://system.example:8080")
+    monkeypatch.setenv("no_proxy", "elsewhere.example")
+    probe = _Probe("6.0", lacking=frozenset({lacking}))
+
+    with pytest.raises(worker.NothingDownloadedError) as cancelled:
+        _placed(("*1-3",), dict(_LINK), probe, **fields_)
+
+    assert cancelled.value.reason == NOT_WITH_THIS_FFPROBE
+    assert probe.asked == 0, "ffprobe was started on the link"
+    assert probe.listed == 3, "the ffprobe in use was not asked"
+    assert _placed(("*1-3",), dict(_LINK), _Probe("6.0"), **fields_) == 6.0
 
 
 def test_without_yt_dlp_s_route_functions_no_link_is_read() -> None:

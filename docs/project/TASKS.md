@@ -16,9 +16,12 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ### T-252 — Download tuning and the retry policy the settings screen shows
 
-**Status:** In Review — correction 3 built 2026-10-29, awaiting the third focused re-review of
-`T252-R5` and `R8`; `R7`, the download's own route, is `T-368`'s and blocks this task until it is
-verified. Changes requested 2026-10-28 at `2e5f9da`, `R1`, `R3` and `R6` resolved
+**Status:** In Review — correction 4 built 2026-10-30, awaiting the fourth focused re-review of
+`T252-R5`, with the length read's half of `T368-R5`; `R7`, the download's own route, is
+`T-368`'s and blocks this task until it is verified, and `R8` waits on native CI. Changes
+requested 2026-10-29 at `72fe1bf`
+([record](reviews/T-252.md#2026-10-29--focused-per-link-route-and-fixture-review)). Correction 3
+built 2026-10-29; changes requested 2026-10-28 at `2e5f9da`, `R1`, `R3` and `R6` resolved
 ([record](reviews/T-252.md#2026-10-28--second-focused-correction-review)). Correction 2 built
 2026-10-27; changes requested 2026-10-27 at `a3705e4`, `R2` and `R4` resolved, `R6`
 routed to `T-253`
@@ -378,6 +381,33 @@ not checked.
 `ruff format --check .` (524 files); `mypy src` (76), bare `mypy` and `mypy --platform win32` (249
 each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,746 passed**, 23 skipped;
 `tests/integration` **in one process, as CI runs it**, **620 passed**.
+
+**`R5` and the length read's half of `T368-R5`, corrected 2026-10-30, awaiting the fourth focused
+re-review** ([record](reviews/T-252.md#2026-10-29--focused-per-link-route-and-fixture-review),
+[`T368-R5`](reviews/T-368.md#2026-10-29--additional-route-control-and-ci-disposition)):
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T252-R5`, Critical, narrowed — `route_for` let `HTTP://` through a lower-cased check and handed it on as written; ffmpeg takes a proxy only where the text starts `http://`, so the read went directly where yt-dlp goes through it. The cut's half is `T368-R4` | **The proxy is handed on as ffmpeg reads it**: the scheme written `http://`, the rest, credentials and all, as yt-dlp has it. A proxy whose text starts any other way is refused, such as one with a leading space, which yt-dlp's checks read past. **The property, read in FFmpeg's source**: `av_strstart(proxy, "http://")`, exact, in its HTTP and TLS layers, the same in 6.1.1, 7.0, 7.1, 8.0 and 8.1 | Real ffprobe with two controls: yt-dlp through `HTTP://…`, and ffprobe handed it as written reaching the origin directly. The read then went through the proxy, the origin seeing only the proxy. Unit: two spellings written as ffmpeg reads them, credentials and path kept; two refused |
+| `T368-R5`, High, the length read — CI's ffmpeg, Ubuntu 24.04's 6.1.1, has no `max_redirects`, which FFmpeg added in 8.1: three length cases failed there. Debian 12's 5.1.9, the oldest the README supports, has no `local_addr` | **The ffprobe in use is asked which options it defines** (`defined_options`, from its own `-h protocol=http`, `tcp` and `tls`), once, before the first link is asked. **A route needing one it lacks is not taken**: the item is cancelled with a reason of its own, `NOT_WITH_THIS_FFPROBE`, before anything is sent. A build is asked rather than judged by its version, since Debian's 5.1.9 lists `max_redirects`, which upstream 5.1 has not. **A redirect is followed wherever it cannot change the route**: exceptions with no proxy to make them to leave every link direct, where they had stopped every redirect, which a build before 8.1 would now refuse outright | **Measured 2026-10-30 against each distribution's own ffmpeg**, in containers of Ubuntu 24.04 and Debian 12 with the host's 8.1.3 beside them. **Before the correction, CI's 16 failures reproduced exactly** on 6.1.1, and 3 on 5.1.9. After it, with `T-368`'s correction beside it, the six files the two touch pass on all three, **317 each**, none skipped. A case needing an option its build lacks expects the refusal, with nothing asked, and one test makes the build lack an option on any machine. **The listing is held to the build**: each option is taken by ffprobe exactly when listed, on all three. Unit: the listings of 8.1.3, 6.1.1 and 5.1.9, a build without TLS, one that cannot say; the worker asking the ffprobe in use, once |
+
+**Mutations, 11 of 11 caught**, each on copies restored by hash, **two only after a test gap was
+closed**: the proxy handed on as written, or its scheme compared case-sensitively; exceptions not
+counted as a route a redirect could take, the routes tried with the exceptions in the table, or the
+old rule stopping every redirect wherever exceptions are set; any one option taken as enough; the
+length read not asking the build, or asking it for each link; the worker not asking the ffprobe in
+use. The two gaps: **a listing that failed for one protocol read as the others'** survived, since
+the one test had every listing fail; **an option read anywhere in the listing** survived, since the
+test's description put a comma after the name, which the loose pattern skips too. A listing failing
+for each protocol in turn, and a description naming the option with a space after it, catch them.
+
+**Windows, on `STARBASE`**, its checkout brought to the local head by bundle, with this correction's
+and `T-368`'s files on it: the same six files, **317 passed**, none skipped, gyan's 8.1.2.
+
+**Checks, 2026-10-30, on Linux, this correction alone**, in a worktree with its source first on the
+path: `ruff check .` and `ruff format --check .` (529 files); `mypy src` (77), bare `mypy` and
+`mypy --platform win32` (253 each); both tables up to date; `tests/unit tests/ui` under `-n 4`,
+**6,811 passed**, 23 skipped; `tests/integration` **in one process, as CI runs it**, **639 passed**.
 
 ### T-253 — Network reachability: address family and politeness delays
 

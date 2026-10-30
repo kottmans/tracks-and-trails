@@ -397,3 +397,12 @@ NOT_THROUGH_THE_PROXY: Final = (
     "read through an http:// proxy, so part of it cannot be cut. Downloading the whole item may "
     "work."
 )
+
+#: Why the length was not read at all: the ffprobe in use does not define an option the route to
+#: the link needs (`T368-R5`), such as stopping at a redirect, which came in FFmpeg 8.1, or the
+#: address to connect from.
+NOT_WITH_THIS_FFPROBE: Final = (
+    "Nothing was downloaded: this item does not say how long it is, and the ffmpeg in use cannot "
+    "read its length while keeping to this computer's network settings, so part of it cannot be "
+    "cut. A newer ffmpeg may work, or downloading the whole item."
+)

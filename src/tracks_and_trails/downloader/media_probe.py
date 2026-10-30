@@ -32,15 +32,15 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
-from urllib.parse import urlsplit
 
-from tracks_and_trails.core.sections import NOT_THROUGH_THE_PROXY
+from tracks_and_trails.core.sections import NOT_THROUGH_THE_PROXY, NOT_WITH_THIS_FFPROBE
 
 #: How long ffprobe is given to read a link's length. A link to a file with its index at the end,
 #: on a server that cannot seek, is read through to the index, so this is a ceiling on that.
@@ -48,6 +48,9 @@ REMOTE_TIMEOUT_SECONDS: Final = 60
 
 #: How long ffprobe is given to read a section already on disk.
 LOCAL_TIMEOUT_SECONDS: Final = 30
+
+#: How long a build is given to list the options it defines (`defined_options`).
+HELP_TIMEOUT_SECONDS: Final = 30
 
 #: One run of ffprobe: its arguments and timeout in, its exit code and standard output back. `-1`
 #: and nothing when it could not be run or did not finish.
@@ -65,6 +68,19 @@ LINK_PROTOCOLS: Final = "http,https,tls,tcp,httpproxy"
 #: yt-dlp's names for a format fetched as one file, the only kind whose length is read.
 ONE_FILE_PROTOCOLS: Final = frozenset({"http", "https"})
 
+#: The route's options that a build defines in one of its protocols, by protocol, and so may not
+#: define at all (`T368-R5`). FFmpeg added `max_redirects` in 8.1, so Ubuntu 24.04's 6.1.1 has
+#: none, and Debian 12's 5.1.9 lists `max_redirects` but not `local_addr` (each measured
+#: 2026-10-30). So a build is asked for its own list (`defined_options`), not judged by its version.
+PROTOCOL_OPTIONS: Final = {
+    "http": frozenset({"http_proxy", "max_redirects"}),
+    "tcp": frozenset({"timeout", "local_addr"}),
+    "tls": frozenset({"tls_verify"}),
+}
+
+#: An option in a build's help, `  -name   <type>  flags  description`.
+_LISTED: Final = re.compile(r"^\s+-(\w+)\s", re.MULTILINE)
+
 
 @dataclass(frozen=True, slots=True)
 class Route:
@@ -81,6 +97,9 @@ class Route:
     - `follows_redirects`, `False` where the next link could be reached another way: yt-dlp
       chooses the route again for each link it is sent to, and ffmpeg keeps one for all of them
       (`route_for`). `-max_redirects 0` stops ffprobe at the redirect, which gives no length.
+
+    **A build may not define every option** (`PROTOCOL_OPTIONS`), and one it does not define
+    fails it at the first link, so each client checks first (`defines_every`).
     """
 
     proxy: str
@@ -155,24 +174,63 @@ def route_for(
     host. `proxies` is the table yt-dlp starts from (`proxy_table`).
 
     **A redirect is followed only where it cannot change the route.** yt-dlp chooses again for
-    each link it is sent to, and ffmpeg keeps its one proxy for all of them, so where the table
-    has exceptions, or a different proxy for `http` and `https`, ffprobe follows none.
+    each link it is sent to, and ffmpeg keeps its one proxy for all of them, so ffprobe follows
+    none where the table has a different proxy for `http` and `https`, or a proxy and exceptions
+    to it. Exceptions with no proxy to make them to leave every link direct (`T368-R5`).
 
-    **ffmpeg tunnels through an `http://` proxy only**: handed SOCKS or `https://`, it connected
-    directly (measured 2026-10-27), so any other is refused.
+    **ffmpeg tunnels through a proxy written `http://` in those letters only.** It compares the
+    start of the text exactly (FFmpeg 6.1.1 to 8.1), so handed `HTTP://`, which yt-dlp goes
+    through, it connected directly (`T368-R4`); handed SOCKS or `https://`, directly too (measured
+    2026-10-27). So the scheme is written as ffmpeg reads it and the rest kept as yt-dlp has it,
+    and any other proxy is refused.
     """
     sent = networking.HTTPHeaderDict(headers)
     table = dict(proxies)
     networking.clean_proxies(table, sent)
     networking.clean_headers(sent)
     proxy = networking.select_proxy(url, table) or ""
-    if proxy and urlsplit(proxy).scheme.lower() != "http":
+    written, _, rest = proxy.partition("://")
+    if proxy and written.lower() != "http":
         return NOT_THROUGH_THE_PROXY
-    same_for_every_link = "no" not in table and networking.select_proxy(
-        "http://any.invalid/", table
-    ) == networking.select_proxy("https://any.invalid/", table)
-    route = Route(proxy, source_address, timeout, follows_redirects=same_for_every_link)
+    # Every route a redirect could be fetched by: each scheme's proxy, and none where the
+    # system's exceptions could name the next host.
+    elsewhere = {kind: value for kind, value in table.items() if kind != "no"}
+    routes = {
+        networking.select_proxy(f"{scheme}://any.invalid/", elsewhere) or ""
+        for scheme in ("http", "https")
+    }
+    if "no" in table:
+        routes.add("")
+    route = Route(
+        f"http://{rest}" if proxy else "",
+        source_address,
+        timeout,
+        follows_redirects=len(routes) == 1,
+    )
     return route, sent.sensitive()
+
+
+def defined_options(binary: Path | str, run: Run) -> frozenset[str]:
+    """Which of `PROTOCOL_OPTIONS` the build at `binary` defines, as its own help lists them.
+
+    None where it cannot say, so that a route it may not carry is refused rather than tried.
+    """
+    defined: set[str] = set()
+    for protocol, names in PROTOCOL_OPTIONS.items():
+        code, listing = run(
+            [str(binary), "-hide_banner", "-h", f"protocol={protocol}"], HELP_TIMEOUT_SECONDS
+        )
+        if code != 0:
+            return frozenset()
+        defined |= names & set(_LISTED.findall(listing))
+    return frozenset(defined)
+
+
+def defines_every(arguments: Sequence[str], defined: frozenset[str]) -> bool:
+    """Whether a build that defines `defined` has each protocol option among `arguments`, which
+    are a `Route`'s, in pairs."""
+    named = frozenset().union(*PROTOCOL_OPTIONS.values())
+    return all(option[1:] in defined for option in arguments[::2] if option[1:] in named)
 
 
 def without_proxies(environment: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -267,16 +325,20 @@ def remote_length(
     cookie_parser: Any = None,
     *,
     route: RouteTo,
+    defined: Callable[[], frozenset[str]],
 ) -> float | None:
     """The length of the media yt-dlp chose for `info`, read from its link (ruling 3).
 
     `info` is the probe's: yt-dlp merges the format it chose into it, or lists the formats it will
     merge in `requested_formats`, each with its link, headers and cookies. The first link that
     answers gives the length. **Only a format yt-dlp fetches as one file over `http` or `https` is
-    asked**, each by yt-dlp's route to it, `route` (`T252-R5`). `None` when none answers;
-    `RouteRefusedError` when there was a link to ask and no route ffprobe could take to any.
+    asked**, each by yt-dlp's route to it, `route` (`T252-R5`), and only where this ffprobe
+    defines every option that route needs: `defined`, asked once, the first time (`T368-R5`).
+    `None` when none answers; `RouteRefusedError` when there was a link to ask and no route
+    ffprobe could take to any.
     """
     refused: str | None = None
+    known: frozenset[str] | None = None
     for chosen in info.get("requested_formats") or [info]:
         if not isinstance(chosen, Mapping) or chosen.get("protocol") not in ONE_FILE_PROTOCOLS:
             continue
@@ -288,6 +350,11 @@ def remote_length(
             refused = routed
             continue
         link_route, sent = routed
+        if known is None:
+            known = defined()
+        if not defines_every(link_route.arguments(), known):
+            refused = NOT_WITH_THIS_FFPROBE
+            continue
         arguments = [
             str(ffprobe),
             "-v",

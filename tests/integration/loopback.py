@@ -22,8 +22,10 @@ from typing import Any, ClassVar, Final
 from urllib.parse import urlsplit
 
 import pytest
+from yt_dlp.utils import Popen
 
 from tests.capabilities import resolve_ffmpeg
+from tracks_and_trails.downloader.media_probe import defined_options, run_with
 
 #: The standard library's own context class, for the server side. On Windows the application
 #: replaces `ssl.SSLContext` with `truststore`'s for the whole process, and that one checks the
@@ -55,6 +57,14 @@ needs_loopback_addresses = pytest.mark.skipif(
     reason=f"this machine cannot bind {PROXY_SIDE}, {BOUND} and {ELSEWHERE}, which tell the routes "
     "apart",
 )
+
+
+@functools.cache
+def defined_by(binary: str) -> frozenset[str]:
+    """Which of the route's options the build at `binary` defines, asked as the application asks
+    it (`T368-R5`). A case needing one it lacks expects the refusal the application gives instead,
+    which is what this build does; `test_length_route` holds the list to what the build accepts."""
+    return defined_options(binary, run_with(Popen))
 
 
 def make_site(tmp_path_factory: pytest.TempPathFactory) -> Path:

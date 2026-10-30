@@ -98,6 +98,7 @@ from tracks_and_trails.downloader.ffmpeg_route import for_the_session
 from tracks_and_trails.downloader.media_probe import (
     RouteRefusedError,
     Run,
+    defined_options,
     ffprobe_beside,
     holds_media,
     proxy_table,
@@ -2262,7 +2263,14 @@ def _place_the_sections(
             timeout=default_timeout if request.socket_timeout is None else request.socket_timeout,
         )
         try:
-            length = remote_length(info, ffprobe, run, cookie_parser, route=route)
+            length = remote_length(
+                info,
+                ffprobe,
+                run,
+                cookie_parser,
+                route=route,
+                defined=functools.partial(defined_options, ffprobe, run),
+            )
         except RouteRefusedError as refused:
             raise NothingDownloadedError(refused.reason) from None
     if length is None:
