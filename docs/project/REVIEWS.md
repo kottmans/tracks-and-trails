@@ -114,7 +114,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-304](reviews/T-304.md) | T-304; [focused correction verification](reviews/T-304.md#2026-10-27--focused-correction-verification), ecdda31, checked at a3705e4 | 0 |
 | [T-301](reviews/T-301.md) | T-301; font-sensitive UI tests, 276ffe4 to 8e654a7 | 0 |
 | [T-248](reviews/T-248.md) | T-248; filename shaping and file dates, 8e654a7 to 4b8f697, plus c6e9dd4 docstring | 0 |
-| [T-252](reviews/T-252.md) | T-252; [second focused correction review](reviews/T-252.md#2026-10-28--second-focused-correction-review), 2e5f9da, combined checks at be3cc08 | 0 |
+| [T-252](reviews/T-252.md) | T-252; [per-link route and fixture review](reviews/T-252.md#2026-10-29--focused-per-link-route-and-fixture-review), 72fe1bf, combined checks at 483147b | 0 |
 | [T-253](reviews/T-253.md) | T-253; [focused correction review](reviews/T-253.md#2026-10-28--focused-correction-review), 94e5fd1, combined checks at be3cc08 | 0 |
 | [T-254](reviews/T-254.md) | T-254; [test correction and CI review](reviews/T-254.md#2026-10-28--focused-test-correction-and-ci-evidence-review), 7eece55, CI at be3cc08 | 0 |
 | [T-255](reviews/T-255.md) | T-255; [focused correction review](reviews/T-255.md#2026-10-28--focused-correction-review), 96afab6, combined checks at be3cc08 | 0 |
