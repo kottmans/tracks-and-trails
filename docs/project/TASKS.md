@@ -924,9 +924,11 @@ files copied onto `be3cc08`: `tests/unit/test_extractor_args.py`, **173 passed**
 
 ### T-368 — Keep ffmpeg's network requests on the selected route
 
-**Status:** In Review — built 2026-10-29 on the maintainer's ruling of that day, below, awaiting
-its first review. *(Was Proposed:)* Critical safety work filed by the 2026-10-28 independent
-review; it blocks `T-252` and `T253-R3` until verified
+**Status:** In Review — correction 1 built 2026-10-30, awaiting the focused re-review of
+`T368-R1`, `R4` and `R5`; `R2`'s restoration is `T-370`'s. Changes requested 2026-10-29 at
+`a79e124` ([record](reviews/T-368.md#2026-10-29--reachability-qualification-and-worker-proof)).
+Built 2026-10-29 on the maintainer's ruling of that day, below. *(Was Proposed:)* Critical safety
+work filed by the 2026-10-28 independent review; it blocks `T-252` and `T253-R3` until verified
 **Owner:** Implementer; independent Reviewer verifies the complete boundary
 **Priority:** Critical — actual media connections bypass the chosen route and TLS verification
 **Phase:** Phase 4.5, before section approval and T-358's release gate
@@ -1045,6 +1047,44 @@ none skipped, the pin's digest of `_call_downloader` among them.
 each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,785 passed**, 23 skipped;
 `tests/integration` **in one process, as CI runs it**, **631 passed**. The length read's servers
 moved to `tests/integration/loopback.py`, shared with this task's tests. Not pushed, so no CI.
+
+#### Correction 1 — `T368-R1`, `R4` and `R5`, 2026-10-30
+
+Awaiting the focused re-review
+([record](reviews/T-368.md#2026-10-29--reachability-qualification-and-worker-proof)). `R2`'s
+restoration is `T-370`'s; `R3` is the gate, run again below.
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T368-R4`, Critical — the cut handed `HTTP://…` to ffmpeg as written, and went directly where yt-dlp goes through it; through the worker, the origin saw the cut's requests come directly between yt-dlp's through the proxy | `T-252`'s `route_for`, which both clients share, hands the proxy on as ffmpeg reads it: the scheme written `http://`, the rest as yt-dlp has it (`T-252`'s correction 4) | Real ffmpeg: the pin's cut through `HTTP://…` reaching the origin directly, as the control; this one through the proxy only. **The review's case through the real worker**: every request the origin saw came from the proxy. Unit: two spellings, credentials and path kept |
+| `T368-R5`, High — every plain `http://` input was given `-max_redirects 0`, which no build before FFmpeg 8.1 defines: on CI's 6.1.1, seven section cases and six route cases failed, ffmpeg exiting 8 | **A plain link may use no TLS** (`PLAIN_LINK_PROTOCOLS`, `http,tcp`): a redirect to `https://`, which it could not check, fails, so it need not follow none, and it follows one that cannot change the route. **The ffmpeg in use is asked which options it defines**, found as the pin's method finds it, and asked once a session; an input needing one it lacks is refused with `NOT_WITH_THIS_FFMPEG` before ffmpeg starts. So a build before 8.1 refuses a cut only where a redirect could change the route: a proxy with exceptions to it, or a different proxy for each kind of link | **Measured first, on 5.1.9, 6.1.1 and 8.1.3**, a plain link's redirect with only `http,tcp`: to another `http://` link, followed; to `https://`, refused before any connection; and, as the control, the same redirect without the list fetching a server nobody vouched for. **CI's 16 failures reproduced exactly on 6.1.1 before the correction; after it, 57 pass on each build**, none skipped. Real ffmpeg: a plain link's redirect followed; one to `https://` not, the pin's cut reading the server as the control; the build made to lack `local_addr`, on any machine, refusing with nothing asked. Unit: each option a build may lack, against each input it matters to; the build asked once a session, and only for a link with a route; with no ffmpeg found, nothing handed on |
+| `T368-R1`, Medium — an input whose only header was `Ytdl-Request-Proxy` was left with none, and the pin's `FFmpegFD` then sent the item's raw headers instead | **The item's own headers go to no input**: each input carries the headers yt-dlp sends it, its own or else the item's, cleaned, and the item's are emptied for `FFmpegFD` | Real ffmpeg, the review's shape: two inputs, one with its own copy of the header and one inheriting it; the pin's cut sent it to the origin, as the control; this one never, both inputs through the proxy. Unit: inherited, explicit and emptied headers over three inputs, as the pin chooses them |
+
+**The parity limitation, as it stands now.** A plain `http://` link that redirects is followed
+again where the redirect cannot change the route. **A build before FFmpeg 8.1** refuses a cut
+where it could, which Ubuntu 24.04's 6.1.1 does, and **Debian 12's 5.1.9** refuses one from a
+chosen address to connect from. Each says a newer ffmpeg may work. The rest of the limitation is
+unchanged and is `T-370`'s.
+
+**Mutations, 8 of 8 caught**, each on copies restored by hash, alongside `T-252`'s 11 for the
+shared route: the item's headers kept for merged inputs; a plain link allowed TLS, or following no
+redirect, as before; the cut not asking the build, or not asking the one in use; the build asked
+for every download; no ffmpeg found taken as defining every option; another binary than the pin's
+asked.
+
+**Windows, on `STARBASE`**, its checkout brought to the local head by bundle, with this correction's
+and `T-252`'s files on it: `test_ffmpeg_route.py`, unit and integration, with `test_length_route.py`,
+`test_media_probe.py`, `test_download_tuning.py` and `test_download_sections.py`: **317 passed**,
+none skipped, gyan's 8.1.2. The same six files: **317 passed** on the host's 8.1.3, on Ubuntu
+24.04's 6.1.1 and on Debian 12's 5.1.9.
+
+**Checks, 2026-10-30, on Linux**, the two corrections together, with the project `.venv` on
+`PATH`: `ruff format --check .` (529 files); `mypy src` (77), bare `mypy` and
+`mypy --platform win32` (253 each); both tables up to date; `tests/unit tests/ui` under `-n 4`,
+**6,824 passed**, 23 skipped; `tests/integration` **in one process, as CI runs it**, **645
+passed**. **`ruff check .` failed once**, on a nested `with` in a new unit test; rewritten as one
+statement, it passed, with the format and both `mypy` runs over tests again, and that file's 36
+tests.
 
 ## Ready
 

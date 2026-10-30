@@ -40,6 +40,7 @@ from tests.integration.loopback import (
     Proxy,
     Redirect,
     clear_ambient_proxies,
+    defined_by,
     make_certificate,
     make_site,
     needs_loopback_addresses,
@@ -50,13 +51,19 @@ from tests.integration.loopback import (
 )
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.models import DownloadRequest
-from tracks_and_trails.downloader import worker
+from tracks_and_trails.core.sections import NOT_WITH_THIS_FFPROBE
+from tracks_and_trails.downloader import ffmpeg_route, worker
 from tracks_and_trails.downloader.ffmpeg_route import (
     NOT_ONE_WEB_FILE,
     NOT_THROUGH_THE_PROXY,
+    NOT_WITH_THIS_FFMPEG,
     on_the_route,
 )
-from tracks_and_trails.downloader.media_probe import RouteRefusedError, proxy_table
+from tracks_and_trails.downloader.media_probe import (
+    RouteRefusedError,
+    defined_options,
+    proxy_table,
+)
 from tracks_and_trails.downloader.protocol import Failed, SessionKind, Succeeded
 
 # --- the length read's servers (`loopback.py`): one route, read and then fetched -------------
@@ -138,6 +145,23 @@ def _cut(
 _CUTS = itertools.count()
 
 
+def _lacks(option: str) -> bool:
+    """Whether the ffmpeg in use does not define `option` (`T368-R5`), so a cut needing it is
+    refused with `NOT_WITH_THIS_FFMPEG` before ffmpeg starts."""
+    return option not in defined_by(resolve_ffmpeg()[0])
+
+
+def _cut_unless_lacking(option: str, url: str, folder: Path, **given: Any) -> Path | None:
+    """`_cut`, or, where the ffmpeg in use lacks `option`, `None` once the cut is refused with
+    `NOT_WITH_THIS_FFMPEG`, which is what this build does instead."""
+    if not _lacks(option):
+        return _cut(url, folder, **given)
+    with pytest.raises(RouteRefusedError) as refused:
+        _cut(url, folder, **given)
+    assert refused.value.reason == NOT_WITH_THIS_FFMPEG
+    return None
+
+
 @functools.cache
 def _ffprobe() -> str:
     return resolve_ffmpeg()[1]
@@ -173,10 +197,13 @@ def test_the_cut_connects_from_the_request_s_address(
     assert served.callers == ["127.0.0.1"], "the control: the pin's cut used the address"
     served.callers.clear()
 
-    written = _cut(url, tmp_path, source_address=BOUND)
+    written = _cut_unless_lacking("local_addr", url, tmp_path, source_address=BOUND)
 
-    assert _seconds(written) == pytest.approx(2, abs=0.3)
-    assert served.callers and set(served.callers) == {BOUND}, served.callers
+    if written is None:
+        assert served.callers == [], "this ffmpeg cannot connect from the address, and was started"
+    else:
+        assert _seconds(written) == pytest.approx(2, abs=0.3)
+        assert served.callers and set(served.callers) == {BOUND}, served.callers
 
 
 @needs_loopback_addresses
@@ -218,10 +245,14 @@ def test_a_link_the_system_exempts_is_cut_directly(
     assert served.callers == ["127.0.0.1"] and forwarded.asked == [], "the control was proxied"
     served.callers.clear()
 
-    _cut(url, tmp_path)
+    # A proxy and exceptions to it: the route passes `-max_redirects` (`T368-R5`).
+    written = _cut_unless_lacking("max_redirects", url, tmp_path)
 
     assert forwarded.asked == []
-    assert served.callers and set(served.callers) == {"127.0.0.1"}, served.callers
+    if written is None:
+        assert served.callers == [], "this ffmpeg cannot keep to the route, and was started"
+    else:
+        assert served.callers and set(served.callers) == {"127.0.0.1"}, served.callers
 
 
 def test_a_proxy_ffmpeg_would_go_around_refuses_the_cut_before_it_starts(
@@ -335,12 +366,121 @@ def test_a_redirect_is_not_followed_where_it_could_change_the_route(
     served.callers.clear()
     forwarded.asked.clear()
 
-    with pytest.raises(DownloadError):
-        _cut(url, tmp_path)
-
-    assert sent_on.callers and set(sent_on.callers) == {"127.0.0.1"}, sent_on.callers
+    if _lacks("max_redirects"):
+        # A build before FFmpeg 8.1 cannot be stopped at the redirect, so it is not started.
+        assert _cut_unless_lacking("max_redirects", url, tmp_path) is None
+        assert sent_on.callers == [], "this ffmpeg cannot stop at a redirect, and was started"
+    else:
+        with pytest.raises(DownloadError):
+            _cut(url, tmp_path)
+        assert sent_on.callers and set(sent_on.callers) == {"127.0.0.1"}, sent_on.callers
     assert served.callers == [], "the redirect was followed by a route yt-dlp would not take"
     assert forwarded.asked == []
+
+
+@needs_loopback_addresses
+def test_a_plain_link_follows_a_redirect_that_cannot_change_the_route(
+    redirect: tuple[str, type[Redirect], type[Origin]], tmp_path: Path
+) -> None:
+    """No proxy at all, so every link is reached directly: the cut follows the redirect, on any
+    build, with no `-max_redirects` to need (`T368-R5`). It had followed none from a plain link."""
+    url, sent_on, served = redirect
+
+    written = _cut(url, tmp_path)
+
+    assert _seconds(written) == pytest.approx(2, abs=0.3)
+    assert sent_on.callers and set(sent_on.callers) == {"127.0.0.1"}, sent_on.callers
+    assert served.callers and set(served.callers) == {"127.0.0.1"}, served.callers
+
+
+def test_a_plain_link_sent_on_to_https_is_not_followed_unchecked(
+    site: Path, certificate: tuple[Path, Path], tmp_path: Path
+) -> None:
+    """A plain link is given no certificate check, which ffmpeg refuses for it, so it may use no
+    TLS (`PLAIN_LINK_PROTOCOLS`): a redirect to `https://` fails. The control, the pin's cut,
+    follows it to a server nobody vouched for and reads it."""
+    handler: type[Origin] = type("Origin", (Origin,), {"callers": [], "heard": []})
+    for server in serve(functools.partial(handler, directory=str(site))):  # type: ignore[arg-type]
+        context = SERVER_CONTEXT(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(*certificate)
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+        to = f"https://127.0.0.1:{server.server_address[1]}/clip.mp4"
+        sent_on: type[Redirect] = type("Redirect", (Redirect,), {"callers": [], "to": to})
+        for redirector in serve(sent_on):
+            url = f"http://127.0.0.1:{redirector.server_address[1]}/clip.mp4"
+            assert _seconds(_cut(url, tmp_path, guarded=False)) == pytest.approx(2, abs=0.3)
+            assert handler.callers, "the control did not follow the redirect"
+            handler.callers.clear()
+            sent_on.callers.clear()
+
+            with pytest.raises(DownloadError):
+                _cut(url, tmp_path)
+
+            assert sent_on.callers, "the link itself was not asked"
+            assert handler.callers == [], "a request was sent to a server nobody vouched for"
+
+
+@needs_loopback_addresses
+def test_a_proxy_written_in_capitals_carries_the_cut(
+    origin: tuple[str, type[Origin]], proxy: tuple[str, type[Proxy]], tmp_path: Path
+) -> None:
+    """**`T368-R4`**: yt-dlp goes through `HTTP://…`, and ffmpeg, which takes a proxy only where
+    the text starts `http://`, went around it: the control, the pin's cut, reaches the origin
+    directly."""
+    url, served = origin
+    address, forwarded = proxy
+    written = address.replace("http://", "HTTP://", 1)
+    _cut(url, tmp_path, guarded=False, proxy=written)
+    assert served.callers == ["127.0.0.1"], "the control: the pin's cut went through it"
+    served.callers.clear()
+
+    _cut(url, tmp_path, proxy=written)
+
+    assert forwarded.asked, "the proxy was not asked"
+    assert served.callers and set(served.callers) == {PROXY_SIDE}, served.callers
+
+
+@needs_loopback_addresses
+def test_an_input_left_with_no_headers_sends_none_of_the_item_s(
+    origin: tuple[str, type[Origin]], proxy: tuple[str, type[Proxy]], tmp_path: Path
+) -> None:
+    """**`T368-R1`**: two inputs whose only header is the item's `Ytdl-Request-Proxy`, one its
+    own copy and one inheriting it. Cleaned, each has none, and the pin's `FFmpegFD` takes the
+    item's for an input with none; the control is the pin's cut sending it."""
+    url, served = origin
+    address, forwarded = proxy
+    directive = {"Ytdl-Request-Proxy": address}
+    inputs = [
+        {"url": url, "protocol": "http", "http_headers": dict(directive)},
+        {"url": url, "protocol": "http"},
+    ]
+    _cut(url, tmp_path, guarded=False, http_headers=dict(directive), requested_formats=inputs)
+    assert any("ytdl-request-proxy" in heard for heard in served.heard), "the control: not sent"
+    served.callers.clear()
+    served.heard.clear()
+
+    _cut(url, tmp_path, http_headers=dict(directive), requested_formats=inputs)
+
+    assert len(forwarded.asked) >= 2, forwarded.asked
+    assert served.heard and all("ytdl-request-proxy" not in heard for heard in served.heard)
+    assert set(served.callers) == {PROXY_SIDE}, served.callers
+
+
+def test_an_ffmpeg_without_an_option_the_route_needs_is_never_started(
+    origin: tuple[str, type[Origin]], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**`T368-R5`, on any build**: the one in use made to lack `local_addr`, as Debian 12's 5.1.9
+    does. Asking it is what tells the two apart."""
+    url, served = origin
+    monkeypatch.setattr(
+        ffmpeg_route, "defined_options", lambda *given: defined_options(*given) - {"local_addr"}
+    )
+
+    with pytest.raises(RouteRefusedError) as refused:
+        _cut(url, tmp_path, source_address=BOUND)
+
+    assert refused.value.reason == NOT_WITH_THIS_FFMPEG
+    assert served.callers == []
 
 
 def _session(url: str, folder: Path, **fields: Any) -> Any:
@@ -371,9 +511,31 @@ def test_the_worker_s_own_section_download_connects_from_the_address(
 
     outcome = _session(url, tmp_path, source_address=BOUND)
 
+    if _lacks("local_addr"):
+        # The section's length is read first, and that ffprobe cannot connect from the address.
+        assert isinstance(outcome, Failed), outcome
+        assert (outcome.kind, outcome.message) == (ErrorKind.CANCELLED, NOT_WITH_THIS_FFPROBE)
+    else:
+        assert isinstance(outcome, Succeeded), outcome
+        assert _seconds(Path(outcome.output_path)) == pytest.approx(2, abs=0.3)
+    assert served.callers and set(served.callers) == {BOUND}, served.callers
+
+
+@needs_loopback_addresses
+def test_the_worker_keeps_a_proxy_written_in_capitals(
+    origin: tuple[str, type[Origin]], proxy: tuple[str, type[Proxy]], tmp_path: Path
+) -> None:
+    """**The review's case, `T368-R4`**: the application accepts `HTTP://…`, and its section
+    download had reached the origin directly between yt-dlp's proxied requests."""
+    url, served = origin
+    address, forwarded = proxy
+
+    outcome = _session(url, tmp_path, proxy=address.replace("http://", "HTTP://", 1))
+
     assert isinstance(outcome, Succeeded), outcome
     assert _seconds(Path(outcome.output_path)) == pytest.approx(2, abs=0.3)
-    assert served.callers and set(served.callers) == {BOUND}, served.callers
+    assert forwarded.asked, "the proxy was not asked"
+    assert served.callers and set(served.callers) == {PROXY_SIDE}, served.callers
 
 
 def test_a_section_of_an_item_in_pieces_is_cancelled_with_the_reason(

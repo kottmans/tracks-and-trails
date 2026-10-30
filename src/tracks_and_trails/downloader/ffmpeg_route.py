@@ -15,10 +15,12 @@ cannot**, before ffmpeg starts.
   and a section of anything that comes in pieces; the whole of a recorded one still downloads, by
   yt-dlp's own downloader. What yt-dlp feeds ffmpeg through its standard input is left alone.
 - **Each input is given yt-dlp's route to it** (`media_probe.route_for`), with the certificate
-  checked, and a demuxer that opens nothing else. A route ffmpeg cannot take refuses the download.
-  A plain `http://` link follows no redirect, since one could reach `https://` unchecked.
+  checked, and a demuxer that opens nothing else. A route ffmpeg cannot take refuses the download,
+  and so does one needing an option the ffmpeg in use does not define (`T368-R5`). A plain
+  `http://` link may use no TLS, since a redirect could take it to `https://` unchecked.
 - **The headers sent are the ones yt-dlp would send**: its own instructions, `Ytdl-Request-Proxy`
-  among them, are taken out, where the pin's `FFmpegFD` sent them on to the site.
+  among them, are taken out, where the pin's `FFmpegFD` sent them on to the site, and an input
+  left with none does not fall back to the item's (`T368-R1`).
 - **ffmpeg's environment carries no proxy variable**: it reads `http_proxy` and `no_proxy`
   itself, and the pin's `FFmpegFD` copied `no_proxy` in beside the request's proxy, which yt-dlp
   does not follow.
@@ -27,16 +29,18 @@ cannot**, before ffmpeg starts.
 from __future__ import annotations
 
 import contextlib
-import dataclasses
 import importlib
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from typing import Any, Final
 
 from tracks_and_trails.downloader.media_probe import (
     ONE_FILE_PROTOCOLS,
     Route,
     RouteRefusedError,
+    defined_options,
+    defines_every,
     route_for,
+    run_with,
     without_proxies,
 )
 
@@ -52,6 +56,19 @@ NOT_THROUGH_THE_PROXY: Final = (
     "Nothing was downloaded: ffmpeg would fetch this item, and it can only go through an http:// "
     "proxy. If you asked for part of it, downloading the whole item may work."
 )
+
+#: Why ffmpeg was not started where the build in use does not define an option the route needs,
+#: such as stopping at a redirect, which came in FFmpeg 8.1, or the address to connect from.
+NOT_WITH_THIS_FFMPEG: Final = (
+    "Nothing was downloaded: the ffmpeg in use cannot fetch this item while keeping to this "
+    "computer's network settings. A newer ffmpeg may work. If you asked for part of it, "
+    "downloading the whole item may work."
+)
+
+#: The protocols a plain `http://` input may use. With no TLS among them, a redirect to an
+#: `https://` link fails rather than being fetched with no certificate check, which ffmpeg cannot
+#: be given for such an input (measured 2026-10-30 on FFmpeg 5.1.9, 6.1.1 and 8.1.3).
+PLAIN_LINK_PROTOCOLS: Final = "http,tcp"
 
 
 def for_the_session(
@@ -96,6 +113,23 @@ def on_the_route(
     ffmpeg = external.FFmpegFD
     call = ffmpeg._call_downloader
     popen = external.Popen
+    # The options each build defines, asked once a session (`T368-R5`).
+    known: dict[str, frozenset[str]] = {}
+
+    def defined_for(downloader: Any) -> Callable[[], frozenset[str]]:
+        """The options of the ffmpeg `downloader` runs, found as the pin's method finds it, and
+        none where there is none."""
+
+        def defined() -> frozenset[str]:
+            found = external.FFmpegPostProcessor(downloader=downloader)
+            binary = found.executable if found.available else None
+            if not binary:
+                return frozenset()
+            if binary not in known:
+                known[binary] = defined_options(binary, run_with(popen))
+            return known[binary]
+
+        return defined
 
     class WithoutProxies(popen):  # type: ignore[misc,valid-type]
         """yt-dlp's `Popen`, with no proxy variable in the child's environment."""
@@ -105,7 +139,9 @@ def on_the_route(
 
     def routed(self: Any, tmpfilename: str, info_dict: dict[str, Any]) -> Any:
         try:
-            held = _routed(info_dict, networking, proxies, source_address, timeout)
+            held = _routed(
+                info_dict, networking, proxies, source_address, timeout, defined_for(self)
+            )
         except RouteRefusedError:
             # **A format test** (`--check-formats`) catches only yt-dlp's own errors, so a refusal
             # there is ffmpeg failing, which marks the format as not working; elsewhere it ends
@@ -131,14 +167,16 @@ def _for_ffmpeg(route: Route, url: str) -> list[str]:
 
     **ffmpeg refuses an input option nothing uses**, where ffprobe only warns (measured
     2026-10-29, `Option tls_verify not found`, exit 8), and a plain `http://` link opens no TLS. So
-    it is not given the certificate check, and follows no redirect, which could take it to an
-    `https://` link it would then fetch unchecked.
+    it is not given the certificate check, and may use no TLS (`PLAIN_LINK_PROTOCOLS`). It once
+    followed no redirect instead, which needs `-max_redirects`, and a build before FFmpeg 8.1
+    defines none (`T368-R5`).
     """
+    arguments = route.arguments()
     if url.startswith("https://"):
-        return route.arguments()
-    arguments = dataclasses.replace(route, follows_redirects=False).arguments()
+        return arguments
     at = arguments.index("-tls_verify")
     del arguments[at : at + 2]
+    arguments[arguments.index("-protocol_whitelist") + 1] = PLAIN_LINK_PROTOCOLS
     return arguments
 
 
@@ -148,12 +186,15 @@ def _routed(
     proxies: Mapping[str, str],
     source_address: str | None,
     timeout: float,
+    defined: Callable[[], frozenset[str]],
 ) -> dict[str, Any]:
     """`info_dict` with each of ffmpeg's inputs on yt-dlp's route to it, or `RouteRefusedError`.
 
     **Each input as `FFmpegFD` reads it**: a merged item's are its `requested_formats`, and an
-    input's options are its own `ffmpeg_args` or else the item's. The route's options go after
-    them, so an option of the same name given earlier cannot undo the route.
+    input's options are its own `ffmpeg_args` or else the item's, and its headers its own or else
+    the item's. The route's options go after the given ones, so an option of the same name given
+    earlier cannot undo the route. `defined` is what the ffmpeg in use defines, asked only once
+    an input has a route.
     """
     merged = info_dict.get("requested_formats")
     given = (info_dict.get("downloader_options") or {}).get("ffmpeg_args") or []
@@ -183,7 +224,13 @@ def _routed(
         if isinstance(way, str):
             raise RouteRefusedError(NOT_THROUGH_THE_PROXY)
         route, sent = way
+        arguments = _for_ffmpeg(route, url)
+        if not defines_every(arguments, defined()):
+            raise RouteRefusedError(NOT_WITH_THIS_FFMPEG)
         options = dict(chosen.get("downloader_options") or {})
-        options["ffmpeg_args"] = [*(options.get("ffmpeg_args") or given), *_for_ffmpeg(route, url)]
+        options["ffmpeg_args"] = [*(options.get("ffmpeg_args") or given), *arguments]
         kept.append({**chosen, "http_headers": dict(sent), "downloader_options": options})
-    return {**info_dict, "requested_formats": kept} if merged else kept[0]
+    # **The item's own headers go to no input** (`T368-R1`): each carries the ones yt-dlp sends
+    # it, and `FFmpegFD` takes the item's for one whose own are empty, which would send on the
+    # instructions just taken out of them.
+    return {**info_dict, "http_headers": {}, "requested_formats": kept} if merged else kept[0]

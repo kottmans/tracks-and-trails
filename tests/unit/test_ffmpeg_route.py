@@ -18,14 +18,17 @@ from yt_dlp.downloader import external
 from yt_dlp.downloader.external import FFmpegFD
 from yt_dlp.utils import networking
 
+from tracks_and_trails.downloader import ffmpeg_route
 from tracks_and_trails.downloader.ffmpeg_route import (
     NOT_ONE_WEB_FILE,
     NOT_THROUGH_THE_PROXY,
+    NOT_WITH_THIS_FFMPEG,
+    PLAIN_LINK_PROTOCOLS,
     _routed,
     for_the_session,
     on_the_route,
 )
-from tracks_and_trails.downloader.media_probe import RouteRefusedError
+from tracks_and_trails.downloader.media_probe import PROTOCOL_OPTIONS, RouteRefusedError
 
 #: `FFmpegFD._call_downloader` at the pin, as a digest of its text. **The guard leans on how it
 #: reads its inputs**: `requested_formats` or the item, each input's `downloader_options` before
@@ -36,13 +39,46 @@ CALL_DOWNLOADER_AT_THE_PIN = "fe869157381445943253ec0aba3bfb8170cb20009021362fb0
 #: A direct route, IPv4 only, with yt-dlp's own timeout.
 DIRECT: dict[str, str] = {}
 
+#: Every option a route can pass, as a build that defines them all lists them (`T368-R5`).
+EVERY: frozenset[str] = frozenset().union(*PROTOCOL_OPTIONS.values())
+
+#: A proxy, and exceptions to it: a redirect could change the route, so none is followed.
+EXCEPTED: dict[str, str] = {"http": "http://s:1", "https": "http://s:1", "no": "elsewhere.example"}
+
 
 def _arguments(item: dict[str, Any]) -> list[str]:
     return list(item["downloader_options"]["ffmpeg_args"])
 
 
-def _held(item: dict[str, Any], proxies: dict[str, str] | None = None) -> dict[str, Any]:
-    return _routed(item, networking, proxies or DIRECT, "0.0.0.0", 20.0)  # noqa: S104
+def _held(
+    item: dict[str, Any], proxies: dict[str, str] | None = None, defined: frozenset[str] = EVERY
+) -> dict[str, Any]:
+    return _routed(item, networking, proxies or DIRECT, "0.0.0.0", 20.0, lambda: defined)  # noqa: S104
+
+
+class _Found:
+    """Stands in for yt-dlp's `FFmpegPostProcessor` finding ffmpeg, or finding none."""
+
+    available = True
+    executable: str | None = "/opt/ffmpeg/ffmpeg"
+
+    def __init__(self, downloader: Any = None) -> None:
+        self.downloader = downloader
+
+
+@pytest.fixture
+def every_option(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """An ffmpeg that defines every option a route passes, as each binary it is asked about;
+    which binaries were asked comes back."""
+    asked: list[str] = []
+
+    def defined(binary: str, _run: Any) -> frozenset[str]:
+        asked.append(str(binary))
+        return EVERY
+
+    monkeypatch.setattr(external, "FFmpegPostProcessor", _Found)
+    monkeypatch.setattr(ffmpeg_route, "defined_options", defined)
+    return asked
 
 
 def test_the_method_the_guard_wraps_is_the_pin_s() -> None:
@@ -173,12 +209,24 @@ def test_a_format_test_is_told_ffmpeg_failed_rather_than_stopped() -> None:
     assert code == 1
 
 
-def test_a_plain_link_is_given_no_certificate_check_and_follows_no_redirect() -> None:
+def test_a_plain_link_is_given_no_certificate_check_and_may_use_no_tls() -> None:
     """ffmpeg refuses an input option nothing uses, and `http://` opens no TLS; a redirect could
-    take it to an `https://` link it would fetch unchecked (measured 2026-10-29, exit 8)."""
+    take it to an `https://` link it would fetch unchecked (measured 2026-10-29, exit 8). With no
+    TLS to use, that redirect fails, so one to another `http://` link can be followed, without
+    `-max_redirects`, which a build before FFmpeg 8.1 does not define (`T368-R5`)."""
     arguments = _arguments(_held({"url": "http://m.example/c.mp4", "protocol": "http"}))
 
     assert "-tls_verify" not in arguments
+    assert arguments[arguments.index("-protocol_whitelist") + 1] == PLAIN_LINK_PROTOCOLS
+    assert "-max_redirects" not in arguments
+    assert not {"tls", "https", "httpproxy"} & set(PLAIN_LINK_PROTOCOLS.split(","))
+
+
+def test_a_plain_link_follows_no_redirect_where_the_route_could_change() -> None:
+    item = {"url": "http://m.example/c.mp4", "protocol": "http"}
+
+    arguments = _arguments(_held(item, EXCEPTED))
+
     assert arguments[arguments.index("-max_redirects") + 1] == "0"
 
 
@@ -187,6 +235,114 @@ def test_an_https_link_is_checked_and_follows_a_redirect_that_cannot_change_the_
 
     assert arguments[arguments.index("-tls_verify") + 1] == "1"
     assert "-max_redirects" not in arguments
+
+
+@pytest.mark.parametrize("proxy", ["HTTP://u:p@s:1", "Http://s:1/x"])
+def test_a_proxy_written_in_capitals_is_handed_on_as_ffmpeg_reads_it(proxy: str) -> None:
+    """**`T368-R4`**: ffmpeg takes a proxy only where the text starts `http://`, and otherwise
+    connects directly, where yt-dlp goes through it."""
+    arguments = _arguments(
+        _held({"url": "https://m.example/c.mp4", "protocol": "https"}, {"all": proxy})
+    )
+
+    given = arguments[arguments.index("-http_proxy") + 1]
+    assert given.startswith("http://") and given[len("http://") :] == proxy.partition("://")[2]
+
+
+def test_an_input_left_with_no_headers_does_not_take_the_item_s() -> None:
+    """**`T368-R1`**: the pin's `FFmpegFD` sends an input's headers, or the item's where those
+    are empty, and an input whose only header was `Ytdl-Request-Proxy` is left with none. Each
+    input still takes the item's headers where it has none of its own, as yt-dlp sends them."""
+    named = "http://named:1"
+    item = {
+        "http_headers": {"Ytdl-Request-Proxy": named, "User-Agent": "UA"},
+        "requested_formats": [
+            {"url": "https://m.example/v.mp4", "protocol": "https",
+             "http_headers": {"Ytdl-Request-Proxy": named}},
+            {"url": "https://m.example/a.m4a", "protocol": "https"},
+            {"url": "https://m.example/b.m4a", "protocol": "https", "http_headers": {"X-Own": "1"}},
+        ],
+    }  # fmt: skip
+
+    held = _held(item)
+
+    # As the pin's `FFmpegFD` chooses each input's headers.
+    sent = [
+        fmt.get("http_headers") or held.get("http_headers") for fmt in held["requested_formats"]
+    ]
+    assert sent == [{}, {"User-Agent": "UA"}, {"X-Own": "1"}]
+    proxies = [
+        _arguments(fmt)[_arguments(fmt).index("-http_proxy") + 1]
+        for fmt in held["requested_formats"]
+    ]
+    assert proxies == [named, named, ""]
+
+
+@pytest.mark.parametrize(
+    ("url", "proxies", "lacking", "refused"),
+    [
+        # Ubuntu 24.04's 6.1.1 has no `max_redirects`: refused only where a route passes it.
+        ("https://m.example/c.mp4", EXCEPTED, "max_redirects", True),
+        ("http://m.example/c.mp4", EXCEPTED, "max_redirects", True),
+        ("https://m.example/c.mp4", DIRECT, "max_redirects", False),
+        ("http://m.example/c.mp4", DIRECT, "max_redirects", False),
+        # Debian 12's 5.1.9 has no `local_addr`, which an address to connect from passes.
+        ("https://m.example/c.mp4", DIRECT, "local_addr", True),
+        # A build without TLS: a plain link is given no certificate check to define.
+        ("https://m.example/c.mp4", DIRECT, "tls_verify", True),
+        ("http://m.example/c.mp4", DIRECT, "tls_verify", False),
+    ],
+)
+def test_an_input_needing_an_option_the_ffmpeg_in_use_lacks_is_refused(
+    url: str, proxies: dict[str, str], lacking: str, refused: bool
+) -> None:
+    item = {"url": url, "protocol": url.partition(":")[0]}
+
+    if refused:
+        with pytest.raises(RouteRefusedError) as raised:
+            _held(item, proxies, EVERY - {lacking})
+        assert raised.value.reason == NOT_WITH_THIS_FFMPEG
+    else:
+        assert "-" + lacking not in _arguments(_held(item, proxies, EVERY - {lacking}))
+
+
+def test_the_ffmpeg_in_use_is_asked_once_a_session_and_only_for_a_link(
+    monkeypatch: pytest.MonkeyPatch, every_option: list[str]
+) -> None:
+    """The binary the pin's method would run, found the way it finds it."""
+    monkeypatch.setattr(FFmpegFD, "_call_downloader", lambda *_: 0)
+    with yt_dlp.YoutubeDL({"quiet": True}) as ydl, for_the_session(yt_dlp, {}, None, 20.0):
+        downloader = FFmpegFD(ydl, ydl.params)
+        with pytest.raises(RouteRefusedError):
+            downloader._call_downloader(
+                "a.mp4", {"url": "https://m.example/a.m3u8", "protocol": "m3u8"}
+            )
+        assert every_option == []
+        for name in ("b.mp4", "c.mp4"):
+            downloader._call_downloader(name, {"url": "https://m.example/c", "protocol": "https"})
+
+    assert every_option == ["/opt/ffmpeg/ffmpeg"]
+
+
+@pytest.mark.usefixtures("every_option")
+def test_where_no_ffmpeg_is_found_no_link_is_handed_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nothing to ask what it defines, so nothing it might not carry is given to it."""
+    monkeypatch.setattr(_Found, "available", False)
+    monkeypatch.setattr(_Found, "executable", None)
+    called: list[None] = []
+    monkeypatch.setattr(FFmpegFD, "_call_downloader", lambda *_: called.append(None))
+
+    with (
+        yt_dlp.YoutubeDL({"quiet": True}) as ydl,
+        for_the_session(yt_dlp, {}, None, 20.0),
+        pytest.raises(RouteRefusedError) as refused,
+    ):
+        FFmpegFD(ydl, ydl.params)._call_downloader(
+            "a.mp4", {"url": "https://m.example/c", "protocol": "https"}
+        )
+
+    assert refused.value.reason == NOT_WITH_THIS_FFMPEG
+    assert called == []
 
 
 def test_a_copy_without_ffmpeg_s_downloader_is_left_as_it_is() -> None:
@@ -199,11 +355,14 @@ def test_a_copy_without_ffmpeg_s_downloader_is_left_as_it_is() -> None:
 def test_a_copy_without_the_route_functions_refuses_every_download_ffmpeg_would_make() -> None:
     """Fail closed: with no way to tell yt-dlp's route, ffmpeg is given no link."""
     with pytest.raises(RouteRefusedError) as refused:
-        _routed({"url": "https://m.example/c.mp4", "protocol": "https"}, None, {}, None, 20.0)
+        _routed(
+            {"url": "https://m.example/c.mp4", "protocol": "https"}, None, {}, None, 20.0, frozenset
+        )
 
     assert refused.value.reason == NOT_ONE_WEB_FILE
 
 
+@pytest.mark.usefixtures("every_option")
 def test_with_no_timeout_chosen_ffmpeg_waits_as_long_as_yt_dlp_would(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -226,6 +385,7 @@ def test_with_no_timeout_chosen_ffmpeg_waits_as_long_as_yt_dlp_would(
     assert arguments[arguments.index("-timeout") + 1] == str(round(DEFAULT_TIMEOUT * 1_000_000))
 
 
+@pytest.mark.usefixtures("every_option")
 def test_ffmpeg_is_started_without_proxy_variables_and_popen_is_put_back(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
