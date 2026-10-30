@@ -1404,6 +1404,52 @@ ends badly — the shape `2026-08-27-T212-ytdlp-update-double-free.md` recorded.
 
 ## Proposed — Phase 4.5
 
+### T-370 — Restore live recording, segmented sections and Zan angles
+
+**Status:** Proposed — filed by the independent 2026-10-29 review at the maintainer's request;
+temporary secure refusal is approved, and REQ-030 remains in force
+**Owner:** Planner/Implementer proposes the transport; independent Reviewer verifies it
+**Priority:** High — existing download capabilities are unavailable under the safety guard
+**Phase:** Phase 4.5, before T-358's parity/release exit
+**Relevant context:** [T368-R2](reviews/T-368.md#2026-10-29--initial-comprehensive-review);
+T-252/253/255; T-369; REQ-015/024/030; NFR-007; SEC-004; ARC-010's section semantics
+**Affected surfaces:** Network acquisition, local media processing, capability reporting,
+progress/cancellation, staging/claims and their real transport/media tests
+
+#### Scope and design gate
+
+Restore live recording currently delegated to ffmpeg, sections of HLS/DASH and other segmented
+inputs, and Zan's camera-angle split while retaining the selected proxy/bypass policy, source
+address/family and TLS checks. T-368's refusal remains the safe behavior until a replacement is
+verified. It is temporary; filing this task does not waive the Phase 4.5 parity condition.
+
+Measure native yt-dlp acquisition followed by local ffmpeg cutting/cropping as a candidate.
+Do not assume that one approach covers live capture, finite segmented media and Zan equally.
+Present the tested design and its bandwidth, disk, latency, retry and cancellation consequences
+before implementation; record any necessary architecture/dependency ruling. No new runtime
+dependency is authorized by this task entry.
+
+#### Acceptance criteria
+
+- Demonstrate the three previously blocked capability families against controlled local streams
+  and real processes. Preserve working direct-file and whole recorded HLS/DASH downloads.
+- Inventory the actual acquisition paths, including any WebSocket/pipe supplier or optional
+  backend considered. Prove network policy at the component that opens sockets, not merely at
+  ffmpeg's stdin. Do not activate another transport without establishing that boundary.
+- Preserve effective per-link proxy/bypass/redirect selection, address/family, timeout and
+  certificate chain/hostname validation for every request and descendant fetch. Keep credentials
+  away from unintended origins/proxies; retain safe refusal where policy cannot be preserved.
+- Preserve start/end-relative ranges, from-URL/chapter selection, multiple-section names and
+  item-wide empty-range rejection. Prove the resulting media duration/content, including local
+  cutting and Zan cropping/re-encoding; never report the whole source as the selected section.
+- Preserve job responsiveness, live-stream completion and REQ-015 cancellation, retry behavior,
+  staging containment, sidecar/metadata processing and atomic output-family claims. State and
+  test intermediate-file cleanup and resource use for the chosen design.
+- Retain meaningful negative controls at the transport and media boundaries. Run applicable
+  lint/types, Linux/native Windows and full CI checks, plus the relevant real-site release checks.
+- Obtain an independent capability verdict before REQ-030 or T-358 can pass. A permanent loss of
+  any capability requires an explicit scope ruling instead of silently closing this task.
+
 ### T-369 — Measure a bundled certificate list for ffmpeg on Windows
 
 **Status:** Proposed — filed 2026-10-29 at the maintainer's ruling of that day, recorded in
