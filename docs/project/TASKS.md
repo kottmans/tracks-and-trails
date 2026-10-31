@@ -2,7 +2,7 @@
 
 **Purpose:** Unfinished work: review, ready, proposed and blocked tasks.
 **Owner:** Planner (priorities); Implementer (task/status); Reviewer (review disposition)
-**Last updated:** 2026-10-29
+**Last updated:** 2026-10-30
 **Update when:** Work starts, changes scope/status, closes or reopens.
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
@@ -1493,6 +1493,11 @@ inputs, and Zan's camera-angle split while retaining the selected proxy/bypass p
 address/family and TLS checks. T-368's refusal remains the safe behavior until a replacement is
 verified. It is temporary; filing this task does not waive the Phase 4.5 parity condition.
 
+Also resolve the temporary older-build combinations measured on 2026-10-30: Ubuntu 24.04
+ffmpeg 6.1.1 cannot enforce the redirect restriction for proxy exceptions or per-scheme proxies,
+and Debian 12 ffmpeg 5.1.9 lacks the selected-address option. These limits fall under the same
+safe-refusal ruling; they are not permanent exceptions to supported-platform capability parity.
+
 Measure native yt-dlp acquisition followed by local ffmpeg cutting/cropping as a candidate.
 Do not assume that one approach covers live capture, finite segmented media and Zan equally.
 Present the tested design and its bandwidth, disk, latency, retry and cancellation consequences
@@ -1503,6 +1508,10 @@ dependency is authorized by this task entry.
 
 - Demonstrate the three previously blocked capability families against controlled local streams
   and real processes. Preserve working direct-file and whole recorded HLS/DASH downloads.
+- Verify selected-address sections and sections using proxy exceptions/per-scheme proxies on
+  the supported older distro builds. Restore them through a policy-preserving path, or obtain an
+  explicit compatibility/scope ruling before the parity exit; upgrade advice alone does not close
+  the capability limitation.
 - Inventory the actual acquisition paths, including any WebSocket/pipe supplier or optional
   backend considered. Prove network policy at the component that opens sockets, not merely at
   ffmpeg's stdin. Do not activate another transport without establishing that boundary.
