@@ -21,6 +21,13 @@ cannot**, before ffmpeg starts.
 - **The headers sent are the ones yt-dlp would send**: its own instructions, `Ytdl-Request-Proxy`
   among them, are taken out, where the pin's `FFmpegFD` sent them on to the site, and an input
   left with none does not fall back to the item's (`T368-R1`).
+- **An input is sent the cookies yt-dlp's jar holds for its link, and follows no redirect**
+  (`T252-R9`). The pin's `FFmpegFD` hands ffmpeg those cookies to match itself, and ffmpeg's
+  rules are not the jar's (read in FFmpeg 5.1 to 8.1's `http.c`): a cookie for the host
+  `a.example` goes on to any host whose name ends in those letters, such as `xa.example`, and a
+  `Secure` one over plain `http`; and a link that names its port, or a plain `http` one through
+  a proxy, is sent none, so a site that needs one goes without. So each input carries the jar's
+  own `Cookie` header, which ffmpeg sends in place of any it would match.
 - **ffmpeg's environment carries no proxy variable**: it reads `http_proxy` and `no_proxy`
   itself, and the pin's `FFmpegFD` copied `no_proxy` in beside the request's proxy, which yt-dlp
   does not follow.
@@ -29,6 +36,7 @@ cannot**, before ffmpeg starts.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import importlib
 from collections.abc import Callable, Iterator, Mapping
 from typing import Any, Final
@@ -62,6 +70,14 @@ NOT_THROUGH_THE_PROXY: Final = (
 NOT_WITH_THIS_FFMPEG: Final = (
     "Nothing was downloaded: the ffmpeg in use cannot fetch this item while keeping to this "
     "computer's network settings. A newer ffmpeg may work. If you asked for part of it, "
+    "downloading the whole item may work."
+)
+
+#: Why ffmpeg was not started where an input is sent the site's cookies and the build in use cannot
+#: be stopped at a redirect, so it would send them on to wherever that leads (`T252-R9`).
+NOT_KEEPING_THE_COOKIES: Final = (
+    "Nothing was downloaded: the ffmpeg in use cannot fetch this item without risking sending "
+    "the site's cookies to another site. A newer ffmpeg may work. If you asked for part of it, "
     "downloading the whole item may work."
 )
 
@@ -140,7 +156,13 @@ def on_the_route(
     def routed(self: Any, tmpfilename: str, info_dict: dict[str, Any]) -> Any:
         try:
             held = _routed(
-                info_dict, networking, proxies, source_address, timeout, defined_for(self)
+                info_dict,
+                networking,
+                proxies,
+                source_address,
+                timeout,
+                defined_for(self),
+                self.ydl.cookiejar.get_cookie_header,
             )
         except RouteRefusedError:
             # **A format test** (`--check-formats`) catches only yt-dlp's own errors, so a refusal
@@ -187,6 +209,7 @@ def _routed(
     source_address: str | None,
     timeout: float,
     defined: Callable[[], frozenset[str]],
+    cookie_for: Callable[[str], str | None],
 ) -> dict[str, Any]:
     """`info_dict` with each of ffmpeg's inputs on yt-dlp's route to it, or `RouteRefusedError`.
 
@@ -194,7 +217,8 @@ def _routed(
     input's options are its own `ffmpeg_args` or else the item's, and its headers its own or else
     the item's. The route's options go after the given ones, so an option of the same name given
     earlier cannot undo the route. `defined` is what the ffmpeg in use defines, asked only once
-    an input has a route.
+    an input has a route. `cookie_for` is the `Cookie` header yt-dlp's jar gives a link, or
+    `None`.
     """
     merged = info_dict.get("requested_formats")
     given = (info_dict.get("downloader_options") or {}).get("ffmpeg_args") or []
@@ -224,12 +248,21 @@ def _routed(
         if isinstance(way, str):
             raise RouteRefusedError(NOT_THROUGH_THE_PROXY)
         route, sent = way
+        headers = dict(sent)
+        cookie = cookie_for(url)
+        if cookie:
+            headers["Cookie"] = cookie
+            route = dataclasses.replace(route, sends_cookies=True)
         arguments = _for_ffmpeg(route, url)
         if not defines_every(arguments, defined()):
-            raise RouteRefusedError(NOT_WITH_THIS_FFMPEG)
+            # The cookies' reason only where the route would be taken without them.
+            plain = _for_ffmpeg(dataclasses.replace(route, sends_cookies=False), url)
+            raise RouteRefusedError(
+                NOT_KEEPING_THE_COOKIES if defines_every(plain, defined()) else NOT_WITH_THIS_FFMPEG
+            )
         options = dict(chosen.get("downloader_options") or {})
         options["ffmpeg_args"] = [*(options.get("ffmpeg_args") or given), *arguments]
-        kept.append({**chosen, "http_headers": dict(sent), "downloader_options": options})
+        kept.append({**chosen, "http_headers": headers, "downloader_options": options})
     # **The item's own headers go to no input** (`T368-R1`): each carries the ones yt-dlp sends
     # it, and `FFmpegFD` takes the item's for one whose own are empty, which would send on the
     # instructions just taken out of them.

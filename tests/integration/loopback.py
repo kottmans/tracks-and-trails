@@ -42,6 +42,9 @@ BOUND: Final = "127.0.0.2"
 #: A host the system's exceptions do not name, which a redirect sends the read on to.
 ELSEWHERE: Final = "127.0.0.5"
 
+#: A site's cookie, as `name=value`, which only the host it is for may be sent (`T252-R9`).
+HOSTS_COOKIE: Final = "session=FOR_127_0_0_1_ONLY"
+
 
 def can_bind(address: str) -> bool:
     with socket.socket() as probe:
@@ -67,8 +70,13 @@ def defined_by(binary: str) -> frozenset[str]:
     return defined_options(binary, run_with(Popen))
 
 
+#: A page with the clip on it, as a site shows one: yt-dlp's generic extractor finds the clip and
+#: keeps the page's link to it, which `Redirect` may send on (`T252-R9`).
+PAGE: Final = b"<html><title>Clip</title><body><video src='/clip.mp4'></video></body></html>"
+
+
 def make_site(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """A six-second clip, its index first, and the same clip as HLS pieces."""
+    """A six-second clip, its index first, the same clip as HLS pieces, and a page showing it."""
     ffmpeg, _ = resolve_ffmpeg()
     directory = tmp_path_factory.mktemp("site")
     subprocess.run(
@@ -82,20 +90,30 @@ def make_site(tmp_path_factory: pytest.TempPathFactory) -> Path:
          "-hls_time", "1", "-hls_list_size", "0", str(directory / "clip.m3u8")],
         check=True,
     )  # fmt: skip
+    (directory / "page.html").write_bytes(PAGE)
     return directory
 
 
 class Origin(SimpleHTTPRequestHandler):
-    """Serves the clip, keeping the address of every connection that asked for it and the names
-    of the headers each sent, lower-cased."""
+    """Serves the clip, keeping the address of every connection that asked for it and the headers
+    each sent, by their names lower-cased.
+
+    `needs`, a cookie as `name=value`, makes it a site that serves only a request carrying it, so
+    a download that works shows the cookie reached it (`T252-R9`).
+    """
 
     callers: ClassVar[list[str]]
-    heard: ClassVar[list[set[str]]]
+    heard: ClassVar[list[dict[str, str]]]
+    needs: ClassVar[str | None] = None
 
     # `http.server`'s own name, hence the camelCase.
     def do_GET(self) -> None:
         type(self).callers.append(self.client_address[0])
-        type(self).heard.append({name.lower() for name in self.headers})
+        type(self).heard.append({name.lower(): value for name, value in self.headers.items()})
+        needs = type(self).needs
+        if needs is not None and needs not in (self.headers.get("Cookie") or "").split("; "):
+            self.send_error(403)
+            return
         super().do_GET()
 
     def log_message(self, *_: Any) -> None:
@@ -112,20 +130,25 @@ def serve(handler: type, address: str = "127.0.0.1") -> Iterator[ThreadingHTTPSe
     thread.join(timeout=5)
 
 
-def origin_on(site: Path, address: str) -> Iterator[tuple[str, type[Origin]]]:
-    handler: type[Origin] = type("Origin", (Origin,), {"callers": [], "heard": []})
+def origin_on(
+    site: Path, address: str, needs: str | None = None
+) -> Iterator[tuple[str, type[Origin]]]:
+    handler: type[Origin] = type("Origin", (Origin,), {"callers": [], "heard": [], "needs": needs})
     for server in serve(functools.partial(handler, directory=str(site)), address):  # type: ignore[arg-type]
         yield f"http://{address}:{server.server_address[1]}/clip.mp4", handler
 
 
 class Redirect(BaseHTTPRequestHandler):
-    """Sends every request on to `to`, keeping the address of each connection."""
+    """Sends every request on to `to`, keeping the address of each connection and its headers, as
+    `Origin` does."""
 
     to: ClassVar[str]
     callers: ClassVar[list[str]]
+    heard: ClassVar[list[dict[str, str]]]
 
     def do_GET(self) -> None:
         type(self).callers.append(self.client_address[0])
+        type(self).heard.append({name.lower(): value for name, value in self.headers.items()})
         self.send_response(302)
         self.send_header("Location", type(self).to)
         self.send_header("Content-Length", "0")
@@ -138,7 +161,7 @@ class Redirect(BaseHTTPRequestHandler):
 def redirect_on(site: Path) -> Iterator[tuple[str, type[Redirect], type[Origin]]]:
     """A link on `127.0.0.1` that sends the read on to the clip on `ELSEWHERE`."""
     for target, served in origin_on(site, ELSEWHERE):
-        handler = type("Redirect", (Redirect,), {"callers": [], "to": target})
+        handler = type("Redirect", (Redirect,), {"callers": [], "heard": [], "to": target})
         for server in serve(handler):
             yield f"http://127.0.0.1:{server.server_address[1]}/clip.mp4", handler, served
 
@@ -177,6 +200,20 @@ def proxy_on() -> Iterator[tuple[str, type[Proxy]]]:
     handler = type("Proxy", (Proxy,), {"asked": []})
     for server in serve(handler):
         yield f"http://127.0.0.1:{server.server_address[1]}", handler
+
+
+def cookie_file(folder: Path, *cookies: str) -> Path:
+    """A cookie file as a browser export writes one, each of `cookies` a line of it: the host, then
+    `TRUE` where the cookie is for the hosts under it too, its path, `TRUE` where it is sent only
+    over `https`, and `name=value`, apart by spaces. None expires."""
+    lines = ["# Netscape HTTP Cookie File"]
+    for cookie in cookies:
+        host, subdomains, path, secure, pair = cookie.split(" ")
+        name, _, value = pair.partition("=")
+        lines.append("\t".join((host, subdomains, path, secure, "0", name, value)))
+    written = folder / "cookies.txt"
+    written.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return written
 
 
 def clear_ambient_proxies(monkeypatch: pytest.MonkeyPatch) -> None:

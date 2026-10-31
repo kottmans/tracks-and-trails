@@ -34,12 +34,16 @@ from yt_dlp.utils import DownloadError, networking
 from tests.capabilities import resolve_ffmpeg
 from tests.integration.loopback import (
     BOUND,
+    ELSEWHERE,
+    HOSTS_COOKIE,
+    PAGE,
     PROXY_SIDE,
     SERVER_CONTEXT,
     Origin,
     Proxy,
     Redirect,
     clear_ambient_proxies,
+    cookie_file,
     defined_by,
     make_certificate,
     make_site,
@@ -49,11 +53,13 @@ from tests.integration.loopback import (
     redirect_on,
     serve,
 )
+from tracks_and_trails.core import sections
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.models import DownloadRequest
-from tracks_and_trails.core.sections import NOT_WITH_THIS_FFPROBE
+from tracks_and_trails.core.sections import NO_LENGTH, NOT_WITH_THIS_FFPROBE
 from tracks_and_trails.downloader import ffmpeg_route, worker
 from tracks_and_trails.downloader.ffmpeg_route import (
+    NOT_KEEPING_THE_COOKIES,
     NOT_ONE_WEB_FILE,
     NOT_THROUGH_THE_PROXY,
     NOT_WITH_THIS_FFMPEG,
@@ -151,15 +157,22 @@ def _lacks(option: str) -> bool:
     return option not in defined_by(resolve_ffmpeg()[0])
 
 
-def _cut_unless_lacking(option: str, url: str, folder: Path, **given: Any) -> Path | None:
+def _cut_unless_lacking(
+    option: str, url: str, folder: Path, reason: str = NOT_WITH_THIS_FFMPEG, **given: Any
+) -> Path | None:
     """`_cut`, or, where the ffmpeg in use lacks `option`, `None` once the cut is refused with
-    `NOT_WITH_THIS_FFMPEG`, which is what this build does instead."""
+    `reason`, which is what this build does instead."""
     if not _lacks(option):
         return _cut(url, folder, **given)
     with pytest.raises(RouteRefusedError) as refused:
         _cut(url, folder, **given)
-    assert refused.value.reason == NOT_WITH_THIS_FFMPEG
+    assert refused.value.reason == reason
     return None
+
+
+def _cookie_sent(heard: list[dict[str, str]]) -> list[str | None]:
+    """The `Cookie` header of each request a server heard, `None` where it had none."""
+    return [request.get("cookie") for request in heard]
 
 
 @functools.cache
@@ -405,7 +418,9 @@ def test_a_plain_link_sent_on_to_https_is_not_followed_unchecked(
         context.load_cert_chain(*certificate)
         server.socket = context.wrap_socket(server.socket, server_side=True)
         to = f"https://127.0.0.1:{server.server_address[1]}/clip.mp4"
-        sent_on: type[Redirect] = type("Redirect", (Redirect,), {"callers": [], "to": to})
+        sent_on: type[Redirect] = type(
+            "Redirect", (Redirect,), {"callers": [], "heard": [], "to": to}
+        )
         for redirector in serve(sent_on):
             url = f"http://127.0.0.1:{redirector.server_address[1]}/clip.mp4"
             assert _seconds(_cut(url, tmp_path, guarded=False)) == pytest.approx(2, abs=0.3)
@@ -466,6 +481,63 @@ def test_an_input_left_with_no_headers_sends_none_of_the_item_s(
     assert set(served.callers) == {PROXY_SIDE}, served.callers
 
 
+def test_the_cut_sends_its_link_the_cookie_the_pin_withheld(site: Path, tmp_path: Path) -> None:
+    """**`T252-R9` at the cut**: a site that serves only a request carrying its cookie. The pin's
+    `FFmpegFD` hands ffmpeg the jar's cookies to match against the host and the port its link
+    names, and a cookie names no port, so it sent none and fetched nothing. The guarded cut sends
+    the jar's own `Cookie` header, and follows no redirect while it does."""
+    jar = cookie_file(tmp_path, f"127.0.0.1 FALSE / FALSE {HOSTS_COOKIE}")
+    params = {"cookiefile": str(jar)}
+    for url, served in origin_on(site, "127.0.0.1", needs=HOSTS_COOKIE):
+        with pytest.raises(DownloadError):
+            _cut(url, tmp_path, guarded=False, params=params)
+        assert served.heard and set(_cookie_sent(served.heard)) == {None}, "the control: sent"
+        served.heard.clear()
+
+        written = _cut_unless_lacking(
+            "max_redirects", url, tmp_path, NOT_KEEPING_THE_COOKIES, params=params
+        )
+
+        if written is None:
+            assert served.heard == [], "this ffmpeg cannot stop at a redirect, and was started"
+        else:
+            assert _seconds(written) == pytest.approx(2, abs=0.3)
+            assert served.heard and set(_cookie_sent(served.heard)) == {HOSTS_COOKIE}
+
+
+@needs_loopback_addresses
+def test_the_cut_follows_no_redirect_from_a_link_it_sends_a_cookie(
+    redirect: tuple[str, type[Redirect], type[Origin]], tmp_path: Path
+) -> None:
+    """**The review's case at the cut**: the cookie for `127.0.0.1`, and its link there sent on to
+    `127.0.0.5`. The control: ffmpeg sends a `Cookie` header it is given on through the redirect,
+    as the pin's cut sends the format's headers."""
+    url, sent_on, served = redirect
+    jar = cookie_file(tmp_path, f"127.0.0.1 FALSE / FALSE {HOSTS_COOKIE}")
+    _cut(url, tmp_path, guarded=False, http_headers={"Cookie": HOSTS_COOKIE})
+    assert served.heard and set(_cookie_sent(served.heard)) == {HOSTS_COOKIE}, "the control"
+    sent_on.heard.clear()
+    served.heard.clear()
+
+    if _lacks("max_redirects"):
+        assert (
+            _cut_unless_lacking(
+                "max_redirects",
+                url,
+                tmp_path,
+                NOT_KEEPING_THE_COOKIES,
+                params={"cookiefile": str(jar)},
+            )
+            is None
+        )
+        assert sent_on.heard == [], "this ffmpeg cannot stop at a redirect, and was started"
+    else:
+        with pytest.raises(DownloadError):
+            _cut(url, tmp_path, params={"cookiefile": str(jar)})
+        assert set(_cookie_sent(sent_on.heard)) == {HOSTS_COOKIE}, "the link was not sent it"
+    assert served.heard == [], "the cut was sent on with the cookie"
+
+
 def test_an_ffmpeg_without_an_option_the_route_needs_is_never_started(
     origin: tuple[str, type[Origin]], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -483,8 +555,9 @@ def test_an_ffmpeg_without_an_option_the_route_needs_is_never_started(
     assert served.callers == []
 
 
-def _session(url: str, folder: Path, **fields: Any) -> Any:
+def _session(url: str, folder: Path, cookie_file: Path | None = None, **fields: Any) -> Any:
     """One section, one to three seconds, through the real worker; its outcome."""
+    folder.mkdir(exist_ok=True)
     request = DownloadRequest(
         url=url,
         output_directory=str(folder),
@@ -494,7 +567,7 @@ def _session(url: str, folder: Path, **fields: Any) -> Any:
         **fields,
     )
     queue: Queue[Any] = Queue()
-    worker.run_session(SessionKind.DOWNLOAD, "job-1", request, queue)
+    worker.run_session(SessionKind.DOWNLOAD, "job-1", request, queue, cookie_file=cookie_file)
     messages = []
     while not queue.empty():
         messages.append(queue.get_nowait())
@@ -536,6 +609,73 @@ def test_the_worker_keeps_a_proxy_written_in_capitals(
     assert _seconds(Path(outcome.output_path)) == pytest.approx(2, abs=0.3)
     assert forwarded.asked, "the proxy was not asked"
     assert served.callers and set(served.callers) == {PROXY_SIDE}, served.callers
+
+
+class _PageThenRedirect(Redirect):
+    """The page, and its clip a link `Redirect` sends on: yt-dlp keeps the page's link to the clip
+    as the format's, so the format's cookies are the page host's."""
+
+    def do_GET(self) -> None:  # noqa: N802 - `http.server`'s name
+        if self.path != "/page.html":
+            super().do_GET()
+            return
+        type(self).heard.append({name.lower(): value for name, value in self.headers.items()})
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(len(PAGE)))
+        self.end_headers()
+        self.wfile.write(PAGE)
+
+
+@needs_loopback_addresses
+def test_the_worker_sends_a_cookie_to_its_own_site_alone(site: Path, tmp_path: Path) -> None:
+    """**The review's case, `T252-R9`, through the real worker**: a page on `127.0.0.1` whose clip
+    is sent on to `127.0.0.5`, and a cookie file with a cookie for `127.0.0.1`. The length read
+    had sent the cookie to both, and the section downloaded. The read follows no redirect from a
+    link it sends a cookie, so the item is cancelled and the second host is never sent it."""
+    jar = cookie_file(tmp_path, f"127.0.0.1 FALSE / FALSE {HOSTS_COOKIE}")
+    for target, served in origin_on(site, ELSEWHERE):
+        page: type[_PageThenRedirect] = type(
+            "Page", (_PageThenRedirect,), {"callers": [], "heard": [], "to": target}
+        )
+        for server in serve(page):
+            link = f"http://127.0.0.1:{server.server_address[1]}/page.html"
+
+            outcome = _session(link, tmp_path / "out", cookie_file=jar)
+
+            assert set(_cookie_sent(served.heard)) <= {None}, "the second host was sent it"
+            assert HOSTS_COOKIE in _cookie_sent(page.heard), "the cookie file was not used"
+            assert isinstance(outcome, Failed), outcome
+            reason = sections.NOT_KEEPING_THE_COOKIES if _lacks("max_redirects") else NO_LENGTH
+            assert (outcome.kind, outcome.message) == (ErrorKind.CANCELLED, reason)
+
+
+def test_the_worker_s_section_download_sends_its_site_the_cookie(
+    site: Path, tmp_path: Path
+) -> None:
+    """**The other half, through the real worker**: a site that serves only a request carrying
+    its cookie, and the cookie file holding it. The length is read and the section cut, every
+    request carrying the cookie. The control: with no cookie file, the item fails."""
+    jar = cookie_file(tmp_path, f"127.0.0.1 FALSE / FALSE {HOSTS_COOKIE}")
+    for url, served in origin_on(site, "127.0.0.1", needs=HOSTS_COOKIE):
+        link = url.replace("clip.mp4", "page.html")
+        assert isinstance(_session(link, tmp_path / "without"), Failed), "the control: served"
+        served.heard.clear()
+
+        outcome = _session(link, tmp_path / "out", cookie_file=jar)
+
+        assert served.heard and set(_cookie_sent(served.heard)) == {HOSTS_COOKIE}
+        assert isinstance(outcome, Failed | Succeeded), outcome
+        if _lacks("max_redirects"):
+            # The section's length is read first, and that ffprobe cannot stop at a redirect.
+            assert isinstance(outcome, Failed), outcome
+            assert (outcome.kind, outcome.message) == (
+                ErrorKind.CANCELLED,
+                sections.NOT_KEEPING_THE_COOKIES,
+            )
+        else:
+            assert isinstance(outcome, Succeeded), outcome
+            assert _seconds(Path(outcome.output_path)) == pytest.approx(2, abs=0.3)
 
 
 def test_a_section_of_an_item_in_pieces_is_cancelled_with_the_reason(

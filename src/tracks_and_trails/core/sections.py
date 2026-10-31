@@ -406,3 +406,11 @@ NOT_WITH_THIS_FFPROBE: Final = (
     "read its length while keeping to this computer's network settings, so part of it cannot be "
     "cut. A newer ffmpeg may work, or downloading the whole item."
 )
+
+#: Why the length was not read at all: the link is sent the site's cookies, and the ffprobe in use
+#: cannot be stopped at a redirect, so it would send them on to wherever that leads (`T252-R9`).
+NOT_KEEPING_THE_COOKIES: Final = (
+    "Nothing was downloaded: this item does not say how long it is, and the ffmpeg in use cannot "
+    "read its length without risking sending the site's cookies to another site, so part of it "
+    "cannot be cut. A newer ffmpeg may work, or downloading the whole item."
+)

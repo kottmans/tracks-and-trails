@@ -2,7 +2,7 @@
 
 **Purpose:** Unfinished work: review, ready, proposed and blocked tasks.
 **Owner:** Planner (priorities); Implementer (task/status); Reviewer (review disposition)
-**Last updated:** 2026-10-30
+**Last updated:** 2026-10-31
 **Update when:** Work starts, changes scope/status, closes or reopens.
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
@@ -16,10 +16,13 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ### T-252 — Download tuning and the retry policy the settings screen shows
 
-**Status:** In Review — correction 4 built 2026-10-30, awaiting the fourth focused re-review of
-`T252-R5`, with the length read's half of `T368-R5`; `R7`, the download's own route, is
-`T-368`'s and blocks this task until it is verified, and `R8` waits on native CI. Changes
-requested 2026-10-29 at `72fe1bf`
+**Status:** In Review — correction 5 built 2026-10-31, awaiting the fifth focused re-review of
+`T252-R9`, a site's cookie sent on through a redirect, corrected within this task as the
+maintainer chose that day
+([decision](reviews/T-252.md#2026-10-31--maintainer-scope-decision)); `R7` waits on `T-368`'s
+required matrix, and `R8` on native CI. Changes requested 2026-10-30 on `5489752`, `R5` resolved
+([record](reviews/T-252.md#2026-10-30--focused-proxy-representation-and-build-capability-review)).
+Correction 4 built 2026-10-30; changes requested 2026-10-29 at `72fe1bf`
 ([record](reviews/T-252.md#2026-10-29--focused-per-link-route-and-fixture-review)). Correction 3
 built 2026-10-29; changes requested 2026-10-28 at `2e5f9da`, `R1`, `R3` and `R6` resolved
 ([record](reviews/T-252.md#2026-10-28--second-focused-correction-review)). Correction 2 built
@@ -408,6 +411,73 @@ and `T-368`'s files on it: the same six files, **317 passed**, none skipped, gya
 path: `ruff check .` and `ruff format --check .` (529 files); `mypy src` (77), bare `mypy` and
 `mypy --platform win32` (253 each); both tables up to date; `tests/unit tests/ui` under `-n 4`,
 **6,811 passed**, 23 skipped; `tests/integration` **in one process, as CI runs it**, **639 passed**.
+
+**`R9`, corrected 2026-10-31 within this task, as the maintainer chose that day, awaiting the
+fifth focused re-review**
+([record](reviews/T-252.md#2026-10-30--focused-proxy-representation-and-build-capability-review),
+[decision](reviews/T-252.md#2026-10-31--maintainer-scope-decision)):
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T252-R9`, Critical — the length read sent a site's cookie on through a redirect. The format's `cookies` field became a `Cookie` header, and ffprobe repeats a header it is given at every link a redirect leads to: a cookie for `127.0.0.1` reached `127.0.0.5`, where yt-dlp sends it to the first host alone. Through the real worker with an ordinary cookie file, the section then downloaded | **A cookie goes to its own link and no further** (`media_probe.Route.sends_cookies`). yt-dlp's jar chose the cookies for that one link, so **a link read with a cookie follows no redirect** (`-max_redirects 0`). A build that cannot stop at a redirect, without `max_redirects` like Ubuntu 24.04's 6.1.1, refuses such a read before anything is sent, with a reason of its own, `NOT_KEEPING_THE_COOKIES`. **A merged format is sent its own cookies only**: one with none had taken the item's, which are another link's. A `Cookie` header among the headers is taken out, as yt-dlp's `_calc_headers` takes it out. **The cut, the sibling path, is kept the same way**, below | Real ffprobe through `_place_the_sections`, two controls: yt-dlp sends the cookie to the first host alone, and ffprobe given it as a header sends it on to the second. **The read: the first host is sent the cookie, the second is never asked**; on a build without `max_redirects`, nothing is asked. **Authentication kept**: a site that serves only a request carrying its cookie is sent it, and the length is read. **The jar's scope**: of five cookies, for the host, for this path, for another path, for `https` only and for another host, the read sends exactly the two yt-dlp's own request sends. **Through the real worker**: the review's page whose clip is sent on, with a cookie file, is cancelled and the second host is never sent the cookie; a site that needs its cookie has its section downloaded, every request carrying it, and fails with no cookie file |
+
+**The cut, `T-368`'s, had the same defect class**, read in FFmpeg 5.1 to 8.1's `http.c`. The pin's
+`FFmpegFD` hands ffmpeg the jar's cookies to match itself, and ffmpeg's rules are not the jar's: a
+cookie for the host `a.example` goes on to any host whose name ends in those letters, such as
+`xa.example`, and a `Secure` one over plain `http`. A link that names its port, or a plain `http`
+one through a proxy, is sent none, so a site needing one goes without. **Each input now carries the
+`Cookie` header the session's jar gives its link**, which ffmpeg sends in place of any it would
+match, and **follows no redirect while it does**; a build without `max_redirects` refuses with
+`ffmpeg_route`'s own `NOT_KEEPING_THE_COOKIES`. Real ffmpeg: the pin's cut sent a site that needs its cookie none,
+and fetched nothing; the guarded cut is sent it and cuts two seconds. ffmpeg given a `Cookie`
+header follows the redirect with it, as the control; the guarded cut follows none, and the second
+host is never asked. Unit: each merged input is sent its own link's cookie, and the jar asked is
+the session's.
+
+**At `a49baa2`, 5 of the 7 new real-process tests fail**: the read's and the cut's redirect cases,
+the cut's withheld cookie, and both worker cases, the review's naming the cookie at `127.0.0.5`.
+The two that pass there are positive controls, which the old read already met on its first link.
+
+**Scope as audited.**
+
+- **Domain, host, path and `Secure` are the jar's decisions**, as they are for yt-dlp's own
+  requests, and are no longer remade by ffmpeg. The pinned jar sends a cookie set for a host to
+  that host's subdomains too (measured: `media.test`'s to `cdn.media.test`, not to
+  `evilmedia.test`), and so does this; a stricter rule than yt-dlp's is not attempted.
+- **Other headers**, `Authorization` among them, go where yt-dlp's own handler sends them: its
+  `RedirectHandler` removes only `Cookie` at a redirect, and ffmpeg keeps them too, so nothing
+  changes. A user and password written in a link, which yt-dlp turns into an `Authorization`
+  header its handler keeps, ffmpeg gives only that link's host: `http.c` takes them from the link
+  it is fetching, and starts over at a redirect.
+- **Not corrected, put to the maintainer: cookies a server sets during ffmpeg's own requests.**
+  Measured 2026-10-31 on 8.1.3: a link sent no cookie of the user's, whose server sets one on its
+  redirect, had ffprobe send that cookie on to the second host, where yt-dlp sends none. ffmpeg
+  keeps cookies it is sent in replies, and sends one set without a domain to every host. A link
+  sent the user's cookies carries the jar's header, which turns that off, and follows no
+  redirect; so what is exposed is a cookie the site set for this one visit, to where the site
+  sent it. Turning it off for every link would mean sending every site an empty `Cookie` header.
+
+**What it costs**: a link sent the user's cookies that redirects gives no length, and its cut fails
+at the redirect; downloading the whole item still works, by yt-dlp's own downloader. On Ubuntu
+24.04's 6.1.1, which cannot stop at a redirect, a section of an item sent cookies is refused. Both
+fall under the 2026-10-29 rule to refuse where the route cannot be kept, and are proposed for
+`T-370`'s restoration.
+
+**Mutations, 12 of 12 caught**, each on copies restored by hash: a cookie not stopping the read's
+redirect, or `sends_cookies` passing no `-max_redirects`; a merged format taking the item's
+cookies; a `Cookie` header among the headers sent on; each client giving the route's reason for a
+cookie, or the cookies' reason for a route; the cut sending no header of the jar's, following the
+redirect with one, not asking the jar, or sending every input the first input's cookie.
+
+**The six files the two clients touch**, **339 passed** on each of: the host's 8.1.3, Ubuntu 24.04's
+6.1.1 and Debian 12's 5.1.9, in containers, and **`STARBASE`**, gyan's 8.1.2, its checkout brought
+to `a49baa2` by bundle with these files on it. None skipped; on Ubuntu's 6.1.1 the cookie cases
+expect the refusal, with nothing asked, and Debian's 5.1.9, which lists `max_redirects`, reads.
+
+**Checks, 2026-10-31, on Linux**, with the project `.venv` on `PATH`: `ruff check .` and
+`ruff format --check .` (529 files); `mypy src` (77), bare `mypy` and `mypy --platform win32`
+(253 each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,839 passed**, 23
+skipped; `tests/integration` **in one process, as CI runs it**, **652 passed**.
 
 ### T-253 — Network reachability: address family and politeness delays
 
@@ -924,9 +994,12 @@ files copied onto `be3cc08`: `tests/unit/test_extractor_args.py`, **173 passed**
 
 ### T-368 — Keep ffmpeg's network requests on the selected route
 
-**Status:** In Review — correction 1 built 2026-10-30, awaiting the focused re-review of
-`T368-R1`, `R4` and `R5`; `R2`'s restoration is `T-370`'s. Changes requested 2026-10-29 at
-`a79e124` ([record](reviews/T-368.md#2026-10-29--reachability-qualification-and-worker-proof)).
+**Status:** In Review — `R1`, `R4` and `R5` verified 2026-10-30 on `621ab6e`; `R3` waits on the
+required matrix
+([record](reviews/T-368.md#2026-10-30--focused-compatibility-and-merged-input-correction-review)),
+and `R2`'s restoration is `T-370`'s. **The cut's cookies changed 2026-10-31 under `T252-R9`**,
+below, for that finding's re-review. Correction 1 built 2026-10-30; changes requested 2026-10-29
+at `a79e124` ([record](reviews/T-368.md#2026-10-29--reachability-qualification-and-worker-proof)).
 Built 2026-10-29 on the maintainer's ruling of that day, below. *(Was Proposed:)* Critical safety
 work filed by the 2026-10-28 independent review; it blocks `T-252` and `T253-R3` until verified
 **Owner:** Implementer; independent Reviewer verifies the complete boundary
@@ -1085,6 +1158,16 @@ none skipped, gyan's 8.1.2. The same six files: **317 passed** on the host's 8.1
 passed**. **`ruff check .` failed once**, on a nested `with` in a new unit test; rewritten as one
 statement, it passed, with the format and both `mypy` runs over tests again, and that file's 36
 tests.
+
+#### The cut's cookies, 2026-10-31, under `T252-R9`
+
+**Each input is sent the `Cookie` header the session's jar gives its link, and follows no redirect
+while it does**; a build without `max_redirects`, like Ubuntu 24.04's 6.1.1, refuses such an input
+with `NOT_KEEPING_THE_COOKIES`.
+The pin's `FFmpegFD` handed ffmpeg the jar's cookies to match by its own rules, which send a
+host's cookie on to other hosts ending in its name and a `Secure` one over plain `http`, and send
+none to a link that names its port. The record, its evidence and its cost are in `T-252`'s
+correction 5.
 
 ## Ready
 

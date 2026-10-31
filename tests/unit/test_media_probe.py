@@ -18,7 +18,11 @@ import pytest
 import yt_dlp
 from yt_dlp.utils import networking
 
-from tracks_and_trails.core.sections import NOT_THROUGH_THE_PROXY, NOT_WITH_THIS_FFPROBE
+from tracks_and_trails.core.sections import (
+    NOT_KEEPING_THE_COOKIES,
+    NOT_THROUGH_THE_PROXY,
+    NOT_WITH_THIS_FFPROBE,
+)
 from tracks_and_trails.downloader.media_probe import (
     HELP_TIMEOUT_SECONDS,
     LINK_PROTOCOLS,
@@ -575,6 +579,105 @@ def test_the_build_is_not_asked_where_no_link_has_a_route() -> None:
 
     info = {"url": "https://m.example/master.m3u8", "protocol": "m3u8"}
     assert remote_length(info, FFPROBE, Answers(), route=ALWAYS_DIRECT, defined=defined) is None
+
+
+# --- a link's cookies (`T252-R9`) -------------------------------------------------------------
+
+#: A format's `cookies` field as yt-dlp's jar writes it for the format's link.
+FIELD = "session=abc; Domain=m.example; Path=/; Secure; theme=dark; Path=/"
+
+
+def _sent(arguments: list[str]) -> list[str]:
+    """The headers one run was given, each `Name: value`."""
+    return (_option(arguments, "-headers") or "").split("\r\n")[:-1]
+
+
+def test_a_link_sent_a_cookie_follows_no_redirect() -> None:
+    """ffmpeg sends the `Cookie` header it is given to every link a redirect takes it to, and
+    yt-dlp's jar chose the cookies for this link alone. The same route with no cookie follows."""
+    run = Answers((0, "6.0"), (0, "6.0"))
+    link = {"url": "https://m.example/c.mp4", "protocol": "https"}
+
+    remote_length(
+        {**link, "cookies": FIELD}, FFPROBE, run, SimpleCookie, route=ALWAYS_DIRECT, defined=_every
+    )
+    remote_length(link, FFPROBE, run, SimpleCookie, route=ALWAYS_DIRECT, defined=_every)
+
+    (with_cookies, _), (without, _) = run.runs
+    assert _sent(with_cookies) == ["Cookie: session=abc; theme=dark"]
+    assert _option(with_cookies, "-max_redirects") == "0"
+    assert "-headers" not in without and "-max_redirects" not in without
+
+
+def test_a_merged_format_is_sent_its_own_cookies_and_never_the_item_s() -> None:
+    """yt-dlp's jar writes each format's field for that format's link; one with none has none for
+    its link, and the item's are another link's."""
+    run = Answers((1, ""), (0, "6.0"))
+    info = {
+        "cookies": FIELD,
+        "requested_formats": [
+            {"url": "https://cdn.example/v.mp4", "protocol": "https"},
+            {"url": "https://m.example/a.m4a", "protocol": "https", "cookies": "own=1; Path=/"},
+        ],
+    }
+
+    assert (
+        remote_length(info, FFPROBE, run, SimpleCookie, route=ALWAYS_DIRECT, defined=_every) == 6.0
+    )
+
+    (video, _), (audio, _) = run.runs
+    assert "-headers" not in video and "-max_redirects" not in video
+    assert _sent(audio) == ["Cookie: own=1"]
+    assert _option(audio, "-max_redirects") == "0"
+
+
+@pytest.mark.parametrize(
+    ("proxies", "cookies", "refused"),
+    [
+        # A build without `max_redirects` cannot stop at a redirect: one sent a cookie is refused.
+        ({}, FIELD, NOT_KEEPING_THE_COOKIES),
+        # The route could change too: the route's reason, which a cookie does not change.
+        ({"https": "http://s:1"}, FIELD, NOT_WITH_THIS_FFPROBE),
+        ({"https": "http://s:1"}, None, NOT_WITH_THIS_FFPROBE),
+        # Nothing to stop at a redirect for: read.
+        ({}, None, None),
+    ],
+)
+def test_a_link_sent_a_cookie_is_never_asked_by_a_build_that_cannot_stop_at_a_redirect(
+    proxies: dict[str, str], cookies: str | None, refused: str | None
+) -> None:
+    run = Answers((0, "6.0"))
+    link: dict[str, Any] = {"url": "https://m.example/c.mp4", "protocol": "https"}
+    if cookies is not None:
+        link["cookies"] = cookies
+
+    def route(url: str, headers: Mapping[str, str]) -> tuple[Route, Mapping[str, str]] | str:
+        return _route(url, proxies, headers)
+
+    def lacking() -> frozenset[str]:
+        return EVERY - {"max_redirects"}
+
+    if refused is None:
+        assert remote_length(link, FFPROBE, run, SimpleCookie, route=route, defined=lacking) == 6.0
+        return
+    with pytest.raises(RouteRefusedError) as raised:
+        remote_length(link, FFPROBE, run, SimpleCookie, route=route, defined=lacking)
+    assert raised.value.reason == refused
+    assert run.runs == []
+
+
+def test_a_cookie_header_among_the_headers_is_not_sent() -> None:
+    """yt-dlp takes it out of a format's headers, since it names no link it is for; each link is
+    sent the cookies its jar holds for it, which come with `Route.sends_cookies`."""
+    routed = _route("https://m.example/c", {}, {"Cookie": "a=b", "User-Agent": "UA"})
+
+    assert not isinstance(routed, str)
+    _, sent = routed
+    assert {name.lower() for name in sent} == {"user-agent"}
+
+
+def test_the_cookies_refusal_is_plain() -> None:
+    assert "\u2013" not in NOT_KEEPING_THE_COOKIES and "\u2014" not in NOT_KEEPING_THE_COOKIES
 
 
 # --- which ffprobe, and how it is run ---------------------------------------------------------

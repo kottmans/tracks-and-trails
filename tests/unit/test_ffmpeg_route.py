@@ -10,6 +10,7 @@ import hashlib
 import inspect
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -20,6 +21,7 @@ from yt_dlp.utils import networking
 
 from tracks_and_trails.downloader import ffmpeg_route
 from tracks_and_trails.downloader.ffmpeg_route import (
+    NOT_KEEPING_THE_COOKIES,
     NOT_ONE_WEB_FILE,
     NOT_THROUGH_THE_PROXY,
     NOT_WITH_THIS_FFMPEG,
@@ -51,9 +53,22 @@ def _arguments(item: dict[str, Any]) -> list[str]:
 
 
 def _held(
-    item: dict[str, Any], proxies: dict[str, str] | None = None, defined: frozenset[str] = EVERY
+    item: dict[str, Any],
+    proxies: dict[str, str] | None = None,
+    defined: frozenset[str] = EVERY,
+    cookies: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    return _routed(item, networking, proxies or DIRECT, "0.0.0.0", 20.0, lambda: defined)  # noqa: S104
+    """`item` as the guard hands it on; `cookies` is the jar's `Cookie` header for each link."""
+    jar = cookies or {}
+    return _routed(
+        item,
+        networking,
+        proxies or DIRECT,
+        "0.0.0.0",  # noqa: S104
+        20.0,
+        lambda: defined,
+        jar.get,
+    )
 
 
 class _Found:
@@ -180,7 +195,7 @@ def test_a_proxy_ffmpeg_would_go_around_is_refused(proxy: str) -> None:
 
 
 def test_the_refusals_are_plain_and_name_no_proxy() -> None:
-    for reason in (NOT_ONE_WEB_FILE, NOT_THROUGH_THE_PROXY):
+    for reason in (NOT_ONE_WEB_FILE, NOT_THROUGH_THE_PROXY, NOT_KEEPING_THE_COOKIES):
         assert "\u2013" not in reason and "\u2014" not in reason
         assert "@" not in reason
 
@@ -306,6 +321,95 @@ def test_an_input_needing_an_option_the_ffmpeg_in_use_lacks_is_refused(
         assert "-" + lacking not in _arguments(_held(item, proxies, EVERY - {lacking}))
 
 
+# --- each input's cookies (`T252-R9`) ---------------------------------------------------------
+
+
+@pytest.mark.parametrize("url", ["https://m.example/c.mp4", "http://m.example/c.mp4"])
+def test_an_input_is_sent_the_jar_s_cookie_and_follows_no_redirect(url: str) -> None:
+    """ffmpeg sends a `Cookie` header it is given to every link a redirect leads to, and the jar
+    chose it for this one. In place of the cookies the pin hands ffmpeg to match itself, which it
+    matches more loosely than the jar, and sends none of where the link names its port."""
+    item = {"url": url, "protocol": url.partition(":")[0], "http_headers": {"X-A": "b"}}
+
+    held = _held(item, cookies={url: "session=abc; theme=dark"})
+
+    assert held["http_headers"] == {"X-A": "b", "Cookie": "session=abc; theme=dark"}
+    assert _arguments(held)[_arguments(held).index("-max_redirects") + 1] == "0"
+    assert "-max_redirects" not in _arguments(_held(item)), "without a cookie it follows"
+
+
+def test_each_merged_input_is_sent_the_cookie_for_its_own_link() -> None:
+    video, audio = "https://m.example/v.mp4", "https://cdn.example/a.m4a"
+    item = {
+        "http_headers": {"User-Agent": "UA"},
+        "requested_formats": [
+            {"url": video, "protocol": "https"},
+            {"url": audio, "protocol": "https", "http_headers": {"User-Agent": "UA"}},
+        ],
+    }
+
+    held = _held(item, cookies={video: "session=abc"})
+
+    first, second = held["requested_formats"]
+    assert first["http_headers"] == {"User-Agent": "UA", "Cookie": "session=abc"}
+    assert second["http_headers"] == {"User-Agent": "UA"}
+    assert "-max_redirects" in _arguments(first) and "-max_redirects" not in _arguments(second)
+    assert held["http_headers"] == {}, "the item's headers go to no input (`T368-R1`)"
+
+
+@pytest.mark.parametrize(
+    ("url", "proxies", "reason"),
+    [
+        ("https://m.example/c.mp4", DIRECT, NOT_KEEPING_THE_COOKIES),
+        ("http://m.example/c.mp4", DIRECT, NOT_KEEPING_THE_COOKIES),
+        # The route could change too: the route's reason, which a cookie does not change.
+        ("https://m.example/c.mp4", EXCEPTED, NOT_WITH_THIS_FFMPEG),
+    ],
+)
+def test_an_input_sent_a_cookie_is_refused_by_a_build_that_cannot_stop_at_a_redirect(
+    url: str, proxies: dict[str, str], reason: str
+) -> None:
+    """Ubuntu 24.04's 6.1.1 has no `max_redirects`, which came in FFmpeg 8.1."""
+    item = {"url": url, "protocol": url.partition(":")[0]}
+
+    with pytest.raises(RouteRefusedError) as refused:
+        _held(item, proxies, EVERY - {"max_redirects"}, cookies={url: "session=abc"})
+
+    assert refused.value.reason == reason
+
+
+@pytest.mark.usefixtures("every_option")
+def test_the_cookie_is_the_one_the_session_s_jar_holds_for_the_link(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Asked of the jar the pin's method asks, the downloader's own `YoutubeDL`'s."""
+    seen: list[dict[str, Any]] = []
+
+    def record(_self: Any, _name: str, info: dict[str, Any]) -> int:
+        seen.append(info)
+        return 0
+
+    jar = tmp_path / "cookies.txt"
+    jar.write_text(
+        "# Netscape HTTP Cookie File\n"
+        "m.example\tFALSE\t/\tFALSE\t0\tsession\tabc\n"
+        "m.example\tFALSE\t/elsewhere\tFALSE\t0\tthere\tno\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(FFmpegFD, "_call_downloader", record)
+    with (
+        yt_dlp.YoutubeDL({"quiet": True, "cookiefile": str(jar)}) as ydl,
+        for_the_session(yt_dlp, {}, None, 20.0),
+    ):
+        FFmpegFD(ydl, ydl.params)._call_downloader(
+            "unused.mp4", {"url": "https://m.example/c.mp4", "protocol": "https"}
+        )
+
+    (info,) = seen
+    assert info["http_headers"] == {"Cookie": "session=abc"}
+    assert "-max_redirects" in _arguments(info)
+
+
 def test_the_ffmpeg_in_use_is_asked_once_a_session_and_only_for_a_link(
     monkeypatch: pytest.MonkeyPatch, every_option: list[str]
 ) -> None:
@@ -356,7 +460,13 @@ def test_a_copy_without_the_route_functions_refuses_every_download_ffmpeg_would_
     """Fail closed: with no way to tell yt-dlp's route, ffmpeg is given no link."""
     with pytest.raises(RouteRefusedError) as refused:
         _routed(
-            {"url": "https://m.example/c.mp4", "protocol": "https"}, None, {}, None, 20.0, frozenset
+            {"url": "https://m.example/c.mp4", "protocol": "https"},
+            None,
+            {},
+            None,
+            20.0,
+            frozenset,
+            lambda _url: None,
         )
 
     assert refused.value.reason == NOT_ONE_WEB_FILE

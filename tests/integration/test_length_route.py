@@ -26,18 +26,20 @@ import pytest
 import truststore
 import yt_dlp
 from yt_dlp.cookies import LenientSimpleCookie
-from yt_dlp.networking.exceptions import TransportError
+from yt_dlp.networking.exceptions import HTTPError, TransportError
 from yt_dlp.utils import Popen
 
 from tests.capabilities import resolve_ffmpeg
 from tests.integration.loopback import (
     BOUND,
+    HOSTS_COOKIE,
     PROXY_SIDE,
     SERVER_CONTEXT,
     Origin,
     Proxy,
     Redirect,
     clear_ambient_proxies,
+    cookie_file,
     defined_by,
     make_certificate,
     make_site,
@@ -48,7 +50,12 @@ from tests.integration.loopback import (
     serve,
 )
 from tracks_and_trails.core.models import DownloadRequest
-from tracks_and_trails.core.sections import NO_LENGTH, NOT_THROUGH_THE_PROXY, NOT_WITH_THIS_FFPROBE
+from tracks_and_trails.core.sections import (
+    NO_LENGTH,
+    NOT_KEEPING_THE_COOKIES,
+    NOT_THROUGH_THE_PROXY,
+    NOT_WITH_THIS_FFPROBE,
+)
 from tracks_and_trails.downloader import worker
 from tracks_and_trails.downloader.media_probe import (
     PROTOCOL_OPTIONS,
@@ -84,9 +91,11 @@ def no_ambient_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
     clear_ambient_proxies(monkeypatch)
 
 
-def _placed(url: str, headers: dict[str, str] | None = None, **fields: Any) -> float | None:
+def _placed(
+    url: str, headers: dict[str, str] | None = None, cookies: str | None = None, **fields: Any
+) -> float | None:
     """`_place_the_sections` on a link that gives no length, with the real ffprobe and yt-dlp's
-    own route functions."""
+    own route functions; `cookies` is the format's field (`_cookies_for`)."""
     request = DownloadRequest(
         url=url,
         output_directory="/unused",
@@ -99,6 +108,8 @@ def _placed(url: str, headers: dict[str, str] | None = None, **fields: Any) -> f
     info: dict[str, Any] = {"url": url, "protocol": urlsplit(url).scheme}
     if headers is not None:
         info["http_headers"] = headers
+    if cookies is not None:
+        info["cookies"] = cookies
     return worker._place_the_sections(
         request,
         info,
@@ -116,15 +127,31 @@ def _lacks(option: str) -> bool:
     return option not in defined_by(resolve_ffmpeg()[1])
 
 
-def _placed_unless_lacking(option: str, url: str, **fields: Any) -> float | None:
+def _placed_unless_lacking(
+    option: str, url: str, reason: str = NOT_WITH_THIS_FFPROBE, **given: Any
+) -> float | None:
     """`_placed`, or, where the ffprobe in use lacks `option`, `None` once the item is cancelled
-    with `NOT_WITH_THIS_FFPROBE`, which is what this build does instead."""
+    with `reason`, which is what this build does instead."""
     if not _lacks(option):
-        return _placed(url, **fields)
+        return _placed(url, **given)
     with pytest.raises(worker.NothingDownloadedError) as cancelled:
-        _placed(url, **fields)
-    assert cancelled.value.reason == NOT_WITH_THIS_FFPROBE
+        _placed(url, **given)
+    assert cancelled.value.reason == reason
     return None
+
+
+def _cookies_for(url: str, jar: Path) -> str:
+    """The `cookies` field yt-dlp gives a format at `url` from the cookie file `jar`, which is how
+    the probe hands the worker a link's cookies (`T252-R9`)."""
+    fields: dict[str, Any] = {"url": url}
+    with yt_dlp.YoutubeDL({"cookiefile": str(jar), "quiet": True}) as ydl:
+        ydl._calc_headers(fields)
+    return str(fields["cookies"])
+
+
+def _cookie_sent(heard: list[dict[str, str]]) -> list[str | None]:
+    """The `Cookie` header of each request a server heard, `None` where it had none."""
+    return [request.get("cookie") for request in heard]
 
 
 @needs_loopback_addresses
@@ -274,6 +301,101 @@ def test_a_redirect_is_followed_where_every_link_goes_the_same_way(
     assert len(forwarded.asked) >= 2, forwarded.asked
     assert set(sent_on.callers) == {PROXY_SIDE}, sent_on.callers
     assert served.callers and set(served.callers) == {PROXY_SIDE}, served.callers
+
+
+@needs_loopback_addresses
+def test_a_cookie_goes_to_its_link_and_not_on_through_a_redirect(
+    redirect: tuple[str, type[Redirect], type[Origin]], tmp_path: Path
+) -> None:
+    """**The review's case, `T252-R9`**: a cookie for `127.0.0.1`, whose link there sends the read
+    on to `127.0.0.5`. yt-dlp sends it to the first host alone, and the read sent it to both. A
+    link read with a cookie now follows no redirect, and gives no length.
+
+    The control has two halves: yt-dlp keeps the cookie to the first host, and ffprobe given it as
+    a header sends it on to the second."""
+    url, sent_on, served = redirect
+    jar = cookie_file(tmp_path, f"127.0.0.1 FALSE / FALSE {HOSTS_COOKIE}")
+    with yt_dlp.YoutubeDL({"cookiefile": str(jar), "quiet": True}) as ydl:
+        ydl.urlopen(url).read()
+    assert _cookie_sent(sent_on.heard) == [HOSTS_COOKIE], "the control: not sent to the first"
+    assert served.heard and _cookie_sent(served.heard) == [None] * len(served.heard), "sent on"
+    served.heard.clear()
+    _, ffprobe = resolve_ffmpeg()
+    header = ["-headers", f"Cookie: {HOSTS_COOKIE}\r\n"]
+    direct = Route("", None, 20.0).arguments()
+    code, _ = run_with(Popen)([ffprobe, "-v", "error", *direct, *header, url], 30)
+    assert code == 0 and served.heard, "the control: ffprobe did not follow the redirect"
+    assert set(_cookie_sent(served.heard)) == {HOSTS_COOKIE}, "the control: ffprobe kept it"
+    sent_on.heard.clear()
+    served.heard.clear()
+
+    with pytest.raises(worker.NothingDownloadedError) as cancelled:
+        _placed(url, cookies=_cookies_for(url, jar))
+
+    if _lacks("max_redirects"):
+        # A build without `max_redirects` cannot be stopped at the redirect, so it asks nothing.
+        assert cancelled.value.reason == NOT_KEEPING_THE_COOKIES
+        assert sent_on.heard == [], "this ffprobe cannot stop at a redirect, and was started"
+    else:
+        assert cancelled.value.reason == NO_LENGTH
+        assert _cookie_sent(sent_on.heard) == [HOSTS_COOKIE], "the first host was not sent it"
+    assert served.heard == [], "the read was sent on with the cookie"
+
+
+def test_a_site_that_needs_its_cookie_is_sent_it_and_the_length_is_read(
+    site: Path, tmp_path: Path
+) -> None:
+    """**`T252-R9`, the cookie's own host**: a site that serves only a request carrying its
+    cookie. The control: without it, the site refuses yt-dlp."""
+    for url, served in origin_on(site, "127.0.0.1", needs=HOSTS_COOKIE):
+        with yt_dlp.YoutubeDL({"quiet": True}) as ydl, pytest.raises(HTTPError):
+            ydl.urlopen(url)
+        served.heard.clear()
+        jar = cookie_file(tmp_path, f"127.0.0.1 FALSE / FALSE {HOSTS_COOKIE}")
+
+        length = _placed_unless_lacking(
+            "max_redirects", url, NOT_KEEPING_THE_COOKIES, cookies=_cookies_for(url, jar)
+        )
+
+        if length is None:
+            assert served.heard == [], "this ffprobe cannot stop at a redirect, and was started"
+        else:
+            assert length == pytest.approx(6, abs=0.1)
+            assert served.heard and set(_cookie_sent(served.heard)) == {HOSTS_COOKIE}
+
+
+def test_a_link_is_sent_exactly_the_cookies_yt_dlp_sends_it(
+    origin: tuple[str, type[Origin]], tmp_path: Path
+) -> None:
+    """**`T252-R9`'s scope**: cookies for this host, for a path on it and another, for `https`
+    only, and for another host. yt-dlp's jar chooses which a link is sent, and the read sends the
+    ones yt-dlp's own request does: the host's and this path's."""
+    url, served = origin
+    jar = cookie_file(
+        tmp_path,
+        f"127.0.0.1 FALSE / FALSE {HOSTS_COOKIE}",
+        "127.0.0.1 FALSE /clip.mp4 FALSE here=this-path",
+        "127.0.0.1 FALSE /elsewhere FALSE there=another-path",
+        "127.0.0.1 FALSE / TRUE secure=https-only",
+        "127.0.0.5 FALSE / FALSE other=another-host",
+    )
+    with yt_dlp.YoutubeDL({"cookiefile": str(jar), "quiet": True}) as ydl:
+        ydl.urlopen(url).read()
+    (control,) = _cookie_sent(served.heard)
+    chosen = set((control or "").split("; "))
+    assert chosen == {HOSTS_COOKIE, "here=this-path"}, "the control: the jar chose otherwise"
+    served.heard.clear()
+
+    length = _placed_unless_lacking(
+        "max_redirects", url, NOT_KEEPING_THE_COOKIES, cookies=_cookies_for(url, jar)
+    )
+
+    if length is None:
+        assert served.heard == [], "this ffprobe cannot stop at a redirect, and was started"
+    else:
+        assert length == pytest.approx(6, abs=0.1)
+        sent = [set((cookie or "").split("; ")) for cookie in _cookie_sent(served.heard)]
+        assert sent and all(each == chosen for each in sent), sent
 
 
 @needs_loopback_addresses

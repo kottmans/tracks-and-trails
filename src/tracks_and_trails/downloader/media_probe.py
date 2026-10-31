@@ -25,10 +25,15 @@ ffprobe left to itself connected directly while the request named a proxy or an 
 from, and checked no certificate while sending the site's cookies, which `SEC-004` forbids yt-dlp
 to do. Each part is now passed to it (`Route`), and where ffmpeg cannot carry one the length is not
 read and the item is cancelled with the reason.
+
+**A cookie goes to its own link and no further** (`T252-R9`). ffprobe sends the `Cookie` header it
+is given to every link a redirect takes it to, where yt-dlp sends each link only the cookies its
+jar holds for that link. So a link read with a cookie follows no redirect.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 import os
@@ -40,7 +45,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
-from tracks_and_trails.core.sections import NOT_THROUGH_THE_PROXY, NOT_WITH_THIS_FFPROBE
+from tracks_and_trails.core.sections import (
+    NOT_KEEPING_THE_COOKIES,
+    NOT_THROUGH_THE_PROXY,
+    NOT_WITH_THIS_FFPROBE,
+)
 
 #: How long ffprobe is given to read a link's length. A link to a file with its index at the end,
 #: on a server that cannot seek, is read through to the index, so this is a ceiling on that.
@@ -97,6 +106,10 @@ class Route:
     - `follows_redirects`, `False` where the next link could be reached another way: yt-dlp
       chooses the route again for each link it is sent to, and ffmpeg keeps one for all of them
       (`route_for`). `-max_redirects 0` stops ffprobe at the redirect, which gives no length.
+    - `sends_cookies`, where the link is sent a cookie, stops it at a redirect too (`T252-R9`).
+      yt-dlp's jar decides which cookies each link is sent, by their domain, host, path and
+      `Secure`, and sends the next link its own. ffmpeg sends the header it is given to every link
+      (measured 2026-10-31), and matches cookies of its own by looser rules (`ffmpeg_route`).
 
     **A build may not define every option** (`PROTOCOL_OPTIONS`), and one it does not define
     fails it at the first link, so each client checks first (`defines_every`).
@@ -106,6 +119,7 @@ class Route:
     source_address: str | None
     timeout: float
     follows_redirects: bool = True
+    sends_cookies: bool = False
 
     def arguments(self) -> list[str]:
         arguments = [
@@ -122,7 +136,7 @@ class Route:
         ]
         if self.source_address is not None:
             arguments += ["-local_addr", self.source_address]
-        if not self.follows_redirects:
+        if not self.follows_redirects or self.sends_cookies:
             arguments += ["-max_redirects", "0"]
         return arguments
 
@@ -171,7 +185,9 @@ def route_for(
     the headers, gives a proxy written without a scheme `http://`, and reads `__noproxy__` as none;
     `clean_headers` takes yt-dlp's other instructions out of what is sent; `select_proxy` then
     picks this link's proxy by its scheme, unless the system's exceptions (`no_proxy`) name its
-    host. `proxies` is the table yt-dlp starts from (`proxy_table`).
+    host. `proxies` is the table yt-dlp starts from (`proxy_table`). A `Cookie` header is taken
+    out too, as yt-dlp takes it out of a format's headers: each client adds the link's own
+    cookies, and with them `Route.sends_cookies` (`T252-R9`).
 
     **A redirect is followed only where it cannot change the route.** yt-dlp chooses again for
     each link it is sent to, and ffmpeg keeps its one proxy for all of them, so ffprobe follows
@@ -188,6 +204,7 @@ def route_for(
     table = dict(proxies)
     networking.clean_proxies(table, sent)
     networking.clean_headers(sent)
+    sent.pop("Cookie", None)
     proxy = networking.select_proxy(url, table) or ""
     written, _, rest = proxy.partition("://")
     if proxy and written.lower() != "http":
@@ -309,12 +326,8 @@ def _cookie_line(cookies: object, parser: Any) -> str | None:
     return "; ".join(pairs) or None
 
 
-def _headers(sent: Mapping[str, str], cookies: Any, parser: Any) -> str:
-    """The headers yt-dlp sends, as ffmpeg's `-headers` takes them, with the cookies among them."""
-    headers = dict(sent)
-    cookie = _cookie_line(cookies, parser)
-    if cookie:
-        headers["Cookie"] = cookie
+def _header_lines(headers: Mapping[str, str]) -> str:
+    """`headers` as ffmpeg's `-headers` takes them."""
     return "".join(f"{name}: {value}\r\n" for name, value in headers.items())
 
 
@@ -336,6 +349,9 @@ def remote_length(
     defines every option that route needs: `defined`, asked once, the first time (`T368-R5`).
     `None` when none answers; `RouteRefusedError` when there was a link to ask and no route
     ffprobe could take to any.
+
+    **Each link is sent its own cookies** (`T252-R9`): yt-dlp's jar chose them for that link, so a
+    merged format with none takes none of the item's, and a link sent some follows no redirect.
     """
     refused: str | None = None
     known: frozenset[str] | None = None
@@ -350,10 +366,21 @@ def remote_length(
             refused = routed
             continue
         link_route, sent = routed
+        headers = dict(sent)
+        cookie = _cookie_line(chosen.get("cookies"), cookie_parser)
+        if cookie:
+            headers["Cookie"] = cookie
+            link_route = dataclasses.replace(link_route, sends_cookies=True)
         if known is None:
             known = defined()
         if not defines_every(link_route.arguments(), known):
-            refused = NOT_WITH_THIS_FFPROBE
+            # The cookies' reason only where the route would be taken without them.
+            plain = dataclasses.replace(link_route, sends_cookies=False)
+            refused = (
+                NOT_KEEPING_THE_COOKIES
+                if defines_every(plain.arguments(), known)
+                else NOT_WITH_THIS_FFPROBE
+            )
             continue
         arguments = [
             str(ffprobe),
@@ -365,9 +392,8 @@ def remote_length(
             "-of",
             "default=noprint_wrappers=1:nokey=1",
         ]
-        headers = _headers(sent, chosen.get("cookies") or info.get("cookies"), cookie_parser)
         if headers:
-            arguments += ["-headers", headers]
+            arguments += ["-headers", _header_lines(headers)]
         code, output = run([*arguments, url], REMOTE_TIMEOUT_SECONDS)
         seconds = _seconds(output) if code == 0 else None
         if seconds is not None:
