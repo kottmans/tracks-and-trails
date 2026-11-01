@@ -1588,6 +1588,13 @@ of an item sent cookies on Ubuntu 24.04's 6.1.1, which cannot stop at one. The s
 here the cookies a server sets during ffmpeg's own requests, which ffmpeg sends on to the next host
 where yt-dlp's jar would not ([`T-252`'s correction 5](#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)).
 
+**Reviewer dependency disposition, 2026-11-01:** the response-cookie security correction is a
+current Critical dependency of [T252-R9](reviews/T-252.md#2026-11-01--focused-cookie-boundary-correction-review),
+and must be corrected and independently verified before R9 closes or T-252/T-368 are approved.
+The remaining capability restoration keeps its parity/release gate. Ownership here does not
+waive the security blocker or require all restoration work to finish before that security
+correction can be separately verified.
+
 Measure native yt-dlp acquisition followed by local ffmpeg cutting/cropping as a candidate.
 Do not assume that one approach covers live capture, finite segmented media and Zan equally.
 Present the tested design and its bandwidth, disk, latency, retry and cancellation consequences

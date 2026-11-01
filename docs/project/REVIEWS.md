@@ -2,7 +2,7 @@
 
 **Purpose:** Navigation to canonical task and shared-scope review records.
 **Owner:** Reviewer; Coordinator / Integrator owns shared routing during a wave.
-**Last updated:** 2026-10-31
+**Last updated:** 2026-11-01
 **Update when:** A review record is introduced or its navigation changes.
 
 ## Current navigation
@@ -114,7 +114,7 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-304](reviews/T-304.md) | T-304; [focused correction verification](reviews/T-304.md#2026-10-27--focused-correction-verification), ecdda31, checked at a3705e4 | 0 |
 | [T-301](reviews/T-301.md) | T-301; font-sensitive UI tests, 276ffe4 to 8e654a7 | 0 |
 | [T-248](reviews/T-248.md) | T-248; filename shaping and file dates, 8e654a7 to 4b8f697, plus c6e9dd4 docstring | 0 |
-| [T-252](reviews/T-252.md) | T-252; [proxy/build correction review](reviews/T-252.md#2026-10-30--focused-proxy-representation-and-build-capability-review), 5489752 / 6a89991; [maintainer scope decision](reviews/T-252.md#2026-10-31--maintainer-scope-decision) | 0 |
+| [T-252](reviews/T-252.md) | T-252; [cookie-boundary correction review](reviews/T-252.md#2026-11-01--focused-cookie-boundary-correction-review), a49baa2 to fb09314; Critical response-cookie dependency at T-370 | 0 |
 | [T-253](reviews/T-253.md) | T-253; [requirements/dependency disposition](reviews/T-253.md#2026-10-29--requirements-completion-and-dependency-disposition), e56de36, combined checks at 483147b | 0 |
 | [T-254](reviews/T-254.md) | T-254; [logging isolation disposition](reviews/T-254.md#2026-10-29--logging-isolation-completion-disposition), 2bd909e, CI at 483147b | 0 |
 | [T-255](reviews/T-255.md) | T-255; [emitted-value redaction review](reviews/T-255.md#2026-10-29--focused-emitted-value-redaction-review), fc7e730, combined checks at 483147b | 0 |
