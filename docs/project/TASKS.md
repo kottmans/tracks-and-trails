@@ -2,7 +2,7 @@
 
 **Purpose:** Unfinished work: review, ready, proposed and blocked tasks.
 **Owner:** Planner (priorities); Implementer (task/status); Reviewer (review disposition)
-**Last updated:** 2026-10-31
+**Last updated:** 2026-11-01
 **Update when:** Work starts, changes scope/status, closes or reopens.
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
@@ -449,19 +449,20 @@ The two that pass there are positive controls, which the old read already met on
   changes. A user and password written in a link, which yt-dlp turns into an `Authorization`
   header its handler keeps, ffmpeg gives only that link's host: `http.c` takes them from the link
   it is fetching, and starts over at a redirect.
-- **Not corrected, put to the maintainer: cookies a server sets during ffmpeg's own requests.**
-  Measured 2026-10-31 on 8.1.3: a link sent no cookie of the user's, whose server sets one on its
-  redirect, had ffprobe send that cookie on to the second host, where yt-dlp sends none. ffmpeg
-  keeps cookies it is sent in replies, and sends one set without a domain to every host. A link
-  sent the user's cookies carries the jar's header, which turns that off, and follows no
-  redirect; so what is exposed is a cookie the site set for this one visit, to where the site
-  sent it. Turning it off for every link would mean sending every site an empty `Cookie` header.
+- **Not corrected, left to `T-370` by the maintainer's ruling of 2026-11-01: cookies a server
+  sets during ffmpeg's own requests.** Measured 2026-10-31 on 8.1.3: a link sent no cookie of the
+  user's, whose server sets one on its redirect, had ffprobe send that cookie on to the second
+  host, where yt-dlp sends none. ffmpeg keeps cookies it is sent in replies, and sends one set
+  without a domain to every host. A link sent the user's cookies carries the jar's header, which
+  turns that off, and follows no redirect; so what is exposed is a cookie the site set for this
+  one visit, to where the site sent it. Turning it off for every link would mean sending every
+  site an empty `Cookie` header, which the ruling chose not to do here.
 
 **What it costs**: a link sent the user's cookies that redirects gives no length, and its cut fails
 at the redirect; downloading the whole item still works, by yt-dlp's own downloader. On Ubuntu
 24.04's 6.1.1, which cannot stop at a redirect, a section of an item sent cookies is refused. Both
-fall under the 2026-10-29 rule to refuse where the route cannot be kept, and are proposed for
-`T-370`'s restoration.
+fall under the 2026-10-29 rule to refuse where the route cannot be kept, and **the maintainer
+ruled 2026-11-01 to accept both until `T-370` restores them**.
 
 **Mutations, 12 of 12 caught**, each on copies restored by hash: a cookie not stopping the read's
 redirect, or `sends_cookies` passing no `-max_redirects`; a merged format taking the item's
@@ -1581,6 +1582,12 @@ ffmpeg 6.1.1 cannot enforce the redirect restriction for proxy exceptions or per
 and Debian 12 ffmpeg 5.1.9 lacks the selected-address option. These limits fall under the same
 safe-refusal ruling; they are not permanent exceptions to supported-platform capability parity.
 
+Also restore what `T252-R9`'s correction refuses, as the maintainer ruled 2026-11-01: a link sent
+the user's cookies that redirects, whose length read and cut now stop at the redirect, and sections
+of an item sent cookies on Ubuntu 24.04's 6.1.1, which cannot stop at one. The same ruling left
+here the cookies a server sets during ffmpeg's own requests, which ffmpeg sends on to the next host
+where yt-dlp's jar would not ([`T-252`'s correction 5](#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)).
+
 Measure native yt-dlp acquisition followed by local ffmpeg cutting/cropping as a candidate.
 Do not assume that one approach covers live capture, finite segmented media and Zan equally.
 Present the tested design and its bandwidth, disk, latency, retry and cancellation consequences
@@ -1601,6 +1608,8 @@ dependency is authorized by this task entry.
 - Preserve effective per-link proxy/bypass/redirect selection, address/family, timeout and
   certificate chain/hostname validation for every request and descendant fetch. Keep credentials
   away from unintended origins/proxies; retain safe refusal where policy cannot be preserved.
+- Send each request and redirect hop only the cookies yt-dlp's jar gives that link, the user's and
+  any a server sets, and restore the cookie cases `T252-R9`'s correction refuses on those builds.
 - Preserve start/end-relative ranges, from-URL/chapter selection, multiple-section names and
   item-wide empty-range rejection. Prove the resulting media duration/content, including local
   cutting and Zan cropping/re-encoding; never report the whole source as the selected section.

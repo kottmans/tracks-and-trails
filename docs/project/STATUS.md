@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-10-31
+**Last updated:** 2026-11-01
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -249,8 +249,9 @@ task and review records it summarised.*
   is now sent the cookies yt-dlp's jar holds for it, and follows no redirect while it is**; a
   build that cannot stop at a redirect, like Ubuntu 24.04's, refuses such a section with a plain
   reason.
-  A cookie a server sets during ffmpeg's own requests can still follow a redirect; that is put to
-  the maintainer ([entry](TASKS.md#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)).
+  A cookie a server sets during ffmpeg's own requests can still follow a redirect; the maintainer
+  ruled 2026-11-01 to leave that, and these refusals, to `T-370`
+  ([entry](TASKS.md#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)).
 - **Fifteen rulings taken 2026-10-19, all as recommended**, every open question in stage 3:
   `T-248`'s two, as built; `T-252`'s last two; `T-253`'s three; `T-254`'s four; and `T-255`'s
   four, the first a security ruling forbidding the extractor-argument pairs that choose a request's
