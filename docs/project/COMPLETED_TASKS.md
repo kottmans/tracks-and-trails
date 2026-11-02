@@ -43551,6 +43551,177 @@ be a login. The record and its cost are there.
 
 ---
 
+### T-253 — Network reachability: address family and politeness delays
+
+**Status:** **Complete — approved with follow-ups 2026-11-02** at `7e93683`, with `T-252` and
+`T-368` on one verdict
+([record](reviews/T-252.md#2026-11-02--conditional-ci-gate-verification-and-final-verdicts)):
+`R6`, the required CI gate, met under the maintainer's ruling of that day
+([`T-252`'s entry](#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)), apart
+from `T-367`'s one Windows failure, which comes before the release gate.
+*(Was In Review:)* `T253-R3` resolved 2026-11-01 with `T-368`'s correction at `7e93683`
+([record](reviews/T-253.md#2026-11-01--shared-network-dependency-resolution)); `R6` waits on the
+required gate, whose run there failed only `T-367`'s test, which the maintainer ruled 2026-11-02
+need not hold it
+([`T-252`'s entry](#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)).
+Blocked 2026-10-28 at `94e5fd1`
+([record](reviews/T-253.md#2026-10-28--focused-correction-review)): `T253-R3` waited on `T-368`'s
+correction of the download's own route, and `R6` on a green required gate, red at `be3cc08` on
+`T252-R8`; `R1`, `R2` and `R5` resolved. `R4` applied 2026-10-29, below. Correction 1 built
+2026-10-27; changes requested 2026-10-27 at `1740c86`
+([record](reviews/T-253.md#2026-10-27--initial-comprehensive-review)). Built 2026-10-26 on its
+rulings, at the maintainer's instruction that day.
+*(Was Proposed:)* **design ruled 2026-10-19, all three questions as recommended** (`ARC-010`
+amended that day). Filed 2026-08-16 by `T-183`
+**Options (5):** `-4/--force-ipv4`, `-6/--force-ipv6`, `--sleep-interval`, `--max-sleep-interval`,
+`--source-address` *(the fifth by ruling 1, moved from `hatch`)*
+**Specific criteria:** `-4` and `-6` share yt-dlp's `source_address` and are mutually exclusive —
+`DownloadRequest` makes that unrepresentable rather than validating it; `--max-sleep-interval` is
+refused without `--sleep-interval`, which is yt-dlp's own rule, and it is refused at edit time.
+
+#### Mapped 2026-10-14 — the design, before the code
+
+Mapped against `8b0aad6` on a machine with no IPv6 route; probes in the implementer's scratch
+notes.
+
+- **No defect at `HEAD`**, and one gap: `--max-sleep-interval` is refused as *cannot tell what
+  this would change* because the table generator runs each option alone, so a randomized delay is
+  unreachable (`REQ-030`, Low).
+- **`-4`, `-6` and the hatch's `--source-address` all write `source_address`**, the last typed
+  winning. Once `-4`/`-6` have a control, a typed `--source-address` beside them would be admitted
+  and overridden — the `REQ-031` shape — unless the build decides.
+- **`-6` with no IPv6 fails as NETWORK**, so the queue retries it three times before the user sees
+  why. The family reaches yt-dlp's traffic only: thumbnails and update checks read neither it nor
+  the proxy.
+- **yt-dlp's library enforces none of the command line's pairing rules** (max without min, max
+  below min, negatives): `{max: 1.5}` slept, so the typed fields must check themselves.
+- **The sleep is per file**, so a merged download sleeps twice; **a sleeping job sends nothing**, so
+  its row reads *Downloading* throughout; **a cancel during a sleep is never cooperative** (noticed
+  only when the sleep ended), so the manager's escalation always answers it; and **three jobs
+  started within 0.17 s of each other**, so with the pool the delay spaces nothing between jobs.
+
+**Ruled 2026-10-19: all three as recommended.** The address family is one radio group in
+*Settings › Network* — Automatic, IPv4 only, IPv6 only, *From this address* — so building it moves
+`--source-address` from `hatch` to `typed` and the task types five options. The delay keeps
+yt-dlp's meaning, per file, beside the speed limit, and the control says that downloads running
+together do not take turns. A sleeping job shows a *Waiting* stage, read from yt-dlp's
+`Sleeping N seconds` line and held to it by a test.
+
+**Questions for the maintainer** (recommended first):
+
+1. **The address family and `--source-address`.** One radio group in *Settings › Network* —
+   Automatic, IPv4 only, IPv6 only, *From this address* — absorbing `--source-address` (an audit
+   change; the task grows to five options). / Three choices in Settings, `--source-address` left in
+   the hatch and a disagreement refused at queue time. / Three choices per preset.
+2. **What the delay means with several downloads at once.** yt-dlp's meaning, in *Settings ›
+   Network* beside the speed limit, saying that downloads running together do not take turns. / A
+   queue-level gap between starts (new manager behaviour; parity fails). / Per preset.
+3. **What the row says while a job waits.** A *Waiting* stage from yt-dlp's `Sleeping N seconds`
+   line, pinned by a test (a new `Stage` member). / Nothing; the control's note says so. / The
+   application sleeps itself (one wait per job; parity fails).
+
+#### Built 2026-10-26
+
+- **One address choice in *Settings › Network*** (ruling 1): Automatic, IPv4 only, IPv6 only, or
+  *From this address*. `NetworkOptions` and `DownloadRequest` gain `source_address`, which is `-4`,
+  `-6` and `--source-address` as one value: `None` is automatic, `0.0.0.0` and `::` are the two
+  families, as yt-dlp's command line spells them, and anything else is an address of this
+  computer. So the three cannot disagree. The model holds an IP address written the shortest way,
+  never a host name, since yt-dlp picks the family by whether the text has a colon. The address is
+  checked as typed and stored only when the edit is finished (`T196-R1`'s rule), with the earlier
+  choice kept in force, and said to be, until the box holds an address. Sent on both passes.
+- **The wait before each file, beside the speed limit** (ruling 2): `sleep_interval` and
+  `max_sleep_interval`, yt-dlp's own, per file, sent on the download only, with the longest
+  defaulted to the shortest as the command line does. The model applies the command line's rules,
+  which the library does not: the longest needs the shortest and is not shorter than it. Both are
+  tenths of a second, from 0.1 to an hour (`MOST_WAIT_SECONDS`, a catcher for an extra digit, my
+  choice). The screen holds the rules at the control: the longest is off until there is a wait,
+  and its lowest value is the wait itself, *the same every time*, stored as no value. The note
+  says a download fetching video and audio apart waits twice, and downloads running together do
+  not take turns. `[network]` is read key by key, the pair held to the rules after the clamping.
+- **A *Waiting* stage** (ruling 3): `Stage.WAITING`, read from yt-dlp's `[download] Sleeping N
+  seconds` line, which `YtdlpLog` now passes to the worker. The manager counts it as running, so a
+  download started from `QUEUED` no longer reads *Probing* through a wait; the row's chip reads
+  *Waiting*, since a wait counts no bytes, and the job's detail reads *Waiting before the next
+  file*. The next progress from the file puts the stage back.
+- **The audit and the hatch.** `--source-address` moves from `hatch` to `typed` (ruling 1): 66
+  typed, 62 built, 90 hatch. Regenerating refuses all eight spellings for their controls;
+  `--max-sleep-interval` leaves `EFFECT_UNKNOWN`, and `--sleep-interval` and `--min-sleep-interval`
+  leave `NOT_SECRET_VALUES`.
+- **The address is not registered for redaction.** Typed into the options field, its value was
+  hidden from the logs like any value the hatch cannot classify. As a setting it is neither a
+  credential nor a cookie path, which is what `REQ-026` and `DAT-003` keep out of logs, and no
+  decision names it; for the Reviewer to judge.
+- **Unchanged, as mapped**: IPv6 only with no IPv6 route fails as `NETWORK`, so the queue retries
+  it before the user sees why; the family reaches yt-dlp's traffic only, not thumbnails or update
+  checks; and a cancel during a wait is noticed only when the wait ends, so the manager's
+  escalation answers it.
+- **`REQ-014` still names five stages.** `ARC-010`'s amendment adds the sixth; the requirement's
+  text is not amended here. `test_protocol.py` names the sixth beside `REQ-014`'s five.
+
+**Tests**: `tests/unit/test_reachability.py`: the address held the shortest way and a host name
+refused; every value yt-dlp's command line refuses, refused on both owners; `[network]` read key by
+key, the pair held after clamping; each choice setting the keys `parse_options` sets for its
+spelling; the address on both passes and the wait on the download only; the options field refusing
+all eight spellings; yt-dlp's own downloader writing the line read as a wait; and the wait sent as
+its stage and put back. `tests/ui/test_settings_reachability.py`: the choice in force on opening;
+a family stored as picked; no keystroke of an address stored; the earlier choice kept and said to be
+while the box holds none; the close committing an unfinished address; the longest off and bounded
+by the wait. `tests/integration/test_reachability.py`: real sessions on `127.0.0.1`, the wait
+reported as *Waiting* before the file's first progress and not without one, IPv4 only reaching the
+server and IPv6 only failing as `NETWORK`. The manager, chip and detail tests gained a *Waiting*
+case each; the network and stage samples gained the new fields.
+
+**Mutations, 30 of 30 caught**, each on copies restored by hash: either owner unchecked; any
+spelling of an address, an unstripped one; the longest without the shortest or below it, in the
+model and in the file's reading; a wait finer than tenths; the file's address as written, or not
+saved, or the waits not saved; no address sent, the longest not defaulted, the wait on the probe;
+the line not matched, not listened for, not passed on, or sent as another stage; the manager not
+moving the job; the chip and the live set without *Waiting*; the address stored per keystroke, lost
+on closing, or flipped back while typed; the longest below the wait, kept without one, or enabled
+without one; the detail without words; and the generated table admitting `--source-address`.
+
+**Checks, 2026-10-27, on Linux, base `b43c300`**, with the project `.venv` on `PATH`: `ruff check .`
+and `ruff format --check .` (510 files); `mypy src` (74), bare `mypy` and `mypy --platform win32`
+(240 each); the table check up to date; `tests/unit tests/ui` under `-n 4`, **6,326 passed**, 23
+skipped, 1 failed: the placement gate, since this entry had not yet moved to *In Review*; moved, the
+gate and the audit's tests pass, 53 of 53. `tests/integration` under `-n 4`, **596 passed**. No
+Windows run of this change.
+
+**Correction 1, 2026-10-27**, on `2e5f9da`, awaiting re-review
+([record](reviews/T-253.md#2026-10-27--initial-comprehensive-review)):
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T253-R1`, High — a random wait from nothing up to a longest, yt-dlp's `--sleep-interval 0 --max-sleep-interval 5`, could not be held, read, set or sent | **A shortest of zero is held beside a longest**, in both owners, the file and the screen; alone it is still no wait, which `None` says. The reader rounds the shortest to the nearest tenth, which may be none; the longest to no less than a tenth. On the screen the longest is offered beside no wait too, and the wait box reads `0.0 s` rather than *No wait* while one is set. My first build's *"from a tenth"* substitute is gone | yt-dlp's real downloader, handed what the adapter builds, **draws the wait from `(0.0, 5.0)`**; the pair matches `parse_options` for that spelling; the file saves and reads it back; the screen sets it from *No wait*, opens it as `0.0 s` and `5.0 s`, and keeps it through another edit; zero alone is refused by both owners and read as no wait with a report |
+| `T253-R2`, Medium — `1e-9` and `1e-8` were held as waits and shown as *No wait* | **The shared check corrected in `2e5f9da`** with `T252-R3`: the count of tenths must be at least one. Here the waits' own cases: both fields, alone and paired | Both owners refuse `1e-9` and `1e-8` as either field, alone or beside a longest; the file reads `1e-9` as no wait, `1e-8` beside a longest of 5 as from zero, and a longest of `1e-9` as a tenth, each reported |
+| `T253-R3`, Critical — the section-length read went around the address to connect from | **Corrected in `2e5f9da`** with `T252-R5`, one client as the review asked: ffprobe is given `-local_addr`, and an address of the other family fails the read rather than making it another way | `tests/integration/test_length_route.py`: from `127.0.0.2` the origin sees only that address; IPv6 only against the IPv4 origin is cancelled with nothing asked, as yt-dlp's own request fails |
+| `T253-R4`, Low — `REQ-014` names five stages and not *Waiting* | **Not changed**: `REQUIREMENTS.md` is not the Implementer's to edit without instruction (`AGENTS.md` §4). **Proposed wording**, for the maintainer: *"current stage (probing, waiting before a file, downloading video, downloading audio, merging, post-processing)"* | |
+| `T253-R5`, Low, and `T252-R6` — 1,500 bytes per second showed as *1 KiB/s* | **Said under the box while the stored limit is not whole KiB/s**, and given to a screen reader as the box's description: *"This limit is 1,500 bytes per second, which the box shows rounded down to 1 KiB/s. Changing the box sets a whole number of KiB/s."* Nothing stored changes until the box is moved, as ruled | The review's value, said and described; gone once the box is moved to 2; nothing said for no limit, 1,024 or 2,048 |
+| `T253-R6`, Medium — no Windows or CI run | `fdff1b4` is pushed and CI is running on the first build; this correction is not yet pushed | |
+
+**Mutations, 13 of 13 caught**, each on copies restored by hash: the model refusing zero beside a
+longest, or holding it alone; the reader refusing a zero shortest, rounding it up to a tenth,
+rounding the longest to zero, or keeping zero alone; the screen saying *No wait* beside a longest,
+offering no longest without a wait, dropping zero beside a longest or storing it alone; the exact
+rate not said, not given to a screen reader, or kept after the box moves.
+
+**Checks, 2026-10-27, on Linux**, with the project `.venv` on `PATH`: `ruff check .` and
+`ruff format --check .` (524 files); `mypy src` (76), bare `mypy` and `mypy --platform win32` (249
+each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,622 passed**, 23 skipped;
+`tests/integration` under `-n 4`, **615 passed**. No Windows run of this correction.
+
+**`R4`, applied 2026-10-29** at the review's instruction of 2026-10-28
+([record](reviews/T-253.md#2026-10-28--focused-correction-review)), which approved the proposed
+wording, and the maintainer's approval of 2026-10-29. `REQ-014`'s stage phrase now reads *"current
+stage (probing, waiting before a file, downloading video, downloading audio, merging,
+post-processing)"*, and nothing else in it changed. `tests/unit/test_protocol.py`'s transcription
+of the list now has the wait as `REQ-014`'s own rather than as `ARC-010`'s addition beside it.
+Checked with `T-254`'s gate of the same day: `tests/unit tests/ui` under `-n 4`, **6,718 passed**,
+23 skipped, the placement and prose checks among them; Ruff, format and the three type runs clean.
+
+---
+
 ## Cancelled
 
 ### T-212 — The recorded checklist run: the built window against the agreed flow

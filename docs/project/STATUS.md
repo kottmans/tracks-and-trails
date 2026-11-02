@@ -174,12 +174,13 @@ task and review records it summarised.*
   a `$` variable in a folder wrote outside it, and one in a title saved the file under the
   variable's value, *Done*. The download pass now writes the literal path as the worker built it
   ([entry](COMPLETED_TASKS.md#t-365--yt-dlp-rewrites-the-path-the-worker-hands-it-and-can-write-outside-the-chosen-folder)).
-- **`T-253` was built on 2026-10-26**, and committed the next morning, on its rulings, at the maintainer's instruction, and is with
-  the Reviewer: one choice of where connections are made from in *Settings › Network*, which
-  absorbs `--source-address`, so `-4`, `-6` and a typed address can no longer disagree; the wait
-  before each file, beside the speed limit, held to yt-dlp's command-line rules; and a *Waiting*
-  stage read from yt-dlp's own line, where a waiting row read *Downloading*
-  ([entry](TASKS.md#t-253--network-reachability-address-family-and-politeness-delays)).
+- **`T-253` was built on 2026-10-26**, and committed the next morning, on its rulings, at the
+  maintainer's instruction, and was approved with follow-ups 2026-11-02: one choice of where
+  connections are made from in *Settings › Network*, which absorbs `--source-address`, so `-4`, `-6`
+  and a typed address can no longer disagree; the wait before each file, beside the speed limit,
+  held to yt-dlp's command-line rules; and a *Waiting* stage read from yt-dlp's own line, where a
+  waiting row read *Downloading*
+  ([entry](COMPLETED_TASKS.md#t-253--network-reachability-address-family-and-politeness-delays)).
 - **`T-254` was built on 2026-10-27** on its rulings, and is with the Reviewer: SponsorBlock per
   preset, each category left, marked as a chapter or cut out, off by default and saying what it
   sends. Both mapped defects are closed: a mark beside *Embed metadata* now keeps the file's tags,
@@ -205,7 +206,7 @@ task and review records it summarised.*
   held, read and set from the screen, where it had been refused; and a speed limit the screen
   rounds down is said exactly beneath it. `REQ-014`'s list of stages lacks *Waiting*; the wording
   is proposed to the maintainer, since that file is not the Implementer's
-  ([entry](TASKS.md#t-253--network-reachability-address-family-and-politeness-delays)).
+  ([entry](COMPLETED_TASKS.md#t-253--network-reachability-address-family-and-politeness-delays)).
   **`T-254`'s first CI run failed one of its own tests** on both platforms: CI runs integration in
   one process, where two older tests leave the application's log silenced first; the test now
   listens on the log itself. **`T-255`'s first correction**: a refusal no longer quotes what was
@@ -256,7 +257,7 @@ task and review records it summarised.*
   ([entry](COMPLETED_TASKS.md#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)).
   **Resolved 2026-11-01 at `7e93683`.** CI there failed one test, `T-367`'s fragment resume on
   Windows, older than these corrections, and the maintainer ruled 2026-11-02 that it need not hold
-  `T-252`, `T-368` or `T-253`. **`T-252` was approved with follow-ups that day**; `T-367` is next.
+  `T-252`, `T-368` or `T-253`. **All three were approved with follow-ups that day**; `T-367` is next.
 - **Fifteen rulings taken 2026-10-19, all as recommended**, every open question in stage 3:
   `T-248`'s two, as built; `T-252`'s last two; `T-253`'s three; `T-254`'s four; and `T-255`'s
   four, the first a security ruling forbidding the extractor-argument pairs that choose a request's
