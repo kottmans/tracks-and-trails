@@ -2,7 +2,7 @@
 
 **Purpose:** Navigation to canonical task and shared-scope review records.
 **Owner:** Reviewer; Coordinator / Integrator owns shared routing during a wave.
-**Last updated:** 2026-11-01
+**Last updated:** 2026-11-02
 **Update when:** A review record is introduced or its navigation changes.
 
 ## Current navigation
@@ -109,13 +109,13 @@ links above. Old dated-heading fragments land on the corresponding record below.
 | [T-362](reviews/T-362.md) | T-362; initial queue-time numbering and padding, bd643ae to 4fa990b | 0 |
 | [T-364](reviews/T-364.md) | T-364; transfer retries and missing-fragment failures, 8f24f40 to 73bc3c8 | 0 |
 | [T-365](reviews/T-365.md) | T-365; literal download paths, a3705e4 to b43c300 | 0 |
-| [T-368](reviews/T-368.md) | T-368; [correction 6 dependency resolution](reviews/T-368.md#2026-11-01--correction-6-security-dependency-resolution), 7e93683; current CI pending | 0 |
+| [T-368](reviews/T-368.md) | T-368; [shared conditional gate verdict](reviews/T-252.md#2026-11-02--conditional-ci-gate-verification-and-final-verdicts), implementation 7e93683, ruling cc352d4 | 0 |
 | [T-250](reviews/T-250.md) | T-250; format sorting, checking and merge containers, 67a8778 to f7e373a | 0 |
 | [T-304](reviews/T-304.md) | T-304; [focused correction verification](reviews/T-304.md#2026-10-27--focused-correction-verification), ecdda31, checked at a3705e4 | 0 |
 | [T-301](reviews/T-301.md) | T-301; font-sensitive UI tests, 276ffe4 to 8e654a7 | 0 |
 | [T-248](reviews/T-248.md) | T-248; filename shaping and file dates, 8e654a7 to 4b8f697, plus c6e9dd4 docstring | 0 |
-| [T-252](reviews/T-252.md) | T-252; [correction 6 / security closure](reviews/T-252.md#2026-11-01--correction-6-and-response-cookie-closure), 4863082 to 7e93683; current CI pending | 0 |
-| [T-253](reviews/T-253.md) | T-253; [shared network dependency resolution](reviews/T-253.md#2026-11-01--shared-network-dependency-resolution), 7e93683; current CI pending | 0 |
+| [T-252](reviews/T-252.md) | T-252; [shared conditional gate verdict](reviews/T-252.md#2026-11-02--conditional-ci-gate-verification-and-final-verdicts), implementation 7e93683, ruling cc352d4 | 0 |
+| [T-253](reviews/T-253.md) | T-253; [shared conditional gate verdict](reviews/T-252.md#2026-11-02--conditional-ci-gate-verification-and-final-verdicts), implementation 7e93683, ruling cc352d4 | 0 |
 | [T-254](reviews/T-254.md) | T-254; [logging isolation disposition](reviews/T-254.md#2026-10-29--logging-isolation-completion-disposition), 2bd909e, CI at 483147b | 0 |
 | [T-255](reviews/T-255.md) | T-255; [emitted-value redaction review](reviews/T-255.md#2026-10-29--focused-emitted-value-redaction-review), fc7e730, combined checks at 483147b | 0 |
 | [T-249](reviews/T-249.md) | T-249; [focused privacy correction verification](reviews/T-249.md#2026-10-18--focused-privacy-correction-verification), 9e917ec | 0 |
