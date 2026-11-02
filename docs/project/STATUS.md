@@ -222,14 +222,15 @@ task and review records it summarised.*
   found it. **`T-255`'s second correction**: a value is registered in every spelling yt-dlp prints
   it in, where a token typed in capitals reached the log lower-cased
   ([entries](TASKS.md#in-review)).
-- **`T-368` was built on 2026-10-29**, on the maintainer's ruling of that day, and is with the
-  Reviewer: ffmpeg's own downloads keep to yt-dlp's route, where they had ignored any SOCKS proxy,
-  the address to connect from and every certificate, or they do not start. **So a live stream
-  ffmpeg would fetch, a section of anything that comes in pieces, and Zan's split angles no longer
-  download**; the whole of a recorded stream still does. That is a parity limitation kept open,
-  not a ruling on scope ([entry](TASKS.md#t-368--keep-ffmpegs-network-requests-on-the-selected-route)).
-  On the same day the maintainer kept the certificate check on Windows, where it knows only the
-  roots Windows has fetched, and `T-369` was filed to measure a bundled list instead.
+- **`T-368` was built on 2026-10-29**, on the maintainer's ruling of that day, and was approved with
+  follow-ups 2026-11-02: ffmpeg's own downloads keep to yt-dlp's route, where they had ignored any
+  SOCKS proxy, the address to connect from and every certificate, or they do not start. **So a live
+  stream ffmpeg would fetch, a section of anything that comes in pieces, and Zan's split angles no
+  longer download**; the whole of a recorded stream still does. That is a parity limitation kept
+  open, not a ruling on scope
+  ([entry](COMPLETED_TASKS.md#t-368--keep-ffmpegs-network-requests-on-the-selected-route)). On the
+  same day the maintainer kept the certificate check on Windows, where it knows only the roots
+  Windows has fetched, and `T-369` was filed to measure a bundled list instead.
 - **Reviewed 2026-10-29, CI red; corrected 2026-10-30.** The first CI run of that work failed 16
   Linux integration cases: CI's ffmpeg, Ubuntu 24.04's 6.1.1, has no `-max_redirects`, which
   FFmpeg added in 8.1, and the route passed it. The review found two more: a proxy written
