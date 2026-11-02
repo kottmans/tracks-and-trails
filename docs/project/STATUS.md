@@ -2,7 +2,7 @@
 
 **Purpose:** Current implementation state, immediate work and unresolved risks.
 **Owner:** Planner / Implementer (Coordinator during a wave)
-**Last updated:** 2026-11-01
+**Last updated:** 2026-11-02
 **Update when:** Work, blockers, evidence or phase readiness changes.
 
 ## Current state
@@ -253,6 +253,9 @@ task and review records it summarised.*
   which turns that off. A site that sets its cookie on a redirect to itself then has no length
   read; that, and the refusals above, are left to `T-370` to restore, ruled 2026-11-01
   ([entry](TASKS.md#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)).
+  **Resolved 2026-11-01 at `7e93683`.** CI there failed one test, `T-367`'s fragment resume on
+  Windows, older than these corrections, and the maintainer ruled 2026-11-02 that it need not hold
+  `T-252`, `T-368` or `T-253`; `T-367` is next.
 - **Fifteen rulings taken 2026-10-19, all as recommended**, every open question in stage 3:
   `T-248`'s two, as built; `T-252`'s last two; `T-253`'s three; `T-254`'s four; and `T-255`'s
   four, the first a security ruling forbidding the extractor-argument pairs that choose a request's

@@ -2,7 +2,7 @@
 
 **Purpose:** Unfinished work: review, ready, proposed and blocked tasks.
 **Owner:** Planner (priorities); Implementer (task/status); Reviewer (review disposition)
-**Last updated:** 2026-11-01
+**Last updated:** 2026-11-02
 **Update when:** Work starts, changes scope/status, closes or reopens.
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
@@ -16,7 +16,11 @@ the placement gate read both files. Current phase and blockers are in [STATUS](S
 
 ### T-252 — Download tuning and the retry policy the settings screen shows
 
-**Status:** In Review — correction 6 built 2026-11-01, awaiting the sixth focused re-review of
+**Status:** In Review — `T252-R9` resolved 2026-11-01 at `7e93683`, and approval waits only on
+the required CI gate
+([record](reviews/T-252.md#2026-11-01--correction-6-and-response-cookie-closure)). That run's one
+failure is `T-367`'s test, and the maintainer ruled 2026-11-02 that it need not hold this task,
+`T-368` or `T-253`, below; the Reviewer verifies the gate. Correction 6 built 2026-11-01 for
 `T252-R9`'s remainder, a cookie a site sets during ffmpeg's own requests, which the maintainer
 moved back to this task that day. Blocked 2026-11-01 at `fb09314`, the user's cookies verified
 ([record](reviews/T-252.md#2026-11-01--focused-cookie-boundary-correction-review)).
@@ -518,18 +522,41 @@ empty header for a cookie and stopping every redirect (8 and 10).
 
 **The six files the two clients touch**, **343 passed** on each of: the host's 8.1.3, Ubuntu 24.04's
 6.1.1 and Debian 12's 5.1.9, in containers. None skipped, and none refused for the empty
-header on any build. **Not yet run on `STARBASE`**: its one runner was taken by CI's queued
-Windows jobs, which need it first.
+header on any build. **On Windows**, in CI at `7e93683`
+([`41384232252`](https://github.com/kottmans/tracks-and-trails/actions/runs/41384232252)), the
+same **343 passed**, none skipped, the four new real-process tests among them.
 
 **Checks, 2026-11-01, on Linux**, with the project `.venv` on `PATH`: `ruff check .` and
 `ruff format --check .` (529 files); `mypy src` (77), bare `mypy` and `mypy --platform win32`
 (253 each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,839 passed**, 23
 skipped; `tests/integration` **in one process, as CI runs it**, **656 passed**.
 
+**The CI gate, ruled 2026-11-02 by the maintainer, as recommended**: CI at `7e93683` may stand
+as the required gate for this task, `T-368` and `T-253` apart from its one failure,
+`test_fragment_retries.py`'s `test_a_fragment_that_never_arrives_fails_and_the_retry_resumes_it`,
+`T-367`'s, provided code from before these corrections fails it the same way on `STARBASE`.
+`T-367` stays High and is taken up next. Whether the gate is met is the Reviewer's to verify.
+
+| On `STARBASE`'s desktop session, 2026-11-02 | `a3705e4` | `873b54b`, source as `7e93683` |
+|---|---|---|
+| The test alone, three runs each, alternating | 3 passed | 3 passed |
+| The integration files up to and including it, in CI's order, serial, two runs each, alternating | **2 failed**, *"Unable to rename file: [WinError 32]"* on the resume | 2 passed |
+| All integration, serial, in CI | Passed, [`40409543055`](https://github.com/kottmans/tracks-and-trails/actions/runs/40409543055), 2026-10-26 | **Failed**, [`41384232252`](https://github.com/kottmans/tracks-and-trails/actions/runs/41384232252), the same error; 648 passed, 7 skipped |
+
+So the condition is met: the older code fails as CI's run at `7e93683` did. The failure depends
+on what ran before it, which differs here: the newer code's run holds two more files first,
+`test_extractor_args.py` and `test_ffmpeg_route.py`. Its two passes are not a fix, since CI failed
+the same code.
+
 ### T-253 — Network reachability: address family and politeness delays
 
-**Status:** In Review — blocked 2026-10-28 at `94e5fd1`
-([record](reviews/T-253.md#2026-10-28--focused-correction-review)): `T253-R3` waits on `T-368`'s
+**Status:** In Review — `T253-R3` resolved 2026-11-01 with `T-368`'s correction at `7e93683`
+([record](reviews/T-253.md#2026-11-01--shared-network-dependency-resolution)); `R6` waits on the
+required gate, whose run there failed only `T-367`'s test, which the maintainer ruled 2026-11-02
+need not hold it
+([`T-252`'s entry](#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)).
+Blocked 2026-10-28 at `94e5fd1`
+([record](reviews/T-253.md#2026-10-28--focused-correction-review)): `T253-R3` waited on `T-368`'s
 correction of the download's own route, and `R6` on a green required gate, red at `be3cc08` on
 `T252-R8`; `R1`, `R2` and `R5` resolved. `R4` applied 2026-10-29, below. Correction 1 built
 2026-10-27; changes requested 2026-10-27 at `1740c86`
@@ -1046,8 +1073,12 @@ required matrix
 ([record](reviews/T-368.md#2026-10-30--focused-compatibility-and-merged-input-correction-review)),
 and `R2`'s restoration is `T-370`'s. **The cut's cookies changed 2026-10-31 and 2026-11-01 under
 `T252-R9`**, below, for that finding's re-review; blocked on it 2026-11-01
-([record](reviews/T-368.md#2026-11-01--cookie-path-dependency-disposition)). Correction 1 built
-2026-10-30; changes requested 2026-10-29 at `a79e124`
+([record](reviews/T-368.md#2026-11-01--cookie-path-dependency-disposition)), and cleared of it the
+same day at `7e93683`
+([record](reviews/T-368.md#2026-11-01--correction-6-security-dependency-resolution)). `R3`'s run
+there failed only `T-367`'s test, which the maintainer ruled 2026-11-02 need not hold it
+([`T-252`'s entry](#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)).
+Correction 1 built 2026-10-30; changes requested 2026-10-29 at `a79e124`
 ([record](reviews/T-368.md#2026-10-29--reachability-qualification-and-worker-proof)).
 Built 2026-10-29 on the maintainer's ruling of that day, below. *(Was Proposed:)* Critical safety
 work filed by the 2026-10-28 independent review; it blocks `T-252` and `T253-R3` until verified
@@ -1758,7 +1789,12 @@ or approval of current native Windows release readiness.
 
 ### T-367 — Establish Windows fragment-resume file ownership
 
-**Status:** Proposed — scheduled by the 2026-10-27 T-365 review, before T-358's release gate
+**Status:** Proposed — taken up next by the maintainer's ruling of 2026-11-02, which lets
+`T-252`, `T-368` and `T-253` count CI without this test. On `STARBASE` that day it passed alone
+at `a3705e4` and `873b54b`; after the integration files before it, it failed twice at `a3705e4`
+and passed twice at `873b54b`
+([`T-252`'s entry](#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)).
+Scheduled by the 2026-10-27 T-365 review, before T-358's release gate
 **Owner:** Implementer; independent Reviewer verifies the result
 **Priority:** High — a required Windows retry/resume contract fails repeatedly
 **Phase:** Phase 4.5 — stage 4, before release acceptance
