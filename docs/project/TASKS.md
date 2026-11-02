@@ -1649,6 +1649,12 @@ The remaining capability restoration keeps its parity/release gate. Ownership he
 waive the security blocker or require all restoration work to finish before that security
 correction can be separately verified.
 
+**Reviewer verification, 2026-11-01, correction 6:** the response-cookie security fix was moved
+back to T-252 and is independently verified at `7e93683`
+([record](reviews/T-252.md#2026-11-01--correction-6-and-response-cookie-closure)). This supersedes
+the preceding dependency disposition for that security defect. Current T-252/T-368 approval
+awaits the required CI gate; T-370's remaining restoration keeps its parity/release gate.
+
 Measure native yt-dlp acquisition followed by local ffmpeg cutting/cropping as a candidate.
 Do not assume that one approach covers live capture, finite segmented media and Zan equally.
 Present the tested design and its bandwidth, disk, latency, retry and cancellation consequences
