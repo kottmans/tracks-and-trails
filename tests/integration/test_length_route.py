@@ -33,6 +33,7 @@ from tests.capabilities import resolve_ffmpeg
 from tests.integration.loopback import (
     BOUND,
     HOSTS_COOKIE,
+    ISSUED_COOKIE,
     PROXY_SIDE,
     SERVER_CONTEXT,
     Origin,
@@ -396,6 +397,60 @@ def test_a_link_is_sent_exactly_the_cookies_yt_dlp_sends_it(
         assert length == pytest.approx(6, abs=0.1)
         sent = [set((cookie or "").split("; ")) for cookie in _cookie_sent(served.heard)]
         assert sent and all(each == chosen for each in sent), sent
+
+
+def _read_by_ffprobe_alone(url: str) -> int:
+    """ffprobe's exit code reading `url` on the direct route with no header given, so with the
+    cookies it keeps from replies its own to send."""
+    _, ffprobe = resolve_ffmpeg()
+    direct = Route("", None, 20.0).arguments()
+    code, _ = run_with(Popen)([ffprobe, "-v", "error", *direct, url], 30)
+    return code
+
+
+@needs_loopback_addresses
+def test_a_cookie_a_site_sets_on_its_redirect_is_not_sent_on(site: Path) -> None:
+    """**The second review's case, `T252-R9`**: no cookie of the user's, and a link on `127.0.0.1`
+    that sets one on its redirect to `127.0.0.5`, as a site logging its visitor in does. ffprobe
+    keeps a cookie set in a reply and sends it to every link after, so the other host was handed
+    the login; yt-dlp keeps it to the host that set it. The read now sends every link the jar's
+    header, empty where it holds none, which turns ffprobe's own cookies off.
+
+    The control has two halves: yt-dlp sends the second host nothing, and ffprobe given no header
+    sends it the cookie."""
+    for url, _, served in redirect_on(site, sets=ISSUED_COOKIE):
+        with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+            ydl.urlopen(url).read()
+        assert served.heard and set(_cookie_sent(served.heard)) == {None}, "the control: sent on"
+        served.heard.clear()
+        assert _read_by_ffprobe_alone(url) == 0, "the control: ffprobe did not follow"
+        assert ISSUED_COOKIE in _cookie_sent(served.heard), "the control: ffprobe did not keep it"
+        served.heard.clear()
+
+        length = _placed(url)
+
+        assert length == pytest.approx(6, abs=0.1)
+        assert served.heard and set(_cookie_sent(served.heard)) <= {None, ""}, "it was sent on"
+
+
+def test_a_cookie_a_site_sets_on_a_redirect_to_itself_is_not_sent_back(site: Path) -> None:
+    """**What the empty header costs, ruled 2026-11-01**: a site that sets its cookie on a
+    redirect to itself and serves only a request carrying it. yt-dlp sends the cookie back and is
+    served, and so is ffprobe left to itself. The read sends no cookie it was not given, so this
+    length is not read, and the item is cancelled as one with none."""
+    for url, _, served in redirect_on(site, ISSUED_COOKIE, "127.0.0.1", needs=ISSUED_COOKIE):
+        with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+            ydl.urlopen(url).read()
+        assert _cookie_sent(served.heard) == [ISSUED_COOKIE], "the control: yt-dlp did not"
+        served.heard.clear()
+        assert _read_by_ffprobe_alone(url) == 0, "the control: ffprobe was not served"
+        served.heard.clear()
+
+        with pytest.raises(worker.NothingDownloadedError) as cancelled:
+            _placed(url)
+
+        assert cancelled.value.reason == NO_LENGTH
+        assert served.heard and set(_cookie_sent(served.heard)) <= {None, ""}
 
 
 @needs_loopback_addresses

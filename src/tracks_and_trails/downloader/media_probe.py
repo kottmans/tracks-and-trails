@@ -28,7 +28,11 @@ read and the item is cancelled with the reason.
 
 **A cookie goes to its own link and no further** (`T252-R9`). ffprobe sends the `Cookie` header it
 is given to every link a redirect takes it to, where yt-dlp sends each link only the cookies its
-jar holds for that link. So a link read with a cookie follows no redirect.
+jar holds for that link. So a link read with a cookie follows no redirect. **A link read with none
+is given an empty `Cookie` header**: ffprobe keeps a cookie a site sets in a reply and sends it to
+every link after, other hosts included, and a header given turns that off (`has_header` in
+`http.c`). The review of 2026-11-01 showed such a cookie can be a login. Ruled that day: a site
+that sets its cookie on a redirect to itself then has no length read, where yt-dlp would be served.
 """
 
 from __future__ import annotations
@@ -352,6 +356,7 @@ def remote_length(
 
     **Each link is sent its own cookies** (`T252-R9`): yt-dlp's jar chose them for that link, so a
     merged format with none takes none of the item's, and a link sent some follows no redirect.
+    One with none is sent an empty `Cookie` header, so ffprobe sends none a site set on the way.
     """
     refused: str | None = None
     known: frozenset[str] | None = None
@@ -366,10 +371,9 @@ def remote_length(
             refused = routed
             continue
         link_route, sent = routed
-        headers = dict(sent)
         cookie = _cookie_line(chosen.get("cookies"), cookie_parser)
+        headers = {**sent, "Cookie": cookie or ""}
         if cookie:
-            headers["Cookie"] = cookie
             link_route = dataclasses.replace(link_route, sends_cookies=True)
         if known is None:
             known = defined()
@@ -391,9 +395,9 @@ def remote_length(
             "format=duration",
             "-of",
             "default=noprint_wrappers=1:nokey=1",
+            "-headers",
+            _header_lines(headers),
         ]
-        if headers:
-            arguments += ["-headers", _header_lines(headers)]
         code, output = run([*arguments, url], REMOTE_TIMEOUT_SECONDS)
         seconds = _seconds(output) if code == 0 else None
         if seconds is not None:

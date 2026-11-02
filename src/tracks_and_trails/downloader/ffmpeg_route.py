@@ -27,7 +27,10 @@ cannot**, before ffmpeg starts.
   `a.example` goes on to any host whose name ends in those letters, such as `xa.example`, and a
   `Secure` one over plain `http`; and a link that names its port, or a plain `http` one through
   a proxy, is sent none, so a site that needs one goes without. So each input carries the jar's
-  own `Cookie` header, which ffmpeg sends in place of any it would match.
+  own `Cookie` header, which ffmpeg sends in place of any it would match. **An input the jar holds
+  none for carries an empty one**, since ffmpeg also sends a cookie a site sets in a reply on to
+  every host after, and the review of 2026-11-01 showed that can be a login. Ruled that day: a
+  site that sets its cookie on a redirect to itself is then not served, where yt-dlp would be.
 - **ffmpeg's environment carries no proxy variable**: it reads `http_proxy` and `no_proxy`
   itself, and the pin's `FFmpegFD` copied `no_proxy` in beside the request's proxy, which yt-dlp
   does not follow.
@@ -218,7 +221,7 @@ def _routed(
     the item's. The route's options go after the given ones, so an option of the same name given
     earlier cannot undo the route. `defined` is what the ffmpeg in use defines, asked only once
     an input has a route. `cookie_for` is the `Cookie` header yt-dlp's jar gives a link, or
-    `None`.
+    `None`; an input is given it, or an empty one.
     """
     merged = info_dict.get("requested_formats")
     given = (info_dict.get("downloader_options") or {}).get("ffmpeg_args") or []
@@ -248,10 +251,9 @@ def _routed(
         if isinstance(way, str):
             raise RouteRefusedError(NOT_THROUGH_THE_PROXY)
         route, sent = way
-        headers = dict(sent)
         cookie = cookie_for(url)
+        headers = {**sent, "Cookie": cookie or ""}
         if cookie:
-            headers["Cookie"] = cookie
             route = dataclasses.replace(route, sends_cookies=True)
         arguments = _for_ffmpeg(route, url)
         if not defines_every(arguments, defined()):

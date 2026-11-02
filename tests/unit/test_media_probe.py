@@ -156,7 +156,7 @@ def test_the_first_merged_link_that_answers_gives_the_length() -> None:
         "https://media.example/video.mp4",
         "https://media.example/audio.m4a",
     ]
-    assert all("-headers" not in arguments for arguments, _ in run.runs), "no headers to send"
+    assert all(_option(arguments, "-headers") == "Cookie: \r\n" for arguments, _ in run.runs)
 
 
 @pytest.mark.parametrize("answer", [(0, "N/A\n"), (0, ""), (0, "0"), (0, "inf"), (1, "6.0")])
@@ -429,7 +429,8 @@ def test_the_route_is_asked_with_each_link_and_its_own_headers() -> None:
         ("https://m.example/v.mp4", {"X-V": "1"}),
         ("https://m.example/a.m4a", {"X-Item": "1"}),
     ]
-    assert all(_option(arguments, "-headers") == "X-Sent: yes\r\n" for arguments, _ in run.runs)
+    sent = "X-Sent: yes\r\nCookie: \r\n"
+    assert all(_option(arguments, "-headers") == sent for arguments, _ in run.runs)
 
 
 @pytest.mark.parametrize("proxy", [" http://s:1", "http:/s:1"])
@@ -594,7 +595,8 @@ def _sent(arguments: list[str]) -> list[str]:
 
 def test_a_link_sent_a_cookie_follows_no_redirect() -> None:
     """ffmpeg sends the `Cookie` header it is given to every link a redirect takes it to, and
-    yt-dlp's jar chose the cookies for this link alone. The same route with no cookie follows."""
+    yt-dlp's jar chose the cookies for this link alone. The same route with no cookie follows,
+    sent an empty header, so ffprobe sends none a site sets on the way."""
     run = Answers((0, "6.0"), (0, "6.0"))
     link = {"url": "https://m.example/c.mp4", "protocol": "https"}
 
@@ -606,7 +608,7 @@ def test_a_link_sent_a_cookie_follows_no_redirect() -> None:
     (with_cookies, _), (without, _) = run.runs
     assert _sent(with_cookies) == ["Cookie: session=abc; theme=dark"]
     assert _option(with_cookies, "-max_redirects") == "0"
-    assert "-headers" not in without and "-max_redirects" not in without
+    assert _sent(without) == ["Cookie: "] and "-max_redirects" not in without
 
 
 def test_a_merged_format_is_sent_its_own_cookies_and_never_the_item_s() -> None:
@@ -626,7 +628,7 @@ def test_a_merged_format_is_sent_its_own_cookies_and_never_the_item_s() -> None:
     )
 
     (video, _), (audio, _) = run.runs
-    assert "-headers" not in video and "-max_redirects" not in video
+    assert _sent(video) == ["Cookie: "] and "-max_redirects" not in video
     assert _sent(audio) == ["Cookie: own=1"]
     assert _option(audio, "-max_redirects") == "0"
 

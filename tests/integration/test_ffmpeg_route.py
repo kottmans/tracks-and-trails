@@ -36,6 +36,7 @@ from tests.integration.loopback import (
     BOUND,
     ELSEWHERE,
     HOSTS_COOKIE,
+    ISSUED_COOKIE,
     PAGE,
     PROXY_SIDE,
     SERVER_CONTEXT,
@@ -538,6 +539,25 @@ def test_the_cut_follows_no_redirect_from_a_link_it_sends_a_cookie(
     assert served.heard == [], "the cut was sent on with the cookie"
 
 
+@needs_loopback_addresses
+def test_the_cut_sends_no_cookie_a_site_set_on_its_redirect_on_to_another(
+    site: Path, tmp_path: Path
+) -> None:
+    """**The second review's case at the cut**: no cookie of the user's, and a link that sets one
+    on its redirect to `127.0.0.5`. The control: the pin's cut sends it on. The guarded cut gives
+    every input the jar's header, empty where it holds none, so it follows the redirect and cuts,
+    and the second host is never sent the cookie."""
+    for url, _, served in redirect_on(site, sets=ISSUED_COOKIE):
+        _cut(url, tmp_path, guarded=False)
+        assert ISSUED_COOKIE in _cookie_sent(served.heard), "the control: not sent on"
+        served.heard.clear()
+
+        written = _cut(url, tmp_path)
+
+        assert _seconds(written) == pytest.approx(2, abs=0.3)
+        assert served.heard and set(_cookie_sent(served.heard)) <= {None, ""}, "it was sent on"
+
+
 def test_an_ffmpeg_without_an_option_the_route_needs_is_never_started(
     origin: tuple[str, type[Origin]], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -648,6 +668,31 @@ def test_the_worker_sends_a_cookie_to_its_own_site_alone(site: Path, tmp_path: P
             assert isinstance(outcome, Failed), outcome
             reason = sections.NOT_KEEPING_THE_COOKIES if _lacks("max_redirects") else NO_LENGTH
             assert (outcome.kind, outcome.message) == (ErrorKind.CANCELLED, reason)
+
+
+@needs_loopback_addresses
+def test_the_worker_sends_no_cookie_a_site_set_on_its_redirect_on_to_another(
+    site: Path, tmp_path: Path
+) -> None:
+    """**The second review's case through the real worker**: no cookie file, and a page on
+    `127.0.0.1` whose clip link sets a login cookie on its redirect to `127.0.0.5`. The read and
+    the cut both sent the login on, and the section downloaded. Now the section still downloads,
+    and the second host is never sent the cookie."""
+    for target, served in origin_on(site, ELSEWHERE):
+        page: type[_PageThenRedirect] = type(
+            "Page",
+            (_PageThenRedirect,),
+            {"callers": [], "heard": [], "to": target, "sets": ISSUED_COOKIE},
+        )
+        for server in serve(page):
+            link = f"http://127.0.0.1:{server.server_address[1]}/page.html"
+
+            outcome = _session(link, tmp_path / "out")
+
+            assert served.heard, "the second host was never asked"
+            assert set(_cookie_sent(served.heard)) <= {None, ""}, "the second host was sent it"
+            assert isinstance(outcome, Succeeded), outcome
+            assert _seconds(Path(outcome.output_path)) == pytest.approx(2, abs=0.3)
 
 
 def test_the_worker_s_section_download_sends_its_site_the_cookie(

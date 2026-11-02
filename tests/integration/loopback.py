@@ -45,6 +45,9 @@ ELSEWHERE: Final = "127.0.0.5"
 #: A site's cookie, as `name=value`, which only the host it is for may be sent (`T252-R9`).
 HOSTS_COOKIE: Final = "session=FOR_127_0_0_1_ONLY"
 
+#: A cookie a site sets in a reply for its own host alone, as a login does (`T252-R9`).
+ISSUED_COOKIE: Final = "login=ISSUED_BY_127_0_0_1"
+
 
 def can_bind(address: str) -> bool:
     with socket.socket() as probe:
@@ -140,16 +143,23 @@ def origin_on(
 
 class Redirect(BaseHTTPRequestHandler):
     """Sends every request on to `to`, keeping the address of each connection and its headers, as
-    `Origin` does."""
+    `Origin` does.
+
+    `sets`, a cookie as `name=value`, is set on the reply for this host alone, as a site logging
+    its visitor in on the way does (`T252-R9`).
+    """
 
     to: ClassVar[str]
     callers: ClassVar[list[str]]
     heard: ClassVar[list[dict[str, str]]]
+    sets: ClassVar[str | None] = None
 
     def do_GET(self) -> None:
         type(self).callers.append(self.client_address[0])
         type(self).heard.append({name.lower(): value for name, value in self.headers.items()})
         self.send_response(302)
+        if type(self).sets is not None:
+            self.send_header("Set-Cookie", f"{type(self).sets}; Path=/")
         self.send_header("Location", type(self).to)
         self.send_header("Content-Length", "0")
         self.end_headers()
@@ -158,10 +168,15 @@ class Redirect(BaseHTTPRequestHandler):
         """Silence the handler's stderr logging; a test is not a web server."""
 
 
-def redirect_on(site: Path) -> Iterator[tuple[str, type[Redirect], type[Origin]]]:
-    """A link on `127.0.0.1` that sends the read on to the clip on `ELSEWHERE`."""
-    for target, served in origin_on(site, ELSEWHERE):
-        handler = type("Redirect", (Redirect,), {"callers": [], "heard": [], "to": target})
+def redirect_on(
+    site: Path, sets: str | None = None, to: str = ELSEWHERE, needs: str | None = None
+) -> Iterator[tuple[str, type[Redirect], type[Origin]]]:
+    """A link on `127.0.0.1` that sends the read on to the clip on `to`, `ELSEWHERE` unless given.
+    `sets` is `Redirect`'s, and `needs` the clip's `Origin`'s."""
+    for target, served in origin_on(site, to, needs):
+        handler = type(
+            "Redirect", (Redirect,), {"callers": [], "heard": [], "to": target, "sets": sets}
+        )
         for server in serve(handler):
             yield f"http://127.0.0.1:{server.server_address[1]}/clip.mp4", handler, served
 

@@ -242,15 +242,16 @@ task and review records it summarised.*
   and the item's headers go to no input. Measured against each distribution's own ffmpeg in a
   container, where CI's 16 failures reproduced exactly first ([entries](TASKS.md#in-review)). The
   review filed `T-370` to restore live recording, sections of anything in pieces and Zan's angles.
-- **Reviewed 2026-10-30, a site's cookie sent on; corrected 2026-10-31 within `T-252`**, as the
-  maintainer chose that day. The length read gave ffprobe the site's cookies as a header, which it
-  repeats at every redirect: a cookie for one host reached another, through the real worker with
-  an ordinary cookie file. ffmpeg's cut matched cookies by looser rules than yt-dlp's. **Each link
-  is now sent the cookies yt-dlp's jar holds for it, and follows no redirect while it is**; a
-  build that cannot stop at a redirect, like Ubuntu 24.04's, refuses such a section with a plain
-  reason.
-  A cookie a server sets during ffmpeg's own requests can still follow a redirect; the maintainer
-  ruled 2026-11-01 to leave that, and these refusals, to `T-370`
+- **Reviewed 2026-10-30 and 2026-11-01, a site's cookie sent on; corrected 2026-10-31 and
+  2026-11-01 within `T-252`**, as the maintainer chose. The length read gave ffprobe the site's
+  cookies as a header, which it repeats at every redirect: a cookie for one host reached another,
+  through the real worker with an ordinary cookie file. ffmpeg's cut matched cookies by looser
+  rules than yt-dlp's. **Each link is now sent the cookies yt-dlp's jar holds for it, and follows
+  no redirect while it is**; a build that cannot stop at a redirect, like Ubuntu 24.04's, refuses
+  such a section with a plain reason. The second review showed ffmpeg also sent on a login a site
+  set during its own requests: **a link with no cookie is now sent an empty `Cookie` header**,
+  which turns that off. A site that sets its cookie on a redirect to itself then has no length
+  read; that, and the refusals above, are left to `T-370` to restore, ruled 2026-11-01
   ([entry](TASKS.md#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)).
 - **Fifteen rulings taken 2026-10-19, all as recommended**, every open question in stage 3:
   `T-248`'s two, as built; `T-252`'s last two; `T-253`'s three; `T-254`'s four; and `T-255`'s

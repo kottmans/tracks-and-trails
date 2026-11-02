@@ -150,7 +150,7 @@ def test_the_headers_are_the_ones_yt_dlp_sends() -> None:
 
     held = _held(item)
 
-    assert held["http_headers"] == {"X-A": "b"}
+    assert held["http_headers"] == {"X-A": "b", "Cookie": ""}
     assert _arguments(held)[_arguments(held).index("-http_proxy") + 1] == "http://named:1"
 
 
@@ -285,7 +285,11 @@ def test_an_input_left_with_no_headers_does_not_take_the_item_s() -> None:
     sent = [
         fmt.get("http_headers") or held.get("http_headers") for fmt in held["requested_formats"]
     ]
-    assert sent == [{}, {"User-Agent": "UA"}, {"X-Own": "1"}]
+    assert sent == [
+        {"Cookie": ""},
+        {"User-Agent": "UA", "Cookie": ""},
+        {"X-Own": "1", "Cookie": ""},
+    ]
     proxies = [
         _arguments(fmt)[_arguments(fmt).index("-http_proxy") + 1]
         for fmt in held["requested_formats"]
@@ -328,14 +332,17 @@ def test_an_input_needing_an_option_the_ffmpeg_in_use_lacks_is_refused(
 def test_an_input_is_sent_the_jar_s_cookie_and_follows_no_redirect(url: str) -> None:
     """ffmpeg sends a `Cookie` header it is given to every link a redirect leads to, and the jar
     chose it for this one. In place of the cookies the pin hands ffmpeg to match itself, which it
-    matches more loosely than the jar, and sends none of where the link names its port."""
+    matches more loosely than the jar, and sends none of where the link names its port. Without
+    one, the input is sent an empty header, so ffmpeg sends none a site sets on the way."""
     item = {"url": url, "protocol": url.partition(":")[0], "http_headers": {"X-A": "b"}}
 
     held = _held(item, cookies={url: "session=abc; theme=dark"})
 
     assert held["http_headers"] == {"X-A": "b", "Cookie": "session=abc; theme=dark"}
     assert _arguments(held)[_arguments(held).index("-max_redirects") + 1] == "0"
-    assert "-max_redirects" not in _arguments(_held(item)), "without a cookie it follows"
+    plain = _held(item)
+    assert plain["http_headers"] == {"X-A": "b", "Cookie": ""}
+    assert "-max_redirects" not in _arguments(plain), "without a cookie it follows"
 
 
 def test_each_merged_input_is_sent_the_cookie_for_its_own_link() -> None:
@@ -352,7 +359,7 @@ def test_each_merged_input_is_sent_the_cookie_for_its_own_link() -> None:
 
     first, second = held["requested_formats"]
     assert first["http_headers"] == {"User-Agent": "UA", "Cookie": "session=abc"}
-    assert second["http_headers"] == {"User-Agent": "UA"}
+    assert second["http_headers"] == {"User-Agent": "UA", "Cookie": ""}
     assert "-max_redirects" in _arguments(first) and "-max_redirects" not in _arguments(second)
     assert held["http_headers"] == {}, "the item's headers go to no input (`T368-R1`)"
 
