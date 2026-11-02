@@ -159,7 +159,7 @@ task and review records it summarised.*
   `7aadd3d` and `d055fc6` on test cases that spelled paths the Linux way, twelve of them `T-252`'s
   and one `T-248`'s; run whole on `STARBASE`, two more of `T-248`'s failed in integration, which CI
   had not reached. No product code changed: the cases now spell paths as each platform does,
-  recorded in [`T-252`'s entry](TASKS.md#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)
+  recorded in [`T-252`'s entry](COMPLETED_TASKS.md#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)
   and amended in [`T-248`'s record](COMPLETED_TASKS.md#t-248--filename-shaping-and-the-modification-time).
   Apart from those, and a toolchain check that caught that run's own `PATH`, every test passed on
   the Windows desktop, integration included. The same run measured one older defect, under risks.
@@ -200,7 +200,7 @@ task and review records it summarised.*
   checked, or not read at all (`T252-R5`, `T253-R3`). **Measured while building it and brought to
   the maintainer**: yt-dlp's own cut makes the same direct connections, through any SOCKS proxy and
   from any address; and on Windows, ffprobe's certificate check knows only the roots Windows has
-  already fetched ([entry](TASKS.md#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)).
+  already fetched ([entry](COMPLETED_TASKS.md#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)).
   **`T-253`'s first correction**: a wait from nothing up to a longest, yt-dlp's own setting, is
   held, read and set from the screen, where it had been refused; and a speed limit the screen
   rounds down is said exactly beneath it. `REQ-014`'s list of stages lacks *Waiting*; the wording
@@ -252,10 +252,10 @@ task and review records it summarised.*
   set during its own requests: **a link with no cookie is now sent an empty `Cookie` header**,
   which turns that off. A site that sets its cookie on a redirect to itself then has no length
   read; that, and the refusals above, are left to `T-370` to restore, ruled 2026-11-01
-  ([entry](TASKS.md#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)).
+  ([entry](COMPLETED_TASKS.md#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows)).
   **Resolved 2026-11-01 at `7e93683`.** CI there failed one test, `T-367`'s fragment resume on
   Windows, older than these corrections, and the maintainer ruled 2026-11-02 that it need not hold
-  `T-252`, `T-368` or `T-253`; `T-367` is next.
+  `T-252`, `T-368` or `T-253`. **`T-252` was approved with follow-ups that day**; `T-367` is next.
 - **Fifteen rulings taken 2026-10-19, all as recommended**, every open question in stage 3:
   `T-248`'s two, as built; `T-252`'s last two; `T-253`'s three; `T-254`'s four; and `T-255`'s
   four, the first a security ruling forbidding the extractor-argument pairs that choose a request's

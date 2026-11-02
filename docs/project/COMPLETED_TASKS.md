@@ -2,7 +2,7 @@
 
 **Purpose:** Running record of completed and cancelled tasks and their evidence.
 **Owner:** Task/status owner; Coordinator / Integrator during a parallel wave
-**Last updated:** 2026-10-27
+**Last updated:** 2026-11-02
 **Update when:** A task closes, reopens, or needs a dated correction or navigation update.
 
 [TASKS](TASKS.md) contains unfinished work. Move each newly Complete or Cancelled
@@ -41970,7 +41970,7 @@ is no `0.1.1`.
 *Done* whose file is missing media.
 **Phase:** Phase 4.5 (stage 3, before `T-250`)
 **Depends on:** `T-363`
-**Relevant context:** [`T-252`'s mapping](TASKS.md#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows);
+**Relevant context:** [`T-252`'s mapping](#t-252--download-tuning-and-the-retry-policy-the-settings-screen-shows);
 `T-196`; `UX-002`; `ARCHITECTURE.md` §8; `downloader/ytdlp_adapter.build_options`;
 `ui/settings_dialog.py` (`NETWORK_EXPLANATION`, the retries default); `core/settings.py`
 **Affected surfaces:** `build_options`, the settings screen's retry text and default label, the
@@ -42810,6 +42810,548 @@ and the same with each half alone. It passed in that machine's full run at `d055
 day and in CI at `a3705e4`, and passes alone on Linux. Neither the virtualenv on `PATH` nor a
 collector run every 10 allocations changes it. What holds the file is not found; a scanner is a
 guess, not checked.
+
+---
+
+### T-252 — Download tuning and the retry policy the settings screen shows
+
+**Status:** **Complete — approved with follow-ups 2026-11-02** at `7e93683`, with `T-368` and
+`T-253` on one verdict
+([record](reviews/T-252.md#2026-11-02--conditional-ci-gate-verification-and-final-verdicts)): the
+required CI gate met under the maintainer's ruling of that day, below, apart from `T-367`'s one
+Windows failure. Follow-ups: `T-367` before the release gate, `T-369`'s certificate measurement
+on Windows, and `T-370`'s restoration of what the cookie and route corrections refuse.
+*(Was In Review:)* `T252-R9` resolved 2026-11-01 at `7e93683`, and approval waits only on the
+required CI gate
+([record](reviews/T-252.md#2026-11-01--correction-6-and-response-cookie-closure)). That run's one
+failure is `T-367`'s test, and the maintainer ruled 2026-11-02 that it need not hold this task,
+`T-368` or `T-253`, below; the Reviewer verifies the gate. Correction 6 built 2026-11-01 for
+`T252-R9`'s remainder, a cookie a site sets during ffmpeg's own requests, which the maintainer
+moved back to this task that day. Blocked 2026-11-01 at `fb09314`, the user's cookies verified
+([record](reviews/T-252.md#2026-11-01--focused-cookie-boundary-correction-review)).
+Correction 5 built 2026-10-31, `T252-R9` corrected within this task as the maintainer chose that day
+([decision](reviews/T-252.md#2026-10-31--maintainer-scope-decision)); `R7` waits on `T-368`'s
+required matrix, and `R8` on native CI. Changes requested 2026-10-30 on `5489752`, `R5` resolved
+([record](reviews/T-252.md#2026-10-30--focused-proxy-representation-and-build-capability-review)).
+Correction 4 built 2026-10-30; changes requested 2026-10-29 at `72fe1bf`
+([record](reviews/T-252.md#2026-10-29--focused-per-link-route-and-fixture-review)). Correction 3
+built 2026-10-29; changes requested 2026-10-28 at `2e5f9da`, `R1`, `R3` and `R6` resolved
+([record](reviews/T-252.md#2026-10-28--second-focused-correction-review)). Correction 2 built
+2026-10-27; changes requested 2026-10-27 at `a3705e4`, `R2` and `R4` resolved, `R6`
+routed to `T-253`
+([record](reviews/T-252.md#2026-10-27--first-focused-correction-review)). Correction 1 built
+2026-10-25; `T252-R1` ruled 2026-10-25, below. Changes requested 2026-10-24 at `7aadd3d`, one
+Critical and two Medium blockers
+([record](reviews/T-252.md#2026-10-24--initial-download-tuning-and-sections-review)); built
+2026-10-19 on its rulings, at the maintainer's request that day.
+*(Was Proposed:)* **design ruled 2026-10-19**, questions 3 and 4 as recommended (`ARC-010` and
+`UX-015` amended that day), after questions 1 and 2 on 2026-10-15 as `T-364`. Filed 2026-08-16 by
+`T-183`. *(Since `T-364`, built 2026-10-18, both
+counts are the command line's ten when nobody chose, and a missing fragment fails the attempt;
+this task's controls start from that.)* **Measured 2026-09-18, while correcting
+`T184-R1`: fragment retries are zero today, not yt-dlp's ten.** `build_options` deliberately sets
+`--retries` and not `--fragment-retries` (its own comment, from the maintainer's 2026-08-13 ruling),
+and the consequence was not measured at the time: `downloader/fragment.py` reads
+`self.params.get('fragment_retries')` with **no default** into `RetryManager`, whose first line is
+`self.retries = _retries or 0`. So an absent key is **no retries at all** on every fragmented
+format, which is most of YouTube. That is this task's to decide rather than a defect to fix
+quietly — the policy it presents has to start from what the application really does now.
+**Options (7):** `-N/--concurrent-fragments`, `--fragment-retries`, `--extractor-retries`,
+`--socket-timeout`, `--download-sections`, `--live-from-start`, `--no-live-from-start`
+**Specific criteria:** **the three retry knobs this task owns are presented as one policy**, not
+three integers — and the entry no longer calls them *the whole* retry policy, because
+`--file-access-retries` and `--retry-sleep` stay in the hatch (`T183-R4`'s wording point) —
+`--retries` already exists and `ytdlp_adapter` carries a comment deferring `--fragment-retries`
+here by name, so this task is where the difference between them stops needing a comment to explain.
+`--download-sections` takes a time-range grammar that is parsed and refused at edit time.
+`-N` interacts with the pool's own concurrency (`ARC-007`, `CONCURRENCY_MAXIMUM = 16`) and the
+interaction is measured rather than assumed.
+
+#### Mapped 2026-10-14 — the design, before the code
+
+Mapped against `8b0aad6` with the worker's own `run_session`, a local HLS stream and a scripted
+server that fails chosen requests; probes are in the implementer's scratch notes, not the
+repository.
+
+- **A fragmented download can end *Done* with a fragment missing — in `0.1.0` as on `main`.** One
+  503 on fragment 3 of a 12-second stream: the job ended `Succeeded` with 250 of 300 video frames
+  (155,465 bytes against 185,873), and yt-dlp's `Skipping fragment 3` reached no row. A 403 did
+  the same with retries set to 3. yt-dlp's own command line, on its defaults, retried both and
+  delivered the whole file. The cause is two library defaults the command line overrides:
+  `fragment_retries` absent is zero, and `skip_unavailable_fragments` is on. `v0.1.0`'s
+  `build_options` and pin are the same. **Severity guess Critical** under §14's *silent wrong
+  result*, at least High given the narrow trigger.
+- **`retries` absent is zero as well**, not only `fragment_retries` (`downloader/http.py:360`,
+  read). Ten is the *command line's* default. So Settings' *The downloader's own* means no retries:
+  one 503 partway through a progressive transfer failed the job as `EXTRACTOR_ERROR`, which the
+  queue's automatic retry (NETWORK only) never takes. With retries 3 it succeeded. **Medium guess.**
+- **The settings screen's retry text is untrue three ways at `HEAD`**: pieces retry zero times by
+  default; the setting does govern a fragment's 5xx and connection errors (each fragment is
+  fetched by an HTTP downloader built from the same params); only a 4xx or an incomplete read falls
+  to the fragment count.
+- **This entry's *most of YouTube* is wrong here**: all three built-ins chose `https` formats on a
+  YouTube probe, so `retries` is the one that matters there. Fragments matter on HLS and DASH
+  sites and on every `--live-from-start` capture.
+- **Two hatch defects with `--download-sections`.** Two ranges are admitted and the second
+  overwrites the first in the one output path (`Deleting existing file`, job `Succeeded`): a
+  `REQ-031` defect, **High guess**. And it aborts *"ffmpeg is not installed"* whenever ffmpeg is
+  reached through `ffmpeg_location` rather than `PATH`, because yt-dlp's ffmpeg *downloader* reads
+  only `PATH` unless its command line sets a class attribute; that is how the Windows installer
+  finds its bundled copy (inferred, not run on Windows). **Medium guess, High once a control ships.**
+- **`-N` multiplies with the pool**: one job at `-N 4` peaked at 4 concurrent requests, three jobs
+  at 12; the worst case is 16 × N and yt-dlp sets no ceiling. `--socket-timeout -1` passes edit
+  time and fails the job (`T184-R8`'s class, Low).
+
+**Ruled 2026-10-15:** the shipped defect is fixed first, as `T-364`, on questions 1 and 2 as
+recommended. Questions 3 and 4 are open.
+
+**Ruled 2026-10-19: questions 3 and 4 as recommended.** Fragment retries, extractor retries, the
+socket timeout and `-N`, capped at 8, are Settings, beside the retry count in *Network*;
+`--download-sections` and the live-from-start pair are preset fields in a *Which part* group below
+*Which items*. Several sections write one file each, named by the stem and a section suffix and
+claimed as one family.
+
+**Questions for the maintainer** (recommended first):
+
+1. **What *nobody chose* sends for `retries` and `fragment_retries`.** yt-dlp's command-line
+   defaults, read from `parse_options([])` at the pin and held there by a test, shown as *10 — the
+   downloader's own*; changes behaviour for `0.1.0` users, which the changelog says. / Numbers
+   chosen in `core/settings.py` (a second copy of a library default, which `T-196` declined). /
+   Leave them absent and relabel the default *No retries*.
+2. **A fragment still missing after its retries.** `skip_unavailable_fragments=False`, so the
+   attempt fails and the job's own retry resumes from staging, with the hatch's
+   `--skip-unavailable-fragments` kept as the user's opt-in (a second shared key, an `ARC-010`
+   amendment). / Keep the skip and mark the job *Done, incomplete* (log parsing, a new outcome). /
+   Only restore the counts (still silent after eleven failures).
+3. **Where the seven live.** Fragment retries, extractor retries, socket timeout and `-N` (capped
+   at 8) in *Settings › Network* beside the retry count; sections and live-from-start per preset in
+   a *Which part* group below *Which items* (`UX-015`). / All seven per preset. / All in Settings.
+4. **Several sections.** One file per section, named by the stem and a section suffix, claimed as
+   one family. / Refuse a second section (narrows `REQ-030`). / Join them (a new ffmpeg step).
+
+#### Built 2026-10-19
+
+- **Four connection settings, in *Settings › Network*** (ruling 3). `NetworkOptions` and
+  `DownloadRequest` gain `fragment_retries`, `extractor_retries`, `socket_timeout` and
+  `concurrent_fragments`, frozen into each request with the other network settings; the add dialog
+  and `with_connection_of` now carry every `NetworkOptions` field by name, so none can be
+  forgotten. `None` is the downloader's own: a piece's retries fall back to the command line's ten
+  (`T-364`), and the other three are left out, which the library reads as the command line does
+  (three, yt-dlp's 20 seconds, one piece). The model caps pieces at 8 and wants a positive
+  timeout; `[network]` is read key by key, clamping at 100 retries, 600 seconds and 8 pieces.
+- **One policy in three counts.** Each count is named by what it retries: the file transfer, a
+  piece the server refuses, reading the page. Each shows the downloader's own number, read at the
+  pin through the manager. The section says that waiting between retries and retrying a file the
+  computer could not write stay in the options field, so the screen no longer offers these as the
+  whole policy. The pieces control says the pool multiplies it.
+- **Which part, per preset** (ruling 3, `UX-015`). `download_sections` and `live_from_start` join
+  `Preset` and `DownloadRequest`, in a *Which part* group below *Which items*: one section per
+  line, checked as typed, withdrawn without ffmpeg (`FfmpegFeature.SECTIONS`) with the preset's own
+  carried. *From the start* acts on both passes, since it changes the formats a live stream offers.
+  The row's name says both.
+- **The grammar** is `core/sections.py`, a transcription of yt-dlp's `parse_chapters` and
+  `parse_duration`, regular expressions verbatim. `test_sections.py` binds it to the pin over
+  hand-picked and a few thousand generated spellings: accepted exactly when `parse_options`
+  accepts, read as the same seconds. One rule is stricter: a range that ends where or before it
+  starts is refused, since yt-dlp would ask ffmpeg for a negative length.
+- **One file per section** (ruling 4). yt-dlp numbers only a chapter match, so a
+  `download_range_func` subclass numbers every section in yt-dlp's order. A request that can write
+  several — two ranges or more, or any chapter pattern — names each `Stem (section N).ext`, while
+  the sidecars keep the base name and are written once for the item. The claim takes every section
+  and the sidecars as one family, numbered on the base name (`Clip (2) (section 1).mp4`), and reads a
+  subtitle yt-dlp recorded under a section's name at the base name it moved it to. One range writes
+  the one plain file. The preview names the first section.
+- **The mapped defects, closed.** Two sections no longer overwrite each other. A section works with
+  ffmpeg found only through its location: yt-dlp's downloader checks a context variable only its
+  command line sets, so the worker sets it for the download (`ffmpeg_for_its_downloader`),
+  measured with `PATH` emptied before and after. A chapter pattern that matches nothing ends
+  Cancelled; a section with no ffmpeg is refused before a byte moves.
+- **`-N` measured, as the criterion asks**: on a local HLS stream of six one-second pieces, one
+  download at 4 held exactly 4 pieces open at once, and at the default exactly 1.
+- **The hatch.** Regenerating refuses the seven spellings, `-N` included, for their controls, and
+  six left `NOT_SECRET_VALUES`. Nothing the hatch admits sets `download_ranges` any more, so its half
+  of the sections' ffmpeg answer, `_cuts_sections`, is removed and its tests read the typed field.
+- **Tests.** New: `test_sections.py`, `test_download_tuning.py` and, in integration,
+  `test_download_sections.py`, the real worker against a clip and an HLS stream ffmpeg builds at
+  test time: two sections written as two cut files and the info JSON once, one section as one file,
+  ffmpeg only through its location, no ffmpeg, a pattern matching nothing, and the pieces at once.
+  The Settings, options editor, add dialog and composition tests cover the four controls and the
+  group.
+- **Existing tests changed with the behaviour**: hatch examples that used a now-refused option took
+  `--file-access-retries`, `--http-chunk-size`, `--buffer-size` or `--sleep-interval`; `-N4` and
+  `-cN4` are held through their refusal, since no admitted short option takes a value any more;
+  the section-ffmpeg cases, two unit tests and one case of the worker's ffmpeg gate, read the typed
+  field; and the audit derivation, the group order and the network samples gained the new fields.
+- **Measured while building**: a clip whose index sits at its end cannot be cut from a server
+  without range requests. ffmpeg failed with *Error during demuxing*, and yt-dlp still reported
+  success, keeping a 262-byte file. The test media is written with its index first.
+- **Not verified**: *from the start* against a real live stream, which has no local stand-in, so it
+  is held to `parse_options` and to both passes only; chapter matching against a real item with
+  chapters, held by a unit test of the numbering instead; and Windows, with `STARBASE` offline.
+- **Mutations, 34 of 34 caught**, each on a fresh copy of the tree: every connection key unsent,
+  the sections on the probe or not sent, the media unnumbered or the sidecars numbered, yt-dlp's own
+  numbering, the downloader's ffmpeg unset or its context not entered, the claim taking only the
+  first section or reading sidecars under section names, the preview unsectioned, the backwards rule
+  and the duration grammar, the model's checks, the cap, the file's reading and writing, the screen
+  storing a sentinel, the carries dropping a field, and the editor's sections, check, withdrawal
+  and name.
+
+**Checks, 2026-10-19, on Linux, base `c6e9dd4`**, with the project `.venv` on `PATH`: `ruff check
+.` and `ruff format --check .` (498 files); `mypy src` (73), bare `mypy` and `mypy --platform
+win32` (234 each); the table check up to date; `tests/unit tests/ui` under `-n 4`, **6,088
+passed**, 21 skipped; `tests/integration` under `-n 4`, **577 passed**. The first integration run
+failed one case of the worker's ffmpeg gate, still spelled through the hatch; it was moved to the
+typed field and the suite rerun whole. No Windows run: `STARBASE` is offline.
+
+#### Correction 1 — `T252-R1`…`R4`
+
+**`T252-R1`'s three questions, ruled 2026-10-25, all as recommended** (`ARC-010` amended that
+day). Mapped first: yt-dlp clips a range's end to the item's length and hands ffmpeg `-ss` and
+`-t`, so `*99-100` on a six-second item asks for a negative length; a direct link reports no length
+at all (measured: the generic extractor's `duration` is `None`), so yt-dlp asks for one second from
+99, and ffmpeg, seeking past the end, returned the whole file. A copied cut starts on a keyframe,
+so its length can run long by up to one keyframe interval.
+
+1. **A section past the end.** Cancel the item before it downloads, naming each such section and
+   the item's length, as a chapter pattern that matches nothing does. / Download the sections that
+   fit (*Done* with fewer files). / Fail the item (a retry cannot help).
+2. **A cut with no picture or sound.** Fail the attempt as an ffmpeg failure, every section read
+   with ffprobe before it is claimed, staging kept, no automatic retry. / Download the whole item
+   and cut it here (a new step).
+3. **An item whose site gives no length.** Read it from the media with ffprobe first, with the
+   request's headers and cookies, and refuse the sections where none can be read. / Refuse sections
+   on such items. / Check the length only after the cut (a short whole item passes the slack).
+
+**`R1`, corrected 2026-10-25 on its rulings, awaiting re-review**, on `d7831a2`:
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T252-R1`, Critical — the worker trusted yt-dlp's success for a section: a cut from a server that cannot seek claimed 262 bytes with no streams, and `*99-100` came back as the whole six seconds, alone or beside `*0-2` | **Each section checked before it is cut and after.** Before the download, `_place_the_sections` takes the site's length or, where it gives none, reads the chosen link's with ffprobe and the request's own headers and cookies (`media_probe.remote_length`); with neither, the item is cancelled with `NO_LENGTH`, and a range starting at or after the end cancels it naming each such section (`core.sections.starting_past`). A length read here is handed to yt-dlp through `NumberedSections`. After the download, every section is read with `media_probe.holds_media` before it is claimed, and one with no picture or sound fails the attempt as `FFMPEG_ERROR` with staging kept and its info JSON stripped. The ffprobe is the one beside ffmpeg, where yt-dlp looks; without one, sections are refused before a byte moves | The review's reproductions, real worker on `127.0.0.1` from a server without range support: the cut of a clip with its index last, and of the MKV, fails as `FFMPEG_ERROR` with staging kept; `*99-100`, `*6-7`, `*0-2` with `*99-100`, and two sections past the end, each cancel the item naming only those outside; an item whose length cannot be read is cancelled; and no ffprobe beside ffmpeg is refused. **The cut and the past-the-end cases fail at `7aadd3d`'s checks**, by the mutations below |
+
+**Sibling audit, measured 2026-10-25 from a server that cannot seek, and one more wrong result
+it found.**
+
+- **A range counted from the end, on a link that gives no length**: `*-2-inf`, the last two
+  seconds, came back as all six at `7aadd3d`, since yt-dlp resolves the start by the item's length
+  and had none. Now the length read from the link is written into the item for yt-dlp, only where
+  the site gave none. `*3-inf` and `*1-3` cut correctly before and after.
+- **Containers**: the faststart MP4 cuts correctly; ffmpeg's own MP4 with its index last cut to
+  262 bytes and MKV to 765, both with no streams; WebM cut `*1-3` to 671 bytes with none and `*4-6`
+  correctly to 2 seconds. Every failure seen had no streams, which the check catches; **no wrong
+  part with a picture or sound in it was seen**.
+- **A live stream has no length**, so ruling 3 refuses sections on one with `NO_LENGTH`. Not
+  exercised against a real live stream.
+- **The request's headers and cookies reach ffprobe on its command line**, as yt-dlp's own ffmpeg
+  downloader passes them to the ffmpeg that cuts the section. Nothing ffprobe prints is logged.
+- **A cancel during the length read** waits for ffprobe, at most 60 seconds, or for the parent to
+  end the worker.
+
+**Tests.** Integration, in `test_download_sections.py`: the five above. Unit: `test_media_probe.py`
+(new), what ffprobe is asked and what its answers mean, headers and cookies included;
+`test_sections.py`, the placing rules and the words; `test_download_tuning.py`, the worker's
+placing on a length the site gave or did not, an oversized integer among them, the sections writing
+the length in only where none was given, and the info JSON stripped on an empty cut.
+
+**Mutations, 11 of 11 caught**, each on copies restored by hash: no section read before the claim;
+a zero length held as media; the empty cut discarding staging, and leaving its info JSON
+unstripped; nothing placed against the length; a range at the end held inside; the length read
+not handed to yt-dlp; the sections ignoring it, and overwriting the site's own; the link's cookies
+not sent; and no ffprobe gate.
+
+**Not verified**: the Windows installer, whose bundled ffmpeg has `ffprobe.exe` beside it
+(`packaging/fetch_ffmpeg.py`'s `WANTED_EXECUTABLES`), though Windows from source is measured
+below; a real site, whose length yt-dlp usually has; and a real live stream.
+
+**Checks for `R1`, 2026-10-25, on Linux**, with the project `.venv` on `PATH`: `ruff check .` and
+`ruff format --check .` (506 files); `mypy src` (74), bare `mypy` and `mypy --platform win32` (236
+each); the table check up to date; `tests/unit tests/ui` under `-n 4`, **6,172 passed**, 21
+skipped; `tests/integration` under `-n 4`, **586 passed**. The first run failed `T-260`'s guard: the
+test without ffprobe made its symlink directly, and now uses the `symlinks` fixture; both suites
+were rerun whole. Bare `mypy` also caught two tests reading `NO_LENGTH` through the worker, which
+does not export it. No Windows run: `STARBASE` is offline.
+
+**Windows, 2026-10-26, on `STARBASE`, which returned that day.** CI's `windows desktop` at
+`d055fc6` ([`40343995401`](https://github.com/kottmans/tracks-and-trails/actions/runs/40343995401))
+failed 13 unit tests, so integration never ran. **Twelve were this task's tests, not its code**:
+ten cases in `test_media_probe.py` wrote a section's path as `/` text, which Windows spells with
+`\`; one made its ffprobe without `.exe`, which `shutil.which` does not find there; and
+`test_the_downloader_s_ffmpeg_is_set_for_the_session_and_put_back`, from the build at `7aadd3d`,
+compared a location as `/` text. The test without ffprobe would have failed for a reason of its own,
+measured there: it linked ffmpeg as `ffmpeg`, which the worker refuses on Windows (*explicit
+override, not usable*) before it looks for ffprobe; it now uses the real program's name. The
+thirteenth is `T-248`'s, amended in its record. Then on `STARBASE`'s desktop session with these
+corrections, at `d055fc6`, as CI runs it: `tests/unit tests/ui` under `-n auto`, **6,146 passed**,
+44 skipped, 2 failed, `test_toolchain_versions`' check that `ruff` and `mypy` are the virtualenv's,
+because that run left the virtualenv off `PATH`, which CI puts first; `tests/integration`, serial,
+**579 passed**, 5 skipped, 2 failed, both `T-248`'s. The six files concerned, rerun with the
+virtualenv first on `PATH`, `test_download_sections.py` among them: **235 passed**, 3 skipped,
+`T-248`'s colon cases. The sections ran with winget's ffmpeg 8.1.2, `ffprobe.exe` beside it.
+
+**`R2`, `R3` and `R4`, corrected 2026-10-25, awaiting re-review**, on `a002248`:
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T252-R2`, Medium — `socket_timeout = 10**400` in `[network]` raised `OverflowError` out of `load`, and out of `NetworkOptions` and the request | **Compared before it is converted.** `models.is_held_timeout` bounds the value before any `float` conversion and applies `math.isfinite` to floats only; the model now refuses past `MOST_SOCKET_TIMEOUT_SECONDS`, 600, which `settings.SOCKET_TIMEOUT_MAXIMUM` now reads, so no request built anywhere carries a wait yt-dlp cannot take. The reader clamps it and reports, keeping the other keys. `Settings`' own timeout ceiling, now unreachable, is removed | The review's case beside a valid `fragment_retries = 4`, read back as 4 and 600 with the report; `10**400` and 601 refused by both owners. **Both fail at `7aadd3d`**, as `OverflowError` |
+| `T252-R3`, Medium — a stored 0.01 or 0.04 s opened as *20 s, the downloader's own*, and 0.06 s as 0.1 s, while the downloader was sent the value | **The model holds only what the control shows**: a whole number of tenths, from 0.1 to 600. The reader rounds a finer value, to no less than 0.1, and reports it, as it reports the other clamps. Chosen over more decimals, which only moves the edge | Five held values, from 0.1 to 600, each open as themselves, unlike the special text, and survive an unrelated edit; 0.04 and 7.55 are refused by the model and read as 0.1 and 7.5 with a report |
+| `T252-R4`, Low — moving `--download-sections` out of the hatch dropped its deep-pattern case, so removing `RecursionError` from `core/sections.py`'s handler left every test green | **Restored for the field that took its place**, beside the overflow: a unit test of `section_problem`, whose positive control first asserts `re.compile` raises for that pattern, and the editor's refusal where typed | The review's mutation, the handler without `RecursionError`: **the unit and editor cases fail**: 2 failed, 242 passed, 1 skipped, 1 error |
+
+**Mutations, 7 of 8 caught**, each on copies restored by hash: the model's or the reader's
+conversion before the bound (`R2`); the model holding any precision; the reader keeping a finer
+value; the screen showing two decimals; the handler without `RecursionError`, and without
+`OverflowError`. The eighth, the model's floor of 0.1 set back to anything positive, survived and
+is equivalent: a positive whole number of tenths is at least 0.1. The floor's test was removed
+rather than kept untested.
+
+**Adjacent, measured, not corrected here** (`AGENTS.md` §7; both predate `T-252`):
+
+- **The rate limit is `R3`'s class.** A stored 1,500 bytes per second, inside the band, opens as
+  *1 KiB/s* and an unrelated edit sends 1,500 back: the screen shows whole KiB/s and the reader
+  keeps any whole number of bytes. `T-196`'s.
+- **`R2`'s class in the adapter.** `ytdlp_adapter._as_optional_float(10**400)` raises
+  `OverflowError`; it projects a site's `duration`, `fps` and `tbr`, and `worker._float_or_none`
+  has the same shape. The helper is measured, not a path from a real site. Since `a296615`.
+
+**Checks for `R2`…`R4`, 2026-10-25, on Linux**, with the project `.venv` on `PATH`: `ruff check .`
+and `ruff format --check .` (504 files); `mypy src` (73), bare `mypy` and `mypy --platform win32`
+(234 each); the table check up to date; `tests/unit tests/ui` under `-n 4`, **6,117 passed**, 21
+skipped; `tests/integration` under `-n 4`, **577 passed**. Two comments were rewrapped after the
+suites ran. No Windows run: `STARBASE` is offline.
+
+**`R1`, `R3` and `R5`, corrected 2026-10-27, awaiting the second focused re-review**
+([record](reviews/T-252.md#2026-10-27--first-focused-correction-review)), on `fdff1b4`. `R5`'s
+correction is also `T253-R3`'s, and `R3`'s shared helper is `T253-R2`'s, as the review routed them:
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T252-R1`, Critical — `*0--100` and `*0--6` on the six-second clip, and `*0--6` beside `*0-2`, succeeded with the whole item | **Every section is placed as yt-dlp places it, and one empty once placed cancels the item** (`core/sections.empty_once_placed`): both ends resolved by `download_range_func`'s rule, counted from the end and never below zero, the end cut to the length as `process_video_result` cuts it. Zero to zero is what yt-dlp downloads as no section at all. Reversed ranges (`*3--4`) and `*from-url` with an end at or before its start are refused the same way, with each such section named | The review's three cases and `*3--4`, through the real worker on the committed clip: each **cancelled before a byte moves**, nothing left; the control `*0--2`, zero to four once placed, still cuts four seconds. `test_sections.py` holds the rule to yt-dlp's own `download_range_func` over 17 ranges at three lengths |
+| (audit, same class) | **A chapter pattern matching a chapter of no length cancels the item** (`empty_chapters`). yt-dlp ends a chapter where the next starts, so two at `0:00` make the first zero to zero, the whole-item route again; elsewhere one of no length was an ffmpeg failure | **Reproduced in a yt-dlp session** on the loopback clip, outside the worker: chapters *Intro* and *Main* both at `0:00` were filled as zero to zero and zero to six, and `Intro` downloaded the whole six seconds. Held by unit cases in that filled shape. `*from-url` naming no range is the whole item, as yt-dlp reads it and as ruled 2026-10-25; unchanged |
+| `T252-R3`, Medium — `1e-9` and `1e-8` were held by both owners, kept by the file unreported, and shown as *the downloader's own* | **The count of tenths must be at least one** (`models._in_tenths`), where the floor's test had been removed as equivalent: the tolerance that makes `0.3` three tenths made `1e-9` zero of them. Shared with the waits, so `T253-R2`'s model half is this change | Both owners refuse `1e-9` and `1e-8`; the file reads both as 0.1 and reports it; the tolerance's boundary on each side, held and refused. **The redundancy claim in the first round was wrong**, as the review showed |
+| `T252-R5`, Critical, and `T253-R3`, Critical — the length read went around the request's proxy and its address to connect from | **The read is made by the request's route, or not at all** (`media_probe.Route`, `route_for`). Each part is passed to ffprobe and none left to its defaults: the proxy yt-dlp would use (the request's, or the system's as `urllib.request.getproxies` reads it), the address to connect from as `-local_addr`, yt-dlp's socket timeout, and **certificates checked**, which ffmpeg does not do unless asked. The proxy variables are kept out of ffprobe's environment. **ffmpeg tunnels only through an `http://` proxy**, so a SOCKS or `https://` one, or system settings naming two, cancel the item unread with the reason. **Only a format fetched as one file is read**, by a demuxer that opens nothing else | Real ffprobe through `_place_the_sections`, `tests/integration/test_length_route.py`, each with its control: through the request's proxy, the origin sees only the proxy's side (`127.0.0.3`); from `127.0.0.2`, only that address; IPv6 only against the IPv4 origin, **cancelled with nothing asked**, as yt-dlp fails; a SOCKS proxy, never tried; a certificate nobody signed, **refused with no request sent**, where ffprobe alone reads it; a playlist served as a plain link, read no further than itself |
+
+**Measured on 2026-10-27, ffmpeg 8.1.3 on Linux, before building the route**: handed a `socks5://` or
+`https://` proxy, by option or environment, ffprobe connected directly; `-local_addr` of the other
+family fails the connection rather than going around it, and holds through TLS; **HLS pieces are
+fetched without `-local_addr` and without a certificate check** even when the playlist had both,
+which is why a manifest is not read; `-tls_verify 1` checks the chain and the host name.
+
+**Windows, measured on `STARBASE`**: gyan's build verifies with GnuTLS against the Windows stores,
+which hold only the roots Windows has already fetched (`REL-007`'s gap, `tls.py`). There,
+`www.example.com` **failed the check** while YouTube passed. So on Windows a site whose root the
+machine has not met cannot have its length read, and an item that does not give one is cancelled
+with `NO_LENGTH` rather than read unchecked. **Flagged for the maintainer**: safe, but narrower than
+Linux.
+
+**Adjacent, measured, not corrected (Critical, needs a decision).** yt-dlp's own cut, `FFmpegFD`,
+has the same defect, and it is not this client: it hands ffmpeg the proxy through `http_proxy`
+only, never the address to connect from, and no certificate check. In a real yt-dlp session with
+`*1-3` on the loopback clip, the probe's request went through a SOCKS proxy and from `127.0.0.2`,
+and **the cut connected directly from `127.0.0.1` both times**. Every section download, and every
+download yt-dlp gives to ffmpeg, is affected; it predates `T-252` through the options field.
+Carrying the route as `ffmpeg_i` arguments would close the direct file; a SOCKS proxy and any
+manifest cannot be closed that way, only refused, which is a product choice.
+
+**Mutations, 22 of 22 caught**, each on copies restored by hash: each part of the route left out
+(the proxy, the address, the certificate check, the timeout's unit, the request's timeout, the
+demuxer list, the protocol list); any proxy kind let through; the first of several proxies taken;
+the system's proxy ignored, or not read; the environment inherited; a manifest read; the worker
+skipping empty ranges or empty chapters; the end not cut to the length; the ends not held at zero;
+a chapter or a range of no length allowed; the address's end not passed; the floor of one tenth
+removed. **One was caught only after a test gap was closed**: matching a chapter from its start
+rather than searching it survived, since every pattern tested matched at the start; a pattern
+found only by searching now fails it.
+
+**Checks, 2026-10-27, on Linux**, with the project `.venv` on `PATH`: `ruff check .` and
+`ruff format --check .` (524 files); `mypy src` (76), bare `mypy` and `mypy --platform win32` (249
+each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,596 passed**, 23 skipped;
+`tests/integration` under `-n 4`, **615 passed**. Not yet run on Windows; the certificate check's
+Windows result above is a probe of ffprobe there, not the suite.
+
+**`R5` and `R8`, corrected 2026-10-29, awaiting the third focused re-review**
+([record](reviews/T-252.md#2026-10-28--second-focused-correction-review),
+[CI](reviews/T-252.md#2026-10-28--ci-evidence-disposition-after-the-focused-review)):
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T252-R5`, Critical, second round — `route_for` gave every link the one system proxy and followed none of the system's exceptions: with `http_proxy` set and `no_proxy` naming the origin, or `https_proxy` alone and an `http://` link, the read sent the link and its headers to a proxy yt-dlp goes around | **Each link is read by yt-dlp's route to it, chosen by yt-dlp's own functions** (`media_probe.route_for`, `proxy_table`): the table `YoutubeDL.proxies` builds, then, for the link and the headers it is sent with, the resolved copy's `clean_proxies`, `clean_headers` and `select_proxy`, as its handlers choose for each request. So the exceptions and each scheme's proxy are followed, `__noproxy__` and a proxy written without its scheme are read as yt-dlp reads them, and **a `Ytdl-Request-Proxy` header**, which `--add-headers` in the options field can set, is the proxy and is not sent. **A redirect is followed only where it cannot change the route**: yt-dlp chooses again for each link it is sent to and ffmpeg keeps one proxy, so where the table has exceptions or a proxy for one scheme only, ffprobe is given `-max_redirects 0` and a link that redirects gives no length. A link whose route is refused no longer stops another link's read; with none read, the item is cancelled with the reason. System settings naming two proxies, refused in the first round, are now each link's own, so that refusal is gone | Real ffprobe through `_place_the_sections`, each case with yt-dlp reaching the same server as its control: **the review's two cases read directly, the proxy asked nothing**; a redirect from an exempt host to one that is not, **not followed**, where yt-dlp went through the proxy at the second and the read's direct route left to itself reached it directly; a redirect under the request's own proxy followed, both hosts seeing only the proxy; a `Ytdl-Request-Proxy` header's proxy used, and the header never reaching the origin. Unit: the table held to `YoutubeDL.proxies` over six environments and three request proxies; each link's route over thirteen tables; a copy of yt-dlp without these functions asks no link |
+| `T252-R8`, Medium — on Windows the certificate test failed before testing anything: the application replaces `ssl.SSLContext` with `truststore`'s for the process, whose `wrap_socket` checks the peer even on a listening socket | **The test's server uses the standard library's class**, kept when the module is imported, and **the test puts the application's patch in place itself on every platform**, through `verify_with_the_operating_system(os_name="nt")`, which `truststore` makes real on Linux too. The production patch is unchanged | On Linux, the server built with the patched class reproduces CI's `AttributeError`; the patch left out, or certificates not checked, each fail the test. **On `STARBASE`**, the same file with the old line failed with CI's error, and with the new one all six route tests then in the file passed, the unchecked control reading the server and the checked read refusing it |
+
+**The Windows certificate check, ruled 2026-10-29**: the maintainer kept it as it is, a read that
+cannot check the chain cancelled rather than made unchecked, and asked for a task measuring a
+bundled list of certificates handed to ffmpeg on Windows, filed as `T-369`.
+
+**Mutations, 20 of 20 caught**, each on copies restored by hash. For `R5`, 17: the exceptions
+ignored; one proxy taken for every scheme; redirects always followed, or never; `-max_redirects`
+not passed; the exceptions left out of the redirect rule; `clean_proxies` or `clean_headers` not
+applied; the headers sent as given; a proxy other than `http://` let through; `https` not taking
+`http`'s proxy; the request's proxy ignored; one refused link stopping the rest; a refusal not
+reported, or its reason dropped; the item's headers used for every link; the system's proxies not
+read. For `R8`, 3: the server built with the patched class; the patch not put in place; certificates
+not checked.
+
+**Windows, on `STARBASE`**, these files copied onto `be3cc08`: `test_length_route.py` with
+`test_media_probe.py` and `test_download_tuning.py`, **209 passed**, none skipped.
+
+**Checks, 2026-10-29, on Linux**, with the project `.venv` on `PATH`: `ruff check .` and
+`ruff format --check .` (524 files); `mypy src` (76), bare `mypy` and `mypy --platform win32` (249
+each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,746 passed**, 23 skipped;
+`tests/integration` **in one process, as CI runs it**, **620 passed**.
+
+**`R5` and the length read's half of `T368-R5`, corrected 2026-10-30, awaiting the fourth focused
+re-review** ([record](reviews/T-252.md#2026-10-29--focused-per-link-route-and-fixture-review),
+[`T368-R5`](reviews/T-368.md#2026-10-29--additional-route-control-and-ci-disposition)):
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T252-R5`, Critical, narrowed — `route_for` let `HTTP://` through a lower-cased check and handed it on as written; ffmpeg takes a proxy only where the text starts `http://`, so the read went directly where yt-dlp goes through it. The cut's half is `T368-R4` | **The proxy is handed on as ffmpeg reads it**: the scheme written `http://`, the rest, credentials and all, as yt-dlp has it. A proxy whose text starts any other way is refused, such as one with a leading space, which yt-dlp's checks read past. **The property, read in FFmpeg's source**: `av_strstart(proxy, "http://")`, exact, in its HTTP and TLS layers, the same in 6.1.1, 7.0, 7.1, 8.0 and 8.1 | Real ffprobe with two controls: yt-dlp through `HTTP://…`, and ffprobe handed it as written reaching the origin directly. The read then went through the proxy, the origin seeing only the proxy. Unit: two spellings written as ffmpeg reads them, credentials and path kept; two refused |
+| `T368-R5`, High, the length read — CI's ffmpeg, Ubuntu 24.04's 6.1.1, has no `max_redirects`, which FFmpeg added in 8.1: three length cases failed there. Debian 12's 5.1.9, the oldest the README supports, has no `local_addr` | **The ffprobe in use is asked which options it defines** (`defined_options`, from its own `-h protocol=http`, `tcp` and `tls`), once, before the first link is asked. **A route needing one it lacks is not taken**: the item is cancelled with a reason of its own, `NOT_WITH_THIS_FFPROBE`, before anything is sent. A build is asked rather than judged by its version, since Debian's 5.1.9 lists `max_redirects`, which upstream 5.1 has not. **A redirect is followed wherever it cannot change the route**: exceptions with no proxy to make them to leave every link direct, where they had stopped every redirect, which a build before 8.1 would now refuse outright | **Measured 2026-10-30 against each distribution's own ffmpeg**, in containers of Ubuntu 24.04 and Debian 12 with the host's 8.1.3 beside them. **Before the correction, CI's 16 failures reproduced exactly** on 6.1.1, and 3 on 5.1.9. After it, with `T-368`'s correction beside it, the six files the two touch pass on all three, **317 each**, none skipped. A case needing an option its build lacks expects the refusal, with nothing asked, and one test makes the build lack an option on any machine. **The listing is held to the build**: each option is taken by ffprobe exactly when listed, on all three. Unit: the listings of 8.1.3, 6.1.1 and 5.1.9, a build without TLS, one that cannot say; the worker asking the ffprobe in use, once |
+
+**Mutations, 11 of 11 caught**, each on copies restored by hash, **two only after a test gap was
+closed**: the proxy handed on as written, or its scheme compared case-sensitively; exceptions not
+counted as a route a redirect could take, the routes tried with the exceptions in the table, or the
+old rule stopping every redirect wherever exceptions are set; any one option taken as enough; the
+length read not asking the build, or asking it for each link; the worker not asking the ffprobe in
+use. The two gaps: **a listing that failed for one protocol read as the others'** survived, since
+the one test had every listing fail; **an option read anywhere in the listing** survived, since the
+test's description put a comma after the name, which the loose pattern skips too. A listing failing
+for each protocol in turn, and a description naming the option with a space after it, catch them.
+
+**Windows, on `STARBASE`**, its checkout brought to the local head by bundle, with this correction's
+and `T-368`'s files on it: the same six files, **317 passed**, none skipped, gyan's 8.1.2.
+
+**Checks, 2026-10-30, on Linux, this correction alone**, in a worktree with its source first on the
+path: `ruff check .` and `ruff format --check .` (529 files); `mypy src` (77), bare `mypy` and
+`mypy --platform win32` (253 each); both tables up to date; `tests/unit tests/ui` under `-n 4`,
+**6,811 passed**, 23 skipped; `tests/integration` **in one process, as CI runs it**, **639 passed**.
+
+**`R9`, corrected 2026-10-31 within this task, as the maintainer chose that day, awaiting the
+fifth focused re-review**
+([record](reviews/T-252.md#2026-10-30--focused-proxy-representation-and-build-capability-review),
+[decision](reviews/T-252.md#2026-10-31--maintainer-scope-decision)):
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T252-R9`, Critical — the length read sent a site's cookie on through a redirect. The format's `cookies` field became a `Cookie` header, and ffprobe repeats a header it is given at every link a redirect leads to: a cookie for `127.0.0.1` reached `127.0.0.5`, where yt-dlp sends it to the first host alone. Through the real worker with an ordinary cookie file, the section then downloaded | **A cookie goes to its own link and no further** (`media_probe.Route.sends_cookies`). yt-dlp's jar chose the cookies for that one link, so **a link read with a cookie follows no redirect** (`-max_redirects 0`). A build that cannot stop at a redirect, without `max_redirects` like Ubuntu 24.04's 6.1.1, refuses such a read before anything is sent, with a reason of its own, `NOT_KEEPING_THE_COOKIES`. **A merged format is sent its own cookies only**: one with none had taken the item's, which are another link's. A `Cookie` header among the headers is taken out, as yt-dlp's `_calc_headers` takes it out. **The cut, the sibling path, is kept the same way**, below | Real ffprobe through `_place_the_sections`, two controls: yt-dlp sends the cookie to the first host alone, and ffprobe given it as a header sends it on to the second. **The read: the first host is sent the cookie, the second is never asked**; on a build without `max_redirects`, nothing is asked. **Authentication kept**: a site that serves only a request carrying its cookie is sent it, and the length is read. **The jar's scope**: of five cookies, for the host, for this path, for another path, for `https` only and for another host, the read sends exactly the two yt-dlp's own request sends. **Through the real worker**: the review's page whose clip is sent on, with a cookie file, is cancelled and the second host is never sent the cookie; a site that needs its cookie has its section downloaded, every request carrying it, and fails with no cookie file |
+
+**The cut, `T-368`'s, had the same defect class**, read in FFmpeg 5.1 to 8.1's `http.c`. The pin's
+`FFmpegFD` hands ffmpeg the jar's cookies to match itself, and ffmpeg's rules are not the jar's: a
+cookie for the host `a.example` goes on to any host whose name ends in those letters, such as
+`xa.example`, and a `Secure` one over plain `http`. A link that names its port, or a plain `http`
+one through a proxy, is sent none, so a site needing one goes without. **Each input now carries the
+`Cookie` header the session's jar gives its link**, which ffmpeg sends in place of any it would
+match, and **follows no redirect while it does**; a build without `max_redirects` refuses with
+`ffmpeg_route`'s own `NOT_KEEPING_THE_COOKIES`. Real ffmpeg: the pin's cut sent a site that needs its cookie none,
+and fetched nothing; the guarded cut is sent it and cuts two seconds. ffmpeg given a `Cookie`
+header follows the redirect with it, as the control; the guarded cut follows none, and the second
+host is never asked. Unit: each merged input is sent its own link's cookie, and the jar asked is
+the session's.
+
+**At `a49baa2`, 5 of the 7 new real-process tests fail**: the read's and the cut's redirect cases,
+the cut's withheld cookie, and both worker cases, the review's naming the cookie at `127.0.0.5`.
+The two that pass there are positive controls, which the old read already met on its first link.
+
+**Scope as audited.**
+
+- **Domain, host, path and `Secure` are the jar's decisions**, as they are for yt-dlp's own
+  requests, and are no longer remade by ffmpeg. The pinned jar sends a cookie set for a host to
+  that host's subdomains too (measured: `media.test`'s to `cdn.media.test`, not to
+  `evilmedia.test`), and so does this; a stricter rule than yt-dlp's is not attempted.
+- **Other headers**, `Authorization` among them, go where yt-dlp's own handler sends them: its
+  `RedirectHandler` removes only `Cookie` at a redirect, and ffmpeg keeps them too, so nothing
+  changes. A user and password written in a link, which yt-dlp turns into an `Authorization`
+  header its handler keeps, ffmpeg gives only that link's host: `http.c` takes them from the link
+  it is fetching, and starts over at a redirect.
+- **Not corrected, left to `T-370` by the maintainer's ruling of 2026-11-01: cookies a server
+  sets during ffmpeg's own requests.** Measured 2026-10-31 on 8.1.3: a link sent no cookie of the
+  user's, whose server sets one on its redirect, had ffprobe send that cookie on to the second
+  host, where yt-dlp sends none. ffmpeg keeps cookies it is sent in replies, and sends one set
+  without a domain to every host. A link sent the user's cookies carries the jar's header, which
+  turns that off, and follows no redirect; so what is exposed is a cookie the site set for this
+  one visit, to where the site sent it. Turning it off for every link would mean sending every
+  site an empty `Cookie` header, which the ruling chose not to do here.
+  **That understated it, and is corrected in correction 6, below**: the review of 2026-11-01
+  showed such a cookie can be a login the other host can use, and the maintainer, shown that,
+  moved the correction back to this task and chose the empty header.
+
+**What it costs**: a link sent the user's cookies that redirects gives no length, and its cut fails
+at the redirect; downloading the whole item still works, by yt-dlp's own downloader. On Ubuntu
+24.04's 6.1.1, which cannot stop at a redirect, a section of an item sent cookies is refused. Both
+fall under the 2026-10-29 rule to refuse where the route cannot be kept, and **the maintainer
+ruled 2026-11-01 to accept both until `T-370` restores them**.
+
+**Mutations, 12 of 12 caught**, each on copies restored by hash: a cookie not stopping the read's
+redirect, or `sends_cookies` passing no `-max_redirects`; a merged format taking the item's
+cookies; a `Cookie` header among the headers sent on; each client giving the route's reason for a
+cookie, or the cookies' reason for a route; the cut sending no header of the jar's, following the
+redirect with one, not asking the jar, or sending every input the first input's cookie.
+
+**The six files the two clients touch**, **339 passed** on each of: the host's 8.1.3, Ubuntu 24.04's
+6.1.1 and Debian 12's 5.1.9, in containers, and **`STARBASE`**, gyan's 8.1.2, its checkout brought
+to `a49baa2` by bundle with these files on it. None skipped; on Ubuntu's 6.1.1 the cookie cases
+expect the refusal, with nothing asked, and Debian's 5.1.9, which lists `max_redirects`, reads.
+
+**Checks, 2026-10-31, on Linux**, with the project `.venv` on `PATH`: `ruff check .` and
+`ruff format --check .` (529 files); `mypy src` (77), bare `mypy` and `mypy --platform win32`
+(253 each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,839 passed**, 23
+skipped; `tests/integration` **in one process, as CI runs it**, **652 passed**.
+
+**`R9`'s remainder, corrected 2026-11-01 within this task, as the maintainer ruled that day,
+awaiting the sixth focused re-review**
+([record](reviews/T-252.md#2026-11-01--focused-cookie-boundary-correction-review)):
+
+| Finding | Correction | Evidence |
+|---|---|---|
+| `T252-R9`, Critical, the part the review of 2026-11-01 kept open: a cookie a site sets during ffmpeg's own requests crossed hosts. With no cookie of the user's, a link whose redirect set a login cookie had ffprobe and ffmpeg send it on to the next host, which could replay it to read the site's protected content; through the real worker the section downloaded | **Every link is sent the jar's `Cookie` header, empty where the jar holds none** (`media_probe.remote_length`, `ffmpeg_route._routed`). ffmpeg sends the cookies it kept from replies only with a request given no `Cookie` header (`has_header` in `http.c`), so a header given, even an empty one, turns them off. An empty header is not a cookie: it stops no redirect and needs no `max_redirects`, so no build refuses for it | Real processes, each with its control. **The read**: yt-dlp sends the second host nothing, and ffprobe given no header sends it the login; the read sends it none and reads the length. **The cut**: the pin's cut sends the login on; the guarded cut follows the redirect, cuts two seconds, and sends the second host none. **Through the real worker**, with no cookie file: the page's clip, whose link sets a login on its redirect to `127.0.0.5`, is cut, and the second host is never sent the login. Unit: each link and each merged input is sent the empty header, and still follows a redirect |
+
+**What it costs, ruled 2026-11-01**: ffmpeg no longer sends a cookie handed to it in a reply back
+even to the site that set it, where yt-dlp's jar would. A site that sets its cookie on a redirect
+to itself and serves only a request carrying it has no length read, so a section of it is
+cancelled; downloading the whole item still works, by yt-dlp's own downloader. A test pins that
+cost; its controls are yt-dlp and ffprobe left to itself, both served. Every site is also sent an
+empty `Cookie` header: the servers here accept it, and how a strict server takes one is not
+measured. Restoring the case is `T-370`'s.
+
+**Correction 5 understated this.** It called what reached the other host *"a cookie the site set
+for this one visit"*, and the maintainer's first ruling of 2026-11-01, leaving it to `T-370`, rested
+on that account. The review then set a login on the redirect and used it from the other host.
+Shown that, the maintainer moved the correction back here and chose the empty header over letting
+yt-dlp follow redirects first, or stopping ffmpeg at every redirect.
+
+**At `4863082`, the 4 new real-process tests all fail**: the read's, the cut's and the worker's
+cases each find the login at `127.0.0.5`, and the cost's test fails because the old read is
+served.
+
+**Mutations, 6 of 6 caught**, each on copies restored by hash: either client sending no empty
+header (7 failures each, the real-process cases among them); either sending it to the first link
+or input alone (2 each, unit only: no real-process case merges two inputs); either taking the
+empty header for a cookie and stopping every redirect (8 and 10).
+
+**The six files the two clients touch**, **343 passed** on each of: the host's 8.1.3, Ubuntu 24.04's
+6.1.1 and Debian 12's 5.1.9, in containers. None skipped, and none refused for the empty
+header on any build. **On Windows**, in CI at `7e93683`
+([`41384232252`](https://github.com/kottmans/tracks-and-trails/actions/runs/41384232252)), the
+same **343 passed**, none skipped, the four new real-process tests among them.
+
+**Checks, 2026-11-01, on Linux**, with the project `.venv` on `PATH`: `ruff check .` and
+`ruff format --check .` (529 files); `mypy src` (77), bare `mypy` and `mypy --platform win32`
+(253 each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,839 passed**, 23
+skipped; `tests/integration` **in one process, as CI runs it**, **656 passed**.
+
+**The CI gate, ruled 2026-11-02 by the maintainer, as recommended**: CI at `7e93683` may stand
+as the required gate for this task, `T-368` and `T-253` apart from its one failure,
+`test_fragment_retries.py`'s `test_a_fragment_that_never_arrives_fails_and_the_retry_resumes_it`,
+`T-367`'s, provided code from before these corrections fails it the same way on `STARBASE`.
+`T-367` stays High and is taken up next. Whether the gate is met is the Reviewer's to verify.
+
+| On `STARBASE`'s desktop session, 2026-11-02 | `a3705e4` | `873b54b`, source as `7e93683` |
+|---|---|---|
+| The test alone, three runs each, alternating | 3 passed | 3 passed |
+| The integration files up to and including it, in CI's order, serial, two runs each, alternating | **2 failed**, *"Unable to rename file: [WinError 32]"* on the resume | 2 passed |
+| All integration, serial, in CI | Passed, [`40409543055`](https://github.com/kottmans/tracks-and-trails/actions/runs/40409543055), 2026-10-26 | **Failed**, [`41384232252`](https://github.com/kottmans/tracks-and-trails/actions/runs/41384232252), the same error; 648 passed, 7 skipped |
+
+So the condition is met: the older code fails as CI's run at `7e93683` did. The failure depends
+on what ran before it, which differs here: the newer code's run holds two more files first,
+`test_extractor_args.py` and `test_ffmpeg_route.py`. Its two passes are not a fix, since CI failed
+the same code.
 
 ---
 
