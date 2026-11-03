@@ -369,6 +369,97 @@ each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,758 passe
 `tests/integration` **in one process, as CI runs it**, **620 passed**. **On `STARBASE`**, these two
 files copied onto `be3cc08`: `tests/unit/test_extractor_args.py`, **173 passed**.
 
+### T-371 — Bundle yt-dlp 2026.10.26: the pinned baseline cannot read TED
+
+**Status:** In Review — built 2026-11-02, the day it was filed, at the maintainer's request that
+day to look into the canary's failures and *"update the current version of yt-dlp if necessary"*.
+Not yet run on Windows.
+**Owner:** Implementer
+**Priority:** Medium — one site fails on the baseline; YouTube works on both, and a user can update
+yt-dlp from the application
+**Phase:** Phase 4.5, shipping in `0.2.0`, a minor release, as `docs/RELEASE.md` requires of a bump
+**Depends on:** nothing
+**Relevant context:** `T-332`, the last bump
+([entry](COMPLETED_TASKS.md#t-332--bundle-yt-dlp-2026819-the-pinned-baseline-cannot-download-from-youtube));
+`OPS-002`; `TESTING.md` §8 item 10a; `REL-002`, re-evaluated whenever the pin changes; `T-291`, the
+canary; `T-255`, the extractor-argument allowlist
+**Affected surfaces:** `pyproject.toml`; `environment.BASELINE_YTDLP_VERSION`; the freeze-probe
+test; both generated tables; `core/extractor_args.YOUTUBE_CLIENTS`; `NumberedSections`' docstring;
+`docs/YTDLP_OPTION_AUDIT.md`; `packaging/licenses/README.md`; `ytdlp-canary.yml`
+
+#### What was found
+
+**The canary was red on 2026-10-26 and 2026-11-02**, runs `40335760079` at yt-dlp 2026.10.21 and
+`41486015759` at 2026.10.26, for two reasons:
+
+- **Three tests that fail on any newer yt-dlp were not in its expected-stale list.** `T-184`'s
+  option table and `T-255`'s allowlist each record the release they were generated from, and
+  their checks failed on the version alone.
+- **yt-dlp added to two lists the allowlist holds**: an extractor argument, `adn:profile_id`, and
+  a YouTube client, `tv_samsung`, which 2026.10.21 made one of its defaults.
+
+**The baseline cannot read TED.** Measured 2026-11-02 with yt-dlp's own command line from each
+version, nothing configured:
+
+| | 2026.08.19, the pin | 2026.10.26 |
+|---|---|---|
+| A TED talk | Fails: *"the JSON object must be str, bytes or bytearray, not NoneType"* | Read, and downloaded whole: 94,856,258 bytes, 680 s, video and audio |
+| A YouTube video, up to 720p, MP4 | Downloaded and merged, 21,082,324 bytes | The same, 21,082,324 bytes |
+| Its formats | 44, five of them 1080p | The same 44 |
+| Bandcamp, a Twitch clip, ok.ru, Kick, each extractor's own test address | Read | Read |
+
+**No security fix reaches the application.** Both releases answer advisories in `certifi`
+(`GHSA-6q48-6c7w-9gw2`) and `brotli` as bundled in yt-dlp's own executables. This application
+installs neither, and checks certificates against the system's store through `truststore`.
+
+#### Built 2026-11-02
+
+- **The pin moved** in `pyproject.toml`, `BASELINE_YTDLP_VERSION` and the freeze-probe test.
+- **The option audit re-run, not re-dated**: every option compared between the two versions by
+  its spellings, destination, action, help, default, choices, metavar, `nargs` and type, and none
+  differs. The audit's rows that say what 2026.08.19 reads stay true: yt-dlp reads its
+  compatibility options in the same places in both.
+- **Both tables regenerated.** The allowlist gains `adn:profile_id`: permitted, by `T-255`'s first
+  ruling, since it is none of the six forbidden pairs, and its value redacted, since it has no
+  fixed vocabulary. `YOUTUBE_CLIENTS` gains `tv_samsung`.
+- **The licence text** is byte-identical between the wheels and to the shipped copy, 1,211 bytes.
+- **The canary's list** gains the three version checks: fourteen node ids, fifteen tests, all
+  collected. The allowlist's pairs stay checked there by
+  `test_every_read_resolves_and_none_is_answered_by_hand_without_need`, which compares the pairs
+  alone and is the test that found `adn:profile_id`.
+- **Upstream's changes outside the extractors read**, 19 files: mostly cleanup after Python 3.10
+  support was removed. One reaches this code: `download_range_func`'s equality now compares
+  `from_info` too, which `NumberedSections` passes, and its docstring now says so. Two more were
+  read and are not exercised here: a generic link's extension can now come from its
+  `Content-Disposition` header, and a `+` in a SOCKS proxy's credentials is no longer read as a
+  space. This code decodes neither itself.
+- **`REL-002`'s negative build repeated**, recorded there: built with and without
+  `collect_submodules("yt_dlp")`, each probe isolated from any user-managed copy reports the
+  bundled 2026.10.26, **1754 extractors** and the solver verified, with 971
+  `yt_dlp.extractor.*` modules either way. Still redundant, and it stays for `REL-002`'s reason.
+
+**Adjacent, measured, not corrected** (`AGENTS.md` §7): **the two archives differ by 228 modules,
+not two.** With the line, yt-dlp's own PyInstaller hook, `yt_dlp.__pyinstaller.hook-yt_dlp`, is
+collected, and its import of `PyInstaller.utils.hooks` puts PyInstaller, setuptools, `unittest`
+and `pydoc` in the artifact: 1,848 KiB. A build at 2026.08.19 the same day carries the same, so it
+is not this bump's. `REL-002`'s record of 2026-09-12 names two modules; whether that comparison
+looked beyond `yt_dlp.*` is not recorded. The maintainer's to rule, with `REL-002`.
+
+**Checks, 2026-11-02, on Linux**, with the project `.venv` on `PATH`: `ruff check .` and
+`ruff format --check .` (529 files); `mypy src` (77), bare `mypy` and `mypy --platform win32` (253
+each); both tables up to date; `tests/unit tests/ui` under `-n 4`, **6,839 passed**, 23 skipped,
+run again after the records; `tests/integration` **in one process, as CI runs it**, **656
+passed**; `pytest -m network`, **2 passed**. Not pushed, so no CI.
+
+#### Acceptance criteria
+
+- [x] The pin, the constant, the audit and both tables name 2026.10.26, and the pin-bound tests
+      pass against it
+- [x] The case that failed reads and downloads at the new pin: the TED talk above
+- [x] `REL-002`'s negative build repeated at the new pin, with the result recorded there
+- [ ] CI green on both platforms at the new pin
+- [ ] The `yt-dlp canary` dispatched at the new pin, green (`TESTING.md` §8 item 10a)
+
 ## Ready
 
 <a id="t-302"></a>

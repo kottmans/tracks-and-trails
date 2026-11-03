@@ -96,8 +96,8 @@ _FLAG: Final = Vocabulary(frozenset({"true", "false"}))
 #: `INNERTUBE_CLIENTS` at the pin, less the internal ones named with a leading `_`.
 YOUTUBE_CLIENTS: Final = frozenset(
     {
-        "android", "android_vr", "ios", "mweb", "tv", "tv_downgraded", "tv_simply", "visionos",
-        "web", "web_creator", "web_embedded", "web_music", "web_safari",
+        "android", "android_vr", "ios", "mweb", "tv", "tv_downgraded", "tv_samsung", "tv_simply",
+        "visionos", "web", "web_creator", "web_embedded", "web_music", "web_safari",
     }
 )  # fmt: skip
 

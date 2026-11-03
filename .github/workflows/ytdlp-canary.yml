@@ -19,20 +19,30 @@
 #
 # ## The design problem is not the YAML
 #
-# **Eleven** node ids fail by design on any newer yt-dlp — twelve tests, one of them parametrised —
-# and **every one of them was found by running this rather than by reading it.** The count has been
-# wrong twice, in the same direction, for the same reason:
+# **Fourteen** node ids fail by design on any newer yt-dlp — fifteen tests, one of them
+# parametrised — and **every one of them was found by running this rather than by reading it.** The
+# count has been wrong three times, in the same direction, for the same reason:
 #
 #   - It was written as **one**. A dry run of the logic found a second.
 #   - It was **two** until `T291-R1` put `tests/integration` back into the suite, which is where the
 #     other nine live. Run `33228602891` is where they appeared.
+#   - It was **eleven** until `T-371`. `T-184`'s option table and `T-255`'s extractor-argument
+#     allowlist each record the release they were generated from, and neither joined this list, so
+#     the first newer releases turned the canary red on them: run `40335760079` at 2026.10.21 and
+#     run `41486015759` at 2026.10.26.
 #
 # They fall into two groups:
 #
 #   - **The version bookkeeping** — `test_the_audit_names_the_yt_dlp_version_it_was_taken_against`,
 #     how a pin bump forces the audit to be re-taken (`T-183`, `NFR-008`), and
 #     `test_the_installed_baseline_is_the_pinned_one`, which asserts exactly the thing this job
-#     deliberately breaks.
+#     deliberately breaks. The same for the two generated tables:
+#     `test_the_table_names_the_version_it_was_taken_against` and
+#     `test_the_allowlist_was_read_from_the_pinned_release`, and
+#     `test_the_allowlist_is_what_the_pinned_source_reads_today`, which compares the allowlist's
+#     whole text, its version line included. **The allowlist's pairs stay checked here** by
+#     `test_every_read_resolves_and_none_is_answered_by_hand_without_need`, which compares the
+#     pairs alone and found `adn:profile_id` at 2026.10.26.
 #   - **The freeze probe and the update service** — nine cases in `tests/integration` that each
 #     require the installed yt-dlp to *be* the pinned baseline. Four of them are not version tests
 #     at all; the probe reports the version mismatch first, so they cannot reach their subject here.
@@ -46,6 +56,8 @@
 #   - *an option exists that nothing classifies* — a real finding, and its own failure message
 #     already names the new options
 #   - *a container appeared or vanished* — a real finding
+#   - *an extractor argument, or a value its vocabulary is taken from, appeared or vanished* — a
+#     real finding, `T-255`'s allowlist and vocabularies
 #   - *anything else* — the interesting case, because behaviour moved rather than a list
 #
 # ## What this job may not do
@@ -111,7 +123,8 @@ env:
   # in — which is what that finding required — added **nine** more tests that assert the installed
   # yt-dlp *is* the pinned baseline, the one thing this job exists to violate. They are not drift:
   # every one passes against the pin, and each failure message is the freeze probe or the service
-  # correctly reporting `2026.08.19` where `2026.7.4` was pinned.
+  # correctly reporting `2026.08.19` where `2026.7.4` was pinned. **It is fourteen since `T-371`**:
+  # the three version checks of the two generated tables, named at the top of this file.
   #
   # **Four of the `test_freeze_probe.py` entries are not version tests at all** — they are named
   # for a missing extractor module, a lazy table, a lazy placeholder and an extractor that does not
@@ -145,6 +158,9 @@ env:
     tests/integration/test_ytdlp_service.py::test_a_broken_installed_copy_falls_back_and_the_rejection_is_reported
     tests/integration/test_ytdlp_service.py::test_installing_then_reverting_moves_the_reported_version_and_moves_it_back
     tests/integration/test_ytdlp_service.py::test_the_reported_version_is_the_baseline_a_child_actually_imports
+    tests/unit/test_option_table.py::test_the_table_names_the_version_it_was_taken_against
+    tests/unit/test_extractor_args.py::test_the_allowlist_was_read_from_the_pinned_release
+    tests/unit/test_extractor_args.py::test_the_allowlist_is_what_the_pinned_source_reads_today
 
 jobs:
   canary:

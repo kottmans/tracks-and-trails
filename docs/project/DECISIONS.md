@@ -1437,6 +1437,14 @@ cannot currently see. That is not a close call while the probe is blind.
     only with the line: `yt_dlp.__main__` and `yt_dlp.__pyinstaller`, neither imported at runtime.
     **All 971 `yt_dlp.extractor.*` modules are present without it**, so it is still redundant for
     this pin, and it stays for the reason above.
+  - **Re-evaluated 2026-11-02 at 2026.10.26** (`T-371`), on Linux, each probe kept from any
+    user-managed copy by empty XDG directories. Both builds report `bundled baseline` and **1754
+    extractors**, with 971 `yt_dlp.extractor.*` modules either way, so it is still redundant for
+    this pin, and it stays. **The archives differ by 228 modules, not two**: with the line, yt-dlp's
+    own PyInstaller hook, `yt_dlp.__pyinstaller.hook-yt_dlp`, is collected, and its import of
+    `PyInstaller.utils.hooks` brings PyInstaller, setuptools, `unittest` and `pydoc` into the
+    artifact, 1,848 KiB. A build at 2026.8.19 the same day carries the same. Whether the comparison
+    above looked beyond `yt_dlp.*` is not recorded. Not corrected here; see `T-371`'s entry.
 - **It is not a substitute for the probe extension.** Keeping this line does nothing about the data
   blindness `T033-R4` found; the two were separated precisely so that one could not be read as
   covering the other.

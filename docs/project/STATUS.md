@@ -258,6 +258,12 @@ task and review records it summarised.*
   **Resolved 2026-11-01 at `7e93683`.** CI there failed one test, `T-367`'s fragment resume on
   Windows, older than these corrections, and the maintainer ruled 2026-11-02 that it need not hold
   `T-252`, `T-368` or `T-253`. **All three were approved with follow-ups that day**; `T-367` is next.
+- **`T-371` was built on 2026-11-02**, at the maintainer's request that day, and is with the
+  Reviewer: yt-dlp 2026.10.26 is now the bundled baseline, since 2026.08.19 cannot read TED.
+  YouTube works on both. The weekly canary had been red since 2026.10.21 on three version checks
+  missing from its list and two names yt-dlp added to `T-255`'s allowlist; both are corrected. Not
+  yet run on Windows
+  ([entry](TASKS.md#t-371--bundle-yt-dlp-20261026-the-pinned-baseline-cannot-read-ted)).
 - **Fifteen rulings taken 2026-10-19, all as recommended**, every open question in stage 3:
   `T-248`'s two, as built; `T-252`'s last two; `T-253`'s three; `T-254`'s four; and `T-255`'s
   four, the first a security ruling forbidding the extractor-argument pairs that choose a request's

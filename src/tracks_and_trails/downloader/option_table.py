@@ -17,7 +17,7 @@ from typing import Final
 
 #: The yt-dlp release the audit was taken against. `tests/unit/test_option_audit.py` fails when
 #: the pin moves, because a bump is exactly when the classification has to be looked at again.
-AUDIT_VERSION: Final = "2026.08.19"
+AUDIT_VERSION: Final = "2026.10.26"
 
 #: Spelling -> (class, the audit's reason). **Every** spelling of an option is a key, so a lookup
 #: is by the string the user actually typed and no caller has to know which spellings are aliases.

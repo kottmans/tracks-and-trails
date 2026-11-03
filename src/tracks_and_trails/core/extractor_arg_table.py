@@ -10,11 +10,12 @@ from __future__ import annotations
 from typing import Final
 
 #: The yt-dlp release this was read from.
-READ_FROM: Final = "2026.08.19"
+READ_FROM: Final = "2026.10.26"
 
 #: Key -> every argument read under it. Keys and arguments are lower case, as yt-dlp's parser makes
 #: them; an argument's `-` is read as `_`.
 EXTRACTOR_ARGS: Final[dict[str, frozenset[str]]] = {
+    "adn": frozenset({"profile_id"}),
     "afreecatvlive": frozenset({"cdn"}),
     "bilibili": frozenset({"prefer_multi_flv"}),
     "gamejolt": frozenset({"comment_sort"}),

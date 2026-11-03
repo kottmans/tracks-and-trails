@@ -35,7 +35,7 @@ classifiers = [
 dependencies = [
     "PySide6>=6.11,<6.12",
     "platformdirs>=4.0",
-    "yt-dlp==2026.8.19",
+    "yt-dlp==2026.10.26",
     "truststore>=0.10.4",
 ]
 

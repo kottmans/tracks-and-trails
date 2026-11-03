@@ -909,8 +909,9 @@ class NumberedSections(download_range_func):  # type: ignore[misc]
     (measured 2026-10-14). Each yielded section is numbered from 1 instead: chapter matches, then
     ranges, then the address's own range, which is yt-dlp's order.
 
-    **Its equality is yt-dlp's own**, which compares the patterns and the ranges, so the typed field
-    is held to `parse_options` by comparing the two.
+    **Its equality is yt-dlp's own**, which compares the patterns and the ranges and, since
+    2026.10.26, whether the address's own range is asked for, so the typed field is held to
+    `parse_options` by comparing the two.
 
     **It gives yt-dlp the item's length where the site gave none** (`T252-R1`, ruled 2026-10-25).
     yt-dlp resolves a range counted from the end, and clips one that runs past it, by the item's
